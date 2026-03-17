@@ -524,57 +524,62 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     }
 
     let new_count = unique.len();
-    let g = &mut x11.core.g;
-    let old_count = g.monitors.count();
 
-    // Ensure count
-    let template = g.cfg.tag_template.clone();
-    let (mfact, nmaster, showbar, topbar) = (
-        g.cfg.mfact,
-        g.cfg.nmaster,
-        g.cfg.show_bar,
-        g.cfg.top_bar,
-    );
-    while g.monitors.count() < new_count {
-        let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
-        mon.init_tags(&template);
-        g.monitors.push(mon);
-    }
+    // Borrow g in a limited scope for monitor updates
+    let (old_count, template, mfact, nmaster, showbar, topbar, bar_height) = {
+        let g = &mut x11.core.g;
+        let old_count = g.monitors.count();
 
-    let mut dirty = new_count > old_count;
-    let bar_height = g.cfg.bar_height;
+        // Ensure count
+        let template = g.cfg.tag_template.clone();
+        let (mfact, nmaster, showbar, topbar) =
+            (g.cfg.mfact, g.cfg.nmaster, g.cfg.show_bar, g.cfg.top_bar);
+        while g.monitors.count() < new_count {
+            let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
+            mon.init_tags(&template);
+            g.monitors.push(mon);
+        }
 
-    for (i, info) in unique.iter().enumerate() {
-        if let Some(m) = g.monitors.get_mut(i) {
-            if m.monitor_rect.x != info.x
-                || m.monitor_rect.y != info.y
-                || m.monitor_rect.w != info.w
-                || m.monitor_rect.h != info.h
-            {
-                m.num = i as i32;
-                m.monitor_rect = *info;
-                m.work_rect = *info;
-                m.update_bar_position(bar_height);
-                dirty = true;
+        let mut dirty = new_count > old_count;
+        let bar_height = g.cfg.bar_height;
+
+        for (i, info) in unique.iter().enumerate() {
+            if let Some(m) = g.monitors.get_mut(i) {
+                if m.monitor_rect.x != info.x
+                    || m.monitor_rect.y != info.y
+                    || m.monitor_rect.w != info.w
+                    || m.monitor_rect.h != info.h
+                {
+                    m.num = i as i32;
+                    m.monitor_rect = *info;
+                    m.work_rect = *info;
+                    m.update_bar_position(bar_height);
+                    dirty = true;
+                }
             }
         }
-    }
+        (
+            old_count, template, mfact, nmaster, showbar, topbar, bar_height,
+        )
+    };
+
+    let mut dirty = new_count > old_count;
 
     if new_count < old_count {
-        // Need to get clients before mutable borrow of g
+        // Get clients while not holding mutable borrow
         let clients_map = x11.core.g.clients.map().clone();
-        // Create temporary WmCtx wrapper for functions that need it
-        let mut wm_ctx = WmCtx::X11(x11.reborrow());
         for i in (new_count..old_count).rev() {
             let clients_to_move: Vec<WindowId> = clients_map
                 .values()
                 .filter(|c| c.monitor_id == i)
                 .map(|c| c.win)
                 .collect();
+            // Create temporary WmCtx wrapper for each iteration
+            let mut wm_ctx = WmCtx::X11(x11.reborrow());
             for win in clients_to_move {
                 detach(&mut wm_ctx, win);
                 detach_stack(&mut wm_ctx, win);
-                if let Some(c) = x11.core.g.clients.get_mut(&win) {
+                if let Some(c) = wm_ctx.client_mut(win) {
                     c.monitor_id = 0;
                 }
                 attach(&mut wm_ctx, win);
@@ -586,13 +591,18 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     }
 
     if dirty {
-        g.monitors.set_sel_idx(0);
+        x11.core.g.monitors.set_sel_idx(0);
         let x11_conn = Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num));
         let root = WindowId::from(x11.x11_runtime.root);
         let clients = x11.core.g.clients.map().clone();
         let root_u32: u32 = root.into();
-        if let Some(m) = g.monitors.win_to_mon(root, root_u32, &clients, x11_conn) {
-            g.monitors.set_sel_idx(m);
+        if let Some(m) = x11
+            .core
+            .g
+            .monitors
+            .win_to_mon(root, root_u32, &clients, x11_conn)
+        {
+            x11.core.g.monitors.set_sel_idx(m);
         }
     }
 

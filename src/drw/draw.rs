@@ -850,10 +850,7 @@ impl Drw {
             fg_pixel = scheme.fg.pixel();
             bg_pixel = scheme.bg.pixel();
             detail_pixel = scheme.detail.pixel();
-            (
-                Some(scheme.fg.color.clone()),
-                Some(scheme.bg.color.clone()),
-            )
+            (Some(scheme.fg.color.clone()), Some(scheme.bg.color.clone()))
         } else {
             (None, None)
         };

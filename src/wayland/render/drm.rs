@@ -653,7 +653,13 @@ pub fn render_drm_output(
     }
 
     // Shared: assemble remaining elements in z-order
-    super::assemble_scene_elements!(DrmExtras, scene, space_render_elements, num_upper, render_elements);
+    super::assemble_scene_elements!(
+        DrmExtras,
+        scene,
+        space_render_elements,
+        num_upper,
+        render_elements
+    );
 
     let render_result = entry.damage_tracker.render_output(
         renderer,
@@ -723,5 +729,3 @@ fn build_cursor_elements(
 
     custom_elements
 }
-
-

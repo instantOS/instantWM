@@ -57,7 +57,13 @@ pub fn render_frame(
     let mut render_elements = Vec::with_capacity(counts.total());
 
     // Shared: assemble elements in z-order
-    super::assemble_scene_elements!(WaylandExtras, scene, space_render_elements, num_upper, render_elements);
+    super::assemble_scene_elements!(
+        WaylandExtras,
+        scene,
+        space_render_elements,
+        num_upper,
+        render_elements
+    );
 
     // Backend-specific: render with damage tracker
     let render_result = damage_tracker

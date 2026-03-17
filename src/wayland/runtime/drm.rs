@@ -393,8 +393,6 @@ fn process_completed_crtcs(
     }
 }
 
-
-
 /// Process IPC commands with DRM-specific output invalidation.
 fn process_ipc(
     ipc_server: &mut Option<crate::ipc::IpcServer>,

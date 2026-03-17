@@ -30,10 +30,7 @@ pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
 ///
 /// Returns `true` when at least one command was handled, so that
 /// backend-specific code can react (e.g. DRM marks all outputs dirty).
-pub fn process_ipc_commands(
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-    wm: &mut Wm,
-) -> bool {
+pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: &mut Wm) -> bool {
     let Some(server) = ipc_server.as_mut() else {
         return false;
     };
