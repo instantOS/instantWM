@@ -27,7 +27,7 @@
 //! ```
 
 use crate::contexts::WmCtxX11;
-use crate::types::{MouseButton, WindowId};
+use crate::types::{Cursor, MouseButton, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -44,8 +44,9 @@ use x11rb::CURRENT_TIME;
 ///
 /// After a successful grab, use [`wait_event`] to poll events inside the
 /// loop and [`ungrab_ctx`] to release the grab when done.
-pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
-    let cursor = ctx
+pub fn grab_pointer(ctx: &WmCtxX11, cursor: Cursor) -> bool {
+    let cursor_index = cursor.to_x11_index();
+    let xcursor = ctx
         .x11_runtime
         .cursors
         .get(cursor_index)
@@ -56,7 +57,7 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     grab_pointer_impl(
         ctx.x11.conn,
         ctx.x11_runtime.root,
-        cursor,
+        xcursor,
         EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
     )
 }
@@ -65,8 +66,9 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor_index: usize) -> bool {
 ///
 /// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
-pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
-    let cursor = ctx
+pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor: Cursor) -> bool {
+    let cursor_index = cursor.to_x11_index();
+    let xcursor = ctx
         .x11_runtime
         .cursors
         .get(cursor_index)
@@ -77,7 +79,7 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor_index: usize) -> bool {
     grab_pointer_impl(
         ctx.x11.conn,
         ctx.x11_runtime.root,
-        cursor,
+        xcursor,
         EventMask::BUTTON_PRESS
             | EventMask::BUTTON_RELEASE
             | EventMask::POINTER_MOTION
@@ -135,16 +137,16 @@ pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
 pub fn mouse_drag_loop<F>(
     ctx: &mut WmCtxX11<'_>,
     btn: MouseButton,
-    cursor_index: usize,
+    cursor: Cursor,
     with_keys: bool,
     mut on_event: F,
 ) where
     F: FnMut(&mut WmCtxX11<'_>, &x11rb::protocol::Event) -> bool,
 {
     let grabbed = if with_keys {
-        grab_pointer_with_keys(ctx, cursor_index)
+        grab_pointer_with_keys(ctx, cursor)
     } else {
-        grab_pointer(ctx, cursor_index)
+        grab_pointer(ctx, cursor)
     };
 
     if !grabbed {

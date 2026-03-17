@@ -328,87 +328,97 @@ pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
 fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
     let mut action_started = false;
 
-    super::grab::mouse_drag_loop(ctx, MouseButton::Left, 1, true, |ctx, event| {
-        match event {
-            x11rb::protocol::Event::ButtonRelease(_) => false,
+    super::grab::mouse_drag_loop(
+        ctx,
+        MouseButton::Left,
+        crate::types::Cursor::Resize,
+        true,
+        |ctx, event| {
+            match event {
+                x11rb::protocol::Event::ButtonRelease(_) => false,
 
-            x11rb::protocol::Event::MotionNotify(_) => {
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                let in_border = get_root_ptr(&wm_ctx)
-                    .map(|(x, y)| is_in_resize_border(&wm_ctx, x, y))
-                    .unwrap_or(false);
-                if !in_border {
-                    let sel = wm_ctx.selected_client();
-                    let target = get_cursor_client_win(&mut wm_ctx)
-                        .filter(|&w| Some(w) != sel)
-                        .or_else(|| {
-                            let (x, y) = get_root_ptr(&wm_ctx)?;
-                            find_tiled_win_at_point(&wm_ctx, x, y, sel)
-                        });
-                    if let Some(win) = target {
-                        crate::focus::focus_soft(&mut wm_ctx, Some(win));
+                x11rb::protocol::Event::MotionNotify(_) => {
+                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                    let in_border = get_root_ptr(&wm_ctx)
+                        .map(|(x, y)| is_in_resize_border(&wm_ctx, x, y))
+                        .unwrap_or(false);
+                    if !in_border {
+                        let sel = wm_ctx.selected_client();
+                        let target = get_cursor_client_win(&mut wm_ctx)
+                            .filter(|&w| Some(w) != sel)
+                            .or_else(|| {
+                                let (x, y) = get_root_ptr(&wm_ctx)?;
+                                find_tiled_win_at_point(&wm_ctx, x, y, sel)
+                            });
+                        if let Some(win) = target {
+                            crate::focus::focus_soft(&mut wm_ctx, Some(win));
+                        }
+                        return false;
                     }
-                    return false;
+                    true
                 }
-                true
-            }
 
-            x11rb::protocol::Event::KeyPress(k) => {
-                if k.detail == KEYCODE_ESCAPE {
-                    return false;
+                x11rb::protocol::Event::KeyPress(k) => {
+                    if k.detail == KEYCODE_ESCAPE {
+                        return false;
+                    }
+                    true
                 }
-                true
-            }
 
-            x11rb::protocol::Event::ButtonPress(bp) => {
-                action_started = true;
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                x11rb::protocol::Event::ButtonPress(bp) => {
+                    action_started = true;
+                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
 
-                let Some(win) = wm_ctx.selected_client() else {
-                    return false;
-                };
-                let (geo, w, h) = {
-                    let Some(c) = wm_ctx.client(win) else {
+                    let Some(win) = wm_ctx.selected_client() else {
                         return false;
                     };
-                    (c.geo, c.geo.w, c.geo.h)
-                };
+                    let (geo, w, h) = {
+                        let Some(c) = wm_ctx.client(win) else {
+                            return false;
+                        };
+                        (c.geo, c.geo.w, c.geo.h)
+                    };
 
-                // Query cursor position relative to the client window.
-                let (root_x, root_y, win_x, win_y) =
-                    query_pointer_on_win(&mut wm_ctx, win).unwrap_or((0, 0, 0, 0));
+                    // Query cursor position relative to the client window.
+                    let (root_x, root_y, win_x, win_y) =
+                        query_pointer_on_win(&mut wm_ctx, win).unwrap_or((0, 0, 0, 0));
 
-                let btn = MouseButton::from_u8(bp.detail).unwrap_or(MouseButton::Left);
-                wm_ctx.raise_interactive(win);
-                match bp.detail {
-                    // Right-click → move
-                    3 => {
-                        let mut wm_ctx_x11 = ctx.reborrow();
-                        let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
-                        super::warp::warp_into(&mut wmctx, win);
-                        crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
-                    }
-                    // Left-click
-                    1 => {
-                        if is_at_top_middle_edge(&geo, root_x, root_y) {
+                    let btn = MouseButton::from_u8(bp.detail).unwrap_or(MouseButton::Left);
+                    wm_ctx.raise_interactive(win);
+                    match bp.detail {
+                        // Right-click → move
+                        3 => {
                             let mut wm_ctx_x11 = ctx.reborrow();
                             let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                             super::warp::warp_into(&mut wmctx, win);
                             crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
-                        } else {
-                            let dir = get_resize_direction(w, h, win_x, win_y);
-                            warp_pointer_resize(&mut wm_ctx, win, dir);
-                            resize_mouse_directional(ctx, Some(dir), btn);
                         }
+                        // Left-click
+                        1 => {
+                            if is_at_top_middle_edge(&geo, root_x, root_y) {
+                                let mut wm_ctx_x11 = ctx.reborrow();
+                                let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
+                                super::warp::warp_into(&mut wmctx, win);
+                                crate::backend::x11::mouse::move_mouse_x11(
+                                    &mut wm_ctx_x11,
+                                    btn,
+                                    None,
+                                );
+                            } else {
+                                let dir = get_resize_direction(w, h, win_x, win_y);
+                                warp_pointer_resize(&mut wm_ctx, win, dir);
+                                resize_mouse_directional(ctx, Some(dir), btn);
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
+                    false
                 }
-                false
-            }
 
-            _ => true,
-        }
-    });
+                _ => true,
+            }
+        },
+    );
 
     action_started
 }

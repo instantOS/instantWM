@@ -25,7 +25,7 @@ pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
 
     let mut last_y = start_y;
 
-    crate::mouse::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+    crate::mouse::grab::mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
             if (last_y - m.event_y as i32).abs() > threshold {

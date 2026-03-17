@@ -206,7 +206,7 @@ pub fn resize_mouse_directional(
         crate::layouts::restack(ctx, selmon_id);
     });
 
-    super::grab::mouse_drag_loop(ctx, btn, 1, false, |ctx, event| {
+    super::grab::mouse_drag_loop(ctx, btn, Cursor::Resize, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let pointer_x = m.event_x as i32;
             let pointer_y = m.event_y as i32;
@@ -322,7 +322,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         crate::layouts::restack(&mut tmp, selmon_id);
     }
 
-    super::grab::mouse_drag_loop(ctx, btn, 1, false, |ctx, event| {
+    super::grab::mouse_drag_loop(ctx, btn, Cursor::Resize, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let raw_nw = (m.event_x as i32 - orig_left + 1).max(1);
             let raw_nh = (m.event_y as i32 - orig_top + 1).max(1);

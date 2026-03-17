@@ -5,7 +5,7 @@ use crate::mouse::drag::{
     clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target, MoveState,
 };
 use crate::mouse::warp::get_root_ptr;
-use crate::types::{MouseButton, Rect};
+use crate::types::{Cursor, MouseButton, Rect};
 
 /// X11-only synchronous window move implementation.
 ///
@@ -39,7 +39,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         edge_snap_indicator: None,
     };
 
-    crate::mouse::grab::mouse_drag_loop(ctx, btn, 2, false, |ctx, event| {
+    crate::mouse::grab::mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
             on_motion(
