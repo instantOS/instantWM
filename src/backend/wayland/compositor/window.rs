@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use smithay::desktop::Window;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::utils::{Logical, Point};
+use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
@@ -61,6 +62,7 @@ impl WaylandState {
             g.dirty.space = true;
         }
         self.set_focus(window_id);
+        self.create_foreign_toplevel(window_id);
         window_id
     }
 
@@ -223,6 +225,7 @@ impl WaylandState {
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
         self.clear_keyboard_focus_if_focused(window);
+        self.close_foreign_toplevel(window);
         if let Some(g) = self.globals_mut() {
             g.dirty.layout = true;
             g.dirty.space = true;
@@ -507,6 +510,58 @@ impl WaylandState {
                 .title
                 .clone()
         })
+    }
+
+    /// Get the app_id (desktop file ID) of a window.
+    pub fn window_app_id(&self, window: WindowId) -> Option<String> {
+        let element = self.window_index.get(&window)?;
+
+        if let Some(x11) = element.x11_surface() {
+            let wm_class = x11.class();
+            return Some(wm_class);
+        }
+
+        let wl_surface = element.wl_surface()?;
+        smithay::wayland::compositor::with_states(&wl_surface, |states| {
+            states
+                .data_map
+                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()?
+                .lock()
+                .ok()?
+                .app_id
+                .clone()
+        })
+    }
+
+    /// Create a foreign toplevel handle for a window.
+    pub(super) fn create_foreign_toplevel(&mut self, window: WindowId) {
+        let title = self.window_title(window).unwrap_or_default();
+        let app_id = self.window_app_id(window).unwrap_or_default();
+        let handle = self
+            .foreign_toplevel_list_state
+            .new_toplevel::<Self>(title, app_id);
+        self.foreign_toplevel_handles.insert(window, handle);
+    }
+
+    /// Update the foreign toplevel handle for a window (title/app_id changed).
+    pub fn update_foreign_toplevel(&mut self, window: WindowId) {
+        let Some(handle) = self.foreign_toplevel_handles.get(&window) else {
+            return;
+        };
+        if let Some(title) = self.window_title(window) {
+            handle.send_title(&title);
+        }
+        if let Some(app_id) = self.window_app_id(window) {
+            handle.send_app_id(&app_id);
+        }
+        handle.send_done();
+    }
+
+    /// Close the foreign toplevel handle for a window.
+    fn close_foreign_toplevel(&mut self, window: WindowId) {
+        if let Some(handle) = self.foreign_toplevel_handles.remove(&window) {
+            self.foreign_toplevel_list_state.remove_toplevel(&handle);
+        }
     }
 
     /// Find a window by ID.

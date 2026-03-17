@@ -313,6 +313,7 @@ impl XwmHandler for WaylandState {
             g.dirty.layout = true;
             g.dirty.space = true;
         }
+        self.create_foreign_toplevel(win);
         self.set_focus(win);
         self.raise_window(win);
     }
@@ -560,6 +561,14 @@ impl XdgShellHandler for WaylandState {
                 client.name = title.unwrap_or_default();
             }
         }
+        self.update_foreign_toplevel(win);
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        self.update_foreign_toplevel(win);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -891,3 +900,13 @@ impl WlrLayerShellHandler for WaylandState {
 }
 
 impl OutputHandler for WaylandState {}
+
+impl smithay::wayland::foreign_toplevel_list::ForeignToplevelListHandler for WaylandState {
+    fn foreign_toplevel_list_state(
+        &mut self,
+    ) -> &mut smithay::wayland::foreign_toplevel_list::ForeignToplevelListState {
+        &mut self.foreign_toplevel_list_state
+    }
+}
+
+smithay::delegate_foreign_toplevel_list!(WaylandState);

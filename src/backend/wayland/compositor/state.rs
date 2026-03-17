@@ -22,6 +22,7 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
+        foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::{
@@ -99,6 +100,7 @@ pub struct WaylandState {
     pub wlr_layer_shell_state: WlrLayerShellState,
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
+    pub foreign_toplevel_list_state: ForeignToplevelListState,
     /// DRM node used for rendering, needed to tag imported dmabufs.
     pub(super) render_node: Option<DrmNode>,
     renderer: Option<NonNull<GlesRenderer>>,
@@ -124,6 +126,8 @@ pub struct WaylandState {
     pub(super) window_animations: HashMap<WindowId, WaylandWindowAnimation>,
     /// Currently focused window for O(1) deactivate-old / activate-new.
     pub(super) focused_window: Option<WindowId>,
+    /// Foreign toplevel handles for each window (for taskbar/panel support).
+    pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
 
     /// Pending screencopy frames waiting to be fulfilled during the next render.
     pub pending_screencopies: Vec<PendingScreencopy>,
@@ -185,6 +189,7 @@ impl WaylandState {
         let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
+        let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -211,6 +216,7 @@ impl WaylandState {
             wlr_layer_shell_state,
             dmabuf_state,
             dmabuf_global: None,
+            foreign_toplevel_list_state,
             render_node: None,
             renderer: None,
             seat,
@@ -227,6 +233,7 @@ impl WaylandState {
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             focused_window: None,
+            foreign_toplevel_handles: HashMap::new(),
             pending_screencopies: Vec::new(),
             pending_warp: None,
             led_state_tx: None,

@@ -1,4 +1,3 @@
-
 use crate::contexts::WmCtx;
 
 /// Spawn a command directly.
@@ -47,7 +46,6 @@ pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {
             | x11rb::protocol::xproto::ModMask::M4.bits() as u32
             | x11rb::protocol::xproto::ModMask::M5.bits() as u32)
 }
-
 
 /// Helper macro for ignoring X11 errors in non-critical operations.
 /// Logs the error at warn level but continues execution.
