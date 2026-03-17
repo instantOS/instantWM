@@ -25,7 +25,7 @@ use crate::wayland::common::{
 };
 use crate::wayland::input::{
     apply_pending_warp, handle_keyboard, handle_pointer_axis, handle_pointer_button,
-    handle_pointer_motion,
+    handle_pointer_motion, motion_event_from_winit,
 };
 use crate::wayland::render::winit::render_frame;
 use crate::wm::Wm;
@@ -86,7 +86,6 @@ pub fn run() -> ! {
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
     let start_time = std::time::Instant::now();
-    let mut pointer_location = Point::from((0.0, 0.0));
 
     if let Some(ref cmd) = wm.g.cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
@@ -108,14 +107,14 @@ pub fn run() -> ! {
                         handle_keyboard(&mut wm, state, &keyboard_handle, event);
                     }
                     InputEvent::PointerMotionAbsolute { event } => {
+                        let motion_event =
+                            motion_event_from_winit(&backend, event);
                         handle_pointer_motion(
                             &mut wm,
                             state,
                             &pointer_handle,
                             &keyboard_handle,
-                            &backend,
-                            event,
-                            &mut pointer_location,
+                            motion_event,
                         );
                     }
                     InputEvent::PointerButton { event } => {
@@ -125,7 +124,7 @@ pub fn run() -> ! {
                             &pointer_handle,
                             &keyboard_handle,
                             event,
-                            pointer_location,
+                            state.pointer_location,
                         );
                     }
                     InputEvent::PointerAxis { event } => {
@@ -135,7 +134,7 @@ pub fn run() -> ! {
                             &pointer_handle,
                             &keyboard_handle,
                             event,
-                            pointer_location,
+                            state.pointer_location,
                         );
                     }
                     _ => {}
@@ -159,7 +158,7 @@ pub fn run() -> ! {
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
-            apply_pending_warp(state, &pointer_handle, &mut pointer_location);
+            apply_pending_warp(state, &pointer_handle);
 
             render_frame(
                 &mut wm,

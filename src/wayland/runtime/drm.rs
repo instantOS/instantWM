@@ -114,9 +114,9 @@ pub fn run() -> ! {
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let (mut pointer_location, total_w, total_h) = {
+            let (total_w, total_h) = {
                 let s = shared_cb.lock().unwrap();
-                (s.pointer_location, s.total_width, s.total_height)
+                (s.total_width, s.total_height)
             };
 
             let any_input = state
@@ -125,7 +125,6 @@ pub fn run() -> ! {
                         event,
                         state,
                         wm,
-                        &mut pointer_location,
                         total_w,
                         total_h,
                     )
@@ -134,8 +133,7 @@ pub fn run() -> ! {
 
             if any_input {
                 let mut s = shared_cb.lock().unwrap();
-                s.pointer_location = pointer_location;
-                s.mark_pointer_output_dirty(pointer_location.x as i32);
+                s.mark_pointer_output_dirty(state.pointer_location.x as i32);
             }
         })
         .expect("failed to insert libinput source");
@@ -426,10 +424,8 @@ fn process_cursor_warp(
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
-    let mut loc = shared.lock().unwrap().pointer_location;
-    if apply_pending_warp(state, pointer_handle, &mut loc) {
+    if apply_pending_warp(state, pointer_handle) {
         let mut s = shared.lock().unwrap();
-        s.pointer_location = loc;
         s.mark_all_dirty();
     }
 }
@@ -446,19 +442,16 @@ fn render_outputs(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
 ) {
-    let (session_active, pointer_location, render_flags, pending_crtcs) = {
+    let (session_active, render_flags, pending_crtcs) = {
         let mut s = shared.lock().unwrap();
         let flags = s.render_flags.clone();
         for flag in s.render_flags.values_mut() {
             *flag = false;
         }
-        (
-            s.session_active,
-            s.pointer_location,
-            flags,
-            s.pending_crtcs.clone(),
-        )
+        (s.session_active, flags, s.pending_crtcs.clone())
     };
+
+    let pointer_location = state.pointer_location;
 
     if session_active {
         for entry in output_surfaces.iter_mut() {

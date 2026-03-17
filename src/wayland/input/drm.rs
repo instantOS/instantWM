@@ -6,8 +6,9 @@ use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEv
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::input::{
-    handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion_absolute,
-    handle_pointer_motion_relative,
+    handle_keyboard, handle_pointer_axis, handle_pointer_button,
+    handle_pointer_motion, motion_event_from_libinput_absolute,
+    motion_event_from_libinput_relative,
 };
 use crate::wm::Wm;
 
@@ -108,7 +109,6 @@ pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
     wm: &mut Wm,
-    pointer_location: &mut smithay::utils::Point<f64, smithay::utils::Logical>,
     total_w: i32,
     total_h: i32,
 ) -> bool {
@@ -130,28 +130,24 @@ pub fn dispatch_libinput_event(
             true
         }
         InputEvent::PointerMotion { event } => {
-            handle_pointer_motion_relative::<LibinputInputBackend>(
+            let motion_event = motion_event_from_libinput_relative(event);
+            handle_pointer_motion(
                 wm,
                 state,
                 &pointer_handle,
                 &keyboard_handle,
-                event,
-                pointer_location,
-                total_w,
-                total_h,
+                motion_event,
             );
             true
         }
         InputEvent::PointerMotionAbsolute { event } => {
-            handle_pointer_motion_absolute::<LibinputInputBackend>(
+            let motion_event = motion_event_from_libinput_absolute(event, total_w, total_h);
+            handle_pointer_motion(
                 wm,
                 state,
                 &pointer_handle,
                 &keyboard_handle,
-                event,
-                pointer_location,
-                total_w,
-                total_h,
+                motion_event,
             );
             true
         }
@@ -162,7 +158,7 @@ pub fn dispatch_libinput_event(
                 &pointer_handle,
                 &keyboard_handle,
                 event,
-                *pointer_location,
+                state.pointer_location,
             );
             true
         }
@@ -173,7 +169,7 @@ pub fn dispatch_libinput_event(
                 &pointer_handle,
                 &keyboard_handle,
                 event,
-                *pointer_location,
+                state.pointer_location,
             );
             true
         }

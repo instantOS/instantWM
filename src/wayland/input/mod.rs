@@ -4,11 +4,8 @@
 //! the Smithay `InputBackend` type so that they can be shared between the
 //! nested (winit) backend and the standalone DRM/libinput backend.
 //!
-//! The pointer-motion handler comes in two flavours:
-//! - `handle_pointer_motion_absolute` — for winit / tablets / touch screens
-//!   that report absolute coordinates.
-//! - `handle_pointer_motion_relative` — for real mice under libinput that
-//!   report relative (delta) motion.
+//! Pointer motion uses a unified handler that accepts absolute coordinates,
+//! relative deltas, or direct position updates (for warps).
 
 pub mod bar;
 pub mod drm;
@@ -44,14 +41,136 @@ use self::bar::{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pointer motion — unified handler
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Unified pointer motion event that abstracts over input source.
+#[derive(Debug, Clone, Copy)]
+pub enum MotionEvent {
+    /// Absolute position (winit backend, tablets, touch screens)
+    Absolute { x: f64, y: f64, time_msec: u32 },
+    /// Relative delta (libinput mouse)
+    Relative { dx: f64, dy: f64, time_msec: u32 },
+}
+
+impl MotionEvent {
+    /// Compute the new pointer location from the current position.
+    pub fn compute_location(
+        &self,
+        current: Point<f64, smithay::utils::Logical>,
+        output_width: i32,
+        output_height: i32,
+    ) -> Point<f64, smithay::utils::Logical> {
+        match self {
+            MotionEvent::Absolute { x, y, .. } => Point::from((*x, *y)),
+            MotionEvent::Relative { dx, dy, .. } => {
+                let x = (current.x + dx).clamp(0.0, output_width as f64);
+                let y = (current.y + dy).clamp(0.0, output_height as f64);
+                Point::from((x, y))
+            }
+        }
+    }
+
+    /// Get the event timestamp.
+    pub fn time_msec(&self) -> u32 {
+        match self {
+            MotionEvent::Absolute { time_msec, .. } => *time_msec,
+            MotionEvent::Relative { time_msec, .. } => *time_msec,
+        }
+    }
+}
+
+/// Handle pointer motion from any source (absolute, relative, or warp).
+///
+/// This is the single entry point for all pointer motion. The motion source
+/// is abstracted via the `MotionEvent` type.
+///
+/// # Examples
+///
+/// For winit (nested backend):
+/// ```rust,ignore
+/// let event = MotionEvent::absolute_from_winit(backend, winit_event);
+/// handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, event);
+/// ```
+///
+/// For DRM/libinput relative motion (standard mouse):
+/// ```rust,ignore
+/// let event = MotionEvent::relative(libinput_event, output_w, output_h);
+/// handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, event);
+/// ```
+pub fn handle_pointer_motion(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    event: MotionEvent,
+) {
+    let output_width = wm.g.cfg.screen_width;
+    let output_height = wm.g.cfg.screen_height;
+
+    // Compute and update pointer location
+    state.pointer_location =
+        event.compute_location(state.pointer_location, output_width, output_height);
+
+    // Dispatch to focus/drag handling logic
+    dispatch_pointer_motion(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        event.time_msec(),
+    );
+}
+
+/// Construct a `MotionEvent` from a winit absolute position event.
+pub fn motion_event_from_winit(
+    backend: &WinitGraphicsBackend<GlesRenderer>,
+    event: impl AbsolutePositionEvent<smithay::backend::winit::WinitInput>,
+) -> MotionEvent {
+    let size = backend.window_size();
+    let x = event.x_transformed(size.w);
+    let y = event.y_transformed(size.h);
+    MotionEvent::Absolute {
+        x,
+        y,
+        time_msec: event.time_msec(),
+    }
+}
+
+/// Construct a `MotionEvent` from a libinput relative motion event.
+pub fn motion_event_from_libinput_relative<B: InputBackend>(
+    event: impl PointerMotionEvent<B>,
+) -> MotionEvent {
+    MotionEvent::Relative {
+        dx: event.delta_x(),
+        dy: event.delta_y(),
+        time_msec: event.time_msec(),
+    }
+}
+
+/// Construct a `MotionEvent` from a libinput absolute motion event.
+pub fn motion_event_from_libinput_absolute<B: InputBackend>(
+    event: impl AbsolutePositionEvent<B>,
+    output_width: i32,
+    output_height: i32,
+) -> MotionEvent {
+    let x = event.x_transformed(output_width);
+    let y = event.y_transformed(output_height);
+    MotionEvent::Absolute {
+        x,
+        y,
+        time_msec: event.time_msec(),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Consume any pending warp stored in `WaylandState` and synthesise a full
 /// Smithay pointer-motion event so that:
 ///
-/// 1. The external `pointer_location` variable (owned by the event-loop
-///    closure) is updated to the new position.
+/// 1. The pointer location in WaylandState is updated to the new position.
 /// 2. `pointer_handle.motion()` is called, which sends `wl_pointer::enter`
 ///    / `wl_pointer::motion` / `wl_pointer::leave` to the right clients and
 ///    updates the internal Smithay focus.
@@ -65,13 +184,12 @@ use self::bar::{
 pub fn apply_pending_warp(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
-    pointer_location: &mut Point<f64, smithay::utils::Logical>,
 ) -> bool {
     let Some(target) = state.take_pending_warp() else {
         return false;
     };
 
-    *pointer_location = target;
+    state.pointer_location = target;
 
     let focus = state
         .layer_surface_under_pointer(target)
@@ -89,12 +207,8 @@ pub fn apply_pending_warp(
         time: time_msec,
     };
 
-    // We need a mutable borrow of the handle to call motion/frame.
-    // Clone the handle (cheap Arc clone) so we can call methods on it while
-    // `state` is also borrowed through the focus computation above.
-    let ph = pointer_handle.clone();
-    ph.motion(state, focus, &motion);
-    ph.frame(state);
+    pointer_handle.motion(state, focus, &motion);
+    pointer_handle.frame(state);
 
     true
 }
@@ -191,102 +305,19 @@ pub fn handle_keyboard<B: InputBackend>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pointer motion — absolute (winit / tablets)
+// Pointer motion — shared internal implementation
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn handle_pointer_motion(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    backend: &WinitGraphicsBackend<GlesRenderer>,
-    event: impl AbsolutePositionEvent<smithay::backend::winit::WinitInput>,
-    pointer_location: &mut Point<f64, smithay::utils::Logical>,
-) {
-    let size = backend.window_size();
-    let x = event.x_transformed(size.w);
-    let y = event.y_transformed(size.h);
-    *pointer_location = Point::from((x, y));
-    let time_msec = event.time_msec();
-    dispatch_pointer_motion(
-        wm,
-        state,
-        pointer_handle,
-        keyboard_handle,
-        pointer_location,
-        time_msec,
-    );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pointer motion — relative (real mouse via libinput)
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Handle a relative pointer-motion event as produced by libinput for a
-/// standard mouse.  The caller must pass the output bounding box so that the
-/// accumulated pointer location can be clamped to the visible area.
-pub fn handle_pointer_motion_relative<B: InputBackend>(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl PointerMotionEvent<B>,
-    pointer_location: &mut Point<f64, smithay::utils::Logical>,
-    output_width: i32,
-    output_height: i32,
-) {
-    let dx = event.delta_x();
-    let dy = event.delta_y();
-    pointer_location.x = (pointer_location.x + dx).clamp(0.0, output_width as f64);
-    pointer_location.y = (pointer_location.y + dy).clamp(0.0, output_height as f64);
-    let time_msec = event.time_msec();
-    dispatch_pointer_motion(
-        wm,
-        state,
-        pointer_handle,
-        keyboard_handle,
-        pointer_location,
-        time_msec,
-    );
-}
-
-/// Handle an absolute pointer-motion event coming from libinput (tablet /
-/// touch screen).  The caller provides the output dimensions so that the
-/// normalised [0,1] absolute position can be converted to logical pixels.
-pub fn handle_pointer_motion_absolute<B: InputBackend>(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl AbsolutePositionEvent<B>,
-    pointer_location: &mut Point<f64, smithay::utils::Logical>,
-    output_width: i32,
-    output_height: i32,
-) {
-    let x = event.x_transformed(output_width);
-    let y = event.y_transformed(output_height);
-    *pointer_location = Point::from((x, y));
-    let time_msec = event.time_msec();
-    dispatch_pointer_motion(
-        wm,
-        state,
-        pointer_handle,
-        keyboard_handle,
-        pointer_location,
-        time_msec,
-    );
-}
-
-/// Shared body for both absolute and relative motion: update WM hover focus,
-/// propagate the motion event to clients, handle drag states.
+/// Shared body for pointer motion: update WM hover focus, propagate the motion
+/// event to clients, handle drag states.
 fn dispatch_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
-    pointer_location: &mut Point<f64, smithay::utils::Logical>,
     time_msec: u32,
 ) {
+    let pointer_location = state.pointer_location;
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
     let active_drag_window = wayland_active_drag_window(wm);
@@ -317,19 +348,19 @@ fn dispatch_pointer_motion(
     })
     .unwrap_or((false, false));
     let mut pointer_focus = if in_bar_band || in_bar_guard_band {
-        state.layer_surface_under_pointer(*pointer_location)
+        state.layer_surface_under_pointer(pointer_location)
     } else {
         state
-            .layer_surface_under_pointer(*pointer_location)
-            .or_else(|| state.surface_under_pointer(*pointer_location))
+            .layer_surface_under_pointer(pointer_location)
+            .or_else(|| state.surface_under_pointer(pointer_location))
     };
 
     let hovered_win = if in_bar_band || in_bar_guard_band {
         None
-    } else if let Some((surface, _)) = state.layer_surface_under_pointer(*pointer_location) {
+    } else if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
         find_hovered_window_for_surface(wm, &surface)
     } else {
-        state.logical_window_under_pointer(*pointer_location)
+        state.logical_window_under_pointer(pointer_location)
     };
 
     // If the logical window (the one the WM thinks the pointer is in) differs from the surface
@@ -350,7 +381,7 @@ fn dispatch_pointer_motion(
         // the pointer protocol stays in sync, but skip focus updates.
         let serial = SERIAL_COUNTER.next_serial();
         let motion = smithay::input::pointer::MotionEvent {
-            location: *pointer_location,
+            location: pointer_location,
             serial,
             time: time_msec,
         };
@@ -375,7 +406,7 @@ fn dispatch_pointer_motion(
             .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
         let serial = SERIAL_COUNTER.next_serial();
         let motion = smithay::input::pointer::MotionEvent {
-            location: *pointer_location,
+            location: pointer_location,
             serial,
             time: time_msec,
         };
@@ -457,7 +488,7 @@ fn dispatch_pointer_motion(
 
     let serial = SERIAL_COUNTER.next_serial();
     let motion = smithay::input::pointer::MotionEvent {
-        location: *pointer_location,
+        location: pointer_location,
         serial,
         time: time_msec,
     };

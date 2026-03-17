@@ -134,6 +134,10 @@ pub struct WaylandState {
     /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
 
+    /// Current pointer location in logical coordinates.
+    /// Stored centrally to ensure consistent state across backends.
+    pub pointer_location: Point<f64, Logical>,
+
     /// Channel to notify the DRM backend loop of keyboard LED state changes.
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
 
@@ -236,6 +240,7 @@ impl WaylandState {
             foreign_toplevel_handles: HashMap::new(),
             pending_screencopies: Vec::new(),
             pending_warp: None,
+            pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
         }

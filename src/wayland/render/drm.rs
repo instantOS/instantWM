@@ -368,7 +368,6 @@ pub mod state {
     pub struct SharedDrmState {
         pub session_active: bool,
         pub render_flags: HashMap<crtc::Handle, bool>,
-        pub pointer_location: Point<f64, smithay::utils::Logical>,
         pub total_width: i32,
         pub total_height: i32,
         pub completed_crtcs: Vec<crtc::Handle>,
@@ -381,10 +380,6 @@ pub mod state {
             Self {
                 session_active: true,
                 render_flags: HashMap::new(),
-                pointer_location: Point::from((
-                    (total_width / 2) as f64,
-                    (total_height / 2) as f64,
-                )),
                 total_width,
                 total_height,
                 completed_crtcs: Vec::new(),
