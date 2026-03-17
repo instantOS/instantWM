@@ -482,126 +482,203 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
     }
 }
 
+/// Information about a window needed for border rendering.
+#[derive(Debug, Clone, Copy)]
+struct WindowBorderInfo {
+    id: WindowId,
+    geo: crate::types::Rect,
+    border_width: i32,
+    content_size: (i32, i32),
+    is_visible: bool,
+    is_hidden: bool,
+    is_floating: bool,
+    is_tiling_layout: bool,
+}
+
+impl WindowBorderInfo {
+    /// Total outer size including borders.
+    fn outer_size(&self) -> (i32, i32) {
+        let bw = self.border_width;
+        let (cw, ch) = self.content_size;
+        (cw + 2 * bw, ch + 2 * bw)
+    }
+
+    /// Bounding rectangle including borders.
+    fn bounding_rect(&self) -> IntRect {
+        let (ow, oh) = self.outer_size();
+        IntRect {
+            x: self.geo.x,
+            y: self.geo.y,
+            w: ow,
+            h: oh,
+        }
+    }
+
+    /// Checks if this window should render borders.
+    fn has_borders(&self) -> bool {
+        self.is_visible && !self.is_hidden && self.border_width > 0
+    }
+
+    /// Returns the border color based on focus state.
+    fn border_color(&self, is_focused: bool, colors: &crate::config::appearance::BorderColors) -> [f32; 4] {
+        if is_focused {
+            if self.is_floating || !self.is_tiling_layout {
+                colors.float_focus
+            } else {
+                colors.tile_focus
+            }
+        } else {
+            colors.normal
+        }
+    }
+}
+
+/// Collects window information from the compositor state.
+fn collect_window_info(
+    g: &crate::globals::Globals,
+    state: &WaylandState,
+) -> Vec<WindowBorderInfo> {
+    let mut windows = Vec::new();
+
+    for window in state.space.elements() {
+        let Some(marker) = window.user_data().get::<WindowIdMarker>() else {
+            continue;
+        };
+        let Some(c) = g.clients.get(&marker.id) else {
+            continue;
+        };
+
+        let size = window.geometry().size;
+        let content_size = (size.w.max(1), size.h.max(1));
+
+        let is_visible = g
+            .monitor(c.monitor_id)
+            .map(|m| c.is_visible_on_tags(m.selected_tags()))
+            .unwrap_or(false);
+
+        let is_tiling_layout = g
+            .monitor(c.monitor_id)
+            .map(|m| m.is_tiling_layout())
+            .unwrap_or(true);
+
+        windows.push(WindowBorderInfo {
+            id: marker.id,
+            geo: c.geo,
+            border_width: c.border_width.max(0),
+            content_size,
+            is_visible,
+            is_hidden: c.is_hidden,
+            is_floating: c.is_floating,
+            is_tiling_layout,
+        });
+    }
+
+    windows
+}
+
+/// Generates the four border rectangles for a window.
+fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i32) -> Vec<IntRect> {
+    if bw <= 0 || outer_w <= 2 * bw || outer_h <= 2 * bw {
+        return Vec::new();
+    }
+
+    let inner_h = (outer_h - 2 * bw).max(0);
+
+    vec![
+        // Top border
+        IntRect { x, y, w: outer_w, h: bw },
+        // Bottom border
+        IntRect {
+            x,
+            y: y + outer_h - bw,
+            w: outer_w,
+            h: bw,
+        },
+        // Left border (between top and bottom)
+        IntRect {
+            x,
+            y: y + bw,
+            w: bw,
+            h: inner_h,
+        },
+        // Right border (between top and bottom)
+        IntRect {
+            x: x + outer_w - bw,
+            y: y + bw,
+            w: bw,
+            h: inner_h,
+        },
+    ]
+}
+
+/// Subtracts occluders from border parts, returning the remaining visible parts.
+fn apply_occluders(border_parts: Vec<IntRect>, occluders: &[IntRect]) -> Vec<IntRect> {
+    let mut remaining = border_parts;
+
+    for occluder in occluders {
+        if remaining.is_empty() {
+            break;
+        }
+        remaining = remaining
+            .into_iter()
+            .flat_map(|part| subtract_rect(part, *occluder))
+            .collect();
+    }
+
+    remaining
+}
+
+/// Builds occluder rectangles from windows (windows block borders behind them).
+fn build_occluders(windows: &[WindowBorderInfo]) -> Vec<IntRect> {
+    windows
+        .iter()
+        .filter(|w| w.is_visible)
+        .map(|w| w.bounding_rect())
+        .collect()
+}
+
+/// Renders border elements for all visible windows.
 pub(crate) fn wayland_border_elements_shared(
     g: &crate::globals::Globals,
     state: &WaylandState,
 ) -> Vec<SolidColorRenderElement> {
-    let bordercolors = &g.cfg.bordercolors;
-    let mut out = Vec::new();
-    let mut mapped_sizes: HashMap<WindowId, (i32, i32)> = HashMap::new();
-    let mut z_order: Vec<WindowId> = Vec::new();
-    for window in state.space.elements() {
-        if let Some(win) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) {
-            let size = window.geometry().size;
-            mapped_sizes.insert(win, (size.w.max(1), size.h.max(1)));
-            z_order.push(win);
+    let windows = collect_window_info(g, state);
+    let selected_win = g.selected_win();
+    let colors = &g.cfg.bordercolors;
+    let mut elements = Vec::new();
+
+    // Build occluders list (each window can occlude borders behind it)
+    let occluders: Vec<IntRect> = build_occluders(&windows);
+
+    for (idx, window) in windows.iter().enumerate() {
+        if !window.has_borders() {
+            continue;
+        }
+
+        let (outer_w, outer_h) = window.outer_size();
+        let bw = window.border_width;
+
+        // Generate the four border sides
+        let border_parts = generate_border_rectangles(window.geo.x, window.geo.y, outer_w, outer_h, bw);
+        if border_parts.is_empty() {
+            continue;
+        }
+
+        // Subtract occluders from higher windows (windows in front)
+        let higher_occluders = &occluders[idx + 1..];
+        let visible_parts = apply_occluders(border_parts, higher_occluders);
+
+        // Get color based on focus state
+        let is_focused = Some(window.id) == selected_win;
+        let color = window.border_color(is_focused, colors);
+
+        // Create render elements for visible border parts
+        for part in visible_parts {
+            push_solid(&mut elements, part.x, part.y, part.w, part.h, color);
         }
     }
 
-    let mut occluders: HashMap<WindowId, IntRect> = HashMap::new();
-    for win in &z_order {
-        let Some(c) = g.clients.get(win) else {
-            continue;
-        };
-        let is_visible = g
-            .monitor(c.monitor_id)
-            .map(|m| c.is_visible_on_tags(m.selected_tags()))
-            .unwrap_or(false);
-        if !is_visible || c.is_hidden {
-            continue;
-        }
-        let bw = c.border_width.max(0);
-        let (content_w, content_h) = mapped_sizes.get(win).copied().unwrap_or((c.geo.w, c.geo.h));
-        if content_w <= 0 || content_h <= 0 {
-            continue;
-        }
-        occluders.insert(
-            *win,
-            IntRect {
-                x: c.geo.x,
-                y: c.geo.y,
-                w: content_w + 2 * bw,
-                h: content_h + 2 * bw,
-            },
-        );
-    }
-
-    let sel = g.selected_win();
-    for (idx, win) in z_order.iter().enumerate() {
-        let Some(c) = g.clients.get(win) else {
-            continue;
-        };
-        let bw = c.border_width.max(0);
-        let (content_w, content_h) = mapped_sizes.get(win).copied().unwrap_or((c.geo.w, c.geo.h));
-        if bw <= 0 || content_w <= 0 || content_h <= 0 {
-            continue;
-        }
-        let is_visible = g
-            .monitor(c.monitor_id)
-            .map(|m| c.is_visible_on_tags(m.selected_tags()))
-            .unwrap_or(false);
-        if !is_visible || c.is_hidden {
-            continue;
-        }
-        let has_tiling = g
-            .monitor(c.monitor_id)
-            .map(|m| m.is_tiling_layout())
-            .unwrap_or(true);
-        let rgba = if Some(*win) == sel {
-            if c.is_floating || !has_tiling {
-                bordercolors.float_focus
-            } else {
-                bordercolors.tile_focus
-            }
-        } else {
-            bordercolors.normal
-        };
-
-        let x = c.geo.x;
-        let y = c.geo.y;
-        let ow = content_w + 2 * bw;
-        let oh = content_h + 2 * bw;
-
-        let mut border_parts = vec![
-            IntRect { x, y, w: ow, h: bw },
-            IntRect {
-                x,
-                y: y + oh - bw,
-                w: ow,
-                h: bw,
-            },
-            IntRect {
-                x,
-                y: y + bw,
-                w: bw,
-                h: (oh - 2 * bw).max(0),
-            },
-            IntRect {
-                x: x + ow - bw,
-                y: y + bw,
-                w: bw,
-                h: (oh - 2 * bw).max(0),
-            },
-        ];
-
-        for higher in z_order.iter().skip(idx + 1) {
-            let Some(occ) = occluders.get(higher).copied() else {
-                continue;
-            };
-            border_parts = border_parts
-                .into_iter()
-                .flat_map(|part| subtract_rect(part, occ))
-                .collect();
-            if border_parts.is_empty() {
-                break;
-            }
-        }
-
-        for part in border_parts {
-            push_solid(&mut out, part.x, part.y, part.w, part.h, rgba);
-        }
-    }
-    out
+    elements
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
