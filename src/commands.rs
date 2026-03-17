@@ -2,7 +2,7 @@ use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
 
 pub fn set_special_next(core: &mut CoreCtx, value: u32) {
-    core.g.specialnext = match value {
+    core.g.behavior.specialnext = match value {
         0 => SpecialNext::None,
         _ => SpecialNext::Float,
     };

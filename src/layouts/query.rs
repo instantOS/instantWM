@@ -45,7 +45,7 @@ pub fn framecount_for_layout(
     fast_frame_count: i32,
     slow_frame_count: i32,
 ) -> i32 {
-    if g.animated && g.selected_monitor().tiled_client_count(&*g.clients) > threshold {
+    if g.behavior.animated && g.selected_monitor().tiled_client_count(&*g.clients) > threshold {
         fast_frame_count
     } else {
         slow_frame_count

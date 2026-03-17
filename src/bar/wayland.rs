@@ -508,7 +508,7 @@ pub fn render_bar_buffers(
     }
 
     // Cache the systray width so status bar layout can account for it.
-    core.g.systray_width =
+    core.g.bar_runtime.systray_width =
         crate::wayland_systray::get_wayland_systray_width_with_state(core, wayland_systray);
 
     let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
@@ -589,7 +589,7 @@ fn bar_render_key(
     core.g.cfg.horizontal_padding.hash(&mut hasher);
     core.g.cfg.startmenusize.hash(&mut hasher);
     core.g.drag.bar_active.hash(&mut hasher);
-    core.g.status_text.hash(&mut hasher);
+    core.g.bar_runtime.status_text.hash(&mut hasher);
     core.g.selected_monitor_id().hash(&mut hasher);
 
     for m in core.g.monitors_iter_all() {

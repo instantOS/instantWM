@@ -147,7 +147,7 @@ pub fn selected_hover_resize_target_at(
 }
 
 fn clear_hover_resize_offer(ctx: &mut WmCtx) {
-    ctx.g_mut().cursor_icon = AltCursor::None;
+    ctx.g_mut().behavior.cursor_icon = AltCursor::None;
     ctx.g_mut().drag.resize_direction = None;
     set_cursor_default(ctx);
 }
@@ -239,7 +239,7 @@ pub fn handle_floating_resize_hover(
 ) -> bool {
     if let Some((win, dir)) = hover_resize_target_at(ctx, root_x, root_y) {
         set_cursor_resize(ctx, Some(dir));
-        ctx.g_mut().cursor_icon = AltCursor::Resize;
+        ctx.g_mut().behavior.cursor_icon = AltCursor::Resize;
         ctx.g_mut().drag.resize_direction = Some(dir);
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
@@ -253,7 +253,7 @@ pub fn handle_floating_resize_hover(
         return true;
     }
 
-    if ctx.g_mut().cursor_icon == AltCursor::Resize {
+    if ctx.g_mut().behavior.cursor_icon == AltCursor::Resize {
         clear_hover_resize_offer(ctx);
     }
     false
@@ -263,15 +263,17 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let mon = ctx.g_mut().selected_monitor();
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
-        if ctx.g_mut().cursor_icon == AltCursor::None && root_y > ctx.g_mut().cfg.bar_height + 60 {
+        if ctx.g_mut().behavior.cursor_icon == AltCursor::None
+            && root_y > ctx.g_mut().cfg.bar_height + 60
+        {
             set_cursor_resize(ctx, Some(ResizeDirection::TopLeft));
-            ctx.g_mut().cursor_icon = AltCursor::Sidebar;
+            ctx.g_mut().behavior.cursor_icon = AltCursor::Sidebar;
         }
         return true;
     }
 
-    if ctx.g_mut().cursor_icon == AltCursor::Sidebar {
-        ctx.g_mut().cursor_icon = AltCursor::None;
+    if ctx.g_mut().behavior.cursor_icon == AltCursor::Sidebar {
+        ctx.g_mut().behavior.cursor_icon = AltCursor::None;
         set_cursor_default(ctx);
         return true;
     }

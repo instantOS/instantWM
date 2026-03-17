@@ -342,7 +342,7 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
         }
     }
 
-    ctx.g.monitor_config_dirty = false;
+    ctx.g.dirty.monitor_config = false;
     update_geom(ctx);
 }
 

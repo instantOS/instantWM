@@ -310,8 +310,8 @@ impl XwmHandler for WaylandState {
         }
         let _ = window.configure(Some(geo));
         if let Some(g) = self.globals_mut() {
-            g.layout_dirty = true;
-            g.space_dirty = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
         }
         self.set_focus(win);
         self.raise_window(win);
@@ -583,8 +583,8 @@ impl XdgShellHandler for WaylandState {
                 g.detach_stack(win);
                 g.clients.remove(&win);
             }
-            g.layout_dirty = true;
-            g.space_dirty = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
             g.selected_win()
         };
         // Update Smithay keyboard focus to match mon.sel.
@@ -733,8 +733,8 @@ impl XdgShellHandler for WaylandState {
                 if let Some(client) = g.clients.get_mut(&win) {
                     client.is_fullscreen = true;
                 }
-                g.space_dirty = true;
-                g.layout_dirty = true;
+                g.dirty.space = true;
+                g.dirty.layout = true;
                 if let Some(mon) = g.selected_monitor_mut_opt() {
                     mon.fullscreen = Some(win);
                 }
@@ -752,8 +752,8 @@ impl XdgShellHandler for WaylandState {
                 if let Some(client) = g.clients.get_mut(&win) {
                     client.is_fullscreen = false;
                 }
-                g.space_dirty = true;
-                g.layout_dirty = true;
+                g.dirty.space = true;
+                g.dirty.layout = true;
                 if let Some(mon) = g.selected_monitor_mut_opt() {
                     if mon.fullscreen == Some(win) {
                         mon.fullscreen = None;

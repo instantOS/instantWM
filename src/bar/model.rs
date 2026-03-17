@@ -150,7 +150,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Status text ───────────────────────────────────────────────────────
     let systray_w = if core.g.cfg.show_systray && is_selmon {
-        core.g.systray_width
+        core.g.bar_runtime.systray_width
     } else {
         0
     };

@@ -80,6 +80,6 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
             cfg.scroll_factor = Some(value);
         }
     }
-    wm.g.input_config_dirty = true;
+    wm.g.dirty.input_config = true;
     IpcResponse::ok("")
 }

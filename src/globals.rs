@@ -338,6 +338,56 @@ impl KeyboardLayoutState {
     }
 }
 
+/// Runtime behaviour toggles and transient WM mode state.
+#[derive(Debug, Clone)]
+pub struct WmBehavior {
+    pub animated: bool,
+    pub focus_follows_mouse: bool,
+    pub focus_follows_float_mouse: bool,
+    pub cursor_icon: AltCursor,
+    pub double_draw: bool,
+    pub specialnext: SpecialNext,
+    /// Current active mode (sway-like modes).
+    pub current_mode: String,
+}
+
+impl Default for WmBehavior {
+    fn default() -> Self {
+        Self {
+            animated: true,
+            focus_follows_mouse: true,
+            focus_follows_float_mouse: true,
+            cursor_icon: AltCursor::None,
+            double_draw: false,
+            specialnext: SpecialNext::None,
+            current_mode: "default".to_string(),
+        }
+    }
+}
+
+/// Flags that signal pending work for the event loop.
+#[derive(Debug, Clone, Default)]
+pub struct DirtyFlags {
+    /// Whether input configuration has changed and needs to be re-applied.
+    pub input_config: bool,
+    /// Whether monitor configuration has changed and needs to be re-applied.
+    pub monitor_config: bool,
+    /// Whether the layout needs to be re-arranged (set by anything that
+    /// changes client/tag/monitor state; consumed by the event loop).
+    pub layout: bool,
+    /// Whether the Wayland compositor space needs to be synced from WM
+    /// globals (set when client geometry changes; consumed by the event loop).
+    pub space: bool,
+}
+
+/// Bar-specific runtime data (status text, systray geometry).
+#[derive(Debug, Clone, Default)]
+pub struct BarRuntime {
+    pub status_text: String,
+    /// Cached systray width (pixels) for the active backend. Updated before each bar render.
+    pub systray_width: i32,
+}
+
 pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
@@ -347,37 +397,14 @@ pub struct Globals {
     pub clients: ClientManager,
     pub tags: TagSet,
 
-    // Runtime flags
-    pub animated: bool,
-    pub focus_follows_mouse: bool,
-    pub focus_follows_float_mouse: bool,
-    pub cursor_icon: AltCursor,
-    pub double_draw: bool,
-    pub specialnext: SpecialNext,
+    // Grouped subsystems
+    pub behavior: WmBehavior,
     pub drag: DragState,
-    pub status_text: String,
-    /// Cached systray width (pixels) for the active backend. Updated before each bar render.
-    pub systray_width: i32,
+    pub bar_runtime: BarRuntime,
+    pub dirty: DirtyFlags,
 
     /// XKB keyboard layout state.
     pub keyboard_layout: KeyboardLayoutState,
-
-    /// Whether input configuration has changed and needs to be re-applied.
-    pub input_config_dirty: bool,
-
-    /// Whether monitor configuration has changed and needs to be re-applied.
-    pub monitor_config_dirty: bool,
-
-    /// Whether the layout needs to be re-arranged (set by anything that
-    /// changes client/tag/monitor state; consumed by the event loop).
-    pub layout_dirty: bool,
-
-    /// Whether the Wayland compositor space needs to be synced from WM
-    /// globals (set when client geometry changes; consumed by the event loop).
-    pub space_dirty: bool,
-
-    /// Current active mode (sway-like modes).
-    pub current_mode: String,
 }
 
 impl Globals {
@@ -546,21 +573,15 @@ impl Default for Globals {
             monitors: MonitorManager::new(),
             clients: ClientManager::new(),
             tags: TagSet::default(),
-            animated: true,
-            focus_follows_mouse: true,
-            focus_follows_float_mouse: true,
-            cursor_icon: AltCursor::None,
-            double_draw: false,
-            specialnext: SpecialNext::None,
+            behavior: WmBehavior::default(),
             drag: DragState::default(),
-            status_text: String::new(),
-            systray_width: 0,
+            bar_runtime: BarRuntime::default(),
+            dirty: DirtyFlags {
+                layout: true,
+                space: true,
+                ..Default::default()
+            },
             keyboard_layout: KeyboardLayoutState::default(),
-            input_config_dirty: false,
-            monitor_config_dirty: false,
-            layout_dirty: true,
-            space_dirty: true,
-            current_mode: "default".to_string(),
         }
     }
 }

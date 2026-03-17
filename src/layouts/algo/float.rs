@@ -50,9 +50,9 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let selected = m.selected_tags();
     // Disable animation for the duration of this arrange pass — floating
     // windows should snap into their positions instantly.
-    let animation_was_on = ctx.g_mut().animated;
+    let animation_was_on = ctx.g_mut().behavior.animated;
     if animation_was_on {
-        ctx.g_mut().animated = false;
+        ctx.g_mut().behavior.animated = false;
     }
 
     // ── apply pending snap positions ──────────────────────────────────────
@@ -78,7 +78,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // Restore animation flag.
     if animation_was_on {
-        ctx.g_mut().animated = true;
+        ctx.g_mut().behavior.animated = true;
     }
 }
 

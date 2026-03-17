@@ -41,7 +41,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
-    let current_mode = ctx.g().current_mode.clone();
+    let current_mode = ctx.g().behavior.current_mode.clone();
 
     let action = if !current_mode.is_empty() && current_mode != "default" {
         // Look ONLY in mode-specific keybindings

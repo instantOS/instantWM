@@ -5,7 +5,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> IpcResponse {
     match cmd {
         ModeCommand::List => {
             let modes = &wm.g.cfg.modes;
-            let current_mode = &wm.g.current_mode;
+            let current_mode = &wm.g.behavior.current_mode;
 
             if modes.is_empty() {
                 return IpcResponse::ok("No modes configured");
@@ -24,7 +24,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> IpcResponse {
             if !wm.g.cfg.modes.contains_key(&name) && name != "default" {
                 return IpcResponse::err(format!("Mode '{}' not found", name));
             }
-            wm.g.current_mode = name.clone();
+            wm.g.behavior.current_mode = name.clone();
             // Request bar update to reflect mode change
             wm.bar.mark_dirty();
             IpcResponse::ok(format!("Switched to mode '{}'", name))

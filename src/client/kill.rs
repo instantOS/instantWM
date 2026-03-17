@@ -53,7 +53,7 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 
-    let animated = ctx.g().animated;
+    let animated = ctx.g().behavior.animated;
     let anim_client = ctx.core().focus.anim_client;
 
     // Play closing animation for both X11 and Wayland

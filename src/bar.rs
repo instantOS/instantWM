@@ -193,7 +193,7 @@ pub fn draw_bar(
     }
 
     if core.g.cfg.show_systray {
-        core.g.systray_width = crate::systray::get_systray_width(core, systray) as i32;
+        core.g.bar_runtime.systray_width = crate::systray::get_systray_width(core, systray) as i32;
     }
 
     let drw = {

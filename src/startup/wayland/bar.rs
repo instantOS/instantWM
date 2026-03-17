@@ -110,7 +110,10 @@ pub(super) fn dispatch_wayland_bar_click(
     if pos == BarPosition::StatusText {
         let selmon = wm.g.selected_monitor().clone();
         let local_x = root_x - selmon.work_rect.x;
-        let parsed = wm.bar.parsed_status_for_text(&wm.g.status_text).clone();
+        let parsed = wm
+            .bar
+            .parsed_status_for_text(&wm.g.bar_runtime.status_text)
+            .clone();
         let click_targets = wm
             .bar
             .monitor_hit_cache(selmon.id())

@@ -164,7 +164,7 @@ pub(crate) fn draw_status_bar(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> (i32, i32, Vec<StatusClickTarget>) {
-    let mode = ctx.g.current_mode.clone();
+    let mode = ctx.g.behavior.current_mode.clone();
     let stext_owned: String;
     let stext = if !mode.is_empty() && mode != "default" {
         // Try to get mode description, fall back to mode name
@@ -179,7 +179,7 @@ pub(crate) fn draw_status_bar(
         stext_owned = format!("mode: {}", mode_display);
         &stext_owned
     } else {
-        ctx.g.status_text.as_str()
+        ctx.g.bar_runtime.status_text.as_str()
     };
 
     if stext.is_empty() {

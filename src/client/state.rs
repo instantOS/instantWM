@@ -238,7 +238,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
         c.tags = 0;
     }
 
-    let special_next = core.g.specialnext;
+    let special_next = core.g.behavior.specialnext;
     let rules = core.g.cfg.rules.clone();
     let tag_mask = core.g.tags.mask();
     let bar_height = core.g.cfg.bar_height;
@@ -250,7 +250,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
                 c.is_floating = true;
             }
         }
-        core.g.specialnext = SpecialNext::None;
+        core.g.behavior.specialnext = SpecialNext::None;
     } else {
         let client_name = core
             .g

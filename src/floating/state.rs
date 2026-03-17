@@ -177,7 +177,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     // Read all the state we need through the backend-agnostic core.
     let maximized_win = ctx.g().selected_monitor().fullscreen;
     let selected_window = ctx.g().selected_monitor().sel;
-    let animated = ctx.g().animated;
+    let animated = ctx.g().behavior.animated;
 
     if let Some(win) = maximized_win {
         // --- Exit maximized state ---
@@ -218,9 +218,9 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     // maximize/restore is instantaneous rather than sliding.
     let selmon_id = ctx.g().selected_monitor_id();
     if animated {
-        ctx.g_mut().animated = false;
+        ctx.g_mut().behavior.animated = false;
         arrange(ctx, Some(selmon_id));
-        ctx.g_mut().animated = true;
+        ctx.g_mut().behavior.animated = true;
     } else {
         arrange(ctx, Some(selmon_id));
     }

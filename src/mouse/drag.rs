@@ -642,7 +642,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 last_root_x: root_x,
                 last_root_y: root_y,
             };
-            wl.core.g.cursor_icon = crate::types::AltCursor::None;
+            wl.core.g.behavior.cursor_icon = crate::types::AltCursor::None;
             super::set_cursor_move_wayland(wl);
             crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_interactive(win);
         }
@@ -1106,7 +1106,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 last_root_x: warp_x,
                 last_root_y: warp_y,
             };
-            wl.core.g.cursor_icon = crate::types::AltCursor::Resize;
+            wl.core.g.behavior.cursor_icon = crate::types::AltCursor::Resize;
             wl.core.g.drag.resize_direction = Some(dir);
             super::cursor::set_cursor_resize_wayland(wl, Some(dir));
         }

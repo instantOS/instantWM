@@ -353,7 +353,6 @@ fn dispatch_pointer_motion(
         }
     }
 
-
     if wayland_hover_resize_drag_motion(wm, root_x, root_y) {
         // During an active resize drag, still forward motion to Smithay so
         // the pointer protocol stays in sync, but skip focus updates.
@@ -377,7 +376,7 @@ fn dispatch_pointer_motion(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        if ctx.core.g.cursor_icon == AltCursor::Resize {
+        if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
             clear_wayland_hover_resize_offer(&mut ctx);
         }
         let focus = pointer_focus
@@ -417,10 +416,10 @@ fn dispatch_pointer_motion(
                     root_y,
                 ) {
                     set_cursor_resize_wayland(&mut ctx, Some(dir));
-                    ctx.core.g.cursor_icon = AltCursor::Resize;
+                    ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
                     ctx.core.g.drag.resize_direction = Some(dir);
                     suppress_hover_focus = true;
-                } else if ctx.core.g.cursor_icon == AltCursor::Resize {
+                } else if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
                     clear_wayland_hover_resize_offer(&mut ctx);
                 }
             }
@@ -783,7 +782,7 @@ fn wayland_hover_resize_drag_begin(
         last_root_x: root_x,
         last_root_y: root_y,
     };
-    ctx.core.g.cursor_icon = AltCursor::Resize;
+    ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
     ctx.core.g.drag.resize_direction = Some(dir);
     if move_mode {
         set_cursor_move_wayland(&mut ctx);
@@ -834,19 +833,19 @@ fn update_wayland_selected_resize_offer(wm: &mut Wm, root_x: i32, root_y: i32) -
         return None;
     };
     let Some((win, dir, _)) = wayland_selected_resize_target_at(&ctx, root_x, root_y) else {
-        if ctx.core.g.cursor_icon == AltCursor::Resize {
+        if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
             clear_wayland_hover_resize_offer(&mut ctx);
         }
         return None;
     };
     set_cursor_resize_wayland(&mut ctx, Some(dir));
-    ctx.core.g.cursor_icon = AltCursor::Resize;
+    ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
     ctx.core.g.drag.resize_direction = Some(dir);
     Some(win)
 }
 
 fn clear_wayland_hover_resize_offer(ctx: &mut crate::contexts::WmCtxWayland<'_>) {
-    ctx.core.g.cursor_icon = AltCursor::None;
+    ctx.core.g.behavior.cursor_icon = AltCursor::None;
     ctx.core.g.drag.resize_direction = None;
     set_cursor_default_wayland(ctx);
 }
@@ -951,7 +950,7 @@ fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     }
     let drag = ctx.core.g.drag.hover_resize.clone();
     ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState::default();
-    ctx.core.g.cursor_icon = AltCursor::None;
+    ctx.core.g.behavior.cursor_icon = AltCursor::None;
     ctx.core.g.drag.resize_direction = None;
     set_cursor_default_wayland(&mut ctx);
     if drag.move_mode {

@@ -24,7 +24,7 @@ use crate::types::{Monitor, Rect};
 
 pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── raise the selected client so it is visible while we animate ───────
-    let is_animated = ctx.g_mut().animated && !ctx.g_mut().monitors.is_empty();
+    let is_animated = ctx.g_mut().behavior.animated && !ctx.g_mut().monitors.is_empty();
 
     if is_animated {
         let mon = ctx.g_mut().selected_monitor();
@@ -53,7 +53,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.
-        let frames = if ctx.g_mut().animated && Some(win) == selected_window {
+        let frames = if ctx.g_mut().behavior.animated && Some(win) == selected_window {
             DEFAULT_FRAME_COUNT
         } else {
             0

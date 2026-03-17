@@ -120,7 +120,7 @@ pub(crate) fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         attach_stack(ctx, found);
     }
 
-    let focusfollowsmouse = ctx.g_mut().focus_follows_mouse;
+    let focusfollowsmouse = ctx.g_mut().behavior.focus_follows_mouse;
     if !ctx.g_mut().monitors.is_empty() {
         let mid = ctx.g_mut().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));

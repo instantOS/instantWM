@@ -124,6 +124,6 @@ fn set_monitor_config(
     };
 
     wm.g.cfg.monitors.insert(resolved_id, config);
-    wm.g.monitor_config_dirty = true;
+    wm.g.dirty.monitor_config = true;
     IpcResponse::ok("")
 }

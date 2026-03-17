@@ -77,10 +77,10 @@ pub fn warp_to_focus(ctx: &mut WmCtx) {
 /// Call this after a modal grab ends so the cursor reverts to normal even
 /// if the pointer is not over any client window.
 pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
-    if core.g.cursor_icon == AltCursor::None {
+    if core.g.behavior.cursor_icon == AltCursor::None {
         return;
     }
-    core.g.cursor_icon = AltCursor::None;
+    core.g.behavior.cursor_icon = AltCursor::None;
 
     let cursor_idx = Cursor::Normal.to_x11_index();
     if let Some(ref cursor) = x11_runtime.cursors[cursor_idx] {

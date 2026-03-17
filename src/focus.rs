@@ -427,7 +427,7 @@ pub fn hover_focus_target_x11(
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
-    if !core.g.focus_follows_mouse {
+    if !core.g.behavior.focus_follows_mouse {
         return;
     }
 
@@ -447,7 +447,10 @@ pub fn hover_focus_target_x11(
             .map(|c| c.is_floating)
             .unwrap_or(false);
         let has_tiling = core.g.selected_monitor().is_tiling_layout();
-        if !core.g.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root
+        if !core.g.behavior.focus_follows_float_mouse
+            && hovered_is_floating
+            && has_tiling
+            && !entering_root
         {
             return;
         }
@@ -491,7 +494,7 @@ pub fn hover_focus_target_wayland(
     let Some(hovered_win) = hovered_win else {
         return;
     };
-    if !core.g.focus_follows_mouse {
+    if !core.g.behavior.focus_follows_mouse {
         return;
     }
 
@@ -510,7 +513,11 @@ pub fn hover_focus_target_wayland(
         .map(|c| c.is_floating)
         .unwrap_or(false);
     let has_tiling = core.g.selected_monitor().is_tiling_layout();
-    if !core.g.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
+    if !core.g.behavior.focus_follows_float_mouse
+        && hovered_is_floating
+        && has_tiling
+        && !entering_root
+    {
         return;
     }
 

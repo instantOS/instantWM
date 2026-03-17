@@ -105,7 +105,7 @@ pub fn animate_client_x11(
     frames: i32,
     reset_pos: i32,
 ) {
-    // Handled below by !ctx.g_mut().animated or frames <= 0 check.
+    // Handled below by !ctx.g_mut().behavior.animated or frames <= 0 check.
 
     let start_rect = match get_start_rect(&ctx.core, win, reset_pos) {
         Some(r) => r,
@@ -118,7 +118,7 @@ pub fn animate_client_x11(
     let (mon_w, mon_h) = get_monitor_size(&ctx.core, win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
-    if !ctx.core.g.animated || frames <= 0 {
+    if !ctx.core.g.behavior.animated || frames <= 0 {
         try_resize_x11(
             ctx,
             win,

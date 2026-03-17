@@ -25,7 +25,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             mon.overlay,
             mon.selected_tags(),
             ctx.g().tags.mask(),
-            ctx.g().animated,
+            ctx.g().behavior.animated,
         )
     };
 

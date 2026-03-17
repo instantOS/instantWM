@@ -52,7 +52,7 @@ pub fn toggle_prefix(ctx: &mut WmCtx) {
 }
 
 pub fn toggle_animated(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.animated, action);
+    ctrl_toggle(&mut core.g.behavior.animated, action);
 }
 
 pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
@@ -79,15 +79,15 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
 }
 
 pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.focus_follows_mouse, action);
+    ctrl_toggle(&mut core.g.behavior.focus_follows_mouse, action);
 }
 
 pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.focus_follows_float_mouse, action);
+    ctrl_toggle(&mut core.g.behavior.focus_follows_float_mouse, action);
 }
 
 pub fn toggle_double_draw(core: &mut CoreCtx) {
-    core.g.double_draw = !core.g.double_draw;
+    core.g.behavior.double_draw = !core.g.behavior.double_draw;
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
@@ -133,11 +133,11 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
-    let animated = ctx.g().animated;
+    let animated = ctx.g().behavior.animated;
     let client_count = ctx.g().clients.len() as i32;
     let mut tmp_no_anim = false;
     if animated && client_count > 6 {
-        ctx.g_mut().animated = false;
+        ctx.g_mut().behavior.animated = false;
         tmp_no_anim = true;
     }
 
@@ -179,6 +179,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 
     if tmp_no_anim {
-        ctx.g_mut().animated = true;
+        ctx.g_mut().behavior.animated = true;
     }
 }

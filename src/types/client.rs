@@ -105,7 +105,10 @@ impl Client {
     /// - Not hidden
     #[inline]
     pub fn is_tiled(&self, selected_tags: u32) -> bool {
-        !self.is_floating && !self.is_true_fullscreen() && self.is_visible_on_tags(selected_tags) && !self.is_hidden
+        !self.is_floating
+            && !self.is_true_fullscreen()
+            && self.is_visible_on_tags(selected_tags)
+            && !self.is_hidden
     }
 
     /// Check if the client is in true fullscreen mode (not fake fullscreen).

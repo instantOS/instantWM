@@ -6,7 +6,7 @@ use crate::types::Gesture;
 
 /// Core bar drawing implementation shared between X11 and Wayland.
 ///
-/// Systray width must be cached in `core.g.systray_width` by the caller
+/// Systray width must be cached in `core.g.bar_runtime.systray_width` by the caller
 /// before invoking this function.
 pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
     core.bar.recursion_enter();
@@ -34,7 +34,7 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
     let is_selmon = core.g.selected_monitor().num == monitor_num;
 
     let systray_width = if core.g.cfg.show_systray && is_selmon {
-        core.g.systray_width
+        core.g.bar_runtime.systray_width
     } else {
         0
     };

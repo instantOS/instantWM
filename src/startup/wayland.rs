@@ -151,10 +151,10 @@ pub fn run() -> ! {
                 _ => {}
             });
 
-            if wm.g.layout_dirty {
+            if wm.g.dirty.layout {
                 let mut ctx = wm.ctx();
                 if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
-                    ctx.g.layout_dirty = false;
+                    ctx.g.dirty.layout = false;
                     let selected_monitor_id = ctx.g.selected_monitor_id();
                     crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
                 }
@@ -163,11 +163,11 @@ pub fn run() -> ! {
                 let handled_ipc_command = server.process_pending(&mut wm);
                 if handled_ipc_command {
                     // Force a layout arrangement and redraw if an IPC command modified state
-                    wm.g.layout_dirty = true;
+                    wm.g.dirty.layout = true;
                 }
             }
 
-            if wm.g.monitor_config_dirty {
+            if wm.g.dirty.monitor_config {
                 let mut ctx = wm.ctx();
                 crate::monitor::apply_monitor_config(&mut ctx);
             }
@@ -175,10 +175,10 @@ pub fn run() -> ! {
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
-            wm.g.input_config_dirty = false;
+            wm.g.dirty.input_config = false;
 
-            if wm.g.space_dirty {
-                wm.g.space_dirty = false;
+            if wm.g.dirty.space {
+                wm.g.dirty.space = false;
                 state.sync_space_from_globals();
             }
 

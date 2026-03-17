@@ -370,8 +370,8 @@ fn run_event_loop(
 
             process_ipc(ipc_server, wm, shared);
 
-            if wm.g.input_config_dirty {
-                wm.g.input_config_dirty = false;
+            if wm.g.dirty.input_config {
+                wm.g.dirty.input_config = false;
                 input::reconfigure_all_devices(&mut state.tracked_devices, &wm.g.cfg.input);
             }
 
@@ -436,12 +436,12 @@ fn process_completed_crtcs(
 
 /// Arrange layout when dirty and no animations are active.
 fn arrange_layout(wm: &mut Wm, state: &mut WaylandState) {
-    if !wm.g.layout_dirty {
+    if !wm.g.dirty.layout {
         return;
     }
     let mut ctx = wm.ctx();
     if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
-        ctx.g.layout_dirty = false;
+        ctx.g.dirty.layout = false;
         let selected_monitor_id = ctx.g.selected_monitor_id();
         crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
     }
@@ -455,13 +455,13 @@ fn process_ipc(
 ) {
     if let Some(server) = ipc_server.as_mut() {
         let handled = server.process_pending(wm);
-        if wm.g.monitor_config_dirty {
+        if wm.g.dirty.monitor_config {
             let mut ctx = wm.ctx();
             crate::monitor::apply_monitor_config(&mut ctx);
         }
         if handled {
-            wm.g.layout_dirty = true;
-            wm.g.space_dirty = true;
+            wm.g.dirty.layout = true;
+            wm.g.dirty.space = true;
             shared.lock().unwrap().mark_all_dirty();
         }
     }
@@ -469,8 +469,8 @@ fn process_ipc(
 
 /// Process window animations and sync compositor space when dirty.
 fn process_animations(wm: &mut Wm, state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
-    if wm.g.space_dirty {
-        wm.g.space_dirty = false;
+    if wm.g.dirty.space {
+        wm.g.dirty.space = false;
         state.sync_space_from_globals();
         shared.lock().unwrap().mark_all_dirty();
     }

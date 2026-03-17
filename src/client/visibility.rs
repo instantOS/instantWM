@@ -291,7 +291,7 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         None => return,
     };
     let bar_height = ctx.core.g.cfg.bar_height;
-    let animated = ctx.core.g.animated;
+    let animated = ctx.core.g.behavior.animated;
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.

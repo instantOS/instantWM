@@ -70,9 +70,9 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.g.cfg.buttons.clone();
-    let altcursor = ctx.core.g.cursor_icon;
+    let altcursor = ctx.core.g.behavior.cursor_icon;
     let mut selmon_id = ctx.core.g.selected_monitor_id();
-    let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
+    let focusfollowsmouse = ctx.core.g.behavior.focus_follows_mouse;
 
     if let Some(clicked_mon) = ctx.core.g.monitors.win_to_mon(
         event_win,
@@ -117,7 +117,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 let parsed = ctx
                     .core
                     .bar
-                    .parsed_status_for_text(&ctx.core.g.status_text)
+                    .parsed_status_for_text(&ctx.core.g.bar_runtime.status_text)
                     .clone();
                 let click_targets = ctx
                     .core
@@ -300,8 +300,8 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    let focusfollowsmouse = ctx.core.g.focus_follows_mouse;
-    let focusfollowsfloatmouse = ctx.core.g.focus_follows_float_mouse;
+    let focusfollowsmouse = ctx.core.g.behavior.focus_follows_mouse;
+    let focusfollowsfloatmouse = ctx.core.g.behavior.focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
 
@@ -494,7 +494,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.g.focus_follows_mouse {
+    if ctx.core.g.behavior.focus_follows_mouse {
         let rect = Rect {
             x: root_x,
             y: root_y,
@@ -527,7 +527,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             return;
         }
         reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
-        if ctx.core.g.cursor_icon == AltCursor::Sidebar {
+        if ctx.core.g.behavior.cursor_icon == AltCursor::Sidebar {
             reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
         }
         return;
@@ -840,7 +840,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             server.process_pending(wm);
         }
 
-        if wm.g.monitor_config_dirty {
+        if wm.g.dirty.monitor_config {
             let mut ctx = wm.ctx();
             crate::monitor::apply_monitor_config(&mut ctx);
         }

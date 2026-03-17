@@ -26,8 +26,8 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
         }
     }
 
-    ctx.g_mut().layout_dirty = false;
-    ctx.g_mut().space_dirty = true;
+    ctx.g_mut().dirty.layout = false;
+    ctx.g_mut().dirty.space = true;
     ctx.flush();
 }
 
@@ -358,14 +358,14 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let animation_on = ctx.g().animated
+    let animation_on = ctx.g().behavior.animated
         && ctx
             .g()
             .selected_monitor()
             .tiled_client_count(&*ctx.g().clients)
             > 2;
     if animation_on {
-        ctx.g_mut().animated = false;
+        ctx.g_mut().behavior.animated = false;
     }
 
     let m = ctx.g_mut().selected_monitor_mut();
@@ -378,6 +378,6 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     let selected_monitor_id = ctx.g().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
     if animation_on {
-        ctx.g_mut().animated = true;
+        ctx.g_mut().behavior.animated = true;
     }
 }

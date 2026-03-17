@@ -109,7 +109,7 @@ pub fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
-    wm.g.status_text = text;
+    wm.g.bar_runtime.status_text = text;
 
     if let crate::backend::Backend::X11(_) = wm.backend {
         let ctx = wm.ctx();

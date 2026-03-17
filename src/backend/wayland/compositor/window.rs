@@ -57,8 +57,8 @@ impl WaylandState {
                     mon.sel = Some(window_id);
                 }
             }
-            g.layout_dirty = true;
-            g.space_dirty = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
         }
         self.set_focus(window_id);
         window_id
@@ -209,8 +209,8 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         self.clear_keyboard_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
-            g.layout_dirty = true;
-            g.space_dirty = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
         }
     }
 
@@ -224,8 +224,8 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         self.clear_keyboard_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
-            g.layout_dirty = true;
-            g.space_dirty = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
         }
     }
 
@@ -609,7 +609,7 @@ impl WaylandState {
     pub(super) const MIN_WL_DIM: i32 = 64;
 
     fn animations_enabled(&self) -> bool {
-        self.globals().map(|g| g.animated).unwrap_or(false)
+        self.globals().map(|g| g.behavior.animated).unwrap_or(false)
     }
 
     fn interactive_motion_active(&self) -> bool {
