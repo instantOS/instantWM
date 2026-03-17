@@ -15,8 +15,6 @@ pub mod ipc_types;
 mod keyboard;
 mod keyboard_layout;
 pub mod layouts;
-#[macro_use]
-mod macros;
 mod monitor;
 mod mouse;
 mod push;

@@ -115,7 +115,7 @@ pub struct InputConfig {
 impl Default for InputConfig {
     fn default() -> Self {
         Self {
-            tap: None,
+            tap: Some(ToggleSetting::Enabled),
             natural_scroll: None,
             accel_profile: None,
             pointer_accel: None,
