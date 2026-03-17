@@ -10,7 +10,6 @@
 //! - Bar render-element building (`build_bar_elements`)
 //! - Frame callback dispatch (`send_frame_callbacks`)
 
-use std::collections::HashMap;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -504,14 +503,9 @@ impl WindowBorderInfo {
     }
 
     /// Bounding rectangle including borders.
-    fn bounding_rect(&self) -> IntRect {
+    fn bounding_rect(&self) -> crate::types::Rect {
         let (ow, oh) = self.outer_size();
-        IntRect {
-            x: self.geo.x,
-            y: self.geo.y,
-            w: ow,
-            h: oh,
-        }
+        crate::types::Rect::new(self.geo.x, self.geo.y, ow, oh)
     }
 
     /// Checks if this window should render borders.
@@ -520,7 +514,7 @@ impl WindowBorderInfo {
     }
 
     /// Returns the border color based on focus state.
-    fn border_color(&self, is_focused: bool, colors: &crate::config::appearance::BorderColors) -> [f32; 4] {
+    fn border_color(&self, is_focused: bool, colors: &crate::types::BorderColorConfig) -> [f32; 4] {
         if is_focused {
             if self.is_floating || !self.is_tiling_layout {
                 colors.float_focus
@@ -577,7 +571,7 @@ fn collect_window_info(
 }
 
 /// Generates the four border rectangles for a window.
-fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i32) -> Vec<IntRect> {
+fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i32) -> Vec<crate::types::Rect> {
     if bw <= 0 || outer_w <= 2 * bw || outer_h <= 2 * bw {
         return Vec::new();
     }
@@ -586,33 +580,18 @@ fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i3
 
     vec![
         // Top border
-        IntRect { x, y, w: outer_w, h: bw },
+        crate::types::Rect::new(x, y, outer_w, bw),
         // Bottom border
-        IntRect {
-            x,
-            y: y + outer_h - bw,
-            w: outer_w,
-            h: bw,
-        },
+        crate::types::Rect::new(x, y + outer_h - bw, outer_w, bw),
         // Left border (between top and bottom)
-        IntRect {
-            x,
-            y: y + bw,
-            w: bw,
-            h: inner_h,
-        },
+        crate::types::Rect::new(x, y + bw, bw, inner_h),
         // Right border (between top and bottom)
-        IntRect {
-            x: x + outer_w - bw,
-            y: y + bw,
-            w: bw,
-            h: inner_h,
-        },
+        crate::types::Rect::new(x + outer_w - bw, y + bw, bw, inner_h),
     ]
 }
 
 /// Subtracts occluders from border parts, returning the remaining visible parts.
-fn apply_occluders(border_parts: Vec<IntRect>, occluders: &[IntRect]) -> Vec<IntRect> {
+fn apply_occluders(border_parts: Vec<crate::types::Rect>, occluders: &[crate::types::Rect]) -> Vec<crate::types::Rect> {
     let mut remaining = border_parts;
 
     for occluder in occluders {
@@ -621,7 +600,7 @@ fn apply_occluders(border_parts: Vec<IntRect>, occluders: &[IntRect]) -> Vec<Int
         }
         remaining = remaining
             .into_iter()
-            .flat_map(|part| subtract_rect(part, *occluder))
+            .flat_map(|part| part.subtract(occluder))
             .collect();
     }
 
@@ -629,7 +608,7 @@ fn apply_occluders(border_parts: Vec<IntRect>, occluders: &[IntRect]) -> Vec<Int
 }
 
 /// Builds occluder rectangles from windows (windows block borders behind them).
-fn build_occluders(windows: &[WindowBorderInfo]) -> Vec<IntRect> {
+fn build_occluders(windows: &[WindowBorderInfo]) -> Vec<crate::types::Rect> {
     windows
         .iter()
         .filter(|w| w.is_visible)
@@ -648,7 +627,7 @@ pub(crate) fn wayland_border_elements_shared(
     let mut elements = Vec::new();
 
     // Build occluders list (each window can occlude borders behind it)
-    let occluders: Vec<IntRect> = build_occluders(&windows);
+    let occluders: Vec<crate::types::Rect> = build_occluders(&windows);
 
     for (idx, window) in windows.iter().enumerate() {
         if !window.has_borders() {
@@ -690,78 +669,6 @@ pub(crate) fn wayland_border_elements_shared(
 pub fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
-}
-
-#[derive(Clone, Copy)]
-struct IntRect {
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-}
-
-fn intersect_rect(a: IntRect, b: IntRect) -> Option<IntRect> {
-    let x1 = a.x.max(b.x);
-    let y1 = a.y.max(b.y);
-    let x2 = (a.x + a.w).min(b.x + b.w);
-    let y2 = (a.y + a.h).min(b.y + b.h);
-    if x2 <= x1 || y2 <= y1 {
-        return None;
-    }
-    Some(IntRect {
-        x: x1,
-        y: y1,
-        w: x2 - x1,
-        h: y2 - y1,
-    })
-}
-
-fn subtract_rect(base: IntRect, cut: IntRect) -> Vec<IntRect> {
-    if base.w <= 0 || base.h <= 0 {
-        return Vec::new();
-    }
-    let Some(i) = intersect_rect(base, cut) else {
-        return vec![base];
-    };
-
-    let mut out = Vec::new();
-    if i.y > base.y {
-        out.push(IntRect {
-            x: base.x,
-            y: base.y,
-            w: base.w,
-            h: i.y - base.y,
-        });
-    }
-    let base_bottom = base.y + base.h;
-    let inter_bottom = i.y + i.h;
-    if inter_bottom < base_bottom {
-        out.push(IntRect {
-            x: base.x,
-            y: inter_bottom,
-            w: base.w,
-            h: base_bottom - inter_bottom,
-        });
-    }
-    if i.x > base.x {
-        out.push(IntRect {
-            x: base.x,
-            y: i.y,
-            w: i.x - base.x,
-            h: i.h,
-        });
-    }
-    let base_right = base.x + base.w;
-    let inter_right = i.x + i.w;
-    if inter_right < base_right {
-        out.push(IntRect {
-            x: inter_right,
-            y: i.y,
-            w: base_right - inter_right,
-            h: i.h,
-        });
-    }
-    out.into_iter().filter(|r| r.w > 0 && r.h > 0).collect()
 }
 
 fn push_solid(

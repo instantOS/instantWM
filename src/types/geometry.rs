@@ -44,6 +44,75 @@ impl Rect {
         x1 < x2 && y1 < y2
     }
 
+    /// Calculate the intersection rectangle with another.
+    /// Returns `None` if the rectangles don't intersect.
+    #[inline]
+    pub fn intersection(&self, other: &Rect) -> Option<Rect> {
+        let x1 = self.x.max(other.x);
+        let y1 = self.y.max(other.y);
+        let x2 = (self.x + self.w).min(other.x + other.w);
+        let y2 = (self.y + self.h).min(other.y + other.h);
+        if x2 <= x1 || y2 <= y1 {
+            return None;
+        }
+        Some(Rect {
+            x: x1,
+            y: y1,
+            w: x2 - x1,
+            h: y2 - y1,
+        })
+    }
+
+    /// Subtract another rectangle from this one, returning the remaining parts.
+    /// Returns a vector of rectangles that cover `self` minus `other`.
+    pub fn subtract(&self, other: &Rect) -> Vec<Rect> {
+        if self.w <= 0 || self.h <= 0 {
+            return Vec::new();
+        }
+        let Some(i) = self.intersection(other) else {
+            return vec![*self];
+        };
+
+        let mut out = Vec::with_capacity(4);
+        if i.y > self.y {
+            out.push(Rect {
+                x: self.x,
+                y: self.y,
+                w: self.w,
+                h: i.y - self.y,
+            });
+        }
+        let self_bottom = self.y + self.h;
+        let i_bottom = i.y + i.h;
+        if i_bottom < self_bottom {
+            out.push(Rect {
+                x: self.x,
+                y: i_bottom,
+                w: self.w,
+                h: self_bottom - i_bottom,
+            });
+        }
+        if i.x > self.x {
+            out.push(Rect {
+                x: self.x,
+                y: i.y,
+                w: i.x - self.x,
+                h: i.h,
+            });
+        }
+        let self_right = self.x + self.w;
+        let i_right = i.x + i.w;
+        if i_right < self_right {
+            out.push(Rect {
+                x: i_right,
+                y: i.y,
+                w: self_right - i_right,
+                h: i.h,
+            });
+        }
+        out.into_iter().filter(|r| r.w > 0 && r.h > 0).collect()
+    }
+
     /// Get the center point of this rectangle.
     #[inline]
     pub fn center(&self) -> (i32, i32) {
