@@ -14,6 +14,7 @@ use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderE
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::Bind;
+use smithay::backend::renderer::ImportDma;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
