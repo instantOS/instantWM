@@ -868,9 +868,23 @@ impl WlrLayerShellHandler for WaylandState {
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
+        let wl_surface = surface.wl_surface();
+
+        // Check if the keyboard is focused on this layer surface before we destroy it
+        let keyboard_focused_on_layer = self
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|focus| {
+                if let KeyboardFocusTarget::WlSurface(s) = focus {
+                    s == *wl_surface
+                } else {
+                    false
+                }
+            });
+
         for output in self.space.outputs().cloned().collect::<Vec<_>>() {
             let mut map = layer_map_for_output(&output);
-            let wl_surface = surface.wl_surface();
             let layers: Vec<_> = map
                 .layers()
                 .filter(|l| l.wl_surface() == wl_surface)
@@ -878,6 +892,53 @@ impl WlrLayerShellHandler for WaylandState {
                 .collect();
             for layer in layers {
                 map.unmap_layer(&layer);
+            }
+        }
+
+        // If the keyboard was focused on this layer surface, we need to
+        // clear focus and restore it to a window
+        if keyboard_focused_on_layer {
+            // Clear keyboard focus on the seat
+            let serial = SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
+            }
+
+            // Now restore focus to a window
+            if let Some(g) = self.globals_mut() {
+                let sel_mon_id = g.selected_monitor_id();
+                let (target, selected_tags, stack) = {
+                    let mon = match g.monitor_mut(sel_mon_id) {
+                        Some(m) => m,
+                        None => {
+                            // No monitor, nothing to focus
+                            return;
+                        }
+                    };
+                    // Try to focus the selected window, or find another visible window
+                    if let Some(target) = mon.sel {
+                        (Some(target), None, None)
+                    } else {
+                        // Collect stack and tags for finding a visible window
+                        let tags = mon.selected_tag_mask();
+                        let stack_copy = mon.stack.clone();
+                        (None, Some(tags), Some(stack_copy))
+                    }
+                };
+
+                if let Some(target) = target {
+                    self.set_focus(target);
+                } else if let (Some(tags), Some(stack)) = (selected_tags, stack) {
+                    // Find the first visible window to focus
+                    for &win in &stack {
+                        if let Some(c) = g.clients.get(&win) {
+                            if c.is_visible_on_tags(tags.bits()) && !c.is_hidden {
+                                self.set_focus(win);
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
