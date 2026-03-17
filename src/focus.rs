@@ -205,7 +205,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         let Some(current) = current else {
             return;
         };
-        let Some(monitor_id) = core.g.clients.get(&current).map(|c| c.monitor_id) else {
+        let Some(monitor_id) = core.g.clients.monitor_id(current) else {
             return;
         };
         if previous == Some(current) {
@@ -215,7 +215,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         // Only explicitly restack if the focused window is tiled.
         // Floating windows should not automatically pop to the top just
         // from being hovered, otherwise they flicker rapidly when overlapping.
-        if core.g.clients.get(&current).is_some_and(|c| c.is_floating) {
+        if core.g.clients.is_floating(current) {
             return;
         }
 
@@ -432,7 +432,7 @@ pub fn hover_focus_target_x11(
     }
 
     if let Some(win) = hovered_win {
-        if let Some(mid) = core.g.clients.get(&win).map(|c| c.monitor_id) {
+        if let Some(mid) = core.g.clients.monitor_id(win) {
             if mid != core.g.selected_monitor_id() {
                 core.g.set_selected_monitor(mid);
                 let _ = focus_x11(core, x11, x11_runtime, None, None);
@@ -499,7 +499,7 @@ pub fn hover_focus_target_wayland(
     }
 
     // Switch monitor if the hovered window lives on a different one.
-    if let Some(mid) = core.g.clients.get(&hovered_win).map(|c| c.monitor_id) {
+    if let Some(mid) = core.g.clients.monitor_id(hovered_win) {
         if mid != core.g.selected_monitor_id() {
             core.g.set_selected_monitor(mid);
         }

@@ -24,10 +24,6 @@ use crate::types::{Rect, WindowId};
 /// Backend-agnostic resize entry point.
 ///
 pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
-    if !ctx.g().clients.contains_key(&win) {
-        return;
-    }
-
     let mut new_rect = *rect;
 
     let changed = match ctx {

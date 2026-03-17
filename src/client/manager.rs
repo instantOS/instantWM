@@ -58,16 +58,36 @@ impl ClientManager {
         self.clients.iter()
     }
 
+    pub fn monitor_id(&self, win: WindowId) -> Option<usize> {
+        self.clients.get(&win).map(|c| c.monitor_id)
+    }
+
     pub fn is_hidden(&self, win: WindowId) -> bool {
         self.clients.get(&win).map_or(false, |c| c.is_hidden)
     }
 
+    pub fn is_floating(&self, win: WindowId) -> bool {
+        self.clients.get(&win).map_or(false, |c| c.is_floating)
+    }
+
+    pub fn is_locked(&self, win: WindowId) -> bool {
+        self.clients.get(&win).map_or(true, |c| c.is_locked)
+    }
+
+    pub fn geo(&self, win: WindowId) -> Option<crate::types::Rect> {
+        self.clients.get(&win).map(|c| c.geo)
+    }
+
+    pub fn tags(&self, win: WindowId) -> Option<u32> {
+        self.clients.get(&win).map(|c| c.tags)
+    }
+
+    pub fn effective_float_geo(&self, win: WindowId) -> Option<crate::types::Rect> {
+        self.clients.get(&win).map(|c| c.effective_float_geo())
+    }
+
     pub fn win_to_client(&self, win: WindowId) -> Option<WindowId> {
-        if self.clients.contains_key(&win) {
-            Some(win)
-        } else {
-            None
-        }
+        self.clients.contains_key(&win).then_some(win)
     }
 
     pub fn list_push(&mut self, id: ClientId) {

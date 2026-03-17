@@ -386,11 +386,9 @@ impl XwmHandler for WaylandState {
             let Some(g) = self.globals_mut() else {
                 return;
             };
-            if g.clients.contains_key(&win) {
-                g.detach(win);
-                g.detach_stack(win);
-                g.clients.remove(&win);
-            }
+            g.detach(win);
+            g.detach_stack(win);
+            g.clients.remove(&win);
         } else if is_overlay {
             let element = self
                 .space
@@ -578,11 +576,9 @@ impl XdgShellHandler for WaylandState {
             let Some(g) = self.globals_mut() else {
                 return;
             };
-            if g.clients.contains_key(&win) {
-                g.detach(win);
-                g.detach_stack(win);
-                g.clients.remove(&win);
-            }
+            g.detach(win);
+            g.detach_stack(win);
+            g.clients.remove(&win);
             g.dirty.layout = true;
             g.dirty.space = true;
             g.selected_win()
@@ -811,9 +807,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         // Find the window associated with this surface and focus it
         if let Some(win) = self.window_id_for_surface(&surface) {
             // Update the WM's selected window to match
-            let monitor_id = self
-                .globals()
-                .and_then(|g| g.clients.get(&win).map(|c| c.monitor_id));
+            let monitor_id = self.globals().and_then(|g| g.clients.monitor_id(win));
             if let Some(g) = self.globals_mut() {
                 if let Some(mon_id) = monitor_id {
                     if let Some(mon) = g.monitor_mut(mon_id) {

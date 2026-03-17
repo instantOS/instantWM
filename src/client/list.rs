@@ -60,7 +60,7 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
 pub fn pop(ctx: &mut WmCtx, win: WindowId) {
     detach(ctx, win);
     attach(ctx, win);
-    let monitor_id = ctx.client(win).map(|c| c.monitor_id);
+    let monitor_id = ctx.g().clients.monitor_id(win);
     crate::focus::focus_soft(ctx, Some(win));
 
     if let Some(mid) = monitor_id {

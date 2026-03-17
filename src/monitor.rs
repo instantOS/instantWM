@@ -309,7 +309,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    if let Some(monitor_id) = ctx.client(c_win).map(|c| c.monitor_id) {
+    if let Some(monitor_id) = ctx.g().clients.monitor_id(c_win) {
         ctx.g_mut().monitors.set_sel_idx(monitor_id);
     }
 

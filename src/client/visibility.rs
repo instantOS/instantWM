@@ -193,7 +193,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // (called inside arrange below) checks !is_hidden and calls map_window
     // itself, so the window reappears as a side-effect of the arrange pass.
 
-    let monitor_id = ctx.client(win).map(|c| c.monitor_id);
+    let monitor_id = ctx.g().clients.monitor_id(win);
     crate::focus::focus_soft(ctx, Some(win));
     if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));

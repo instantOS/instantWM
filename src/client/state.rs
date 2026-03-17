@@ -225,10 +225,6 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    if !core.g.clients.contains_key(&win) {
-        return;
-    }
-
     // --- Read WM_CLASS -------------------------------------------------------
     let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
 
@@ -275,8 +271,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
             let mon_geo = core
                 .g
                 .clients
-                .get(&win)
-                .map(|c| c.monitor_id)
+                .monitor_id(win)
                 .and_then(|mid| core.g.monitor(mid))
                 .map(|m| (m.monitor_rect, m.work_rect, m.showbar));
 

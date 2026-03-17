@@ -119,7 +119,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 ///
 /// Like `kill_client` but without the kill fallback - only attempts graceful close.
 pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
-    let is_locked = ctx.client(win).map(|c| c.is_locked).unwrap_or(true);
+    let is_locked = ctx.g().clients.is_locked(win);
 
     if is_locked {
         return;

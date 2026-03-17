@@ -100,7 +100,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
-            if let Some(monitor_id) = ctx.core.client(event_win).map(|c| c.monitor_id) {
+            if let Some(monitor_id) = ctx.core.g.clients.monitor_id(event_win) {
                 restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
@@ -417,12 +417,12 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(monitor_id) =
-        ctx.core
-            .g
-            .monitors
-            .win_to_mon(event_win, ctx.x11_runtime.root, ctx.core.g.clients.map(), None)
-    {
+    if let Some(monitor_id) = ctx.core.g.monitors.win_to_mon(
+        event_win,
+        ctx.x11_runtime.root,
+        ctx.core.g.clients.map(),
+        None,
+    ) {
         let is_bar_win = ctx
             .core
             .g

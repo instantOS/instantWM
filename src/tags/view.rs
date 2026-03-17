@@ -165,7 +165,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         return;
     };
 
-    let tags = ctx.client(win).map(|c| c.tags).unwrap_or(1);
+    let tags = ctx.g().clients.tags(win).unwrap_or(1);
     let tag_mask = TagMask::from_bits(tags);
 
     if tag_mask.is_scratchpad_only() {

@@ -83,7 +83,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         let selmon_id = ctx.g().selected_monitor_id();
         crate::layouts::arrange(ctx, Some(selmon_id));
         // Re-read geometry after the layout change.
-        let Some(new_geo) = ctx.client(win).map(|c| c.geo) else {
+        let Some(new_geo) = ctx.g().clients.geo(win) else {
             return;
         };
 
@@ -290,7 +290,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    let Some(geo) = ctx.client(win).map(|c| c.geo) else {
+    let Some(geo) = ctx.g().clients.geo(win) else {
         return;
     };
 

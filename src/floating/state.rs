@@ -50,7 +50,7 @@ pub fn save_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(rect) = ctx.client(win).map(|c| c.effective_float_geo()) {
+    if let Some(rect) = ctx.g().clients.effective_float_geo(win) {
         crate::client::resize(ctx, win, &rect, false);
     }
 }
@@ -94,7 +94,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             }
 
             // Apply saved float geometry
-            let saved_geo = ctx.client(win).map(|c| c.effective_float_geo());
+            let saved_geo = ctx.g().clients.effective_float_geo(win);
             let Some(saved_geo) = saved_geo else {
                 return false;
             };
@@ -151,7 +151,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     // Animate when going to floating mode
     if should_animate {
-        if let Some(saved_geo) = ctx.client(win).map(|c| c.effective_float_geo()) {
+        if let Some(saved_geo) = ctx.g().clients.effective_float_geo(win) {
             animate_client(ctx, win, &saved_geo, 7, 0);
         }
     }

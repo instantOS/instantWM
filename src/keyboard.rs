@@ -251,9 +251,7 @@ pub fn up_press(ctx: &mut WmCtx) {
         let mon = ctx.g().selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
-        let is_floating = sel
-            .and_then(|w| ctx.client(w).map(|c| c.is_floating))
-            .unwrap_or(false);
+        let is_floating = sel.map_or(false, |w| ctx.g().clients.is_floating(w));
         (sel, overlay, is_floating)
     };
 

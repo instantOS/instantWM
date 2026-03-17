@@ -90,7 +90,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     attach(&mut WmCtx::X11(ctx.reborrow()), w);
     attach_stack(&mut WmCtx::X11(ctx.reborrow()), w);
 
-    if let Some(monitor_id) = ctx.core.g.clients.get(&w).map(|c| c.monitor_id) {
+    if let Some(monitor_id) = ctx.core.g.clients.monitor_id(w) {
         if let Some(mon) = ctx.core.g.monitor_mut(monitor_id) {
             mon.sel = Some(w);
         }
@@ -168,7 +168,7 @@ fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
 }
 
 fn monitor_rects_for_client(g: &crate::globals::Globals, w: WindowId) -> (Rect, Rect) {
-    let monitor_id = g.clients.get(&w).map(|c| c.monitor_id);
+    let monitor_id = g.clients.monitor_id(w);
     monitor_id
         .and_then(|mid| g.monitor(mid))
         .map(|m| (m.work_rect, m.monitor_rect))
@@ -189,7 +189,7 @@ fn clamp_client_to_work_area(g: &mut crate::globals::Globals, w: WindowId, mon_w
 }
 
 fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
-    let monitor_id = g.clients.get(&w).map(|c| c.monitor_id);
+    let monitor_id = g.clients.monitor_id(w);
     monitor_id
         .and_then(|mid| g.monitor(mid))
         .map(|mon| !mon.is_tiling_layout())
@@ -440,7 +440,7 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let monitor_id = ctx.core.client(win).map(|c| c.monitor_id);
+    let monitor_id = ctx.core.g.clients.monitor_id(win);
 
     // Clear overlay and fullscreen references.
     for mon in ctx.core.g.monitors_iter_all_mut() {
