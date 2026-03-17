@@ -8,7 +8,7 @@ use smithay::backend::winit::WinitGraphicsBackend;
 use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::startup::common_wayland::{
+use crate::wayland::common::{
     build_common_scene_elements, resolve_cursor_presentation, send_frame_callbacks,
     CursorPresentation,
 };
@@ -22,7 +22,7 @@ render_elements! {
     Space=smithay::desktop::space::SpaceRenderElements<GlesRenderer, smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>,
 }
 
-pub(super) fn render_frame(
+pub fn render_frame(
     wm: &mut Wm,
     state: &mut WaylandState,
     backend: &mut WinitGraphicsBackend<GlesRenderer>,

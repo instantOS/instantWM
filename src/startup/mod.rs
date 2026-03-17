@@ -1,9 +1,6 @@
 use clap::{Parser, ValueEnum};
-mod autostart;
-mod common_wayland;
-mod drm;
+pub mod autostart;
 mod locale;
-mod wayland;
 pub(crate) mod x11;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -50,7 +47,7 @@ pub fn run() {
 
     match cli.backend {
         CliBackend::X11 => x11::run(),
-        CliBackend::Nested => wayland::run(),
-        CliBackend::Drm => drm::run(),
+        CliBackend::Nested => crate::wayland::runtime::winit::run(),
+        CliBackend::Drm => crate::wayland::runtime::drm::run(),
     }
 }

@@ -1,10 +1,5 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-mod gpu;
-mod input;
-mod render;
-mod state;
-
 use std::collections::HashMap;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
@@ -12,7 +7,6 @@ use std::time::Duration;
 
 use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent};
-use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -22,30 +16,24 @@ use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
-use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
-use smithay::utils::DeviceFd;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
-use crate::startup::common_wayland::{
+use crate::monitor::update_geom;
+use crate::startup::autostart::run_autostart;
+use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
     spawn_xwayland,
 };
-use crate::startup::wayland::cursor::CursorManager;
-use crate::wm::Wm;
-
-use self::gpu::build_output_surfaces;
-use self::input::dispatch_libinput_event;
-use self::render::render_drm_output;
-use self::state::{
-    sync_monitors_from_outputs_vec, OutputSurfaceEntry, SharedDrmState, CURSOR_SIZE,
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH,
+use crate::wayland::init::drm::init_gpu;
+use crate::wayland::input::apply_pending_warp;
+use crate::wayland::render::drm::{
+    build_output_surfaces, render_drm_output, CursorManager, OutputSurfaceEntry, SharedDrmState,
 };
-use super::autostart::run_autostart;
-use crate::startup::wayland::input::apply_pending_warp;
+use crate::wm::Wm;
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
 // great care and patience for random ass segfaults. Yes, this is awful, leave it.
@@ -104,7 +92,7 @@ pub fn run() -> ! {
 
     let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
-    sync_monitors_from_outputs_vec(&mut wm, &output_surfaces);
+    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut wm, &output_surfaces);
     {
         use crate::monitor::update_geom;
         update_geom(&mut wm.ctx());
@@ -133,7 +121,7 @@ pub fn run() -> ! {
 
             let any_input = state
                 .with_wm(|state, wm| {
-                    dispatch_libinput_event(
+                    crate::wayland::input::drm::dispatch_libinput_event(
                         event,
                         state,
                         wm,
@@ -195,47 +183,13 @@ pub fn run() -> ! {
     exit(0);
 }
 
-/// Initialize GPU, EGL, and renderer.
-///
-/// This function is safety-critical: it handles raw file descriptors and
-/// unsafe EGL context creation. Do not reorder operations.
-fn init_gpu(
-    session: &mut LibSeatSession,
-    seat_name: &str,
-) -> (
-    std::path::PathBuf,
-    DrmDevice,
-    smithay::backend::drm::DrmDeviceNotifier,
-    DrmDeviceFd,
-    GbmDevice<DrmDeviceFd>,
-    EGLDisplay,
-    GlesRenderer,
-) {
-    let (primary_gpu_path, drm_device, drm_notifier, drm_fd) = open_primary_gpu(session, seat_name);
-
-    let gbm_device = GbmDevice::new(drm_fd.clone()).expect("GbmDevice::new");
-    let egl_display = unsafe { EGLDisplay::new(gbm_device.clone()) }.expect("EGLDisplay::new");
-    let egl_context = EGLContext::new(&egl_display).expect("EGLContext::new");
-    let renderer = unsafe { GlesRenderer::new(egl_context) }.expect("GlesRenderer::new");
-
-    (
-        primary_gpu_path,
-        drm_device,
-        drm_notifier,
-        drm_fd,
-        gbm_device,
-        egl_display,
-        renderer,
-    )
-}
-
 /// Initialize cursor manager from environment or defaults.
 fn init_cursor_manager(renderer: &mut GlesRenderer) -> CursorManager {
     let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".to_string());
     let cursor_size = std::env::var("XCURSOR_SIZE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(CURSOR_SIZE);
+        .unwrap_or(crate::wayland::render::drm::CURSOR_SIZE);
     CursorManager::new(renderer, &cursor_theme, cursor_size)
 }
 
@@ -245,12 +199,12 @@ fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> (i32, i32
         .iter()
         .map(|s| s.x_offset + s.width)
         .max()
-        .unwrap_or(DEFAULT_SCREEN_WIDTH);
+        .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_WIDTH);
     let total_height = output_surfaces
         .iter()
         .map(|s| s.height)
         .max()
-        .unwrap_or(DEFAULT_SCREEN_HEIGHT);
+        .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_HEIGHT);
     (total_width, total_height)
 }
 
@@ -266,7 +220,7 @@ fn init_shared_state(
         for entry in output_surfaces {
             s.render_flags.insert(entry.crtc, true);
             s.output_hit_regions
-                .push(crate::startup::drm::state::OutputHitRegion {
+                .push(crate::wayland::render::drm::OutputHitRegion {
                     crtc: entry.crtc,
                     x_offset: entry.x_offset,
                     width: entry.width,
@@ -374,7 +328,10 @@ fn run_event_loop(
 
             if wm.g.dirty.input_config {
                 wm.g.dirty.input_config = false;
-                input::reconfigure_all_devices(&mut state.tracked_devices, &wm.g.cfg.input);
+                crate::wayland::input::drm::reconfigure_all_devices(
+                    &mut state.tracked_devices,
+                    &wm.g.cfg.input,
+                );
             }
 
             while let Ok(led_state) = led_state_rx.try_recv() {
@@ -571,63 +528,4 @@ fn render_outputs(
             }
         }
     }
-}
-
-fn open_primary_gpu(
-    session: &mut LibSeatSession,
-    seat_name: &str,
-) -> (
-    std::path::PathBuf,
-    DrmDevice,
-    smithay::backend::drm::DrmDeviceNotifier,
-    DrmDeviceFd,
-) {
-    let gpus = smithay::backend::udev::all_gpus(seat_name).unwrap_or_default();
-    let mut primary_gpu_path = None;
-    let mut drm_device = None;
-    let mut drm_notifier = None;
-    let mut drm_fd = None;
-
-    for gpu_path in gpus {
-        if let Ok(fd) = session.open(
-            &gpu_path,
-            smithay::reexports::rustix::fs::OFlags::RDWR
-                | smithay::reexports::rustix::fs::OFlags::CLOEXEC
-                | smithay::reexports::rustix::fs::OFlags::NOCTTY
-                | smithay::reexports::rustix::fs::OFlags::NONBLOCK,
-        ) {
-            let fd = DrmDeviceFd::new(DeviceFd::from(fd));
-            if let Ok((device, notifier)) = DrmDevice::new(fd.clone(), true) {
-                let has_connected = device
-                    .resource_handles()
-                    .map(|res| {
-                        use smithay::reexports::drm::control::connector;
-                        res.connectors().iter().any(|&c| {
-                            device
-                                .get_connector(c, false)
-                                .map(|info| info.state() == connector::State::Connected)
-                                .unwrap_or(false)
-                        })
-                    })
-                    .unwrap_or(false);
-
-                if has_connected || primary_gpu_path.is_none() {
-                    primary_gpu_path = Some(gpu_path);
-                    drm_device = Some(device);
-                    drm_notifier = Some(notifier);
-                    drm_fd = Some(fd);
-                    if has_connected {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    (
-        primary_gpu_path.expect("no GPU found"),
-        drm_device.expect("failed to open DRM device"),
-        drm_notifier.expect("failed to create DRM notifier"),
-        drm_fd.expect("failed to get DRM FD"),
-    )
 }

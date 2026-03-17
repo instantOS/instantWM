@@ -1,4 +1,4 @@
-//! Shared startup utilities for both Wayland compositor backends.
+//! Shared utilities for all Wayland compositor backends.
 //!
 //! This module contains everything that is identical between the nested
 //! (winit) backend and the standalone DRM/KMS backend:
@@ -181,9 +181,9 @@ pub fn init_wayland_globals(wm: &mut Wm) {
 /// connect to this compositor.
 ///
 /// Called after the Wayland socket name is known.  Both the nested backend
-/// (which merely exports `WAYLAND_DISPLAY` into the nested environment) and the
-/// standalone DRM backend (which is the actual session compositor) use the same
-/// set of variables.
+/// (which merely exports `WAYLAND_DISPLAY` into the nested environment) and
+/// the standalone DRM backend (which is the actual session compositor) use the
+/// same set of variables.
 pub fn apply_wayland_session_env(socket_name: &str) {
     std::env::set_var("WAYLAND_DISPLAY", socket_name);
     std::env::set_var("XDG_SESSION_TYPE", "wayland");
@@ -312,7 +312,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
 /// launch during development / smoke-testing. Set
 /// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
 pub fn spawn_wayland_smoke_window() {
-    if std::env::var("INSTANTWM_WL_AUTOSPAWN").ok().as_deref() == Some("0") {
+    if std::env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
         return;
     }
     std::thread::spawn(|| {
@@ -409,7 +409,7 @@ pub fn build_common_scene_elements(
     }
 
     let bar = build_bar_elements(wm, renderer);
-    let borders = wayland_border_elements_shared(&wm.g, state);
+    let borders = crate::wayland::render::borders::render_border_elements(&wm.g, state);
 
     CommonSceneElements {
         overlays,
@@ -489,7 +489,3 @@ pub fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
 }
-
-/// Re-export for backward compatibility during migration.
-/// TODO: Update callers to use `crate::wayland::render::borders::render_border_elements` directly.
-pub use crate::wayland::render_border_elements as wayland_border_elements_shared;

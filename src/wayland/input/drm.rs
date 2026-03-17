@@ -1,9 +1,11 @@
+//! DRM/libinput-specific input handling.
+
 use smithay::backend::input::InputEvent;
 use smithay::backend::libinput::{LibinputInputBackend, PointerScrollAxis};
 use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::startup::wayland::input::{
+use crate::wayland::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion_absolute,
     handle_pointer_motion_relative,
 };
@@ -115,7 +117,7 @@ pub fn dispatch_libinput_event(
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
-            crate::startup::drm::input::configure_device(&mut device, &wm.g.cfg.input);
+            configure_device(&mut device, &wm.g.cfg.input);
             state.tracked_devices.push(device);
             false
         }

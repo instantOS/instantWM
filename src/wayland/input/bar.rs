@@ -4,7 +4,7 @@ use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
 
-pub(super) fn update_wayland_bar_hit_state(
+pub fn update_wayland_bar_hit_state(
     wm: &mut Wm,
     root_x: i32,
     root_y: i32,
@@ -54,7 +54,7 @@ pub(super) fn update_wayland_bar_hit_state(
     Some(pos)
 }
 
-pub(super) fn dispatch_wayland_bar_click(
+pub fn dispatch_wayland_bar_click(
     wm: &mut Wm,
     pos: BarPosition,
     button_code: u32,
@@ -137,7 +137,7 @@ pub(super) fn dispatch_wayland_bar_click(
     dispatch_wayland_bar_button(wayland_ctx, pos, button, root_x, root_y, clean_state);
 }
 
-pub(super) fn dispatch_wayland_bar_scroll(
+pub fn dispatch_wayland_bar_scroll(
     wm: &mut Wm,
     pos: BarPosition,
     delta: f64,
@@ -189,7 +189,7 @@ fn dispatch_wayland_bar_button(
     }
 }
 
-pub(super) fn wayland_button_to_wm_button(code: u32) -> Option<u8> {
+pub fn wayland_button_to_wm_button(code: u32) -> Option<u8> {
     match code {
         0x110 => Some(1),
         0x112 => Some(2),

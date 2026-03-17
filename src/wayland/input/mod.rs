@@ -10,6 +10,9 @@
 //! - `handle_pointer_motion_relative` — for real mice under libinput that
 //!   report relative (delta) motion.
 
+pub mod bar;
+pub mod drm;
+
 use smithay::backend::input::{
     AbsolutePositionEvent, InputBackend, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
     PointerMotionEvent,
@@ -31,15 +34,14 @@ use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::{
     set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland,
 };
-use crate::startup::common_wayland::modifiers_to_x11_mask;
 use crate::types::*;
+use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use super::bar::{
+use self::bar::{
     dispatch_wayland_bar_click, dispatch_wayland_bar_scroll, update_wayland_bar_hit_state,
     wayland_button_to_wm_button,
 };
-use super::init::sanitize_wayland_size;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport
@@ -101,8 +103,8 @@ pub fn apply_pending_warp(
 // Resize helper (winit-only — output size comes from the backend window)
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub(super) fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
-    let (safe_w, safe_h) = sanitize_wayland_size(w, h);
+pub fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
+    let (safe_w, safe_h) = crate::wayland::common::sanitize_wayland_size(w, h);
     let mode = OutputMode {
         size: (safe_w, safe_h).into(),
         refresh: 60_000,
@@ -205,7 +207,7 @@ pub fn handle_keyboard<B: InputBackend>(
 // Pointer motion — absolute (winit / tablets)
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub(super) fn handle_pointer_motion(
+pub fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
@@ -673,7 +675,7 @@ pub fn handle_pointer_axis<B: InputBackend>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Internal helpers (unchanged from original)
+// Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 fn find_hovered_window(

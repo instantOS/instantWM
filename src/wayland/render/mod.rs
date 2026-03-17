@@ -1,5 +1,10 @@
-//! Rendering for Wayland compositor.
+//! Wayland compositor rendering.
 //!
-//! Contains border rendering, bar rendering, and scene composition.
+//! This module contains rendering code for:
+//! - Winit (nested) backend
+//! - DRM/KMS (standalone) backend
+//! - Window borders (shared)
 
 pub mod borders;
+pub mod drm;
+pub mod winit;
