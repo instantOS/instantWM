@@ -612,14 +612,17 @@ impl WaylandState {
 
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {
+            let Some(output_geo) = self.space.output_geometry(output) else {
+                    continue;
+                };
             let map = layer_map_for_output(output);
             for layer in map.layers().rev() {
                 let Some(geo) = map.layer_geometry(layer) else {
                     continue;
                 };
-                let rel = point - geo.loc.to_f64();
+                let rel = point - output_geo.loc.to_f64() - geo.loc.to_f64();
                 if let Some((surface, loc)) = layer.surface_under(rel, WindowSurfaceType::ALL) {
-                    return Some((surface, loc + geo.loc));
+                    return Some((surface, loc + geo.loc + output_geo.loc));
                 }
             }
         }
