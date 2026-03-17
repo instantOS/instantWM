@@ -88,13 +88,10 @@ pub fn motion_event_from_libinput_absolute<B: InputBackend>(
 }
 
 /// Construct a `MotionEvent` from a winit event.
-pub fn motion_event_from_winit<
-    B: smithay::backend::winit::WinitGraphicsBackend<smithay::backend::renderer::gles::GlesRenderer>,
->(
-    backend: &B,
+pub fn motion_event_from_winit(
     event: impl smithay::backend::input::AbsolutePositionEvent<smithay::backend::winit::WinitInput>,
+    size: smithay::utils::Size<i32, smithay::utils::Physical>,
 ) -> MotionEvent {
-    let size = backend.window_size();
     let x = event.x_transformed(size.w);
     let y = event.y_transformed(size.h);
     MotionEvent::Absolute {

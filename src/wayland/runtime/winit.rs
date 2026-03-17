@@ -107,7 +107,8 @@ pub fn run() -> ! {
                         handle_keyboard(&mut wm, state, &keyboard_handle, event);
                     }
                     InputEvent::PointerMotionAbsolute { event } => {
-                        let motion_event = motion_event_from_winit(&backend, event);
+                        let size = backend.window_size();
+                        let motion_event = motion_event_from_winit(event, size);
                         handle_pointer_motion(
                             &mut wm,
                             state,

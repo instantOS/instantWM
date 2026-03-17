@@ -162,6 +162,7 @@ pub fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -
                     w: drag.win_start_geo.w,
                     h: drag.win_start_geo.h,
                 },
+                true,
             );
         }
     } else {
@@ -190,6 +191,7 @@ pub fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -
                     w: new_w,
                     h: new_h,
                 },
+                true,
             );
         }
     }
