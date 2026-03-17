@@ -21,7 +21,6 @@ use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
 use crate::types::*;
-use x11rb::protocol::xproto::*;
 
 use super::cursor::set_cursor_resize_wayland;
 use super::monitor::handle_client_monitor_switch;

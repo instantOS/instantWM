@@ -6,7 +6,7 @@ use crate::client::constants::{
     SIZE_HINTS_P_RESIZE_INC,
 };
 use crate::contexts::CoreCtx;
-use crate::types::{Rect, WindowId};
+use crate::types::WindowId;
 use x11rb::protocol::xproto::AtomEnum;
 use x11rb::protocol::xproto::ConnectionExt;
 

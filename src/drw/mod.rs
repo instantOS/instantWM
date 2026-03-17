@@ -54,7 +54,7 @@ mod utf8;
 
 // Color / cursor types and scheme-index constants.
 #[allow(unused_imports)]
-pub use color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG, COL_LAST};
+pub use color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG};
 
 // Font linked-list type and its iterator.
 #[allow(unused_imports)]

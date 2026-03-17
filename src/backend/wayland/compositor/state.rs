@@ -3,24 +3,22 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 
 use smithay::utils::IsAlive;
-use smithay::wayland::seat::WaylandFocus;
 use smithay::{
     backend::allocator::Format,
     backend::drm::DrmNode,
     backend::egl::{EGLDevice, EGLDisplay},
     backend::renderer::gles::GlesRenderer,
-    desktop::{layer_map_for_output, PopupManager, Space, Window, WindowSurfaceType},
+    desktop::{PopupManager, Space, Window},
     input::{
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
         Seat, SeatState,
     },
-    output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
-    utils::{Logical, Physical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point},
     wayland::{
         compositor::CompositorState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
@@ -28,7 +26,7 @@ use smithay::{
         selection::data_device::DataDeviceState,
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, ToplevelSurface, XdgShellState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
         xdg_activation::XdgActivationState,
@@ -39,12 +37,11 @@ use smithay::{
 };
 
 use crate::globals::Globals;
-use crate::types::{Client as WmClient, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
-use super::KeyboardFocusTarget;
 
 // ---------------------------------------------------------------------------
 // Per-client state

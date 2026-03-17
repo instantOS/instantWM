@@ -1,6 +1,6 @@
 //! Moving clients between tags.
 
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 
 use crate::backend::BackendOps;

@@ -10,7 +10,6 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
-use crate::bar::{draw_bar, draw_bars_x11};
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
 use crate::globals::X11RuntimeConfig;

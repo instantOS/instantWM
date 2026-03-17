@@ -5,7 +5,6 @@ use crate::drw::{Cursor, Drw};
 use crate::monitor::MonitorManager;
 use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::*;
-use std::sync::atomic::AtomicBool;
 use x11rb::protocol::xproto::Window;
 
 #[derive(Clone, Copy)]
