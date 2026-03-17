@@ -232,8 +232,12 @@ pub fn update_num_lock_mask_x11(
                 } else {
                     0
                 };
+                // XK_Num_Lock keysym (X11 keysym 0xff7f) — used to detect
+                // which modifier bit corresponds to Num Lock so we can mask
+                // it out when matching keybindings.
                 if keysym == 0xff7f {
                     let mod_index = i / reply.keycodes_per_modifier() as usize;
+                    // X11 supports at most 8 modifier bits (Mod1–Mod5 + Shift/Control/Lock).
                     if mod_index < 8 {
                         new_numlockmask = 1 << mod_index;
                     }

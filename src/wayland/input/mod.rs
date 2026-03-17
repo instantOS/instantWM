@@ -315,6 +315,9 @@ fn dispatch_pointer_motion(
     .and_then(|mid| wm.g.monitor(mid))
     .map(|mon| {
         let bar_h = wm.g.cfg.bar_height.max(1);
+        // 4-pixel guard band below the bar: pointer must move this many pixels
+        // past the bar bottom before a window drag is allowed to start.  This
+        // prevents accidental drags when the user is clicking near the bar edge.
         let guard_h = 4;
         let drag_active =
             active_drag_window.is_some() || wm.g.drag.title.active || wm.g.drag.tag.active;

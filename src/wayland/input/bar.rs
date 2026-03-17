@@ -189,11 +189,23 @@ fn dispatch_wayland_bar_button(
     }
 }
 
+/// Linux evdev button codes (from `<linux/input-event-codes.h>`).
+///
+/// BTN_LEFT   = 0x110 — primary mouse button.
+/// BTN_RIGHT  = 0x111 — secondary mouse button.
+/// BTN_MIDDLE = 0x112 — middle / scroll-wheel click.
+///
+/// The WM uses 1-indexed button numbers matching the X11 convention so that
+/// the same button-binding table works on both backends.
+const BTN_LEFT: u32 = 0x110;
+const BTN_MIDDLE: u32 = 0x112;
+const BTN_RIGHT: u32 = 0x111;
+
 pub fn wayland_button_to_wm_button(code: u32) -> Option<u8> {
     match code {
-        0x110 => Some(1),
-        0x112 => Some(2),
-        0x111 => Some(3),
+        BTN_LEFT => Some(1),
+        BTN_MIDDLE => Some(2),
+        BTN_RIGHT => Some(3),
         _ => None,
     }
 }

@@ -160,7 +160,12 @@ pub fn init_wayland_globals(wm: &mut Wm) {
     let font_size = wayland_font_size_from_config(&cfg.fonts);
     let font_height = wayland_font_height_from_size(font_size);
     wm.bar_painter.set_font_size(font_size);
+    // CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL is the button's visual content;
+    // the +2 adds a 1-pixel padding on each side so the button is never flush
+    // against the bar edges.
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
+    // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
+    // rounded up) when the user has not explicitly set bar_height in config.
     wm.g.cfg.bar_height = (if cfg.bar_height > 0 {
         font_height + cfg.bar_height
     } else {
