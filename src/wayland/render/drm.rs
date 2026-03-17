@@ -36,6 +36,14 @@ pub use state::{
 
 pub mod cursor {
     //! Cursor loading and rendering for the standalone DRM/KMS backend.
+    //!
+    //! On the DRM backend the compositor must render the cursor itself (there is
+    //! no host compositor to delegate to).  `CursorManager` pre-loads xcursor
+    //! theme images for every `CursorIcon` variant at startup and converts them
+    //! to GPU textures so that `render_element` can composite the right cursor
+    //! into each frame.
+
+    use std::collections::HashMap;
 
     use smithay::backend::allocator::Fourcc;
     use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
@@ -56,83 +64,140 @@ pub mod cursor {
         hotspot_y: i32,
     }
 
+    /// Mapping from each `CursorIcon` variant to xcursor theme names to try
+    /// (in priority order, including legacy fallback names).
+    const CURSOR_TABLE: &[(CursorIcon, &[&str])] = &[
+        (CursorIcon::Default, &["left_ptr", "default", "arrow"]),
+        (CursorIcon::ContextMenu, &["context-menu"]),
+        (CursorIcon::Help, &["help", "question_arrow", "whats_this"]),
+        (CursorIcon::Pointer, &["pointer", "hand2", "hand1", "hand"]),
+        (
+            CursorIcon::Progress,
+            &["progress", "left_ptr_watch", "half-busy"],
+        ),
+        (CursorIcon::Wait, &["wait", "watch"]),
+        (CursorIcon::Cell, &["cell", "plus"]),
+        (CursorIcon::Crosshair, &["crosshair", "cross"]),
+        (CursorIcon::Text, &["text", "xterm", "ibeam"]),
+        (CursorIcon::VerticalText, &["vertical-text"]),
+        (CursorIcon::Alias, &["alias", "link"]),
+        (CursorIcon::Copy, &["copy", "dnd-copy"]),
+        (CursorIcon::Move, &["move", "fleur"]),
+        (CursorIcon::NoDrop, &["no-drop", "dnd-none"]),
+        (
+            CursorIcon::NotAllowed,
+            &["not-allowed", "crossed_circle", "forbidden"],
+        ),
+        (CursorIcon::Grab, &["grab", "openhand", "hand1"]),
+        (
+            CursorIcon::Grabbing,
+            &["grabbing", "closedhand", "fleur", "move"],
+        ),
+        (
+            CursorIcon::EResize,
+            &["e-resize", "right_side", "size_hor", "h_double_arrow"],
+        ),
+        (
+            CursorIcon::NResize,
+            &["n-resize", "top_side", "size_ver", "v_double_arrow"],
+        ),
+        (
+            CursorIcon::NeResize,
+            &[
+                "ne-resize",
+                "top_right_corner",
+                "size_bdiag",
+                "fd_double_arrow",
+            ],
+        ),
+        (
+            CursorIcon::NwResize,
+            &[
+                "nw-resize",
+                "top_left_corner",
+                "size_fdiag",
+                "bd_double_arrow",
+            ],
+        ),
+        (
+            CursorIcon::SResize,
+            &["s-resize", "bottom_side", "size_ver", "v_double_arrow"],
+        ),
+        (
+            CursorIcon::SeResize,
+            &[
+                "se-resize",
+                "bottom_right_corner",
+                "size_fdiag",
+                "bd_double_arrow",
+            ],
+        ),
+        (
+            CursorIcon::SwResize,
+            &[
+                "sw-resize",
+                "bottom_left_corner",
+                "size_bdiag",
+                "fd_double_arrow",
+            ],
+        ),
+        (
+            CursorIcon::WResize,
+            &["w-resize", "left_side", "size_hor", "h_double_arrow"],
+        ),
+        (
+            CursorIcon::EwResize,
+            &[
+                "ew-resize",
+                "size_hor",
+                "h_double_arrow",
+                "sb_h_double_arrow",
+            ],
+        ),
+        (
+            CursorIcon::NsResize,
+            &[
+                "ns-resize",
+                "size_ver",
+                "v_double_arrow",
+                "sb_v_double_arrow",
+            ],
+        ),
+        (
+            CursorIcon::NeswResize,
+            &["nesw-resize", "size_bdiag", "fd_double_arrow"],
+        ),
+        (
+            CursorIcon::NwseResize,
+            &["nwse-resize", "size_fdiag", "bd_double_arrow"],
+        ),
+        (CursorIcon::ColResize, &["col-resize", "sb_h_double_arrow"]),
+        (CursorIcon::RowResize, &["row-resize", "sb_v_double_arrow"]),
+        (CursorIcon::AllScroll, &["all-scroll", "fleur", "move"]),
+        (CursorIcon::ZoomIn, &["zoom-in"]),
+        (CursorIcon::ZoomOut, &["zoom-out"]),
+    ];
+
     /// Manages system cursor textures and decides what to render each frame.
     pub struct CursorManager {
+        cursors: HashMap<CursorIcon, CursorFrame>,
         default: CursorFrame,
-        move_cursor: Option<CursorFrame>,
-        resize_nw: Option<CursorFrame>,
-        resize_ne: Option<CursorFrame>,
-        resize_sw: Option<CursorFrame>,
-        resize_se: Option<CursorFrame>,
-        resize_n: Option<CursorFrame>,
-        resize_s: Option<CursorFrame>,
-        resize_e: Option<CursorFrame>,
-        resize_w: Option<CursorFrame>,
     }
 
     impl CursorManager {
         pub fn new(renderer: &mut GlesRenderer, theme: &str, size: u32) -> Self {
-            let default =
-                load_cursor_names(renderer, theme, size, &["left_ptr", "default", "arrow"])
-                    .unwrap_or_else(|| synthesise_fallback_cursor(renderer));
-
-            Self {
-                default,
-                move_cursor: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["grabbing", "fleur", "move"],
-                ),
-                resize_nw: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["nw-resize", "size_fdiag", "bd_double_arrow"],
-                ),
-                resize_ne: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["ne-resize", "size_bdiag", "fd_double_arrow"],
-                ),
-                resize_sw: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["sw-resize", "size_bdiag", "fd_double_arrow"],
-                ),
-                resize_se: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["se-resize", "size_fdiag", "bd_double_arrow"],
-                ),
-                resize_n: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["n-resize", "size_ver", "v_double_arrow"],
-                ),
-                resize_s: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["s-resize", "size_ver", "v_double_arrow"],
-                ),
-                resize_e: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["e-resize", "size_hor", "h_double_arrow"],
-                ),
-                resize_w: load_cursor_names(
-                    renderer,
-                    theme,
-                    size,
-                    &["w-resize", "size_hor", "h_double_arrow"],
-                ),
+            let mut cursors = HashMap::new();
+            for &(icon, names) in CURSOR_TABLE {
+                if let Some(frame) = load_cursor_names(renderer, theme, size, names) {
+                    cursors.insert(icon, frame);
+                }
             }
+
+            let default = cursors
+                .remove(&CursorIcon::Default)
+                .unwrap_or_else(|| synthesise_fallback_cursor(renderer));
+
+            Self { cursors, default }
         }
 
         pub fn render_element(
@@ -143,38 +208,16 @@ pub mod cursor {
             let frame = match presentation {
                 CursorPresentation::Hidden | CursorPresentation::Surface { .. } => return None,
                 CursorPresentation::Named(icon) => self.frame_for_icon(*icon),
+                CursorPresentation::DndIcon { cursor, .. } => {
+                    return self.render_element(pointer_location, cursor)
+                }
             };
 
             Some(frame_to_element(frame, pointer_location))
         }
 
         fn frame_for_icon(&self, icon: CursorIcon) -> &CursorFrame {
-            match icon {
-                CursorIcon::Grabbing | CursorIcon::AllScroll => {
-                    self.move_cursor.as_ref().unwrap_or(&self.default)
-                }
-                CursorIcon::NwResize | CursorIcon::SeResize | CursorIcon::NwseResize => self
-                    .resize_nw
-                    .as_ref()
-                    .or(self.resize_se.as_ref())
-                    .unwrap_or(&self.default),
-                CursorIcon::NeResize | CursorIcon::SwResize | CursorIcon::NeswResize => self
-                    .resize_ne
-                    .as_ref()
-                    .or(self.resize_sw.as_ref())
-                    .unwrap_or(&self.default),
-                CursorIcon::NResize | CursorIcon::SResize | CursorIcon::NsResize => self
-                    .resize_n
-                    .as_ref()
-                    .or(self.resize_s.as_ref())
-                    .unwrap_or(&self.default),
-                CursorIcon::EResize | CursorIcon::WResize | CursorIcon::EwResize => self
-                    .resize_e
-                    .as_ref()
-                    .or(self.resize_w.as_ref())
-                    .unwrap_or(&self.default),
-                _ => &self.default,
-            }
+            self.cursors.get(&icon).unwrap_or(&self.default)
         }
     }
 
@@ -621,8 +664,11 @@ pub fn render_drm_output(
         pointer_location.x - entry.x_offset as f64,
         pointer_location.y,
     ));
-    let cursor_presentation =
-        resolve_cursor_presentation(&state.cursor_image_status, state.cursor_icon_override);
+    let cursor_presentation = resolve_cursor_presentation(
+        &state.cursor_image_status,
+        state.cursor_icon_override,
+        state.dnd_icon.as_ref(),
+    );
 
     let cursor_elements: Vec<DrmExtras> = build_cursor_elements(
         renderer,
@@ -704,27 +750,64 @@ fn build_cursor_elements(
 ) -> Vec<DrmExtras> {
     let mut custom_elements = Vec::new();
 
-    if let CursorPresentation::Surface { surface, hotspot } = cursor_presentation {
-        let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-            (local_pointer.x - hotspot.x as f64).round() as i32,
-            (local_pointer.y - hotspot.y as f64).round() as i32,
-        ));
-        let cursor_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-            smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                renderer,
-                surface,
-                cursor_loc,
-                smithay::utils::Scale::from(1.0),
-                1.0,
-                smithay::backend::renderer::element::Kind::Cursor,
-            );
-        for elem in cursor_elements {
-            custom_elements.push(DrmExtras::Surface(elem));
+    match cursor_presentation {
+        CursorPresentation::Hidden => {}
+        CursorPresentation::Named(icon) => {
+            if let Some(cursor_elem) =
+                cursor_manager.render_element(local_pointer, cursor_presentation)
+            {
+                custom_elements.push(DrmExtras::Cursor(cursor_elem));
+            }
         }
-    }
+        CursorPresentation::Surface { surface, hotspot } => {
+            let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
+                (local_pointer.x - hotspot.x as f64).round() as i32,
+                (local_pointer.y - hotspot.y as f64).round() as i32,
+            ));
+            let cursor_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                    renderer,
+                    surface,
+                    cursor_loc,
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                    smithay::backend::renderer::element::Kind::Cursor,
+                );
+            for elem in cursor_elements {
+                custom_elements.push(DrmExtras::Surface(elem));
+            }
+        }
+        CursorPresentation::DndIcon {
+            icon,
+            hotspot,
+            cursor,
+        } => {
+            // Render the base cursor first
+            custom_elements.extend(build_cursor_elements(
+                renderer,
+                cursor_manager,
+                cursor,
+                local_pointer,
+            ));
 
-    if let Some(cursor_elem) = cursor_manager.render_element(local_pointer, cursor_presentation) {
-        custom_elements.push(DrmExtras::Cursor(cursor_elem));
+            // Then render the drag icon
+            let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
+                (local_pointer.x - hotspot.x as f64).round() as i32,
+                (local_pointer.y - hotspot.y as f64).round() as i32,
+            ));
+            let dnd_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                    renderer,
+                    icon,
+                    dnd_loc,
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                    smithay::backend::renderer::element::Kind::Cursor,
+                );
+            for elem in dnd_elements {
+                custom_elements.push(DrmExtras::Surface(elem));
+            }
+        }
     }
 
     custom_elements

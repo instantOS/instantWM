@@ -138,6 +138,9 @@ pub struct WaylandState {
 
     /// Channel to notify the DRM backend loop of keyboard LED state changes.
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
+
+    /// Current drag-and-drop icon surface.
+    pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,6 +240,7 @@ impl WaylandState {
             pending_screencopies: Vec::new(),
             pending_warp: None,
             led_state_tx: None,
+            dnd_icon: None,
         }
     }
 

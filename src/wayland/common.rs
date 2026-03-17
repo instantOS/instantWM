@@ -104,6 +104,11 @@ pub enum CursorPresentation {
         surface: WlSurface,
         hotspot: Point<i32, Logical>,
     },
+    DndIcon {
+        icon: WlSurface,
+        hotspot: Point<i32, Logical>,
+        cursor: Box<CursorPresentation>,
+    },
 }
 
 /// Resolve effective cursor state shared by nested and DRM backends.
@@ -112,28 +117,48 @@ pub enum CursorPresentation {
 pub fn resolve_cursor_presentation(
     status: &CursorImageStatus,
     icon_override: Option<CursorIcon>,
+    dnd_icon: Option<&WlSurface>,
 ) -> CursorPresentation {
-    if let Some(icon) = icon_override {
-        return CursorPresentation::Named(icon);
-    }
+    let base = if let Some(icon) = icon_override {
+        CursorPresentation::Named(icon)
+    } else {
+        match status {
+            CursorImageStatus::Hidden => CursorPresentation::Hidden,
+            CursorImageStatus::Named(icon) => CursorPresentation::Named(*icon),
+            CursorImageStatus::Surface(surface) => {
+                let hotspot = with_states(surface, |states| {
+                    states
+                        .data_map
+                        .get::<Mutex<CursorImageAttributes>>()
+                        .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
+                        .unwrap_or((0, 0).into())
+                });
+                CursorPresentation::Surface {
+                    surface: surface.clone(),
+                    hotspot,
+                }
+            }
+        }
+    };
 
-    match status {
-        CursorImageStatus::Hidden => CursorPresentation::Hidden,
-        CursorImageStatus::Named(icon) => CursorPresentation::Named(*icon),
-        CursorImageStatus::Surface(surface) => {
-            let hotspot = with_states(surface, |states| {
+    if let Some(icon) = dnd_icon {
+        if smithay::utils::IsAlive::alive(icon) {
+            let hotspot = with_states(icon, |states| {
                 states
                     .data_map
                     .get::<Mutex<CursorImageAttributes>>()
                     .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
                     .unwrap_or((0, 0).into())
             });
-            CursorPresentation::Surface {
-                surface: surface.clone(),
+            return CursorPresentation::DndIcon {
+                icon: icon.clone(),
                 hotspot,
-            }
+                cursor: Box::new(base),
+            };
         }
     }
+
+    base
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

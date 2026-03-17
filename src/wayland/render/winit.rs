@@ -32,7 +32,12 @@ pub fn render_frame(
     start_time: std::time::Instant,
 ) {
     // Backend-specific: apply cursor via window API
-    apply_cursor_image_status(backend, state);
+    let cursor_presentation = resolve_cursor_presentation(
+        &state.cursor_image_status,
+        state.cursor_icon_override,
+        state.dnd_icon.as_ref(),
+    );
+    apply_cursor_presentation_internal(backend, &cursor_presentation);
     state.tick_window_animations();
 
     // Backend-specific: get buffer age
@@ -64,6 +69,26 @@ pub fn render_frame(
         num_upper,
         render_elements
     );
+
+    // Backend-specific: Render DnD icon if present
+    if let CursorPresentation::DndIcon { icon, hotspot, .. } = cursor_presentation {
+        let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
+            (state.pointer.current_location().x - hotspot.x as f64).round() as i32,
+            (state.pointer.current_location().y - hotspot.y as f64).round() as i32,
+        ));
+        let dnd_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                renderer,
+                &icon,
+                dnd_loc,
+                smithay::utils::Scale::from(1.0),
+                1.0,
+                smithay::backend::renderer::element::Kind::Cursor,
+            );
+        for elem in dnd_elements {
+            render_elements.push(WaylandExtras::Surface(elem));
+        }
+    }
 
     // Backend-specific: render with damage tracker
     let render_result = damage_tracker
@@ -99,17 +124,23 @@ pub fn render_frame(
 }
 
 // Backend-specific: cursor handling via winit window API
-fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
-    match resolve_cursor_presentation(&state.cursor_image_status, state.cursor_icon_override) {
+fn apply_cursor_presentation_internal(
+    backend: &WinitGraphicsBackend<GlesRenderer>,
+    presentation: &CursorPresentation,
+) {
+    match presentation {
         CursorPresentation::Hidden => {
             backend.window().set_cursor_visible(false);
         }
         CursorPresentation::Named(icon) => {
             backend.window().set_cursor_visible(true);
-            backend.window().set_cursor(icon);
+            backend.window().set_cursor(*icon);
         }
         CursorPresentation::Surface { .. } => {
             backend.window().set_cursor_visible(true);
+        }
+        CursorPresentation::DndIcon { cursor, .. } => {
+            apply_cursor_presentation_internal(backend, cursor);
         }
     }
 }

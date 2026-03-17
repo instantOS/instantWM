@@ -122,7 +122,25 @@ impl DataDeviceHandler for WaylandState {
     }
 }
 
-impl ClientDndGrabHandler for WaylandState {}
+impl ClientDndGrabHandler for WaylandState {
+    fn started(
+        &mut self,
+        _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
+        icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+        _seat: smithay::input::Seat<Self>,
+    ) {
+        self.dnd_icon = icon;
+    }
+
+    fn dropped(
+        &mut self,
+        _icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+        _accepted: bool,
+        _seat: smithay::input::Seat<Self>,
+    ) {
+        self.dnd_icon = None;
+    }
+}
 impl ServerDndGrabHandler for WaylandState {
     fn send(
         &mut self,
