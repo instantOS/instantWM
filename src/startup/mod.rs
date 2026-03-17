@@ -1,4 +1,5 @@
 use clap::{Parser, ValueEnum};
+use std::env;
 pub mod autostart;
 mod locale;
 pub(crate) mod x11;
@@ -27,6 +28,14 @@ struct Cli {
 
 pub fn run() {
     let cli = Cli::parse();
+
+    // Set environment variables to identify instantWM
+    env::set_var("INSTANTWM", "1");
+    match cli.backend {
+        CliBackend::X11 => env::set_var("INSTANTWM_BACKEND", "x11"),
+        CliBackend::Nested => env::set_var("INSTANTWM_BACKEND", "wayland-nested"),
+        CliBackend::Drm => env::set_var("INSTANTWM_BACKEND", "wayland-drm"),
+    }
 
     if cli.print_config {
         let config = crate::config::config_toml::ThemeConfig::default();
