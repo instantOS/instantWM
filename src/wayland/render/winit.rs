@@ -57,7 +57,12 @@ pub fn render_frame(
     let mut render_elements = Vec::with_capacity(counts.total());
 
     // Shared: assemble elements in z-order
-    assemble_render_elements(scene, space_render_elements, num_upper, &mut render_elements);
+    assemble_render_elements(
+        scene,
+        space_render_elements,
+        num_upper,
+        &mut render_elements,
+    );
 
     // Backend-specific: render with damage tracker
     let render_result = damage_tracker

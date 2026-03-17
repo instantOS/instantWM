@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::floating::{change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating, SnapDir, unhide_one};
+use crate::floating::{
+    change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating, unhide_one,
+    SnapDir,
+};
 use crate::focus::{direction_focus, focus_stack};
 use crate::globals::X11RuntimeConfig;
 

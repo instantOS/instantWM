@@ -314,7 +314,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         // floating window until the user commits (clicks) or moves away.
         // This avoids the "nothing happens" feel when hovering onto a tiled
         // window while a floating window is selected.
-        if crate::mouse::floating_to_tiled_hover(&mut WmCtx::X11(ctx.reborrow())) {
+        if crate::mouse::floating_to_tiled_hover(ctx) {
             return;
         }
     }
@@ -325,7 +325,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     if is_floating_sel {
         // Case 1: Entering root while sel is floating
         if entering_root {
-            if crate::mouse::hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow())) {
+            if crate::mouse::hover_resize_mouse(ctx) {
                 return;
             }
             // Fall through to normal focus handling
@@ -333,7 +333,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         // Case 2: Entering a different client while sel is floating
         else if entering_client {
             if Some(event_win) != selected_window {
-                let resized = crate::mouse::hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow()));
+                let resized = crate::mouse::hover_resize_mouse(ctx);
                 if focusfollowsfloatmouse {
                     if resized {
                         return;
@@ -433,7 +433,8 @@ pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+    if let Some(_icon) =
+        crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
         crate::systray::update_systray(
             &mut ctx.core,
@@ -501,7 +502,12 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     };
 
     if root_y >= monitor_y + bar_height {
-        if crate::mouse::handle_floating_resize_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y, true) {
+        if crate::mouse::handle_floating_resize_hover(
+            &mut WmCtx::X11(ctx.reborrow()),
+            root_x,
+            root_y,
+            true,
+        ) {
             return;
         }
         if crate::mouse::handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
@@ -547,7 +553,8 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+    if let Some(_icon) =
+        crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
         crate::systray::update_systray(
             &mut ctx.core,
@@ -581,7 +588,8 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
 
 pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+    if let Some(_icon) =
+        crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
         crate::systray::update_systray(
             &mut ctx.core,

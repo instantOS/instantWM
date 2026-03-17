@@ -653,7 +653,12 @@ pub fn render_drm_output(
     }
 
     // Shared: assemble remaining elements in z-order
-    assemble_render_elements_drm(scene, space_render_elements, num_upper, &mut render_elements);
+    assemble_render_elements_drm(
+        scene,
+        space_render_elements,
+        num_upper,
+        &mut render_elements,
+    );
 
     let render_result = entry.damage_tracker.render_output(
         renderer,

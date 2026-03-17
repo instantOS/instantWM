@@ -7,10 +7,7 @@ pub fn run_autostart() {
     }
 
     // Check if ins exists, warn if not
-    let check = Command::new("command")
-        .arg("-v")
-        .arg("ins")
-        .output();
+    let check = Command::new("command").arg("-v").arg("ins").output();
 
     if let Ok(output) = check {
         if !output.status.success() {
@@ -23,10 +20,7 @@ pub fn run_autostart() {
     }
 
     // Run ins autostart in the background
-    match Command::new("ins")
-        .arg("autostart")
-        .spawn()
-    {
+    match Command::new("ins").arg("autostart").spawn() {
         Ok(_) => {}
         Err(e) => {
             eprintln!("instantwm: failed to run ins autostart: {}", e);
