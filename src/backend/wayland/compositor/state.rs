@@ -124,8 +124,6 @@ pub struct WaylandState {
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     pub(super) window_animations: HashMap<WindowId, WaylandWindowAnimation>,
-    /// Currently focused window for O(1) deactivate-old / activate-new.
-    pub(super) focused_window: Option<WindowId>,
     /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
 
@@ -235,7 +233,6 @@ impl WaylandState {
             last_configured_size: HashMap::new(),
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
-            focused_window: None,
             foreign_toplevel_handles: HashMap::new(),
             pending_screencopies: Vec::new(),
             pending_warp: None,

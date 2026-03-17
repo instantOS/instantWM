@@ -587,7 +587,7 @@ impl XdgShellHandler for WaylandState {
     fn popup_destroyed(&mut self, _surface: PopupSurface) {
         // When a popup is destroyed, restore focus to the previously focused window.
         // This handles rofi, dmenu, and other XDG popups.
-        if let Some(old_id) = self.focused_window {
+        if let Some(old_id) = self.focused_window() {
             if self.window_index.contains_key(&old_id) {
                 self.set_focus(old_id);
             } else {

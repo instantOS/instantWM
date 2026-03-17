@@ -112,7 +112,11 @@ impl WaylandBackend {
         });
     }
 
-    /// Return `true` when the Smithay seat's keyboard focus is on `window`.
+    /// Return `true` when the WM's selected window (mon.sel) is `window`.
+    ///
+    /// Note: This checks WM state, not the Smithay seat directly. In normal
+    /// operation they should be in sync, but this specifically answers
+    /// "does the WM think this window is focused?"
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.focused_window() == Some(window))
             .unwrap_or(false)
