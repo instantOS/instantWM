@@ -169,6 +169,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
     width + core.g.cfg.horizontal_padding
 }
 
+//TODO: X11 specific, move
 pub fn draw_bar(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
@@ -214,6 +215,8 @@ pub fn draw_bar(
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
+//TODO: is this a needed wrapper?
+//TODO: X11 specific, move
 pub fn draw_bars_x11(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
@@ -225,6 +228,7 @@ pub fn draw_bars_x11(
     }
 }
 
+//TODO: X11 specific, move
 pub fn reset_bar_x11(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,

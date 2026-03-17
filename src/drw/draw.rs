@@ -22,7 +22,7 @@ use x11rb::protocol::xproto::{Drawable, Point, Window};
 
 use std::cmp::min;
 
-use super::color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG};
+use super::color::{Color, Cursor};
 use super::ffi::{
     FcCharSetAddChar, FcCharSetCreate, FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute,
     FcInit, FcNameParse, FcPattern, FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy,
@@ -65,8 +65,8 @@ pub struct Drw {
     pub(super) drawable: Drawable,
     pub(super) gc: XlibGc,
 
-    /// Active color scheme (`[fg, bg, detail]` slots).
-    scheme: Option<Vec<Color>>,
+    /// Active color scheme.
+    scheme: Option<ColorScheme>,
 
     /// Loaded fontset (linked list, head node).
     pub fonts: Option<Box<Fnt>>,
@@ -311,11 +311,11 @@ impl Drw {
 impl Drw {
     /// Replace the active color scheme.
     pub fn set_scheme(&mut self, scheme: ColorScheme) {
-        self.scheme = Some(scheme.as_vec());
+        self.scheme = Some(scheme);
     }
 
-    /// Read-only access to the active color scheme slice, if one is set.
-    pub fn get_scheme(&self) -> Option<&Vec<Color>> {
+    /// Read-only access to the active color scheme, if one is set.
+    pub fn get_scheme(&self) -> Option<&ColorScheme> {
         self.scheme.as_ref()
     }
 
@@ -392,22 +392,18 @@ impl Drw {
 
     /// Allocate a color scheme from a slice of color name strings.
     ///
-    /// If fewer than 3 names are provided, the last color is duplicated to
-    /// fill the `[fg, bg, detail]` triplet.
-    pub fn scm_create(&self, clrnames: &[&str]) -> Result<Vec<Color>, String> {
-        if clrnames.is_empty() {
-            return Err("need at least one color for a scheme".to_string());
+    /// Requires exactly 3 colors: foreground, background, detail.
+    pub fn scm_create(&self, clrnames: &[&str]) -> Result<ColorScheme, String> {
+        if clrnames.len() != 3 {
+            return Err(format!(
+                "scm_create requires exactly 3 colors (fg, bg, detail), got {}",
+                clrnames.len()
+            ));
         }
-        let mut colors: Vec<Color> = clrnames
-            .iter()
-            .map(|name| self.clr_create(name))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        while colors.len() < 3 {
-            colors.push(colors.last().unwrap().clone());
-        }
-
-        Ok(colors)
+        let fg = self.clr_create(clrnames[0])?;
+        let bg = self.clr_create(clrnames[1])?;
+        let detail = self.clr_create(clrnames[2])?;
+        Ok(ColorScheme { fg, bg, detail })
     }
 }
 
@@ -598,9 +594,9 @@ impl Drw {
         };
 
         let pixel = if invert {
-            scheme[COL_BG].pixel()
+            scheme.bg.pixel()
         } else {
-            scheme[COL_FG].pixel()
+            scheme.fg.pixel()
         };
 
         unsafe {
@@ -634,9 +630,9 @@ impl Drw {
         };
 
         let pixel = if invert {
-            scheme[COL_BG].pixel()
+            scheme.bg.pixel()
         } else {
-            scheme[COL_FG].pixel()
+            scheme.fg.pixel()
         };
 
         let (aw, ah) = if filled {
@@ -701,7 +697,7 @@ impl Drw {
         };
 
         unsafe {
-            XSetForeground(self.display, self.gc, scheme[COL_BG].pixel() as c_ulong);
+            XSetForeground(self.display, self.gc, scheme.bg.pixel() as c_ulong);
             let mut pts = [
                 Point { x: origin_x, y },
                 Point {
@@ -851,12 +847,12 @@ impl Drw {
             let Some(ref scheme) = self.scheme else {
                 return 0;
             };
-            fg_pixel = scheme[COL_FG].pixel();
-            bg_pixel = scheme[COL_BG].pixel();
-            detail_pixel = scheme[COL_DETAIL].pixel();
+            fg_pixel = scheme.fg.pixel();
+            bg_pixel = scheme.bg.pixel();
+            detail_pixel = scheme.detail.pixel();
             (
-                Some(scheme[COL_FG].color.clone()),
-                Some(scheme[COL_BG].color.clone()),
+                Some(scheme.fg.color.clone()),
+                Some(scheme.bg.color.clone()),
             )
         } else {
             (None, None)

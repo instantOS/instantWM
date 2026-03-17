@@ -144,6 +144,17 @@ impl ColorScheme {
         Self { fg, bg, detail }
     }
 
+    /// Create a color scheme from a single color (replicated to fg, bg, detail).
+    ///
+    /// Useful for things like borders that only need one color.
+    pub fn from_single(color: Color) -> Self {
+        Self {
+            fg: color.clone(),
+            bg: color.clone(),
+            detail: color,
+        }
+    }
+
     /// Create a color scheme from a vector of colors.
     ///
     /// Returns `None` if the vector has fewer than 3 elements.

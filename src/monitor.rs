@@ -118,6 +118,7 @@ impl MonitorManager {
         }
     }
 
+    //TODO: what is happening here? Is this X11 only? Why are we passing an optional X11 backend?
     pub fn win_to_mon(
         &self,
         w: WindowId,
@@ -495,6 +496,9 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     true
 }
 
+//TODO: this should take an X11 ctx instead of being a no-op on wayland, that way
+//it is only called on wayland (compile time safety). If this is called outside a ctx match arm
+//then that is the fundamental problem
 fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     let conn = match ctx {
         WmCtx::X11(x11) => x11.x11.conn,
@@ -605,6 +609,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     Some(dirty)
 }
 
+//TODO: X11 specific, move
 fn get_root_ptr_with_conn_and_root(
     conn: &x11rb::rust_connection::RustConnection,
     root: Window,

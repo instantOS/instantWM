@@ -273,34 +273,31 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
     let statusbarcolors = wm.g.cfg.statusbarcolors;
 
     let normal = drw
-        .scm_create(&[&rgba_to_hex(bordercolors.normal)])
+        .clr_create(&rgba_to_hex(bordercolors.normal))
         .expect("Failed to create normal border color");
     let tile = drw
-        .scm_create(&[&rgba_to_hex(bordercolors.tile_focus)])
+        .clr_create(&rgba_to_hex(bordercolors.tile_focus))
         .expect("Failed to create tile focus border color");
     let float = drw
-        .scm_create(&[&rgba_to_hex(bordercolors.float_focus)])
+        .clr_create(&rgba_to_hex(bordercolors.float_focus))
         .expect("Failed to create float focus border color");
     let snap = drw
-        .scm_create(&[&rgba_to_hex(bordercolors.snap)])
+        .clr_create(&rgba_to_hex(bordercolors.snap))
         .expect("Failed to create snap border color");
 
     wm.x11_runtime.borderscheme = BorderScheme {
-        normal: ColorScheme::from_vec(normal).expect("Failed to build normal border scheme"),
-        tile_focus: ColorScheme::from_vec(tile).expect("Failed to build tile focus border scheme"),
-        float_focus: ColorScheme::from_vec(float)
-            .expect("Failed to build float focus border scheme"),
-        snap: ColorScheme::from_vec(snap).expect("Failed to build snap border scheme"),
+        normal: ColorScheme::from_single(normal),
+        tile_focus: ColorScheme::from_single(tile),
+        float_focus: ColorScheme::from_single(float),
+        snap: ColorScheme::from_single(snap),
     };
 
-    let status_clr = drw
+    let status = drw
         .scm_create(&[
             &rgba_to_hex(statusbarcolors.fg),
             &rgba_to_hex(statusbarcolors.bg),
             &rgba_to_hex(statusbarcolors.detail),
         ])
         .expect("Failed to create status bar colors");
-    let status_cs =
-        ColorScheme::from_vec(status_clr).expect("Failed to build status bar color scheme");
-    wm.x11_runtime.statusscheme = StatusScheme::new(status_cs.fg, status_cs.bg, status_cs.detail);
+    wm.x11_runtime.statusscheme = StatusScheme::new(status.fg, status.bg, status.detail);
 }
