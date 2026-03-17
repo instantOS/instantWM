@@ -38,7 +38,7 @@ pub fn run() {
 
     let mut wm = Wm::new(WmBackend::X11(X11Backend::new(conn, screen_num)));
     wm_init(&mut wm);
-    crate::events::setup(&mut wm);
+    crate::backend::x11::events::setup(&mut wm);
     {
         let ctx = wm.ctx();
         if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
@@ -54,7 +54,7 @@ pub fn run() {
         crate::bar::status::spawn_default_status();
     }
 
-    crate::events::run(&mut wm, &mut ipc_server);
+    crate::backend::x11::events::run(&mut wm, &mut ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);
 }
 
@@ -69,7 +69,7 @@ fn wm_init(wm: &mut Wm) {
         let screen = x11.conn.setup().roots[screen_num].clone();
         let root = screen.root;
         let conn = &x11.conn;
-        crate::events::check_other_wm(conn, root);
+        crate::backend::x11::events::check_other_wm(conn, root);
         (screen_num, screen, root)
     };
 
@@ -85,7 +85,7 @@ fn wm_init(wm: &mut Wm) {
     init_drw_and_schemes(wm);
 
     // Select events and initialise EWMH bits that depend on atoms + config.
-    crate::events::setup_root(wm);
+    crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
     {

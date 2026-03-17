@@ -7,7 +7,6 @@ pub mod config;
 mod constants;
 mod contexts;
 mod drw;
-mod events;
 mod floating;
 mod focus;
 mod globals;

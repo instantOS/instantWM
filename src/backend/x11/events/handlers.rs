@@ -1,40 +1,20 @@
-use crate::backend::x11::events::{get_win_geometry, is_override_redirect};
-use crate::backend::x11::lifecycle::{manage, unmanage};
-use crate::backend::BackendOps;
-use crate::backend::BackendRef;
-use crate::bar::bar_position_to_gesture;
-use crate::bar::status::emit_i3bar_status_click;
-use crate::bar::{draw_bar, draw_bars_x11, reset_bar_x11};
-use crate::client::{
-    configure_x11, set_client_state, set_fullscreen_x11, update_title_x11, update_wm_hints,
-    WM_STATE_WITHDRAWN,
-};
+use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
+use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
+use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
+use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
+use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
+use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::ipc::IpcServer;
-use crate::keyboard::{grab_keys_x11, key_press_x11, key_release_x11};
-use crate::layouts::{arrange, restack};
-use crate::monitor::update_geom;
-use crate::mouse::{
-    handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse, reset_cursor_x11,
-    resize_mouse_directional,
+use crate::types::{
+    AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
 };
-use crate::systray;
-use crate::tags::get_tag_width;
-use crate::types::*;
-use crate::util::clean_mask;
 use crate::wm::Wm;
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 use x11rb::CURRENT_TIME;
 
-pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
-
-pub const XEMBED_EMBEDDED_NOTIFY: u32 = 0;
-pub const XEMBED_FOCUS_IN: u32 = 4;
-pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
-pub const XEMBED_MODALITY_ON: u32 = 10;
-pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
+use super::get_win_geometry;
+use super::is_override_redirect;
+use super::setup::SYSTEM_TRAY_REQUEST_DOCK;
 
 fn send_xembed_event(
     ctx: &mut WmCtxX11<'_>,
@@ -61,7 +41,7 @@ fn send_xembed_event(
     );
 }
 
-fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
+pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
     let conn = ctx.x11.conn;
@@ -101,7 +81,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
             if let Some(monitor_id) = ctx.core.g.clients.monitor_id(event_win) {
-                restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+                crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
     } else if let Some(mon) = ctx.core.g.monitor(selmon_id) {
@@ -110,7 +90,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             let position = mon.bar_position_at_x(&ctx.core, local_x);
             let monitor_id = mon.id();
             if position == BarPosition::StartMenu {
-                reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+                crate::bar::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
 
             if position == BarPosition::StatusText {
@@ -125,14 +105,14 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                     .monitor_hit_cache(monitor_id)
                     .map(|h| h.status_click_targets.as_slice())
                     .unwrap_or(&[]);
-                emit_i3bar_status_click(
+                crate::bar::status::emit_i3bar_status_click(
                     &parsed,
                     click_targets,
                     local_x,
                     e.event_y as i32,
                     e.detail,
                     ctx.core.g.cfg.bar_height,
-                    clean_mask(e.state.into(), numlockmask),
+                    crate::util::clean_mask(e.state.into(), numlockmask),
                 );
             }
 
@@ -159,7 +139,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 let has_tiling = mon.is_tiling_layout();
                 if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
                     let dir = ctx.core.g.drag.resize_direction;
-                    reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
+                    crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     let mut x11_ctx = ctx.reborrow();
                     if btn == MouseButton::Right {
@@ -168,7 +148,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                         if dir == Some(crate::types::ResizeDirection::Top) {
                             crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
                         } else {
-                            resize_mouse_directional(&mut x11_ctx, dir, btn);
+                            crate::mouse::resize_mouse_directional(&mut x11_ctx, dir, btn);
                         }
                     }
                     return;
@@ -177,13 +157,13 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         }
     };
 
-    let clean_state = clean_mask(e.state.into(), numlockmask);
+    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
 
     for button in &buttons_clone {
         if !button.matches(bar_pos) || button.button.as_u8() != e.detail {
             continue;
         }
-        if clean_mask(button.mask, numlockmask) != clean_state {
+        if crate::util::clean_mask(button.mask, numlockmask) != clean_state {
             continue;
         }
         let arg = ButtonArg {
@@ -235,15 +215,15 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.g.cfg.screen_width = e.width as i32;
     ctx.core.g.cfg.screen_height = e.height as i32;
 
-    update_geom(&mut WmCtx::X11(ctx.reborrow()));
+    crate::monitor::update_geom(&mut WmCtx::X11(ctx.reborrow()));
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-    arrange(&mut WmCtx::X11(ctx.reborrow()), None);
+    crate::layouts::arrange(&mut WmCtx::X11(ctx.reborrow()), None);
 }
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
     if ctx.core.g.clients.contains_key(&event_win) {
-        configure_x11(&mut ctx.core, &ctx.x11, event_win);
+        crate::client::configure_x11(&mut ctx.core, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -267,12 +247,12 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
     } else if let Some(icon) =
-        systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+        crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
         // Remove the icon from the systray list and client map, then resize
         // the bar and redraw the systray — matching the C code's sequence of
         // removesystrayicon(c) → resizebar_win(selmon) → updatesystray().
-        systray::remove_systray_icon(&mut ctx.core, ctx.systray.as_deref_mut(), icon);
+        crate::systray::remove_systray_icon(&mut ctx.core, ctx.systray.as_deref_mut(), icon);
         // Get monitor reference for resize_bar_win
         let selmon_idx = ctx.core.g.selected_monitor_id();
         if let Some(mon) = ctx.core.g.monitor(selmon_idx).cloned() {
@@ -284,7 +264,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
                 &mon,
             );
         }
-        systray::update_systray(
+        crate::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -344,7 +324,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     if is_floating_sel {
         // Case 1: Entering root while sel is floating
         if entering_root {
-            if hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow())) {
+            if crate::mouse::hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow())) {
                 return;
             }
             // Fall through to normal focus handling
@@ -352,7 +332,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         // Case 2: Entering a different client while sel is floating
         else if entering_client {
             if Some(event_win) != selected_window {
-                let resized = hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow()));
+                let resized = crate::mouse::hover_resize_mouse(&mut WmCtx::X11(ctx.reborrow()));
                 if focusfollowsfloatmouse {
                     if resized {
                         return;
@@ -430,7 +410,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
             .get(monitor_id)
             .is_some_and(|m| event_win == m.bar_win);
         if is_bar_win {
-            draw_bar(
+            crate::bar::draw_bar(
                 &mut ctx.core,
                 ctx.x11_runtime,
                 ctx.systray.as_deref(),
@@ -447,14 +427,14 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+    crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+    if let Some(_icon) = crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
-        systray::update_systray(
+        crate::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -468,7 +448,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     {
         let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, event_win);
         let mut tmp = ctx.reborrow();
-        manage(&mut tmp, event_win, geo, border_width);
+        crate::backend::x11::lifecycle::manage(&mut tmp, event_win, geo, border_width);
     };
 }
 
@@ -483,7 +463,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             && root_y >= selmon.bar_y
             && root_y < selmon.bar_y + ctx.core.g.cfg.bar_height;
         if !in_bar && selmon.gesture != Gesture::None {
-            reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+            crate::bar::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
         }
         return;
     }
@@ -520,21 +500,21 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     };
 
     if root_y >= monitor_y + bar_height {
-        if handle_floating_resize_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y, true) {
+        if crate::mouse::handle_floating_resize_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y, true) {
             return;
         }
-        if handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
+        if crate::mouse::handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
             return;
         }
-        reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+        crate::bar::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
         if ctx.core.g.behavior.cursor_icon == AltCursor::Sidebar {
-            reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
+            crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
         }
         return;
     };
 
     // Cache tag-strip width only when we are actually in the bar hot path.
-    ctx.core.g.tags.width = get_tag_width(&ctx.core);
+    ctx.core.g.tags.width = crate::tags::get_tag_width(&ctx.core);
 
     // Compute the bar position from the cursor's monitor-local x coordinate,
     // then convert to a gesture for hover highlighting.
@@ -546,16 +526,16 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             // The status-text and root areas don't produce a hover gesture —
             // reset the bar and bail out so we don't light up anything.
             BarPosition::StatusText | BarPosition::Root => {
-                reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+                crate::bar::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
                 return;
             }
-            other => bar_position_to_gesture(other),
+            other => crate::bar::bar_position_to_gesture(other),
         }
     };
 
     if new_gesture != current_gesture {
         ctx.core.g.selected_monitor_mut().gesture = new_gesture;
-        draw_bar(
+        crate::bar::draw_bar(
             &mut ctx.core,
             ctx.x11_runtime,
             ctx.systray.as_deref(),
@@ -566,9 +546,9 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+    if let Some(_icon) = crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
-        systray::update_systray(
+        crate::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -585,24 +565,24 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
-                update_wm_hints(ctx, event_win);
-                draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+                crate::client::update_wm_hints(ctx, event_win);
+                crate::bar::draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
             }
             _ => {}
         }
 
         let net_wm_name = ctx.x11_runtime.netatom.wm_name;
         if e.atom == u32::from(AtomEnum::WM_NAME) || e.atom == net_wm_name {
-            update_title_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, event_win);
+            crate::client::update_title_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, event_win);
         }
     };
 }
 
 pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+    if let Some(_icon) = crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
-        systray::update_systray(
+        crate::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -615,22 +595,22 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if ctx.core.g.clients.contains_key(&event_win) {
         if e.response_type & 0x80 != 0 {
-            set_client_state(
+            crate::client::set_client_state(
                 &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
                 event_win,
-                WM_STATE_WITHDRAWN,
+                crate::client::WM_STATE_WITHDRAWN,
             );
         } else {
             let mut tmp = ctx.reborrow();
             unmanage(&mut tmp, event_win, false);
         }
     } else if let Some(_icon) =
-        systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
+        crate::systray::win_to_systray_icon(&ctx.core, ctx.systray.as_deref(), event_win)
     {
         // Systray icons sometimes unmap without destroying; re-map them.
-        systray::update_systray(
+        crate::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
@@ -640,7 +620,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
-    reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+    crate::bar::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
@@ -706,7 +686,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     };
 
     crate::backend::x11::update_size_hints_x11(&mut ctx.core, &ctx.x11, icon_win);
-    systray::update_systray_icon_geom(&mut ctx.core, &ctx.x11, icon_win, geo.w, geo.h);
+    crate::systray::update_systray_icon_geom(&mut ctx.core, &ctx.x11, icon_win, geo.w, geo.h);
 
     let conn = ctx.x11.conn;
     let x11_icon_win: Window = icon_win.into();
@@ -773,13 +753,13 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         );
     };
 
-    systray::update_systray(
+    crate::systray::update_systray(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
         ctx.systray.as_deref_mut(),
     );
-    set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
+    crate::client::set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
 }
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
@@ -787,9 +767,9 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
     let fullscreen_action = data[0];
 
     if fullscreen_action == 1 {
-        set_fullscreen_x11(ctx, win, true);
+        crate::client::set_fullscreen_x11(ctx, win, true);
     } else if fullscreen_action == 0 {
-        set_fullscreen_x11(ctx, win, false);
+        crate::client::set_fullscreen_x11(ctx, win, false);
     };
 }
 
@@ -802,224 +782,6 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if let Some(c) = ctx.core.client(win) {
         let monitor_id = c.monitor_id;
         crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
-        restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+        crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     };
-}
-
-pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
-    use std::os::unix::io::AsRawFd;
-
-    // Pre-fetch the X11 connection file descriptor for poll(2).
-    let x11_fd = wm
-        .backend
-        .x11()
-        .map(|x11| x11.conn.stream().as_raw_fd())
-        .unwrap_or(-1);
-    let ipc_fd = ipc_server.as_ref().map(|s| s.as_raw_fd()).unwrap_or(-1);
-
-    while wm.running {
-        // ── 1. Drain all pending X11 events ─────────────────────────────
-        let mut handled = false;
-        loop {
-            let event = wm
-                .backend
-                .x11()
-                .and_then(|x11| x11.conn.poll_for_event().ok())
-                .flatten();
-            match event {
-                Some(event) => {
-                    dispatch_event(wm, event);
-                    handled = true;
-                }
-                None => break,
-            }
-        }
-
-        // ── 2. Process any pending IPC commands ─────────────────────────
-        if let Some(server) = ipc_server.as_mut() {
-            server.process_pending(wm);
-        }
-
-        if wm.g.dirty.monitor_config {
-            let mut ctx = wm.ctx();
-            crate::monitor::apply_monitor_config(&mut ctx);
-        }
-
-        // ── 3. Wait for new data on X11 fd and/or IPC fd ────────────────
-        // Skip the wait when we just handled events — there may be more
-        // events that arrived while we were dispatching.
-        if !handled {
-            BackendRef::from_backend(&wm.backend).flush();
-
-            let mut fds = [
-                libc::pollfd {
-                    fd: x11_fd,
-                    events: libc::POLLIN,
-                    revents: 0,
-                },
-                libc::pollfd {
-                    fd: ipc_fd,
-                    events: libc::POLLIN,
-                    revents: 0,
-                },
-            ];
-            let nfds = if ipc_fd >= 0 { 2 } else { 1 };
-            // Block until data arrives (or 100ms timeout as safety net).
-            unsafe {
-                libc::poll(fds.as_mut_ptr(), nfds as libc::nfds_t, 100);
-            }
-        }
-    }
-}
-
-fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
-    let ctx = wm.ctx();
-    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
-        return;
-    };
-
-    match event {
-        x11rb::protocol::Event::ButtonPress(e) => button_press_x11(&mut ctx, &e),
-        x11rb::protocol::Event::ClientMessage(e) => client_message(&mut ctx, &e),
-        x11rb::protocol::Event::ConfigureNotify(e) => configure_notify(&mut ctx, &e),
-        x11rb::protocol::Event::ConfigureRequest(e) => configure_request(&mut ctx, &e),
-        x11rb::protocol::Event::CreateNotify(e) => create_notify(&e),
-        x11rb::protocol::Event::DestroyNotify(e) => destroy_notify(&mut ctx, &e),
-        x11rb::protocol::Event::EnterNotify(e) => enter_notify(&mut ctx, &e),
-        x11rb::protocol::Event::Expose(e) => expose(&mut ctx, &e),
-        x11rb::protocol::Event::FocusIn(e) => focus_in(&mut ctx, &e),
-        x11rb::protocol::Event::KeyPress(e) => key_press_x11(&mut ctx, &e),
-        x11rb::protocol::Event::KeyRelease(e) => key_release_x11(&mut ctx, &e),
-        x11rb::protocol::Event::MappingNotify(e) => mapping_notify(&mut ctx, &e),
-        x11rb::protocol::Event::MapRequest(e) => map_request(&mut ctx, &e),
-        x11rb::protocol::Event::MotionNotify(e) => motion_notify(&mut ctx, &e),
-        x11rb::protocol::Event::PropertyNotify(e) => property_notify(&mut ctx, &e),
-        x11rb::protocol::Event::ResizeRequest(e) => resize_request(&mut ctx, &e),
-        x11rb::protocol::Event::UnmapNotify(e) => unmap_notify(&mut ctx, &e),
-        x11rb::protocol::Event::LeaveNotify(e) => leave_notify(&mut ctx, &e),
-        _ => {}
-    };
-}
-
-pub fn check_other_wm(conn: &x11rb::rust_connection::RustConnection, root: Window) {
-    let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-    let result =
-        conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
-
-    if result.is_err() || conn.flush().is_err() {
-        panic!("instantwm: another window manager is already running");
-    }
-}
-
-pub fn setup(_wm: &mut Wm) {}
-
-pub fn setup_root(wm: &mut Wm) {
-    let Some(x11) = wm.backend.x11() else {
-        return;
-    };
-    let conn = &x11.conn;
-    let root = wm.x11_runtime.root;
-    let mask = EventMask::SUBSTRUCTURE_REDIRECT
-        | EventMask::SUBSTRUCTURE_NOTIFY
-        | EventMask::BUTTON_PRESS
-        | EventMask::POINTER_MOTION
-        | EventMask::ENTER_WINDOW
-        | EventMask::LEAVE_WINDOW
-        | EventMask::STRUCTURE_NOTIFY
-        | EventMask::PROPERTY_CHANGE
-        | EventMask::KEY_PRESS
-        | EventMask::KEY_RELEASE;
-
-    let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
-    let _ = conn.flush();
-
-    // Create the EWMH supporting WM check window.
-    let wmcheckwin = conn.generate_id().unwrap_or(0);
-    let _ = conn.create_window(
-        0, // depth: CopyFromParent
-        wmcheckwin,
-        root,
-        0,
-        0,
-        1,
-        1,
-        0, // x, y, w, h, border_width
-        WindowClass::INPUT_OUTPUT,
-        0, // visual: CopyFromParent
-        &CreateWindowAux::new(),
-    );
-    wm.x11_runtime.wmcheckwin = wmcheckwin;
-
-    // Set _NET_SUPPORTING_WM_CHECK on the check window itself.
-    let wm_check_atom = wm.x11_runtime.netatom.wm_check;
-    let _ = conn.change_property32(
-        PropMode::REPLACE,
-        wmcheckwin,
-        wm_check_atom,
-        AtomEnum::WINDOW,
-        &[wmcheckwin],
-    );
-
-    // Set _NET_WM_NAME on the check window.
-    let wm_name_atom = wm.x11_runtime.netatom.wm_name;
-    let utf8_atom = conn
-        .intern_atom(false, b"UTF8_STRING")
-        .ok()
-        .and_then(|c| c.reply().ok())
-        .map(|r| r.atom)
-        .unwrap_or(AtomEnum::STRING.into());
-    let _ = conn.change_property8(
-        PropMode::REPLACE,
-        wmcheckwin,
-        wm_name_atom,
-        utf8_atom,
-        b"instantwm",
-    );
-
-    // Set _NET_SUPPORTING_WM_CHECK on the root window.
-    let _ = conn.change_property32(
-        PropMode::REPLACE,
-        root,
-        wm_check_atom,
-        AtomEnum::WINDOW,
-        &[wmcheckwin],
-    );
-
-    // Advertise _NET_SUPPORTED atoms on the root window.
-    let netatom = &wm.x11_runtime.netatom;
-    let supported_atoms: Vec<u32> = vec![
-        netatom.active_window,
-        netatom.supported,
-        netatom.system_tray,
-        netatom.system_tray_op,
-        netatom.system_tray_orientation,
-        netatom.system_tray_orientation_horz,
-        netatom.wm_name,
-        netatom.wm_state,
-        netatom.wm_check,
-        netatom.wm_fullscreen,
-        netatom.wm_window_type,
-        netatom.wm_window_type_dialog,
-        netatom.client_list,
-        netatom.client_info,
-    ];
-    let _ = conn.change_property32(
-        PropMode::REPLACE,
-        root,
-        netatom.supported,
-        AtomEnum::ATOM,
-        &supported_atoms,
-    );
-
-    // Clear stale client list and client info.
-    let _ = conn.delete_property(root, netatom.client_list);
-    let _ = conn.delete_property(root, netatom.client_info);
-    let _ = conn.flush();
-
-    let mut ctx = wm.ctx();
-    update_geom(&mut ctx);
-
-    if let WmCtx::X11(mut x11_ctx) = ctx {
-        crate::mouse::set_cursor_default_x11(&mut x11_ctx);
-    }
 }

@@ -135,3 +135,27 @@ pub fn scan(ctx: &mut WmCtxX11<'_>) {
         manage(&mut tmp, win, geo, border_width);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Re-exports from submodules
+// ---------------------------------------------------------------------------
+
+pub mod handlers;
+pub mod loop_fn;
+pub mod setup;
+
+pub use handlers::*;
+pub use loop_fn::{dispatch_event, run};
+pub use setup::{check_other_wm, setup, setup_root};
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
+
+pub const XEMBED_EMBEDDED_NOTIFY: u32 = 0;
+pub const XEMBED_FOCUS_IN: u32 = 4;
+pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
+pub const XEMBED_MODALITY_ON: u32 = 10;
+pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
