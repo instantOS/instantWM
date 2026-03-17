@@ -35,10 +35,12 @@ use self::input::{
 use self::render::render_frame;
 use super::autostart::run_autostart;
 use crate::startup::common_wayland::{
-    init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window, spawn_xwayland,
+    ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
+    spawn_xwayland,
 };
 
 pub fn run() -> ! {
+    ensure_dbus_session();
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     init_wayland_globals(&mut wm);
 

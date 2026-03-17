@@ -197,6 +197,32 @@ pub fn apply_wayland_session_env(socket_name: &str) {
     std::env::set_var("CLUTTER_BACKEND", "wayland");
 }
 
+pub fn ensure_dbus_session() {
+    if std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok() {
+        return;
+    }
+
+    let Ok(output) = Command::new("dbus-daemon")
+        .arg("--session")
+        .arg("--fork")
+        .arg("--print-address=1")
+        .arg("--nopidfile")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+    else {
+        log::warn!("dbus-daemon not found, D-Bus session bus unavailable");
+        return;
+    };
+
+    let addr = String::from_utf8_lossy(&output.stdout);
+    let addr = addr.trim();
+    if !addr.is_empty() {
+        std::env::set_var("DBUS_SESSION_BUS_ADDRESS", addr);
+        log::info!("Started D-Bus session bus: {addr}");
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Wayland socket
 // ─────────────────────────────────────────────────────────────────────────────

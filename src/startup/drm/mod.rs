@@ -31,7 +31,8 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 use crate::startup::common_wayland::{
-    init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window, spawn_xwayland,
+    ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
+    spawn_xwayland,
 };
 use crate::startup::wayland::cursor::CursorManager;
 use crate::wm::Wm;
@@ -51,6 +52,7 @@ use crate::startup::wayland::input::apply_pending_warp;
 // Hours spent on this: ~3h
 pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
+    ensure_dbus_session();
 
     let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
     init_wayland_globals(&mut wm);
