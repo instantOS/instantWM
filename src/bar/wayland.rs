@@ -509,7 +509,7 @@ pub fn render_bar_buffers(
 
     // Cache the systray width so status bar layout can account for it.
     core.g.bar_runtime.systray_width =
-        crate::wayland_systray::get_wayland_systray_width_with_state(core, wayland_systray);
+        crate::systray::wayland::get_wayland_systray_width_with_state(core, wayland_systray);
 
     let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
         .g
@@ -533,7 +533,7 @@ pub fn render_bar_buffers(
         crate::bar::renderer::draw_bar(core, mon_idx, painter);
         if core.g.cfg.show_systray {
             if let Some(mon) = core.g.monitor(mon_idx).cloned() {
-                crate::wayland_systray::draw_wayland_systray(
+                crate::systray::wayland::draw_wayland_systray(
                     core,
                     wayland_systray,
                     wayland_systray_menu,

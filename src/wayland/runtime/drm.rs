@@ -102,7 +102,7 @@ pub fn run() -> ! {
 
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
-    wm.wayland_systray_runtime = crate::wayland_systray::WaylandSystrayRuntime::start();
+    wm.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
 
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());

@@ -9,12 +9,15 @@
 //! - XWayland spawn + wiring (`spawn_xwayland`)
 //! - Bar render-element building (`build_bar_elements`)
 //! - Frame callback dispatch (`send_frame_callbacks`)
+//! - Render backend trait (`RenderBackend`) for abstracting buffer/cursor operations
+//! - Layer shell element counting (`count_upper_layer_render_elements`)
 
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
@@ -27,7 +30,7 @@ use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStat
 use smithay::output::Output;
 use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Logical, Point};
+use smithay::utils::{Logical, Physical, Point, Rectangle};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
@@ -488,4 +491,75 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
 pub fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Layer shell rendering helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Count the number of render elements in upper layer shells (Overlay/Top).
+///
+/// This is used by both backends to determine how many space render elements
+/// to place before the bar and borders.
+pub fn count_upper_layer_render_elements(renderer: &mut GlesRenderer, output: &Output) -> usize {
+    let layer_map = smithay::desktop::layer_map_for_output(output);
+    let output_scale = output.current_scale().fractional_scale();
+    let mut num_upper = 0;
+
+    for surface in layer_map.layers().rev() {
+        if matches!(
+            surface.layer(),
+            smithay::wayland::shell::wlr_layer::Layer::Background
+                | smithay::wayland::shell::wlr_layer::Layer::Bottom
+        ) {
+            continue;
+        }
+        if let Some(geo) = layer_map.layer_geometry(surface) {
+            let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::AsRenderElements::render_elements(
+                    surface,
+                    renderer,
+                    geo.loc.to_physical_precise_round(output_scale),
+                    smithay::utils::Scale::from(output_scale),
+                    1.0,
+                );
+            num_upper += elems.len();
+        }
+    }
+
+    num_upper
+}
+
+/// Helper struct to track element counts for pre-allocating the render vector.
+#[derive(Default)]
+pub struct RenderElementCounts {
+    pub overlays: usize,
+    pub upper_layers: usize,
+    pub bar: usize,
+    pub borders: usize,
+    pub space: usize,
+}
+
+impl RenderElementCounts {
+    /// Calculate total capacity needed.
+    pub fn total(&self) -> usize {
+        self.overlays + self.upper_layers + self.bar + self.borders + self.space
+    }
+}
+
+/// Get the render element counts for a frame.
+///
+/// This helps pre-allocate the render element vector with the right capacity.
+pub fn get_render_element_counts(
+    scene: &CommonSceneElements,
+    space_render_elements_len: usize,
+    num_upper: usize,
+) -> RenderElementCounts {
+    RenderElementCounts {
+        overlays: scene.overlays.len(),
+        upper_layers: num_upper,
+        bar: scene.bar.len(),
+        borders: scene.borders.len(),
+        space: space_render_elements_len.saturating_sub(num_upper),
+    }
 }

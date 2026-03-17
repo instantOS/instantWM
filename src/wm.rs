@@ -21,7 +21,7 @@ pub struct Wm {
     // Wayland-specific state
     pub wayland_systray: WaylandSystray,
     pub wayland_systray_menu: Option<WaylandSystrayMenu>,
-    pub wayland_systray_runtime: Option<crate::wayland_systray::WaylandSystrayRuntime>,
+    pub wayland_systray_runtime: Option<crate::systray::wayland::WaylandSystrayRuntime>,
 }
 
 impl Wm {

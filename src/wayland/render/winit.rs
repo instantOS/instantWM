@@ -9,8 +9,8 @@ use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
-    build_common_scene_elements, resolve_cursor_presentation, send_frame_callbacks,
-    CursorPresentation,
+    build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
+    resolve_cursor_presentation, send_frame_callbacks, CursorPresentation,
 };
 use crate::wm::Wm;
 
@@ -22,6 +22,7 @@ render_elements! {
     Space=smithay::desktop::space::SpaceRenderElements<GlesRenderer, smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>>,
 }
 
+/// Render a frame using the winit backend.
 pub fn render_frame(
     wm: &mut Wm,
     state: &mut WaylandState,
@@ -30,104 +31,107 @@ pub fn render_frame(
     damage_tracker: &mut OutputDamageTracker,
     start_time: std::time::Instant,
 ) {
+    // Backend-specific: apply cursor via window API
     apply_cursor_image_status(backend, state);
     state.tick_window_animations();
-    let damage = {
-        let buffer_age = backend.buffer_age().unwrap_or(0);
-        let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
 
-        let scene = build_common_scene_elements(wm, state, renderer, 0);
+    // Backend-specific: get buffer age
+    let buffer_age = backend.buffer_age().unwrap_or(0);
 
-        let space_render_elements =
-            smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
-                .expect("space render elements");
+    // Backend-specific: bind to get framebuffer
+    let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
 
-        let layer_map = smithay::desktop::layer_map_for_output(output);
-        let output_scale = output.current_scale().fractional_scale();
-        let mut num_upper = 0;
-        for surface in layer_map.layers().rev() {
-            if matches!(
-                surface.layer(),
-                smithay::wayland::shell::wlr_layer::Layer::Background
-                    | smithay::wayland::shell::wlr_layer::Layer::Bottom
-            ) {
-                continue;
-            }
-            if let Some(geo) = layer_map.layer_geometry(surface) {
-                let elems: Vec<
-                    smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<
-                        GlesRenderer,
-                    >,
-                > = smithay::backend::renderer::element::AsRenderElements::render_elements(
-                    surface,
-                    renderer,
-                    geo.loc.to_physical_precise_round(output_scale),
-                    smithay::utils::Scale::from(output_scale),
-                    1.0,
-                );
-                num_upper += elems.len();
-            }
-        }
+    // Shared: build scene elements
+    let scene = build_common_scene_elements(wm, state, renderer, 0);
 
-        let mut render_elements = Vec::with_capacity(
-            scene.overlays.len()
-                + scene.bar.len()
-                + scene.borders.len()
-                + space_render_elements.len(),
-        );
+    // Shared: get space render elements
+    let space_render_elements =
+        smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
+            .expect("space render elements");
 
-        // 1. Custom overlays (dmenu, popups)
-        for elem in scene.overlays {
-            render_elements.push(WaylandExtras::Surface(elem));
-        }
+    // Shared: count upper layer elements
+    let num_upper = count_upper_layer_render_elements(renderer, output);
 
-        // 2. Upper layer shells (Overlay / Top)
-        let mut space_iter = space_render_elements.into_iter();
-        for elem in space_iter.by_ref().take(num_upper) {
-            render_elements.push(WaylandExtras::Space(elem));
-        }
+    // Shared: get element counts for pre-allocation
+    let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
+    let mut render_elements = Vec::with_capacity(counts.total());
 
-        // 3. Status Bar
-        for elem in scene.bar {
-            render_elements.push(WaylandExtras::Memory(elem));
-        }
+    // Shared: assemble elements in z-order
+    assemble_render_elements(scene, space_render_elements, num_upper, &mut render_elements);
 
-        // 4. Borders
-        for elem in scene.borders {
-            render_elements.push(WaylandExtras::Solid(elem));
-        }
-
-        // 5. Windows and lower layer shells (Bottom / Background)
-        for elem in space_iter {
-            render_elements.push(WaylandExtras::Space(elem));
-        }
-
-        let render_result = damage_tracker
-            .render_output(
-                renderer,
-                &mut framebuffer,
-                buffer_age,
-                &render_elements,
-                [0.05, 0.05, 0.07, 1.0],
-            )
-            .expect("render output");
-
-        // Fulfil pending screencopy requests while framebuffer is still bound.
-        crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
-            &mut state.pending_screencopies,
+    // Backend-specific: render with damage tracker
+    let render_result = damage_tracker
+        .render_output(
             renderer,
-            &framebuffer,
-            output,
-            start_time,
-        );
+            &mut framebuffer,
+            buffer_age,
+            &render_elements,
+            [0.05, 0.05, 0.07, 1.0],
+        )
+        .expect("render output");
 
-        render_result.damage.cloned()
-    };
-    let _ = backend.submit(damage.as_deref());
+    // Shared: submit pending screencopies
+    crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+        &mut state.pending_screencopies,
+        renderer,
+        &framebuffer,
+        output,
+        start_time,
+    );
 
+    // Get damage before framebuffer is dropped
+    let damage = render_result.damage.cloned();
+
+    // Drop framebuffer before we can use backend again
+    drop(framebuffer);
+
+    // Backend-specific: submit buffer
+    backend.submit(damage.as_deref()).ok();
+
+    // Shared: send frame callbacks
     send_frame_callbacks(state, output, start_time.elapsed());
 }
 
+/// Assemble render elements in z-order (shared logic).
+fn assemble_render_elements(
+    scene: crate::wayland::common::CommonSceneElements,
+    space_render_elements: Vec<
+        smithay::desktop::space::SpaceRenderElements<
+            GlesRenderer,
+            WaylandSurfaceRenderElement<GlesRenderer>,
+        >,
+    >,
+    num_upper: usize,
+    elements: &mut Vec<WaylandExtras>,
+) {
+    // 1. Overlays (dmenu, popups)
+    for elem in scene.overlays {
+        elements.push(WaylandExtras::Surface(elem));
+    }
+
+    // 2. Upper layer shells (Overlay / Top)
+    let mut space_iter = space_render_elements.into_iter();
+    for elem in space_iter.by_ref().take(num_upper) {
+        elements.push(WaylandExtras::Space(elem));
+    }
+
+    // 3. Status Bar
+    for elem in scene.bar {
+        elements.push(WaylandExtras::Memory(elem));
+    }
+
+    // 4. Borders
+    for elem in scene.borders {
+        elements.push(WaylandExtras::Solid(elem));
+    }
+
+    // 5. Windows and lower layer shells (Bottom / Background)
+    for elem in space_iter {
+        elements.push(WaylandExtras::Space(elem));
+    }
+}
+
+// Backend-specific: cursor handling via winit window API
 fn apply_cursor_image_status(backend: &WinitGraphicsBackend<GlesRenderer>, state: &WaylandState) {
     match resolve_cursor_presentation(&state.cursor_image_status, state.cursor_icon_override) {
         CursorPresentation::Hidden => {
