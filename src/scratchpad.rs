@@ -195,7 +195,7 @@ pub fn scratchpad_status(g: &Globals, name: &str) -> String {
     let mut first = true;
 
     for mon in g.monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(&g.clients) {
+        for (_c_win, c) in mon.iter_clients(g.clients.map()) {
             if c.is_scratchpad() {
                 if !first {
                     status.push(',');
@@ -229,7 +229,7 @@ pub fn scratchpad_list(g: &Globals) -> String {
     let mut first = true;
 
     for mon in g.monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(&g.clients) {
+        for (_c_win, c) in mon.iter_clients(g.clients.map()) {
             if c.is_scratchpad() {
                 if !first {
                     out.push('\n');
@@ -255,7 +255,7 @@ fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
     }
 
     for mon in g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(&g.clients) {
+        for (c_win, c) in mon.iter_clients(g.clients.map()) {
             if c.is_scratchpad() && c.scratchpad_name == name {
                 return Some(c_win);
             }

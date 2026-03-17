@@ -78,7 +78,7 @@ pub fn get_tag_width(core: &CoreCtx) -> i32 {
         return core.g.cfg.startmenusize;
     }
 
-    let occupied = m.occupied_tags(&core.g.clients);
+    let occupied = m.occupied_tags(core.g.clients.map());
     let tags_width: i32 = visible_tags_ctx(core, m, occupied)
         .iter()
         .map(|t| t.width)
@@ -95,7 +95,7 @@ pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
         return -1;
     }
 
-    let occupied = m.occupied_tags(&core.g.clients);
+    let occupied = m.occupied_tags(core.g.clients.map());
     let mut acc = core.g.cfg.startmenusize;
     for t in visible_tags_ctx(core, m, occupied) {
         acc += t.width;

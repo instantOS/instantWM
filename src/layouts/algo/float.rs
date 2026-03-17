@@ -59,7 +59,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // Collect targets first to avoid borrowing ctx/m/clients immutably while
     // we mutate state during resize.
     let snap_targets: Vec<WindowId> = m
-        .iter_clients(&*ctx.g_mut().clients)
+        .iter_clients(ctx.g_mut().clients.map())
         .filter_map(|(win, c)| {
             (c.is_visible_on_tags(selected) && c.snap_status != SnapPosition::None).then_some(win)
         })

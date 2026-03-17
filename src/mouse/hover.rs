@@ -83,7 +83,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
     }
 
     let selected = mon.selected_tags();
-    for (w, c) in mon.iter_clients(&ctx.g().clients) {
+    for (w, c) in mon.iter_clients(ctx.g().clients.map()) {
         if !c.is_visible_on_tags(selected) {
             continue;
         }
@@ -171,7 +171,7 @@ fn find_tiled_win_at_point(
         return None;
     }
 
-    for (w, c) in mon.iter_clients(&ctx.g().clients) {
+    for (w, c) in mon.iter_clients(ctx.g().clients.map()) {
         if Some(w) == skip_win {
             continue;
         }
@@ -218,7 +218,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     let mon = ctx.g().selected_monitor();
     let selected = mon.selected_tags();
 
-    for (_w, c) in mon.iter_clients(&ctx.g().clients) {
+    for (_w, c) in mon.iter_clients(ctx.g().clients.map()) {
         if c.is_visible_on_tags(selected) && !(c.is_floating || !has_tiling) {
             return true;
         }

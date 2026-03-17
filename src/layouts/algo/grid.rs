@@ -55,7 +55,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, FAST_ANIM_THRESHOLD, 3, 6);
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as i32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as i32;
 
     if n == 0 {
         return;
@@ -138,7 +138,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// so there are never empty cells.
 pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -155,7 +155,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let cols = ((n as f32).sqrt() + 0.5) as u32;
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(&ctx.g.clients);
+    let tiled = m.collect_tiled(ctx.g.clients.map());
 
     for col in 0..cols {
         // Clients in this column: last column absorbs any remainder.

@@ -459,7 +459,7 @@ pub fn hover_focus_target_x11(
         if let Some(new_mon_id) = core.g.monitors.win_to_mon(
             event_win,
             x11_runtime.root,
-            &*core.g.clients,
+            core.g.clients.map(),
             Some(X11BackendRef::new(x11.conn, x11.screen_num)),
         ) {
             if new_mon_id != core.g.selected_monitor_id() {
@@ -588,7 +588,7 @@ where
 
     let candidates = get_directional_candidates(
         &mon.clients,
-        &*core.g.clients,
+        core.g.clients.map(),
         selected,
         source_win,
         source_center_x,
@@ -706,7 +706,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
 
     get_directional_candidates(
         &mon.clients,
-        &*core.g.clients,
+        core.g.clients.map(),
         selected,
         source_win,
         source_center_x,
@@ -762,7 +762,7 @@ where
     let mon = core.g.selected_monitor();
 
     let selected_window = mon.sel;
-    let stack = get_visible_stack(mon, &*core.g.clients);
+    let stack = get_visible_stack(mon, core.g.clients.map());
 
     if stack.is_empty() {
         focus_fn(None);
@@ -807,7 +807,7 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
         return None;
     }
     let mon = core.g.selected_monitor();
-    let stack = get_visible_stack(mon, &*core.g.clients);
+    let stack = get_visible_stack(mon, core.g.clients.map());
 
     if stack.is_empty() {
         return None;

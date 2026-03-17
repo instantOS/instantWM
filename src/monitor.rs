@@ -590,7 +590,7 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
             ),
             WmCtx::Wayland(_) => (None, WindowId::default()),
         };
-        let clients = ctx.g().clients.clone();
+        let clients = ctx.g().clients.map().clone();
         let root_u32: u32 = root.into();
         if let Some(m) = ctx
             .g_mut()

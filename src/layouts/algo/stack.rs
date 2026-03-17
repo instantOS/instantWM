@@ -12,7 +12,7 @@ use std::cmp::min;
 // ── deck ─────────────────────────────────────────────────────────────────────
 
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -29,7 +29,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(&ctx.g.clients);
+    let tiled = m.collect_tiled(ctx.g.clients.map());
 
     let mut master_column_offset: u32 = 0;
     for (i, client) in tiled.iter().enumerate() {
@@ -71,7 +71,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -90,7 +90,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         (m.work_rect.h, m.work_rect.w, m.work_rect.y)
     };
 
-    let tiled = m.collect_tiled(&ctx.g.clients);
+    let tiled = m.collect_tiled(ctx.g.clients.map());
 
     let mut master_row_offset: i32 = 0;
     let mut tx: i32 = m.work_rect.x;
@@ -143,7 +143,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -162,7 +162,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         (m.work_rect.h, m.work_rect.h, m.work_rect.y)
     };
 
-    let tiled = m.collect_tiled(&ctx.g.clients);
+    let tiled = m.collect_tiled(ctx.g.clients.map());
 
     let mut master_row_offset: i32 = 0;
     let tx: i32 = m.work_rect.x;

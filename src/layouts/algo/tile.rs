@@ -33,7 +33,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         DEFAULT_FRAME_COUNT,
     );
 
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -55,7 +55,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(&ctx.g.clients);
+    let tiled = m.collect_tiled(ctx.g.clients.map());
 
     let mut master_y_offset: u32 = 0;
     let mut stack_y_offset: u32 = 0;

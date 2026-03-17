@@ -11,7 +11,7 @@ pub enum Direction {
 pub fn push(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     let tiled_count = {
         let g = ctx.g_mut();
-        g.selected_monitor().tiled_client_count(&g.clients)
+        g.selected_monitor().tiled_client_count(g.clients.map())
     };
     if tiled_count < 2 {
         return;

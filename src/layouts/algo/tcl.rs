@@ -38,7 +38,7 @@ use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(&ctx.g_mut().clients) as u32;
+    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
 
     if n == 0 {
         return;

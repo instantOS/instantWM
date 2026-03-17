@@ -77,7 +77,7 @@ fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     if let Some(clicked_mon) = ctx.core.g.monitors.win_to_mon(
         event_win,
         ctx.x11_runtime().root,
-        &*ctx.core.g.clients,
+        ctx.core.g.clients.map(),
         None,
     ) {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
@@ -383,7 +383,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         if let Some(new_mon_id) = ctx.core.g.monitors.win_to_mon(
             event_win,
             ctx.x11_runtime.root,
-            &*ctx.core.g.clients,
+            ctx.core.g.clients.map(),
             None,
         ) {
             if new_mon_id != selmon_id {
@@ -421,7 +421,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
         ctx.core
             .g
             .monitors
-            .win_to_mon(event_win, ctx.x11_runtime.root, &*ctx.core.g.clients, None)
+            .win_to_mon(event_win, ctx.x11_runtime.root, ctx.core.g.clients.map(), None)
     {
         let is_bar_win = ctx
             .core

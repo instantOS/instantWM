@@ -614,7 +614,7 @@ pub fn cleanup(wm: &mut Wm) {
     let _grab = ServerGrab::new(conn);
 
     for (_id, mon) in wm.g.monitors_iter() {
-        for (win, c) in mon.iter_clients(&wm.g.clients) {
+        for (win, c) in mon.iter_clients(wm.g.clients.map()) {
             let old_bw = c.old_border_width;
             let x11_win: Window = win.into();
             let _ = conn.configure_window(

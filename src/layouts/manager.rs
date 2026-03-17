@@ -34,7 +34,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let clientcount = {
         let m = ctx.g().monitor(monitor_id).expect("invalid monitor");
-        m.tiled_client_count(&*ctx.g().clients) as u32
+        m.tiled_client_count(ctx.g().clients.map()) as u32
     };
 
     if let Some(m) = ctx.g_mut().monitor_mut(monitor_id) {
@@ -323,7 +323,7 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = ctx
         .g()
         .selected_monitor()
-        .tiled_client_count(&*ctx.g().clients) as i32;
+        .tiled_client_count(ctx.g().clients.map()) as i32;
     let m = ctx.g_mut().selected_monitor_mut();
     if delta > 0 && m.nmaster >= ccount {
         m.nmaster = ccount;
@@ -362,7 +362,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         && ctx
             .g()
             .selected_monitor()
-            .tiled_client_count(&*ctx.g().clients)
+            .tiled_client_count(ctx.g().clients.map())
             > 2;
     if animation_on {
         ctx.g_mut().behavior.animated = false;

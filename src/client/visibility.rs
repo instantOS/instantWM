@@ -73,7 +73,7 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
     for mon in ctx.core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
 
-        for (win, c) in mon.iter_clients(&ctx.core.g.clients) {
+        for (win, c) in mon.iter_clients(ctx.core.g.clients.map()) {
             let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
@@ -148,7 +148,7 @@ pub fn show_hide_wayland(ctx: &mut WmCtxWayland<'_>) {
 
     for mon in ctx.core.g.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
-        for (win, c) in mon.iter_clients(&ctx.core.g.clients) {
+        for (win, c) in mon.iter_clients(ctx.core.g.clients.map()) {
             let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             operations.push((win, is_visible));
         }
