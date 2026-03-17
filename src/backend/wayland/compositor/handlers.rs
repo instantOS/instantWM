@@ -897,45 +897,49 @@ impl WlrLayerShellHandler for WaylandState {
 
         // If the keyboard was focused on this layer surface, we need to
         // clear focus and restore it to a window
+        // Note: We also try to restore focus even if we didn't detect keyboard focus
+        // on the layer surface, because Smithay may have already cleared it
         if keyboard_focused_on_layer {
-            // Clear keyboard focus on the seat
+            // Clear keyboard focus on the seat first
             let serial = SERIAL_COUNTER.next_serial();
             if let Some(keyboard) = self.seat.get_keyboard() {
                 keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
             }
+        }
 
-            // Now restore focus to a window
-            if let Some(g) = self.globals_mut() {
-                let sel_mon_id = g.selected_monitor_id();
-                let (target, selected_tags, stack) = {
-                    let mon = match g.monitor_mut(sel_mon_id) {
-                        Some(m) => m,
-                        None => {
-                            // No monitor, nothing to focus
-                            return;
-                        }
-                    };
-                    // Try to focus the selected window, or find another visible window
-                    if let Some(target) = mon.sel {
-                        (Some(target), None, None)
-                    } else {
-                        // Collect stack and tags for finding a visible window
-                        let tags = mon.selected_tag_mask();
-                        let stack_copy = mon.stack.clone();
-                        (None, Some(tags), Some(stack_copy))
+        // Always try to restore focus to a window after a layer surface is destroyed.
+        // This handles the case where the layer surface had keyboard focus but we
+        // couldn't detect it (Smithay may have already cleared it).
+        if let Some(g) = self.globals_mut() {
+            let sel_mon_id = g.selected_monitor_id();
+            let (target, selected_tags, stack) = {
+                let mon = match g.monitor_mut(sel_mon_id) {
+                    Some(m) => m,
+                    None => {
+                        // No monitor, nothing to focus
+                        return;
                     }
                 };
+                // Try to focus the selected window, or find another visible window
+                if let Some(target) = mon.sel {
+                    (Some(target), None, None)
+                } else {
+                    // Collect stack and tags for finding a visible window
+                    let tags = mon.selected_tag_mask();
+                    let stack_copy = mon.stack.clone();
+                    (None, Some(tags), Some(stack_copy))
+                }
+            };
 
-                if let Some(target) = target {
-                    self.set_focus(target);
-                } else if let (Some(tags), Some(stack)) = (selected_tags, stack) {
-                    // Find the first visible window to focus
-                    for &win in &stack {
-                        if let Some(c) = g.clients.get(&win) {
-                            if c.is_visible_on_tags(tags.bits()) && !c.is_hidden {
-                                self.set_focus(win);
-                                break;
-                            }
+            if let Some(target) = target {
+                self.set_focus(target);
+            } else if let (Some(tags), Some(stack)) = (selected_tags, stack) {
+                // Find the first visible window to focus
+                for &win in &stack {
+                    if let Some(c) = g.clients.get(&win) {
+                        if c.is_visible_on_tags(tags.bits()) && !c.is_hidden {
+                            self.set_focus(win);
+                            break;
                         }
                     }
                 }
