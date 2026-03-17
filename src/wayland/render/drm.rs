@@ -752,7 +752,7 @@ fn build_cursor_elements(
 
     match cursor_presentation {
         CursorPresentation::Hidden => {}
-        CursorPresentation::Named(icon) => {
+        CursorPresentation::Named(_) => {
             if let Some(cursor_elem) =
                 cursor_manager.render_element(local_pointer, cursor_presentation)
             {

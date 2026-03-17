@@ -70,25 +70,13 @@ pub fn render_frame(
         render_elements
     );
 
-    // Backend-specific: Render DnD icon if present
-    if let CursorPresentation::DndIcon { icon, hotspot, .. } = cursor_presentation {
-        let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
-            (state.pointer.current_location().x - hotspot.x as f64).round() as i32,
-            (state.pointer.current_location().y - hotspot.y as f64).round() as i32,
-        ));
-        let dnd_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-            smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
-                renderer,
-                &icon,
-                dnd_loc,
-                smithay::utils::Scale::from(1.0),
-                1.0,
-                smithay::backend::renderer::element::Kind::Cursor,
-            );
-        for elem in dnd_elements {
-            render_elements.push(WaylandExtras::Surface(elem));
-        }
-    }
+    // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
+    render_cursor_overlays(
+        renderer,
+        &cursor_presentation,
+        state.pointer.current_location(),
+        &mut render_elements,
+    );
 
     // Backend-specific: render with damage tracker
     let render_result = damage_tracker
@@ -137,10 +125,70 @@ fn apply_cursor_presentation_internal(
             backend.window().set_cursor(*icon);
         }
         CursorPresentation::Surface { .. } => {
-            backend.window().set_cursor_visible(true);
+            // Client-provided surface cursor. Winit cannot set surface as cursor,
+            // so we hide the system cursor and render as an overlay ourselves in render_frame.
+            backend.window().set_cursor_visible(false);
         }
         CursorPresentation::DndIcon { cursor, .. } => {
+            // Recursively apply the visibility settings of the base cursor.
             apply_cursor_presentation_internal(backend, cursor);
+        }
+    }
+}
+
+/// Render everything in the cursor presentation that requires manual compositing
+/// (client surface cursors and drag-and-drop icons).
+fn render_cursor_overlays(
+    renderer: &mut GlesRenderer,
+    presentation: &CursorPresentation,
+    pointer_location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    render_elements: &mut Vec<WaylandExtras>,
+) {
+    match presentation {
+        CursorPresentation::Hidden | CursorPresentation::Named(_) => {}
+        CursorPresentation::Surface { surface, hotspot } => {
+            let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
+                (pointer_location.x - hotspot.x as f64).round() as i32,
+                (pointer_location.y - hotspot.y as f64).round() as i32,
+            ));
+            let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                    renderer,
+                    surface,
+                    cursor_loc,
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                    smithay::backend::renderer::element::Kind::Cursor,
+                );
+            for elem in elements {
+                render_elements.push(WaylandExtras::Surface(elem));
+            }
+        }
+        CursorPresentation::DndIcon {
+            icon,
+            hotspot,
+            cursor,
+        } => {
+            // Render the base cursor overlay first if it's a surface
+            render_cursor_overlays(renderer, cursor, pointer_location, render_elements);
+
+            // Then render the drag icon
+            let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
+                (pointer_location.x - hotspot.x as f64).round() as i32,
+                (pointer_location.y - hotspot.y as f64).round() as i32,
+            ));
+            let dnd_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                    renderer,
+                    icon,
+                    dnd_loc,
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                    smithay::backend::renderer::element::Kind::Cursor,
+                );
+            for elem in dnd_elements {
+                render_elements.push(WaylandExtras::Surface(elem));
+            }
         }
     }
 }
