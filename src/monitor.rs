@@ -6,7 +6,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
-use crate::contexts::WmCtx;
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus_soft, unfocus_win};
 use crate::types::*;
 use std::collections::HashMap;
@@ -355,8 +355,10 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
     }
 
     // Fall back to Xinerama for X11
-    if let Some(result) = update_from_xinerama(ctx) {
-        return result;
+    if let WmCtx::X11(ref mut x11) = ctx {
+        if let Some(result) = update_from_xinerama(x11) {
+            return result;
+        }
     }
 
     // Final fallback to single monitor
@@ -496,21 +498,15 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     true
 }
 
-//TODO: this should take an X11 ctx instead of being a no-op on wayland, that way
-//it is only called on wayland (compile time safety). If this is called outside a ctx match arm
-//then that is the fundamental problem
-fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
-    let conn = match ctx {
-        WmCtx::X11(x11) => x11.x11.conn,
-        WmCtx::Wayland(_) => return None,
-    };
+fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
+    let conn = x11.x11.conn;
     let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
     if is_active.state == 0 {
         return None;
     }
 
     let screens = xinerama::query_screens(conn).ok()?.reply().ok()?;
-    // conn borrow ends here; the rest only needs ctx
+    // conn borrow ends here; the rest only needs x11
     let mut unique = Vec::new();
     for s in &screens.screen_info {
         let info = Rect {
@@ -528,27 +524,28 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     }
 
     let new_count = unique.len();
-    let old_count = ctx.g_mut().monitors.count();
+    let g = &mut x11.core.g;
+    let old_count = g.monitors.count();
 
     // Ensure count
-    let template = ctx.g_mut().cfg.tag_template.clone();
+    let template = g.cfg.tag_template.clone();
     let (mfact, nmaster, showbar, topbar) = (
-        ctx.g_mut().cfg.mfact,
-        ctx.g_mut().cfg.nmaster,
-        ctx.g_mut().cfg.show_bar,
-        ctx.g_mut().cfg.top_bar,
+        g.cfg.mfact,
+        g.cfg.nmaster,
+        g.cfg.show_bar,
+        g.cfg.top_bar,
     );
-    while ctx.g_mut().monitors.count() < new_count {
+    while g.monitors.count() < new_count {
         let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
         mon.init_tags(&template);
-        ctx.g_mut().monitors.push(mon);
+        g.monitors.push(mon);
     }
 
     let mut dirty = new_count > old_count;
-    let bar_height = ctx.g_mut().cfg.bar_height;
+    let bar_height = g.cfg.bar_height;
 
     for (i, info) in unique.iter().enumerate() {
-        if let Some(m) = ctx.g_mut().monitors.get_mut(i) {
+        if let Some(m) = g.monitors.get_mut(i) {
             if m.monitor_rect.x != info.x
                 || m.monitor_rect.y != info.y
                 || m.monitor_rect.w != info.w
@@ -564,45 +561,38 @@ fn update_from_xinerama(ctx: &mut WmCtx) -> Option<bool> {
     }
 
     if new_count < old_count {
+        // Need to get clients before mutable borrow of g
+        let clients_map = x11.core.g.clients.map().clone();
+        // Create temporary WmCtx wrapper for functions that need it
+        let mut wm_ctx = WmCtx::X11(x11.reborrow());
         for i in (new_count..old_count).rev() {
-            let clients_to_move: Vec<WindowId> = ctx
-                .g
-                .clients
+            let clients_to_move: Vec<WindowId> = clients_map
                 .values()
                 .filter(|c| c.monitor_id == i)
                 .map(|c| c.win)
                 .collect();
             for win in clients_to_move {
-                detach(ctx, win);
-                detach_stack(ctx, win);
-                if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
+                detach(&mut wm_ctx, win);
+                detach_stack(&mut wm_ctx, win);
+                if let Some(c) = x11.core.g.clients.get_mut(&win) {
                     c.monitor_id = 0;
                 }
-                attach(ctx, win);
-                attach_stack(ctx, win);
+                attach(&mut wm_ctx, win);
+                attach_stack(&mut wm_ctx, win);
                 dirty = true;
             }
-            cleanup_monitor(ctx, i);
+            cleanup_monitor(&mut wm_ctx, i);
         }
     }
 
     if dirty {
-        ctx.g_mut().monitors.set_sel_idx(0);
-        let (x11_conn, root) = match ctx {
-            WmCtx::X11(x11) => (
-                Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num)),
-                WindowId::from(x11.x11_runtime.root),
-            ),
-            WmCtx::Wayland(_) => (None, WindowId::default()),
-        };
-        let clients = ctx.g().clients.map().clone();
+        g.monitors.set_sel_idx(0);
+        let x11_conn = Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num));
+        let root = WindowId::from(x11.x11_runtime.root);
+        let clients = x11.core.g.clients.map().clone();
         let root_u32: u32 = root.into();
-        if let Some(m) = ctx
-            .g_mut()
-            .monitors
-            .win_to_mon(root, root_u32, &clients, x11_conn)
-        {
-            ctx.g_mut().monitors.set_sel_idx(m);
+        if let Some(m) = g.monitors.win_to_mon(root, root_u32, &clients, x11_conn) {
+            g.monitors.set_sel_idx(m);
         }
     }
 
