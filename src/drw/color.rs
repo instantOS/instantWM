@@ -14,8 +14,6 @@ pub const COL_FG: usize = 0;
 pub const COL_BG: usize = 1;
 /// Index of the detail / accent color within a scheme slice.
 pub const COL_DETAIL: usize = 2;
-/// Total number of color slots in a scheme.
-pub const COL_LAST: usize = 3;
 
 // ── Color ──────────────────────────────────────────────────────────────────────
 

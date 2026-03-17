@@ -138,28 +138,3 @@ pub fn update_bars(
         }
     }
 }
-
-fn get_text_prop(x11: &X11BackendRef, win: Window, atom: u32) -> Option<String> {
-    let conn = x11.conn;
-    let reply = conn
-        .get_property(
-            false,
-            win,
-            atom,
-            x11rb::protocol::xproto::AtomEnum::ANY,
-            0,
-            4096,
-        )
-        .ok()?
-        .reply()
-        .ok()?;
-    if reply.format != 8 || reply.value.is_empty() {
-        return None;
-    }
-    let nul_pos = reply
-        .value
-        .iter()
-        .position(|&b| b == 0)
-        .unwrap_or(reply.value.len());
-    String::from_utf8(reply.value[..nul_pos].to_vec()).ok()
-}

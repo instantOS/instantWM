@@ -36,22 +36,6 @@ pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
     false
 }
 
-/// Returns `true` if the client is visible on any monitor.
-///
-/// A client is visible when it belongs to the currently selected tag_set of
-/// the monitor it is assigned to.
-///
-/// This is a window-ID convenience wrapper around [`Client::is_visible_on_tags`] for
-/// call-sites that only hold a `Window` handle rather than a `&Client`.
-pub fn visible_client(core: &CoreCtx, win: WindowId) -> bool {
-    let selected = core.g.selected_monitor().selected_tags();
-    core.g
-        .clients
-        .get(&win)
-        .map(|c| c.is_visible_on_tags(selected))
-        .unwrap_or(false)
-}
-
 // ── Geometry helpers ──────────────────────────────────────────────────────────
 
 /// Nudge the client one pixel to the right and back, forcing a layout refresh.

@@ -38,20 +38,6 @@ pub enum SnapDir {
     Left = 3,
 }
 
-impl SnapDir {
-    /// Convert a raw integer to a `SnapDir`.
-    /// Values outside `0..=3` clamp to `Up`.
-    pub fn from_index(i: i32) -> Self {
-        match i {
-            0 => Self::Up,
-            1 => Self::Right,
-            2 => Self::Down,
-            3 => Self::Left,
-            _ => Self::Up,
-        }
-    }
-}
-
 // ── Snap navigation matrix ────────────────────────────────────────────────────
 //
 // `SNAP_MATRIX[current_snap_index][direction_index]` → next snap position.

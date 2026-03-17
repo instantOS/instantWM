@@ -4,9 +4,6 @@ use crate::globals::Globals;
 use crate::layouts::{arrange, restack};
 use crate::types::*;
 
-const SCRATCHPAD_CLASS_PREFIX: &[u8] = b"scratchpad_";
-const SCRATCHPAD_CLASS_PREFIX_LEN: usize = 11;
-
 pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     let clients: Vec<WindowId> = ctx.g_mut().clients.keys().copied().collect();
 

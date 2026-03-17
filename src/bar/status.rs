@@ -263,10 +263,6 @@ fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
     })
 }
 
-pub(crate) fn parse_status_items(bytes: &[u8]) -> Vec<StatusItem> {
-    parse_status(bytes).items
-}
-
 pub(crate) fn parse_status(bytes: &[u8]) -> ParsedStatus {
     // Try i3bar JSON format first
     if let Some(parsed) = parse_i3bar_json(bytes) {

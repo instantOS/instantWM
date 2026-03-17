@@ -35,16 +35,6 @@ pub use sticky::reset_sticky_win;
 
 pub use tag_mon_impl::send_to_monitor;
 
-pub fn compute_prefix(core: &mut CoreCtx, arg: u32) -> u32 {
-    let prefix_active = core.g.tags.prefix;
-    if prefix_active && arg != 0 {
-        core.g.tags.prefix = false;
-        arg << 10
-    } else {
-        arg
-    }
-}
-
 pub fn quit() {
     std::process::exit(0);
 }
