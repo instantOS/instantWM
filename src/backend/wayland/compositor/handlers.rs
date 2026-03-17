@@ -43,6 +43,7 @@ use smithay::{
 use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     state::{WaylandClientState, WaylandState, WindowIdMarker},
+    window::{is_unmanaged_x11_overlay, WindowType},
 };
 
 impl CompositorHandler for WaylandState {
@@ -193,48 +194,13 @@ impl DmabufHandler for WaylandState {
     }
 }
 
-/// Classify an X11 surface as an "overlay" (override-redirect, popup, menu,
-/// dmenu/instantmenu) at map time so we can cache the result and avoid
-/// repeated string scans on every raise.
-fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
-    if x11.is_override_redirect() || x11.is_popup() || x11.is_transient_for().is_some() {
-        return true;
-    }
-    if matches!(
-        x11.window_type(),
-        Some(
-            smithay::xwayland::xwm::WmWindowType::DropdownMenu
-                | smithay::xwayland::xwm::WmWindowType::Menu
-                | smithay::xwayland::xwm::WmWindowType::PopupMenu
-                | smithay::xwayland::xwm::WmWindowType::Tooltip
-                | smithay::xwayland::xwm::WmWindowType::Notification
-                | smithay::xwayland::xwm::WmWindowType::Toolbar
-                | smithay::xwayland::xwm::WmWindowType::Utility
-        )
-    ) {
-        return true;
-    }
-    is_launcher_x11_surface(x11)
-}
-
-fn is_launcher_x11_surface(x11: &smithay::xwayland::X11Surface) -> bool {
-    let class = x11.class().to_ascii_lowercase();
-    let instance = x11.instance().to_ascii_lowercase();
-    let title = x11.title().to_ascii_lowercase();
-    class.contains("dmenu")
-        || class.contains("instantmenu")
-        || instance.contains("dmenu")
-        || instance.contains("instantmenu")
-        || title.contains("dmenu")
-        || title.contains("instantmenu")
-}
-
+/// Focus an overlay window if it's a launcher (dmenu, instantmenu).
+///
+/// This gives launchers immediate keyboard focus so they can receive
+/// input right away.
 fn focus_overlay_if_launcher(state: &mut WaylandState, element: &smithay::desktop::Window) {
-    if !element
-        .x11_surface()
-        .as_ref()
-        .is_some_and(|x11| is_launcher_x11_surface(x11))
-    {
+    // Use the unified window classifier
+    if state.classify_window(element) != WindowType::Launcher {
         return;
     }
 

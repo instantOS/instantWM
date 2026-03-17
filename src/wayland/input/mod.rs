@@ -149,22 +149,9 @@ pub fn handle_keyboard<B: InputBackend>(
     let wm_shortcuts_allowed = match keyboard_handle.current_focus() {
         None => true,
         Some(KeyboardFocusTarget::Window(ref w)) => {
-            // Suppress WM shortcuts when an overlay window (dmenu, popup,
-            // override-redirect menu, etc.) has keyboard focus so that key
-            // events reach the overlay instead of triggering desktop keybinds.
-            //
-            // Also suppress shortcuts when the focused window is no longer
-            // alive — the surface is dying and we should not intercept its
-            // remaining key events.
-            if !w.alive() {
-                true
-            } else {
-                match w.user_data().get::<WindowIdMarker>() {
-                    Some(m) => !m.is_overlay,
-                    // No marker → unmanaged X11 surface, treat as overlay.
-                    None => !w.x11_surface().is_some(),
-                }
-            }
+            // Use the unified window classifier to determine if shortcuts
+            // should be suppressed. This handles all overlay types consistently.
+            !state.should_suppress_shortcuts_for(w)
         }
         // WlSurface (e.g. layer shell surfaces like the bar) and Popups:
         // allow WM shortcuts so compositor keybindings keep working.

@@ -6,9 +6,9 @@
 use std::time::{Duration, Instant};
 
 use smithay::desktop::Window;
+use smithay::utils::IsAlive;
 use smithay::utils::SERIAL_COUNTER;
 use smithay::utils::{Logical, Point};
-use smithay::wayland::foreign_toplevel_list::ForeignToplevelHandle;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
@@ -16,6 +16,125 @@ use crate::types::{Rect, WindowId};
 
 use super::state::{WaylandState, WindowIdMarker};
 use super::KeyboardFocusTarget;
+
+// ---------------------------------------------------------------------------
+// Window Type Classification
+// ---------------------------------------------------------------------------
+
+/// Classification of a window's type for focus and input routing decisions.
+///
+/// This unified classifier replaces the scattered overlay detection logic
+/// and provides a single source of truth for window categorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowType {
+    /// Normal tiled or floating window - receives focus normally
+    Normal,
+    /// Overlay window (dmenu, popup, menu) - focus suppresses WM shortcuts
+    Overlay,
+    /// Launcher window (dmenu, instantmenu) - special focus behavior
+    Launcher,
+    /// Unmanaged X11 override-redirect window
+    Unmanaged,
+    /// Window that is dying or dead - should not receive focus
+    Dying,
+}
+
+impl WaylandState {
+    /// Classify a window's type for focus and input routing decisions.
+    ///
+    /// This is the single source of truth for window classification.
+    /// All focus decisions should use this method instead of ad-hoc checks.
+    pub fn classify_window(&self, window: &Window) -> WindowType {
+        // Check if window is dying first - this takes precedence
+        if !window.alive() {
+            return WindowType::Dying;
+        }
+
+        // Check for unmanaged X11 overlay
+        if let Some(x11) = window.x11_surface() {
+            if is_unmanaged_x11_overlay(x11) {
+                if is_launcher_x11_surface(x11) {
+                    return WindowType::Launcher;
+                }
+                return WindowType::Overlay;
+            }
+        }
+
+        // Check window marker for overlay classification
+        if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
+            if marker.is_overlay {
+                // Check if it's a launcher by title/class
+                if let Some(x11) = window.x11_surface() {
+                    if is_launcher_x11_surface(x11) {
+                        return WindowType::Launcher;
+                    }
+                }
+                return WindowType::Overlay;
+            }
+        }
+
+        // Check X11 surface properties
+        if let Some(x11) = window.x11_surface() {
+            if is_launcher_x11_surface(x11) {
+                return WindowType::Launcher;
+            }
+        }
+
+        WindowType::Normal
+    }
+
+    /// Check if a window should suppress WM keyboard shortcuts when focused.
+    ///
+    /// Returns true for overlay windows (dmenu, popups, menus) where
+    /// keyboard input should go to the window without triggering keybindings.
+    pub fn should_suppress_shortcuts_for(&self, window: &Window) -> bool {
+        match self.classify_window(window) {
+            WindowType::Overlay | WindowType::Launcher => true,
+            WindowType::Normal | WindowType::Unmanaged | WindowType::Dying => false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// X11 Surface Classification Helpers
+// ---------------------------------------------------------------------------
+
+/// Classify an X11 surface as an "overlay" (override-redirect, popup, menu,
+/// dmenu/instantmenu) at map time so we can cache the result and avoid
+/// repeated string scans on every raise.
+pub(super) fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
+    if x11.is_override_redirect() || x11.is_popup() || x11.is_transient_for().is_some() {
+        return true;
+    }
+    if matches!(
+        x11.window_type(),
+        Some(
+            smithay::xwayland::xwm::WmWindowType::DropdownMenu
+                | smithay::xwayland::xwm::WmWindowType::Menu
+                | smithay::xwayland::xwm::WmWindowType::PopupMenu
+                | smithay::xwayland::xwm::WmWindowType::Tooltip
+                | smithay::xwayland::xwm::WmWindowType::Notification
+                | smithay::xwayland::xwm::WmWindowType::Toolbar
+                | smithay::xwayland::xwm::WmWindowType::Utility
+        )
+    ) {
+        return true;
+    }
+    is_launcher_x11_surface(x11)
+}
+
+/// Check if an X11 surface is a launcher (dmenu, instantmenu, etc.)
+pub(super) fn is_launcher_x11_surface(x11: &smithay::xwayland::X11Surface) -> bool {
+    let class = x11.class().to_ascii_lowercase();
+    let instance = x11.instance().to_ascii_lowercase();
+    let title = x11.title().to_ascii_lowercase();
+    class.contains("dmenu")
+        || class.contains("instantmenu")
+        || instance.contains("dmenu")
+        || instance.contains("instantmenu")
+        || title.contains("dmenu")
+        || title.contains("instantmenu")
+}
 
 impl WaylandState {
     /// Map a new toplevel surface (from XDG shell).
@@ -119,17 +238,40 @@ impl WaylandState {
     }
 
     /// Set focus to the given window.
+    ///
+    /// This is the single entry point for keyboard focus. It ensures:
+    /// 1. The window exists and is alive
+    /// 2. Keyboard focus is actually set on the Smithay seat
+    /// 3. The focused_window tracking stays in sync with WM state
+    ///
+    /// # Invariants
+    /// After this method returns, if `window` is valid:
+    /// - `self.focused_window == Some(window)`
+    /// - The Smithay keyboard seat targets this window (if seat exists)
+    /// - The window is marked as activated
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
 
         // If the window doesn't exist in our index, don't leave stale state.
         if focus_window.is_none() && !self.window_index.contains_key(&window) {
+            log::warn!("set_focus: window {:?} not found, clearing focus", window);
+            self.focused_window = None;
             return;
+        }
+
+        // Check if window is alive - don't focus dying windows
+        if let Some(ref win) = focus_window {
+            if !win.alive() {
+                log::debug!("set_focus: window {:?} is dying, clearing focus", window);
+                self.focused_window = None;
+                return;
+            }
         }
 
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
+        // Deactivate the previously focused window
         if let Some(old_id) = self.focused_window {
             if old_id != window {
                 if let Some(old_window) = self.window_index.get(&old_id).cloned() {
@@ -139,16 +281,52 @@ impl WaylandState {
                 }
             }
         }
-        if let Some(new_window) = focus_window {
+
+        // Activate the new window and set keyboard focus
+        let keyboard_focus_set = if let Some(new_window) = focus_window {
             if new_window.set_activated(true) {
                 self.send_toplevel_configure(&new_window, None);
             }
-        }
-        self.focused_window = Some(window);
+            // Set keyboard focus on the Smithay seat
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, focus, serial);
+                true
+            } else {
+                log::warn!(
+                    "set_focus: no keyboard seat available for window {:?}",
+                    window
+                );
+                false
+            }
+        } else {
+            false
+        };
 
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, focus, serial);
-        }
+        // Update tracking - this is the authoritative record of keyboard focus
+        self.focused_window = if keyboard_focus_set {
+            Some(window)
+        } else {
+            None
+        };
+
+        // Debug invariant: focused_window should match seat focus
+        debug_assert_eq!(
+            self.focused_window,
+            self.seat
+                .get_keyboard()
+                .and_then(|k| k.current_focus())
+                .and_then(|f| {
+                    if let KeyboardFocusTarget::Window(w) = f {
+                        self.window_index
+                            .iter()
+                            .find(|(_, v)| **v == w)
+                            .map(|(k, _)| *k)
+                    } else {
+                        None
+                    }
+                }),
+            "focused_window should match keyboard seat focus"
+        );
     }
 
     /// Close a window.
@@ -250,7 +428,13 @@ impl WaylandState {
 
     /// Explicitly clear keyboard focus on the Smithay seat so that the
     /// seat is not left pointing at a dead / dying surface.
+    ///
+    /// This is safe to call multiple times - it only clears focus if
+    /// `focused_window` is currently set.
     pub(crate) fn clear_keyboard_focus(&mut self) {
+        if self.focused_window.is_none() {
+            return; // Already cleared, avoid redundant operations
+        }
         self.focused_window = None;
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
@@ -261,6 +445,8 @@ impl WaylandState {
     /// Clear keyboard focus if the given window is currently focused.
     /// Used when a window is unmapped or removed to avoid leaving the
     /// keyboard seat pointing at a dead surface.
+    ///
+    /// This is safe to call multiple times with the same window.
     fn clear_keyboard_focus_if_focused(&mut self, window: WindowId) {
         if self.focused_window == Some(window) {
             self.clear_keyboard_focus();
@@ -285,16 +471,37 @@ impl WaylandState {
     }
 
     /// Restore focus after an overlay (e.g., dmenu) is closed.
+    ///
+    /// This method is called when an overlay window (popup, menu, dmenu)
+    /// is closed or unfocused. It restores focus to the WM's selected window.
+    ///
+    /// # Race Condition Prevention
+    /// This method checks if focus has already been set to a new window
+    /// before restoring. If `focused_window` is already set to a valid
+    /// window, the restore is skipped to avoid clearing focus that was
+    /// intentionally set by another code path.
     pub(super) fn restore_focus_after_overlay(&mut self) {
-        let target = self
-            .globals()
-            .and_then(|g| g.selected_win())
-            .filter(|w| self.window_index.contains_key(w));
+        // Check if focus was already set elsewhere (race condition prevention)
+        // If focused_window is set to a valid window, skip restore
+        if let Some(current_focus) = self.focused_window {
+            if self.window_index.contains_key(&current_focus) {
+                // Focus is already set to a valid window, don't override
+                return;
+            }
+        }
+
+        // Get the WM's selected window from globals
+        let target = self.globals().and_then(|g| g.selected_win()).filter(|w| {
+            // Window must exist and be alive
+            self.window_index.contains_key(w)
+                && self.window_index.get(w).is_some_and(|win| win.alive())
+        });
+
         if let Some(win) = target {
             self.set_focus(win);
         } else {
             // No valid target — explicitly clear keyboard focus so the seat
-            // doesn't keep pointing at the dead overlay surface.  Without
+            // doesn't keep pointing at the dead overlay surface. Without
             // this, WM shortcuts stay suppressed (the input handler sees an
             // overlay as the current focus and blocks keybindings).
             self.clear_keyboard_focus();
