@@ -4,53 +4,6 @@
 
 use crate::types::WindowId;
 
-/// Mouse cursor types used by the window manager.
-/// DEPRECATED: Use `AltCursor` instead.
-#[deprecated(since = "0.1.0", note = "Use AltCursor instead")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Cursor {
-    /// Normal/default cursor.
-    Normal,
-    /// Resize cursor.
-    Resize,
-    /// Move cursor.
-    Move,
-    /// Click/hand cursor.
-    Click,
-    /// Horizontal resize cursor.
-    Hor,
-    /// Vertical resize cursor.
-    Vert,
-    /// Top-left resize cursor.
-    TL,
-    /// Top-right resize cursor.
-    TR,
-    /// Bottom-left resize cursor.
-    BL,
-    /// Bottom-right resize cursor.
-    BR,
-}
-
-#[deprecated(since = "0.1.0", note = "Use AltCursor instead")]
-impl Cursor {
-    /// Convert cursor type to X11 cursor index (for cfg.cursors array).
-    #[deprecated(since = "0.1.0", note = "Use AltCursor::to_x11_index() instead")]
-    pub fn to_x11_index(self) -> usize {
-        match self {
-            Cursor::Normal => 0,
-            Cursor::Resize => 1,
-            Cursor::Move => 2,
-            Cursor::Click => 3,
-            Cursor::Hor => 4,
-            Cursor::Vert => 5,
-            Cursor::BL => 6,
-            Cursor::BR => 7,
-            Cursor::TL => 8,
-            Cursor::TR => 9,
-        }
-    }
-}
-
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MouseButton {

@@ -18,7 +18,6 @@ use crate::mouse::monitor::handle_client_monitor_switch;
 use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
 use crate::types::geometry::Rect;
-use crate::types::Cursor;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -365,9 +364,9 @@ pub fn window_title_mouse_handler(
     match ctx {
         WmCtx::X11(ctx_x11) => {
             let cursor = if btn == MouseButton::Right {
-                Cursor::Move
+                AltCursor::Move
             } else {
-                Cursor::Normal
+                AltCursor::Default
             };
             mouse_drag_loop(ctx_x11, btn, cursor, false, |ctx, event| {
                 if let x11rb::protocol::Event::MotionNotify(m) = event {

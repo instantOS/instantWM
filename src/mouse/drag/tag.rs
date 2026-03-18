@@ -188,7 +188,7 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
     }
 
     // ── X11 synchronous grab loop ─────────────────────────────────────────
-    mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
+    mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             // Update stored modifier state from latest motion.
             let root_x = m.event_x as i32;

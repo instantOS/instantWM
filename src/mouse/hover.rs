@@ -326,7 +326,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
     crate::backend::x11::grab::mouse_drag_loop(
         ctx,
         MouseButton::Left,
-        crate::types::Cursor::Resize,
+        AltCursor::Resize(ResizeDirection::BottomRight),
         true,
         |ctx, event| {
             match event {
