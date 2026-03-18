@@ -151,7 +151,13 @@ impl Default for RuntimeConfig {
 }
 
 /// State for an in-progress tag-bar drag (backend-agnostic).
-///
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DragType {
+    #[default]
+    Move,
+    Resize(ResizeDirection),
+}
+
 /// State for an async window-title click/drag on the bar.
 ///
 /// On X11, `window_title_mouse_handler` runs a synchronous grab loop.
@@ -163,8 +169,7 @@ pub struct DragInteraction {
     pub win: WindowId,
     pub button: MouseButton,
     pub dragging: bool,
-    pub move_mode: bool,
-    pub direction: ResizeDirection,
+    pub drag_type: DragType,
     pub win_start_geo: Rect,
     pub start_x: i32,
     pub start_y: i32,

@@ -69,8 +69,7 @@ pub fn title_drag_begin(
         last_root_y: click_root_y,
         dragging: false,
         suppress_click_action,
-        move_mode: false,
-        direction: ResizeDirection::BottomRight,
+        drag_type: crate::globals::DragType::Move,
     };
     true
 }
@@ -169,8 +168,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 win,
                 button: btn,
                 dragging: true,
-                move_mode: false,
-                direction: dir,
+                drag_type: crate::globals::DragType::Resize(dir),
                 start_x: warp_x,
                 start_y: warp_y,
                 win_start_geo: current_geo,
