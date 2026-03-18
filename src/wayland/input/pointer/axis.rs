@@ -7,26 +7,43 @@ use smithay::utils::Point;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::ToggleSetting;
-use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{
-    dispatch_wayland_bar_scroll, update_wayland_bar_hit_state, wayland_button_to_wm_button,
-};
-use smithay::utils::SERIAL_COUNTER;
+use crate::wayland::input::bar::{dispatch_wayland_bar_scroll, update_wayland_bar_hit_state};
 
-/// Resolve scroll factor from config.
-fn resolve_scroll_factor(input_config: &crate::config::config_toml::InputConfig) -> f64 {
-    input_config.scroll_factor.unwrap_or(1.0)
+/// Resolve the effective scroll factor from input configuration.
+///
+/// Checks `type:pointer`, `type:touchpad`, then `*` (wildcard) entries,
+/// returning the first `scroll_factor` found, or `1.0` if none is set.
+fn resolve_scroll_factor(
+    input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
+) -> f64 {
+    for key in &["type:pointer", "type:touchpad", "*"] {
+        if let Some(cfg) = input_config.get(*key) {
+            if let Some(factor) = cfg.scroll_factor {
+                return factor.max(0.0);
+            }
+        }
+    }
+    1.0
 }
 
-/// Resolve natural scroll from config.
-fn resolve_natural_scroll(input_config: &crate::config::config_toml::InputConfig) -> bool {
-    input_config
-        .natural_scroll
-        .unwrap_or(ToggleSetting::Disabled)
-        == ToggleSetting::Enabled
+/// Resolve the effective natural scroll setting from input configuration.
+///
+/// Checks `type:pointer`, `type:touchpad`, then `*` (wildcard) entries,
+/// returning whether natural scroll is enabled, or `false` if none is set.
+fn resolve_natural_scroll(
+    input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
+) -> bool {
+    for key in &["type:pointer", "type:touchpad", "*"] {
+        if let Some(cfg) = input_config.get(*key) {
+            if let Some(natural_scroll) = cfg.natural_scroll {
+                return natural_scroll == ToggleSetting::Enabled;
+            }
+        }
+    }
+    false
 }
 
 /// Handle pointer axis (scroll) events.
@@ -38,10 +55,8 @@ pub fn handle_pointer_axis<B: InputBackend>(
     event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    // Get input config with fallback to default ("*")
-    let input_config = wm.g.cfg.input.get("*").cloned().unwrap_or_default();
-    let scroll_factor = resolve_scroll_factor(&input_config);
-    let natural_scroll = resolve_natural_scroll(&input_config);
+    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let natural_scroll = resolve_natural_scroll(&wm.g.cfg.input);
 
     // Negate scroll factor when natural scroll is enabled to flip the direction
     let direction_modifier = if natural_scroll { -1.0 } else { 1.0 };
@@ -75,7 +90,10 @@ pub fn handle_pointer_axis<B: InputBackend>(
         let root_x = pointer_location.x.round() as i32;
         let root_y = pointer_location.y.round() as i32;
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
-            let clean_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+            let clean_state = crate::util::clean_mask(
+                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                wm.x11_runtime.numlockmask,
+            );
             dispatch_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);
         }
     }

@@ -34,7 +34,10 @@ pub fn handle_pointer_button<B: InputBackend>(
     if event.state() == smithay::backend::input::ButtonState::Pressed {
         // Bar interactions must short-circuit the generic surface click path.
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
-            let clean_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+            let clean_state = crate::util::clean_mask(
+                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                wm.x11_runtime.numlockmask,
+            );
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
             pointer_handle.frame(state);
             return;
@@ -78,7 +81,10 @@ pub fn handle_pointer_button<B: InputBackend>(
 
         let mut consumed = false;
         if let Some(btn) = wm_button {
-            let clean_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+            let clean_state = crate::util::clean_mask(
+                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                wm.x11_runtime.numlockmask,
+            );
             consumed = dispatch_wayland_client_button(wm, btn, root_x, root_y, clean_state);
         }
 
