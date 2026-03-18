@@ -4,6 +4,7 @@ use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
 use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
 use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
+use crate::backend::BackendOps;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
     AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
@@ -55,12 +56,12 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let mut selmon_id = ctx.core.g.selected_monitor_id();
     let focusfollowsmouse = ctx.core.g.behavior.focus_follows_mouse;
 
-    if let Some(clicked_mon) = ctx.core.g.monitors.win_to_mon(
-        event_win,
-        ctx.x11_runtime().root,
-        ctx.core.g.clients.map(),
-        None,
-    ) {
+    if let Some(clicked_mon) = ctx
+        .core
+        .g
+        .monitors
+        .find_monitor_for(event_win, ctx.core.g.clients.map())
+    {
         if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
             ctx.core.g.set_selected_monitor(clicked_mon);
             selmon_id = clicked_mon;
@@ -361,12 +362,17 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 
     // 4. Handle Monitor Switch
     if focusfollowsmouse {
-        if let Some(new_mon_id) = ctx.core.g.monitors.win_to_mon(
-            event_win,
-            ctx.x11_runtime.root,
-            ctx.core.g.clients.map(),
-            None,
-        ) {
+        let target_mon = if event_win == WindowId::from(ctx.x11_runtime.root) {
+            ctx.backend
+                .pointer_location()
+                .and_then(|ptr| ctx.core.g.monitors.find_monitor_at_pointer(ptr))
+        } else {
+            ctx.core
+                .g
+                .monitors
+                .find_monitor_for(event_win, ctx.core.g.clients.map())
+        };
+        if let Some(new_mon_id) = target_mon {
             if new_mon_id != selmon_id {
                 ctx.core.g.set_selected_monitor(new_mon_id);
                 crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
@@ -398,12 +404,12 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
     };
 
     let event_win = WindowId::from(e.window);
-    if let Some(monitor_id) = ctx.core.g.monitors.win_to_mon(
-        event_win,
-        ctx.x11_runtime.root,
-        ctx.core.g.clients.map(),
-        None,
-    ) {
+    if let Some(monitor_id) = ctx
+        .core
+        .g
+        .monitors
+        .find_monitor_for(event_win, ctx.core.g.clients.map())
+    {
         let is_bar_win = ctx
             .core
             .g

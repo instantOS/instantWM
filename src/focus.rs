@@ -455,17 +455,16 @@ pub fn hover_focus_target_x11(
             return;
         }
     } else {
-        let event_win = WindowId::from(x11_runtime.root);
-        if let Some(new_mon_id) = core.g.monitors.win_to_mon(
-            event_win,
-            x11_runtime.root,
-            core.g.clients.map(),
-            Some(X11BackendRef::new(x11.conn, x11.screen_num)),
-        ) {
-            if new_mon_id != core.g.selected_monitor_id() {
-                core.g.set_selected_monitor(new_mon_id);
-                let _ = focus_x11(core, x11, x11_runtime, None, None);
-                return;
+        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(x11.conn, x11_runtime.root) {
+            if let Ok(reply) = cookie.reply() {
+                let ptr = (reply.root_x as i32, reply.root_y as i32);
+                if let Some(new_mon_id) = core.g.monitors.find_monitor_at_pointer(ptr) {
+                    if new_mon_id != core.g.selected_monitor_id() {
+                        core.g.set_selected_monitor(new_mon_id);
+                        let _ = focus_x11(core, x11, x11_runtime, None, None);
+                        return;
+                    }
+                }
             }
         }
     }

@@ -3,7 +3,6 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
 use crate::contexts::{WmCtx, WmCtxX11};
@@ -118,29 +117,11 @@ impl MonitorManager {
         }
     }
 
-    //TODO: what is happening here? Is this X11 only? Why are we passing an optional X11 backend?
-    pub fn win_to_mon(
+    pub fn find_monitor_for(
         &self,
         w: WindowId,
-        root: Window,
         clients: &HashMap<WindowId, Client>,
-        x11: Option<X11BackendRef<'_>>,
     ) -> Option<usize> {
-        if w == WindowId::from(root) {
-            if let Some(conn) = x11 {
-                if let Some((x, y)) = get_root_ptr_with_conn_and_root(conn.conn, root) {
-                    let rect = Rect { x, y, w: 1, h: 1 };
-                    return crate::types::find_monitor_by_rect(&self.monitors, &rect)
-                        .or(Some(self.selected_monitor_idx));
-                }
-            }
-            return if self.monitors.is_empty() {
-                None
-            } else {
-                Some(self.selected_monitor_idx)
-            };
-        }
-
         for (i, m) in self.iter() {
             if w == m.bar_win {
                 return Some(i);
@@ -151,11 +132,18 @@ impl MonitorManager {
             return Some(c.monitor_id);
         }
 
-        if self.monitors.is_empty() {
-            None
-        } else {
-            Some(self.selected_monitor_idx)
-        }
+        None
+    }
+
+    pub fn find_monitor_at_pointer(&self, ptr: (i32, i32)) -> Option<usize> {
+        let rect = Rect {
+            x: ptr.0,
+            y: ptr.1,
+            w: 1,
+            h: 1,
+        };
+        crate::types::find_monitor_by_rect(&self.monitors, &rect)
+            .or(Some(self.selected_monitor_idx))
     }
 }
 
@@ -592,32 +580,17 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
 
     if dirty {
         x11.core.g.monitors.set_sel_idx(0);
-        let x11_conn = Some(X11BackendRef::new(x11.x11.conn, x11.x11.screen_num));
-        let root = WindowId::from(x11.x11_runtime.root);
-        let clients = x11.core.g.clients.map().clone();
-        let root_u32: u32 = root.into();
-        if let Some(m) = x11
-            .core
-            .g
-            .monitors
-            .win_to_mon(root, root_u32, &clients, x11_conn)
+        if let Ok(cookie) =
+            x11rb::protocol::xproto::query_pointer(x11.x11.conn, x11.x11_runtime.root)
         {
-            x11.core.g.monitors.set_sel_idx(m);
+            if let Ok(reply) = cookie.reply() {
+                let ptr = (reply.root_x as i32, reply.root_y as i32);
+                if let Some(m) = x11.core.g.monitors.find_monitor_at_pointer(ptr) {
+                    x11.core.g.monitors.set_sel_idx(m);
+                }
+            }
         }
     }
 
     Some(dirty)
-}
-
-//TODO: X11 specific, move
-fn get_root_ptr_with_conn_and_root(
-    conn: &x11rb::rust_connection::RustConnection,
-    root: Window,
-) -> Option<(i32, i32)> {
-    if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(conn, root) {
-        if let Ok(reply) = cookie.reply() {
-            return Some((reply.root_x as i32, reply.root_y as i32));
-        }
-    }
-    None
 }
