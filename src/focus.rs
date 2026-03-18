@@ -407,14 +407,17 @@ pub fn hover_focus_target(
 /// Backend-agnostic cursor query for hover logic.
 pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
     use crate::contexts::{WmCtx::*, WmCtxX11};
-    use crate::mouse::hover::get_cursor_client_win_with_conn;
     match ctx {
         X11(WmCtxX11 {
             core,
             x11,
             x11_runtime,
             ..
-        }) => get_cursor_client_win_with_conn(core, x11.conn, x11_runtime.root),
+        }) => crate::backend::x11::mouse::get_cursor_client_win_with_conn(
+            core,
+            x11.conn,
+            x11_runtime.root,
+        ),
         Wayland(_) => None,
     }
 }
@@ -528,30 +531,6 @@ pub fn hover_focus_target_wayland(
     // Use the full focus path so mon.sel, activation, and keyboard focus
     // are all consistent.
     let _ = focus_wayland(core, wayland, Some(hovered_win));
-}
-
-pub fn set_focus_win_x11(
-    core: &CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
-    win: WindowId,
-) {
-    let x11_win: Window = win.into();
-    if let Some(c) = core.g.clients.get(&win) {
-        if !c.never_focus {
-            let _ = x11
-                .conn
-                .set_input_focus(InputFocus::POINTER_ROOT, x11_win, CURRENT_TIME);
-            let _ = x11.conn.change_property32(
-                PropMode::REPLACE,
-                x11_runtime.root,
-                x11_runtime.netatom.active_window,
-                AtomEnum::WINDOW,
-                &[x11_win],
-            );
-        }
-        let _ = x11.conn.flush();
-    }
 }
 
 /// Focus a client in the given direction.

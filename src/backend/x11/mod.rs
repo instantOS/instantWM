@@ -16,6 +16,8 @@ use crate::types::{Rect, WindowId};
 pub mod bar;
 pub mod client;
 pub mod events;
+pub mod floating;
+pub mod grab;
 pub mod lifecycle;
 pub mod mouse;
 pub mod randr;

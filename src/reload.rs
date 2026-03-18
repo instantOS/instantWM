@@ -51,7 +51,7 @@ fn reload_x11(wm: &mut Wm) {
         );
         crate::keyboard::grab_keys_x11(&x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime);
         crate::focus::focus_soft_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, None);
-        crate::bar::draw_bars_x11(
+        crate::bar::x11::draw_bars_x11(
             &mut x11_ctx.core,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref(),

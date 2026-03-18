@@ -14,9 +14,75 @@ pub fn update_status(
 ) {
     let selmon_idx = core.g.selected_monitor_id();
 
-    super::draw_bar(core, x11_runtime, None, selmon_idx);
+    draw_bar(core, x11_runtime, None, selmon_idx);
 
     crate::systray::update_systray(core, x11, x11_runtime, systray);
+}
+
+pub fn draw_bar(
+    core: &mut CoreCtx,
+    x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&Systray>,
+    mon_idx: usize,
+) {
+    let bar_win = core
+        .g
+        .monitor(mon_idx)
+        .map(|m| m.bar_win)
+        .unwrap_or_default();
+    if bar_win == WindowId::default() {
+        return;
+    }
+    let work_rect_w = match core.g.monitor(mon_idx) {
+        Some(m) => m.work_rect.w,
+        None => return,
+    };
+    let bar_height = core.g.cfg.bar_height;
+    if work_rect_w <= 0 || bar_height <= 0 {
+        return;
+    }
+
+    if core.g.cfg.show_systray {
+        core.g.bar_runtime.systray_width = crate::systray::get_systray_width(core, systray) as i32;
+    }
+
+    let drw = {
+        let Some(drw) = x11_runtime.drw.as_mut() else {
+            return;
+        };
+        if !drw.has_display() {
+            return;
+        }
+        drw.resize(work_rect_w as u32, bar_height as u32);
+        drw.clone()
+    };
+
+    let mut painter = crate::bar::x11_painter::X11BarPainter::new(drw);
+
+    crate::bar::renderer::draw_bar(core, mon_idx, &mut painter);
+
+    painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
+}
+
+pub fn draw_bars_x11(
+    core: &mut CoreCtx,
+    x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&Systray>,
+) {
+    let indices: Vec<usize> = core.g.monitors_iter().map(|(i, _)| i).collect();
+    for i in indices {
+        draw_bar(core, x11_runtime, systray, i);
+    }
+}
+
+pub fn reset_bar_x11(
+    core: &mut CoreCtx,
+    x11_runtime: &mut X11RuntimeConfig,
+    systray: Option<&Systray>,
+) {
+    let selmon_idx = core.g.selected_monitor_id();
+    crate::bar::renderer::reset_bar_common(core);
+    draw_bar(core, x11_runtime, systray, selmon_idx);
 }
 
 /// Resize bar window with dependency injection.

@@ -114,7 +114,7 @@ pub fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
     if let crate::backend::Backend::X11(_) = wm.backend {
         let ctx = wm.ctx();
         if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-            crate::bar::draw_bars_x11(
+            crate::bar::x11::draw_bars_x11(
                 &mut x11_ctx.core,
                 x11_ctx.x11_runtime,
                 x11_ctx.systray.as_deref(),

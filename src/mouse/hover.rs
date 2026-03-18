@@ -328,7 +328,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
 fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
     let mut action_started = false;
 
-    super::grab::mouse_drag_loop(
+    crate::backend::x11::grab::mouse_drag_loop(
         ctx,
         MouseButton::Left,
         crate::types::Cursor::Resize,
@@ -508,28 +508,7 @@ pub fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
         WmCtx::X11(x11) => (x11.x11.conn, x11.x11_runtime.root, &mut x11.core),
         WmCtx::Wayland(_) => return None,
     };
-    get_cursor_client_win_with_conn(core, conn, root)
-}
-
-pub fn get_cursor_client_win_with_conn(
-    core: &CoreCtx,
-    conn: &x11rb::rust_connection::RustConnection,
-    root: x11rb::protocol::xproto::Window,
-) -> Option<WindowId> {
-    // Query pointer on root to get the actual child window under cursor
-    let reply = conn.query_pointer(root).ok()?.reply().ok()?;
-
-    // child will be NONE if cursor is over root (no window)
-    if reply.child == x11rb::NONE {
-        return None;
-    }
-
-    let win = WindowId::from(reply.child);
-    if core.g.clients.contains_key(&win) {
-        Some(win)
-    } else {
-        None
-    }
+    crate::backend::x11::mouse::get_cursor_client_win_with_conn(core, conn, root)
 }
 
 /// Query the pointer position in both root and window-local coordinates.

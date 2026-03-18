@@ -1,11 +1,9 @@
 //! Floating state transitions and geometry persistence.
 
 use crate::animation::animate_client;
-use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::restore_border_width;
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::globals::X11RuntimeConfig;
 use crate::layouts::arrange;
 use crate::types::*;
 
@@ -31,16 +29,6 @@ fn restore_client_border(core: &mut CoreCtx, backend: &impl BackendOps, win: Win
         .unwrap_or(0);
     BackendOps::set_border_width(backend, win, restored_bw);
     restored_bw
-}
-
-/// Apply borderscheme for X11 floating windows (X11 only).
-fn apply_floating_borderscheme(x11: &X11BackendRef, win: WindowId, x11_runtime: &X11RuntimeConfig) {
-    let pixel = x11_runtime.borderscheme.float_focus.bg.color.pixel;
-    let _ = x11rb::protocol::xproto::change_window_attributes(
-        x11.conn,
-        win.into(),
-        &x11rb::protocol::xproto::ChangeWindowAttributesAux::new().border_pixel(Some(pixel as u32)),
-    );
 }
 
 pub fn save_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
@@ -86,7 +74,11 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             match ctx {
                 WmCtx::X11(x11) => {
                     restore_client_border(&mut x11.core, &x11.backend, win);
-                    apply_floating_borderscheme(&x11.x11, win, x11.x11_runtime);
+                    crate::backend::x11::floating::apply_floating_borderscheme(
+                        &x11.x11,
+                        win,
+                        x11.x11_runtime,
+                    );
                 }
                 WmCtx::Wayland(wl) => {
                     restore_client_border(&mut wl.core, &wl.backend, win);

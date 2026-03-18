@@ -1,11 +1,12 @@
 //! X11 mouse backend helpers.
 
-use crate::contexts::WmCtxX11;
+use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::mouse::drag::{
     clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target, MoveState,
 };
 use crate::mouse::warp::get_root_ptr;
-use crate::types::{Cursor, MouseButton, Rect};
+use crate::types::{Cursor, MouseButton, Rect, WindowId};
+use x11rb::protocol::xproto::ConnectionExt;
 
 /// X11-only synchronous window move implementation.
 ///
@@ -39,7 +40,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         edge_snap_indicator: None,
     };
 
-    crate::mouse::grab::mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
+    crate::backend::x11::grab::mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
             on_motion(
@@ -69,5 +70,24 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
             state.edge_snap_indicator,
             None,
         );
+    }
+}
+
+pub fn get_cursor_client_win_with_conn(
+    core: &CoreCtx,
+    conn: &x11rb::rust_connection::RustConnection,
+    root: x11rb::protocol::xproto::Window,
+) -> Option<WindowId> {
+    let reply = conn.query_pointer(root).ok()?.reply().ok()?;
+
+    if reply.child == x11rb::NONE {
+        return None;
+    }
+
+    let win = WindowId::from(reply.child);
+    if core.g.clients.contains_key(&win) {
+        Some(win)
+    } else {
+        None
     }
 }

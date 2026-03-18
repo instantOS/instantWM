@@ -3,10 +3,10 @@
 //! This module handles dragging across the tag bar to switch views or move
 //! windows between tags.
 
+use crate::backend::x11::grab::mouse_drag_loop;
 use crate::bar::bar_position_to_gesture;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::cursor::{set_cursor_default, set_cursor_move};
-use crate::mouse::grab::mouse_drag_loop;
 use crate::mouse::warp::get_root_ptr;
 use crate::types::*;
 use x11rb::protocol::xproto::ModMask;

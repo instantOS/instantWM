@@ -3,6 +3,7 @@
 //! This module handles click and drag interactions on window title bars,
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
+use crate::backend::x11::grab::mouse_drag_loop;
 use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::set_window_mode;
@@ -13,7 +14,6 @@ use crate::mouse::drag::move_drop::{
     clear_bar_hover, complete_move_drop, point_is_on_bar, promote_to_floating,
     snap_to_monitor_edges, update_bar_hover_simple,
 };
-use crate::mouse::grab::mouse_drag_loop;
 use crate::mouse::monitor::handle_client_monitor_switch;
 use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;

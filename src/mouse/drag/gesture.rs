@@ -2,8 +2,8 @@
 //!
 //! This module handles root-window gestures like vertical swipes.
 
+use crate::backend::x11::grab::mouse_drag_loop;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::mouse::grab::mouse_drag_loop;
 use crate::mouse::warp::get_root_ptr;
 use crate::types::*;
 
@@ -25,7 +25,7 @@ pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
 
     let mut last_y = start_y;
 
-    crate::mouse::grab::mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
+    crate::backend::x11::grab::mouse_drag_loop(ctx, btn, Cursor::Move, false, |ctx, event| {
         if let x11rb::protocol::Event::MotionNotify(m) = event {
             let threshold = ctx.core.g.selected_monitor().monitor_rect.h / 30;
             if (last_y - m.event_y as i32).abs() > threshold {
