@@ -32,9 +32,9 @@ pub fn wayland_hover_resize_drag_begin(
     let Some((win, dir, geo)) = wayland_selected_resize_target_at(&ctx, root_x, root_y) else {
         return false;
     };
-    let move_mode = btn == MouseButton::Right
-        || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
-    let drag_type = if move_mode {
+    let drag_type = if btn == MouseButton::Right
+        || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y)
+    {
         crate::globals::DragType::Move
     } else {
         crate::globals::DragType::Resize(dir)
@@ -52,12 +52,16 @@ pub fn wayland_hover_resize_drag_begin(
         last_root_y: root_y,
         ..Default::default()
     };
-    ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
-    ctx.core.g.drag.resize_direction = Some(dir);
-    if move_mode {
-        set_cursor_move_wayland(&mut ctx);
-    } else {
-        set_cursor_resize_wayland(&mut ctx, Some(dir));
+    match drag_type {
+        crate::globals::DragType::Move => {
+            ctx.core.g.behavior.cursor_icon = AltCursor::None;
+            set_cursor_move_wayland(&mut ctx);
+        }
+        crate::globals::DragType::Resize(_) => {
+            ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
+            ctx.core.g.drag.resize_direction = Some(dir);
+            set_cursor_resize_wayland(&mut ctx, Some(dir));
+        }
     }
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
     crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(win);
