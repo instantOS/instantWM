@@ -755,6 +755,10 @@ fn build_cursor_elements(
             }
         }
         CursorPresentation::Surface { surface, hotspot } => {
+            // Double-check that the surface is still alive before rendering.
+            if !smithay::utils::IsAlive::alive(surface) {
+                return custom_elements;
+            }
             let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
                 (local_pointer.x - hotspot.x as f64).round() as i32,
                 (local_pointer.y - hotspot.y as f64).round() as i32,
@@ -784,6 +788,11 @@ fn build_cursor_elements(
                 cursor,
                 local_pointer,
             ));
+
+            // Double-check that the drag icon surface is still alive before rendering.
+            if !smithay::utils::IsAlive::alive(icon) {
+                return custom_elements;
+            }
 
             // Then render the drag icon
             let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((

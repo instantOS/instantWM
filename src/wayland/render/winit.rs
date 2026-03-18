@@ -147,6 +147,10 @@ fn render_cursor_overlays(
     match presentation {
         CursorPresentation::Hidden | CursorPresentation::Named(_) => {}
         CursorPresentation::Surface { surface, hotspot } => {
+            // Double-check that the surface is still alive before rendering.
+            if !smithay::utils::IsAlive::alive(surface) {
+                return;
+            }
             let cursor_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
                 (pointer_location.x - hotspot.x as f64).round() as i32,
                 (pointer_location.y - hotspot.y as f64).round() as i32,
@@ -171,6 +175,11 @@ fn render_cursor_overlays(
         } => {
             // Render the base cursor overlay first if it's a surface
             render_cursor_overlays(renderer, cursor, pointer_location, render_elements);
+
+            // Double-check that the drag icon surface is still alive before rendering.
+            if !smithay::utils::IsAlive::alive(icon) {
+                return;
+            }
 
             // Then render the drag icon
             let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((

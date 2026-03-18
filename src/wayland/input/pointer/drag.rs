@@ -1,7 +1,9 @@
 //! Pointer drag handling (title drag, tag drag, resize drag).
 
-use crate::mouse::{set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland};
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
+use crate::mouse::{
+    set_cursor_default_wayland, set_cursor_move_wayland, set_cursor_resize_wayland,
+};
 use crate::types::{get_resize_direction, AltCursor, MouseButton, Rect, ResizeDirection, WindowId};
 use crate::wm::Wm;
 

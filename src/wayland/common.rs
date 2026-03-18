@@ -126,6 +126,11 @@ pub fn resolve_cursor_presentation(
             CursorImageStatus::Hidden => CursorPresentation::Hidden,
             CursorImageStatus::Named(icon) => CursorPresentation::Named(*icon),
             CursorImageStatus::Surface(surface) => {
+                // Check if the cursor surface is still alive before using it.
+                // If the surface is dead, fall back to the default cursor icon.
+                if !smithay::utils::IsAlive::alive(surface) {
+                    return CursorPresentation::Named(CursorIcon::Default);
+                }
                 let hotspot = with_states(surface, |states| {
                     states
                         .data_map
