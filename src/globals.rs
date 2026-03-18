@@ -33,6 +33,8 @@ pub struct X11RuntimeConfig {
     pub statusscheme: crate::types::color::StatusScheme,
     /// X11 cursors for different cursor states.
     pub cursors: [Option<Cursor>; 10],
+    /// Last cursor index applied to the X11 root cursor (caching to avoid redundant requests).
+    pub last_x11_cursor_index: Option<usize>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -51,6 +53,7 @@ impl Default for X11RuntimeConfig {
             borderscheme: BorderScheme::default(),
             statusscheme: StatusScheme::default(),
             cursors: [const { None }; 10],
+            last_x11_cursor_index: None,
         }
     }
 }
@@ -210,8 +213,6 @@ pub struct DragState {
     pub interactive: DragInteraction,
     pub bar_active: bool,
     pub resize_direction: Option<ResizeDirection>,
-    /// Last cursor index applied to the X11 root cursor.
-    pub last_x11_cursor_index: Option<usize>,
 }
 
 /// A single keyboard layout with optional variant.
@@ -307,7 +308,7 @@ impl Default for WmBehavior {
             animated: true,
             focus_follows_mouse: true,
             focus_follows_float_mouse: true,
-            cursor_icon: AltCursor::None,
+            cursor_icon: AltCursor::Default,
             double_draw: false,
             specialnext: SpecialNext::None,
             current_mode: "default".to_string(),

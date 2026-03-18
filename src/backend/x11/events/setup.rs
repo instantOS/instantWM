@@ -131,6 +131,9 @@ pub fn setup_root(wm: &mut Wm) {
     crate::monitor::update_geom(&mut ctx);
 
     if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::mouse::set_cursor_default_x11(&mut x11_ctx);
+        crate::mouse::set_cursor_style(
+            &mut crate::contexts::WmCtx::X11(x11_ctx.reborrow()),
+            crate::types::AltCursor::Default,
+        );
     }
 }

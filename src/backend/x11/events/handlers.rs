@@ -143,18 +143,17 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                     .map(|c| c.is_floating)
                     .unwrap_or(false);
                 let has_tiling = mon.is_tiling_layout();
-                if altcursor == AltCursor::Resize && (is_floating || !has_tiling) {
-                    let dir = ctx.core.g.drag.resize_direction;
+                if let AltCursor::Resize(dir) = altcursor {
                     crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
                     let mut x11_ctx = ctx.reborrow();
                     if btn == MouseButton::Right {
                         crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
                     } else if btn == MouseButton::Left {
-                        if dir == Some(crate::types::ResizeDirection::Top) {
+                        if dir == crate::types::ResizeDirection::Top {
                             crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
                         } else {
-                            crate::mouse::resize_mouse_directional(&mut x11_ctx, dir, btn);
+                            crate::mouse::resize_mouse_directional(&mut x11_ctx, Some(dir), btn);
                         }
                     }
                     return;
@@ -522,7 +521,10 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             return;
         }
         crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
-        if ctx.core.g.behavior.cursor_icon == AltCursor::Sidebar {
+        if matches!(
+            ctx.core.g.behavior.cursor_icon,
+            AltCursor::Resize(crate::types::ResizeDirection::Left)
+        ) {
             crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
         }
         return;

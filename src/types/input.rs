@@ -5,6 +5,8 @@
 use crate::types::WindowId;
 
 /// Mouse cursor types used by the window manager.
+/// DEPRECATED: Use `AltCursor` instead.
+#[deprecated(since = "0.1.0", note = "Use AltCursor instead")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cursor {
     /// Normal/default cursor.
@@ -29,8 +31,10 @@ pub enum Cursor {
     BR,
 }
 
+#[deprecated(since = "0.1.0", note = "Use AltCursor instead")]
 impl Cursor {
     /// Convert cursor type to X11 cursor index (for cfg.cursors array).
+    #[deprecated(since = "0.1.0", note = "Use AltCursor::to_x11_index() instead")]
     pub fn to_x11_index(self) -> usize {
         match self {
             Cursor::Normal => 0,
@@ -87,11 +91,31 @@ impl MouseButton {
 pub enum AltCursor {
     /// No special cursor.
     #[default]
-    None,
-    /// Resize cursor.
-    Resize,
-    /// Sidebar cursor.
-    Sidebar,
+    Default,
+    /// Move cursor.
+    Move,
+    /// Resize cursor with direction.
+    Resize(ResizeDirection),
+}
+
+impl AltCursor {
+    /// Convert cursor type to X11 cursor index (for cfg.cursors array).
+    pub fn to_x11_index(self) -> usize {
+        match self {
+            AltCursor::Default => 0,
+            AltCursor::Move => 2,
+            AltCursor::Resize(dir) => match dir {
+                ResizeDirection::TopLeft => 8,
+                ResizeDirection::TopRight => 9,
+                ResizeDirection::BottomLeft => 6,
+                ResizeDirection::BottomRight => 7,
+                ResizeDirection::Top => 5,
+                ResizeDirection::Bottom => 5,
+                ResizeDirection::Left => 4,
+                ResizeDirection::Right => 4,
+            },
+        }
+    }
 }
 
 /// Describes precisely what the mouse cursor is positioned over in the bar,
@@ -276,6 +300,20 @@ impl ResizeDirection {
             Self::Bottom => ((w + bw - 1) / 2, h + bw - 1),
             Self::BottomLeft => (-bw, h + bw - 1),
             Self::Left => (-bw, (h + bw - 1) / 2),
+        }
+    }
+
+    /// Convert to Wayland cursor icon.
+    pub fn to_wayland_icon(self) -> smithay::input::pointer::CursorIcon {
+        match self {
+            Self::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
+            Self::Top => smithay::input::pointer::CursorIcon::NResize,
+            Self::TopRight => smithay::input::pointer::CursorIcon::NeResize,
+            Self::Right => smithay::input::pointer::CursorIcon::EResize,
+            Self::BottomRight => smithay::input::pointer::CursorIcon::SeResize,
+            Self::Bottom => smithay::input::pointer::CursorIcon::SResize,
+            Self::BottomLeft => smithay::input::pointer::CursorIcon::SwResize,
+            Self::Left => smithay::input::pointer::CursorIcon::WResize,
         }
     }
 }

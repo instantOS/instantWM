@@ -116,8 +116,10 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 last_root_y: root_y,
                 ..Default::default()
             };
-            wl.core.g.behavior.cursor_icon = crate::types::AltCursor::None;
-            super::set_cursor_move_wayland(wl);
+            crate::mouse::set_cursor_style(
+                &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
+                crate::types::AltCursor::Move,
+            );
             crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_interactive(win);
         }
     }

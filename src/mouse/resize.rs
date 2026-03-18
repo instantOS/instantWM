@@ -22,7 +22,7 @@ use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
 use crate::types::*;
 
-use super::cursor::set_cursor_resize_wayland;
+use super::cursor::set_cursor_style;
 use super::monitor::handle_client_monitor_switch;
 use crate::types::input::get_resize_direction;
 use crate::types::ResizeDirection;
@@ -171,9 +171,7 @@ fn begin_wayland_super_resize(
         last_root_y: warp_y,
         ..Default::default()
     };
-    wl.core.g.behavior.cursor_icon = AltCursor::Resize;
-    wl.core.g.drag.resize_direction = Some(dir);
-    set_cursor_resize_wayland(wl, Some(dir));
+    set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
     let _ = crate::focus::focus_wayland(&mut wl.core, &wl.wayland, Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());
     wmctx.raise_interactive(win);

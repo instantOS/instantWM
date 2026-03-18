@@ -6,7 +6,7 @@
 use crate::backend::x11::grab::mouse_drag_loop;
 use crate::bar::bar_position_to_gesture;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::mouse::cursor::{set_cursor_default, set_cursor_move};
+use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::warp::get_root_ptr;
 use crate::types::*;
 use x11rb::protocol::xproto::ModMask;
@@ -66,7 +66,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         last_motion: None,
         button: btn,
     };
-    set_cursor_move(ctx);
+    set_cursor_style(ctx, AltCursor::Move);
     ctx.g_mut().drag.bar_active = true;
     ctx.request_bar_update(Some(selmon_id));
     true
@@ -164,7 +164,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
     if let Some(mon) = ctx.g_mut().monitor_mut(selmon_id) {
         mon.gesture = Gesture::None;
     }
-    set_cursor_default(ctx);
+    set_cursor_style(ctx, AltCursor::Default);
     ctx.request_bar_update(Some(selmon_id));
 }
 

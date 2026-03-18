@@ -14,7 +14,7 @@ use crate::types::SnapPosition;
 use crate::types::*;
 
 use crate::mouse::constants::{DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
-use crate::mouse::cursor::set_cursor_move;
+
 use crate::mouse::monitor::handle_client_monitor_switch;
 use crate::mouse::warp::get_root_ptr;
 

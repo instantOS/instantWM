@@ -9,7 +9,7 @@ use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::set_window_mode;
 use crate::layouts::{arrange, restack};
 use crate::mouse::constants::DRAG_THRESHOLD;
-use crate::mouse::cursor::{set_cursor_default, set_cursor_move, set_cursor_resize_wayland};
+use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::drag::move_drop::{
     clear_bar_hover, complete_move_drop, point_is_on_bar, promote_to_floating,
     snap_to_monitor_edges, update_bar_hover_simple,
@@ -176,9 +176,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 last_root_y: warp_y,
                 ..Default::default()
             };
-            wl.core.g.behavior.cursor_icon = crate::types::AltCursor::Resize;
-            wl.core.g.drag.resize_direction = Some(dir);
-            set_cursor_resize_wayland(wl, Some(dir));
+            set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
         }
         return true;
     }
@@ -205,7 +203,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         ctx.g_mut().drag.interactive.start_y = clamped_y;
     }
 
-    set_cursor_move(ctx);
+    set_cursor_style(ctx, AltCursor::Move);
     ctx.g_mut().drag.interactive.dragging = true;
     title_drag_motion(ctx, root_x, root_y)
 }
@@ -308,7 +306,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         );
         ctx.g_mut().drag.interactive.active = false;
         ctx.g_mut().drag.interactive.dragging = false;
-        set_cursor_default(ctx);
+        set_cursor_style(ctx, AltCursor::Default);
         complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
         clear_bar_hover(ctx);
         ctx.raise_interactive(win);

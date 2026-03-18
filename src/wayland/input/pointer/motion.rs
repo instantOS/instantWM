@@ -8,7 +8,7 @@ use smithay::utils::{Point, SERIAL_COUNTER};
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::WmCtxWayland;
 use crate::mouse::hover::selected_hover_resize_target_at;
-use crate::mouse::set_cursor_resize_wayland;
+use crate::mouse::set_cursor_style;
 use crate::types::AltCursor;
 use crate::types::BarPosition;
 use crate::types::Rect;
@@ -19,8 +19,8 @@ use crate::wayland::input::bar::{
 };
 use crate::wayland::input::pointer::button::find_hovered_window;
 use crate::wayland::input::pointer::drag::{
-    clear_wayland_hover_resize_offer, update_wayland_selected_resize_offer,
-    wayland_active_drag_window, wayland_hover_resize_drag_motion,
+    update_wayland_selected_resize_offer, wayland_active_drag_window,
+    wayland_hover_resize_drag_motion,
 };
 use crate::wm::Wm;
 
@@ -349,8 +349,11 @@ fn handle_bar_motion(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return true;
         };
-        if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
-            clear_wayland_hover_resize_offer(&mut ctx);
+        if matches!(ctx.core.g.behavior.cursor_icon, AltCursor::Resize(_)) {
+            set_cursor_style(
+                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                AltCursor::Default,
+            );
         }
         let focus = pointer_focus
             .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
@@ -406,12 +409,16 @@ fn update_hover_resize_state(
             root_x,
             root_y,
         ) {
-            set_cursor_resize_wayland(&mut ctx, Some(dir));
-            ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
-            ctx.core.g.drag.resize_direction = Some(dir);
+            set_cursor_style(
+                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                AltCursor::Resize(dir),
+            );
             suppress_hover_focus = true;
-        } else if ctx.core.g.behavior.cursor_icon == AltCursor::Resize {
-            clear_wayland_hover_resize_offer(&mut ctx);
+        } else if matches!(ctx.core.g.behavior.cursor_icon, AltCursor::Resize(_)) {
+            set_cursor_style(
+                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                AltCursor::Default,
+            );
         }
     }
 

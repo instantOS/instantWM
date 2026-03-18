@@ -20,7 +20,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
-use super::cursor::{set_cursor_default, set_cursor_resize};
+use super::cursor::set_cursor_style;
 use super::warp::get_root_ptr;
 
 use super::resize::resize_mouse_directional;
@@ -146,12 +146,6 @@ pub fn selected_hover_resize_target_at(
     Some((win, dir))
 }
 
-fn clear_hover_resize_offer(ctx: &mut WmCtx) {
-    ctx.g_mut().behavior.cursor_icon = AltCursor::None;
-    ctx.g_mut().drag.resize_direction = None;
-    set_cursor_default(ctx);
-}
-
 /// Find a visible tiled window at point (`x`, `y`), skipping `skip_win`.
 ///
 /// Unlike [`get_cursor_client_win`] (which uses `query_pointer` and returns the
@@ -238,9 +232,7 @@ pub fn handle_floating_resize_hover(
     do_focus: bool,
 ) -> bool {
     if let Some((win, dir)) = hover_resize_target_at(ctx, root_x, root_y) {
-        set_cursor_resize(ctx, Some(dir));
-        ctx.g_mut().behavior.cursor_icon = AltCursor::Resize;
-        ctx.g_mut().drag.resize_direction = Some(dir);
+        set_cursor_style(ctx, AltCursor::Resize(dir));
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
@@ -253,8 +245,8 @@ pub fn handle_floating_resize_hover(
         return true;
     }
 
-    if ctx.g_mut().behavior.cursor_icon == AltCursor::Resize {
-        clear_hover_resize_offer(ctx);
+    if matches!(ctx.g_mut().behavior.cursor_icon, AltCursor::Resize(_)) {
+        set_cursor_style(ctx, AltCursor::Default);
     }
     false
 }
@@ -263,18 +255,21 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let mon = ctx.g_mut().selected_monitor();
 
     if root_x > mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH {
-        if ctx.g_mut().behavior.cursor_icon == AltCursor::None
-            && root_y > ctx.g_mut().cfg.bar_height + 60
+        if !matches!(
+            ctx.g_mut().behavior.cursor_icon,
+            AltCursor::Resize(ResizeDirection::Left)
+        ) && root_y > ctx.g_mut().cfg.bar_height + 60
         {
-            set_cursor_resize(ctx, Some(ResizeDirection::TopLeft));
-            ctx.g_mut().behavior.cursor_icon = AltCursor::Sidebar;
+            set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
         }
         return true;
     }
 
-    if ctx.g_mut().behavior.cursor_icon == AltCursor::Sidebar {
-        ctx.g_mut().behavior.cursor_icon = AltCursor::None;
-        set_cursor_default(ctx);
+    if matches!(
+        ctx.g_mut().behavior.cursor_icon,
+        AltCursor::Resize(ResizeDirection::Left)
+    ) {
+        set_cursor_style(ctx, AltCursor::Default);
         return true;
     }
 
@@ -314,7 +309,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
 
     if !action_started {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        clear_hover_resize_offer(&mut wm_ctx);
+        crate::mouse::set_cursor_style(&mut wm_ctx, AltCursor::Default);
     }
 
     true
@@ -489,7 +484,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtxX11) -> bool {
 
     if !action_started {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        clear_hover_resize_offer(&mut wm_ctx);
+        crate::mouse::set_cursor_style(&mut wm_ctx, AltCursor::Default);
     }
 
     true
