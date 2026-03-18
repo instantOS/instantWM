@@ -1,9 +1,8 @@
-use crate::commands::{command_prefix, set_special_next};
 use crate::ipc_types::IpcResponse;
 use crate::layouts::{set_layout as layouts_set_layout, LayoutKind};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
-use crate::toggles::set_border_width;
+use crate::toggles::{set_border_width, set_prefix_mode, set_special_next};
 use crate::types::MonitorDirection;
 use crate::wm::Wm;
 
@@ -85,7 +84,7 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> IpcResponse {
 
 pub fn set_prefix(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
     let val = arg.unwrap_or(1);
-    command_prefix(&mut wm.ctx(), val);
+    set_prefix_mode(&mut wm.ctx(), val);
     IpcResponse::ok("")
 }
 

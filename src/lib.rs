@@ -2,7 +2,6 @@ mod animation;
 mod backend;
 mod bar;
 mod client;
-mod commands;
 pub mod config;
 mod constants;
 mod contexts;

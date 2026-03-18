@@ -78,6 +78,17 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
     core.g.clients.update_geometry(win, geo);
 }
 
+pub fn set_special_next(core: &mut CoreCtx, value: u32) {
+    core.g.behavior.specialnext = value.into();
+}
+
+pub fn set_prefix_mode(ctx: &mut WmCtx, value: u32) {
+    ctx.g_mut().tags.prefix = value != 0;
+
+    let selmon_id = ctx.g().selected_monitor_id();
+    ctx.request_bar_update(Some(selmon_id));
+}
+
 pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
     ctrl_toggle(&mut core.g.behavior.focus_follows_mouse, action);
 }

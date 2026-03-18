@@ -10,7 +10,6 @@ use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
-use x11rb::wrapper::ConnectionExt as ConnectionExtWrapper;
 use x11rb::CURRENT_TIME;
 
 /// Result of resolving a focus target, containing both the target window
