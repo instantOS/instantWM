@@ -59,7 +59,15 @@ pub fn render_frame(
 
     // Shared: get element counts for pre-allocation
     let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
-    let mut render_elements = Vec::with_capacity(counts.total());
+    let mut render_elements = Vec::with_capacity(counts.total() + 2);
+
+    // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
+    render_cursor_overlays(
+        renderer,
+        &cursor_presentation,
+        state.pointer.current_location(),
+        &mut render_elements,
+    );
 
     // Shared: assemble elements in z-order
     super::assemble_scene_elements!(
@@ -68,14 +76,6 @@ pub fn render_frame(
         space_render_elements,
         num_upper,
         render_elements
-    );
-
-    // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
-    render_cursor_overlays(
-        renderer,
-        &cursor_presentation,
-        state.pointer.current_location(),
-        &mut render_elements,
     );
 
     // Backend-specific: render with damage tracker
