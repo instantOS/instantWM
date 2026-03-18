@@ -35,7 +35,16 @@ fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>)
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 /// Calculate the new (position, dimension) for a single axis during a resize.
-fn calc_resize_dim(
+///
+/// The `affects_start` flag indicates the start edge (left or top) is being
+/// dragged, `affects_end` indicates the end edge (right or bottom) is being
+/// dragged. Exactly one may be true; if neither, the axis is unchanged.
+///
+/// When dragging the start edge, the window position moves with the pointer
+/// and size is reduced. When dragging the end edge, position stays fixed and
+/// size grows. The `bw` parameter is the border width, used to keep the
+/// opposite border stationary when resizing from a corner.
+fn compute_axis_resize(
     pointer: i32,
     orig_start: i32,
     orig_end: i32,
@@ -48,6 +57,8 @@ fn calc_resize_dim(
         let nw = (orig_end - pointer).max(1);
         (nx, nw)
     } else if affects_end {
+        // New width = pointer offset from start minus the two borders.
+        // Adding 1 accounts for the pixel offset in the event coordinates.
         let nw = (pointer - orig_start - 2 * bw + 1).max(1);
         (orig_start, nw)
     } else {
@@ -211,7 +222,7 @@ pub fn resize_mouse_directional(
             let pointer_x = m.event_x as i32;
             let pointer_y = m.event_y as i32;
 
-            let (new_x, new_w) = calc_resize_dim(
+            let (new_x, new_w) = compute_axis_resize(
                 pointer_x,
                 orig_left,
                 orig_right,
@@ -220,7 +231,7 @@ pub fn resize_mouse_directional(
                 affects_right,
             );
 
-            let (new_y, new_h) = calc_resize_dim(
+            let (new_y, new_h) = compute_axis_resize(
                 pointer_y,
                 orig_top,
                 orig_bottom,

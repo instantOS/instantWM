@@ -325,9 +325,6 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         }
     }
 
-    // Enter events: check if entering root or client
-    let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
-
     if is_floating_sel {
         // Case 1: Entering root while sel is floating
         if entering_root {
