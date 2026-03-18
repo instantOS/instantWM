@@ -26,7 +26,7 @@ use crate::types::*;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
-use smithay::utils::SERIAL_COUNTER;
+use smithay::utils::{Transform, SERIAL_COUNTER};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport
@@ -93,6 +93,22 @@ pub fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
     update_geom(&mut wm.ctx());
-    output.change_current_state(Some(mode), None, None, None);
+    // Transform::Flipped180 is REQUIRED for the winit (nested) backend.
+    //
+    // Smithay's winit backend renders into an OpenGL framebuffer whose
+    // Y-axis points upward (OpenGL convention), but the host Wayland
+    // compositor expects the top-left origin (Wayland convention).  The
+    // result is that every frame arrives at the host upside-down unless
+    // we tell Smithay's output machinery to compensate with a 180° flip.
+    //
+    // DO NOT replace this with Transform::Normal — the entire compositor
+    // output will be rendered upside-down inside the host window.
+    output.change_current_state(
+        Some(mode),
+        Some(Transform::Flipped180),
+        None,
+        Some((0, 0).into()),
+    );
+    output.set_preferred(mode);
     layer_map_for_output(output).arrange();
 }
