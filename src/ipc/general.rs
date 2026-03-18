@@ -3,7 +3,7 @@ use crate::layouts::{set_layout as layouts_set_layout, LayoutKind};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 use crate::toggles::{set_border_width, set_prefix_mode, set_special_next};
-use crate::types::MonitorDirection;
+use crate::types::{MonitorDirection, PrefixMode, SpecialNext};
 use crate::wm::Wm;
 
 pub fn set_wallpaper(wm: &mut Wm, path: String) -> IpcResponse {
@@ -82,9 +82,8 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> IpcResponse {
     IpcResponse::ok("")
 }
 
-pub fn set_prefix(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
-    let val = arg.unwrap_or(1);
-    set_prefix_mode(&mut wm.ctx(), val);
+pub fn set_prefix(wm: &mut Wm, mode: PrefixMode) -> IpcResponse {
+    set_prefix_mode(&mut wm.ctx(), mode.into());
     IpcResponse::ok("")
 }
 
@@ -96,9 +95,8 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
     IpcResponse::ok("")
 }
 
-pub fn set_special_next_cmd(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
-    let val = arg.unwrap_or(0);
-    set_special_next(wm.ctx().core_mut(), val);
+pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> IpcResponse {
+    set_special_next(wm.ctx().core_mut(), mode);
     IpcResponse::ok("")
 }
 

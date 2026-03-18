@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout, LayoutKind,
-    ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, TagCommand, ToggleCommand,
-    WindowCommand,
+    ModeCommand, MonitorCommand, MonitorDirection, PrefixMode, ScratchpadCommand, SpecialNext,
+    TagCommand, ToggleCommand, WindowCommand,
 };
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -421,28 +421,28 @@ enum CommandKind {
     /// Direction: "next"/"prev" or "1"/"-1"
     TagMon {
         /// Direction (e.g., "next", "prev", "1", "-1")
-        direction: Option<MonitorDirection>,
+        #[arg(default_value = "next")]
+        direction: MonitorDirection,
     },
     /// Move the selected window to another monitor and follow it.
     ///
     /// Direction: "next"/"prev" or "1"/"-1"
     FollowMon {
         /// Direction (e.g., "next", "prev", "1", "-1")
-        direction: Option<MonitorDirection>,
+        #[arg(default_value = "next")]
+        direction: MonitorDirection,
     },
     /// Set the layout type.
     ///
     /// Layout names: tile, grid, floating, monocle, vert, deck, overview, bstack, horiz
     Layout {
         /// Layout name (e.g., "tile", "grid", "monocle")
-        name: Option<LayoutKind>,
+        name: LayoutKind,
     },
     /// Enable or disable prefix mode for special keybindings.
-    ///
-    /// Non-zero value enables prefix mode; zero disables it.
     Prefix {
-        /// Value: non-zero to enable, zero to disable (default: 1)
-        value: Option<u32>,
+        /// Enable or disable prefix mode (default: enable)
+        mode: PrefixMode,
     },
     /// Set border width for the selected window.
     Border {
@@ -450,11 +450,9 @@ enum CommandKind {
         width: Option<u32>,
     },
     /// Set special next mode for cycling through windows.
-    ///
-    /// Value 0 disables special next; non-zero enables floating window cycling.
     SpecialNext {
-        /// Mode: 0=none, non-zero=float (default: 0)
-        value: Option<u32>,
+        /// Special next mode: none or float (default: none)
+        mode: SpecialNext,
     },
     /// Keyboard layout management.
     Keyboard {
@@ -584,16 +582,12 @@ fn main() {
             IpcCommand::Spawn(command.join(" "))
         }
         CommandKind::WarpFocus => IpcCommand::WarpFocus,
-        CommandKind::TagMon { direction } => {
-            IpcCommand::TagMon(direction.unwrap_or(MonitorDirection::NEXT))
-        }
-        CommandKind::FollowMon { direction } => {
-            IpcCommand::FollowMon(direction.unwrap_or(MonitorDirection::NEXT))
-        }
-        CommandKind::Layout { name } => IpcCommand::Layout(name.unwrap_or(LayoutKind::Tile)),
-        CommandKind::Prefix { value } => IpcCommand::Prefix(value),
+        CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
+        CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
+        CommandKind::Layout { name } => IpcCommand::Layout(name),
+        CommandKind::Prefix { mode } => IpcCommand::Prefix(mode),
         CommandKind::Border { width } => IpcCommand::Border(width),
-        CommandKind::SpecialNext { value } => IpcCommand::SpecialNext(value),
+        CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
         CommandKind::Keyboard { action } => {
             let cmd = match action {
                 KeyboardAction::List { all } => {

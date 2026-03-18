@@ -455,7 +455,7 @@ define_actions!(
     // Toggles
     "toggle_sticky" => "toggle sticky (visible on all tags)" => |ctx: &mut WmCtx, _args: &[String]| {
         if let Some(win) = ctx.selected_client() {
-            toggle_sticky(ctx.core_mut(), win)
+            toggle_sticky(ctx, win)
         }
     },
     "toggle_alt_tag" => "toggle alt-tag mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_alt_tag(ctx, ToggleAction::Toggle),

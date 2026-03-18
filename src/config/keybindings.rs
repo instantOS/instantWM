@@ -236,7 +236,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | CONTROL,     XK_F  => toggle_maximized),
         key!(MODKEY | CONTROL,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
-                toggle_sticky(ctx.core_mut(), win)
+                toggle_sticky(ctx, win)
             }
         }),
         key!(MODKEY | MOD1,     XK_S  => |ctx| toggle_alt_tag(ctx, ToggleAction::Toggle)),

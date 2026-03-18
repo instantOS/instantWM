@@ -1,5 +1,5 @@
 pub use crate::layouts::LayoutKind;
-pub use crate::types::MonitorDirection;
+pub use crate::types::{MonitorDirection, PrefixMode, SpecialNext};
 use bincode::{Decode, Encode};
 
 /// Protocol version generated at compile time from crate version and git hash.
@@ -235,11 +235,11 @@ pub enum IpcCommand {
     /// Set the layout type.
     Layout(LayoutKind),
     /// Enable or disable prefix mode for special keybindings.
-    Prefix(Option<u32>),
+    Prefix(PrefixMode),
     /// Set border width for the selected window.
     Border(Option<u32>),
     /// Set special next mode for cycling through windows.
-    SpecialNext(Option<u32>),
+    SpecialNext(SpecialNext),
     /// Update status text via IPC.
     UpdateStatus(String),
     /// Monitor-related commands.

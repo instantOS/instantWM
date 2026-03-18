@@ -1,5 +1,6 @@
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::keyboard::grab_keys_x11;
+use crate::layouts::arrange;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
@@ -32,15 +33,15 @@ pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
     }
 }
 
-pub fn toggle_sticky(core: &mut CoreCtx, win: WindowId) {
-    let monitor_id = if let Some(client) = core.g.clients.get_mut(&win) {
+pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
+    let monitor_id = if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         client.issticky = !client.issticky;
         client.monitor_id
     } else {
         return;
     };
 
-    let _ = monitor_id;
+    arrange(ctx, Some(monitor_id));
 }
 
 pub fn toggle_prefix(ctx: &mut WmCtx) {
@@ -78,12 +79,12 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
     core.g.clients.update_geometry(win, geo);
 }
 
-pub fn set_special_next(core: &mut CoreCtx, value: u32) {
-    core.g.behavior.specialnext = value.into();
+pub fn set_special_next(core: &mut CoreCtx, value: SpecialNext) {
+    core.g.behavior.specialnext = value;
 }
 
-pub fn set_prefix_mode(ctx: &mut WmCtx, value: u32) {
-    ctx.g_mut().tags.prefix = value != 0;
+pub fn set_prefix_mode(ctx: &mut WmCtx, value: bool) {
+    ctx.g_mut().tags.prefix = value;
 
     let selmon_id = ctx.g().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));
