@@ -166,6 +166,16 @@ pub enum DragType {
 /// On X11, `window_title_mouse_handler` runs a synchronous grab loop.
 /// On Wayland, this state machine is driven by the calloop's pointer
 /// motion and button release events.
+/// How the drag interaction was initiated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DragOrigin {
+    /// Initiated from the title bar (click/drag on bar entry or CSD move request).
+    #[default]
+    TitleBar,
+    /// Initiated from a hover-border zone or keyboard/super+button shortcut.
+    HoverBorder,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DragInteraction {
     pub active: bool,
@@ -173,6 +183,7 @@ pub struct DragInteraction {
     pub button: MouseButton,
     pub dragging: bool,
     pub drag_type: DragType,
+    pub origin: DragOrigin,
     pub win_start_geo: Rect,
     pub start_x: i32,
     pub start_y: i32,

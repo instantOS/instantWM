@@ -687,6 +687,7 @@ impl XdgShellHandler for WaylandState {
                     button: crate::types::MouseButton::Left,
                     dragging: false,
                     drag_type: crate::globals::DragType::Move,
+                    origin: crate::globals::DragOrigin::TitleBar,
                     was_focused: sel == Some(win),
                     was_hidden,
                     start_x: root_x,

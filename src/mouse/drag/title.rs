@@ -58,6 +58,7 @@ pub fn title_drag_begin(
         active: true,
         win,
         button: btn,
+        origin: crate::globals::DragOrigin::TitleBar,
         was_focused: sel == Some(win),
         was_hidden: ctx.g_mut().clients.is_hidden(win),
         start_x: click_root_x,
@@ -168,6 +169,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 button: btn,
                 dragging: true,
                 drag_type: crate::globals::DragType::Resize(dir),
+                origin: crate::globals::DragOrigin::HoverBorder,
                 start_x: warp_x,
                 start_y: warp_y,
                 win_start_geo: current_geo,
@@ -306,8 +308,12 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         ctx.g_mut().drag.interactive.active = false;
         ctx.g_mut().drag.interactive.dragging = false;
         set_cursor_style(ctx, AltCursor::Default);
-        complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
-        clear_bar_hover(ctx);
+        if is_right_click {
+            handle_client_monitor_switch(ctx, win);
+        } else {
+            complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
+            clear_bar_hover(ctx);
+        }
         ctx.raise_interactive(win);
         return;
     }

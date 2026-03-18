@@ -40,6 +40,7 @@ pub fn wayland_hover_resize_drag_begin(
         button: btn,
         dragging: true,
         drag_type,
+        origin: crate::globals::DragOrigin::HoverBorder,
         start_x: root_x,
         start_y: root_y,
         win_start_geo: geo,
@@ -138,7 +139,9 @@ pub fn wayland_hover_resize_drag_motion(
     root_x: i32,
     root_y: i32,
 ) -> bool {
-    if !ctx.core.g.drag.interactive.active {
+    if !ctx.core.g.drag.interactive.active
+        || ctx.core.g.drag.interactive.origin != crate::globals::DragOrigin::HoverBorder
+    {
         return false;
     }
     let drag = ctx.core.g.drag.interactive.clone();
@@ -217,7 +220,10 @@ pub fn wayland_hover_resize_drag_motion(
 
 /// Finish hover resize drag.
 pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) -> bool {
-    if !ctx.core.g.drag.interactive.active || ctx.core.g.drag.interactive.button != btn {
+    if !ctx.core.g.drag.interactive.active
+        || ctx.core.g.drag.interactive.button != btn
+        || ctx.core.g.drag.interactive.origin != crate::globals::DragOrigin::HoverBorder
+    {
         return false;
     }
     let drag = ctx.core.g.drag.interactive.clone();
@@ -226,14 +232,26 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
         &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
         AltCursor::Default,
     );
-    crate::mouse::drag::complete_move_drop(
-        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-        drag.win,
-        drag.win_start_geo,
-        None,
-        Some((drag.last_root_x, drag.last_root_y)),
-    );
-    crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
+    match drag.drag_type {
+        crate::globals::DragType::Move => {
+            crate::mouse::drag::complete_move_drop(
+                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                drag.win,
+                drag.win_start_geo,
+                None,
+                Some((drag.last_root_x, drag.last_root_y)),
+            );
+            crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(
+                ctx.reborrow(),
+            ));
+        }
+        crate::globals::DragType::Resize(_) => {
+            crate::mouse::monitor::handle_client_monitor_switch(
+                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                drag.win,
+            );
+        }
+    }
     crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(drag.win);
     true
 }
