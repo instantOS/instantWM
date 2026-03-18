@@ -61,8 +61,8 @@ pub mod title;
 /// until the button is released.
 ///
 /// On **Wayland** a synchronous grab loop is not possible (no `XGrabPointer`
-/// equivalent in the protocol).  Instead we arm the existing
-/// `HoverResizeDragState` machinery in move mode at the current pointer
+/// equivalent in the protocol).  Instead we arm the `DragInteraction`
+/// machinery in move mode at the current pointer
 /// position.  Subsequent `MotionNotify` events delivered through calloop then
 /// drive the drag, and `wayland_hover_resize_drag_finish` (called on button
 /// release inside `handle_pointer_button`) performs the drop logic via the
@@ -103,17 +103,19 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
 
-            wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+            wl.core.g.drag.interactive = crate::globals::DragInteraction {
                 active: true,
                 win,
                 button: MouseButton::Left,
-                direction: crate::types::ResizeDirection::BottomRight,
+                dragging: true,
                 move_mode: true,
+                direction: crate::types::ResizeDirection::BottomRight,
                 start_x: root_x,
                 start_y: root_y,
                 win_start_geo: geo,
                 last_root_x: root_x,
                 last_root_y: root_y,
+                ..Default::default()
             };
             wl.core.g.behavior.cursor_icon = crate::types::AltCursor::None;
             super::set_cursor_move_wayland(wl);

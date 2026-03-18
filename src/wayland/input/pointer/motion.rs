@@ -228,7 +228,7 @@ fn compute_bar_hit(
         // past the bar bottom before a window drag is allowed to start.
         let guard_h = 4;
         let drag_active =
-            active_drag_window.is_some() || wm.g.drag.title.active || wm.g.drag.tag.active;
+            active_drag_window.is_some() || wm.g.drag.interactive.active || wm.g.drag.tag.active;
         let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
         let in_guard = mon.showbar
             && !drag_active
@@ -333,7 +333,7 @@ fn handle_bar_motion(
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.pointer_location;
-    let is_drag = wm.g.drag.title.active || wm.g.drag.hover_resize.active || wm.g.drag.tag.active;
+    let is_drag = wm.g.drag.interactive.active || wm.g.drag.tag.active;
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
@@ -447,7 +447,7 @@ fn handle_wm_drag_motion(
         }
     }
 
-    if wm.g.drag.title.active {
+    if wm.g.drag.interactive.active {
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
     }

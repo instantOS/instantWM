@@ -13,7 +13,7 @@
 //!
 //! On Wayland, `resize_mouse_from_cursor` and `resize_aspect_mouse` bypass the
 //! title-drag state machine and instead directly activate a
-//! `HoverResizeDragState`.  This reuses the same directional-resize event loop
+//! `DragInteraction`.  This reuses the same directional-resize event loop
 //! that hover-border drags use, giving correct per-quadrant behaviour without
 //! any cursor warp or anchor chaos.
 
@@ -126,7 +126,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     }
 }
 
-/// Activate a `HoverResizeDragState` for a Super+RMB resize initiated anywhere
+/// Activate a `DragInteraction` for a Super+RMB resize initiated anywhere
 /// on a Wayland window (not just the hover-border zone).  This reuses the same
 /// directional-resize event loop as hover-border resizes, giving correct
 /// per-quadrant behaviour with cursor warped to the nearest edge/corner.
@@ -158,17 +158,19 @@ fn begin_wayland_super_resize(
         .backend
         .warp_pointer(warp_x as f64, warp_y as f64);
 
-    wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+    wl.core.g.drag.interactive = crate::globals::DragInteraction {
         active: true,
         win,
         button: btn,
-        direction: dir,
+        dragging: true,
         move_mode: false,
+        direction: dir,
         start_x: warp_x,
         start_y: warp_y,
         win_start_geo: geo,
         last_root_x: warp_x,
         last_root_y: warp_y,
+        ..Default::default()
     };
     wl.core.g.behavior.cursor_icon = AltCursor::Resize;
     wl.core.g.drag.resize_direction = Some(dir);

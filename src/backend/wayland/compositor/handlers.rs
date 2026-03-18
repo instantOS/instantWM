@@ -45,6 +45,7 @@ use super::{
     state::{WaylandClientState, WaylandState, WindowIdMarker},
     window::{is_unmanaged_x11_overlay, WindowType},
 };
+use crate::types::ResizeDirection;
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
@@ -668,7 +669,7 @@ impl XdgShellHandler for WaylandState {
             let root_x = pointer.x.round() as i32;
             let root_y = pointer.y.round() as i32;
             if let Some(g) = self.globals_mut() {
-                if g.drag.title.active {
+                if g.drag.interactive.active {
                     return;
                 }
                 let Some(client) = g.clients.get(&win) else {
@@ -680,10 +681,13 @@ impl XdgShellHandler for WaylandState {
                 let geo = client.geo;
                 let sel = g.selected_win();
                 let was_hidden = client.is_hidden;
-                g.drag.title = crate::globals::TitleDragState {
+                g.drag.interactive = crate::globals::DragInteraction {
                     active: true,
                     win,
                     button: crate::types::MouseButton::Left,
+                    dragging: false,
+                    move_mode: false,
+                    direction: ResizeDirection::BottomRight,
                     was_focused: sel == Some(win),
                     was_hidden,
                     start_x: root_x,
@@ -692,7 +696,6 @@ impl XdgShellHandler for WaylandState {
                     drop_restore_geo: geo,
                     last_root_x: root_x,
                     last_root_y: root_y,
-                    dragging: false,
                     suppress_click_action: true,
                 };
             }

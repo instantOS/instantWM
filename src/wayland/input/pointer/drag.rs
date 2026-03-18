@@ -9,11 +9,8 @@ use crate::wm::Wm;
 
 /// Get the active drag window (if any).
 pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
-    if wm.g.drag.hover_resize.active {
-        return Some(wm.g.drag.hover_resize.win);
-    }
-    if wm.g.drag.title.active {
-        return Some(wm.g.drag.title.win);
+    if wm.g.drag.interactive.active {
+        return Some(wm.g.drag.interactive.win);
     }
     None
 }
@@ -37,17 +34,19 @@ pub fn wayland_hover_resize_drag_begin(
     };
     let move_mode = btn == MouseButton::Right
         || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y);
-    ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+    ctx.core.g.drag.interactive = crate::globals::DragInteraction {
         active: true,
         win,
         button: btn,
-        direction: dir,
+        dragging: true,
         move_mode,
+        direction: dir,
         start_x: root_x,
         start_y: root_y,
         win_start_geo: geo,
         last_root_x: root_x,
         last_root_y: root_y,
+        ..Default::default()
     };
     ctx.core.g.behavior.cursor_icon = AltCursor::Resize;
     ctx.core.g.drag.resize_direction = Some(dir);
@@ -140,12 +139,12 @@ pub fn wayland_hover_resize_drag_motion(wm: &mut Wm, root_x: i32, root_y: i32) -
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
-    if !ctx.core.g.drag.hover_resize.active {
+    if !ctx.core.g.drag.interactive.active {
         return false;
     }
-    let drag = ctx.core.g.drag.hover_resize.clone();
-    ctx.core.g.drag.hover_resize.last_root_x = root_x;
-    ctx.core.g.drag.hover_resize.last_root_y = root_y;
+    let drag = ctx.core.g.drag.interactive.clone();
+    ctx.core.g.drag.interactive.last_root_x = root_x;
+    ctx.core.g.drag.interactive.last_root_y = root_y;
     if drag.move_mode {
         // Update bar hover gesture highlighting during move drags.
         update_wayland_move_bar_hover(&mut ctx, root_x, root_y);
@@ -221,29 +220,22 @@ pub fn wayland_hover_resize_drag_finish(wm: &mut Wm, btn: MouseButton) -> bool {
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
         return false;
     };
-    if !ctx.core.g.drag.hover_resize.active || ctx.core.g.drag.hover_resize.button != btn {
+    if !ctx.core.g.drag.interactive.active || ctx.core.g.drag.interactive.button != btn {
         return false;
     }
-    let drag = ctx.core.g.drag.hover_resize.clone();
-    ctx.core.g.drag.hover_resize = crate::globals::HoverResizeDragState::default();
+    let drag = ctx.core.g.drag.interactive.clone();
+    ctx.core.g.drag.interactive = crate::globals::DragInteraction::default();
     ctx.core.g.behavior.cursor_icon = AltCursor::None;
     ctx.core.g.drag.resize_direction = None;
     set_cursor_default_wayland(&mut ctx);
-    if drag.move_mode {
-        crate::mouse::drag::complete_move_drop(
-            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-            drag.win,
-            drag.win_start_geo,
-            None,
-            Some((drag.last_root_x, drag.last_root_y)),
-        );
-        crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
-    } else {
-        crate::mouse::monitor::handle_client_monitor_switch(
-            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-            drag.win,
-        );
-    }
+    crate::mouse::drag::complete_move_drop(
+        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+        drag.win,
+        drag.win_start_geo,
+        None,
+        Some((drag.last_root_x, drag.last_root_y)),
+    );
+    crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
     crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(drag.win);
     true
 }

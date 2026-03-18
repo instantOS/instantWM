@@ -158,75 +158,22 @@ impl Default for RuntimeConfig {
 /// On Wayland, this state machine is driven by the calloop's pointer
 /// motion and button release events.
 #[derive(Debug, Clone, Default)]
-pub struct TitleDragState {
-    /// Whether a title drag is currently active.
+pub struct DragInteraction {
     pub active: bool,
-    /// The window whose title was clicked.
     pub win: WindowId,
-    /// The mouse button that started the interaction.
     pub button: MouseButton,
-    /// Whether the window was focused when the click started.
-    pub was_focused: bool,
-    /// Whether the window was hidden when the click started.
-    pub was_hidden: bool,
-    /// Anchor X position (root coords) at press time.
-    pub start_x: i32,
-    /// Anchor Y position (root coords) at press time.
-    pub start_y: i32,
-    /// Window geometry at press time.
-    pub win_start_geo: Rect,
-    /// Geometry to persist when a drag is dropped on the bar and re-tiled.
-    pub drop_restore_geo: Rect,
-    /// Last pointer X seen for this interaction (root coords).
-    pub last_root_x: i32,
-    /// Last pointer Y seen for this interaction (root coords).
-    pub last_root_y: i32,
-    /// Whether the drag threshold has been exceeded.
     pub dragging: bool,
-    /// Skip bar-title click semantics on release (used for CSD move requests).
-    pub suppress_click_action: bool,
-}
-
-/// State for Wayland hover-border move/resize interactions.
-#[derive(Debug, Clone)]
-pub struct HoverResizeDragState {
-    /// Whether a hover-border drag is currently active.
-    pub active: bool,
-    /// Target window being moved/resized.
-    pub win: WindowId,
-    /// Mouse button that started the interaction.
-    pub button: MouseButton,
-    /// Resize direction chosen at press time.
-    pub direction: ResizeDirection,
-    /// `true` for move mode, `false` for resize mode.
     pub move_mode: bool,
-    /// Pointer anchor in root coords at press time.
-    pub start_x: i32,
-    /// Pointer anchor in root coords at press time.
-    pub start_y: i32,
-    /// Window geometry at press time.
+    pub direction: ResizeDirection,
     pub win_start_geo: Rect,
-    /// Last pointer position seen for this interaction.
+    pub start_x: i32,
+    pub start_y: i32,
     pub last_root_x: i32,
-    /// Last pointer position seen for this interaction.
     pub last_root_y: i32,
-}
-
-impl Default for HoverResizeDragState {
-    fn default() -> Self {
-        Self {
-            active: false,
-            win: WindowId::default(),
-            button: MouseButton::Left,
-            direction: ResizeDirection::BottomRight,
-            move_mode: false,
-            start_x: 0,
-            start_y: 0,
-            win_start_geo: Rect::default(),
-            last_root_x: 0,
-            last_root_y: 0,
-        }
-    }
+    pub drop_restore_geo: Rect,
+    pub was_focused: bool,
+    pub was_hidden: bool,
+    pub suppress_click_action: bool,
 }
 
 /// On X11, the synchronous grab loop drives this. On Wayland, the calloop
@@ -255,8 +202,7 @@ pub struct TagDragState {
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
     pub tag: TagDragState,
-    pub title: TitleDragState,
-    pub hover_resize: HoverResizeDragState,
+    pub interactive: DragInteraction,
     pub bar_active: bool,
     pub resize_direction: Option<ResizeDirection>,
     /// Last cursor index applied to the X11 root cursor.

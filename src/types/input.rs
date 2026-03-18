@@ -211,7 +211,7 @@ pub enum SnapPosition {
 }
 
 /// Direction for window resize operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResizeDirection {
     /// Resize from top-left corner.
     TopLeft,
@@ -222,6 +222,7 @@ pub enum ResizeDirection {
     /// Resize from right edge.
     Right,
     /// Resize from bottom-right corner.
+    #[default]
     BottomRight,
     /// Resize from bottom edge.
     Bottom,

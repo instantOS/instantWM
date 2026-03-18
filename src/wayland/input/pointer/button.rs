@@ -131,7 +131,8 @@ pub fn handle_pointer_button<B: InputBackend>(
         }
 
         let released_btn = wm_button;
-        let is_wm_drag = (wm.g.drag.title.active && released_btn == Some(wm.g.drag.title.button))
+        let is_wm_drag = (wm.g.drag.interactive.active
+            && released_btn == Some(wm.g.drag.interactive.button))
             || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button));
 
         if !is_wm_drag {
@@ -150,7 +151,7 @@ pub fn handle_pointer_button<B: InputBackend>(
             crate::mouse::drag_tag_finish(&mut ctx, mod_state);
         }
 
-        if wm.g.drag.title.active && released_btn == Some(wm.g.drag.title.button) {
+        if wm.g.drag.interactive.active && released_btn == Some(wm.g.drag.interactive.button) {
             let mut ctx = wm.ctx();
             crate::mouse::title_drag_finish(&mut ctx);
         }

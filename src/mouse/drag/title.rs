@@ -55,7 +55,7 @@ pub fn title_drag_begin(
         }
         None => return false,
     };
-    ctx.g_mut().drag.title = crate::globals::TitleDragState {
+    ctx.g_mut().drag.interactive = crate::globals::DragInteraction {
         active: true,
         win,
         button: btn,
@@ -69,6 +69,8 @@ pub fn title_drag_begin(
         last_root_y: click_root_y,
         dragging: false,
         suppress_click_action,
+        move_mode: false,
+        direction: ResizeDirection::BottomRight,
     };
     true
 }
@@ -77,20 +79,20 @@ pub fn title_drag_begin(
 
 /// Process ongoing pointer motion for an already active Wayland left-click title drag.
 fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    // On Wayland a right-click title-drag hands off to HoverResizeDragState
-    // at the threshold-exceeded moment. If we somehow arrive here with a
-    // right-click still marked dragging it means HoverResizeDragState is now
-    // driving the resize — clear the title state and bail.
-    if ctx.g_mut().drag.title.button == MouseButton::Right {
-        ctx.g_mut().drag.title.active = false;
-        ctx.g_mut().drag.title.dragging = false;
+    // On Wayland a right-click title-drag transitions to resize mode in
+    // title_drag_start_wayland. If we somehow arrive here with a
+    // right-click still marked active it means resize mode is now
+    // driving the interaction — clear the state and bail.
+    if ctx.g_mut().drag.interactive.button == MouseButton::Right {
+        ctx.g_mut().drag.interactive.active = false;
+        ctx.g_mut().drag.interactive.dragging = false;
         return false;
     }
 
     // Update bar hover gesture highlighting so tag indicators react during drag.
     update_bar_hover_simple(ctx, root_x, root_y);
 
-    let td = &ctx.g_mut().drag.title;
+    let td = &ctx.g_mut().drag.interactive;
     let win = td.win;
     let td_win_start_geo = td.win_start_geo;
     let td_start_x = td.start_x;
@@ -135,16 +137,16 @@ fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32)
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
 fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    let win = ctx.g_mut().drag.title.win;
-    let btn = ctx.g_mut().drag.title.button;
+    let win = ctx.g_mut().drag.interactive.win;
+    let btn = ctx.g_mut().drag.interactive.button;
     let is_right_click = btn == MouseButton::Right;
 
     if is_right_click {
-        // Right-click: promote to floating, arm HoverResizeDragState, warp cursor.
+        // Right-click: promote to floating, set up resize mode, warp cursor.
         let (current_geo, _) = promote_to_floating(ctx, win, None);
 
-        let start_x = ctx.g().drag.title.start_x;
-        let start_y = ctx.g().drag.title.start_y;
+        let start_x = ctx.g().drag.interactive.start_x;
+        let start_y = ctx.g().drag.interactive.start_y;
         let hit_x = start_x - current_geo.x;
         let hit_y = start_y - current_geo.y;
         let dir =
@@ -158,24 +160,23 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let warp_x = current_geo.x + x_off;
         let warp_y = current_geo.y + y_off;
 
-        ctx.g_mut().drag.title.active = false;
-        ctx.g_mut().drag.title.dragging = false;
-
         if let WmCtx::Wayland(wl) = ctx {
             wl.wayland
                 .backend
                 .warp_pointer(warp_x as f64, warp_y as f64);
-            wl.core.g.drag.hover_resize = crate::globals::HoverResizeDragState {
+            wl.core.g.drag.interactive = crate::globals::DragInteraction {
                 active: true,
                 win,
                 button: btn,
-                direction: dir,
+                dragging: true,
                 move_mode: false,
+                direction: dir,
                 start_x: warp_x,
                 start_y: warp_y,
                 win_start_geo: current_geo,
                 last_root_x: warp_x,
                 last_root_y: warp_y,
+                ..Default::default()
             };
             wl.core.g.behavior.cursor_icon = crate::types::AltCursor::Resize;
             wl.core.g.drag.resize_direction = Some(dir);
@@ -189,9 +190,9 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let (current_geo, anchor_rebased) = promote_to_floating(ctx, win, Some((root_x, root_y)));
 
     if anchor_rebased {
-        ctx.g_mut().drag.title.win_start_geo = current_geo;
-        ctx.g_mut().drag.title.start_x = root_x;
-        ctx.g_mut().drag.title.start_y = root_y;
+        ctx.g_mut().drag.interactive.win_start_geo = current_geo;
+        ctx.g_mut().drag.interactive.start_x = root_x;
+        ctx.g_mut().drag.interactive.start_y = root_y;
     } else {
         warp::warp_into(ctx, win);
         let ptr = warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
@@ -202,12 +203,12 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let clamped_y = ptr
             .1
             .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
-        ctx.g_mut().drag.title.start_x = clamped_x;
-        ctx.g_mut().drag.title.start_y = clamped_y;
+        ctx.g_mut().drag.interactive.start_x = clamped_x;
+        ctx.g_mut().drag.interactive.start_y = clamped_y;
     }
 
     set_cursor_move(ctx);
-    ctx.g_mut().drag.title.dragging = true;
+    ctx.g_mut().drag.interactive.dragging = true;
     title_drag_motion(ctx, root_x, root_y)
 }
 
@@ -217,20 +218,20 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed.
 pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if !ctx.g_mut().drag.title.active {
+    if !ctx.g_mut().drag.interactive.active {
         return false;
     }
-    ctx.g_mut().drag.title.last_root_x = root_x;
-    ctx.g_mut().drag.title.last_root_y = root_y;
+    ctx.g_mut().drag.interactive.last_root_x = root_x;
+    ctx.g_mut().drag.interactive.last_root_y = root_y;
 
-    if ctx.g_mut().drag.title.dragging {
+    if ctx.g_mut().drag.interactive.dragging {
         if ctx.is_x11() {
             return false;
         }
         return title_drag_motion_dragging_wayland(ctx, root_x, root_y);
     }
 
-    let td = &ctx.g_mut().drag.title;
+    let td = &ctx.g_mut().drag.interactive;
     if (root_x - td.start_x).abs() <= DRAG_THRESHOLD
         && (root_y - td.start_y).abs() <= DRAG_THRESHOLD
     {
@@ -238,9 +239,9 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
 
     // Threshold exceeded — start the drag action.
-    let win = ctx.g_mut().drag.title.win;
-    let btn = ctx.g_mut().drag.title.button;
-    let was_hidden = ctx.g_mut().drag.title.was_hidden;
+    let win = ctx.g_mut().drag.interactive.win;
+    let btn = ctx.g_mut().drag.interactive.button;
+    let was_hidden = ctx.g_mut().drag.interactive.was_hidden;
     let is_right_click = btn == MouseButton::Right;
 
     if was_hidden {
@@ -254,8 +255,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
 
     // X11 specific start logic
-    ctx.g_mut().drag.title.dragging = true;
-    ctx.g_mut().drag.title.active = false;
+    ctx.g_mut().drag.interactive.dragging = true;
+    ctx.g_mut().drag.interactive.active = false;
 
     if is_right_click {
         if let Some(c) = ctx.g_mut().clients.get(&win) {
@@ -281,7 +282,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         }
     } else {
         // Pass saved floating dimensions to preserve them when dropping on the bar
-        let float_restore_geo = ctx.g_mut().drag.title.drop_restore_geo;
+        let float_restore_geo = ctx.g_mut().drag.interactive.drop_restore_geo;
         if let WmCtx::X11(ref mut x11) = ctx {
             let mut wmctx = WmCtx::X11(x11.reborrow());
             warp::warp_into(&mut wmctx, win);
@@ -294,38 +295,34 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// Finish a title drag interaction (button release without exceeding the
 /// drag threshold).  Performs the click action.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
-    if !ctx.g_mut().drag.title.active {
+    if !ctx.g_mut().drag.interactive.active {
         return;
     }
 
-    let is_right_click = ctx.g_mut().drag.title.button == MouseButton::Right;
+    let is_right_click = ctx.g_mut().drag.interactive.button == MouseButton::Right;
 
-    if ctx.g_mut().drag.title.dragging {
-        let win = ctx.g_mut().drag.title.win;
-        let grab_start_rect = ctx.g_mut().drag.title.drop_restore_geo;
+    if ctx.g_mut().drag.interactive.dragging {
+        let win = ctx.g_mut().drag.interactive.win;
+        let grab_start_rect = ctx.g_mut().drag.interactive.drop_restore_geo;
         let last = (
-            ctx.g_mut().drag.title.last_root_x,
-            ctx.g_mut().drag.title.last_root_y,
+            ctx.g_mut().drag.interactive.last_root_x,
+            ctx.g_mut().drag.interactive.last_root_y,
         );
-        ctx.g_mut().drag.title.active = false;
-        ctx.g_mut().drag.title.dragging = false;
+        ctx.g_mut().drag.interactive.active = false;
+        ctx.g_mut().drag.interactive.dragging = false;
         set_cursor_default(ctx);
-        if !is_right_click {
-            complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
-            clear_bar_hover(ctx);
-        } else {
-            handle_client_monitor_switch(ctx, win);
-        }
+        complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
+        clear_bar_hover(ctx);
         ctx.raise_interactive(win);
         return;
     }
 
-    let win = ctx.g_mut().drag.title.win;
-    let was_focused = ctx.g_mut().drag.title.was_focused;
-    let was_hidden = ctx.g_mut().drag.title.was_hidden;
-    let suppress_click_action = ctx.g_mut().drag.title.suppress_click_action;
+    let win = ctx.g_mut().drag.interactive.win;
+    let was_focused = ctx.g_mut().drag.interactive.was_focused;
+    let was_hidden = ctx.g_mut().drag.interactive.was_hidden;
+    let suppress_click_action = ctx.g_mut().drag.interactive.suppress_click_action;
 
-    ctx.g_mut().drag.title.active = false;
+    ctx.g_mut().drag.interactive.active = false;
     if suppress_click_action {
         return;
     }

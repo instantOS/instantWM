@@ -855,7 +855,7 @@ impl WaylandState {
 
     fn interactive_motion_active(&self) -> bool {
         self.globals()
-            .map(|g| g.drag.title.active || g.drag.title.dragging || g.drag.hover_resize.active)
+            .map(|g| g.drag.interactive.active)
             .unwrap_or(false)
     }
 
