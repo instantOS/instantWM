@@ -6,6 +6,7 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
+use crate::contexts::WmCtxWayland;
 use crate::mouse::hover::selected_hover_resize_target_at;
 use crate::mouse::set_cursor_resize_wayland;
 use crate::types::AltCursor;
@@ -152,8 +153,17 @@ fn dispatch_pointer_motion(
         resolve_pointer_focus(wm, state, in_bar_band, in_bar_guard_band);
 
     // Phase 3: Handle resize drag motion (early return path)
-    if handle_resize_drag_motion(wm, state, pointer_handle, pointer_focus.clone(), time_msec) {
-        return;
+    let ctx = wm.ctx();
+    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+        if handle_resize_drag_motion(
+            &mut ctx,
+            state,
+            pointer_handle,
+            pointer_focus.clone(),
+            time_msec,
+        ) {
+            return;
+        }
     }
 
     // Phase 4: Handle bar interaction (early return path)
@@ -286,7 +296,7 @@ fn resolve_pointer_focus(
 
 /// Handle resize drag motion. Returns true if handled (early return).
 fn handle_resize_drag_motion(
-    wm: &mut Wm,
+    ctx: &mut WmCtxWayland<'_>,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     pointer_focus: Option<(
@@ -297,7 +307,7 @@ fn handle_resize_drag_motion(
 ) -> bool {
     let pointer_location = state.pointer_location;
     if !wayland_hover_resize_drag_motion(
-        wm,
+        ctx,
         pointer_location.x.round() as i32,
         pointer_location.y.round() as i32,
     ) {
@@ -376,20 +386,21 @@ fn update_hover_resize_state(
             .is_some_and(|(_, is_floating)| is_floating);
     let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
 
+    let ctx = wm.ctx();
+    let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
+        return false;
+    };
+
     if !selected_floating {
-        let _ = update_wayland_selected_resize_offer(wm, root_x, root_y);
+        let _ = update_wayland_selected_resize_offer(&mut ctx, root_x, root_y);
         return false;
     }
 
     let mut suppress_hover_focus = !hovered_is_selected;
-    let selected_offer = update_wayland_selected_resize_offer(wm, root_x, root_y).is_some();
+    let selected_offer = update_wayland_selected_resize_offer(&mut ctx, root_x, root_y).is_some();
     if selected_offer {
         suppress_hover_focus = true;
     } else if !hovered_is_selected {
-        let ctx = wm.ctx();
-        let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
-            return suppress_hover_focus;
-        };
         if let Some((_, dir)) = selected_hover_resize_target_at(
             &crate::contexts::WmCtx::Wayland(ctx.reborrow()),
             root_x,

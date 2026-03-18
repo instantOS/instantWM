@@ -44,8 +44,11 @@ pub fn handle_pointer_button<B: InputBackend>(
         }
 
         if let Some(btn) = wm_button {
-            if wayland_hover_resize_drag_begin(wm, root_x, root_y, btn) {
-                return;
+            let ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+                if wayland_hover_resize_drag_begin(&mut ctx, root_x, root_y, btn) {
+                    return;
+                }
             }
         }
 
@@ -125,8 +128,11 @@ pub fn handle_pointer_button<B: InputBackend>(
         }
     } else if event.state() == smithay::backend::input::ButtonState::Released {
         if let Some(btn) = wm_button {
-            if wayland_hover_resize_drag_finish(wm, btn) {
-                return;
+            let ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+                if wayland_hover_resize_drag_finish(&mut ctx, btn) {
+                    return;
+                }
             }
         }
 
