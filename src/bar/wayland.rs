@@ -5,8 +5,8 @@
 //! then uploaded as a Smithay MemoryRenderBuffer for compositing.
 
 use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use smithay::backend::allocator::Fourcc;

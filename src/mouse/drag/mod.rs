@@ -33,8 +33,8 @@
 // Re-export from submodules
 pub use gesture::gesture_mouse;
 pub use move_drop::{
-    clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
-    snap_window_to_monitor_edges, update_bar_hover_simple, MoveState,
+    MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
+    snap_window_to_monitor_edges, update_bar_hover_simple,
 };
 pub use tag::{drag_tag, drag_tag_begin, drag_tag_finish, drag_tag_motion};
 pub use title::{
@@ -42,7 +42,7 @@ pub use title::{
 };
 
 use crate::contexts::WmCtx;
-use crate::floating::{set_window_mode, WindowMode};
+use crate::floating::{WindowMode, set_window_mode};
 use crate::types::*;
 
 // Submodules

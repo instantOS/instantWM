@@ -44,9 +44,9 @@ pub use appearance::{
     get_window_colors,
 };
 #[allow(unused_imports)]
-pub use commands::{default_commands, Cmd, ExternalCommands, SCRATCHPAD_CLASS};
+pub use commands::{Cmd, ExternalCommands, SCRATCHPAD_CLASS, default_commands};
 #[allow(unused_imports)]
-pub use keybindings::{get_desktop_keybinds, get_keys, CONTROL, MOD1, MODKEY, SHIFT};
+pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT, get_desktop_keybinds, get_keys};
 
 // ---------------------------------------------------------------------------
 // Module-level constants

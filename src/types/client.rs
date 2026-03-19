@@ -4,11 +4,11 @@
 
 use std::collections::HashMap;
 
+use crate::types::TagMask;
+use crate::types::WindowId;
 use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, SizeHints};
 use crate::types::input::SnapPosition;
-use crate::types::TagMask;
-use crate::types::WindowId;
 
 /// Represents a managed client window in the window manager.
 ///

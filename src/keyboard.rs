@@ -4,8 +4,8 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{
-    change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating, unhide_one,
-    SnapDir,
+    SnapDir, change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating,
+    unhide_one,
 };
 use crate::focus::{direction_focus, focus_stack};
 
@@ -332,7 +332,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 
     if !has_tiling {
         if let Some(win) = ctx.selected_client() {
-            if let WmCtx::X11(ref x11_ctx) = ctx {
+            if let WmCtx::X11(x11_ctx) = ctx {
                 crate::client::refresh_border_color_x11(
                     &x11_ctx.core,
                     &x11_ctx.x11,

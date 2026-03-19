@@ -29,7 +29,7 @@ impl IpcServer {
         }
         let listener = UnixListener::bind(&path)?;
         listener.set_nonblocking(true)?;
-        std::env::set_var("INSTANTWM_SOCKET", &path);
+        unsafe { std::env::set_var("INSTANTWM_SOCKET", &path) };
         Ok(Self { listener, path })
     }
 
@@ -84,7 +84,8 @@ impl IpcServer {
             if version_str != crate::ipc_types::IPC_PROTOCOL_VERSION {
                 let error_msg = format!(
                     "version mismatch: client is {}, server is {}. Please ensure instantwmctl and instantWM are the same version.",
-                    version_str, crate::ipc_types::IPC_PROTOCOL_VERSION
+                    version_str,
+                    crate::ipc_types::IPC_PROTOCOL_VERSION
                 );
                 let _ = send_response(&mut stream, &IpcResponse::err(error_msg));
                 return;

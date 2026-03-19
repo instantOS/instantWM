@@ -1,17 +1,17 @@
+use crate::backend::BackendOps;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
 use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
 use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
 use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
-use crate::backend::BackendOps;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
     AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
 };
+use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-use x11rb::CURRENT_TIME;
 
 use super::get_win_geometry;
 use super::is_override_redirect;

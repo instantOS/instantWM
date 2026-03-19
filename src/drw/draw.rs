@@ -25,19 +25,19 @@ use std::cmp::min;
 
 use super::color::{Color, Cursor};
 use super::ffi::{
-    FcCharSetAddChar, FcCharSetCreate, FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute,
-    FcInit, FcNameParse, FcPattern, FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy,
-    FcPatternDuplicate, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap,
-    XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc,
-    XDrawRectangle, XFillArc, XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap,
-    XGlyphInfo, XOpenDisplay, XRenderColor, XSetForeground, XSetLineAttributes, XSync,
-    XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate,
-    XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName,
-    XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, FC_CHARSET,
-    FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE,
+    FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE, FcCharSetAddChar, FcCharSetCreate,
+    FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute, FcInit, FcNameParse, FcPattern,
+    FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy, FcPatternDuplicate, XCloseDisplay,
+    XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap, XDefaultColormap, XDefaultDepth,
+    XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc, XDrawRectangle, XFillArc,
+    XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay,
+    XRenderColor, XSetForeground, XSetLineAttributes, XSync, XftCharExists, XftColor,
+    XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate, XftDrawDestroy,
+    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
+    XftInit, XftResult, XftTextExtentsUtf8, XlibGc,
 };
 use super::font::Fnt;
-use super::utf8::utf8decode;
+
 use crate::types::ColorScheme;
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
@@ -688,11 +688,7 @@ impl Drw {
         let origin_x = if direction { x } else { x + w as i16 };
         let delta_x = if direction { w as i16 } else { -(w as i16) };
         let tip_y = if slash {
-            if direction {
-                0
-            } else {
-                h as i16
-            }
+            if direction { 0 } else { h as i16 }
         } else {
             h as i16 / 2
         };
@@ -937,7 +933,15 @@ impl Drw {
 
             // ── Walk codepoints in the current font run ──────────────────────
             while text_pos < text_bytes.len() {
-                let (charlen, codepoint) = utf8decode(&text_bytes[text_pos..]);
+                let remaining = &text_bytes[text_pos..];
+                let (charlen, codepoint) = match std::str::from_utf8(remaining) {
+                    Ok(s) => s
+                        .chars()
+                        .next()
+                        .map(|c| (c.len_utf8(), c as u32))
+                        .unwrap_or((0, 0xFFFD)),
+                    Err(e) => (e.error_len().unwrap_or(1), 0xFFFD),
+                };
                 utf8codepoint = codepoint;
 
                 // Find which font in the fallback chain can render this char.

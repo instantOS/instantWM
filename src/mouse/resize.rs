@@ -24,8 +24,8 @@ use crate::types::*;
 
 use super::cursor::set_cursor_style;
 use super::monitor::handle_client_monitor_switch;
-use crate::types::input::get_resize_direction;
 use crate::types::ResizeDirection;
+use crate::types::input::get_resize_direction;
 
 fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
     let mut ctx = WmCtx::X11(ctx_x11.reborrow());

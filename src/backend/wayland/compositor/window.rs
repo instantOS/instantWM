@@ -14,8 +14,8 @@ use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::types::{Rect, WindowId};
 
-use super::state::{WaylandState, WindowIdMarker};
 use super::KeyboardFocusTarget;
+use super::state::{WaylandState, WindowIdMarker};
 
 // ---------------------------------------------------------------------------
 // Window Type Classification
@@ -608,7 +608,7 @@ impl WaylandState {
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, Logical>,
     )> {
-        use smithay::desktop::{layer_map_for_output, WindowSurfaceType};
+        use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {
@@ -831,11 +831,7 @@ impl WaylandState {
                 .surface_under((0.0, 0.0), WindowSurfaceType::ALL)
                 .map(|(hit_surface, _)| hit_surface == *surface)
                 .unwrap_or(false);
-            if owns_surface {
-                Some(*win)
-            } else {
-                None
-            }
+            if owns_surface { Some(*win) } else { None }
         })
     }
 

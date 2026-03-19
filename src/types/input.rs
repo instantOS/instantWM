@@ -415,10 +415,6 @@ impl StackDirection {
     /// Parse from i32 (for command compatibility).
     /// Positive = Next, negative/zero = Previous.
     pub fn from_i32(v: i32) -> Self {
-        if v > 0 {
-            Self::Next
-        } else {
-            Self::Previous
-        }
+        if v > 0 { Self::Next } else { Self::Previous }
     }
 }

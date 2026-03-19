@@ -6,16 +6,16 @@
 //! connection.
 
 use libc::c_void;
+use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
-use x11rb::CURRENT_TIME;
 
 use crate::backend::BackendOps;
 use crate::drw::{Cursor, Drw};
+use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::color::{BorderScheme, StatusScheme};
-use crate::types::Atom;
 use crate::types::{Rect, WindowId};
 
 #[derive(Clone, Copy)]

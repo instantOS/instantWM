@@ -5,11 +5,11 @@ use crate::client::set_client_state;
 use crate::contexts::CoreCtx;
 use crate::types::Systray;
 use crate::types::*;
+use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
-use x11rb::CURRENT_TIME;
 
 const XEMBED_MAPPED: u32 = 1 << 0;
 const XEMBED_WINDOW_ACTIVATE: u32 = 1;

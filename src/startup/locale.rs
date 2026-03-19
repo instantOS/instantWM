@@ -1,5 +1,5 @@
 #![allow(clippy::manual_c_str_literals)]
-use libc::{setlocale, LC_CTYPE};
+use libc::{LC_CTYPE, setlocale};
 
 pub fn set_locale() -> Result<(), ()> {
     unsafe {

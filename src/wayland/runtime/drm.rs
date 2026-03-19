@@ -10,19 +10,19 @@ use std::time::Duration;
 use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
-use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::session::libseat::LibSeatSession;
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
+use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
@@ -31,7 +31,7 @@ use crate::wayland::common::{
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
-    build_output_surfaces, render_drm_output, CursorManager, OutputSurfaceEntry, SharedDrmState,
+    CursorManager, OutputSurfaceEntry, SharedDrmState, build_output_surfaces, render_drm_output,
 };
 use crate::wm::Wm;
 

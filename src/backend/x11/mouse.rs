@@ -3,7 +3,7 @@
 
 use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::mouse::drag::{
-    clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target, MoveState,
+    MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
 };
 use crate::mouse::warp::get_root_ptr;
 use crate::types::{AltCursor, MouseButton, Rect, WindowId};

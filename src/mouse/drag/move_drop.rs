@@ -7,11 +7,11 @@
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::floating::{change_snap, reset_snap, set_window_mode, SnapDir, WindowMode};
+use crate::floating::{SnapDir, WindowMode, change_snap, reset_snap, set_window_mode};
 use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
-use crate::types::geometry::Rect;
 use crate::types::SnapPosition;
+use crate::types::geometry::Rect;
 use crate::types::*;
 
 use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};

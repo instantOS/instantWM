@@ -211,7 +211,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     } else {
         // Pass saved floating dimensions to preserve them when dropping on the bar
         let float_restore_geo = ctx.g_mut().drag.interactive.drop_restore_geo;
-        if let WmCtx::X11(ref mut x11) = ctx {
+        if let WmCtx::X11(x11) = ctx {
             let mut wmctx = WmCtx::X11(x11.reborrow());
             warp::warp_into(&mut wmctx, win);
             crate::backend::x11::mouse::move_mouse_x11(x11, btn, Some(float_restore_geo));

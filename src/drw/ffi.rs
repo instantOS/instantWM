@@ -163,7 +163,7 @@ impl Default for XSetWindowAttributes {
 // ── X11 (`libX11`) ────────────────────────────────────────────────────────────
 
 #[link(name = "X11")]
-extern "C" {
+unsafe extern "C" {
     pub fn XOpenDisplay(name: *const c_char) -> *mut libc::c_void;
     pub fn XCloseDisplay(display: *mut libc::c_void);
     pub fn XDefaultScreen(display: *mut libc::c_void) -> c_int;
@@ -329,7 +329,7 @@ extern "C" {
 // ── Xft (`libXft`) ────────────────────────────────────────────────────────────
 
 #[link(name = "Xft")]
-extern "C" {
+unsafe extern "C" {
     pub fn XftInit() -> c_int;
 
     pub fn XftFontOpenName(
@@ -398,7 +398,7 @@ extern "C" {
 // ── Fontconfig (`libfontconfig`) ──────────────────────────────────────────────
 
 #[link(name = "fontconfig")]
-extern "C" {
+unsafe extern "C" {
     pub fn FcInit() -> FcBool;
 
     pub fn FcNameParse(name: *const u8) -> *mut FcPattern;

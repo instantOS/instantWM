@@ -1,6 +1,6 @@
 use crate::client::manager::ClientManager;
-use crate::config::commands::ExternalCommands;
 use crate::config::ModeConfig;
+use crate::config::commands::ExternalCommands;
 use crate::monitor::MonitorManager;
 use crate::types::*;
 

@@ -3,8 +3,8 @@
 //! Generates solid color render elements for window borders, handling
 //! z-order occlusion (borders behind windows are clipped).
 
-use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 use smithay::backend::renderer::element::Kind;
+use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::globals::Globals;

@@ -185,11 +185,11 @@ use crate::floating::{create_overlay, scratchpad_make, scratchpad_toggle, set_ov
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
+    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
-use crate::push::{push, Direction as PushDirection};
+use crate::push::{Direction as PushDirection, push};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
     toggle_overview, win_view,
@@ -473,7 +473,7 @@ define_actions!(
 
     // Fake fullscreen (X11)
     "toggle_fake_fullscreen" => "toggle fake fullscreen (X11)" => |ctx: &mut WmCtx, _args: &[String]| {
-        if let crate::contexts::WmCtx::X11(ref mut ctx_x11) = ctx {
+        if let crate::contexts::WmCtx::X11(ctx_x11) = ctx {
             toggle_fake_fullscreen_x11(ctx_x11)
         }
     },

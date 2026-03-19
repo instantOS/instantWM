@@ -10,7 +10,7 @@ use smithay::input::pointer::{
 use smithay::reexports::input::event::gesture::{
     GestureEndEvent, GestureEventCoordinates, GestureEventTrait, GesturePinchEventTrait,
 };
-use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent};
+use smithay::reexports::input::{Event as LibinputRawEvent, event, event::EventTrait};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -25,7 +25,7 @@ use crate::config::config_toml::{AccelProfile, ToggleSetting};
 pub fn raw_event_to_input_event(
     event: LibinputRawEvent,
 ) -> Option<InputEvent<LibinputInputBackend>> {
-    use event::{keyboard::KeyboardEvent, pointer::PointerEvent, DeviceEvent, GestureEvent};
+    use event::{DeviceEvent, GestureEvent, keyboard::KeyboardEvent, pointer::PointerEvent};
     Some(match event {
         LibinputRawEvent::Keyboard(KeyboardEvent::Key(e)) => InputEvent::Keyboard { event: e },
         LibinputRawEvent::Pointer(PointerEvent::Motion(e)) => {

@@ -1,5 +1,5 @@
 use crate::ipc_types::IpcResponse;
-use crate::layouts::{set_layout as layouts_set_layout, LayoutKind};
+use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 use crate::toggles::{set_border_width, set_prefix_mode, set_special_next};

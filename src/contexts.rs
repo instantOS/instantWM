@@ -7,10 +7,10 @@
 
 use std::ops::{Deref, DerefMut};
 
-use crate::backend::x11::X11BackendRef;
-use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
+use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
@@ -283,7 +283,7 @@ impl<'a> WmCtx<'a> {
         self.backend().resize_window(win, rect);
 
         match self {
-            WmCtx::X11(ref mut x11) => {
+            WmCtx::X11(x11) => {
                 crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {}
@@ -295,7 +295,7 @@ impl<'a> WmCtx<'a> {
             client.border_width = width.max(0);
         }
         // Border width is X11-specific; Wayland doesn't support border width
-        if let WmCtx::X11(ref x11) = self {
+        if let WmCtx::X11(x11) = self {
             x11.x11.set_border_width(win, width);
         }
     }

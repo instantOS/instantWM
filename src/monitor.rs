@@ -343,7 +343,7 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
     }
 
     // Fall back to Xinerama for X11
-    if let WmCtx::X11(ref mut x11) = ctx {
+    if let WmCtx::X11(x11) = ctx {
         if let Some(result) = update_from_xinerama(x11) {
             return result;
         }

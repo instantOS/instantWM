@@ -17,13 +17,13 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
+use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::desktop::PopupManager;
+use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
 use smithay::input::keyboard::ModifiersState;
 use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus};
 use smithay::output::Output;
@@ -222,13 +222,15 @@ pub fn init_wayland_globals(wm: &mut Wm) {
 /// the standalone DRM backend (which is the actual session compositor) use the
 /// same set of variables.
 pub fn apply_wayland_session_env(socket_name: &str) {
-    std::env::set_var("WAYLAND_DISPLAY", socket_name);
-    std::env::set_var("XDG_SESSION_TYPE", "wayland");
-    std::env::remove_var("DISPLAY");
-    std::env::set_var("GDK_BACKEND", "wayland");
-    std::env::set_var("QT_QPA_PLATFORM", "wayland");
-    std::env::set_var("SDL_VIDEODRIVER", "wayland");
-    std::env::set_var("CLUTTER_BACKEND", "wayland");
+    unsafe {
+        std::env::set_var("WAYLAND_DISPLAY", socket_name);
+        std::env::set_var("XDG_SESSION_TYPE", "wayland");
+        std::env::remove_var("DISPLAY");
+        std::env::set_var("GDK_BACKEND", "wayland");
+        std::env::set_var("QT_QPA_PLATFORM", "wayland");
+        std::env::set_var("SDL_VIDEODRIVER", "wayland");
+        std::env::set_var("CLUTTER_BACKEND", "wayland");
+    }
 }
 
 pub fn ensure_dbus_session() {
@@ -252,7 +254,7 @@ pub fn ensure_dbus_session() {
     let addr = String::from_utf8_lossy(&output.stdout);
     let addr = addr.trim();
     if !addr.is_empty() {
-        std::env::set_var("DBUS_SESSION_BUS_ADDRESS", addr);
+        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", addr) };
         log::info!("Started D-Bus session bus: {addr}");
     }
 }
@@ -315,7 +317,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         |_| (),
     ) {
         Ok((xwayland, client)) => {
-            std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number()));
+            unsafe { std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
             let handle_for_wm = loop_handle.clone();
             if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
             {
@@ -324,7 +326,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                     display_number,
                 } => {
                     data.xdisplay = Some(display_number);
-                    std::env::set_var("DISPLAY", format!(":{display_number}"));
+                    unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
                     match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
                         Ok(wm) => data.xwm = Some(wm),
                         Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),

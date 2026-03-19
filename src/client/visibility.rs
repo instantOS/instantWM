@@ -1,8 +1,8 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
 use crate::animation::animate_client_x11;
-use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
+use crate::backend::x11::X11BackendRef;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize;
 use crate::client::state::set_client_state;
@@ -176,7 +176,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
         c.is_hidden = false;
     }
 
-    if let WmCtx::X11(ref mut ctx_x11) = ctx {
+    if let WmCtx::X11(ctx_x11) = ctx {
         show_x11(ctx_x11, win);
     }
     // On Wayland, map_window is not called here directly. show_hide_wayland
@@ -200,7 +200,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     }
 
     match ctx {
-        WmCtx::X11(ref mut ctx_x11) => {
+        WmCtx::X11(ctx_x11) => {
             hide_x11(ctx_x11, win);
         }
         WmCtx::Wayland(_) => {

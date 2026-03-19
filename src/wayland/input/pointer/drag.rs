@@ -3,7 +3,7 @@
 use crate::contexts::WmCtxWayland;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::set_cursor_style;
-use crate::types::{get_resize_direction, AltCursor, MouseButton, Rect, ResizeDirection, WindowId};
+use crate::types::{AltCursor, MouseButton, Rect, ResizeDirection, WindowId, get_resize_direction};
 use crate::wm::Wm;
 
 /// Get the active drag window (if any).

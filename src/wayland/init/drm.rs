@@ -8,10 +8,10 @@ use smithay::backend::allocator::gbm::GbmDevice;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmDeviceNotifier};
 use smithay::backend::egl::{EGLContext, EGLDisplay};
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::backend::session::libseat::LibSeatSession;
 use smithay::backend::session::Session;
-use smithay::reexports::drm::control::connector;
+use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::drm::control::Device as ControlDevice;
+use smithay::reexports::drm::control::connector;
 use smithay::reexports::rustix::fs::OFlags;
 use smithay::utils::DeviceFd;
 

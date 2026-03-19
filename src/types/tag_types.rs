@@ -6,7 +6,7 @@
 use std::ops::{BitAnd, BitOr, BitXor, Not};
 use std::str::FromStr;
 
-use crate::types::{core::SCRATCHPAD_MASK, MAX_TAGS};
+use crate::types::{MAX_TAGS, core::SCRATCHPAD_MASK};
 
 /// A type-safe wrapper around tag bitmask operations.
 ///

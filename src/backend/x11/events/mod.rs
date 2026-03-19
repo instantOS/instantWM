@@ -1,7 +1,7 @@
 //! X11 backend event handlers and helpers.
 
-use crate::backend::x11::lifecycle::{is_window_iconic, manage};
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::lifecycle::{is_window_iconic, manage};
 use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::*;

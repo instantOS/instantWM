@@ -25,7 +25,7 @@ use crate::monitor::update_geom;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
-use smithay::utils::{Transform, SERIAL_COUNTER};
+use smithay::utils::{SERIAL_COUNTER, Transform};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport

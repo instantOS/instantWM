@@ -8,7 +8,7 @@
 //! | [`ffi`]    | Raw `extern "C"` bindings (X11, Xft, Fontconfig)      |
 //! | [`color`]  | [`Color`] (color) and [`Cursor`] (cursor)              |
 //! | [`font`]   | [`Fnt`] font / fontset linked-list                     |
-//! | [`utf8`]   | UTF-8 decoding utilities                               |
+//! |            |                                                       |
 //! | [`draw`]   | [`Drw`] drawing context — the main public type         |
 //!
 //! # Typical usage
@@ -38,7 +38,6 @@ pub(crate) mod ffi;
 mod color;
 mod draw;
 mod font;
-mod utf8;
 
 // ── Public re-exports ─────────────────────────────────────────────────────────
 //
@@ -54,7 +53,7 @@ mod utf8;
 
 // Color / cursor types and scheme-index constants.
 #[allow(unused_imports)]
-pub use color::{Color, Cursor, COL_BG, COL_DETAIL, COL_FG};
+pub use color::{COL_BG, COL_DETAIL, COL_FG, Color, Cursor};
 
 // Font linked-list type and its iterator.
 #[allow(unused_imports)]
@@ -63,11 +62,6 @@ pub use font::{Fnt, FontIter};
 // The main drawing context.
 pub use draw::Drw;
 
-// UTF-8 decoding — exposed for modules that need to walk raw byte strings
-// (e.g. the status-bar parser) and for unit tests.
-#[allow(unused_imports)]
-pub use utf8::{utf8decode, UTFBYTE, UTFMASK, UTFMAX, UTFMIN, UTF_INVALID, UTF_SIZ};
-
 // Raw FFI symbols that other modules reference directly.
 //
 // Keep this list as small as possible — new code should go through the safe
@@ -75,6 +69,10 @@ pub use utf8::{utf8decode, UTFBYTE, UTFMASK, UTFMAX, UTFMIN, UTF_INVALID, UTF_SI
 // Xft functions by hand (e.g. bar widgets that do custom XFillRectangle calls).
 #[allow(unused_imports)]
 pub use ffi::{
+    FC_CHARSET,
+    FC_MATCH_PATTERN,
+    FC_SCALABLE,
+    FC_TRUE,
     // Fontconfig
     FcBool,
     FcCharSet,
@@ -137,8 +135,4 @@ pub use ffi::{
     XftResult,
     XftTextExtentsUtf8,
     XlibGc,
-    FC_CHARSET,
-    FC_MATCH_PATTERN,
-    FC_SCALABLE,
-    FC_TRUE,
 };

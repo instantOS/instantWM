@@ -1,28 +1,28 @@
 #![allow(dead_code, clippy::let_unit_value, clippy::collapsible_match)]
 use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
     backend::renderer::ImportDma,
+    backend::renderer::utils::on_commit_buffer_handler,
     desktop::{
-        find_popup_root_surface, layer_map_for_output, LayerSurface as DesktopLayerSurface,
-        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, WindowSurfaceType,
+        LayerSurface as DesktopLayerSurface, PopupKeyboardGrab, PopupKind, PopupPointerGrab,
+        PopupUngrabStrategy, WindowSurfaceType, find_popup_root_surface, layer_map_for_output,
     },
-    input::{pointer::Focus, SeatHandler},
+    input::{SeatHandler, pointer::Focus},
     output::Output,
-    reexports::wayland_server::{protocol::wl_seat, Client, Resource},
+    reexports::wayland_server::{Client, Resource, protocol::wl_seat},
     utils::SERIAL_COUNTER,
     wayland::{
         buffer::BufferHandler,
-        compositor::with_states,
         compositor::CompositorHandler,
+        compositor::with_states,
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
         selection::{
-            data_device::{
-                set_data_device_focus, ClientDndGrabHandler, DataDeviceHandler, DataDeviceState,
-                ServerDndGrabHandler,
-            },
             SelectionHandler,
+            data_device::{
+                ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
+                set_data_device_focus,
+            },
         },
         shell::{
             wlr_layer::{
@@ -30,8 +30,8 @@ use smithay::{
                 WlrLayerShellState,
             },
             xdg::{
-                decoration::XdgDecorationHandler, PopupSurface, PositionerState, ToplevelSurface,
-                XdgShellHandler,
+                PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
+                decoration::XdgDecorationHandler,
             },
         },
         shm::ShmHandler,
@@ -44,7 +44,7 @@ use smithay::{
 use super::{
     focus::{KeyboardFocusTarget, PointerFocusTarget},
     state::{WaylandClientState, WaylandState, WindowIdMarker},
-    window::{is_unmanaged_x11_overlay, WindowType},
+    window::{WindowType, is_unmanaged_x11_overlay},
 };
 
 impl CompositorHandler for WaylandState {

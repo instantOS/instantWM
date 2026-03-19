@@ -5,14 +5,14 @@
 use std::collections::HashMap;
 
 use crate::layouts::LayoutKind;
+use crate::types::TagMask;
+use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
 use crate::types::tag_types::MonitorDirection;
-use crate::types::TagMask;
-use crate::types::WindowId;
 
 /// Internal state of a monitor (screen) in the window manager.
 ///

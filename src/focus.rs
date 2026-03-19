@@ -4,14 +4,14 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
+use crate::backend::x11::X11BackendRef;
 use crate::client::{refresh_border_color_x11, set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
+use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConnectionExt, InputFocus};
-use x11rb::CURRENT_TIME;
 
 /// Result of resolving a focus target, containing both the target window
 /// and information needed for state updates.

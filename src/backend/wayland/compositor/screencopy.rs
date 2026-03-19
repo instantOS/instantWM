@@ -22,8 +22,8 @@
 //! `wf-recorder` interpret this as Y-inverted content when the `Y_INVERT` flag
 //! is set, and flip the image accordingly.  We therefore always set this flag.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{

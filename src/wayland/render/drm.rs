@@ -1,8 +1,10 @@
 //! DRM/KMS rendering and GPU output management.
 
-use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface};
+use smithay::backend::renderer::Bind;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -10,26 +12,24 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::backend::renderer::Bind;
-use smithay::backend::renderer::ImportDma;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
-use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::utils::{Physical, Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
-    build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
-    resolve_cursor_presentation, send_frame_callbacks, CursorPresentation,
+    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
+    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
 };
 use crate::wm::Wm;
 
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    sync_monitors_from_outputs_vec, OutputHitRegion, OutputSurfaceEntry, SharedDrmState,
-    CURSOR_SIZE, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH,
+    CURSOR_SIZE, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
+    SharedDrmState, sync_monitors_from_outputs_vec,
 };
 
 pub mod cursor {
@@ -44,14 +44,14 @@ pub mod cursor {
     use std::collections::HashMap;
 
     use smithay::backend::allocator::Fourcc;
-    use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
     use smithay::backend::renderer::element::Kind;
+    use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
     use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
     use smithay::input::pointer::CursorIcon;
     use smithay::utils::{Physical, Point, Transform};
 
-    use xcursor::parser::{parse_xcursor, Image};
     use xcursor::CursorTheme;
+    use xcursor::parser::{Image, parse_xcursor};
 
     use crate::wayland::common::CursorPresentation;
 
@@ -207,7 +207,7 @@ pub mod cursor {
                 CursorPresentation::Hidden | CursorPresentation::Surface { .. } => return None,
                 CursorPresentation::Named(icon) => self.frame_for_icon(*icon),
                 CursorPresentation::DndIcon { cursor, .. } => {
-                    return self.render_element(pointer_location, cursor)
+                    return self.render_element(pointer_location, cursor);
                 }
             };
 
