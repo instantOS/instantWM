@@ -61,20 +61,19 @@ use std::ptr::NonNull;
 
 use crate::backend::wayland::compositor::WaylandState;
 
-#[derive(Default)]
 pub struct WaylandBackend {
-    state: RefCell<Option<NonNull<WaylandState>>>,
+    state: RefCell<NonNull<WaylandState>>,
 }
 
 impl WaylandBackend {
     pub fn new() -> Self {
         Self {
-            state: RefCell::new(None),
+            state: RefCell::new(NonNull::dangling()),
         }
     }
 
     pub fn attach_state(&self, state: &mut WaylandState) {
-        *self.state.borrow_mut() = Some(NonNull::from(state));
+        *self.state.borrow_mut() = NonNull::from(state);
     }
 
     pub fn close_window(&self, window: WindowId) -> bool {
@@ -92,9 +91,6 @@ impl WaylandBackend {
             .flatten()
     }
 
-    /// Return the current pointer position in root (logical) coordinates,
-    /// rounded to the nearest integer pixel.  Returns `None` if the Wayland
-    /// state has not been attached yet.
     pub fn pointer_location(&self) -> Option<(i32, i32)> {
         self.with_state(|state: &mut WaylandState| {
             let loc = state.pointer.current_location();
@@ -102,27 +98,17 @@ impl WaylandBackend {
         })
     }
 
-    /// Request the compositor to warp the hardware pointer to `(x, y)` in
-    /// logical screen coordinates.  The warp is deferred to the next
-    /// event-loop tick where the pointer handle and the external
-    /// `pointer_location` variable are both updated together.
     pub fn warp_pointer(&self, x: f64, y: f64) {
         let _ = self.with_state(|state: &mut WaylandState| {
             state.request_warp(x, y);
         });
     }
 
-    /// Return `true` when the WM's selected window (mon.sel) is `window`.
-    ///
-    /// Note: This checks WM state, not the Smithay seat directly. In normal
-    /// operation they should be in sync, but this specifically answers
-    /// "does the WM think this window is focused?"
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.focused_window() == Some(window))
             .unwrap_or(false)
     }
 
-    /// Clear keyboard focus from the currently focused window.
     pub fn clear_keyboard_focus(&self) {
         let _ = self.with_state(|state: &mut WaylandState| state.clear_keyboard_focus());
     }
@@ -135,7 +121,13 @@ impl WaylandBackend {
 
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
         let mut ptr = *self.state.borrow();
-        ptr.as_mut().map(|state| unsafe { f(state.as_mut()) })
+        Some(unsafe { f(ptr.as_mut()) })
+    }
+}
+
+impl Default for WaylandBackend {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
