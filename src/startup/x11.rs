@@ -4,9 +4,9 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::Backend as WmBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::x11::XlibDisplay;
+use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::types::*;
@@ -210,11 +210,7 @@ fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
     }
 }
 
-pub fn reload_runtime_config(wm: &mut Wm) {
-    init_drw_and_schemes(wm);
-}
-
-fn init_drw_and_schemes(wm: &mut Wm) {
+pub fn init_drw_and_schemes(wm: &mut Wm) {
     if wm.backend.x11().is_none() {
         return;
     }

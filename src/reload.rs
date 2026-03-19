@@ -32,7 +32,7 @@ fn normalize_current_mode(wm: &mut Wm) {
 }
 
 fn reload_x11(wm: &mut Wm) {
-    crate::startup::x11::reload_runtime_config(wm);
+    crate::startup::x11::init_drw_and_schemes(wm);
 
     let ctx = wm.ctx();
     if let WmCtx::X11(mut x11_ctx) = ctx {
@@ -67,8 +67,8 @@ fn reload_wayland(wm: &mut Wm) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend as WmBackend;
     use crate::backend::wayland::WaylandBackend;
+    use crate::backend::Backend as WmBackend;
     use crate::config::ModeConfig;
 
     #[test]
