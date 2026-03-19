@@ -22,6 +22,7 @@ use std::ptr;
 use x11rb::protocol::xproto::{Drawable, Point, Window};
 
 use std::cmp::min;
+use std::collections::VecDeque;
 
 use super::color::{Color, Cursor};
 use super::ffi::{
@@ -77,10 +78,7 @@ pub struct Drw {
     colormap: c_ulong,
 
     /// Ring buffer of codepoints for which no fallback font was found.
-    nomatches: [u32; NOMATCHES_LEN],
-
-    /// Ring-buffer insertion index for `nomatches`.
-    nomatches_idx: u32,
+    nomatches: VecDeque<u32>,
 
     /// Cached pixel width of `"..."` for the current fontset.
     ellipsis_width: u32,
@@ -110,8 +108,7 @@ impl Clone for Drw {
             depth: self.depth,
             visual: self.visual,
             colormap: self.colormap,
-            nomatches: self.nomatches,
-            nomatches_idx: self.nomatches_idx,
+            nomatches: self.nomatches.clone(),
             ellipsis_width: self.ellipsis_width,
             owns_resources: false,
         }
@@ -214,8 +211,7 @@ impl Drw {
                 depth: depth as u8,
                 visual,
                 colormap,
-                nomatches: [0; NOMATCHES_LEN],
-                nomatches_idx: 0,
+                nomatches: VecDeque::with_capacity(NOMATCHES_LEN),
                 ellipsis_width: 0,
                 owns_resources: true,
             })
@@ -1104,9 +1100,10 @@ impl Drw {
 
             if match_pattern.is_null() {
                 // No fallback found.
-                let idx = self.nomatches_idx;
-                self.nomatches_idx = self.nomatches_idx.wrapping_add(1);
-                self.nomatches[idx as usize % NOMATCHES_LEN] = codepoint;
+                if self.nomatches.len() >= NOMATCHES_LEN {
+                    self.nomatches.pop_front();
+                }
+                self.nomatches.push_back(codepoint);
                 *usedfont_idx = 0;
                 return;
             }
@@ -1118,16 +1115,18 @@ impl Drw {
                         self.fonts.as_mut().unwrap().push_back(new_font);
                     } else {
                         drop(new_font);
-                        let idx = self.nomatches_idx;
-                        self.nomatches_idx = self.nomatches_idx.wrapping_add(1);
-                        self.nomatches[idx as usize % NOMATCHES_LEN] = codepoint;
+                        if self.nomatches.len() >= NOMATCHES_LEN {
+                            self.nomatches.pop_front();
+                        }
+                        self.nomatches.push_back(codepoint);
                         *usedfont_idx = 0;
                     }
                 }
                 _ => {
-                    let idx = self.nomatches_idx;
-                    self.nomatches_idx = self.nomatches_idx.wrapping_add(1);
-                    self.nomatches[idx as usize % NOMATCHES_LEN] = codepoint;
+                    if self.nomatches.len() >= NOMATCHES_LEN {
+                        self.nomatches.pop_front();
+                    }
+                    self.nomatches.push_back(codepoint);
                     *usedfont_idx = 0;
                 }
             }

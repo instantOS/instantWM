@@ -14,7 +14,10 @@ use crate::layouts::arrange;
 // zoom
 // ---------------------------------------------------------------------------
 
-fn next_tiled(ctx: &WmCtx, start_win: Option<crate::types::WindowId>) -> Option<crate::types::WindowId> {
+fn next_tiled(
+    ctx: &WmCtx,
+    start_win: Option<crate::types::WindowId>,
+) -> Option<crate::types::WindowId> {
     let mon = ctx.g().selected_monitor();
     let selected = mon.selected_tags();
 
