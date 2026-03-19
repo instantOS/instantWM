@@ -32,7 +32,7 @@ use crate::wm::Wm;
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
     ensure_dbus_session();
-    let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+    let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
     if let Some(wayland) = wm.backend.wayland_data_mut() {
         init_wayland_globals(&mut wm.g, wayland);
     }

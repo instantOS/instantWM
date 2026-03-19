@@ -62,18 +62,18 @@ use std::ptr::NonNull;
 use crate::backend::wayland::compositor::WaylandState;
 
 pub struct WaylandBackend {
-    state: RefCell<NonNull<WaylandState>>,
+    state: RefCell<Option<NonNull<WaylandState>>>,
 }
 
 impl WaylandBackend {
     pub fn new() -> Self {
         Self {
-            state: RefCell::new(NonNull::dangling()),
+            state: RefCell::new(None),
         }
     }
 
     pub fn attach_state(&self, state: &mut WaylandState) {
-        *self.state.borrow_mut() = NonNull::from(state);
+        *self.state.borrow_mut() = Some(NonNull::from(state));
     }
 
     pub fn close_window(&self, window: WindowId) -> bool {
@@ -120,8 +120,8 @@ impl WaylandBackend {
     }
 
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
-        let mut ptr = *self.state.borrow();
-        Some(unsafe { f(ptr.as_mut()) })
+        let ptr = *self.state.borrow();
+        ptr.map(|mut p| unsafe { f(p.as_mut()) })
     }
 }
 

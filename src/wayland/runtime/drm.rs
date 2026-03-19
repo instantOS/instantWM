@@ -42,9 +42,13 @@ pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
     ensure_dbus_session();
 
-    let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-    if let Some(wayland) = wm.backend.wayland_data_mut() {
-        init_wayland_globals(&mut wm.g, wayland);
+    let wm_cell = Rc::new(RefCell::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new()))));
+    {
+        let mut wm = wm_cell.borrow_mut();
+        let wm_ref = &mut *wm;
+        if let Some(wayland) = wm_ref.backend.wayland_data_mut() {
+            init_wayland_globals(&mut wm_ref.g, wayland);
+        }
     }
 
     let event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
@@ -56,12 +60,19 @@ pub fn run() -> ! {
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_globals(&mut wm.g);
-    if let WmBackend::Wayland(data) = &mut wm.backend {
+
+    // Unsafe: Obtain a pointer to the inner Globals and extend its lifetime.
+    // This is safe because the `Wm` instance is allocated on the heap inside `Rc<RefCell<Wm>>`
+    // and will not move.
+    let globals_ptr = &mut wm_cell.borrow_mut().g as *mut _;
+    state.attach_globals(unsafe { &mut *globals_ptr });
+
+    if let WmBackend::Wayland(data) = &mut wm_cell.borrow_mut().backend {
         data.backend.attach_state(&mut state);
     }
 
     {
+        let mut wm = wm_cell.borrow_mut();
         let mut ctx = wm.ctx();
         crate::keyboard_layout::init_keyboard_layout(&mut ctx);
     }
@@ -94,10 +105,10 @@ pub fn run() -> ! {
 
     let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
-    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut wm.g, &output_surfaces);
+    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut wm_cell.borrow_mut().g, &output_surfaces);
     {
         use crate::monitor::update_geom;
-        update_geom(&mut wm.ctx());
+        update_geom(&mut wm_cell.borrow_mut().ctx());
     }
 
     let shared = init_shared_state(&output_surfaces, total_width, total_height);
@@ -106,11 +117,10 @@ pub fn run() -> ! {
     spawn_xwayland(&state, &loop_handle);
 
     // Initialize Wayland systray runtime - only applicable for Wayland backend
-    if let WmBackend::Wayland(data) = &mut wm.backend {
+    if let WmBackend::Wayland(data) = &mut wm_cell.borrow_mut().backend {
         data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
     }
 
-    let wm_cell = Rc::new(RefCell::new(wm));
     let wm_cell_for_closure = Rc::clone(&wm_cell);
 
     let mut libinput_context =
@@ -173,7 +183,7 @@ pub fn run() -> ! {
 
     run_event_loop(
         event_loop,
-        &mut wm_cell.borrow_mut(),
+        Rc::clone(&wm_cell),
         &mut state,
         &shared,
         &mut output_surfaces,
@@ -316,7 +326,7 @@ fn setup_drm_vblank_handler(
 #[allow(clippy::too_many_arguments)]
 fn run_event_loop(
     mut event_loop: EventLoop<WaylandState>,
-    wm: &mut Wm,
+    wm_cell: Rc<RefCell<Wm>>,
     state: &mut WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
@@ -332,11 +342,13 @@ fn run_event_loop(
 
     event_loop
         .run(Duration::from_millis(16), state, move |state| {
+            let mut wm = wm_cell.borrow_mut();
+
             process_completed_crtcs(state, shared, output_surfaces);
 
-            super::common::arrange_layout_if_dirty(wm, state);
+            super::common::arrange_layout_if_dirty(&mut wm, state);
 
-            process_ipc(ipc_server, wm, shared);
+            process_ipc(ipc_server, &mut wm, shared);
 
             if wm.g.dirty.input_config {
                 wm.g.dirty.input_config = false;
@@ -356,12 +368,12 @@ fn run_event_loop(
                 }
             }
 
-            process_animations(wm, state, shared);
+            process_animations(&mut wm, state, shared);
 
             process_cursor_warp(state, &pointer_handle, shared);
 
             render_outputs(
-                wm,
+                &mut wm,
                 state,
                 renderer,
                 output_surfaces,
