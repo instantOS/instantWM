@@ -340,7 +340,7 @@ pub mod state {
     use smithay::reexports::drm::control::crtc;
 
     use crate::types::Rect;
-    use crate::wm::Wm;
+    use crate::globals::Globals;
 
     pub const DEFAULT_SCREEN_WIDTH: i32 = 1280;
     pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
@@ -408,9 +408,9 @@ pub mod state {
         }
     }
 
-    pub fn sync_monitors_from_outputs_vec(wm: &mut Wm, surfaces: &[super::OutputSurfaceEntry]) {
-        wm.g.monitors.clear();
-        let tag_template = wm.g.cfg.tag_template.clone();
+    pub fn sync_monitors_from_outputs_vec(g: &mut Globals, surfaces: &[super::OutputSurfaceEntry]) {
+        g.monitors.clear();
+        let tag_template = g.cfg.tag_template.clone();
 
         for (i, surface) in surfaces.iter().enumerate() {
             let x = surface.x_offset;
@@ -419,10 +419,10 @@ pub mod state {
             let h = surface.height;
 
             let mut mon = crate::types::Monitor::new_with_values(
-                wm.g.cfg.mfact,
-                wm.g.cfg.nmaster,
-                wm.g.cfg.show_bar,
-                wm.g.cfg.top_bar,
+                g.cfg.mfact,
+                g.cfg.nmaster,
+                g.cfg.show_bar,
+                g.cfg.top_bar,
             );
             mon.num = i as i32;
             mon.monitor_rect = Rect { x, y, w, h };
@@ -431,27 +431,27 @@ pub mod state {
             mon.prev_tag = 1;
             mon.tag_set = [1, 1];
             mon.init_tags(&tag_template);
-            mon.update_bar_position(wm.g.cfg.bar_height);
-            wm.g.monitors.push(mon);
+            mon.update_bar_position(g.cfg.bar_height);
+            g.monitors.push(mon);
         }
 
-        wm.g.cfg.screen_width = surfaces
+        g.cfg.screen_width = surfaces
             .iter()
             .map(|s| s.x_offset + s.width)
             .max()
             .unwrap_or(DEFAULT_SCREEN_WIDTH);
-        wm.g.cfg.screen_height = surfaces
+        g.cfg.screen_height = surfaces
             .iter()
             .map(|s| s.height)
             .max()
             .unwrap_or(DEFAULT_SCREEN_HEIGHT);
 
-        if wm.g.monitors.is_empty() {
+        if g.monitors.is_empty() {
             let mut mon = crate::types::Monitor::new_with_values(
-                wm.g.cfg.mfact,
-                wm.g.cfg.nmaster,
-                wm.g.cfg.show_bar,
-                wm.g.cfg.top_bar,
+                g.cfg.mfact,
+                g.cfg.nmaster,
+                g.cfg.show_bar,
+                g.cfg.top_bar,
             );
             mon.monitor_rect = Rect {
                 x: 0,
@@ -466,16 +466,16 @@ pub mod state {
                 h: DEFAULT_SCREEN_HEIGHT,
             };
             mon.init_tags(&tag_template);
-            mon.update_bar_position(wm.g.cfg.bar_height);
-            wm.g.monitors.push(mon);
+            mon.update_bar_position(g.cfg.bar_height);
+            g.monitors.push(mon);
         }
 
-        for (i, mon) in wm.g.monitors.iter_mut() {
+        for (i, mon) in g.monitors.iter_mut() {
             mon.num = i as i32;
         }
 
-        if wm.g.selected_monitor_id() >= wm.g.monitors.count() {
-            wm.g.set_selected_monitor(0);
+        if g.selected_monitor_id() >= g.monitors.count() {
+            g.set_selected_monitor(0);
         }
     }
 }

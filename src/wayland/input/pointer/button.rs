@@ -6,6 +6,7 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
+use crate::backend::Backend;
 use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
@@ -36,7 +37,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                wm.x11_runtime.numlockmask,
+                0,
             );
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
             pointer_handle.frame(state);
@@ -86,7 +87,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         if let Some(btn) = wm_button {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                wm.x11_runtime.numlockmask,
+                0,
             );
             consumed = dispatch_wayland_client_button(wm, btn, root_x, root_y, clean_state);
         }
@@ -110,20 +111,29 @@ pub fn handle_pointer_button<B: InputBackend>(
             );
             let mon = core.globals().selected_monitor().clone();
             let local_x = root_x - mon.work_rect.x;
-            wm.wayland_systray_menu.is_some()
-                && crate::systray::wayland::hit_test_wayland_systray_menu_item(
-                    &core,
-                    &wm.wayland_systray,
-                    wm.wayland_systray_menu.as_ref(),
-                    &mon,
-                    local_x,
-                )
-                .is_none()
+
+            // Check if we should close - only Wayland has systray menu
+            let should_close = match &mut wm.backend {
+                Backend::Wayland(data) => data.wayland_systray_menu.as_ref().is_some()
+                    && crate::systray::wayland::hit_test_wayland_systray_menu_item(
+                        &core,
+                        &data.wayland_systray,
+                        data.wayland_systray_menu.as_ref(),
+                        &mon,
+                        local_x,
+                    )
+                    .is_none(),
+                Backend::X11(_) => false,
+            };
+            should_close
         } else {
             false
         };
         if maybe_close {
-            wm.wayland_systray_menu = None;
+            // Only Wayland has a systray menu to close
+            if let Backend::Wayland(data) = &mut wm.backend {
+                data.wayland_systray_menu = None;
+            }
             wm.bar.mark_dirty();
         }
     } else if event.state() == smithay::backend::input::ButtonState::Released {
@@ -199,7 +209,7 @@ fn find_hovered_window_for_surface(
     }
 
     let backend = match &wm.backend {
-        crate::backend::Backend::Wayland(backend) => backend,
+        crate::backend::Backend::Wayland(data) => &data.backend,
         _ => return None,
     };
 

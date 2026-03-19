@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn reload_marks_dirty_flags_for_wayland() {
-        let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
 
         reload_config(&mut wm).unwrap();
 
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn normalize_current_mode_resets_missing_mode_to_default() {
-        let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
         wm.g.behavior.current_mode = "resize".to_string();
 
         normalize_current_mode(&mut wm);
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn normalize_current_mode_preserves_existing_mode() {
-        let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
         wm.g.behavior.current_mode = "resize".to_string();
         wm.g.cfg
             .modes

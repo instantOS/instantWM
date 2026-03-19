@@ -42,8 +42,10 @@ pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
     ensure_dbus_session();
 
-    let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
-    init_wayland_globals(&mut wm);
+    let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+    if let Some(wayland) = wm.backend.wayland_data_mut() {
+        init_wayland_globals(&mut wm.g, wayland);
+    }
 
     let event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();
@@ -55,8 +57,8 @@ pub fn run() -> ! {
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut state = WaylandState::new(display, &loop_handle);
     state.attach_globals(&mut wm.g);
-    if let WmBackend::Wayland(ref wayland) = wm.backend {
-        wayland.attach_state(&mut state);
+    if let WmBackend::Wayland(data) = &mut wm.backend {
+        data.backend.attach_state(&mut state);
     }
 
     {
@@ -92,7 +94,7 @@ pub fn run() -> ! {
 
     let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
-    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut wm, &output_surfaces);
+    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut wm.g, &output_surfaces);
     {
         use crate::monitor::update_geom;
         update_geom(&mut wm.ctx());
@@ -102,7 +104,11 @@ pub fn run() -> ! {
 
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
-    wm.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
+
+    // Initialize Wayland systray runtime - only applicable for Wayland backend
+    if let WmBackend::Wayland(data) = &mut wm.backend {
+        data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
+    }
 
     let wm_cell = Rc::new(RefCell::new(wm));
     let wm_cell_for_closure = Rc::clone(&wm_cell);

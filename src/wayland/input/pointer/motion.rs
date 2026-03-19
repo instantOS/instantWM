@@ -488,7 +488,7 @@ fn find_hovered_window_for_surface(
     }
 
     let backend = match &wm.backend {
-        crate::backend::Backend::Wayland(backend) => backend,
+        crate::backend::Backend::Wayland(data) => &data.backend,
         _ => return None,
     };
 

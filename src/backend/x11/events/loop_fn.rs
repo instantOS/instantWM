@@ -12,8 +12,8 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     // Pre-fetch the X11 connection file descriptor for poll(2).
     let x11_fd = wm
         .backend
-        .x11()
-        .map(|x11| x11.conn.stream().as_raw_fd())
+        .x11_conn()
+        .map(|(conn, _)| conn.stream().as_raw_fd())
         .unwrap_or(-1);
     let ipc_fd = ipc_server.as_ref().map(|s| s.as_raw_fd()).unwrap_or(-1);
 
@@ -23,8 +23,8 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         loop {
             let event = wm
                 .backend
-                .x11()
-                .and_then(|x11| x11.conn.poll_for_event().ok())
+                .x11_conn()
+                .and_then(|(conn, _)| conn.poll_for_event().ok())
                 .flatten();
             match event {
                 Some(event) => {

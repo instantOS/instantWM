@@ -9,8 +9,8 @@ pub mod wayland;
 pub mod x11;
 
 use crate::backend::wayland::WaylandBackend;
-use crate::backend::x11::{X11Backend, X11BackendRef};
-use crate::types::{Rect, WindowId};
+use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::types::{Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 #[derive(Debug, Clone)]
 pub struct BackendOutputInfo {
@@ -72,24 +72,93 @@ pub trait BackendOps {
     }
 }
 
+/// X11-specific backend data.
+pub struct X11BackendData {
+    pub conn: x11rb::rust_connection::RustConnection,
+    pub screen_num: usize,
+    pub x11_runtime: X11RuntimeConfig,
+    pub systray: Option<Systray>,
+}
+
+/// Wayland-specific backend data.
+pub struct WaylandBackendData {
+    pub backend: WaylandBackend,
+    pub bar_painter: crate::bar::wayland::WaylandBarPainter,
+    pub wayland_systray: WaylandSystray,
+    pub wayland_systray_menu: Option<WaylandSystrayMenu>,
+    pub wayland_systray_runtime: Option<crate::systray::wayland::WaylandSystrayRuntime>,
+}
+
 /// Owned backend implementation.
+///
+/// Each variant owns the backend-specific connection **and** runtime state
+/// (atoms, cursors, systray, drawing helpers, etc.) so that `Wm` stays
+/// backend-agnostic at the type level.
 pub enum Backend {
-    X11(Box<X11Backend>),
-    Wayland(WaylandBackend),
+    X11(Box<X11BackendData>),
+    Wayland(Box<WaylandBackendData>),
 }
 
 impl Backend {
-    pub fn x11(&self) -> Option<&X11Backend> {
+    pub fn new_x11(conn: x11rb::rust_connection::RustConnection, screen_num: usize) -> Self {
+        Self::X11(Box::new(X11BackendData {
+            conn,
+            screen_num,
+            x11_runtime: X11RuntimeConfig::default(),
+            systray: None,
+        }))
+    }
+
+    pub fn new_wayland(backend: WaylandBackend) -> Self {
+        Self::Wayland(Box::new(WaylandBackendData {
+            backend,
+            bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
+            wayland_systray: WaylandSystray::default(),
+            wayland_systray_menu: None,
+            wayland_systray_runtime: None,
+        }))
+    }
+
+    /// Shorthand: get the X11 connection + screen, if running X11.
+    pub fn x11_conn(&self) -> Option<(&x11rb::rust_connection::RustConnection, usize)> {
         match self {
-            Self::X11(x11) => Some(x11),
+            Self::X11(data) => Some((&data.conn, data.screen_num)),
             Self::Wayland(_) => None,
         }
     }
 
-    pub fn x11_mut(&mut self) -> Option<&mut X11Backend> {
+    pub fn x11_conn_mut(&mut self) -> Option<(&mut x11rb::rust_connection::RustConnection, usize)> {
         match self {
-            Self::X11(x11) => Some(x11),
+            Self::X11(data) => Some((&mut data.conn, data.screen_num)),
             Self::Wayland(_) => None,
+        }
+    }
+
+    pub fn x11_data(&self) -> Option<&X11BackendData> {
+        match self {
+            Self::X11(data) => Some(data),
+            Self::Wayland(_) => None,
+        }
+    }
+
+    pub fn x11_data_mut(&mut self) -> Option<&mut X11BackendData> {
+        match self {
+            Self::X11(data) => Some(data),
+            Self::Wayland(_) => None,
+        }
+    }
+
+    pub fn wayland_data(&self) -> Option<&WaylandBackendData> {
+        match self {
+            Self::X11(_) => None,
+            Self::Wayland(data) => Some(data),
+        }
+    }
+
+    pub fn wayland_data_mut(&mut self) -> Option<&mut WaylandBackendData> {
+        match self {
+            Self::X11(_) => None,
+            Self::Wayland(data) => Some(data),
         }
     }
 }
@@ -103,8 +172,10 @@ pub enum BackendRef<'a> {
 impl<'a> BackendRef<'a> {
     pub fn from_backend(backend: &'a Backend) -> Self {
         match backend {
-            Backend::X11(x11) => BackendRef::X11(X11BackendRef::new(&x11.conn, x11.screen_num)),
-            Backend::Wayland(wayland) => BackendRef::Wayland(wayland),
+            Backend::X11(data) => {
+                BackendRef::X11(X11BackendRef::new(&data.conn, data.screen_num))
+            }
+            Backend::Wayland(data) => BackendRef::Wayland(&data.backend),
         }
     }
 

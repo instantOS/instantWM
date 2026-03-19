@@ -4,7 +4,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::x11::X11Backend;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
 use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
@@ -36,7 +36,7 @@ pub fn run() {
         }
     };
 
-    let mut wm = Wm::new(WmBackend::X11(Box::new(X11Backend::new(conn, screen_num))));
+    let mut wm = Wm::new(WmBackend::new_x11(conn, screen_num));
     wm_init(&mut wm);
     crate::backend::x11::events::setup(&mut wm);
     {
@@ -62,26 +62,18 @@ fn wm_init(wm: &mut Wm) {
     setup_signal_handlers();
 
     let (screen_num, screen, root) = {
-        let Some(x11) = wm.backend.x11() else {
+        let Some((conn, screen_num)) = wm.backend.x11_conn() else {
             return;
         };
-        let screen_num = x11.screen_num;
-        let screen = x11.conn.setup().roots[screen_num].clone();
+        let screen = conn.setup().roots[screen_num].clone();
         let root = screen.root;
-        let conn = &x11.conn;
         crate::backend::x11::events::check_other_wm(conn, root);
         (screen_num, screen, root)
     };
 
     init_globals(wm, screen_num, root, &screen);
 
-    {
-        let Some(x11) = wm.backend.x11() else {
-            return;
-        };
-        let conn = &x11.conn;
-        init_atoms(&mut wm.x11_runtime, conn);
-    }
+    init_atoms(&mut wm.backend);
     init_drw_and_schemes(wm);
 
     // Select events and initialise EWMH bits that depend on atoms + config.
@@ -119,8 +111,11 @@ fn init_globals(
 ) {
     let cfg = init_config();
 
-    wm.x11_runtime.screen = screen_num as i32;
-    wm.x11_runtime.root = root;
+    // X11-specific runtime initialization
+    if let Some(data) = wm.backend.x11_data_mut() {
+        data.x11_runtime.screen = screen_num as i32;
+        data.x11_runtime.root = root;
+    }
     wm.g.cfg.screen_width = screen.width_in_pixels as i32;
     wm.g.cfg.screen_height = screen.height_in_pixels as i32;
 
@@ -142,7 +137,11 @@ fn setup_signal_handlers() {
     }
 }
 
-fn init_atoms(x11_runtime: &mut crate::backend::x11::X11RuntimeConfig, conn: &RustConnection) {
+fn init_atoms(backend: &mut crate::backend::Backend) {
+    let (conn, x11_runtime) = match backend {
+        crate::backend::Backend::X11(data) => (&mut data.conn, &mut data.x11_runtime),
+        crate::backend::Backend::Wayland(_) => return,
+    };
     let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
     let wm_delete = intern_atom(conn, "WM_DELETE_WINDOW", false);
     let wm_state = intern_atom(conn, "WM_STATE", false);
@@ -211,9 +210,9 @@ fn intern_atom(conn: &RustConnection, name: &str, only_if_exists: bool) -> u32 {
 }
 
 pub fn init_drw_and_schemes(wm: &mut Wm) {
-    if wm.backend.x11().is_none() {
+    let Some(data) = wm.backend.x11_data_mut() else {
         return;
-    }
+    };
     let mut drw = match Drw::new(None) {
         Ok(d) => d,
         Err(_) => panic!("instantwm: cannot create drawing context"),
@@ -230,23 +229,30 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         .and_then(|f| f.first())
         .map(|font| font.h)
         .unwrap_or(12);
-    let bar_height = wm.g.cfg.bar_height;
-    let bar_height = if bar_height > 0 {
-        font_height + bar_height as u32
+    let bar_height_cfg = wm.g.cfg.bar_height;
+    let bordercolors = wm.g.cfg.bordercolors;
+    let statusbarcolors = wm.g.cfg.statusbarcolors;
+    let bar_height = if bar_height_cfg > 0 {
+        font_height + bar_height_cfg as u32
     } else {
         font_height + 12
     };
 
-    init_cursors(wm, &mut drw);
-    init_schemes(wm, &mut drw);
+    init_cursors(&mut data.x11_runtime, &mut drw);
+    init_schemes(
+        &mut data.x11_runtime,
+        &mut drw,
+        &bordercolors,
+        &statusbarcolors,
+    );
 
-    wm.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
-    wm.x11_runtime.drw = Some(drw);
+    data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
+    data.x11_runtime.drw = Some(drw);
     wm.g.cfg.bar_height = bar_height as i32;
     wm.g.cfg.horizontal_padding = font_height as i32;
 }
 
-fn init_cursors(wm: &mut Wm, drw: &mut Drw) {
+fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {
     let cursors = [
         drw.cur_create(XC_LEFT_PTR),
         drw.cur_create(XC_CROSSHAIR),
@@ -261,17 +267,19 @@ fn init_cursors(wm: &mut Wm, drw: &mut Drw) {
     ];
 
     for (i, cursor) in cursors.into_iter().enumerate() {
-        if i < wm.x11_runtime.cursors.len() {
-            wm.x11_runtime.cursors[i] = Some(cursor);
+        if i < x11_runtime.cursors.len() {
+            x11_runtime.cursors[i] = Some(cursor);
         }
     }
 }
 
-fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
+fn init_schemes(
+    x11_runtime: &mut X11RuntimeConfig,
+    drw: &mut Drw,
+    bordercolors: &crate::types::BorderColorConfig,
+    statusbarcolors: &crate::types::StatusColorConfig,
+) {
     use crate::bar::color::rgba_to_hex;
-
-    let bordercolors = wm.g.cfg.bordercolors;
-    let statusbarcolors = wm.g.cfg.statusbarcolors;
 
     let normal = drw
         .clr_create(&rgba_to_hex(bordercolors.normal))
@@ -286,7 +294,7 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
         .clr_create(&rgba_to_hex(bordercolors.snap))
         .expect("Failed to create snap border color");
 
-    wm.x11_runtime.borderscheme = BorderScheme {
+    let borderscheme = BorderScheme {
         normal: ColorScheme::from_single(normal),
         tile_focus: ColorScheme::from_single(tile),
         float_focus: ColorScheme::from_single(float),
@@ -300,5 +308,7 @@ fn init_schemes(wm: &mut Wm, drw: &mut Drw) {
             &rgba_to_hex(statusbarcolors.detail),
         ])
         .expect("Failed to create status bar colors");
-    wm.x11_runtime.statusscheme = StatusScheme::new(status.fg, status.bg, status.detail);
+
+    x11_runtime.borderscheme = borderscheme;
+    x11_runtime.statusscheme = StatusScheme::new(status.fg, status.bg, status.detail);
 }

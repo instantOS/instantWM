@@ -1,3 +1,4 @@
+use crate::backend::Backend;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -25,11 +26,31 @@ pub fn check_other_wm(conn: &RustConnection, root: Window) {
 pub fn setup(_wm: &mut Wm) {}
 
 pub fn setup_root(wm: &mut Wm) {
-    let Some(x11) = wm.backend.x11() else {
+    let Backend::X11(data) = &mut wm.backend else {
         return;
     };
-    let conn = &x11.conn;
-    let root = wm.x11_runtime.root;
+
+    let root = data.x11_runtime.root;
+    let netatom = data.x11_runtime.netatom.clone();
+    let wm_check_atom = netatom.wm_check;
+    let wm_name_atom = netatom.wm_name;
+    let supported_atoms: Vec<u32> = vec![
+        netatom.active_window,
+        netatom.supported,
+        netatom.system_tray,
+        netatom.system_tray_op,
+        netatom.system_tray_orientation,
+        netatom.system_tray_orientation_horz,
+        netatom.wm_name,
+        netatom.wm_state,
+        netatom.wm_check,
+        netatom.wm_fullscreen,
+        netatom.wm_window_type,
+        netatom.wm_window_type_dialog,
+        netatom.client_list,
+        netatom.client_info,
+    ];
+
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
@@ -41,6 +62,7 @@ pub fn setup_root(wm: &mut Wm) {
         | EventMask::KEY_PRESS
         | EventMask::KEY_RELEASE;
 
+    let conn = &data.conn;
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     let _ = conn.flush();
 
@@ -59,10 +81,8 @@ pub fn setup_root(wm: &mut Wm) {
         0, // visual: CopyFromParent
         &CreateWindowAux::new(),
     );
-    wm.x11_runtime.wmcheckwin = wmcheckwin;
 
     // Set _NET_SUPPORTING_WM_CHECK on the check window itself.
-    let wm_check_atom = wm.x11_runtime.netatom.wm_check;
     let _ = conn.change_property32(
         PropMode::REPLACE,
         wmcheckwin,
@@ -72,7 +92,6 @@ pub fn setup_root(wm: &mut Wm) {
     );
 
     // Set _NET_WM_NAME on the check window.
-    let wm_name_atom = wm.x11_runtime.netatom.wm_name;
     let utf8_atom = conn
         .intern_atom(false, b"UTF8_STRING")
         .ok()
@@ -97,23 +116,6 @@ pub fn setup_root(wm: &mut Wm) {
     );
 
     // Advertise _NET_SUPPORTED atoms on the root window.
-    let netatom = &wm.x11_runtime.netatom;
-    let supported_atoms: Vec<u32> = vec![
-        netatom.active_window,
-        netatom.supported,
-        netatom.system_tray,
-        netatom.system_tray_op,
-        netatom.system_tray_orientation,
-        netatom.system_tray_orientation_horz,
-        netatom.wm_name,
-        netatom.wm_state,
-        netatom.wm_check,
-        netatom.wm_fullscreen,
-        netatom.wm_window_type,
-        netatom.wm_window_type_dialog,
-        netatom.client_list,
-        netatom.client_info,
-    ];
     let _ = conn.change_property32(
         PropMode::REPLACE,
         root,
@@ -126,6 +128,9 @@ pub fn setup_root(wm: &mut Wm) {
     let _ = conn.delete_property(root, netatom.client_list);
     let _ = conn.delete_property(root, netatom.client_info);
     let _ = conn.flush();
+
+    // Now set wmcheckwin with mutable access
+    data.x11_runtime.wmcheckwin = wmcheckwin;
 
     let mut ctx = wm.ctx();
     crate::monitor::update_geom(&mut ctx);

@@ -91,7 +91,7 @@ pub fn handle_pointer_axis<B: InputBackend>(
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                wm.x11_runtime.numlockmask,
+                0,
             );
             dispatch_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);
         }

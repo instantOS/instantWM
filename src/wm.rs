@@ -2,27 +2,16 @@
 //!
 //! `Wm` owns all runtime state and the active backend.
 
-use crate::backend::x11::X11RuntimeConfig;
-use crate::backend::x11::{X11Backend, X11BackendRef};
 use crate::backend::{Backend, BackendRef};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::globals::Globals;
-use crate::types::{Systray, WaylandSystray, WaylandSystrayMenu};
 
 pub struct Wm {
     pub g: Globals,
     pub backend: Backend,
     pub running: bool,
     pub bar: crate::bar::BarState,
-    pub bar_painter: crate::bar::wayland::WaylandBarPainter,
     pub focus: crate::client::focus::FocusState,
-    // X11-specific state
-    pub x11_runtime: X11RuntimeConfig,
-    pub systray: Option<Systray>,
-    // Wayland-specific state
-    pub wayland_systray: WaylandSystray,
-    pub wayland_systray_menu: Option<WaylandSystrayMenu>,
-    pub wayland_systray_runtime: Option<crate::systray::wayland::WaylandSystrayRuntime>,
 }
 
 impl Wm {
@@ -32,27 +21,7 @@ impl Wm {
             backend,
             running: true,
             bar: crate::bar::BarState::default(),
-            bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
             focus: crate::client::focus::FocusState::default(),
-            x11_runtime: X11RuntimeConfig::default(),
-            systray: None,
-            wayland_systray: WaylandSystray::default(),
-            wayland_systray_menu: None,
-            wayland_systray_runtime: None,
-        }
-    }
-
-    pub fn x11(&self) -> &X11Backend {
-        match &self.backend {
-            Backend::X11(x11) => x11,
-            Backend::Wayland(_) => panic!("X11 backend requested while running Wayland"),
-        }
-    }
-
-    pub fn x11_mut(&mut self) -> &mut X11Backend {
-        match &mut self.backend {
-            Backend::X11(x11) => x11,
-            Backend::Wayland(_) => panic!("X11 backend requested while running Wayland"),
         }
     }
 
@@ -68,25 +37,27 @@ impl Wm {
             &mut self.focus,
         );
         match &mut self.backend {
-            Backend::X11(x11) => {
-                let backend = BackendRef::from_x11(&x11.conn, x11.screen_num);
+            Backend::X11(data) => {
+                let backend = BackendRef::from_x11(&data.conn, data.screen_num);
                 WmCtx::X11(WmCtxX11 {
                     core,
                     backend,
-                    x11: X11BackendRef::new(&x11.conn, x11.screen_num),
-                    x11_runtime: &mut self.x11_runtime,
-                    systray: self.systray.as_mut(),
+                    x11: crate::backend::x11::X11BackendRef::new(&data.conn, data.screen_num),
+                    x11_runtime: &mut data.x11_runtime,
+                    systray: data.systray.as_mut(),
                 })
             }
-            Backend::Wayland(wayland) => {
-                let backend = BackendRef::Wayland(wayland);
+            Backend::Wayland(data) => {
+                let backend = BackendRef::Wayland(&data.backend);
                 WmCtx::Wayland(WmCtxWayland {
                     core,
                     backend,
-                    wayland: WaylandCtx { backend: wayland },
+                    wayland: WaylandCtx {
+                        backend: &data.backend,
+                    },
                     xwayland: None,
-                    wayland_systray: &mut self.wayland_systray,
-                    wayland_systray_menu: self.wayland_systray_menu.as_mut(),
+                    wayland_systray: &mut data.wayland_systray,
+                    wayland_systray_menu: data.wayland_systray_menu.as_mut(),
                 })
             }
         }

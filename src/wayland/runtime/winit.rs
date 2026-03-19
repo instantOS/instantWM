@@ -7,15 +7,15 @@ use std::process::exit;
 use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -32,8 +32,10 @@ use crate::wm::Wm;
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
     ensure_dbus_session();
-    let mut wm = Wm::new(WmBackend::Wayland(WaylandBackend::new()));
-    init_wayland_globals(&mut wm);
+    let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+    if let Some(wayland) = wm.backend.wayland_data_mut() {
+        init_wayland_globals(&mut wm.g, wayland);
+    }
 
     let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("wayland event loop");
     let loop_handle = event_loop.handle();
@@ -42,8 +44,8 @@ pub fn run() -> ! {
     let mut display_handle = display.handle();
     let mut state = WaylandState::new(display, &loop_handle);
     state.attach_globals(&mut wm.g);
-    if let WmBackend::Wayland(ref wayland) = wm.backend {
-        wayland.attach_state(&mut state);
+    if let WmBackend::Wayland(data) = &mut wm.backend {
+        data.backend.attach_state(&mut state);
     }
 
     // Apply the initial keyboard layout if configured.
@@ -78,7 +80,11 @@ pub fn run() -> ! {
 
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
-    wm.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
+
+    // Initialize Wayland systray runtime - only applicable for Wayland backend
+    if let WmBackend::Wayland(data) = &mut wm.backend {
+        data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
+    }
 
     run_autostart();
     spawn_wayland_smoke_window();

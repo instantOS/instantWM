@@ -36,9 +36,10 @@ use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
 use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
+use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
-use crate::monitor::update_geom;
+use crate::globals::Globals;
 use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
 use crate::wm::Wm;
 
@@ -178,36 +179,38 @@ pub fn resolve_cursor_presentation(
 /// The caller is responsible for setting `wm.g.cfg.screen_width` /
 /// `screen_height` to the actual output dimensions afterwards (e.g. from the
 /// winit window size or DRM connector mode).  The values written here
-/// (`1280 × 800`) are a safe placeholder that will be overwritten.
-pub fn init_wayland_globals(wm: &mut Wm) {
+/// Wayland-specific globals initialization.
+///
+/// Sets up config, tags, and bar painter font size. This is called before
+/// the Wayland compositor is fully initialized, so monitor geometry is not
+/// available yet - that will be done via update_geom later.
+pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
     let cfg = init_config();
-    wm.g.cfg.screen_width = 1280;
-    wm.g.cfg.screen_height = 800;
-    crate::globals::apply_config(&mut wm.g, &cfg);
-    crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    wm.g.cfg.show_bar = true;
+    g.cfg.screen_width = 1280;
+    g.cfg.screen_height = 800;
+    crate::globals::apply_config(g, &cfg);
+    crate::globals::apply_tags_config(g, &cfg);
+    g.cfg.show_bar = true;
     let font_size = wayland_font_size_from_config(&cfg.fonts);
     let font_height = wayland_font_height_from_size(font_size);
-    wm.bar_painter.set_font_size(font_size);
+
+    wayland.bar_painter.set_font_size(font_size);
+
     // CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL is the button's visual content;
     // the +2 adds a 1-pixel padding on each side so the button is never flush
     // against the bar edges.
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
     // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
     // rounded up) when the user has not explicitly set bar_height in config.
-    wm.g.cfg.bar_height = (if cfg.bar_height > 0 {
+    g.cfg.bar_height = (if cfg.bar_height > 0 {
         font_height + cfg.bar_height
     } else {
         font_height + 12
     })
     .max(min_bar_height);
-    wm.g.cfg.horizontal_padding = font_height;
-    wm.x11_runtime.numlockmask = 0;
-    update_geom(&mut wm.ctx());
-    if !wm.g.cfg.monitors.is_empty() {
-        let mut ctx = wm.ctx();
-        crate::monitor::apply_monitor_config(&mut ctx);
-    }
+    g.cfg.horizontal_padding = font_height;
+
+    // Monitor geometry will be set up after the compositor is ready via update_geom
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -381,25 +384,34 @@ pub fn build_bar_elements(
     if !wm.g.cfg.show_bar {
         return Vec::new();
     }
-    if let Some(runtime) = wm.wayland_systray_runtime.as_ref() {
-        let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
-        if runtime.poll_events(
-            &mut core,
-            &mut wm.wayland_systray,
-            &mut wm.wayland_systray_menu,
-        ) {
-            core.bar.mark_dirty();
-        }
-    }
 
     let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
-    let bar_buffers = crate::bar::wayland::render_bar_buffers(
-        &mut core,
-        &mut wm.bar_painter,
-        smithay::utils::Scale::from(1.0),
-        &wm.wayland_systray,
-        wm.wayland_systray_menu.as_ref(),
-    );
+
+    let bar_buffers = {
+        let Backend::Wayland(data) = &mut wm.backend else {
+            return Vec::new();
+        };
+
+        // Poll systray events
+        if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
+            let dirty = runtime.poll_events(
+                &mut core,
+                &mut data.wayland_systray,
+                &mut data.wayland_systray_menu,
+            );
+            if dirty {
+                core.bar.mark_dirty();
+            }
+        }
+
+        crate::bar::wayland::render_bar_buffers(
+            &mut core,
+            &mut data.bar_painter,
+            smithay::utils::Scale::from(1.0),
+            &data.wayland_systray,
+            data.wayland_systray_menu.as_ref(),
+        )
+    };
     let mut elements = Vec::new();
     for (buffer, x, y) in bar_buffers {
         match MemoryRenderBufferRenderElement::from_buffer(

@@ -624,10 +624,12 @@ use crate::wm::Wm;
 use x11rb::protocol::xproto::{ConfigureWindowAux, Window};
 
 pub fn cleanup(wm: &mut Wm) {
-    let Some(x11) = wm.backend.x11() else {
-        return;
+    let x11_data = match wm.backend.x11_data_mut() {
+        Some(data) => data,
+        None => return,
     };
-    let conn = &x11.conn;
+    let conn = &x11_data.conn;
+    let x11_runtime = &mut x11_data.x11_runtime;
 
     let _grab = ServerGrab::new(conn);
 
@@ -642,19 +644,18 @@ pub fn cleanup(wm: &mut Wm) {
         }
     }
 
-    let wmcheckwin = wm.x11_runtime.wmcheckwin;
+    let wmcheckwin = x11_runtime.wmcheckwin;
     if wmcheckwin != 0 {
         let _ = conn.destroy_window(wmcheckwin);
     }
 
-    let root = wm.x11_runtime.root;
-    let _ = conn.delete_property(root, wm.x11_runtime.netatom.supported);
-    let _ = conn.delete_property(root, wm.x11_runtime.netatom.wm_check);
+    let root = x11_runtime.root;
+    let _ = conn.delete_property(root, x11_runtime.netatom.supported);
+    let _ = conn.delete_property(root, x11_runtime.netatom.wm_check);
 
-    if let Some(ref drw) = wm.x11_runtime.drw {
-        for cursor in &wm.x11_runtime.cursors {
-            if cursor.is_some() {
-                let cur = cursor.as_ref().unwrap();
+    if let Some(ref drw) = x11_runtime.drw {
+        for cursor in &x11_runtime.cursors {
+            if let Some(cur) = cursor {
                 drw.cur_free(cur);
             }
         }
