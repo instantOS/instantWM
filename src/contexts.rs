@@ -5,8 +5,6 @@
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
 //! receives explicit `X11BackendRef` / `WaylandCtx` instead of runtime checks.
 
-use std::ops::{Deref, DerefMut};
-
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::backend::x11::X11BackendRef;
@@ -17,7 +15,7 @@ use crate::globals::Globals;
 use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
-    pub g: &'a mut Globals,
+    g: &'a mut Globals,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
     pub focus: &'a mut FocusState,
@@ -36,6 +34,14 @@ impl<'a> CoreCtx<'a> {
             bar,
             focus,
         }
+    }
+
+    pub fn globals(&self) -> &Globals {
+        self.g
+    }
+
+    pub fn globals_mut(&mut self) -> &mut Globals {
+        self.g
     }
 
     pub fn quit(&mut self) {
@@ -200,14 +206,6 @@ impl<'a> WmCtx<'a> {
 
     pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
         self.core_mut().client_mut(win)
-    }
-
-    pub fn g(&self) -> &Globals {
-        self.core().g
-    }
-
-    pub fn g_mut(&mut self) -> &mut Globals {
-        self.core_mut().g
     }
 
     pub fn quit(&mut self) {
@@ -387,24 +385,4 @@ impl<'a> WmCtx<'a> {
 
     // For backend-specific operations, use match on the enum directly
     // instead of accessor methods that return Option.
-}
-
-impl<'a> Deref for WmCtx<'a> {
-    type Target = CoreCtx<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            WmCtx::X11(ctx) => &ctx.core,
-            WmCtx::Wayland(ctx) => &ctx.core,
-        }
-    }
-}
-
-impl<'a> DerefMut for WmCtx<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            WmCtx::X11(ctx) => &mut ctx.core,
-            WmCtx::Wayland(ctx) => &mut ctx.core,
-        }
-    }
 }
