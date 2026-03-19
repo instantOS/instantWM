@@ -109,10 +109,10 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 button: MouseButton::Left,
                 dragging: true,
                 drag_type: crate::globals::DragType::Move,
-                origin: crate::globals::DragOrigin::HoverBorder,
                 start_x: root_x,
                 start_y: root_y,
                 win_start_geo: geo,
+                drop_restore_geo: geo,
                 last_root_x: root_x,
                 last_root_y: root_y,
                 ..Default::default()

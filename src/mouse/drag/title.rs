@@ -4,17 +4,11 @@
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
 use crate::backend::x11::grab::mouse_drag_loop;
-use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::floating::set_window_mode;
-use crate::layouts::{arrange, restack};
+use crate::layouts::restack;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::cursor::set_cursor_style;
-use crate::mouse::drag::move_drop::{
-    clear_bar_hover, complete_move_drop, point_is_on_bar, promote_to_floating,
-    snap_to_monitor_edges, update_bar_hover_simple,
-};
-use crate::mouse::monitor::handle_client_monitor_switch;
+use crate::mouse::drag::move_drop::promote_to_floating;
 use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
 use crate::types::geometry::Rect;
@@ -58,7 +52,6 @@ pub fn title_drag_begin(
         active: true,
         win,
         button: btn,
-        origin: crate::globals::DragOrigin::TitleBar,
         was_focused: sel == Some(win),
         was_hidden: ctx.g_mut().clients.is_hidden(win),
         start_x: click_root_x,
@@ -71,66 +64,6 @@ pub fn title_drag_begin(
         suppress_click_action,
         drag_type: crate::globals::DragType::Move,
     };
-    true
-}
-
-// ── wayland title drag motion logic ──────────────────────────────────────────
-
-/// Process ongoing pointer motion for an already active Wayland left-click title drag.
-fn title_drag_motion_dragging_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    // On Wayland a right-click title-drag transitions to resize mode in
-    // title_drag_start_wayland. If we somehow arrive here with a
-    // right-click still marked active it means resize mode is now
-    // driving the interaction — clear the state and bail.
-    if ctx.g_mut().drag.interactive.button == MouseButton::Right {
-        ctx.g_mut().drag.interactive.active = false;
-        ctx.g_mut().drag.interactive.dragging = false;
-        return false;
-    }
-
-    // Update bar hover gesture highlighting so tag indicators react during drag.
-    update_bar_hover_simple(ctx, root_x, root_y);
-
-    let td = &ctx.g_mut().drag.interactive;
-    let win = td.win;
-    let td_win_start_geo = td.win_start_geo;
-    let td_start_x = td.start_x;
-    let td_start_y = td.start_y;
-    let mut new_x = td_win_start_geo.x + (root_x - td_start_x);
-    let mut new_y = td_win_start_geo.y + (root_y - td_start_y);
-
-    // While hovering over the bar, keep the window just below it.
-    if point_is_on_bar(ctx, root_x, root_y) {
-        let bar_bottom = ctx.g().selected_monitor().bar_y + ctx.g().cfg.bar_height;
-        new_y = bar_bottom;
-    }
-
-    let (is_floating, geo) = match ctx.g().clients.get(&win) {
-        Some(c) => (c.is_floating, c.geo),
-        None => return true,
-    };
-
-    if is_floating {
-        let client_clone = ctx.g_mut().clients.get(&win).cloned();
-        if let Some(ref c) = client_clone {
-            snap_to_monitor_edges(ctx, c, &mut new_x, &mut new_y);
-        }
-        resize(
-            ctx,
-            win,
-            &Rect {
-                x: new_x,
-                y: new_y,
-                w: geo.w,
-                h: geo.h,
-            },
-            true,
-        );
-        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-            client.float_geo.x = new_x;
-            client.float_geo.y = new_y;
-        }
-    }
     true
 }
 
@@ -169,10 +102,10 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 button: btn,
                 dragging: true,
                 drag_type: crate::globals::DragType::Resize(dir),
-                origin: crate::globals::DragOrigin::HoverBorder,
                 start_x: warp_x,
                 start_y: warp_y,
                 win_start_geo: current_geo,
+                drop_restore_geo: current_geo,
                 last_root_x: warp_x,
                 last_root_y: warp_y,
                 ..Default::default()
@@ -222,10 +155,9 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.g_mut().drag.interactive.last_root_y = root_y;
 
     if ctx.g_mut().drag.interactive.dragging {
-        if ctx.is_x11() {
-            return false;
-        }
-        return title_drag_motion_dragging_wayland(ctx, root_x, root_y);
+        // Once dragging is active the unified handler
+        // (wayland_hover_resize_drag_motion) drives the interaction.
+        return false;
     }
 
     let td = &ctx.g_mut().drag.interactive;
@@ -290,35 +222,17 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 }
 
 /// Finish a title drag interaction (button release without exceeding the
-/// drag threshold).  Performs the click action.
+/// drag threshold).  Performs the click action (focus / hide / zoom).
+///
+/// When the drag threshold *was* exceeded (`dragging == true`), the
+/// unified `wayland_hover_resize_drag_finish` handles the drop instead.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
-    if !ctx.g_mut().drag.interactive.active {
-        return;
-    }
-
-    let is_right_click = ctx.g_mut().drag.interactive.button == MouseButton::Right;
-
-    if ctx.g_mut().drag.interactive.dragging {
-        let win = ctx.g_mut().drag.interactive.win;
-        let grab_start_rect = ctx.g_mut().drag.interactive.drop_restore_geo;
-        let last = (
-            ctx.g_mut().drag.interactive.last_root_x,
-            ctx.g_mut().drag.interactive.last_root_y,
-        );
-        ctx.g_mut().drag.interactive.active = false;
-        ctx.g_mut().drag.interactive.dragging = false;
-        set_cursor_style(ctx, AltCursor::Default);
-        if is_right_click {
-            handle_client_monitor_switch(ctx, win);
-        } else {
-            complete_move_drop(ctx, win, grab_start_rect, None, Some(last));
-            clear_bar_hover(ctx);
-        }
-        ctx.raise_interactive(win);
+    if !ctx.g_mut().drag.interactive.active || ctx.g_mut().drag.interactive.dragging {
         return;
     }
 
     let win = ctx.g_mut().drag.interactive.win;
+    let is_right_click = ctx.g_mut().drag.interactive.button == MouseButton::Right;
     let was_focused = ctx.g_mut().drag.interactive.was_focused;
     let was_hidden = ctx.g_mut().drag.interactive.was_hidden;
     let suppress_click_action = ctx.g_mut().drag.interactive.suppress_click_action;

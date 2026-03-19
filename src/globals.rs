@@ -153,7 +153,7 @@ impl Default for RuntimeConfig {
     }
 }
 
-/// State for an in-progress tag-bar drag (backend-agnostic).
+/// What kind of drag interaction is active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DragType {
     #[default]
@@ -161,34 +161,25 @@ pub enum DragType {
     Resize(ResizeDirection),
 }
 
-/// State for an async window-title click/drag on the bar.
-///
-/// On X11, `window_title_mouse_handler` runs a synchronous grab loop.
-/// On Wayland, this state machine is driven by the calloop's pointer
-/// motion and button release events.
-/// How the drag interaction was initiated.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DragOrigin {
-    /// Initiated from the title bar (click/drag on bar entry or CSD move request).
-    #[default]
-    TitleBar,
-    /// Initiated from a hover-border zone or keyboard/super+button shortcut.
-    HoverBorder,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct DragInteraction {
     pub active: bool,
     pub win: WindowId,
     pub button: MouseButton,
+    /// Whether the pointer has exceeded the drag threshold and we are
+    /// actively moving/resizing.  When `false`, releasing the button
+    /// triggers the click action instead (focus/hide/zoom).
     pub dragging: bool,
     pub drag_type: DragType,
-    pub origin: DragOrigin,
     pub win_start_geo: Rect,
     pub start_x: i32,
     pub start_y: i32,
     pub last_root_x: i32,
     pub last_root_y: i32,
+    /// Geometry to restore when the window is re-tiled (e.g. dropped on
+    /// the bar).  For windows that were already floating this equals
+    /// `win_start_geo`; for tiled windows promoted during the drag it
+    /// preserves the saved float dimensions.
     pub drop_restore_geo: Rect,
     pub was_focused: bool,
     pub was_hidden: bool,

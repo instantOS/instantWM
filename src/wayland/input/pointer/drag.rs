@@ -40,10 +40,10 @@ pub fn wayland_hover_resize_drag_begin(
         button: btn,
         dragging: true,
         drag_type,
-        origin: crate::globals::DragOrigin::HoverBorder,
         start_x: root_x,
         start_y: root_y,
         win_start_geo: geo,
+        drop_restore_geo: geo,
         last_root_x: root_x,
         last_root_y: root_y,
         ..Default::default()
@@ -133,15 +133,17 @@ fn update_wayland_move_bar_hover(
     crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root_x, root_y);
 }
 
-/// Handle hover resize drag motion.
+/// Handle interactive drag motion (move or resize) on Wayland.
+///
+/// This is the single motion handler for **all** active drags once
+/// `dragging == true`, regardless of how the drag was initiated (title
+/// bar, hover border, keyboard shortcut, Super+button, etc.).
 pub fn wayland_hover_resize_drag_motion(
     ctx: &mut WmCtxWayland<'_>,
     root_x: i32,
     root_y: i32,
 ) -> bool {
-    if !ctx.core.g.drag.interactive.active
-        || ctx.core.g.drag.interactive.origin != crate::globals::DragOrigin::HoverBorder
-    {
+    if !ctx.core.g.drag.interactive.active || !ctx.core.g.drag.interactive.dragging {
         return false;
     }
     let drag = ctx.core.g.drag.interactive.clone();
@@ -154,6 +156,16 @@ pub fn wayland_hover_resize_drag_motion(
 
             let mut new_x = drag.win_start_geo.x + (root_x - drag.start_x);
             let mut new_y = drag.win_start_geo.y + (root_y - drag.start_y);
+
+            // While hovering over the bar, keep the window just below it.
+            {
+                let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+                if crate::mouse::drag::move_drop::point_is_on_bar(&wm_ctx, root_x, root_y) {
+                    let mon = wm_ctx.g().selected_monitor();
+                    new_y = mon.bar_y + wm_ctx.g().cfg.bar_height;
+                }
+            }
+
             {
                 let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
                 crate::mouse::drag::snap_window_to_monitor_edges(
@@ -218,11 +230,15 @@ pub fn wayland_hover_resize_drag_motion(
     }
 }
 
-/// Finish hover resize drag.
+/// Finish an active drag interaction (move or resize) on Wayland.
+///
+/// Handles **all** `dragging == true` finishes regardless of how the drag
+/// was initiated.  Returns `false` for click-without-drag interactions so
+/// `title_drag_finish` can handle the click action.
 pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) -> bool {
     if !ctx.core.g.drag.interactive.active
+        || !ctx.core.g.drag.interactive.dragging
         || ctx.core.g.drag.interactive.button != btn
-        || ctx.core.g.drag.interactive.origin != crate::globals::DragOrigin::HoverBorder
     {
         return false;
     }
@@ -237,7 +253,7 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
             crate::mouse::drag::complete_move_drop(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 drag.win,
-                drag.win_start_geo,
+                drag.drop_restore_geo,
                 None,
                 Some((drag.last_root_x, drag.last_root_y)),
             );

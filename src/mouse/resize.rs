@@ -164,10 +164,10 @@ fn begin_wayland_super_resize(
         button: btn,
         dragging: true,
         drag_type: crate::globals::DragType::Resize(dir),
-        origin: crate::globals::DragOrigin::HoverBorder,
         start_x: warp_x,
         start_y: warp_y,
         win_start_geo: geo,
+        drop_restore_geo: geo,
         last_root_x: warp_x,
         last_root_y: warp_y,
         ..Default::default()
