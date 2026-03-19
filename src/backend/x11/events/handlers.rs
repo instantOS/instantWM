@@ -1,4 +1,3 @@
-#![allow(clippy::collapsible_if)]
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
 use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
@@ -314,42 +313,34 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         if crate::mouse::floating_to_tiled_hover(ctx) {
             return;
         }
-    }
-
-    if is_floating_sel {
         // Case 1: Entering root while sel is floating
         if entering_root {
             if crate::mouse::hover_resize_mouse(ctx) {
                 return;
             }
-            // Fall through to normal focus handling
-        }
         // Case 2: Entering a different client while sel is floating
-        else if entering_client {
-            if Some(event_win) != selected_window {
-                let resized = crate::mouse::hover_resize_mouse(ctx);
-                if focusfollowsfloatmouse {
-                    if resized {
-                        return;
-                    }
-                    // Use the actual topmost window under cursor for focus
-                    if let Some(newc) = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
-                        &ctx.core,
-                        ctx.x11.conn,
-                        ctx.x11_runtime.root,
-                    ) {
-                        if Some(newc) != selected_window {
-                            crate::focus::focus_soft_x11(
-                                &mut ctx.core,
-                                &ctx.x11,
-                                ctx.x11_runtime,
-                                Some(newc),
-                            );
-                        }
+        } else if entering_client && Some(event_win) != selected_window {
+            let resized = crate::mouse::hover_resize_mouse(ctx);
+            if focusfollowsfloatmouse {
+                if resized {
+                    return;
+                }
+                if let Some(newc) = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
+                    &ctx.core,
+                    ctx.x11.conn,
+                    ctx.x11_runtime.root,
+                ) {
+                    if Some(newc) != selected_window {
+                        crate::focus::focus_soft_x11(
+                            &mut ctx.core,
+                            &ctx.x11,
+                            ctx.x11_runtime,
+                            Some(newc),
+                        );
                     }
                 }
-                return;
             }
+            return;
         }
     }
 

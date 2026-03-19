@@ -1,4 +1,3 @@
-#![allow(clippy::redundant_pattern_matching)]
 //! Window management operations for WaylandState.
 //!
 //! This module contains all window-related methods on WaylandState,
@@ -200,7 +199,7 @@ impl WaylandState {
                 Point::from((rect.x + border_width, rect.y + border_width)),
                 remap_immediately,
             );
-            if let Some(_) = element.toplevel() {
+            if element.toplevel().is_some() {
                 let target = (rect.w.max(1), rect.h.max(1));
                 let size =
                     smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
