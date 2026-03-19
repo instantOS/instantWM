@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Shared constants for the mouse-interaction subsystem.
 
 // ── Window geometry limits ────────────────────────────────────────────────────

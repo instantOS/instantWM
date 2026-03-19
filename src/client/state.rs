@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! X11 property management for client windows.
 //!
 //! This module owns everything related to reading and writing X11 properties

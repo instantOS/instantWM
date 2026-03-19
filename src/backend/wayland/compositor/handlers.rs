@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::let_unit_value, clippy::collapsible_match)]
+
 use smithay::{
     backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
@@ -70,7 +70,7 @@ impl CompositorHandler for WaylandState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         on_commit_buffer_handler::<Self>(surface);
-        let _ = self.popups.commit(surface);
+        self.popups.commit(surface);
 
         if let Some(popup) = self.popups.find_popup(surface)
             && let PopupKind::Xdg(ref popup_surface) = popup

@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::needless_borrow)]
+
 //! Context split for backend-specific operations.
 //!
 //! Core state (`Globals`, tags/layouts/monitors/clients/config) remains
@@ -115,11 +115,11 @@ impl<'a> WmCtxX11<'a> {
     }
 
     pub fn x11_runtime(&self) -> &X11RuntimeConfig {
-        &self.x11_runtime
+        self.x11_runtime
     }
 
     pub fn x11_runtime_mut(&mut self) -> &mut X11RuntimeConfig {
-        &mut self.x11_runtime
+        self.x11_runtime
     }
 
     pub fn systray(&self) -> Option<&Systray> {
@@ -156,11 +156,11 @@ impl<'a> WmCtxWayland<'a> {
     }
 
     pub fn wayland_systray(&self) -> &WaylandSystray {
-        &self.wayland_systray
+        self.wayland_systray
     }
 
     pub fn wayland_systray_mut(&mut self) -> &mut WaylandSystray {
-        &mut self.wayland_systray
+        self.wayland_systray
     }
 
     pub fn wayland_systray_menu(&self) -> Option<&WaylandSystrayMenu> {

@@ -4,9 +4,9 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::Backend as WmBackend;
 use crate::backend::x11::X11Backend;
 use crate::backend::x11::XlibDisplay;
+use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
 use crate::drw::Drw;
 use crate::types::*;
@@ -36,7 +36,7 @@ pub fn run() {
         }
     };
 
-    let mut wm = Wm::new(WmBackend::X11(X11Backend::new(conn, screen_num)));
+    let mut wm = Wm::new(WmBackend::X11(Box::new(X11Backend::new(conn, screen_num))));
     wm_init(&mut wm);
     crate::backend::x11::events::setup(&mut wm);
     {

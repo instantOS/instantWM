@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Type-safe tag operations.
 //!
 //! This module provides ergonomic wrappers around tag operations using

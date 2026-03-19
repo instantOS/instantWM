@@ -145,13 +145,11 @@ impl Gesture {
     }
 
     /// Returns `true` if this gesture represents a tag hover.
-    #[allow(dead_code)]
     pub fn is_tag(self) -> bool {
         matches!(self, Self::Tag(_))
     }
 
     /// Returns the tag index if this is a `Tag` gesture, otherwise `None`.
-    #[allow(dead_code)]
     pub fn tag_index(self) -> Option<usize> {
         if let Self::Tag(idx) = self {
             Some(idx)

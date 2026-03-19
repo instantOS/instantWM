@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments)]
 //! Wayland bar rendering using cosmic-text for text and MemoryRenderBuffer for output.
 //!
 //! The bar is rasterized into a single RGBA pixel buffer per monitor,

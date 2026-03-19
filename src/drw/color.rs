@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Color and cursor types used by the drawing context.
 //!
 //! [`Color`] wraps an `XftColor` (a pixel value + 16-bit RGBA components).

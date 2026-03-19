@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments)]
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::client::set_client_state;

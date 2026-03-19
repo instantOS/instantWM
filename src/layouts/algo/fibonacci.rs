@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Fibonacci / golden-ratio layout algorithms.
 //!
 //! Two variants share a single recursive splitting implementation:

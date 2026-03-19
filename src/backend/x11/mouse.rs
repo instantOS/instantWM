@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! X11 mouse backend helpers.
 
 use crate::contexts::{CoreCtx, WmCtxX11};

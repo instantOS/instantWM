@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::large_enum_variant)]
+
 //! Backend abstraction.
 //!
 //! This module supports multiple window-system backends:
@@ -75,7 +75,7 @@ pub trait BackendOps {
 
 /// Owned backend implementation.
 pub enum Backend {
-    X11(X11Backend),
+    X11(Box<X11Backend>),
     Wayland(WaylandBackend),
 }
 

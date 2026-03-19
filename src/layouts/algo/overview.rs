@@ -1,4 +1,3 @@
-#![allow(dead_code, clippy::unnecessary_cast)]
 //! Overview layout — a bird's-eye view of every client across all tags.
 //!
 //! All clients (regardless of their tag) are arranged in a square grid so the
@@ -49,7 +48,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── grid dimensions ───────────────────────────────────────────────────
     // Find the smallest g such that g² ≥ n (i.e. ceil(sqrt(n))).
     let mut gridwidth: i32 = 1;
-    while ((gridwidth * gridwidth) as usize) < (n as usize) {
+    while ((gridwidth * gridwidth) as usize) < n {
         gridwidth += 1;
     }
 

@@ -1,4 +1,3 @@
-#![allow(clippy::collapsible_else_if)]
 //! Focus management using explicit WM context.
 //!
 //! This module provides window focus functionality via `CoreCtx`, avoiding
@@ -457,18 +456,16 @@ pub fn hover_focus_target_x11(
         {
             return;
         }
-    } else {
-        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(x11.conn, x11_runtime.root)
-            && let Ok(reply) = cookie.reply()
+    } else if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(x11.conn, x11_runtime.root)
+        && let Ok(reply) = cookie.reply()
+    {
+        let ptr = (reply.root_x as i32, reply.root_y as i32);
+        if let Some(new_mon_id) = core.globals().monitors.find_monitor_at_pointer(ptr)
+            && new_mon_id != core.globals().selected_monitor_id()
         {
-            let ptr = (reply.root_x as i32, reply.root_y as i32);
-            if let Some(new_mon_id) = core.globals().monitors.find_monitor_at_pointer(ptr)
-                && new_mon_id != core.globals().selected_monitor_id()
-            {
-                core.globals_mut().set_selected_monitor(new_mon_id);
-                let _ = focus_x11(core, x11, x11_runtime, None, None);
-                return;
-            }
+            core.globals_mut().set_selected_monitor(new_mon_id);
+            let _ = focus_x11(core, x11, x11_runtime, None, None);
+            return;
         }
     }
 

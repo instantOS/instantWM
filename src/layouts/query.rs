@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Layout query helpers — stateless reads over the global window/monitor state.
 //!
 //! These functions answer questions like "how many tiled clients are on the

@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments)]
 //! Client focus management and X11 input plumbing.
 //!
 //! # Responsibilities

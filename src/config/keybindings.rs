@@ -1,10 +1,9 @@
-#![allow(clippy::redundant_closure)]
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
 use std::rc::Rc;
 
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
-use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
+use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::floating::{
     center_window, distribute_clients, key_resize, scratchpad_make, scratchpad_toggle,
     toggle_maximized,
@@ -13,12 +12,12 @@ use crate::floating::{create_overlay, set_overlay};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
+    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::warp::warp_to_focus;
 use crate::mouse::{begin_keyboard_move, draw_window, moveresize, resize_mouse_from_cursor};
-use crate::push::{Direction as PushDirection, push};
+use crate::push::{push, Direction as PushDirection};
 use crate::tags::{
     follow_view, last_view, move_client, quit, send_to_monitor, shift_tag, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
@@ -158,9 +157,9 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | CONTROL, XK_RIGHT => |ctx| direction_focus(ctx, Direction::Right)),
         key!(MODKEY | CONTROL, XK_UP    => |ctx| direction_focus(ctx, Direction::Up)),
         key!(MODKEY | CONTROL, XK_DOWN  => |ctx| direction_focus(ctx, Direction::Down)),
-        key!(MODKEY,  XK_TAB     => |ctx| last_view(ctx)),
-        key!(MODKEY | SHIFT,      XK_TAB     => |ctx| focus_last_client(ctx)),
-        key!(MODKEY | MOD1,      XK_TAB     => |ctx| follow_view(ctx)),
+        key!(MODKEY,  XK_TAB     => last_view),
+        key!(MODKEY | SHIFT,      XK_TAB     => focus_last_client),
+        key!(MODKEY | MOD1,      XK_TAB     => follow_view),
         key!(MODKEY,  XK_LEFT    => |ctx| crate::tags::view::scroll_view(ctx, Direction::Left)),
         key!(MODKEY,  XK_RIGHT   => |ctx| crate::tags::view::scroll_view(ctx, Direction::Right)),
         key!(MODKEY | MOD1,      XK_LEFT    => |ctx| move_client(ctx, Direction::Left)),
@@ -179,7 +178,7 @@ pub fn get_keys() -> Vec<Key> {
                 crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS)
             }
         }),
-        key!(MODKEY,  XK_O       => |ctx| win_view(ctx)),
+        key!(MODKEY,  XK_O       => win_view),
         key!(MODKEY, XK_COMMA  => |ctx| focus_monitor(ctx, MonitorDirection::PREV)),
         key!(MODKEY, XK_PERIOD => |ctx| focus_monitor(ctx, MonitorDirection::NEXT)),
         key!(MODKEY | SHIFT,     XK_COMMA  => |ctx| send_to_monitor(ctx, MonitorDirection::PREV)),
@@ -194,7 +193,7 @@ pub fn get_keys() -> Vec<Key> {
                 center_window(ctx, win)
             }
         }),
-        key!(MODKEY | SHIFT,   XK_W      => |ctx| warp_to_focus(ctx)),
+        key!(MODKEY | SHIFT,   XK_W      => warp_to_focus),
         key!(MODKEY | SHIFT,   XK_J      => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 moveresize(ctx, win, Direction::Down)
@@ -232,8 +231,8 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY, XK_S  => |ctx| scratchpad_toggle(ctx, None)),
         key!(MODKEY | SHIFT,     XK_S  => |ctx| scratchpad_make(ctx, None)),
-        key!(MODKEY, XK_B  => |ctx| crate::toggles::toggle_bar(ctx)),
-        key!(MODKEY | SHIFT,     XK_F  => |ctx| toggle_fake_fullscreen(ctx)),
+        key!(MODKEY, XK_B  => crate::toggles::toggle_bar),
+        key!(MODKEY | SHIFT,     XK_F  => toggle_fake_fullscreen),
         key!(MODKEY | CONTROL,     XK_F  => toggle_maximized),
         key!(MODKEY | CONTROL,     XK_S  => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -258,8 +257,8 @@ pub fn get_keys() -> Vec<Key> {
                 crate::client::hide(ctx, win)
             }
         }),
-        key!(MODKEY | CONTROL | MOD1, XK_H => |ctx| unhide_all(ctx)),
-        key!(MODKEY, XK_Q   => |ctx| shut_kill(ctx)),
+        key!(MODKEY | CONTROL | MOD1, XK_H => unhide_all),
+        key!(MODKEY, XK_Q   => shut_kill),
         key!(MOD1,   XK_F4  => |ctx| {
             if let Some(win) = ctx.selected_client() {
                 kill_client(ctx, win)
@@ -267,7 +266,7 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY | SHIFT | CONTROL,    XK_Q   => |_| quit()),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, &["instanthotkeys", "gui"])),
-        key!(MODKEY,  XK_F2 => |ctx| toggle_prefix(ctx)),
+        key!(MODKEY,  XK_F2 => toggle_prefix),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, &["kitty"])),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, menu::SMART)),
         key!(MODKEY | CONTROL,     XK_SPACE           => |ctx| spawn(ctx, menu::RUN)),

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Raw FFI bindings for X11, Xft, and Fontconfig.
 //!
 //! This module is the single place where all `extern "C"` declarations live.

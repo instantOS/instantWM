@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::unnecessary_map_or)]
+
 //! Structured data and low-level logic for clients.
 
 use crate::types::{Client, ClientId, WindowId};
@@ -64,15 +64,15 @@ impl ClientManager {
     }
 
     pub fn is_hidden(&self, win: WindowId) -> bool {
-        self.clients.get(&win).map_or(false, |c| c.is_hidden)
+        self.clients.get(&win).is_some_and(|c| c.is_hidden)
     }
 
     pub fn is_floating(&self, win: WindowId) -> bool {
-        self.clients.get(&win).map_or(false, |c| c.is_floating)
+        self.clients.get(&win).is_some_and(|c| c.is_floating)
     }
 
     pub fn is_locked(&self, win: WindowId) -> bool {
-        self.clients.get(&win).map_or(true, |c| c.is_locked)
+        self.clients.get(&win).is_none_or(|c| c.is_locked)
     }
 
     pub fn geo(&self, win: WindowId) -> Option<crate::types::Rect> {

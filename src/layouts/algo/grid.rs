@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Grid layout algorithms.
 //!
 //! Three related layouts live here:

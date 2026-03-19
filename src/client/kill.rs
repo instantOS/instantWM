@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Client termination: graceful close and forceful kill.
 //!
 //! # The three entry points

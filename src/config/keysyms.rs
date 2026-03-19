@@ -6,7 +6,6 @@
 //! Not every constant is referenced in the default bindings — they are provided
 //! as a complete reference so custom bindings can use any key without needing
 //! to look up the hex value.
-#![allow(dead_code)]
 
 // ---------------------------------------------------------------------------
 // Control / navigation

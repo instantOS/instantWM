@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::too_many_arguments)]
+#![allow(clippy::too_many_arguments)]
 //! Move and drop operations for window dragging.
 //!
 //! This module contains the core logic for moving windows with the mouse,

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Layout-driven client operations.
 //!
 //! These are small operations that sit at the boundary between the client and

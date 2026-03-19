@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Client lifecycle: adopting and releasing X11 windows.
 //!
 //! Note on title initialization: `update_title` writes into `globals.clients`,
@@ -61,15 +60,15 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     let trans = get_transient_for_hint_x11(&ctx.x11, w);
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
-    assign_initial_monitor_and_tags(&mut ctx.core.globals_mut(), &mut client, trans);
+    assign_initial_monitor_and_tags(ctx.core.globals_mut(), &mut client, trans);
     insert_client_and_apply_rules(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, client);
 
-    let borderpx = apply_default_border(&mut ctx.core.globals_mut(), w);
-    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(&ctx.core.globals(), w);
-    clamp_client_to_work_area(&mut ctx.core.globals_mut(), w, mon_work_rect);
-    let is_monocle = is_monocle_on_client_monitor(&ctx.core.globals(), w);
+    let borderpx = apply_default_border(ctx.core.globals_mut(), w);
+    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.globals(), w);
+    clamp_client_to_work_area(ctx.core.globals_mut(), w, mon_work_rect);
+    let is_monocle = is_monocle_on_client_monitor(ctx.core.globals(), w);
     configure_client_border(
-        &mut ctx.core.globals_mut(),
+        ctx.core.globals_mut(),
         &ctx.x11,
         ctx.x11_runtime,
         w,
@@ -79,11 +78,11 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     );
 
     apply_manage_hints(ctx, w);
-    snapshot_float_geo(&mut ctx.core.globals_mut(), w, mon_monitor_rect);
+    snapshot_float_geo(ctx.core.globals_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
     grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
 
-    if initialize_floating_state(&mut ctx.core.globals_mut(), w, trans.is_some()) {
+    if initialize_floating_state(ctx.core.globals_mut(), w, trans.is_some()) {
         ctx.backend.raise_window(w);
         ctx.backend.flush();
     }
@@ -239,7 +238,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(
-        &mut ctx_x11.core.globals_mut(),
+        ctx_x11.core.globals_mut(),
         &ctx_x11.x11,
         ctx_x11.x11_runtime,
         w,

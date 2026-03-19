@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::large_enum_variant, clippy::io_other_error)]
+#![allow(clippy::large_enum_variant)]
 use crate::contexts::CoreCtx;
 use crate::types::Monitor;
 use serde::{Deserialize, Serialize};
@@ -413,7 +413,7 @@ pub(crate) fn write_i3bar_click_event<W: Write>(
     }
 
     serde_json::to_writer(&mut writer, event)
-        .map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))?;
+        .map_err(std::io::Error::other)?;
     writer.write_all(b"\n")
 }
 

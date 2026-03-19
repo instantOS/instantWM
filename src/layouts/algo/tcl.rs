@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Three-column layout.
 //!
 //! Arranges tiled clients into three vertical columns:

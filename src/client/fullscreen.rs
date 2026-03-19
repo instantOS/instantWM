@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Fullscreen and fake-fullscreen state management.
 //!
 //! # Responsibilities

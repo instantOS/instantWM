@@ -1,4 +1,4 @@
-#![allow(clippy::get_first, clippy::type_complexity, clippy::print_literal)]
+#![allow(clippy::type_complexity)]
 //! TOML-configurable keybindings.
 //!
 //! Parses `[[keybinds]]` and `[[desktop_keybinds]]` entries from the config
@@ -185,11 +185,11 @@ use crate::floating::{create_overlay, scratchpad_make, scratchpad_toggle, set_ov
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
+    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
-use crate::push::{Direction as PushDirection, push};
+use crate::push::{push, Direction as PushDirection};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
     toggle_overview, win_view,
@@ -234,10 +234,9 @@ pub fn print_actions(json: bool) {
     let max_name_len = actions.iter().map(|a| a.name.len()).max().unwrap_or(0);
 
     println!(
-        "{:<width$} | {:<20} | {}",
+        "{:<width$} | {:<20} | DESCRIPTION",
         "ACTION",
         "ARGUMENTS",
-        "DESCRIPTION",
         width = max_name_len
     );
     println!(
@@ -356,14 +355,14 @@ define_actions!(
     "cycle_layout_next" => "cycle to next layout" => |ctx: &mut WmCtx, _args: &[String]| cycle_layout_direction(ctx, true),
     "cycle_layout_prev" => "cycle to previous layout" => |ctx: &mut WmCtx, _args: &[String]| cycle_layout_direction(ctx, false),
     "inc_nmaster" ("1") => "increase master window count" => |ctx: &mut WmCtx, args: &[String]| {
-        let n = args.get(0).and_then(|s| s.parse().ok()).unwrap_or(1);
+        let n = args.first().and_then(|s| s.parse().ok()).unwrap_or(1);
         inc_nmaster_by(ctx, n)
     },
     "dec_nmaster" => "decrease master window count" => |ctx: &mut WmCtx, _args: &[String]| inc_nmaster_by(ctx, -1),
     "mfact_grow" => "increase master area width" => |ctx: &mut WmCtx, _args: &[String]| set_mfact(ctx, 0.05),
     "mfact_shrink" => "decrease master area width" => |ctx: &mut WmCtx, _args: &[String]| set_mfact(ctx, -0.05),
     "set_mfact" ("0.05") => "set master factor" => |ctx: &mut WmCtx, args: &[String]| {
-        if let Some(d) = args.get(0).and_then(|s| s.parse::<f32>().ok()) {
+        if let Some(d) = args.first().and_then(|s| s.parse::<f32>().ok()) {
             set_mfact(ctx, d);
         }
     },
@@ -486,14 +485,14 @@ define_actions!(
     "next_keyboard_layout" => "cycle to next keyboard layout" => |ctx: &mut WmCtx, _args: &[String]| { crate::keyboard_layout::cycle_keyboard_layout(ctx, true); },
     "prev_keyboard_layout" => "cycle to previous keyboard layout" => |ctx: &mut WmCtx, _args: &[String]| { crate::keyboard_layout::cycle_keyboard_layout(ctx, false); },
     "keyboard_layout" ("us(intl)") => "set keyboard layout" => |ctx: &mut WmCtx, args: &[String]| {
-        if let Some(name) = args.get(0) {
+        if let Some(name) = args.first() {
             crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name);
         }
     },
 
     // Mode
     "set_mode" ("resize") => "set WM mode (sway-like modes)" => |ctx: &mut WmCtx, args: &[String]| {
-        if let Some(name) = args.get(0) {
+        if let Some(name) = args.first() {
             ctx.core_mut().globals_mut().behavior.current_mode = name.clone();
             ctx.request_bar_update(None);
         }
@@ -502,7 +501,7 @@ define_actions!(
     // Additional structured actions
     "spawn" ("kitty") => "spawn command" => |ctx: &mut WmCtx, args: &[String]| spawn(ctx, args),
     "set_layout" ("tile") => "set layout" => |ctx: &mut WmCtx, args: &[String]| {
-        if let Some(name) = args.get(0) {
+        if let Some(name) = args.first() {
             let kind = match name.to_ascii_lowercase().as_str() {
                 "tile" | "tiling" => LayoutKind::Tile,
                 "float" | "floating" => LayoutKind::Floating,
@@ -514,7 +513,7 @@ define_actions!(
         }
     },
     "focus_stack" ("next") => "focus stack direction" => |ctx: &mut WmCtx, args: &[String]| {
-        if let Some(dir) = args.get(0) {
+        if let Some(dir) = args.first() {
             let direction = match dir.to_ascii_lowercase().as_str() {
                 "next" | "down" | "forward" => StackDirection::Next,
                 "prev" | "previous" | "up" | "backward" => StackDirection::Previous,

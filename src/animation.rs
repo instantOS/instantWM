@@ -21,7 +21,6 @@ pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, 
 }
 
 /// Backend-agnostic check and animate.
-#[allow(dead_code)]
 pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
         WmCtx::X11(ctx_x11) => check_animate_x11(ctx_x11, win, rect, frames, reset_pos),

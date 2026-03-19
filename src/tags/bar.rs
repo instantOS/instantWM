@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Tag bar rendering helpers.
 //!
 //! These functions answer three questions the bar needs on every redraw:

@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::unnecessary_cast)]
+
 //! Pointer axis (scroll) handling.
 
 use smithay::backend::input::{InputBackend, PointerAxisEvent};
@@ -75,7 +75,7 @@ pub fn handle_pointer_axis<B: InputBackend>(
                 frame = frame.relative_direction(axis, event.relative_direction(axis));
                 frame = frame.value(axis, amount * effective_factor);
                 if let Some(steps) = event.amount_v120(axis) {
-                    frame = frame.v120(axis, ((steps as f64) * effective_factor) as i32);
+                    frame = frame.v120(axis, (steps * effective_factor) as i32);
                 }
             } else if event.source() == smithay::backend::input::AxisSource::Finger {
                 frame = frame.stop(axis);

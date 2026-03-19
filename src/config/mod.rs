@@ -53,7 +53,6 @@ pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT, get_desktop_keybinds, get_ke
 // ---------------------------------------------------------------------------
 
 /// Shared constants referenced by multiple sub-modules.
-#[allow(dead_code)]
 pub mod mod_consts {
     use crate::types::MAX_TAGS;
 

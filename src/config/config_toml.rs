@@ -1,4 +1,3 @@
-#![allow(clippy::derivable_impls)]
 use crate::config::appearance::{
     get_border_colors, get_close_button_colors, get_fonts, get_status_bar_colors, get_tag_colors,
     get_window_colors,
@@ -148,7 +147,7 @@ pub struct KeyboardLayoutConfig {
 /// options = "grp:alt_shift_toggle"
 /// swapescape = true
 /// ```
-#[derive(Debug, Deserialize, Clone, Serialize)]
+#[derive(Debug, Deserialize, Clone, Serialize, Default)]
 #[serde(default)]
 pub struct KeyboardConfig {
     /// XKB layout configurations.
@@ -160,17 +159,6 @@ pub struct KeyboardConfig {
     pub model: Option<String>,
     /// Swap Caps Lock and Escape.
     pub swapescape: bool,
-}
-
-impl Default for KeyboardConfig {
-    fn default() -> Self {
-        Self {
-            layouts: Vec::new(),
-            options: None,
-            model: None,
-            swapescape: false,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::type_complexity)]
+#![allow(clippy::type_complexity)]
 //! Pointer motion handling.
 
 use smithay::backend::input::{AbsolutePositionEvent, InputBackend, PointerMotionEvent};

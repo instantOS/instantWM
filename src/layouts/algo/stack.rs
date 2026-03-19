@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 //! Stacking layout algorithms: deck, bottom_stack, and bstackhoriz.
 
 use crate::animation::animate_client;
