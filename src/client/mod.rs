@@ -10,7 +10,6 @@
 //! | Module          | Responsibility                                              |
 //! |-----------------|-------------------------------------------------------------|
 //! | `constants`     | WM_STATE, MWM hints, WM_HINTS, XSizeHints constants         |
-//! | `list`          | Intrusive linked-list helpers (attach / detach / traverse)  |
 //! | `geometry`      | Resize, size-hint enforcement, dimension helpers            |
 //! | `visibility`    | Show / hide / show_hide, WM_STATE queries                   |
 //! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
@@ -31,7 +30,6 @@ pub mod geometry;
 pub mod kill;
 pub mod layout_ops;
 pub mod lifecycle;
-pub mod list;
 pub mod manager;
 pub mod state;
 pub mod visibility;
@@ -46,8 +44,6 @@ pub mod visibility;
 
 // -- Constants ---------------------------------------------------------------
 pub use constants::WM_STATE_WITHDRAWN;
-
-// -- Linked-list management --------------------------------------------------
 
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::resize;

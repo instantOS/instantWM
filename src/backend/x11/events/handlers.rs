@@ -133,7 +133,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
     if bar_pos == BarPosition::Root
         && let Some(mon) = ctx.core.g.monitor(selmon_id)
-        && let Some(_selected_window) = mon.sel
+        && mon.sel.is_some()
         && let AltCursor::Resize(dir) = altcursor
     {
         crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
