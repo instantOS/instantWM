@@ -134,15 +134,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
     if bar_pos == BarPosition::Root {
         if let Some(mon) = ctx.core.g.monitor(selmon_id) {
-            if let Some(selected_window) = mon.sel {
-                let _is_floating = ctx
-                    .core
-                    .g
-                    .clients
-                    .get(&selected_window)
-                    .map(|c| c.is_floating)
-                    .unwrap_or(false);
-                let _has_tiling = mon.is_tiling_layout();
+            if let Some(_selected_window) = mon.sel {
                 if let AltCursor::Resize(dir) = altcursor {
                     crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);

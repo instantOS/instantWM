@@ -528,7 +528,6 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
             g.monitors.push(mon);
         }
 
-        let _dirty = new_count > old_count;
         let bar_height = g.cfg.bar_height;
 
         for (i, info) in unique.iter().enumerate() {
