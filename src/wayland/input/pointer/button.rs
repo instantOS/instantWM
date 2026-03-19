@@ -108,7 +108,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                 &mut wm.bar,
                 &mut wm.focus,
             );
-            let mon = core.g.selected_monitor().clone();
+            let mon = core.globals().selected_monitor().clone();
             let local_x = root_x - mon.work_rect.x;
             wm.wayland_systray_menu.is_some()
                 && crate::systray::wayland::hit_test_wayland_systray_menu_item(

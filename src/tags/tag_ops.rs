@@ -12,9 +12,9 @@ use crate::types::{TagMask, TagSelection};
 /// This is the preferred way to switch tag views as it provides
 /// semantic meaning and type safety.
 pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
-    let num_tags = ctx.g().tags.count();
-    let current_mask = TagMask::from_bits(ctx.g().selected_monitor().selected_tags());
-    let prev_tag = ctx.g().selected_monitor().prev_tag;
+    let num_tags = ctx.core().globals().tags.count();
+    let current_mask = TagMask::from_bits(ctx.core().globals().selected_monitor().selected_tags());
+    let prev_tag = ctx.core().globals().selected_monitor().prev_tag;
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);
     super::view::view(ctx, mask);

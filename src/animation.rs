@@ -28,7 +28,8 @@ pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, r
         WmCtx::Wayland(_ctx_wayland) => {
             // Check if geometry actually changed
             let should_animate = ctx
-                .g()
+                .core()
+                .globals()
                 .clients
                 .get(&win)
                 .map(|client| {
@@ -53,19 +54,22 @@ pub fn ease_out_cubic(t: f64) -> f64 {
 }
 
 fn get_start_rect(core: &CoreCtx, win: WindowId, reset_pos: i32) -> Option<Rect> {
-    core.g
+    core.globals()
         .clients
         .get(&win)
         .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
 }
 
 fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
-    core.g
+    core.globals()
         .clients
         .get(&win)
-        .and_then(|c| core.g.monitors.get(c.monitor_id))
+        .and_then(|c| core.globals().monitors.get(c.monitor_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
-        .unwrap_or((core.g.cfg.screen_width, core.g.cfg.screen_height))
+        .unwrap_or((
+            core.globals().cfg.screen_width,
+            core.globals().cfg.screen_height,
+        ))
 }
 
 fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i32, i32) {
@@ -119,7 +123,7 @@ pub fn animate_client_x11(
     let (mon_w, mon_h) = get_monitor_size(&ctx.core, win);
     let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
 
-    if !ctx.core.g.behavior.animated || frames <= 0 {
+    if !ctx.core.globals().behavior.animated || frames <= 0 {
         try_resize_x11(
             ctx,
             win,
@@ -219,7 +223,7 @@ pub fn check_animate_x11(
     frames: i32,
     reset_pos: i32,
 ) {
-    if let Some(client) = ctx.core.g.clients.get(&win) {
+    if let Some(client) = ctx.core.globals().clients.get(&win) {
         let should_animate = client.geo.x != rect.x
             || client.geo.y != rect.y
             || client.geo.w != rect.w
@@ -231,10 +235,10 @@ pub fn check_animate_x11(
 }
 
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
-    let sel_mon = ctx.g().selected_monitor_id();
+    let sel_mon = ctx.core().globals().selected_monitor_id();
 
     let (has_tiling, current_tag) = {
-        let mon = ctx.g().selected_monitor();
+        let mon = ctx.core().globals().selected_monitor();
         let has_tiling = mon.is_tiling_layout();
         let current_tag = mon.current_tag as u32;
         (has_tiling, current_tag)
@@ -247,7 +251,8 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 
     let clients_to_animate: Vec<(WindowId, Rect)> = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .iter()
         .filter(|(_, client)| client.monitor_id == sel_mon && client.tags == current_tag)

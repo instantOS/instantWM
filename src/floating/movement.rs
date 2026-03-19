@@ -20,7 +20,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let mut new_x = geo.x + dx;
     let mut new_y = geo.y + dy;
 
-    let mon_rect = ctx.g().selected_monitor().monitor_rect;
+    let mon_rect = ctx.core().globals().selected_monitor().monitor_rect;
 
     new_x = new_x.max(mon_rect.x);
     new_y = new_y.max(mon_rect.y);
@@ -79,7 +79,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
-    let is_overlay = ctx.g().selected_monitor().overlay == Some(win);
+    let is_overlay = ctx.core().globals().selected_monitor().overlay == Some(win);
     if is_overlay {
         return;
     }
@@ -92,11 +92,11 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let mon = ctx.g().selected_monitor();
+    let mon = ctx.core().globals().selected_monitor();
     let work_rect = mon.work_rect;
     let mon_rect = mon.monitor_rect;
     let showbar = mon.showbar;
-    let bar_height = ctx.g().cfg.bar_height;
+    let bar_height = ctx.core().globals().cfg.bar_height;
 
     if geo.w > work_rect.w || geo.h > work_rect.h {
         return;

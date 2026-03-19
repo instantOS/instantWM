@@ -71,12 +71,12 @@ pub fn set_client_tag_prop(
 ) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    let Some(c) = core.g.clients.get(&win) else {
+    let Some(c) = core.globals().clients.get(&win) else {
         return;
     };
 
     let mon_num = core
-        .g
+        .globals()
         .monitor(c.monitor_id)
         .map(|m| m.num as u32)
         .unwrap_or(0);
@@ -111,7 +111,7 @@ pub fn update_client_list(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11
     // Delete the existing property first so we start with a clean slate.
     let _ = conn.delete_property(x11_runtime.root, x11_runtime.netatom.client_list);
 
-    for mon in core.g.monitors_iter_all() {
+    for mon in core.globals().monitors_iter_all() {
         for &cur_win in &mon.clients {
             let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(
@@ -143,7 +143,7 @@ pub fn update_title_x11(
     win: WindowId,
 ) {
     let name = read_window_title(core, x11, x11_runtime, win);
-    if let Some(client) = core.g.clients.get_mut(&win) {
+    if let Some(client) = core.globals_mut().clients.get_mut(&win) {
         client.name = name;
     }
 }
@@ -216,27 +216,27 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
 
     // --- Initialise fields we are about to set -------------------------------
-    if let Some(c) = core.g.clients.get_mut(&win) {
+    if let Some(c) = core.globals_mut().clients.get_mut(&win) {
         c.is_floating = false;
         c.tags = 0;
     }
 
-    let special_next = core.g.behavior.specialnext;
-    let rules = core.g.cfg.rules.clone();
-    let tag_mask = core.g.tags.mask();
-    let bar_height = core.g.cfg.bar_height;
+    let special_next = core.globals().behavior.specialnext;
+    let rules = core.globals().cfg.rules.clone();
+    let tag_mask = core.globals().tags.mask();
+    let bar_height = core.globals().cfg.bar_height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next
-            && let Some(c) = core.g.clients.get_mut(&win)
+            && let Some(c) = core.globals_mut().clients.get_mut(&win)
         {
             c.is_floating = true;
         }
-        core.g.behavior.specialnext = SpecialNext::None;
+        core.globals_mut().behavior.specialnext = SpecialNext::None;
     } else {
         let client_name = core
-            .g
+            .globals()
             .clients
             .get(&win)
             .map(|c| c.name.clone())
@@ -249,20 +249,20 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
             // Special case: Onboard (on-screen keyboard) is always sticky.
             if rule.class == Some("Onboard")
-                && let Some(c) = core.g.clients.get_mut(&win)
+                && let Some(c) = core.globals_mut().clients.get_mut(&win)
             {
                 c.issticky = true;
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
             let mon_geo = core
-                .g
+                .globals()
                 .clients
                 .monitor_id(win)
-                .and_then(|mid| core.g.monitor(mid))
+                .and_then(|mid| core.globals().monitor(mid))
                 .map(|m| (m.monitor_rect, m.work_rect, m.showbar));
 
-            if let Some(c) = core.g.clients.get_mut(&win) {
+            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
                 apply_float_rule(c, &rule.isfloating, mon_geo, bar_height);
                 c.tags |= rule.tags;
             }
@@ -360,13 +360,13 @@ fn apply_monitor_rule(core: &mut CoreCtx, win: WindowId, rule: &crate::types::Ru
     };
 
     let target_mid = core
-        .g
+        .globals()
         .monitors_iter()
         .find(|(_i, m)| m.num == target_num as i32)
         .map(|(i, _)| i);
 
     if let Some(mid) = target_mid
-        && let Some(c) = core.g.clients.get_mut(&win)
+        && let Some(c) = core.globals_mut().clients.get_mut(&win)
     {
         c.monitor_id = mid;
     }
@@ -376,13 +376,13 @@ fn apply_monitor_rule(core: &mut CoreCtx, win: WindowId, rule: &crate::types::Ru
 /// tags when no rule-assigned tag is currently visible.
 fn clamp_client_tags(core: &mut CoreCtx, win: WindowId, tag_mask: u32) {
     let (client_mon_id, client_tags) = core
-        .g
+        .globals()
         .clients
         .get(&win)
         .map(|c| (c.monitor_id, c.tags))
         .unwrap_or((0, 0));
 
-    let Some(mon) = core.g.monitor(client_mon_id) else {
+    let Some(mon) = core.globals().monitor(client_mon_id) else {
         return;
     };
 
@@ -393,7 +393,7 @@ fn clamp_client_tags(core: &mut CoreCtx, win: WindowId, tag_mask: u32) {
         active_tags
     };
 
-    if let Some(c) = core.g.clients.get_mut(&win) {
+    if let Some(c) = core.globals_mut().clients.get_mut(&win) {
         c.tags = new_tags;
     }
 }
@@ -446,7 +446,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     if wtype == Some(atom_dialog)
-        && let Some(client) = ctx_x11.core.g.clients.get_mut(&win)
+        && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
     {
         client.is_floating = true;
     }
@@ -484,7 +484,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
-    let is_selected = ctx.core.g.selected_monitor().sel == Some(win);
+    let is_selected = ctx.core.globals().selected_monitor().sel == Some(win);
 
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.
@@ -492,7 +492,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         clear_urgency_hint(&ctx.core, &ctx.x11, win);
     }
 
-    if let Some(client) = ctx.core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
         client.isurgent = is_urgent;
         client.never_focus = if flags & WM_HINTS_INPUT_HINT != 0 {
             input == 0
@@ -511,7 +511,7 @@ pub fn set_urgent(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: b
     let conn = x11.conn;
 
     // Update the internal flag first.
-    if let Some(client) = core.g.clients.get_mut(&win) {
+    if let Some(client) = core.globals_mut().clients.get_mut(&win) {
         client.isurgent = urg;
     }
 
@@ -570,12 +570,12 @@ pub fn set_urgent(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: b
 ///
 /// This function is a no-op when `decorhints` is disabled in the global config.
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    if ctx.core.g.cfg.decorhints == 0 {
+    if ctx.core.globals().cfg.decorhints == 0 {
         return;
     }
 
     let motif_atom = ctx.x11_runtime.motifatom;
-    let borderpx = ctx.core.g.cfg.border_width_px;
+    let borderpx = ctx.core.globals().cfg.border_width_px;
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
@@ -603,7 +603,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     let (c_w, c_h, c_x, c_y) = ctx
         .core
-        .g
+        .globals()
         .clients
         .get(&win)
         .map(|c| (c.total_width(), c.total_height(), c.geo.x, c.geo.y))
@@ -622,7 +622,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         0
     };
 
-    if let Some(client) = ctx.core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
         client.border_width = new_bw;
         client.old_border_width = new_bw;
     }

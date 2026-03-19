@@ -21,7 +21,7 @@ fn set_x11_root_cursor_by_index(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
 }
 
 pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
-    ctx.g_mut().behavior.cursor_icon = style;
+    ctx.core_mut().globals_mut().behavior.cursor_icon = style;
     match ctx {
         WmCtx::X11(x11) => {
             set_x11_root_cursor_by_index(x11, style.to_x11_index());

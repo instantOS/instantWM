@@ -24,10 +24,11 @@ use crate::types::{Monitor, Rect};
 
 pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── raise the selected client so it is visible while we animate ───────
-    let is_animated = ctx.g_mut().behavior.animated && !ctx.g_mut().monitors.is_empty();
+    let is_animated = ctx.core_mut().globals_mut().behavior.animated
+        && !ctx.core_mut().globals_mut().monitors.is_empty();
 
     if is_animated {
-        let mon = ctx.g_mut().selected_monitor();
+        let mon = ctx.core_mut().globals_mut().selected_monitor();
         if let Some(selected_window) = mon.sel {
             ctx.backend().raise_window(selected_window);
             ctx.backend().flush();
@@ -40,7 +41,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── resize every tiled client to fill the work area ───────────────────
     for &win in &m.clients {
-        let Some(c) = ctx.g_mut().clients.get(&win) else {
+        let Some(c) = ctx.core_mut().globals_mut().clients.get(&win) else {
             continue;
         };
 
@@ -53,11 +54,12 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.
-        let frames = if ctx.g_mut().behavior.animated && Some(win) == selected_window {
-            DEFAULT_FRAME_COUNT
-        } else {
-            0
-        };
+        let frames =
+            if ctx.core_mut().globals_mut().behavior.animated && Some(win) == selected_window {
+                DEFAULT_FRAME_COUNT
+            } else {
+                0
+            };
 
         animate_client(
             ctx,

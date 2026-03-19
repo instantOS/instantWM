@@ -15,7 +15,7 @@ pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
 
 pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let (win, current_tag, overlay_win, tagset, tagmask, animated) = {
-        let mon = ctx.g().selected_monitor();
+        let mon = ctx.core().globals().selected_monitor();
         let Some(win) = mon.sel else {
             return;
         };
@@ -24,8 +24,8 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             mon.current_tag as u32,
             mon.overlay,
             mon.selected_tags(),
-            ctx.g().tags.mask(),
-            ctx.g().behavior.animated,
+            ctx.core().globals().tags.mask(),
+            ctx.core().globals().behavior.animated,
         )
     };
 
@@ -57,7 +57,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         play_slide_animation(ctx, win, dir);
     }
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         match dir {
             Direction::Left if tagset > 1 => {
                 client.tags >>= offset;
@@ -69,16 +69,17 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         }
     }
 
-    let selected_monitor_id = ctx.g().selected_monitor_id();
+    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selected_monitor_id));
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     ctx.backend().raise_window(win);
-    let mon_w = ctx.g().selected_monitor().monitor_rect.w;
+    let mon_w = ctx.core().globals().selected_monitor().monitor_rect.w;
     let (client_x, client_y) = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| (c.geo.x, c.geo.y))

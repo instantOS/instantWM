@@ -48,12 +48,13 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
 
     let is_fullscreen = client.is_fullscreen;
     let mon_mh = ctx
-        .g()
+        .core()
+        .globals()
         .monitor(client.monitor_id)
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 
-    let animated = ctx.g().behavior.animated;
+    let animated = ctx.core().globals().behavior.animated;
     let anim_client = ctx.core().focus.anim_client;
 
     // Play closing animation for both X11 and Wayland
@@ -100,7 +101,7 @@ fn force_close(ctx: &mut WmCtx, win: WindowId) {
 /// an orderly system shutdown; pressing it when windows are open closes the
 /// focused window instead.
 pub fn shut_kill(ctx: &mut WmCtx) {
-    let has_clients = !ctx.g().selected_monitor().clients.is_empty();
+    let has_clients = !ctx.core().globals().selected_monitor().clients.is_empty();
 
     if has_clients {
         if let Some(win) = ctx.selected_client() {
@@ -119,7 +120,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
 ///
 /// Like `kill_client` but without the kill fallback - only attempts graceful close.
 pub fn close_win(ctx: &mut WmCtx, win: WindowId) {
-    let is_locked = ctx.g().clients.is_locked(win);
+    let is_locked = ctx.core().globals().clients.is_locked(win);
 
     if is_locked {
         return;

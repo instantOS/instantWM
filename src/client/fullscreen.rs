@@ -43,7 +43,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
     let net_wm_state = ctx_x11.x11_runtime.netatom.wm_state;
 
     // Snapshot what we need before taking a mutable borrow.
-    let client_snapshot = ctx_x11.core.g.clients.get(&win).map(|c| {
+    let client_snapshot = ctx_x11.core.globals().clients.get(&win).map(|c| {
         (
             c.is_fullscreen,
             c.is_floating,
@@ -71,22 +71,22 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             &[net_wm_fullscreen],
         );
 
-        if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
+        if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = true;
             c.oldstate = c.is_floating as i32;
         }
 
-        ctx_x11.core.g.clients.save_border_width(win);
+        ctx_x11.core.globals_mut().clients.save_border_width(win);
 
         if !is_fake_fs {
             // Remove the border.
-            if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
+            if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
                 c.border_width = 0;
             }
 
             let mon_rect = ctx_x11
                 .core
-                .g
+                .globals()
                 .monitor(monitor_id)
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
@@ -114,7 +114,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         }
 
         // Mark as floating so the layout engine leaves it alone.
-        if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
+        if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_floating = true;
         }
     } else if !fullscreen && is_fs {
@@ -129,12 +129,12 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             &[],
         );
 
-        if let Some(c) = ctx_x11.core.g.clients.get_mut(&win) {
+        if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = false;
             c.is_floating = c.oldstate != 0;
         }
 
-        ctx_x11.core.g.clients.restore_border_width(win);
+        ctx_x11.core.globals_mut().clients.restore_border_width(win);
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
@@ -157,7 +157,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
 
     let (is_fullscreen, isfakefullscreen, monitor_id, old_border_width) = ctx_x11
         .core
-        .g
+        .globals()
         .clients
         .get(&win)
         .map(|c| {
@@ -173,11 +173,11 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.
     if is_fullscreen && isfakefullscreen {
-        let borderpx = ctx_x11.core.g.cfg.border_width_px;
+        let borderpx = ctx_x11.core.globals().cfg.border_width_px;
 
         let mon_rect = ctx_x11
             .core
-            .g
+            .globals()
             .monitor(monitor_id)
             .map(|m| m.monitor_rect)
             .unwrap_or_default();
@@ -204,7 +204,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
     // Restore the border width when leaving fake-fullscreen while still in
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
-    if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
+    if let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
         if client.is_fullscreen && !client.isfakefullscreen {
             client.border_width = old_border_width;
         }
@@ -217,10 +217,10 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
         WmCtx::X11(ctx_x11) => toggle_fake_fullscreen_x11(ctx_x11),
         WmCtx::Wayland(_) => {
             if let Some(win) = ctx.selected_client() {
-                if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+                if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                     client.isfakefullscreen = !client.isfakefullscreen;
                 }
-                let selmon_id = ctx.g().selected_monitor_id();
+                let selmon_id = ctx.core().globals().selected_monitor_id();
                 arrange(ctx, Some(selmon_id));
             }
         }

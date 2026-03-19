@@ -10,7 +10,7 @@ pub enum Direction {
 
 pub fn push(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     let tiled_count = {
-        let g = ctx.g_mut();
+        let g = ctx.core_mut().globals_mut();
         g.selected_monitor().tiled_client_count(g.clients.map())
     };
     if tiled_count < 2 {
@@ -18,7 +18,8 @@ pub fn push(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     }
 
     let is_floating = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| c.is_floating)
@@ -28,9 +29,9 @@ pub fn push(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
         return;
     }
 
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
 
-    if let Some(mon) = ctx.g_mut().monitors.get_mut(selmon_id)
+    if let Some(mon) = ctx.core_mut().globals_mut().monitors.get_mut(selmon_id)
         && let Some(pos) = mon.clients.iter().position(|&w| w == win)
     {
         match direction {

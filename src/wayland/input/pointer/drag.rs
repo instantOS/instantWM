@@ -3,7 +3,7 @@
 use crate::contexts::WmCtxWayland;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::set_cursor_style;
-use crate::types::{AltCursor, MouseButton, Rect, ResizeDirection, WindowId, get_resize_direction};
+use crate::types::{get_resize_direction, AltCursor, MouseButton, Rect, ResizeDirection, WindowId};
 use crate::wm::Wm;
 
 /// Get the active drag window (if any).
@@ -34,7 +34,7 @@ pub fn wayland_hover_resize_drag_begin(
     } else {
         crate::globals::DragType::Resize(dir)
     };
-    ctx.core.g.drag.interactive = crate::globals::DragInteraction {
+    ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
         active: true,
         win,
         button: btn,
@@ -74,12 +74,12 @@ fn wayland_selected_resize_target_at(
     root_y: i32,
 ) -> Option<(WindowId, ResizeDirection, Rect)> {
     let win = ctx.core.selected_client()?;
-    let mon = ctx.core.g.selected_monitor();
-    if mon.showbar && root_y < mon.monitor_rect.y + ctx.core.g.cfg.bar_height {
+    let mon = ctx.core.globals().selected_monitor();
+    if mon.showbar && root_y < mon.monitor_rect.y + ctx.core.globals().cfg.bar_height {
         return None;
     }
     let selected_tags = mon.selected_tags();
-    let c = ctx.core.g.clients.get(&win)?;
+    let c = ctx.core.globals().clients.get(&win)?;
     if c.is_hidden || !c.is_visible_on_tags(selected_tags) {
         return None;
     }
@@ -108,7 +108,10 @@ pub fn update_wayland_selected_resize_offer(
     root_y: i32,
 ) -> Option<WindowId> {
     let Some((win, dir, _)) = wayland_selected_resize_target_at(ctx, root_x, root_y) else {
-        if matches!(ctx.core.g.behavior.cursor_icon, AltCursor::Resize(_)) {
+        if matches!(
+            ctx.core.globals().behavior.cursor_icon,
+            AltCursor::Resize(_)
+        ) {
             set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 AltCursor::Default,
@@ -143,12 +146,13 @@ pub fn wayland_hover_resize_drag_motion(
     root_x: i32,
     root_y: i32,
 ) -> bool {
-    if !ctx.core.g.drag.interactive.active || !ctx.core.g.drag.interactive.dragging {
+    if !ctx.core.globals().drag.interactive.active || !ctx.core.globals().drag.interactive.dragging
+    {
         return false;
     }
-    let drag = ctx.core.g.drag.interactive.clone();
-    ctx.core.g.drag.interactive.last_root_x = root_x;
-    ctx.core.g.drag.interactive.last_root_y = root_y;
+    let drag = ctx.core.globals().drag.interactive.clone();
+    ctx.core.globals_mut().drag.interactive.last_root_x = root_x;
+    ctx.core.globals_mut().drag.interactive.last_root_y = root_y;
 
     match drag.drag_type {
         crate::globals::DragType::Move => {
@@ -161,8 +165,8 @@ pub fn wayland_hover_resize_drag_motion(
             {
                 let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
                 if crate::mouse::drag::move_drop::point_is_on_bar(&wm_ctx, root_x, root_y) {
-                    let mon = wm_ctx.g().selected_monitor();
-                    new_y = mon.bar_y + wm_ctx.g().cfg.bar_height;
+                    let mon = wm_ctx.core().globals().selected_monitor();
+                    new_y = mon.bar_y + wm_ctx.core().globals().cfg.bar_height;
                 }
             }
 
@@ -188,7 +192,7 @@ pub fn wayland_hover_resize_drag_motion(
                 },
                 true,
             );
-            if let Some(client) = ctx.core.g.clients.get_mut(&drag.win) {
+            if let Some(client) = ctx.core.globals_mut().clients.get_mut(&drag.win) {
                 client.float_geo.x = new_x;
                 client.float_geo.y = new_y;
             }
@@ -236,14 +240,14 @@ pub fn wayland_hover_resize_drag_motion(
 /// was initiated.  Returns `false` for click-without-drag interactions so
 /// `title_drag_finish` can handle the click action.
 pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) -> bool {
-    if !ctx.core.g.drag.interactive.active
-        || !ctx.core.g.drag.interactive.dragging
-        || ctx.core.g.drag.interactive.button != btn
+    if !ctx.core.globals().drag.interactive.active
+        || !ctx.core.globals().drag.interactive.dragging
+        || ctx.core.globals().drag.interactive.button != btn
     {
         return false;
     }
-    let drag = ctx.core.g.drag.interactive.clone();
-    ctx.core.g.drag.interactive = crate::globals::DragInteraction::default();
+    let drag = ctx.core.globals().drag.interactive.clone();
+    ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction::default();
     set_cursor_style(
         &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
         AltCursor::Default,

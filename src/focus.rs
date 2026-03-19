@@ -24,19 +24,19 @@ struct FocusTargetResult {
 /// Resolve the focus target based on the requested window and current state.
 /// Returns `None` if there are no monitors (early exit case).
 fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTargetResult> {
-    if core.g.monitors.is_empty() {
+    if core.globals().monitors.is_empty() {
         return None;
     }
 
-    let sel_mon_id = core.g.selected_monitor_id();
-    let mon = core.g.selected_monitor();
+    let sel_mon_id = core.globals().selected_monitor_id();
+    let mon = core.globals().selected_monitor();
     let selected = mon.selected_tag_mask();
     let current_sel = mon.sel;
 
     // Use the requested window if it's visible, otherwise walk the stack
     // to find the first visible non-hidden client.
     let mut target = win.filter(|w| {
-        core.g
+        core.globals()
             .clients
             .get(w)
             .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
@@ -45,7 +45,7 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
 
     if target.is_none() {
         for &c_win in &mon.stack {
-            let Some(c) = core.g.clients.get(&c_win) else {
+            let Some(c) = core.globals().clients.get(&c_win) else {
                 continue;
             };
             if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
@@ -73,7 +73,7 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<
 
     let selection_state_changed = current_sel.is_none() != target.is_none();
 
-    if let Some(mon) = core.g.monitor_mut(sel_mon_id) {
+    if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
     }
 
@@ -120,7 +120,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
 
     fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
         let is_urgent = core
-            .g
+            .globals()
             .clients
             .get(&win)
             .map(|c| c.isurgent)
@@ -205,7 +205,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         let Some(current) = current else {
             return;
         };
-        let Some(monitor_id) = core.g.clients.monitor_id(current) else {
+        let Some(monitor_id) = core.globals().clients.monitor_id(current) else {
             return;
         };
         if previous == Some(current) {
@@ -215,19 +215,19 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         // Only explicitly restack if the focused window is tiled.
         // Floating windows should not automatically pop to the top just
         // from being hovered, otherwise they flicker rapidly when overlapping.
-        if core.g.clients.is_floating(current) {
+        if core.globals().clients.is_floating(current) {
             return;
         }
 
         let mut stack = Vec::new();
         let mut floating = Vec::new();
-        let Some(monitor) = core.g.monitor(monitor_id) else {
+        let Some(monitor) = core.globals().monitor(monitor_id) else {
             return;
         };
         let selected_tags = monitor.selected_tags();
         let bar_win = monitor.bar_win;
         for &win in &monitor.stack {
-            let Some(client) = core.g.clients.get(&win) else {
+            let Some(client) = core.globals().clients.get(&win) else {
                 continue;
             };
             if !client.is_visible_on_tags(selected_tags) {
@@ -430,27 +430,27 @@ pub fn hover_focus_target_x11(
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
-    if !core.g.behavior.focus_follows_mouse {
+    if !core.globals().behavior.focus_follows_mouse {
         return;
     }
 
     if let Some(win) = hovered_win {
-        if let Some(mid) = core.g.clients.monitor_id(win)
-            && mid != core.g.selected_monitor_id()
+        if let Some(mid) = core.globals().clients.monitor_id(win)
+            && mid != core.globals().selected_monitor_id()
         {
-            core.g.set_selected_monitor(mid);
+            core.globals_mut().set_selected_monitor(mid);
             let _ = focus_x11(core, x11, x11_runtime, None, None);
             return;
         }
 
         let hovered_is_floating = core
-            .g
+            .globals()
             .clients
             .get(&win)
             .map(|c| c.is_floating)
             .unwrap_or(false);
-        let has_tiling = core.g.selected_monitor().is_tiling_layout();
-        if !core.g.behavior.focus_follows_float_mouse
+        let has_tiling = core.globals().selected_monitor().is_tiling_layout();
+        if !core.globals().behavior.focus_follows_float_mouse
             && hovered_is_floating
             && has_tiling
             && !entering_root
@@ -462,10 +462,10 @@ pub fn hover_focus_target_x11(
             && let Ok(reply) = cookie.reply()
         {
             let ptr = (reply.root_x as i32, reply.root_y as i32);
-            if let Some(new_mon_id) = core.g.monitors.find_monitor_at_pointer(ptr)
-                && new_mon_id != core.g.selected_monitor_id()
+            if let Some(new_mon_id) = core.globals().monitors.find_monitor_at_pointer(ptr)
+                && new_mon_id != core.globals().selected_monitor_id()
             {
-                core.g.set_selected_monitor(new_mon_id);
+                core.globals_mut().set_selected_monitor(new_mon_id);
                 let _ = focus_x11(core, x11, x11_runtime, None, None);
                 return;
             }
@@ -496,26 +496,26 @@ pub fn hover_focus_target_wayland(
     let Some(hovered_win) = hovered_win else {
         return;
     };
-    if !core.g.behavior.focus_follows_mouse {
+    if !core.globals().behavior.focus_follows_mouse {
         return;
     }
 
     // Switch monitor if the hovered window lives on a different one.
-    if let Some(mid) = core.g.clients.monitor_id(hovered_win)
-        && mid != core.g.selected_monitor_id()
+    if let Some(mid) = core.globals().clients.monitor_id(hovered_win)
+        && mid != core.globals().selected_monitor_id()
     {
-        core.g.set_selected_monitor(mid);
+        core.globals_mut().set_selected_monitor(mid);
     }
 
     // Respect the "don't focus floating windows on hover" setting.
     let hovered_is_floating = core
-        .g
+        .globals()
         .clients
         .get(&hovered_win)
         .map(|c| c.is_floating)
         .unwrap_or(false);
-    let has_tiling = core.g.selected_monitor().is_tiling_layout();
-    if !core.g.behavior.focus_follows_float_mouse
+    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
+    if !core.globals().behavior.focus_follows_float_mouse
         && hovered_is_floating
         && has_tiling
         && !entering_root
@@ -548,7 +548,7 @@ pub fn focus_direction<F>(core: &CoreCtx, direction: Direction, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let mon = core.g.selected_monitor();
+    let mon = core.globals().selected_monitor();
 
     let selected = mon.selected_tag_mask();
 
@@ -557,7 +557,7 @@ where
         return;
     };
 
-    let Some(source_client) = core.g.clients.get(&source_win) else {
+    let Some(source_client) = core.globals().clients.get(&source_win) else {
         focus_fn(None);
         return;
     };
@@ -566,7 +566,7 @@ where
 
     let candidates = get_directional_candidates(
         &mon.clients,
-        core.g.clients.map(),
+        core.globals().clients.map(),
         selected,
         source_win,
         source_center_x,
@@ -672,19 +672,19 @@ fn calculate_direction_score(
 
 /// Shared logic for directional focus - finds the candidate window.
 fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option<WindowId> {
-    if core.g.monitors.is_empty() {
+    if core.globals().monitors.is_empty() {
         return None;
     }
-    let mon = core.g.selected_monitor();
+    let mon = core.globals().selected_monitor();
     let source_win = mon.sel?;
-    let source_client = core.g.clients.get(&source_win)?;
+    let source_client = core.globals().clients.get(&source_win)?;
     let (source_center_x, source_center_y) = source_client.geo.center();
 
     let selected = mon.selected_tag_mask();
 
     get_directional_candidates(
         &mon.clients,
-        core.g.clients.map(),
+        core.globals().clients.map(),
         selected,
         source_win,
         source_center_x,
@@ -713,13 +713,15 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let tags = last_client.tags;
     let last_mon_id = last_client.monitor_id;
 
-    let sel_mon_id = ctx.g().selected_monitor_id();
-    if !ctx.g().monitors.is_empty()
+    let sel_mon_id = ctx.core().globals().selected_monitor_id();
+    if !ctx.core().globals().monitors.is_empty()
         && sel_mon_id != last_mon_id
-        && let Some(sel) = ctx.g().monitor(sel_mon_id).and_then(|m| m.sel)
+        && let Some(sel) = ctx.core().globals().monitor(sel_mon_id).and_then(|m| m.sel)
     {
         unfocus_win(ctx, sel, false);
-        ctx.g_mut().set_selected_monitor(last_mon_id);
+        ctx.core_mut()
+            .globals_mut()
+            .set_selected_monitor(last_mon_id);
     }
 
     if let Some(cur) = ctx.selected_client() {
@@ -729,7 +731,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     crate::tags::view::view(ctx, TagMask::from_bits(tags));
     focus_soft(ctx, Some(last_win));
 
-    let monitor_id = ctx.g().selected_monitor_id();
+    let monitor_id = ctx.core().globals().selected_monitor_id();
     crate::layouts::arrange(ctx, Some(monitor_id));
 }
 
@@ -738,10 +740,10 @@ pub fn focus_stack_direction<F>(core: &CoreCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let mon = core.g.selected_monitor();
+    let mon = core.globals().selected_monitor();
 
     let selected_window = mon.sel;
-    let stack = get_visible_stack(mon, core.g.clients.map());
+    let stack = get_visible_stack(mon, core.globals().clients.map());
 
     if stack.is_empty() {
         focus_fn(None);
@@ -782,11 +784,11 @@ fn get_visible_stack(
 
 /// Shared logic to compute the next stack index for focus.
 fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<WindowId> {
-    if core.g.monitors.is_empty() {
+    if core.globals().monitors.is_empty() {
         return None;
     }
-    let mon = core.g.selected_monitor();
-    let stack = get_visible_stack(mon, core.g.clients.map());
+    let mon = core.globals().selected_monitor();
+    let stack = get_visible_stack(mon, core.globals().clients.map());
 
     if stack.is_empty() {
         return None;

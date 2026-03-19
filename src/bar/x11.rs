@@ -12,7 +12,7 @@ pub fn update_status(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&mut crate::types::Systray>,
 ) {
-    let selmon_idx = core.g.selected_monitor_id();
+    let selmon_idx = core.globals().selected_monitor_id();
 
     draw_bar(core, x11_runtime, None, selmon_idx);
 
@@ -26,24 +26,25 @@ pub fn draw_bar(
     mon_idx: usize,
 ) {
     let bar_win = core
-        .g
+        .globals()
         .monitor(mon_idx)
         .map(|m| m.bar_win)
         .unwrap_or_default();
     if bar_win == WindowId::default() {
         return;
     }
-    let work_rect_w = match core.g.monitor(mon_idx) {
+    let work_rect_w = match core.globals().monitor(mon_idx) {
         Some(m) => m.work_rect.w,
         None => return,
     };
-    let bar_height = core.g.cfg.bar_height;
+    let bar_height = core.globals().cfg.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
 
-    if core.g.cfg.show_systray {
-        core.g.bar_runtime.systray_width = crate::systray::get_systray_width(core, systray) as i32;
+    if core.globals().cfg.show_systray {
+        core.globals_mut().bar_runtime.systray_width =
+            crate::systray::get_systray_width(core, systray) as i32;
     }
 
     let drw = {
@@ -69,7 +70,7 @@ pub fn draw_bars_x11(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
-    let indices: Vec<usize> = core.g.monitors_iter().map(|(i, _)| i).collect();
+    let indices: Vec<usize> = core.globals().monitors_iter().map(|(i, _)| i).collect();
     for i in indices {
         draw_bar(core, x11_runtime, systray, i);
     }
@@ -80,7 +81,7 @@ pub fn reset_bar_x11(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
-    let selmon_idx = core.g.selected_monitor_id();
+    let selmon_idx = core.globals().selected_monitor_id();
     crate::bar::renderer::reset_bar_common(core);
     draw_bar(core, x11_runtime, systray, selmon_idx);
 }
@@ -95,9 +96,9 @@ pub fn resize_bar_win(
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
-    let bar_height = core.g.cfg.bar_height;
-    let showsystray = core.g.cfg.show_systray;
-    let is_selmon = core.g.selected_monitor().num == m.num;
+    let bar_height = core.globals().cfg.bar_height;
+    let showsystray = core.globals().cfg.show_systray;
+    let is_selmon = core.globals().selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
@@ -125,12 +126,12 @@ pub fn update_bars(
     use crate::bar::color::rgba_to_u32;
 
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = core.g.cfg.bar_height;
-        let showsystray = core.g.cfg.show_systray;
-        let status_bg = rgba_to_u32(core.g.cfg.statusbarcolors.bg);
+        let bar_height = core.globals().cfg.bar_height;
+        let showsystray = core.globals().cfg.show_systray;
+        let status_bg = rgba_to_u32(core.globals().cfg.statusbarcolors.bg);
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
-        let selected_monitor_id = core.g.selected_monitor_id();
+        let selected_monitor_id = core.globals().selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<usize, u32> =
@@ -143,7 +144,7 @@ pub fn update_bars(
         }
 
         let mut bar_configs = Vec::new();
-        for (i, m) in core.g.monitors_iter() {
+        for (i, m) in core.globals().monitors_iter() {
             if m.bar_win != WindowId::default() {
                 continue;
             }
@@ -163,7 +164,7 @@ pub fn update_bars(
 
     // Create bar windows for each monitor that needs one.
     // We collect window IDs first, then assign them to monitors to avoid
-    // borrow conflicts between the X11 connection ref and ctx.g.
+    // borrow conflicts between the X11 connection ref and ctx.globals().
     let mut created: Vec<(usize, u32)> = Vec::new();
 
     let conn = x11.conn;
@@ -199,7 +200,7 @@ pub fn update_bars(
     }
 
     for (i, win_id) in created {
-        if let Some(mon) = core.g.monitor_mut(i) {
+        if let Some(mon) = core.globals_mut().monitor_mut(i) {
             mon.bar_win = WindowId::from(win_id);
         }
     }

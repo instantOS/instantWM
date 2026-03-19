@@ -19,9 +19,9 @@ pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
         return;
     }
     let mut ctx = wm.ctx();
-    if !ctx.g.clients.is_empty() && !state.has_active_window_animations() {
-        ctx.g.dirty.layout = false;
-        let selected_monitor_id = ctx.g.selected_monitor_id();
+    if !ctx.core().globals().clients.is_empty() && !state.has_active_window_animations() {
+        ctx.core_mut().globals_mut().dirty.layout = false;
+        let selected_monitor_id = ctx.core().globals().selected_monitor_id();
         crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
     }
 }

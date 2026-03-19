@@ -277,15 +277,15 @@ pub fn get_wayland_systray_width_with_state(
     core: &CoreCtx,
     wayland_systray: &WaylandSystray,
 ) -> i32 {
-    if !core.g.cfg.show_systray {
+    if !core.globals().cfg.show_systray {
         return 0;
     }
     let items = &wayland_systray.items;
     if items.is_empty() {
         return 0;
     }
-    let icon_h = core.g.cfg.bar_height.max(1);
-    let spacing = core.g.cfg.systray_spacing.max(0);
+    let icon_h = core.globals().cfg.bar_height.max(1);
+    let spacing = core.globals().cfg.systray_spacing.max(0);
     let mut width = spacing;
     for item in items {
         let iw = scale_icon_width(item.icon_w, item.icon_h, icon_h);
@@ -342,7 +342,7 @@ pub fn draw_wayland_systray(
             .collect();
     }
 
-    let bg = core.g.status_scheme().bg;
+    let bg = core.globals().status_scheme().bg;
     let bg_scheme = crate::bar::paint::BarScheme {
         fg: bg,
         bg,
@@ -354,7 +354,7 @@ pub fn draw_wayland_systray(
             layout.tray_start_x,
             0,
             layout.tray_total_w,
-            core.g.cfg.bar_height,
+            core.globals().cfg.bar_height,
             true,
             true,
         );
@@ -364,13 +364,13 @@ pub fn draw_wayland_systray(
             layout.menu_start_x,
             0,
             layout.menu_total_w,
-            core.g.cfg.bar_height,
+            core.globals().cfg.bar_height,
             true,
             true,
         );
     }
 
-    let icon_h = core.g.cfg.bar_height.max(1);
+    let icon_h = core.globals().cfg.bar_height.max(1);
     for slot in &layout.tray_slots {
         let Some(item) = wayland_systray.items.get(slot.idx) else {
             continue;
@@ -690,8 +690,8 @@ fn systray_layout(
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &Monitor,
 ) -> SystrayLayout {
-    let icon_h = core.g.cfg.bar_height.max(1);
-    let spacing = core.g.cfg.systray_spacing.max(0);
+    let icon_h = core.globals().cfg.bar_height.max(1);
+    let spacing = core.globals().cfg.systray_spacing.max(0);
     let mut tray_total_w = 0;
     if !wayland_systray.items.is_empty() {
         tray_total_w = spacing;
@@ -754,9 +754,9 @@ fn draw_menu_overlay(
     if layout.menu_slots.is_empty() {
         return;
     }
-    let mut scheme = core.g.status_scheme();
+    let mut scheme = core.globals().status_scheme();
     painter.set_scheme(scheme.clone());
-    let item_h = core.g.cfg.bar_height.max(1);
+    let item_h = core.globals().cfg.bar_height.max(1);
     for (row, item) in menu.items.iter().enumerate() {
         let Some(slot) = layout.menu_slots.get(row) else {
             continue;

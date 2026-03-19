@@ -343,7 +343,10 @@ fn handle_bar_motion(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return true;
         };
-        if matches!(ctx.core.g.behavior.cursor_icon, AltCursor::Resize(_)) {
+        if matches!(
+            ctx.core.globals().behavior.cursor_icon,
+            AltCursor::Resize(_)
+        ) {
             set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 AltCursor::Default,
@@ -408,7 +411,10 @@ fn update_hover_resize_state(
                 AltCursor::Resize(dir),
             );
             suppress_hover_focus = true;
-        } else if matches!(ctx.core.g.behavior.cursor_icon, AltCursor::Resize(_)) {
+        } else if matches!(
+            ctx.core.globals().behavior.cursor_icon,
+            AltCursor::Resize(_)
+        ) {
             set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 AltCursor::Default,

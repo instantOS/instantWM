@@ -509,11 +509,11 @@ pub fn render_bar_buffers(
     }
 
     // Cache the systray width so status bar layout can account for it.
-    core.g.bar_runtime.systray_width =
+    core.globals_mut().bar_runtime.systray_width =
         crate::systray::wayland::get_wayland_systray_width_with_state(core, wayland_systray);
 
     let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
-        .g
+        .globals()
         .monitors_iter()
         .filter_map(|(i, m)| {
             if !m.shows_bar() {
@@ -524,7 +524,7 @@ pub fn render_bar_buffers(
                 m.work_rect.x,
                 m.bar_y,
                 m.work_rect.w,
-                core.g.cfg.bar_height,
+                core.globals().cfg.bar_height,
             ))
         })
         .collect();
@@ -532,8 +532,8 @@ pub fn render_bar_buffers(
     for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
         painter.begin(scale, origin_x, origin_y, width, height);
         crate::bar::renderer::draw_bar(core, mon_idx, painter);
-        if core.g.cfg.show_systray
-            && let Some(mon) = core.g.monitor(mon_idx).cloned()
+        if core.globals().cfg.show_systray
+            && let Some(mon) = core.globals().monitor(mon_idx).cloned()
         {
             crate::systray::wayland::draw_wayland_systray(
                 core,
@@ -585,15 +585,15 @@ fn bar_render_key(
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
     core.bar.update_seq().hash(&mut hasher);
-    core.g.cfg.show_bar.hash(&mut hasher);
-    core.g.cfg.bar_height.hash(&mut hasher);
-    core.g.cfg.horizontal_padding.hash(&mut hasher);
-    core.g.cfg.startmenusize.hash(&mut hasher);
-    core.g.drag.bar_active.hash(&mut hasher);
-    core.g.bar_runtime.status_text.hash(&mut hasher);
-    core.g.selected_monitor_id().hash(&mut hasher);
+    core.globals().cfg.show_bar.hash(&mut hasher);
+    core.globals().cfg.bar_height.hash(&mut hasher);
+    core.globals().cfg.horizontal_padding.hash(&mut hasher);
+    core.globals().cfg.startmenusize.hash(&mut hasher);
+    core.globals().drag.bar_active.hash(&mut hasher);
+    core.globals().bar_runtime.status_text.hash(&mut hasher);
+    core.globals().selected_monitor_id().hash(&mut hasher);
 
-    for m in core.g.monitors_iter_all() {
+    for m in core.globals().monitors_iter_all() {
         m.num.hash(&mut hasher);
         m.work_rect.x.hash(&mut hasher);
         m.work_rect.y.hash(&mut hasher);
@@ -613,7 +613,7 @@ fn bar_render_key(
         }
 
         let selected = m.selected_tags();
-        for (win, c) in m.iter_clients(core.g.clients.map()) {
+        for (win, c) in m.iter_clients(core.globals().clients.map()) {
             if !c.is_visible_on_tags(selected) {
                 continue;
             }
@@ -627,7 +627,7 @@ fn bar_render_key(
         }
     }
 
-    if core.g.cfg.show_systray {
+    if core.globals().cfg.show_systray {
         for item in &wayland_systray.items {
             item.service.hash(&mut hasher);
             item.path.hash(&mut hasher);

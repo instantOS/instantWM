@@ -24,22 +24,22 @@ struct OverlayPositionInfo {
 
 /// Get the overlay window for the selected monitor, if it exists.
 fn get_overlay_win(ctx: &WmCtx) -> Option<WindowId> {
-    ctx.g().selected_monitor().overlay
+    ctx.core().globals().selected_monitor().overlay
 }
 
 /// Check if the overlay window exists in the clients map.
 pub fn overlay_exists(ctx: &WmCtx) -> bool {
-    get_overlay_win(ctx).is_some_and(|win| ctx.g().clients.contains_key(&win))
+    get_overlay_win(ctx).is_some_and(|win| ctx.core().globals().clients.contains_key(&win))
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
-    let bar_height = ctx.g().cfg.bar_height;
+    let bar_height = ctx.core().globals().cfg.bar_height;
     let base_offset = if mon.showbar { bar_height } else { 0 };
 
     // Check if any visible client is fullscreen
-    for (_win, c) in mon.iter_clients(ctx.g().clients.map()) {
+    for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
         if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
             return 0;
         }
@@ -176,7 +176,7 @@ fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
 /// Create overlay with dependency injection.
 pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     let (sel_overlay, sel_fullscreen) = {
-        let g = &*ctx.g;
+        let g = ctx.core().globals();
         let mon = g.selected_monitor();
         let sel_overlay = mon.overlay;
         let sel_fullscreen = g
@@ -193,7 +193,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
     if Some(selected_window) == sel_overlay {
         reset_overlay(ctx);
-        for mon in ctx.g_mut().monitors_iter_all_mut() {
+        for mon in ctx.core_mut().globals_mut().monitors_iter_all_mut() {
             mon.overlay = None;
         }
         return;
@@ -203,14 +203,14 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
 
     reset_overlay(ctx);
 
-    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
+    for (_i, mon) in ctx.core_mut().globals_mut().monitors_iter_mut() {
         mon.overlay = Some(temp_client);
         mon.overlaystatus = 0;
     }
 
-    save_border_width(ctx, temp_client);
+    save_border_width(ctx.core_mut(), temp_client);
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&temp_client) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&temp_client) {
         client.border_width = 0;
         client.is_locked = true;
 
@@ -220,11 +220,11 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     }
 
     let (overlay_mode, mon_ww, mon_wh) = {
-        let mon = ctx.g_mut().selected_monitor();
+        let mon = ctx.core_mut().globals_mut().selected_monitor();
         (mon.overlaymode, mon.work_rect.w, mon.work_rect.h)
     };
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&temp_client) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&temp_client) {
         if overlay_mode.is_vertical() {
             client.geo.h = mon_wh / 3;
         } else {
@@ -243,14 +243,14 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
         return;
     }
 
-    let overlay_win = match ctx.g_mut().selected_monitor().overlay {
+    let overlay_win = match ctx.core_mut().globals_mut().selected_monitor().overlay {
         Some(w) => w,
         None => return,
     };
 
-    let selected_monitor_id = ctx.g_mut().selected_monitor_id();
+    let selected_monitor_id = ctx.core_mut().globals_mut().selected_monitor_id();
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         client.border_width = client.old_border_width;
         client.issticky = false;
         client.is_locked = false;
@@ -264,21 +264,21 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 
 /// Prepare the overlay window for display (detach, update state, reattach).
 fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: MonitorId) {
-    ctx.g_mut().detach(overlay_win);
-    ctx.g_mut().detach_stack(overlay_win);
+    ctx.core_mut().globals_mut().detach(overlay_win);
+    ctx.core_mut().globals_mut().detach_stack(overlay_win);
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         client.monitor_id = selmon_id;
         client.is_floating = true;
     }
 
-    ctx.g_mut().attach(overlay_win);
-    ctx.g_mut().attach_stack(overlay_win);
+    ctx.core_mut().globals_mut().attach(overlay_win);
+    ctx.core_mut().globals_mut().attach_stack(overlay_win);
 }
 
 /// Update overlay client properties for showing.
 fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: u32) {
-    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         if !client.is_floating {
             client.is_floating = true;
         }
@@ -288,12 +288,12 @@ fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: 
 }
 
 pub fn show_overlay(ctx: &mut WmCtx) {
-    if !overlay_exists(ctx) || ctx.g().monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.core().globals().monitors.is_empty() {
         return;
     }
 
-    let selmon_id = ctx.g().selected_monitor_id();
-    let mon = ctx.g().selected_monitor();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let mon = ctx.core().globals().selected_monitor();
 
     if mon.overlaystatus != 0 {
         return;
@@ -308,7 +308,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     let yoffset = calculate_yoffset(ctx, mon, current_tag);
 
     // Mark overlay as shown on all monitors
-    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
+    for (_i, mon) in ctx.core_mut().globals_mut().monitors_iter_mut() {
         mon.overlaystatus = 1;
     }
 
@@ -316,7 +316,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     // Gather all needed data in one place
     let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
-        let mon = ctx.g().monitor(selmon_id).unwrap();
+        let mon = ctx.core().globals().monitor(selmon_id).unwrap();
         let client = match ctx.client(overlay_win) {
             Some(c) => c,
             None => return,
@@ -349,7 +349,11 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         resize(ctx, overlay_win, &initial_rect, true);
     }
 
-    let tags = ctx.g_mut().selected_monitor().selected_tags();
+    let tags = ctx
+        .core_mut()
+        .globals_mut()
+        .selected_monitor()
+        .selected_tags();
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
@@ -364,7 +368,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             0,
         );
 
-        if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
+        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
             client.issticky = true;
         }
     }
@@ -380,7 +384,7 @@ fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: WindowId, mon: &Monitor) -> 
 
 /// Clear overlay tags and sticky state.
 fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
-    if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         client.issticky = false;
         client.tags = 0;
     }
@@ -388,18 +392,18 @@ fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
 
 /// Reset overlay status on all monitors.
 fn reset_all_overlay_status(ctx: &mut WmCtx) {
-    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
+    for (_i, mon) in ctx.core_mut().globals_mut().monitors_iter_mut() {
         mon.overlaystatus = 0;
     }
 }
 
 pub fn hide_overlay(ctx: &mut WmCtx) {
-    if !overlay_exists(ctx) || ctx.g().monitors.is_empty() {
+    if !overlay_exists(ctx) || ctx.core().globals().monitors.is_empty() {
         return;
     }
 
-    let selmon_id = ctx.g().selected_monitor_id();
-    let mon = ctx.g().selected_monitor();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let mon = ctx.core().globals().selected_monitor();
 
     if mon.overlaystatus == 0 {
         return;
@@ -416,7 +420,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             Some(c) => c,
             None => return,
         };
-        let mon = ctx.g().selected_monitor();
+        let mon = ctx.core().globals().selected_monitor();
 
         let hide_info = HideAnimationInfo {
             mode: mon.overlaymode,
@@ -460,7 +464,7 @@ pub fn set_overlay(ctx: &mut WmCtx) {
     }
 
     let (overlaystatus, overlay_visible, _mon_tags) = {
-        let mon = ctx.g().selected_monitor();
+        let mon = ctx.core().globals().selected_monitor();
         let overlay_win = match mon.overlay {
             Some(w) => w,
             None => return,
@@ -486,12 +490,12 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 }
 
 pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
-    for (_i, mon) in ctx.g_mut().monitors_iter_mut() {
+    for (_i, mon) in ctx.core_mut().globals_mut().monitors_iter_mut() {
         mon.overlaymode = mode;
     }
 
     let (has_overlay, mon_wh, mon_ww, overlaystatus) = {
-        let mon = ctx.g_mut().selected_monitor();
+        let mon = ctx.core_mut().globals_mut().selected_monitor();
         (
             mon.overlay.is_some(),
             mon.work_rect.h,
@@ -504,9 +508,9 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
         return;
     }
 
-    let mon = ctx.g_mut().selected_monitor();
+    let mon = ctx.core_mut().globals_mut().selected_monitor();
     if let Some(overlay_win) = mon.overlay
-        && let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win)
+        && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win)
     {
         if mode.is_vertical() {
             client.geo.h = mon_wh / 3;

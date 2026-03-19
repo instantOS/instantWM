@@ -165,7 +165,7 @@ impl Client {
         x11: &crate::backend::x11::X11BackendRef,
         x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     ) {
-        let tag_mask = TagMask::from_bits(core.g.tags.mask());
+        let tag_mask = TagMask::from_bits(core.globals().tags.mask());
         let effective_mask = mask & tag_mask;
 
         if effective_mask.is_empty() {
@@ -180,7 +180,7 @@ impl Client {
 
         crate::client::set_client_tag_prop(core, x11, x11_runtime, self.win);
         crate::focus::focus_soft_x11(core, x11, x11_runtime, None);
-        let selmon_id = core.g.selected_monitor_id();
+        let selmon_id = core.globals().selected_monitor_id();
         crate::layouts::arrange(
             &mut crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
                 core: core.reborrow(),

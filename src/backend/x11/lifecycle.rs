@@ -61,15 +61,15 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     let trans = get_transient_for_hint_x11(&ctx.x11, w);
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
-    assign_initial_monitor_and_tags(ctx.core.g, &mut client, trans);
+    assign_initial_monitor_and_tags(&mut ctx.core.globals_mut(), &mut client, trans);
     insert_client_and_apply_rules(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, client);
 
-    let borderpx = apply_default_border(ctx.core.g, w);
-    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.g, w);
-    clamp_client_to_work_area(ctx.core.g, w, mon_work_rect);
-    let is_monocle = is_monocle_on_client_monitor(ctx.core.g, w);
+    let borderpx = apply_default_border(&mut ctx.core.globals_mut(), w);
+    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(&ctx.core.globals(), w);
+    clamp_client_to_work_area(&mut ctx.core.globals_mut(), w, mon_work_rect);
+    let is_monocle = is_monocle_on_client_monitor(&ctx.core.globals(), w);
     configure_client_border(
-        ctx.core.g,
+        &mut ctx.core.globals_mut(),
         &ctx.x11,
         ctx.x11_runtime,
         w,
@@ -79,20 +79,20 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     );
 
     apply_manage_hints(ctx, w);
-    snapshot_float_geo(ctx.core.g, w, mon_monitor_rect);
+    snapshot_float_geo(&mut ctx.core.globals_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
     grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
 
-    if initialize_floating_state(ctx.core.g, w, trans.is_some()) {
+    if initialize_floating_state(&mut ctx.core.globals_mut(), w, trans.is_some()) {
         ctx.backend.raise_window(w);
         ctx.backend.flush();
     }
 
-    ctx.core.g.attach(w);
-    ctx.core.g.attach_stack(w);
+    ctx.core.globals_mut().attach(w);
+    ctx.core.globals_mut().attach_stack(w);
 
-    if let Some(monitor_id) = ctx.core.g.clients.monitor_id(w)
-        && let Some(mon) = ctx.core.g.monitor_mut(monitor_id)
+    if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(w)
+        && let Some(mon) = ctx.core.globals_mut().monitor_mut(monitor_id)
     {
         mon.sel = Some(w);
     }
@@ -101,7 +101,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
     let initially_hidden = prepare_visibility_and_unfocus(&mut WmCtx::X11(ctx.reborrow()), w);
-    let animated = ctx.core.g.behavior.animated;
+    let animated = ctx.core.globals().behavior.animated;
     let c = arrange_map_focus_and_snapshot(&mut WmCtx::X11(ctx.reborrow()), w, initially_hidden);
 
     run_manage_animation(
@@ -155,7 +155,7 @@ fn insert_client_and_apply_rules(
 ) {
     c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
         == crate::client::constants::WM_STATE_ICONIC;
-    core.g.clients.insert(w, c);
+    core.globals_mut().clients.insert(w, c);
     apply_rules(core, x11, w);
 }
 
@@ -238,7 +238,12 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     update_window_type(ctx_x11, w);
     crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
-    read_client_info(ctx_x11.core.g, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    read_client_info(
+        &mut ctx_x11.core.globals_mut(),
+        &ctx_x11.x11,
+        ctx_x11.x11_runtime,
+        w,
+    );
     set_client_tag_prop(&ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
 }
@@ -293,12 +298,13 @@ fn register_client_root(x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, w: Wind
 
 fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
     let (screen_width, client_x, client_y, client_width, client_height) = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&w)
         .map(|client| {
             (
-                ctx.g().cfg.screen_width,
+                ctx.core().globals().cfg.screen_width,
                 client.geo.x,
                 client.geo.y,
                 client.geo.w,
@@ -321,7 +327,8 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
 
 fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     let initially_hidden = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&w)
         .map(|c| c.is_hidden)
@@ -351,7 +358,13 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
 }
 
 fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden: bool) -> Client {
-    let mut c = ctx.g().clients.get(&w).cloned().unwrap_or_default();
+    let mut c = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&w)
+        .cloned()
+        .unwrap_or_default();
     let monitor_id = c.monitor_id;
     arrange(ctx, Some(monitor_id));
     if !initially_hidden {
@@ -359,7 +372,13 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
         ctx.backend().flush();
     }
     focus_soft(ctx, None);
-    c = ctx.g().clients.get(&w).cloned().unwrap_or_default();
+    c = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&w)
+        .cloned()
+        .unwrap_or_default();
     c
 }
 
@@ -402,7 +421,8 @@ fn run_manage_animation(
     );
 
     let is_tiling = ctx
-        .g()
+        .core()
+        .globals()
         .monitor(c.monitor_id)
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
@@ -439,10 +459,10 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let monitor_id = ctx.core.g.clients.monitor_id(win);
+    let monitor_id = ctx.core.globals().clients.monitor_id(win);
 
     // Clear overlay and fullscreen references.
-    for mon in ctx.core.g.monitors_iter_all_mut() {
+    for mon in ctx.core.globals_mut().monitors_iter_all_mut() {
         if mon.overlay == Some(win) {
             mon.overlay = None;
         }
@@ -452,7 +472,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     }
 
     {
-        let g = &mut ctx.core.g;
+        let g = &mut ctx.core.globals_mut();
         g.detach(win);
         g.detach_stack(win);
     }
@@ -481,7 +501,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     }
 
     // Remove from the global map.
-    ctx.core.g.clients.remove(&win);
+    ctx.core.globals_mut().clients.remove(&win);
 
     {
         let tmp = ctx.reborrow();

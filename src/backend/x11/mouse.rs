@@ -30,7 +30,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     // Use override from title drag if available (preserves pre-drag floating dimensions),
     // otherwise get the current client geometry.
     let grab_start_rect = float_restore_geo
-        .or_else(|| ctx.core.g.clients.geo(win))
+        .or_else(|| ctx.core.globals().clients.geo(win))
         .unwrap_or_default();
 
     let mut state = MoveState {
@@ -86,7 +86,7 @@ pub fn get_cursor_client_win_with_conn(
     }
 
     let win = WindowId::from(reply.child);
-    if core.g.clients.contains_key(&win) {
+    if core.globals().clients.contains_key(&win) {
         Some(win)
     } else {
         None

@@ -46,7 +46,7 @@ pub fn configure_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let Some(c) = core.g.clients.get(&win) else {
+    let Some(c) = core.globals().clients.get(&win) else {
         return;
     };
 
@@ -135,12 +135,12 @@ pub fn refresh_border_color_x11(
     focused: bool,
 ) {
     let scheme = &x11_runtime.borderscheme;
-    let Some(c) = core.g.clients.get(&win) else {
+    let Some(c) = core.globals().clients.get(&win) else {
         return;
     };
 
     let pixel = if focused {
-        let has_tiling = core.g.selected_monitor().is_tiling_layout();
+        let has_tiling = core.globals().selected_monitor().is_tiling_layout();
         let isfloating = c.is_floating || !has_tiling;
         if isfloating {
             scheme.float_focus.bg.pixel()
@@ -169,7 +169,7 @@ pub fn set_focus_x11(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(c) = core.g.clients.get(&win) else {
+    let Some(c) = core.globals().clients.get(&win) else {
         return;
     };
 

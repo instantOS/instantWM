@@ -32,10 +32,11 @@ pub fn snap_window_to_monitor_edges(
     new_x: &mut i32,
     new_y: &mut i32,
 ) {
-    let snap = ctx.g().cfg.snap;
-    let mon = ctx.g().selected_monitor();
+    let snap = ctx.core().globals().cfg.snap;
+    let mon = ctx.core().globals().selected_monitor();
     let bw = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|client| client.border_width.max(0))
@@ -58,7 +59,7 @@ pub fn snap_window_to_monitor_edges(
 
 /// Returns edge snap position based on cursor position.
 pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
-    let mon = ctx.g().selected_monitor();
+    let mon = ctx.core().globals().selected_monitor();
 
     if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
         return Some(SnapPosition::Left);
@@ -70,7 +71,7 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     }
     if y <= mon.monitor_rect.y
         + if mon.showbar {
-            ctx.g().cfg.bar_height
+            ctx.core().globals().cfg.bar_height
         } else {
             5
         }
@@ -82,10 +83,10 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
 
 /// Returns `true` when `(x, y)` (root-space) is inside the bar of `selmon`.
 pub fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
-    let mon = ctx.g().selected_monitor();
+    let mon = ctx.core().globals().selected_monitor();
     mon.showbar
         && y >= mon.bar_y
-        && y < mon.bar_y + ctx.g().cfg.bar_height
+        && y < mon.bar_y + ctx.core().globals().cfg.bar_height
         && x >= mon.monitor_rect.x
         && x < mon.monitor_rect.x + mon.monitor_rect.w
 }
@@ -115,7 +116,7 @@ pub struct MoveState {
 /// * restores a near-maximized floating window to its saved geometry
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let (sel, is_true_fullscreen, is_overlay, is_fullscreen) = {
-        let g = ctx.g_mut();
+        let g = ctx.core_mut().globals_mut();
         let mon = g.selected_monitor();
         let sel = mon.sel?;
         let overlay = mon.overlay;
@@ -141,11 +142,11 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     }
     let selected_window = sel;
 
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
     crate::layouts::restack(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = match ctx.g().clients.get(&selected_window) {
+    let is_snapped = match ctx.core().globals().clients.get(&selected_window) {
         Some(c) => c.snap_status != SnapPosition::None,
         None => return None,
     };
@@ -157,7 +158,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     // In a floating layout, if the window fills (nearly) the whole monitor,
     // restore the saved float geometry so we drag the real size, not a maximized one.
     let restore_geo: Option<Rect> = {
-        let g = ctx.g_mut();
+        let g = ctx.core_mut().globals_mut();
         let has_tiling = g.selected_monitor().is_tiling_layout();
 
         if !has_tiling {
@@ -194,26 +195,26 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 pub fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
 
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
 
     if on_bar {
         let new_gesture = {
             let core = ctx.core();
-            let mon = core.g.selected_monitor();
+            let mon = core.globals().selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
             bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
         };
 
-        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
+        let gesture_changed = ctx.core().globals().selected_monitor().gesture != new_gesture;
 
         if !state.cursor_on_bar || gesture_changed {
-            ctx.g_mut().drag.bar_active = true;
-            ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.core_mut().globals_mut().drag.bar_active = true;
+            ctx.core_mut().globals_mut().selected_monitor_mut().gesture = new_gesture;
             ctx.request_bar_update(Some(selmon_id));
         }
     } else if state.cursor_on_bar {
-        ctx.g_mut().drag.bar_active = false;
-        ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.core_mut().globals_mut().drag.bar_active = false;
+        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = Gesture::None;
         ctx.request_bar_update(Some(selmon_id));
     }
 
@@ -226,25 +227,25 @@ pub fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut Mov
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32) -> bool {
     let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
-    let selmon_id = ctx.g().selected_monitor_id();
-    let was_on_bar = ctx.g().drag.bar_active;
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let was_on_bar = ctx.core().globals().drag.bar_active;
 
     if on_bar {
         let new_gesture = {
             let core = ctx.core();
-            let mon = core.g.selected_monitor();
+            let mon = core.globals().selected_monitor();
             let local_x = ptr_x - mon.work_rect.x;
             bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
         };
-        let gesture_changed = ctx.g().selected_monitor().gesture != new_gesture;
+        let gesture_changed = ctx.core().globals().selected_monitor().gesture != new_gesture;
         if !was_on_bar || gesture_changed {
-            ctx.g_mut().drag.bar_active = true;
-            ctx.g_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.core_mut().globals_mut().drag.bar_active = true;
+            ctx.core_mut().globals_mut().selected_monitor_mut().gesture = new_gesture;
             ctx.request_bar_update(Some(selmon_id));
         }
     } else if was_on_bar {
-        ctx.g_mut().drag.bar_active = false;
-        ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.core_mut().globals_mut().drag.bar_active = false;
+        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = Gesture::None;
         ctx.request_bar_update(Some(selmon_id));
     }
 
@@ -269,13 +270,14 @@ pub fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom = ctx.g().selected_monitor().bar_y + ctx.g().cfg.bar_height;
+        let bar_bottom =
+            ctx.core().globals().selected_monitor().bar_y + ctx.core().globals().cfg.bar_height;
         new_y = bar_bottom;
     }
 
-    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
-    let (mut is_floating, mut drag_geo) = match ctx.g().clients.get(&win) {
+    let (mut is_floating, mut drag_geo) = match ctx.core().globals().clients.get(&win) {
         Some(c) => (c.is_floating, c.geo),
         None => return,
     };
@@ -323,7 +325,7 @@ fn maybe_promote_tiled_drag_to_floating(
     is_floating: &mut bool,
     drag_geo: &mut Rect,
 ) {
-    let snap = ctx.g().cfg.snap;
+    let snap = ctx.core().globals().cfg.snap;
     if *is_floating
         || !has_tiling
         || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)
@@ -335,7 +337,8 @@ fn maybe_promote_tiled_drag_to_floating(
     // If the window was never floating, float_geo will be zeroed; fall
     // back to the current tiled dimensions so the window doesn't collapse.
     let (float_w, float_h) = {
-        ctx.g()
+        ctx.core()
+            .globals()
             .clients
             .get(&win)
             .map(|c| {
@@ -349,7 +352,7 @@ fn maybe_promote_tiled_drag_to_floating(
     set_window_mode(ctx, win, WindowMode::Floating);
 
     // Re-tile the remaining windows (touches only the other clients).
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
     // The window's width is changing (tiled → floating), so the old
@@ -374,9 +377,9 @@ fn maybe_promote_tiled_drag_to_floating(
 ///
 /// Called once the drag loop exits so that hover state is always cleaned up.
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
-    ctx.g_mut().drag.bar_active = false;
-    let selmon_id = ctx.g().selected_monitor_id();
-    ctx.g_mut().selected_monitor_mut().gesture = Gesture::None;
+    ctx.core_mut().globals_mut().drag.bar_active = false;
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    ctx.core_mut().globals_mut().selected_monitor_mut().gesture = Gesture::None;
     ctx.request_bar_update(Some(selmon_id));
 }
 
@@ -407,14 +410,14 @@ pub fn handle_bar_drop(
 
     let position = {
         let core = ctx.core();
-        let mon = core.g.selected_monitor();
+        let mon = core.globals().selected_monitor();
         let local_x = ptr_x - mon.work_rect.x;
         mon.bar_position_at_x(core, local_x)
     };
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = match ctx.g().clients.get(&win) {
+    let was_floating = match ctx.core().globals().clients.get(&win) {
         Some(c) => c.is_floating,
         None => return,
     };
@@ -449,7 +452,7 @@ pub fn handle_bar_drop(
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
         set_window_mode(ctx, win, WindowMode::Tiled);
-        let selmon_id = ctx.g().selected_monitor_id();
+        let selmon_id = ctx.core().globals().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     } else {
         // Window is already tiled and not dropped on a tag — nothing to do.
@@ -460,7 +463,7 @@ pub fn handle_bar_drop(
     //
     // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
-    if was_floating && let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    if was_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.float_geo.w = grab_start_rect.w;
         client.float_geo.h = grab_start_rect.h;
     }
@@ -491,12 +494,12 @@ pub fn apply_edge_drop(
         return false;
     }
 
-    let is_tiling = ctx.g().selected_monitor().is_tiling_layout();
+    let is_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if is_tiling {
         let (mon_my, mon_mh) = (
-            ctx.g().selected_monitor().monitor_rect.y,
-            ctx.g().selected_monitor().monitor_rect.h,
+            ctx.core().globals().selected_monitor().monitor_rect.y,
+            ctx.core().globals().selected_monitor().monitor_rect.h,
         );
 
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
@@ -512,10 +515,10 @@ pub fn apply_edge_drop(
             shift_tag(ctx, Direction::Right, 1);
         }
 
-        if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
+        if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             c.is_floating = false;
         }
-        let selmon_id = ctx.g().selected_monitor_id();
+        let selmon_id = ctx.core().globals().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     } else {
         let dir = if at_left {
@@ -558,7 +561,8 @@ pub fn promote_to_floating(
     center_under_ptr: Option<(i32, i32)>,
 ) -> (Rect, bool) {
     let (is_floating, geo) = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| (c.is_floating, c.geo))
@@ -569,11 +573,12 @@ pub fn promote_to_floating(
     }
 
     set_window_mode(ctx, win, WindowMode::Floating);
-    let selmon_id = ctx.g_mut().selected_monitor_id();
+    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
     let (target_w, target_h) = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| {

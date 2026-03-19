@@ -152,28 +152,40 @@ impl MonitorManager {
 // -----------------------------------------------------------------------------
 
 pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
-    if monitor_id >= ctx.g_mut().monitors.len() {
+    if monitor_id >= ctx.core_mut().globals_mut().monitors.len() {
         return;
     }
 
     let bar_win = ctx
-        .g
+        .core()
+        .globals()
         .monitors
         .get(monitor_id)
         .map(|m| m.bar_win)
         .unwrap_or_default();
 
     // Remove and fix up IDs
-    ctx.g_mut().monitors.monitors.remove(monitor_id);
-    for (i, m) in ctx.g_mut().monitors.monitors.iter_mut().enumerate() {
+    ctx.core_mut()
+        .globals_mut()
+        .monitors
+        .monitors
+        .remove(monitor_id);
+    for (i, m) in ctx
+        .core_mut()
+        .globals_mut()
+        .monitors
+        .monitors
+        .iter_mut()
+        .enumerate()
+    {
         m.monitor_id = i;
     }
 
     // Adjust selected index
-    if ctx.g_mut().monitors.selected_monitor_idx == monitor_id {
-        ctx.g_mut().monitors.selected_monitor_idx = 0;
-    } else if ctx.g_mut().monitors.selected_monitor_idx > monitor_id {
-        ctx.g_mut().monitors.selected_monitor_idx -= 1;
+    if ctx.core_mut().globals_mut().monitors.selected_monitor_idx == monitor_id {
+        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = 0;
+    } else if ctx.core_mut().globals_mut().monitors.selected_monitor_idx > monitor_id {
+        ctx.core_mut().globals_mut().monitors.selected_monitor_idx -= 1;
     }
 
     if bar_win != WindowId::default()
@@ -186,7 +198,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
 }
 
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    if ctx.g_mut().monitors.sel_idx() == target_mon {
+    if ctx.core_mut().globals_mut().monitors.sel_idx() == target_mon {
         return;
     }
 
@@ -197,7 +209,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         };
         let is_scratchpad = client.is_scratchpad();
         let tags = if !is_scratchpad {
-            ctx.g
+            ctx.core()
+                .globals()
                 .monitors
                 .get(target_mon)
                 .map(|m| m.selected_tags())
@@ -208,14 +221,14 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         (is_scratchpad, tags)
     };
 
-    if ctx.g_mut().clients.contains_key(&win) {
+    if ctx.core_mut().globals_mut().clients.contains_key(&win) {
         unfocus_win(ctx, win, true);
     }
 
-    ctx.g_mut().detach(win);
-    ctx.g_mut().detach_stack(win);
+    ctx.core_mut().globals_mut().detach(win);
+    ctx.core_mut().globals_mut().detach_stack(win);
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.monitor_id = target_mon;
         if !is_scratchpad {
             client.tags = target_tags;
@@ -226,8 +239,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         crate::tags::reset_sticky_win(ctx.core_mut(), win);
     }
 
-    ctx.g_mut().attach(win);
-    ctx.g_mut().attach_stack(win);
+    ctx.core_mut().globals_mut().attach(win);
+    ctx.core_mut().globals_mut().attach_stack(win);
     if let WmCtx::X11(x11) = ctx {
         set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
@@ -235,7 +248,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     focus_soft(ctx, None);
 
     let needs_arrange = ctx
-        .g
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| !c.is_floating)
@@ -251,7 +265,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     let target = {
-        let mgr = &ctx.g_mut().monitors;
+        let mgr = &ctx.core_mut().globals_mut().monitors;
         if mgr.monitors.len() <= 1 {
             return;
         }
@@ -261,45 +275,66 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         }
     };
 
-    if target == ctx.g_mut().monitors.sel_idx() {
+    if target == ctx.core_mut().globals_mut().monitors.sel_idx() {
         return;
     }
 
-    if let Some(win) = ctx.g_mut().monitors.sel().and_then(|m| m.sel) {
+    if let Some(win) = ctx
+        .core_mut()
+        .globals_mut()
+        .monitors
+        .sel()
+        .and_then(|m| m.sel)
+    {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.g_mut().monitors.set_sel_idx(target);
+    ctx.core_mut().globals_mut().monitors.set_sel_idx(target);
     focus_soft(ctx, None);
 }
 
 pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
     let target = {
-        let mgr = &ctx.g_mut().monitors;
+        let mgr = &ctx.core_mut().globals_mut().monitors;
         if mgr.monitors.len() <= 1 {
             return;
         }
         (index as usize).min(mgr.monitors.len() - 1)
     };
 
-    if let Some(win) = ctx.g_mut().monitors.sel().and_then(|m| m.sel) {
+    if let Some(win) = ctx
+        .core_mut()
+        .globals_mut()
+        .monitors
+        .sel()
+        .and_then(|m| m.sel)
+    {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.g_mut().monitors.set_sel_idx(target);
+    ctx.core_mut().globals_mut().monitors.set_sel_idx(target);
     focus_soft(ctx, None);
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
-    let c_win = match ctx.g_mut().monitors.sel().and_then(|m| m.sel) {
+    let c_win = match ctx
+        .core_mut()
+        .globals_mut()
+        .monitors
+        .sel()
+        .and_then(|m| m.sel)
+    {
         Some(w) => w,
         None => return,
     };
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    if let Some(monitor_id) = ctx.g().clients.monitor_id(c_win) {
-        ctx.g_mut().monitors.set_sel_idx(monitor_id);
+    if let Some(monitor_id) = ctx.core().globals().clients.monitor_id(c_win) {
+        ctx.core_mut()
+            .globals_mut()
+            .monitors
+            .set_sel_idx(monitor_id);
     }
 
     focus_soft(ctx, Some(c_win));
@@ -317,7 +352,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 }
 
 pub fn apply_monitor_config(ctx: &mut WmCtx) {
-    let monitors_cfg = ctx.g.cfg.monitors.clone();
+    let monitors_cfg = ctx.core().globals().cfg.monitors.clone();
 
     // Apply wildcard first as fallback
     if let Some(wildcard_cfg) = monitors_cfg.get("*") {
@@ -331,7 +366,7 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
         }
     }
 
-    ctx.g.dirty.monitor_config = false;
+    ctx.core_mut().globals_mut().dirty.monitor_config = false;
     update_geom(ctx);
 }
 
@@ -350,10 +385,10 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
     }
 
     // Final fallback to single monitor
-    let sw = ctx.g_mut().cfg.screen_width.max(1);
-    let sh = ctx.g_mut().cfg.screen_height.max(1);
+    let sw = ctx.core_mut().globals_mut().cfg.screen_width.max(1);
+    let sh = ctx.core_mut().globals_mut().cfg.screen_height.max(1);
 
-    if ctx.g_mut().monitors.is_empty() {
+    if ctx.core_mut().globals_mut().monitors.is_empty() {
         init_single_monitor(ctx, sw, sh)
     } else {
         update_single_monitor(ctx, sw, sh)
@@ -362,7 +397,7 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
 
 fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutputInfo>) -> bool {
     let mut changed = false;
-    let old_count = ctx.g.monitors.len();
+    let old_count = ctx.core().globals().monitors.len();
 
     if old_count != outputs.len() {
         changed = true;
@@ -371,23 +406,23 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
     let mut new_monitors = Vec::new();
     for (i, output) in outputs.into_iter().enumerate() {
         let mut m = Monitor::new_with_values(
-            ctx.g.cfg.mfact,
-            ctx.g.cfg.nmaster,
-            ctx.g.cfg.show_bar,
-            ctx.g.cfg.top_bar,
+            ctx.core().globals().cfg.mfact,
+            ctx.core().globals().cfg.nmaster,
+            ctx.core().globals().cfg.show_bar,
+            ctx.core().globals().cfg.top_bar,
         );
         m.num = i as i32;
         m.monitor_rect = output.rect;
         m.work_rect = output.rect;
         m.name = output.name;
-        m.init_tags(&ctx.g.cfg.tag_template);
-        m.update_bar_position(ctx.g.cfg.bar_height);
+        m.init_tags(&ctx.core().globals().cfg.tag_template);
+        m.update_bar_position(ctx.core().globals().cfg.bar_height);
         new_monitors.push(m);
     }
 
     // Preserve existing tags/clients if possible
     for (i, new_m) in new_monitors.iter_mut().enumerate() {
-        if let Some(old_m) = ctx.g.monitors.get(i) {
+        if let Some(old_m) = ctx.core().globals().monitors.get(i) {
             new_m.tags = old_m.tags.clone();
             new_m.clients = old_m.clients.clone();
             new_m.stack = old_m.stack.clone();
@@ -395,9 +430,9 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
         }
     }
 
-    ctx.g_mut().monitors.monitors = new_monitors;
-    if ctx.g.monitors.selected_monitor_idx >= ctx.g.monitors.len() {
-        ctx.g_mut().monitors.selected_monitor_idx = 0;
+    ctx.core_mut().globals_mut().monitors.monitors = new_monitors;
+    if ctx.core().globals().monitors.selected_monitor_idx >= ctx.core().globals().monitors.len() {
+        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = 0;
     }
 
     changed
@@ -416,35 +451,53 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     }
 
     let sp_name = client.scratchpad_name.clone();
-    let current_mon = ctx.g_mut().monitors.sel_idx();
+    let current_mon = ctx.core_mut().globals_mut().monitors.sel_idx();
 
-    if let Some(selected_window) = ctx.g_mut().monitors.get(current_mon).and_then(|m| m.sel) {
+    if let Some(selected_window) = ctx
+        .core_mut()
+        .globals_mut()
+        .monitors
+        .get(current_mon)
+        .and_then(|m| m.sel)
+    {
         unfocus_win(ctx, selected_window, false);
     }
-    ctx.g_mut().monitors.set_sel_idx(target_mon);
+    ctx.core_mut()
+        .globals_mut()
+        .monitors
+        .set_sel_idx(target_mon);
 
     crate::floating::scratchpad_show_name(ctx, &sp_name);
 
-    if let Some(selected_window) = ctx.g_mut().monitors.get(target_mon).and_then(|m| m.sel) {
+    if let Some(selected_window) = ctx
+        .core_mut()
+        .globals_mut()
+        .monitors
+        .get(target_mon)
+        .and_then(|m| m.sel)
+    {
         unfocus_win(ctx, selected_window, false);
     }
-    ctx.g_mut().monitors.set_sel_idx(current_mon);
+    ctx.core_mut()
+        .globals_mut()
+        .monitors
+        .set_sel_idx(current_mon);
 
     focus_soft(ctx, None);
 }
 
 fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
-    let template = ctx.g_mut().cfg.tag_template.clone();
+    let template = ctx.core_mut().globals_mut().cfg.tag_template.clone();
     let mut mon = Monitor::new_with_values(
-        ctx.g_mut().cfg.mfact,
-        ctx.g_mut().cfg.nmaster,
-        ctx.g_mut().cfg.show_bar,
-        ctx.g_mut().cfg.top_bar,
+        ctx.core_mut().globals_mut().cfg.mfact,
+        ctx.core_mut().globals_mut().cfg.nmaster,
+        ctx.core_mut().globals_mut().cfg.show_bar,
+        ctx.core_mut().globals_mut().cfg.top_bar,
     );
     mon.init_tags(&template);
-    ctx.g_mut().monitors.push(mon);
-    let bar_height = ctx.g_mut().cfg.bar_height;
-    if let Some(m) = ctx.g_mut().monitors.get_mut(0) {
+    ctx.core_mut().globals_mut().monitors.push(mon);
+    let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
+    if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(0) {
         m.num = 0;
         m.monitor_rect = Rect {
             x: 0,
@@ -460,13 +513,14 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         };
         m.update_bar_position(bar_height);
     }
-    ctx.g_mut().monitors.set_sel_idx(0);
+    ctx.core_mut().globals_mut().monitors.set_sel_idx(0);
     true
 }
 
 fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     let needs_update = ctx
-        .g
+        .core()
+        .globals()
         .monitors
         .get(0)
         .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
@@ -475,8 +529,8 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         return false;
     }
 
-    let bar_height = ctx.g_mut().cfg.bar_height;
-    if let Some(m) = ctx.g_mut().monitors.get_mut(0) {
+    let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
+    if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(0) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
@@ -515,7 +569,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
 
     // Borrow g in a limited scope for monitor updates
     let (old_count, _template, _mfact, _nmaster, _showbar, _topbar, _bar_height) = {
-        let g = &mut x11.core.g;
+        let g = x11.core.globals_mut();
         let old_count = g.monitors.count();
 
         // Ensure count
@@ -552,7 +606,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
 
     if new_count < old_count {
         // Get clients while not holding mutable borrow
-        let clients_map = x11.core.g.clients.map().clone();
+        let clients_map = x11.core.globals().clients.map().clone();
         for i in (new_count..old_count).rev() {
             let clients_to_move: Vec<WindowId> = clients_map
                 .values()
@@ -562,13 +616,13 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
             // Create temporary WmCtx wrapper for each iteration
             let mut wm_ctx = WmCtx::X11(x11.reborrow());
             for win in clients_to_move {
-                wm_ctx.g_mut().detach(win);
-                wm_ctx.g_mut().detach_stack(win);
+                wm_ctx.core_mut().globals_mut().detach(win);
+                wm_ctx.core_mut().globals_mut().detach_stack(win);
                 if let Some(c) = wm_ctx.client_mut(win) {
                     c.monitor_id = 0;
                 }
-                wm_ctx.g_mut().attach(win);
-                wm_ctx.g_mut().attach_stack(win);
+                wm_ctx.core_mut().globals_mut().attach(win);
+                wm_ctx.core_mut().globals_mut().attach_stack(win);
                 dirty = true;
             }
             cleanup_monitor(&mut wm_ctx, i);
@@ -576,14 +630,14 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     }
 
     if dirty {
-        x11.core.g.monitors.set_sel_idx(0);
+        x11.core.globals_mut().monitors.set_sel_idx(0);
         if let Ok(cookie) =
             x11rb::protocol::xproto::query_pointer(x11.x11.conn, x11.x11_runtime.root)
             && let Ok(reply) = cookie.reply()
         {
             let ptr = (reply.root_x as i32, reply.root_y as i32);
-            if let Some(m) = x11.core.g.monitors.find_monitor_at_pointer(ptr) {
-                x11.core.g.monitors.set_sel_idx(m);
+            if let Some(m) = x11.core.globals_mut().monitors.find_monitor_at_pointer(ptr) {
+                x11.core.globals_mut().monitors.set_sel_idx(m);
             }
         }
     }

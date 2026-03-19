@@ -12,7 +12,7 @@ use std::cmp::min;
 // ── deck ─────────────────────────────────────────────────────────────────────
 
 pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
+    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -29,7 +29,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(ctx.g.clients.map());
+    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_column_offset: u32 = 0;
     for (i, client) in tiled.iter().enumerate() {
@@ -48,7 +48,7 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 false,
             );
 
-            if let Some(c) = ctx.g.clients.get(&client.win) {
+            if let Some(c) = ctx.core().globals().clients.get(&client.win) {
                 master_column_offset += c.total_height() as u32;
             }
         } else {
@@ -70,8 +70,13 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 // ── bottom_stack ───────────────────────────────────────────────────────────────
 
 pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
+    let framecount = framecount_for_layout(
+        ctx.core().globals(),
+        4,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
+    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -90,7 +95,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         (m.work_rect.h, m.work_rect.w, m.work_rect.y)
     };
 
-    let tiled = m.collect_tiled(ctx.g.clients.map());
+    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_row_offset: i32 = 0;
     let mut tx: i32 = m.work_rect.x;
@@ -112,7 +117,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            if let Some(c) = ctx.g.clients.get(&client.win) {
+            if let Some(c) = ctx.core().globals().clients.get(&client.win) {
                 master_row_offset += c.total_width();
             }
         } else {
@@ -131,7 +136,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if tw != m.work_rect.w
-                && let Some(c) = ctx.g.clients.get(&client.win)
+                && let Some(c) = ctx.core().globals().clients.get(&client.win)
             {
                 tx += c.total_width();
             }
@@ -142,8 +147,13 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 // ── bstackhoriz ───────────────────────────────────────────────────────────────
 
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let framecount = framecount_for_layout(ctx.g, 4, FAST_FRAME_COUNT, DEFAULT_FRAME_COUNT);
-    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
+    let framecount = framecount_for_layout(
+        ctx.core().globals(),
+        4,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
+    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -162,7 +172,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         (m.work_rect.h, m.work_rect.h, m.work_rect.y)
     };
 
-    let tiled = m.collect_tiled(ctx.g.clients.map());
+    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_row_offset: i32 = 0;
     let tx: i32 = m.work_rect.x;
@@ -184,7 +194,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            if let Some(c) = ctx.g.clients.get(&client.win) {
+            if let Some(c) = ctx.core().globals().clients.get(&client.win) {
                 master_row_offset += c.total_width();
             }
         } else {
@@ -202,7 +212,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if th != m.work_rect.h
-                && let Some(c) = ctx.g.clients.get(&client.win)
+                && let Some(c) = ctx.core().globals().clients.get(&client.win)
             {
                 stack_y_offset += c.total_height();
             }

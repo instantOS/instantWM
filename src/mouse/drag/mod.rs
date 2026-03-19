@@ -84,7 +84,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             let Some((root_x, root_y)) = wl.wayland.backend.pointer_location() else {
                 return;
             };
-            let (geo, is_floating) = match wl.core.g.clients.get(&win) {
+            let (geo, is_floating) = match wl.core.globals().clients.get(&win) {
                 Some(c) => (c.geo, c.is_floating),
                 None => return,
             };
@@ -96,11 +96,11 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                     win,
                     WindowMode::Floating,
                 );
-                let selmon_id = wl.core.g.selected_monitor_id();
+                let selmon_id = wl.core.globals().selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
 
-            wl.core.g.drag.interactive = crate::globals::DragInteraction {
+            wl.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
                 active: true,
                 win,
                 button: MouseButton::Left,

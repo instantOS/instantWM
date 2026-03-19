@@ -164,5 +164,5 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         let symbol = m.layout_symbol();
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
-    width + core.g.cfg.horizontal_padding
+    width + core.globals().cfg.horizontal_padding
 }

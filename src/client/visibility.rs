@@ -60,10 +60,10 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
     // First pass: collect visibility data to avoid borrow issues
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
-    for mon in ctx.core.g.monitors_iter_all() {
+    for mon in ctx.core.globals().monitors_iter_all() {
         let selected_tags = mon.selected_tags();
 
-        for (win, c) in mon.iter_clients(ctx.core.g.clients.map()) {
+        for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
             let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
@@ -99,7 +99,7 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
 
             let is_tiling = ctx
                 .core
-                .g
+                .globals()
                 .monitors_iter()
                 .any(|(_, m)| m.is_tiling_layout());
 
@@ -111,7 +111,7 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
             let w_val = geo.w
                 + 2 * ctx
                     .core
-                    .g
+                    .globals()
                     .clients
                     .get(&win)
                     .map(|c| c.border_width)
@@ -136,9 +136,9 @@ pub fn show_hide_wayland(ctx: &mut WmCtxWayland<'_>) {
     // First pass: collect visibility data
     let mut operations: Vec<(WindowId, bool)> = Vec::new();
 
-    for mon in ctx.core.g.monitors_iter_all() {
+    for mon in ctx.core.globals().monitors_iter_all() {
         let selected_tags = mon.selected_tags();
-        for (win, c) in mon.iter_clients(ctx.core.g.clients.map()) {
+        for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
             let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
             operations.push((win, is_visible));
         }
@@ -163,7 +163,8 @@ pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
 
 pub fn show(ctx: &mut WmCtx, win: WindowId) {
     let is_hidden = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| c.is_hidden)
@@ -172,7 +173,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         c.is_hidden = false;
     }
 
@@ -183,7 +184,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // (called inside arrange below) checks !is_hidden and calls map_window
     // itself, so the window reappears as a side-effect of the arrange pass.
 
-    let monitor_id = ctx.g().clients.monitor_id(win);
+    let monitor_id = ctx.core().globals().clients.monitor_id(win);
     crate::focus::focus_soft(ctx, Some(win));
     if let Some(mid) = monitor_id {
         arrange(ctx, Some(mid));
@@ -209,12 +210,13 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         }
     }
 
-    if let Some(c) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         c.is_hidden = true;
     }
 
     let snext = ctx
-        .g()
+        .core()
+        .globals()
         .monitor(monitor_id)
         .and_then(|m| m.stack.iter().find(|&&w| w != win).copied());
     crate::focus::focus_soft(ctx, snext);
@@ -231,7 +233,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// the X11-specific work: mapping the window, WM_STATE, slide-in animation.
 /// Guards, focus, and arrange are handled by the caller.
 fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.g.clients.get(&win) {
+    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };
@@ -270,12 +272,12 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 /// and geometry preservation. Guards, focus, and arrange are handled by the
 /// caller.
 fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.g.clients.get(&win) {
+    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };
-    let bar_height = ctx.core.g.cfg.bar_height;
-    let animated = ctx.core.g.behavior.animated;
+    let bar_height = ctx.core.globals().cfg.bar_height;
+    let animated = ctx.core.globals().behavior.animated;
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.

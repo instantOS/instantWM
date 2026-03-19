@@ -4,10 +4,16 @@ use crate::layouts::{arrange, restack};
 use crate::types::*;
 
 pub fn unhide_one(ctx: &mut WmCtx) -> bool {
-    let clients: Vec<WindowId> = ctx.g_mut().clients.keys().copied().collect();
+    let clients: Vec<WindowId> = ctx
+        .core_mut()
+        .globals_mut()
+        .clients
+        .keys()
+        .copied()
+        .collect();
 
     for win in clients {
-        if ctx.g_mut().clients.is_hidden(win) {
+        if ctx.core_mut().globals_mut().clients.is_hidden(win) {
             crate::client::show(ctx, win);
             return true;
         }
@@ -21,15 +27,20 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let Some(selected_window) = ctx.g_mut().selected_monitor().sel else {
+    let Some(selected_window) = ctx.core_mut().globals_mut().selected_monitor().sel else {
         return;
     };
 
-    if scratchpad_find(ctx.g(), name).is_some() {
+    if scratchpad_find(ctx.core().globals(), name).is_some() {
         return;
     }
 
-    let Some(client) = ctx.g_mut().clients.get_mut(&selected_window) else {
+    let Some(client) = ctx
+        .core_mut()
+        .globals_mut()
+        .clients
+        .get_mut(&selected_window)
+    else {
         return;
     };
 
@@ -49,19 +60,23 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
         client.is_floating = true;
     }
 
-    let selected_monitor_id = ctx.g_mut().selected_monitor_id();
+    let selected_monitor_id = ctx.core_mut().globals_mut().selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
-    if !ctx.g_mut().monitors.is_empty() {
+    if !ctx.core_mut().globals_mut().monitors.is_empty() {
         arrange(ctx, Some(selected_monitor_id));
     }
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let Some(selected_window) = ctx.g_mut().selected_monitor().sel else {
+    let Some(selected_window) = ctx.core_mut().globals_mut().selected_monitor().sel else {
         return;
     };
 
-    let monitor_tags = ctx.g_mut().selected_monitor().selected_tags();
+    let monitor_tags = ctx
+        .core_mut()
+        .globals_mut()
+        .selected_monitor()
+        .selected_tags();
 
     let Some(client) = ctx.client(selected_window) else {
         return;
@@ -87,38 +102,39 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
 }
 
 pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
-    let Some(found) = scratchpad_find(ctx.g(), name) else {
+    let Some(found) = scratchpad_find(ctx.core().globals(), name) else {
         return;
     };
 
-    let current_mon = ctx.g_mut().selected_monitor_id();
+    let current_mon = ctx.core_mut().globals_mut().selected_monitor_id();
     let target_mon = ctx
-        .g
+        .core()
+        .globals()
         .clients
         .get(&found)
         .map(|c| c.monitor_id)
         .unwrap_or(current_mon);
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&found) {
         client.issticky = true;
         client.is_floating = true;
     }
 
     if target_mon != current_mon {
-        ctx.g_mut().detach(found);
-        ctx.g_mut().detach_stack(found);
+        ctx.core_mut().globals_mut().detach(found);
+        ctx.core_mut().globals_mut().detach_stack(found);
 
-        if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
+        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&found) {
             client.monitor_id = current_mon;
         }
 
-        ctx.g_mut().attach(found);
-        ctx.g_mut().attach_stack(found);
+        ctx.core_mut().globals_mut().attach(found);
+        ctx.core_mut().globals_mut().attach_stack(found);
     }
 
-    let focusfollowsmouse = ctx.g_mut().behavior.focus_follows_mouse;
-    if !ctx.g_mut().monitors.is_empty() {
-        let mid = ctx.g_mut().selected_monitor_id();
+    let focusfollowsmouse = ctx.core_mut().globals_mut().behavior.focus_follows_mouse;
+    if !ctx.core_mut().globals_mut().monitors.is_empty() {
+        let mid = ctx.core_mut().globals_mut().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
         restack(ctx, mid);
@@ -129,11 +145,11 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
 }
 
 pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
-    let Some(found) = scratchpad_find(ctx.g(), name) else {
+    let Some(found) = scratchpad_find(ctx.core().globals(), name) else {
         return;
     };
 
-    let Some(client) = ctx.g_mut().clients.get_mut(&found) else {
+    let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&found) else {
         return;
     };
     if !client.issticky {
@@ -154,18 +170,22 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_overview = !ctx.g_mut().selected_monitor().is_tiling_layout();
+    let is_overview = !ctx
+        .core_mut()
+        .globals_mut()
+        .selected_monitor()
+        .is_tiling_layout();
 
     if is_overview {
         return;
     }
 
-    let found = match scratchpad_find(ctx.g(), name) {
+    let found = match scratchpad_find(ctx.core().globals(), name) {
         Some(w) => w,
         None => return,
     };
 
-    let Some(client) = ctx.g().clients.get(&found) else {
+    let Some(client) = ctx.core().globals().clients.get(&found) else {
         return;
     };
     let is_sticky = client.issticky;

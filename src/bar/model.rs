@@ -65,11 +65,11 @@ pub(crate) fn hit_test(
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
-    if local_x < core.g.cfg.startmenusize {
+    if local_x < core.globals().cfg.startmenusize {
         return BarPosition::StartMenu;
     }
 
-    if core.g.cfg.show_systray && is_selected_monitor {
+    if core.globals().cfg.show_systray && is_selected_monitor {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {
@@ -124,14 +124,14 @@ pub(crate) fn hit_test(
 pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
     use crate::bar::get_layout_symbol_width;
 
-    let is_selmon = core.g.selected_monitor().num == mon.num;
+    let is_selmon = core.globals().selected_monitor().num == mon.num;
     let tag_end = get_tag_width(core);
     let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
-    let bar_height = core.g.cfg.bar_height;
+    let bar_height = core.globals().cfg.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
-    let mut acc = core.g.cfg.startmenusize;
+    let mut acc = core.globals().cfg.startmenusize;
     for (slot, &w) in core.bar.tag_widths.iter().enumerate() {
         tag_ranges.push(TagHitRange {
             start: acc,
@@ -149,8 +149,8 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.g.cfg.show_systray && is_selmon {
-        core.g.bar_runtime.systray_width
+    let systray_w = if core.globals().cfg.show_systray && is_selmon {
+        core.globals().bar_runtime.systray_width
     } else {
         0
     };
@@ -159,7 +159,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
     let visible_clients: Vec<WindowId> = mon
-        .iter_clients(core.g.clients.map())
+        .iter_clients(core.globals().clients.map())
         .filter_map(|(win, c)| c.is_visible_on_tags(selected).then_some(win))
         .collect();
 

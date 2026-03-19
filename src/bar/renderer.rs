@@ -6,12 +6,12 @@ use crate::types::Gesture;
 
 /// Core bar drawing implementation shared between X11 and Wayland.
 ///
-/// Systray width must be cached in `core.g.bar_runtime.systray_width` by the caller
+/// Systray width must be cached in `core.globals().bar_runtime.systray_width` by the caller
 /// before invoking this function.
 pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
     core.bar.recursion_enter();
 
-    let (monitor_num, work_rect_w, monitor_id) = match core.g.monitor(mon_idx) {
+    let (monitor_num, work_rect_w, monitor_id) = match core.globals().monitor(mon_idx) {
         Some(m) => {
             if !m.shows_bar() || core.bar.pausedraw() {
                 core.bar.recursion_exit();
@@ -25,22 +25,22 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         }
     };
 
-    let bar_height = core.g.cfg.bar_height;
+    let bar_height = core.globals().cfg.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         core.bar.recursion_exit();
         return;
     }
 
-    let is_selmon = core.g.selected_monitor().num == monitor_num;
+    let is_selmon = core.globals().selected_monitor().num == monitor_num;
 
-    let systray_width = if core.g.cfg.show_systray && is_selmon {
-        core.g.bar_runtime.systray_width
+    let systray_width = if core.globals().cfg.show_systray && is_selmon {
+        core.globals().bar_runtime.systray_width
     } else {
         0
     };
 
     let (status_start_x, status_width, status_click_targets) = if is_selmon {
-        let m = core.g.monitor(mon_idx).cloned().unwrap();
+        let m = core.globals().monitor(mon_idx).cloned().unwrap();
         status::draw_status_bar(core, systray_width, &m, bar_height, painter)
     } else {
         (0, 0, Vec::new())
@@ -55,8 +55,8 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
     widgets::draw_startmenu_icon(core, bar_height, painter);
 
     let (occupied_tags, urgent_tags, visible_clients) = {
-        let m = core.g.monitor(mon_idx).unwrap();
-        let stats = ClientBarStats::collect(m, core.g);
+        let m = core.globals().monitor(mon_idx).unwrap();
+        let stats = ClientBarStats::collect(m, core.globals());
         (
             stats.occupied_tags,
             stats.urgent_tags,
@@ -64,12 +64,15 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         )
     };
 
-    let mut x = core.g.cfg.startmenusize;
+    let mut x = core.globals().cfg.startmenusize;
 
-    let mon_has_sel = core.g.monitor(mon_idx).is_some_and(|m| m.sel.is_some());
+    let mon_has_sel = core
+        .globals()
+        .monitor(mon_idx)
+        .is_some_and(|m| m.sel.is_some());
 
     {
-        let m = core.g.monitor(mon_idx).cloned().unwrap();
+        let m = core.globals().monitor(mon_idx).cloned().unwrap();
         x = widgets::draw_tag_indicators(
             core,
             &m,
@@ -107,7 +110,7 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
 
     let mut new_activeoffset = None;
     if title_width > 0 {
-        let m = core.g.monitor(mon_idx).cloned().unwrap();
+        let m = core.globals().monitor(mon_idx).cloned().unwrap();
         new_activeoffset = widgets::draw_window_titles(
             core,
             &m,
@@ -119,7 +122,7 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         );
     }
 
-    if let Some(m) = core.g.monitor_mut(mon_idx) {
+    if let Some(m) = core.globals_mut().monitor_mut(mon_idx) {
         m.bar_clients_width = title_width;
         if let Some(offset) = new_activeoffset {
             m.activeoffset = offset;
@@ -130,10 +133,10 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
 }
 
 pub fn reset_bar_common(core: &mut CoreCtx) {
-    let selmon = core.g.selected_monitor();
+    let selmon = core.globals().selected_monitor();
     if selmon.gesture == Gesture::None {
         return;
     }
 
-    core.g.selected_monitor_mut().gesture = Gesture::None;
+    core.globals_mut().selected_monitor_mut().gesture = Gesture::None;
 }

@@ -19,25 +19,29 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     } else {
         crate::client::show_hide(ctx);
 
-        let mon_indices: Vec<usize> = (0..ctx.g().monitors.count()).collect();
+        let mon_indices: Vec<usize> = (0..ctx.core().globals().monitors.count()).collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
             restack(ctx, idx);
         }
     }
 
-    ctx.g_mut().dirty.layout = false;
-    ctx.g_mut().dirty.space = true;
+    ctx.core_mut().globals_mut().dirty.layout = false;
+    ctx.core_mut().globals_mut().dirty.space = true;
     ctx.flush();
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let clientcount = {
-        let m = ctx.g().monitor(monitor_id).expect("invalid monitor");
-        m.tiled_client_count(ctx.g().clients.map()) as u32
+        let m = ctx
+            .core()
+            .globals()
+            .monitor(monitor_id)
+            .expect("invalid monitor");
+        m.tiled_client_count(ctx.core().globals().clients.map()) as u32
     };
 
-    if let Some(m) = ctx.g_mut().monitor_mut(monitor_id) {
+    if let Some(m) = ctx.core_mut().globals_mut().monitor_mut(monitor_id) {
         m.clientcount = clientcount;
     }
 
@@ -48,7 +52,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let (mon_rect, clients, selected_tags) = match ctx.g().monitor(monitor_id) {
+    let (mon_rect, clients, selected_tags) = match ctx.core().globals().monitor(monitor_id) {
         Some(m) => (m.monitor_rect, m.clients.clone(), m.selected_tags()),
         None => return,
     };
@@ -67,7 +71,7 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let m = match ctx.g().monitor(monitor_id) {
+    let m = match ctx.core().globals().monitor(monitor_id) {
         Some(m) => m,
         None => return,
     };
@@ -109,17 +113,24 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let layout = ctx.g().monitor(monitor_id).map(|m| m.current_layout());
+    let layout = ctx
+        .core()
+        .globals()
+        .monitor(monitor_id)
+        .map(|m| m.current_layout());
     if let Some(layout) = layout
-        && let Some(mut m) = ctx.g().monitor(monitor_id).cloned()
+        && let Some(mut m) = ctx.core().globals().monitor(monitor_id).cloned()
     {
         layout.arrange(ctx, &mut m);
-        ctx.g_mut().monitors.set_monitor(monitor_id, m);
+        ctx.core_mut()
+            .globals_mut()
+            .monitors
+            .set_monitor(monitor_id, m);
     }
 }
 
 fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let (overlay_win, work_rect) = match ctx.g().monitor(monitor_id) {
+    let (overlay_win, work_rect) = match ctx.core().globals().monitor(monitor_id) {
         Some(m) => (m.overlay, m.work_rect),
         None => return,
     };
@@ -148,7 +159,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update(Some(monitor_id));
 
-    let Some(monitor) = ctx.g().monitor(monitor_id) else {
+    let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
         return;
     };
     if monitor.current_layout().is_overview() {
@@ -174,7 +185,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
-    if let Some(m) = ctx.g().monitor(monitor_id) {
+    if let Some(m) = ctx.core().globals().monitor(monitor_id) {
         for &win in &m.stack {
             if let Some(c) = ctx.client(win)
                 && c.is_visible_on_tags(selected_tags)
@@ -230,15 +241,15 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
-    if ctx.g().tags.prefix {
-        for mon in ctx.g_mut().monitors_iter_all_mut() {
+    if ctx.core().globals().tags.prefix {
+        for mon in ctx.core_mut().globals_mut().monitors_iter_all_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.set_layout(layout);
             }
         }
-        ctx.g_mut().tags.prefix = false;
+        ctx.core_mut().globals_mut().tags.prefix = false;
     } else {
-        let m = ctx.g_mut().selected_monitor_mut();
+        let m = ctx.core_mut().globals_mut().selected_monitor_mut();
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             m.tags[tag - 1].layouts.set_layout(layout);
@@ -248,15 +259,15 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
-    if ctx.g().tags.prefix {
-        for mon in ctx.g_mut().monitors_iter_all_mut() {
+    if ctx.core().globals().tags.prefix {
+        for mon in ctx.core_mut().globals_mut().monitors_iter_all_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.toggle_slot();
             }
         }
-        ctx.g_mut().tags.prefix = false;
+        ctx.core_mut().globals_mut().tags.prefix = false;
     } else {
-        let m = ctx.g_mut().selected_monitor_mut();
+        let m = ctx.core_mut().globals_mut().selected_monitor_mut();
         let tag = m.current_tag;
         if tag > 0 && tag <= m.tags.len() {
             m.tags[tag - 1].layouts.toggle_slot();
@@ -266,8 +277,8 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 }
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selected_monitor_id = ctx.g().selected_monitor_id();
-    if ctx.g().selected_monitor().sel.is_some() {
+    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    if ctx.core().globals().selected_monitor().sel.is_some() {
         arrange(ctx, Some(selected_monitor_id));
     } else {
         ctx.request_bar_update(Some(selected_monitor_id));
@@ -275,7 +286,7 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx.g().selected_monitor().current_layout();
+    let current_layout = ctx.core().globals().selected_monitor().current_layout();
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
     let current_idx = all_layouts
@@ -317,10 +328,11 @@ pub fn command_layout(ctx: &mut WmCtx<'_>, layout_idx: u32) {
 
 pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = ctx
-        .g()
+        .core()
+        .globals()
         .selected_monitor()
-        .tiled_client_count(ctx.g().clients.map()) as i32;
-    let m = ctx.g_mut().selected_monitor_mut();
+        .tiled_client_count(ctx.core().globals().clients.map()) as i32;
+    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
     if delta > 0 && m.nmaster >= ccount {
         m.nmaster = ccount;
     } else {
@@ -331,7 +343,7 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
             m.tags[tag - 1].nmaster = new_nmaster;
         }
     }
-    let selected_monitor_id = ctx.g().selected_monitor_id();
+    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
 
@@ -339,12 +351,17 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     if mfact_val == 0.0 {
         return;
     }
-    let is_tiling = ctx.g().selected_monitor().current_layout().is_tiling();
+    let is_tiling = ctx
+        .core()
+        .globals()
+        .selected_monitor()
+        .current_layout()
+        .is_tiling();
     if !is_tiling {
         return;
     }
 
-    let current_mfact = ctx.g().selected_monitor().mfact;
+    let current_mfact = ctx.core().globals().selected_monitor().mfact;
     let new_mfact = if mfact_val < 1.0 {
         mfact_val + current_mfact
     } else {
@@ -354,26 +371,27 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let animation_on = ctx.g().behavior.animated
+    let animation_on = ctx.core().globals().behavior.animated
         && ctx
-            .g()
+            .core()
+            .globals()
             .selected_monitor()
-            .tiled_client_count(ctx.g().clients.map())
+            .tiled_client_count(ctx.core().globals().clients.map())
             > 2;
     if animation_on {
-        ctx.g_mut().behavior.animated = false;
+        ctx.core_mut().globals_mut().behavior.animated = false;
     }
 
-    let m = ctx.g_mut().selected_monitor_mut();
+    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
     m.mfact = new_mfact;
     let tag = m.current_tag;
     if tag > 0 && tag <= m.tags.len() {
         m.tags[tag - 1].mfact = new_mfact;
     }
 
-    let selected_monitor_id = ctx.g().selected_monitor_id();
+    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
     if animation_on {
-        ctx.g_mut().behavior.animated = true;
+        ctx.core_mut().globals_mut().behavior.animated = true;
     }
 }

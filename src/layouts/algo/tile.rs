@@ -27,13 +27,13 @@ use std::cmp::min;
 
 pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(
-        ctx.g,
+        ctx.core().globals(),
         FAST_ANIM_THRESHOLD,
         FAST_FRAME_COUNT,
         DEFAULT_FRAME_COUNT,
     );
 
-    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
+    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -55,7 +55,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     };
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(ctx.g.clients.map());
+    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_y_offset: u32 = 0;
     let mut stack_y_offset: u32 = 0;
@@ -108,7 +108,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            if let Some(c) = ctx.g.clients.get(&client.win)
+            if let Some(c) = ctx.core().globals().clients.get(&client.win)
                 && stack_y_offset as i32 + c.total_height() < m.work_rect.h
             {
                 stack_y_offset += c.total_height() as u32;

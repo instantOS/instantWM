@@ -34,7 +34,7 @@ use crate::types::*;
 pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
     let Some(mid) = monitor_id else { return };
 
-    let wins_to_save = collect_floating_wins(ctx.g(), mid);
+    let wins_to_save = collect_floating_wins(ctx.core().globals(), mid);
     for win in wins_to_save {
         save_floating_geometry(ctx, win);
     }
@@ -47,7 +47,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
     let Some(mid) = monitor_id else { return };
 
-    let wins_to_restore = collect_floating_wins(ctx.g(), mid);
+    let wins_to_restore = collect_floating_wins(ctx.core().globals(), mid);
     for win in wins_to_restore {
         super::state::restore_floating_geometry(ctx, win);
     }
@@ -99,9 +99,9 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<W
 ///
 /// Does nothing when there are no qualifying windows.
 pub fn distribute_clients(ctx: &mut WmCtx) {
-    let sel_mon_id = ctx.g().selected_monitor_id();
+    let sel_mon_id = ctx.core().globals().selected_monitor_id();
 
-    let (floating_wins, work_rect) = collect_distribute_targets(ctx.g(), sel_mon_id);
+    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core().globals(), sel_mon_id);
 
     if floating_wins.is_empty() {
         return;

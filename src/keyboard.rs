@@ -41,11 +41,12 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
-    let current_mode = ctx.g().behavior.current_mode.clone();
+    let current_mode = ctx.core().globals().behavior.current_mode.clone();
 
     let action = if !current_mode.is_empty() && current_mode != "default" {
         // Look ONLY in mode-specific keybindings
-        ctx.g()
+        ctx.core()
+            .globals()
             .cfg
             .modes
             .get(&current_mode)
@@ -57,7 +58,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             .map(|key| Rc::clone(&key.action))
     } else {
         // Normal mode
-        ctx.g()
+        ctx.core()
+            .globals()
             .cfg
             .keys
             .iter()
@@ -66,10 +68,15 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             })
             .or_else(|| {
                 if ctx.selected_client().is_none() {
-                    ctx.g().cfg.desktop_keybinds.iter().find(|key| {
-                        keysym == key.keysym
-                            && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
-                    })
+                    ctx.core()
+                        .globals()
+                        .cfg
+                        .desktop_keybinds
+                        .iter()
+                        .find(|key| {
+                            keysym == key.keysym
+                                && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                        })
                 } else {
                     None
                 }
@@ -99,9 +106,9 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
     let conn = x11.conn;
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
-    let keys = core.g.cfg.keys.as_slice();
-    let desktop_keybinds = core.g.cfg.desktop_keybinds.as_slice();
-    let modes = &core.g.cfg.modes;
+    let keys = core.globals().cfg.keys.as_slice();
+    let desktop_keybinds = core.globals().cfg.desktop_keybinds.as_slice();
+    let modes = &core.globals().cfg.modes;
     let free_alt_tab = true;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
@@ -252,10 +259,10 @@ pub fn update_num_lock_mask_x11(
 
 pub fn up_press(ctx: &mut WmCtx) {
     let (selected_window, overlay_win, is_floating) = {
-        let mon = ctx.g().selected_monitor();
+        let mon = ctx.core().globals().selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
-        let is_floating = sel.is_some_and(|w| ctx.g().clients.is_floating(w));
+        let is_floating = sel.is_some_and(|w| ctx.core().globals().clients.is_floating(w));
         (sel, overlay, is_floating)
     };
 
@@ -284,12 +291,13 @@ pub fn down_press(ctx: &mut WmCtx) {
     }
 
     let (selected_window, overlay_win, snap_status, is_floating) = {
-        let mon = ctx.g().selected_monitor();
+        let mon = ctx.core().globals().selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
         let (snap_status, is_floating) = sel
             .and_then(|w| {
-                ctx.g()
+                ctx.core()
+                    .globals()
                     .clients
                     .get(&w)
                     .map(|c| (c.snap_status, c.is_floating))
@@ -320,14 +328,14 @@ pub fn down_press(ctx: &mut WmCtx) {
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = !ctx.g().selected_monitor().is_tiling_layout();
+    let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if is_overview {
         direction_focus(ctx, Direction::Up);
         return;
     }
 
-    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
         if let Some(win) = ctx.selected_client() {
@@ -349,14 +357,14 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = !ctx.g().selected_monitor().is_tiling_layout();
+    let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if is_overview {
         direction_focus(ctx, Direction::Down);
         return;
     }
 
-    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
         if let Some(win) = ctx.selected_client() {
@@ -369,7 +377,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn space_toggle(ctx: &mut WmCtx) {
-    let has_tiling = ctx.g().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
         let Some(win) = ctx.selected_client() else {
@@ -377,7 +385,8 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         };
 
         let snap_status = {
-            ctx.g()
+            ctx.core()
+                .globals()
                 .clients
                 .get(&win)
                 .map(|c| c.snap_status)
@@ -387,16 +396,16 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snap_status != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            let border_width = ctx.g().cfg.border_width_px;
+            let border_width = ctx.core().globals().cfg.border_width_px;
             ctx.set_border(win, border_width);
 
             save_floating_geometry(ctx, win);
 
-            if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                 client.snap_status = SnapPosition::Maximized;
             }
 
-            let selmon_id = ctx.g().selected_monitor_id();
+            let selmon_id = ctx.core().globals().selected_monitor_id();
             arrange(ctx, Some(selmon_id));
         }
     } else {

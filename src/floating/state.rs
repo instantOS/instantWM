@@ -24,7 +24,7 @@ pub enum WindowMode {
 fn restore_client_border(core: &mut CoreCtx, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
     restore_border_width(core, win);
     let restored_bw = core
-        .g
+        .globals()
         .clients
         .get(&win)
         .map(|c| c.border_width)
@@ -34,13 +34,13 @@ fn restore_client_border(core: &mut CoreCtx, x11: &X11BackendRef<'_>, win: Windo
 }
 
 pub fn save_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.float_geo = client.geo;
     }
 }
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(rect) = ctx.g().clients.effective_float_geo(win) {
+    if let Some(rect) = ctx.core().globals().clients.effective_float_geo(win) {
         crate::client::resize(ctx, win, &rect, false);
     }
 }
@@ -68,7 +68,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
 
     match target_mode {
         WindowMode::Floating => {
-            if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                 client.is_floating = true;
             }
 
@@ -88,7 +88,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             }
 
             // Apply saved float geometry
-            let saved_geo = ctx.g().clients.effective_float_geo(win);
+            let saved_geo = ctx.core().globals().clients.effective_float_geo(win);
             let Some(saved_geo) = saved_geo else {
                 return false;
             };
@@ -96,7 +96,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             true // Caller should animate
         }
         WindowMode::Tiled => {
-            let client_count = ctx.g().clients.len();
+            let client_count = ctx.core().globals().clients.len();
             let clear_border = if let Some(client) = ctx.client_mut(win) {
                 client.is_floating = false;
                 client.float_geo = client.geo;
@@ -126,7 +126,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let mon = ctx.g().selected_monitor();
+    let mon = ctx.core().globals().selected_monitor();
     let selected_window = match mon.sel {
         Some(sel) if Some(sel) != mon.overlay => {
             if let Some(c) = ctx.client(sel)
@@ -145,11 +145,12 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let should_animate = set_window_mode(ctx, win, WindowMode::ToggleFloat);
 
     // Animate when going to floating mode
-    if should_animate && let Some(saved_geo) = ctx.g().clients.effective_float_geo(win) {
+    if should_animate && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
+    {
         animate_client(ctx, win, &saved_geo, 7, 0);
     }
 
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 }
 
@@ -168,15 +169,16 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
     // Read all the state we need through the backend-agnostic core.
-    let maximized_win = ctx.g().selected_monitor().fullscreen;
-    let selected_window = ctx.g().selected_monitor().sel;
-    let animated = ctx.g().behavior.animated;
+    let maximized_win = ctx.core().globals().selected_monitor().fullscreen;
+    let selected_window = ctx.core().globals().selected_monitor().sel;
+    let animated = ctx.core().globals().behavior.animated;
 
     if let Some(win) = maximized_win {
         // --- Exit maximized state ---
 
         let is_floating = ctx
-            .g()
+            .core()
+            .globals()
             .clients
             .get(&win)
             .map(|c| c.is_floating)
@@ -193,13 +195,19 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
             }
         }
 
-        ctx.g_mut().selected_monitor_mut().fullscreen = None;
+        ctx.core_mut()
+            .globals_mut()
+            .selected_monitor_mut()
+            .fullscreen = None;
     } else {
         // --- Enter maximized state ---
 
         let Some(win) = selected_window else { return };
 
-        ctx.g_mut().selected_monitor_mut().fullscreen = Some(win);
+        ctx.core_mut()
+            .globals_mut()
+            .selected_monitor_mut()
+            .fullscreen = Some(win);
 
         // Save floating geometry so we can restore it on toggle-off.
         if super::helpers::check_floating(ctx.core(), win) {
@@ -209,17 +217,17 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 
     // Run the layout pass.  Disable animations temporarily so the
     // maximize/restore is instantaneous rather than sliding.
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
     if animated {
-        ctx.g_mut().behavior.animated = false;
+        ctx.core_mut().globals_mut().behavior.animated = false;
         arrange(ctx, Some(selmon_id));
-        ctx.g_mut().behavior.animated = true;
+        ctx.core_mut().globals_mut().behavior.animated = true;
     } else {
         arrange(ctx, Some(selmon_id));
     }
 
     // Raise the newly maximized window above everything else.
-    if let Some(win) = ctx.g().selected_monitor().fullscreen {
+    if let Some(win) = ctx.core().globals().selected_monitor().fullscreen {
         ctx.backend().raise_window(win);
     }
 }

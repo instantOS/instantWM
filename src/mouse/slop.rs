@@ -106,7 +106,8 @@ pub fn apply_window_resize(
     height: i32,
 ) {
     let is_floating = ctx
-        .g
+        .core()
+        .globals()
         .clients
         .get(&c_win)
         .map(|c| c.is_floating)

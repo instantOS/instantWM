@@ -494,7 +494,7 @@ define_actions!(
     // Mode
     "set_mode" ("resize") => "set WM mode (sway-like modes)" => |ctx: &mut WmCtx, args: &[String]| {
         if let Some(name) = args.get(0) {
-            ctx.g_mut().behavior.current_mode = name.clone();
+            ctx.core_mut().globals_mut().behavior.current_mode = name.clone();
             ctx.request_bar_update(None);
         }
     },
@@ -593,7 +593,7 @@ fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
         ActionSpec::Structured(StructuredAction::SetMode(name)) => {
             let name = name.clone();
             Some(Rc::new(move |ctx| {
-                ctx.g_mut().behavior.current_mode = name.clone();
+                ctx.core_mut().globals_mut().behavior.current_mode = name.clone();
                 ctx.request_bar_update(None);
             }))
         }

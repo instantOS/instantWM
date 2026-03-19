@@ -10,31 +10,31 @@ pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
 
 pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     let new_value = {
-        let mut showalttag = ctx.g().tags.show_alternative_names;
+        let mut showalttag = ctx.core().globals().tags.show_alternative_names;
         ctrl_toggle(&mut showalttag, action);
         showalttag
     };
 
-    ctx.g_mut().tags.show_alternative_names = new_value;
+    ctx.core_mut().globals_mut().tags.show_alternative_names = new_value;
 
     let tagwidth = get_tag_width(ctx.core());
-    ctx.g_mut().tags.width = tagwidth;
+    ctx.core_mut().globals_mut().tags.width = tagwidth;
     ctx.request_bar_update(None);
 }
 
 pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
     if let WmCtx::X11(x11) = ctx {
-        ctrl_toggle(&mut x11.core.g.tags.prefix, action);
+        ctrl_toggle(&mut x11.core.globals_mut().tags.prefix, action);
         grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
     } else {
-        let mut prefix = ctx.g().tags.prefix;
+        let mut prefix = ctx.core().globals().tags.prefix;
         ctrl_toggle(&mut prefix, action);
-        ctx.g_mut().tags.prefix = prefix;
+        ctx.core_mut().globals_mut().tags.prefix = prefix;
     }
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.issticky = !client.issticky;
         client.monitor_id
     } else {
@@ -45,22 +45,22 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_prefix(ctx: &mut WmCtx) {
-    let next = !ctx.g().tags.prefix;
-    ctx.g_mut().tags.prefix = next;
+    let next = !ctx.core().globals().tags.prefix;
+    ctx.core_mut().globals_mut().tags.prefix = next;
 
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn toggle_animated(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.behavior.animated, action);
+    ctrl_toggle(&mut core.globals_mut().behavior.animated, action);
 }
 
 pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
     let new_bw = width;
 
     let geo = {
-        if let Some(client) = core.g.clients.get_mut(&win) {
+        if let Some(client) = core.globals_mut().clients.get_mut(&win) {
             let old_bw = client.border_width;
             let d = old_bw - new_bw;
             client.border_width = new_bw;
@@ -76,48 +76,51 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
         }
     };
 
-    core.g.clients.update_geometry(win, geo);
+    core.globals_mut().clients.update_geometry(win, geo);
 }
 
 pub fn set_special_next(core: &mut CoreCtx, value: SpecialNext) {
-    core.g.behavior.specialnext = value;
+    core.globals_mut().behavior.specialnext = value;
 }
 
 pub fn set_prefix_mode(ctx: &mut WmCtx, value: bool) {
-    ctx.g_mut().tags.prefix = value;
+    ctx.core_mut().globals_mut().tags.prefix = value;
 
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.behavior.focus_follows_mouse, action);
+    ctrl_toggle(&mut core.globals_mut().behavior.focus_follows_mouse, action);
 }
 
 pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.g.behavior.focus_follows_float_mouse, action);
+    ctrl_toggle(
+        &mut core.globals_mut().behavior.focus_follows_float_mouse,
+        action,
+    );
 }
 
 pub fn toggle_double_draw(core: &mut CoreCtx) {
-    core.g.behavior.double_draw = !core.g.behavior.double_draw;
+    core.globals_mut().behavior.double_draw = !core.globals_mut().behavior.double_draw;
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.is_locked = !client.is_locked;
     } else {
         return;
     }
 
-    let selmon_id = ctx.g().selected_monitor_id();
+    let selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (selmon_id, new_showtags) = {
-        let selmon_id = ctx.g().selected_monitor_id();
+        let selmon_id = ctx.core().globals().selected_monitor_id();
 
-        let showtags = ctx.g().selected_monitor().showtags;
+        let showtags = ctx.core().globals().selected_monitor().showtags;
 
         let mut show_bool = showtags != 0;
         ctrl_toggle(&mut show_bool, action);
@@ -126,16 +129,16 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
         (selmon_id, new_showtags)
     };
 
-    ctx.g_mut().selected_monitor_mut().showtags = new_showtags;
+    ctx.core_mut().globals_mut().selected_monitor_mut().showtags = new_showtags;
 
     let tagwidth = get_tag_width(ctx.core());
-    ctx.g_mut().tags.width = tagwidth;
+    ctx.core_mut().globals_mut().tags.width = tagwidth;
 
     ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
-    let clients: Vec<WindowId> = ctx.g().clients.keys().copied().collect();
+    let clients: Vec<WindowId> = ctx.core().globals().clients.keys().copied().collect();
 
     for win in clients {
         crate::client::show(ctx, win);
@@ -143,16 +146,16 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
-    let animated = ctx.g().behavior.animated;
-    let client_count = ctx.g().clients.len() as i32;
+    let animated = ctx.core().globals().behavior.animated;
+    let client_count = ctx.core().globals().clients.len() as i32;
     let mut tmp_no_anim = false;
     if animated && client_count > 6 {
-        ctx.g_mut().behavior.animated = false;
+        ctx.core_mut().globals_mut().behavior.animated = false;
         tmp_no_anim = true;
     }
 
-    let bar_height = ctx.g().cfg.bar_height;
-    let selmon = ctx.g_mut().selected_monitor_mut();
+    let bar_height = ctx.core().globals().cfg.bar_height;
+    let selmon = ctx.core_mut().globals_mut().selected_monitor_mut();
     selmon.showbar = !selmon.showbar;
 
     let current_tag = selmon.current_tag;
@@ -162,11 +165,11 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
     selmon.update_bar_position(bar_height);
 
-    let selmon_idx = ctx.g().selected_monitor_id();
+    let selmon_idx = ctx.core().globals().selected_monitor_id();
 
     match ctx {
         WmCtx::X11(x11) => {
-            if let Some(m) = x11.core.g.monitors.get(selmon_idx).cloned() {
+            if let Some(m) = x11.core.globals().monitors.get(selmon_idx).cloned() {
                 crate::bar::x11::resize_bar_win(
                     &x11.core,
                     &x11.x11,
@@ -189,6 +192,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 
     if tmp_no_anim {
-        ctx.g_mut().behavior.animated = true;
+        ctx.core_mut().globals_mut().behavior.animated = true;
     }
 }

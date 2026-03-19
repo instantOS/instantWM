@@ -5,14 +5,14 @@ use crate::layouts::arrange;
 use crate::types::{TagMask, WindowId};
 
 pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let selmon_id = ctx.g_mut().selected_monitor_id();
-    let tagmask = TagMask::from_bits(ctx.g().tags.mask());
+    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
+    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
-    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         if TagMask::from_bits(client.tags).is_scratchpad_only() {
             client.issticky = false;
         }
@@ -29,28 +29,28 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
 }
 
 pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.g_mut().selected_monitor_id();
-    let tagmask = TagMask::from_bits(ctx.g().tags.mask());
+    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
+    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
-    let current_tag = ctx.g().selected_monitor().current_tag;
+    let current_tag = ctx.core().globals().selected_monitor().current_tag;
     if current_tag == 0 {
         return;
     }
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
 
-    let m = ctx.g().selected_monitor();
+    let m = ctx.core().globals().selected_monitor();
     let clients_on_tag: Vec<_> = m
-        .iter_clients(ctx.g().clients.map())
+        .iter_clients(ctx.core().globals().clients.map())
         .filter(|(_, c)| TagMask::from_bits(c.tags).intersects(current_tag_mask))
         .map(|(win, _)| win)
         .collect();
 
     for win in clients_on_tag {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             if TagMask::from_bits(client.tags).is_scratchpad_only() {
                 client.issticky = false;
             }
@@ -63,18 +63,19 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn follow_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let had_prefix = ctx.g().tags.prefix;
+    let had_prefix = ctx.core().globals().tags.prefix;
     set_client_tag_ctx(ctx, win, mask);
     if had_prefix {
-        ctx.g_mut().tags.prefix = true;
+        ctx.core_mut().globals_mut().tags.prefix = true;
     }
     crate::tags::view::view(ctx, mask);
 }
 
 pub fn toggle_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let tagmask = TagMask::from_bits(ctx.g().tags.mask());
+    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
     let current_tags = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map_or(TagMask::EMPTY, |c| TagMask::from_bits(c.tags));

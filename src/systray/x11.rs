@@ -17,21 +17,21 @@ const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
-    if !core.g.cfg.show_systray {
+    if !core.globals().cfg.show_systray {
         return 1;
     }
 
     let mut w: u32 = 0;
     if let Some(systray) = systray {
         for &icon_win in &systray.icons {
-            if let Some(c) = core.g.clients.get(&icon_win) {
-                w += c.geo.w as u32 + core.g.cfg.systray_spacing as u32;
+            if let Some(c) = core.globals().clients.get(&icon_win) {
+                w += c.geo.w as u32 + core.globals().cfg.systray_spacing as u32;
             }
         }
     }
 
     if w > 0 {
-        w + core.g.cfg.systray_spacing as u32
+        w + core.globals().cfg.systray_spacing as u32
     } else {
         1
     }
@@ -39,7 +39,7 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
 
 /// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, icon_win: WindowId) {
-    if !core.g.cfg.show_systray {
+    if !core.globals().cfg.show_systray {
         return;
     }
 
@@ -47,7 +47,7 @@ pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, ic
         systray.icons.retain(|&w| w != icon_win);
     }
 
-    core.g.clients.remove(&icon_win);
+    core.globals_mut().clients.remove(&icon_win);
 }
 
 /// Update systray icon geometry using dependency injection.
@@ -58,10 +58,10 @@ pub fn update_systray_icon_geom(
     w: i32,
     h: i32,
 ) {
-    let bar_height = core.g.cfg.bar_height;
+    let bar_height = core.globals().cfg.bar_height;
 
     let (geo_x, geo_y) = core
-        .g
+        .globals()
         .clients
         .get(&icon_win)
         .map(|client| (client.geo.x, client.geo.y))
@@ -81,7 +81,7 @@ pub fn update_systray_icon_geom(
     let _ = crate::client::geometry::apply_size_hints(core, Some(x11), icon_win, &mut rect, false);
 
     // Now update the client with the computed values
-    if let Some(client) = core.g.clients.get_mut(&icon_win) {
+    if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
         client.geo.x = rect.x;
         client.geo.y = rect.y;
         client.geo.w = rect.w;
@@ -108,7 +108,7 @@ pub fn update_systray_icon_state(
     icon_win: WindowId,
     ev: &PropertyNotifyEvent,
 ) {
-    if !core.g.cfg.show_systray {
+    if !core.globals().cfg.show_systray {
         return;
     }
 
@@ -126,7 +126,7 @@ pub fn update_systray_icon_state(
     }
 
     let (current_tags, _has_systray) = {
-        if let Some(client) = core.g.clients.get_mut(&icon_win) {
+        if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
             (client.tags, systray.is_some())
         } else {
             return;
@@ -134,7 +134,7 @@ pub fn update_systray_icon_state(
     };
 
     if (flags & XEMBED_MAPPED) != 0 && current_tags == 0 {
-        if let Some(client) = core.g.clients.get_mut(&icon_win) {
+        if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
             client.tags = 1;
         }
 
@@ -158,7 +158,7 @@ pub fn update_systray_icon_state(
         );
         set_client_state(core, x11, x11_runtime, icon_win, 1);
     } else if (flags & XEMBED_MAPPED) == 0 && current_tags != 0 {
-        if let Some(client) = core.g.clients.get_mut(&icon_win) {
+        if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
             client.tags = 0;
         }
 
@@ -187,7 +187,7 @@ pub fn update_systray(
     x11_runtime: &X11RuntimeConfig,
     mut systray: Option<&mut Systray>,
 ) {
-    if !core.g.cfg.show_systray {
+    if !core.globals().cfg.show_systray {
         return;
     }
 
@@ -202,7 +202,7 @@ pub fn update_systray(
 
     let (x, bar_y, _showbar, bar_win) = {
         let m = systray_to_mon(core, None);
-        let mon = match core.g.monitor(m) {
+        let mon = match core.globals().monitor(m) {
             Some(mon) => mon,
             None => return,
         };
@@ -220,7 +220,7 @@ pub fn update_systray(
 
     if !systray_exists {
         let root = x11_runtime.root;
-        let bar_height = core.g.cfg.bar_height;
+        let bar_height = core.globals().cfg.bar_height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
@@ -312,14 +312,14 @@ pub fn update_systray(
         None => return,
     };
 
-    let bar_height = core.g.cfg.bar_height;
-    let systrayspacing = core.g.cfg.systray_spacing;
+    let bar_height = core.globals().cfg.bar_height;
+    let systrayspacing = core.globals().cfg.systray_spacing;
     let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, i32, i32)> = icons
         .iter()
         .filter_map(|icon_win| {
-            core.g
+            core.globals()
                 .clients
                 .get(icon_win)
                 .map(|client| (*icon_win, client.geo.w, client.geo.h))
@@ -399,7 +399,7 @@ pub fn win_to_systray_icon(
     systray: Option<&Systray>,
     win: WindowId,
 ) -> Option<WindowId> {
-    if !core.g.cfg.show_systray {
+    if !core.globals().cfg.show_systray {
         return None;
     }
 
@@ -415,23 +415,23 @@ pub fn win_to_systray_icon(
 
 /// Get monitor for systray using dependency injection.
 pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
-    if core.g.cfg.systray_pinning == 0 {
+    if core.globals().cfg.systray_pinning == 0 {
         return match m {
             Some(id) => {
-                if id == core.g.selected_monitor_id() {
+                if id == core.globals().selected_monitor_id() {
                     id
                 } else {
-                    core.g.selected_monitor_id()
+                    core.globals().selected_monitor_id()
                 }
             }
-            None => core.g.selected_monitor_id(),
+            None => core.globals().selected_monitor_id(),
         };
     }
 
-    let n = core.g.monitors.count();
-    let target = core.g.cfg.systray_pinning.min(n);
+    let n = core.globals().monitors.count();
+    let target = core.globals().cfg.systray_pinning.min(n);
 
-    if core.g.cfg.systray_pinning > n {
+    if core.globals().cfg.systray_pinning > n {
         0
     } else {
         target.saturating_sub(1)

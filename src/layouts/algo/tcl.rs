@@ -38,7 +38,7 @@ use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
+    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -50,7 +50,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let c = ctx.g_mut().clients.get(&win)?;
+            let c = ctx.core_mut().globals_mut().clients.get(&win)?;
             if !c.is_tiled(selected_tags) {
                 return None;
             }
@@ -70,7 +70,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // Place master client
     let master_bw = ctx
-        .g
+        .core()
+        .globals()
         .clients
         .get(&first_win)
         .map(|c| BORDER_MULTIPLIER * c.border_width())
@@ -111,7 +112,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let right_n = stack_n.div_ceil(2);
     let left_n = stack_n / 2;
 
-    let bar_height = ctx.g_mut().cfg.bar_height;
+    let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
 
     // Right column (even indices in stack: 0, 2, 4...)
     if right_n > 0 {
@@ -139,7 +140,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let win = tiled_clients[stack_idx];
 
             let border_width = ctx
-                .g
+                .core()
+                .globals()
                 .clients
                 .get(&win)
                 .map(|c| c.border_width())
@@ -164,7 +166,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if cell_h != m.work_rect.h
-                && let Some(c) = ctx.g_mut().clients.get(&win)
+                && let Some(c) = ctx.core_mut().globals_mut().clients.get(&win)
             {
                 y = c.geo.y + c.total_height();
             }
@@ -193,7 +195,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let win = tiled_clients[stack_idx];
 
             let border_width = ctx
-                .g
+                .core()
+                .globals()
                 .clients
                 .get(&win)
                 .map(|c| c.border_width())
@@ -218,7 +221,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             );
 
             if cell_h != m.work_rect.h
-                && let Some(c) = ctx.g_mut().clients.get(&win)
+                && let Some(c) = ctx.core_mut().globals_mut().clients.get(&win)
             {
                 y = c.geo.y + c.total_height();
             }

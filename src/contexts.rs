@@ -256,8 +256,8 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// restacks do not drop the dragged floating window behind others.
     pub fn raise_interactive(&mut self, win: WindowId) {
-        if let Some(mid) = self.g().clients.monitor_id(win)
-            && let Some(mon) = self.g_mut().monitor_mut(mid)
+        if let Some(mid) = self.core().globals().clients.monitor_id(win)
+            && let Some(mon) = self.core_mut().globals_mut().monitor_mut(mid)
         {
             mon.stack.retain(|&w| w != win);
             mon.stack.push(win);
@@ -270,7 +270,7 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
-        if let Some(c) = self.g_mut().clients.get_mut(&win) {
+        if let Some(c) = self.core_mut().globals_mut().clients.get_mut(&win) {
             c.old_geo = c.geo;
             c.geo = rect;
             if c.is_floating {
@@ -289,7 +289,7 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {
-        if let Some(client) = self.g_mut().clients.get_mut(&win) {
+        if let Some(client) = self.core_mut().globals_mut().clients.get_mut(&win) {
             client.border_width = width.max(0);
         }
         // Border width is X11-specific; Wayland doesn't support border width
@@ -317,18 +317,18 @@ impl<'a> WmCtx<'a> {
     /// the pointer handle and the external `pointer_location` variable are
     /// both updated atomically.
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
-        let bar_height = self.g().cfg.bar_height;
+        let bar_height = self.core().globals().cfg.bar_height;
 
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
-            let mon = self.g().selected_monitor();
+            let mon = self.core().globals().selected_monitor();
             let target_x = (mon.work_rect.x + mon.work_rect.w / 2) as f64;
             let target_y = (mon.work_rect.y + mon.work_rect.h / 2) as f64;
             self.warp_pointer(target_x, target_y);
             return;
         }
 
-        let Some(c) = self.g().clients.get(&win).cloned() else {
+        let Some(c) = self.core().globals().clients.get(&win).cloned() else {
             return;
         };
 
@@ -343,9 +343,13 @@ impl<'a> WmCtx<'a> {
                 && ptr_x < c.geo.x + c.geo.w + c.border_width * 2
                 && ptr_y < c.geo.y + c.geo.h + c.border_width * 2);
 
-        let on_bar = self.g().monitor(c.monitor_id).is_some_and(|mon| {
-            (ptr_y > mon.bar_y && ptr_y < mon.bar_y + bar_height) || (mon.topbar && ptr_y == 0)
-        });
+        let on_bar = self
+            .core()
+            .globals()
+            .monitor(c.monitor_id)
+            .is_some_and(|mon| {
+                (ptr_y > mon.bar_y && ptr_y < mon.bar_y + bar_height) || (mon.topbar && ptr_y == 0)
+            });
 
         if in_window || on_bar {
             return;

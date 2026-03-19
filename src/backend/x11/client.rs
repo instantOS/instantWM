@@ -16,7 +16,7 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Windo
     let Some(data) = fetch_wm_normal_hints(x11, win) else {
         return;
     };
-    let Some(c) = core.g.clients.get_mut(&win) else {
+    let Some(c) = core.globals_mut().clients.get_mut(&win) else {
         return;
     };
     let flags = *data.first().unwrap_or(&0);

@@ -17,14 +17,14 @@ use crate::types::WindowId;
 /// and need to avoid borrow checker issues.
 pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
     // Extract data first to avoid borrow issues
-    let mon = core.g.selected_monitor();
+    let mon = core.globals().selected_monitor();
     let target_tags = if mon.current_tag > 0 {
         Some(1 << (mon.current_tag - 1))
     } else {
         None
     };
 
-    if let Some(client) = core.g.clients.get_mut(&win)
+    if let Some(client) = core.globals_mut().clients.get_mut(&win)
         && client.issticky
     {
         client.issticky = false;

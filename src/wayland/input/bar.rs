@@ -18,12 +18,12 @@ pub fn update_wayland_bar_hit_state(
     };
     let mid = crate::types::find_monitor_by_rect(wm.g.monitors.monitors(), &rect)?;
     let mut ctx = wm.ctx();
-    if mid != ctx.g.selected_monitor_id() {
-        ctx.g.monitors.set_sel_idx(mid);
+    if mid != ctx.core().globals().selected_monitor_id() {
+        ctx.core_mut().globals_mut().monitors.set_sel_idx(mid);
     }
 
-    let bar_h = ctx.g.cfg.bar_height.max(1);
-    let mon = ctx.g.selected_monitor();
+    let bar_h = ctx.core().globals().cfg.bar_height.max(1);
+    let mon = ctx.core().globals().selected_monitor();
     let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
     if !in_bar {
         let had_hover = mon.gesture != crate::types::Gesture::None;
@@ -33,21 +33,21 @@ pub fn update_wayland_bar_hit_state(
         return None;
     }
 
-    let mon = ctx.g.selected_monitor();
+    let mon = ctx.core().globals().selected_monitor();
     let local_x = root_x - mon.work_rect.x;
     let pos = mon.bar_position_at_x(ctx.core(), local_x);
     if reset_start_menu && pos == BarPosition::StartMenu {
         crate::bar::reset_bar_common(ctx.core_mut());
     }
 
-    let old_gesture = ctx.g.selected_monitor().gesture;
+    let old_gesture = ctx.core().globals().selected_monitor().gesture;
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
         bar_position_to_gesture(pos)
     };
     if old_gesture != gesture {
-        ctx.g.selected_monitor_mut().gesture = gesture;
+        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
         ctx.request_bar_update(Some(mid));
     }
 
@@ -168,7 +168,7 @@ fn dispatch_wayland_bar_button(
     // numlockmask is X11-specific; on Wayland modifier state comes pre-cleaned
     // by the compositor, so we treat it as 0.
     const NUMLOCKMASK: u32 = 0;
-    let buttons = ctx.core.g.cfg.buttons.clone();
+    let buttons = ctx.core.globals().cfg.buttons.clone();
     for b in &buttons {
         if !b.matches(pos) || b.button != btn {
             continue;

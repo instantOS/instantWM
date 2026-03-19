@@ -18,7 +18,7 @@ fn next_tiled(
     ctx: &WmCtx,
     start_win: Option<crate::types::WindowId>,
 ) -> Option<crate::types::WindowId> {
-    let mon = ctx.g().selected_monitor();
+    let mon = ctx.core().globals().selected_monitor();
     let selected = mon.selected_tags();
 
     let start_idx = if let Some(win) = start_win {
@@ -43,9 +43,9 @@ fn next_tiled(
 }
 
 fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
-    ctx.g_mut().detach(win);
-    ctx.g_mut().attach(win);
-    let monitor_id = ctx.g().clients.monitor_id(win);
+    ctx.core_mut().globals_mut().detach(win);
+    ctx.core_mut().globals_mut().attach(win);
+    let monitor_id = ctx.core().globals().clients.monitor_id(win);
     focus_soft(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
@@ -81,7 +81,8 @@ pub fn zoom(ctx: &mut WmCtx) {
     ctx.backend().flush();
 
     let (is_floating, monitor_id) = ctx
-        .g()
+        .core()
+        .globals()
         .clients
         .get(&win)
         .map(|c| (c.is_floating, c.monitor_id))
@@ -89,7 +90,8 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Only meaningful in a tiling layout with a non-floating window.
     let is_tiling = ctx
-        .g()
+        .core()
+        .globals()
         .monitor(monitor_id)
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
@@ -100,7 +102,8 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Find the current master (first tiled client on the monitor).
     let first_on_monitor = ctx
-        .g()
+        .core()
+        .globals()
         .monitor(monitor_id)
         .and_then(|mon| mon.clients.first().copied());
     let first_tiled = first_on_monitor.and_then(|w| next_tiled(ctx, Some(w)));

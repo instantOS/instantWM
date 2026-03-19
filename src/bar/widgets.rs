@@ -13,10 +13,10 @@ pub(crate) fn draw_startmenu_icon(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
     let icon_offset = (bar_height - CLOSE_BUTTON_WIDTH) / 2;
-    let startmenu_invert = ctx.g.selected_monitor().gesture == Gesture::StartMenu;
+    let startmenu_invert = ctx.globals().selected_monitor().gesture == Gesture::StartMenu;
 
-    let startmenu_size = ctx.g.cfg.startmenusize;
-    let scheme = ctx.g.status_scheme();
+    let startmenu_size = ctx.globals().cfg.startmenusize;
+    let scheme = ctx.globals().status_scheme();
 
     painter.set_scheme(scheme);
 
@@ -55,13 +55,13 @@ pub(crate) fn draw_tag_indicators(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
-    let horizontal_padding = ctx.g.cfg.horizontal_padding;
+    let horizontal_padding = ctx.globals().cfg.horizontal_padding;
     let lpad = (horizontal_padding / 2) as u32;
-    let bar_dragging = ctx.g.drag.bar_active;
+    let bar_dragging = ctx.globals().drag.bar_active;
 
     let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
 
-    let selmon_gesture = ctx.g.selected_monitor().gesture;
+    let selmon_gesture = ctx.globals().selected_monitor().gesture;
 
     for t in &tags {
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
@@ -72,12 +72,12 @@ pub(crate) fn draw_tag_indicators(
         ctx.bar.cache_tag_width(t.slot, width);
 
         let scheme = ctx
-            .g
+            .globals()
             .tag_scheme(m, t.tag_index as u32, occupied_tags, urg, is_hover);
 
         let mut draw_scheme = scheme;
         if is_hover && bar_dragging {
-            draw_scheme = ctx.g.tag_hover_fill_scheme();
+            draw_scheme = ctx.globals().tag_hover_fill_scheme();
         }
         painter.set_scheme(draw_scheme);
 
@@ -118,14 +118,14 @@ pub(crate) fn draw_layout_indicator(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
-    let horizontal_padding = ctx.g.cfg.horizontal_padding;
+    let horizontal_padding = ctx.globals().cfg.horizontal_padding;
     let ltsymbol = m.layout_symbol();
     let text_w = painter.text_width(&ltsymbol);
     ctx.bar.layout_symbol_width = text_w;
     let w = (text_w + horizontal_padding).max(horizontal_padding);
     let lpad = ((w - text_w) / 2).max(0);
 
-    painter.set_scheme(ctx.g.status_scheme());
+    painter.set_scheme(ctx.globals().status_scheme());
     let start_x = x;
     x = painter.text(x, 0, w, bar_height, lpad, &ltsymbol, false, 0);
 
@@ -150,7 +150,7 @@ pub(crate) fn draw_shutdown_button(
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
     // Use the status scheme as the base colours.
-    painter.set_scheme(ctx.g.status_scheme());
+    painter.set_scheme(ctx.globals().status_scheme());
 
     // Background fill for the button cell.
     painter.rect(x, 0, bar_height, bar_height, true, true);
@@ -207,12 +207,12 @@ pub(crate) fn draw_close_button(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
-    let selmon = ctx.g.selected_monitor();
+    let selmon = ctx.globals().selected_monitor();
     let close_hovered = selmon.gesture == Gesture::CloseButton;
     let is_fullscreen = selmon
         .sel
         .and_then(|selected_window| {
-            ctx.g
+            ctx.globals()
                 .clients
                 .get(&selected_window)
                 .map(|sel_c| sel_c.is_fullscreen && sel_c.win == c.win)
@@ -220,7 +220,7 @@ pub(crate) fn draw_close_button(
         .unwrap_or(false);
 
     let mut scheme = ctx
-        .g
+        .globals()
         .close_button_scheme(close_hovered, c.is_locked, is_fullscreen);
     // Use the scheme detail color for the lower accent bar (matches intended darker tone).
     scheme.fg = scheme.detail;
@@ -261,18 +261,18 @@ fn draw_window_title(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> Option<u32> {
-    let selected_monitor = ctx.g.selected_monitor();
+    let selected_monitor = ctx.globals().selected_monitor();
     let is_hover = selected_monitor.gesture == Gesture::WinTitle(c.win);
 
     let client_name = c.name.as_str();
     let text_w = painter.text_width(client_name);
 
-    painter.set_scheme(ctx.g.window_scheme(c, is_hover));
+    painter.set_scheme(ctx.globals().window_scheme(c, is_hover));
 
     let lpad = if text_w < width - 64 {
         ((width - text_w) as f32 * 0.5) as i32
     } else {
-        ctx.g.cfg.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
+        ctx.globals().cfg.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
     };
 
     painter.text(x, 0, width, bar_height, lpad, client_name, false, 4);
@@ -313,12 +313,12 @@ pub(crate) fn draw_window_titles(
         // Use the passed monitor `m` (not selmon) so that secondary monitors
         // draw their own clients, not the selected monitor's clients.
         let wins: Vec<WindowId> = m
-            .iter_clients(ctx.g.clients.map())
+            .iter_clients(ctx.globals().clients.map())
             .filter_map(|(c_win, c)| c.is_visible_on_tags(selected).then_some(c_win))
             .collect();
 
         for c_win in wins {
-            let Some(c) = ctx.g.clients.get(&c_win) else {
+            let Some(c) = ctx.globals().clients.get(&c_win) else {
                 continue;
             };
             if !c.is_visible_on_tags(selected) {
@@ -350,7 +350,7 @@ pub(crate) fn draw_window_titles(
         return new_activeoffset;
     }
 
-    painter.set_scheme(ctx.g.status_scheme());
+    painter.set_scheme(ctx.globals().status_scheme());
     painter.rect(x, 0, w, bar_height, true, true);
 
     let has_clients = !m.clients.is_empty();

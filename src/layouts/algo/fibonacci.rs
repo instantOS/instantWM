@@ -82,7 +82,7 @@ pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 ///   outward (dwindle / Fibonacci staircase).
 pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;
+    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
     if n == 0 {
         return;
@@ -100,7 +100,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     let mut i: u32 = 0;
 
     for &win in &m.clients {
-        let Some(c) = ctx.g_mut().clients.get(&win) else {
+        let Some(c) = ctx.core_mut().globals_mut().clients.get(&win) else {
             continue;
         };
 
