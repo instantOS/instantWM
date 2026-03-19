@@ -42,9 +42,9 @@ pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
     ensure_dbus_session();
 
-    let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+    let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
     if let Some(wayland) = wm.backend.wayland_data_mut() {
-        init_wayland_globals(&mut wm.g, wayland);
+        init_wayland_globals(&mut (*wm).g, wayland);
     }
 
     let event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
@@ -56,7 +56,7 @@ pub fn run() -> ! {
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_globals(&mut wm.g);
+    state.attach_wm(&mut *wm);
     if let WmBackend::Wayland(data) = &mut wm.backend {
         data.backend.attach_state(&mut state);
     }

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 
 use smithay::utils::IsAlive;
@@ -10,12 +10,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupManager, Space, Window},
     input::{
-        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
+        Seat, SeatState,
     },
     reexports::{
-        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
+        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -27,7 +27,7 @@ use smithay::{
         selection::data_device::DataDeviceState,
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
         xdg_activation::XdgActivationState,
@@ -39,6 +39,7 @@ use smithay::{
 
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
+use crate::wm::Wm;
 
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
@@ -117,7 +118,7 @@ pub struct WaylandState {
 
     // -- Internal state --
     pub(super) next_window_id: u32,
-    globals: Option<&'static mut Globals>,
+    wm: Option<NonNull<Wm>>,
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
@@ -231,7 +232,7 @@ impl WaylandState {
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
-            globals: None,
+            wm: None,
             tracked_devices: Vec::new(),
             last_configured_size: HashMap::new(),
             window_index: HashMap::new(),
@@ -325,29 +326,20 @@ impl WaylandState {
         self.renderer.map(|mut p| unsafe { p.as_mut() })
     }
 
-    /// Attach globals to this state.
-    ///
-    /// This replaces the previous `attach_wm()` pattern. We store a reference
-    /// to Globals instead of a pointer to the entire Wm struct, which avoids
-    /// the circular ownership issue.
-    pub fn attach_globals(&mut self, globals: &mut Globals) {
-        // SAFETY: Globals is owned by Wm which lives for the entire program.
-        // We transmute the lifetime to 'static for storage in WaylandState.
-        // This is safe because:
-        // 1. Globals is allocated as part of Wm which has static lifetime
-        // 2. WaylandState is also created during initialization and lives for the program
-        // 3. We only access globals through this reference while WaylandState is alive
-        self.globals = Some(unsafe { std::mem::transmute::<&mut Globals, &mut Globals>(globals) });
+    /// Attach the WM to this state.
+    pub fn attach_wm(&mut self, wm: &mut Wm) {
+        self.wm = Some(NonNull::from(wm));
     }
 
     #[inline]
     pub(super) fn globals(&self) -> Option<&Globals> {
-        self.globals.as_deref()
+        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
     }
 
     #[inline]
     pub(super) fn globals_mut(&mut self) -> Option<&mut Globals> {
-        self.globals.as_deref_mut()
+        self.wm
+            .map(|mut p: NonNull<Wm>| unsafe { &mut p.as_mut().g })
     }
 
     /// Sync the Smithay space from the Globals state.
