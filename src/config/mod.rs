@@ -31,22 +31,13 @@ pub mod keybindings;
 pub mod keysyms;
 pub mod rules;
 
-// Re-export the most commonly referenced items at the crate::config level
-// so callers don't need to dig into sub-modules unless they want to.
-// `unused_imports` is suppressed because these are *public API re-exports* —
-// not all of them are referenced inside this crate, but they are part of the
-// intended surface area for anyone reading or extending the config.
-#[allow(unused_imports)]
-pub use crate::types::{SchemeBorder, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
-#[allow(unused_imports)]
-pub use appearance::{
-    get_border_colors, get_close_button_colors, get_status_bar_colors, get_tag_colors,
-    get_window_colors,
-};
-#[allow(unused_imports)]
-pub use commands::{Cmd, ExternalCommands, SCRATCHPAD_CLASS, default_commands};
-#[allow(unused_imports)]
-pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT, get_desktop_keybinds, get_keys};
+// Re-export modifier key constants (used by wayland/common.rs via crate::config::*).
+pub use crate::types::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
+
+use commands::{ExternalCommands, default_commands};
+use keybindings::{get_desktop_keybinds, get_keys};
+use mod_consts::BORDERPX;
 
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -65,9 +56,6 @@ pub mod mod_consts {
     /// Bitmask covering all valid tags.
     pub const TAGMASK: u32 = (1 << MAX_TAGS) - 1;
 }
-
-#[allow(unused_imports)]
-pub use mod_consts::{BORDERPX, MAX_TAGLEN, TAGMASK};
 
 // ---------------------------------------------------------------------------
 // Tag configuration

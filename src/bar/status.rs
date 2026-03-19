@@ -412,8 +412,7 @@ pub(crate) fn write_i3bar_click_event<W: Write>(
         writer.write_all(b",\n")?;
     }
 
-    serde_json::to_writer(&mut writer, event)
-        .map_err(std::io::Error::other)?;
+    serde_json::to_writer(&mut writer, event).map_err(std::io::Error::other)?;
     writer.write_all(b"\n")
 }
 

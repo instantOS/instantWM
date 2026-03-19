@@ -44,95 +44,12 @@ mod font;
 // Everything below forms the *stable* public API of this module.  Callers
 // should import from `crate::drw::*` rather than from the sub-modules
 // directly.
-//
-// Many items below are re-exported solely so that external code that was
-// ported directly from C can keep using the same flat namespace.  The
-// `#[allow(unused_imports)]` attribute on each group suppresses the "unused
-// import" lint that fires when a particular symbol isn't referenced inside
-// *this* crate (it may still be used by downstream consumers).
 
-// Color / cursor types and scheme-index constants.
-#[allow(unused_imports)]
-pub use color::{COL_BG, COL_DETAIL, COL_FG, Color, Cursor};
-
-// Font type.
-#[allow(unused_imports)]
-pub use font::Fnt;
+// Color / cursor types.
+pub use color::{Color, Cursor};
 
 // The main drawing context.
 pub use draw::Drw;
 
-// Raw FFI symbols that other modules reference directly.
-//
-// Keep this list as small as possible — new code should go through the safe
-// wrappers on `Drw`.  These exist only for legacy call-sites that call Xlib /
-// Xft functions by hand (e.g. bar widgets that do custom XFillRectangle calls).
-#[allow(unused_imports)]
-pub use ffi::{
-    FC_CHARSET,
-    FC_MATCH_PATTERN,
-    FC_SCALABLE,
-    FC_TRUE,
-    // Fontconfig
-    FcBool,
-    FcCharSet,
-    FcPattern,
-    FcResult,
-    // X11 — window management
-    XChangeWindowAttributes,
-    // X11 — display / screen / root
-    XCloseDisplay,
-    XConfigureWindow,
-    // X11 — drawing primitives
-    XCopyArea,
-    XCreateFontCursor,
-    // X11 — pixmap / GC
-    XCreateGC,
-    XCreatePixmap,
-    XCreateSimpleWindow,
-    XCreateWindow,
-    XDefaultColormap,
-    XDefaultDepth,
-    XDefaultRootWindow,
-    XDefaultScreen,
-    XDefaultVisual,
-    XDrawArc,
-    XDrawRectangle,
-    XEventsQueued,
-    XFillArc,
-    XFillPolygon,
-    XFillRectangle,
-    XFlush,
-    XFreeCursor,
-    XFreeGC,
-    XFreePixmap,
-    XGetWindowAttributes,
-    XGetXCBConnection,
-    XGlyphInfo,
-    XMapWindow,
-    XOpenDisplay,
-    XRenderColor,
-    XSelectInput,
-    XSetForeground,
-    XSetLineAttributes,
-    XSetWindowAttributes,
-    XSync,
-    XWindowAttributes,
-    // Xft
-    XftCharExists,
-    XftColor,
-    XftColorAllocName,
-    XftDraw,
-    XftDrawCreate,
-    XftDrawDestroy,
-    XftDrawStringUtf8,
-    XftFont,
-    XftFontClose,
-    XftFontMatch,
-    XftFontOpenName,
-    XftFontOpenPattern,
-    XftInit,
-    XftResult,
-    XftTextExtentsUtf8,
-    XlibGc,
-};
+// Raw FFI symbols used externally.
+pub use ffi::{XEventsQueued, XFlush};

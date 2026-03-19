@@ -1,4 +1,3 @@
-
 //! Backend abstraction.
 //!
 //! This module supports multiple window-system backends:

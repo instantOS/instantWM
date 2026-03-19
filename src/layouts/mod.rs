@@ -162,20 +162,7 @@ impl FromStr for LayoutKind {
     }
 }
 
-// ── Re-exports: query ─────────────────────────────────────────────────────────
-#[allow(unused_imports)]
-pub use query::find_visible_client;
-
 // ── Re-exports: manager ───────────────────────────────────────────────────────
-#[allow(unused_imports)]
 pub use manager::{
-    arrange, arrange_monitor, command_layout, cycle_layout_direction, inc_nmaster_by, restack,
-    set_layout, set_mfact, toggle_layout,
-};
-
-// ── Re-exports: algorithms (convenience, used by config.rs via `layouts::*`) ──
-#[allow(unused_imports)]
-pub use algo::{
-    bottom_stack, bstackhoriz, deck, dwindle, fibonacci, float_left, gaplessgrid, grid, horizgrid,
-    monocle, overviewlayout, spiral, three_column, tile,
+    arrange, cycle_layout_direction, inc_nmaster_by, restack, set_layout, set_mfact, toggle_layout,
 };

@@ -46,9 +46,4 @@ pub use tcl::three_column;
 pub use overview::overviewlayout;
 
 // ── floating / snap ──────────────────────────────────────────────────────────
-pub use float::{float_left, save_floating};
-
-// `apply_snap_for_window` is used internally by float_left; it is also exported
-// for any call-site that needs to apply snap geometry directly.
-#[allow(unused_imports)]
-pub use float::apply_snap_for_window;
+pub use float::{apply_snap_for_window, float_left, save_floating};

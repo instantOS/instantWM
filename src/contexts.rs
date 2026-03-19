@@ -1,4 +1,3 @@
-
 //! Context split for backend-specific operations.
 //!
 //! Core state (`Globals`, tags/layouts/monitors/clients/config) remains

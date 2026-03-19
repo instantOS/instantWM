@@ -1,4 +1,3 @@
-
 //! Structured data and low-level logic for clients.
 
 use crate::types::{Client, ClientId, WindowId};

@@ -1,4 +1,3 @@
-
 //! Pointer axis (scroll) handling.
 
 use smithay::backend::input::{InputBackend, PointerAxisEvent};
