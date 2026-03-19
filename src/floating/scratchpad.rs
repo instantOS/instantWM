@@ -1,4 +1,3 @@
-use crate::client::{attach, attach_stack, detach, detach_stack};
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::layouts::{arrange, restack};
@@ -106,15 +105,15 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
     }
 
     if target_mon != current_mon {
-        detach(ctx, found);
-        detach_stack(ctx, found);
+        ctx.g_mut().detach(found);
+        ctx.g_mut().detach_stack(found);
 
         if let Some(client) = ctx.g_mut().clients.get_mut(&found) {
             client.monitor_id = current_mon;
         }
 
-        attach(ctx, found);
-        attach_stack(ctx, found);
+        ctx.g_mut().attach(found);
+        ctx.g_mut().attach_stack(found);
     }
 
     let focusfollowsmouse = ctx.g_mut().behavior.focus_follows_mouse;

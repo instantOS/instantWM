@@ -1,4 +1,3 @@
-#![allow(dead_code, clippy::needless_range_loop)]
 //! Linked-list management for the per-monitor client lists.
 //!
 //! All list mutation is now delegated to `ClientManager` methods to maintain
@@ -7,26 +6,6 @@
 use crate::contexts::WmCtx;
 use crate::layouts::arrange;
 use crate::types::WindowId;
-
-// ---------------------------------------------------------------------------
-// High-level orchestration (Flat re-exports)
-// ---------------------------------------------------------------------------
-
-pub fn attach(ctx: &mut WmCtx, win: WindowId) {
-    ctx.g_mut().attach(win);
-}
-
-pub fn detach(ctx: &mut WmCtx, win: WindowId) {
-    ctx.g_mut().detach(win);
-}
-
-pub fn attach_stack(ctx: &mut WmCtx, win: WindowId) {
-    ctx.g_mut().attach_stack(win);
-}
-
-pub fn detach_stack(ctx: &mut WmCtx, win: WindowId) {
-    ctx.g_mut().detach_stack(win);
-}
 
 // ---------------------------------------------------------------------------
 // Traversal helpers
@@ -45,8 +24,7 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
     let clients = &mon.clients;
     let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
 
-    for i in iter_start..clients.len() {
-        let win = clients[i];
+    for &win in clients.iter().skip(iter_start) {
         if let Some(c) = ctx.client(win) {
             if !c.is_floating && c.is_visible_on_tags(selected) && !c.is_hidden {
                 return Some(win);
@@ -59,8 +37,8 @@ pub fn next_tiled(ctx: &WmCtx, start_win: Option<WindowId>) -> Option<WindowId> 
 /// Detach `win` from the client list and re-attach it at the front (master
 /// position), then re-focus and re-arrange the monitor.
 pub fn pop(ctx: &mut WmCtx, win: WindowId) {
-    detach(ctx, win);
-    attach(ctx, win);
+    ctx.g_mut().detach(win);
+    ctx.g_mut().attach(win);
     let monitor_id = ctx.g().clients.monitor_id(win);
     crate::focus::focus_soft(ctx, Some(win));
 

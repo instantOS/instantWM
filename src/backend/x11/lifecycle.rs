@@ -34,7 +34,6 @@ use crate::backend::BackendOps;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
-use crate::client::list::{attach, attach_stack, detach, detach_stack};
 use crate::client::resize;
 use crate::client::state::set_client_state;
 use crate::client::state::{
@@ -89,8 +88,8 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         ctx.backend.flush();
     }
 
-    attach(&mut WmCtx::X11(ctx.reborrow()), w);
-    attach_stack(&mut WmCtx::X11(ctx.reborrow()), w);
+    ctx.core.g.attach(w);
+    ctx.core.g.attach_stack(w);
 
     if let Some(monitor_id) = ctx.core.g.clients.monitor_id(w) {
         if let Some(mon) = ctx.core.g.monitor_mut(monitor_id) {
@@ -455,9 +454,9 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     }
 
     {
-        let mut tmp = WmCtx::X11(ctx.reborrow());
-        detach(&mut tmp, win);
-        detach_stack(&mut tmp, win);
+        let g = &mut ctx.core.g;
+        g.detach(win);
+        g.detach_stack(win);
     }
 
     if !destroyed {

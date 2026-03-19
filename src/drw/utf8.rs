@@ -1,4 +1,3 @@
-#![allow(dead_code, clippy::needless_range_loop)]
 //! UTF-8 decoding utilities.
 //!
 //! This is a direct port of the UTF-8 decoding logic from the original C `drw.c`.
@@ -54,14 +53,12 @@ pub fn utf8decode(bytes: &[u8]) -> (usize, u32) {
     // Strip the leading-byte tag bits to obtain the initial data bits.
     let mut codepoint = (bytes[0] as u32) & !(UTFMASK[len] as u32);
 
-    for i in 1..len {
-        let byte_class = utf8decode_byte(bytes[i]);
-        // Continuation bytes must have class 0.
+    for (i, &byte) in bytes.iter().skip(1).take(len - 1).enumerate() {
+        let byte_class = utf8decode_byte(byte);
         if byte_class != 0 {
-            return (i, UTF_INVALID);
+            return (i + 1, UTF_INVALID);
         }
-        // Each continuation byte contributes 6 bits.
-        codepoint = (codepoint << 6) | ((bytes[i] as u32) & !(UTFMASK[0] as u32));
+        codepoint = (codepoint << 6) | ((byte as u32) & !(UTFMASK[0] as u32));
     }
 
     (len, utf8validate(codepoint, len))

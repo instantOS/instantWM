@@ -4,7 +4,7 @@
 //! for monitor-related operations.
 
 use crate::backend::BackendOps;
-use crate::client::{attach, attach_stack, detach, detach_stack, set_client_tag_prop};
+use crate::client::set_client_tag_prop;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus_soft, unfocus_win};
 use crate::types::*;
@@ -212,8 +212,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         unfocus_win(ctx, win, true);
     }
 
-    detach(ctx, win);
-    detach_stack(ctx, win);
+    ctx.g_mut().detach(win);
+    ctx.g_mut().detach_stack(win);
 
     if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
         client.monitor_id = target_mon;
@@ -226,8 +226,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         crate::tags::reset_sticky_win(ctx.core_mut(), win);
     }
 
-    attach(ctx, win);
-    attach_stack(ctx, win);
+    ctx.g_mut().attach(win);
+    ctx.g_mut().attach_stack(win);
     if let WmCtx::X11(x11) = ctx {
         set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
@@ -563,13 +563,13 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
             // Create temporary WmCtx wrapper for each iteration
             let mut wm_ctx = WmCtx::X11(x11.reborrow());
             for win in clients_to_move {
-                detach(&mut wm_ctx, win);
-                detach_stack(&mut wm_ctx, win);
+                wm_ctx.g_mut().detach(win);
+                wm_ctx.g_mut().detach_stack(win);
                 if let Some(c) = wm_ctx.client_mut(win) {
                     c.monitor_id = 0;
                 }
-                attach(&mut wm_ctx, win);
-                attach_stack(&mut wm_ctx, win);
+                wm_ctx.g_mut().attach(win);
+                wm_ctx.g_mut().attach_stack(win);
                 dirty = true;
             }
             cleanup_monitor(&mut wm_ctx, i);
