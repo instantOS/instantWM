@@ -24,12 +24,12 @@ pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
         None
     };
 
-    if let Some(client) = core.g.clients.get_mut(&win) {
-        if client.issticky {
-            client.issticky = false;
-            if let Some(tags) = target_tags {
-                client.tags = tags;
-            }
+    if let Some(client) = core.g.clients.get_mut(&win)
+        && client.issticky
+    {
+        client.issticky = false;
+        if let Some(tags) = target_tags {
+            client.tags = tags;
         }
     }
 }

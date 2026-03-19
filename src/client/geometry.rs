@@ -86,10 +86,8 @@ pub fn apply_size_hints(
     rect.enforce_minimum(bar_height, bar_height);
 
     // Phase 4: Apply ICCCM size hints (X11 only).
-    if should_apply_hints {
-        if let Some(x11_backend) = x11 {
-            apply_icccm_size_hints_x11(core, x11_backend, win, rect);
-        }
+    if should_apply_hints && let Some(x11_backend) = x11 {
+        apply_icccm_size_hints_x11(core, x11_backend, win, rect);
     }
 
     rect.differs_from(&old_geo)

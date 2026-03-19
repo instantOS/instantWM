@@ -460,11 +460,9 @@ pub fn handle_bar_drop(
     //
     // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
-    if was_floating {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-            client.float_geo.w = grab_start_rect.w;
-            client.float_geo.h = grab_start_rect.h;
-        }
+    if was_floating && let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+        client.float_geo.w = grab_start_rect.w;
+        client.float_geo.h = grab_start_rect.h;
     }
 }
 

@@ -123,11 +123,11 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
         let clients = ctx.g().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx.client(win) {
-                if TagMask::from_bits(c.tags).intersects(next_mask) {
-                    found = true;
-                    break;
-                }
+            if let Some(c) = ctx.client(win)
+                && TagMask::from_bits(c.tags).intersects(next_mask)
+            {
+                found = true;
+                break;
             }
         }
 

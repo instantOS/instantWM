@@ -177,11 +177,11 @@ pub fn mouse_drag_loop<F>(
                     }
 
                     // Now process the non-motion event we peeked.
-                    if let x11rb::protocol::Event::ButtonRelease(br) = next_evt {
-                        if br.detail == btn.as_u8() {
-                            ungrab(ctx);
-                            return;
-                        }
+                    if let x11rb::protocol::Event::ButtonRelease(br) = next_evt
+                        && br.detail == btn.as_u8()
+                    {
+                        ungrab(ctx);
+                        return;
                     }
                     if !on_event(ctx, &next_evt) {
                         ungrab(ctx);

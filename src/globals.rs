@@ -383,23 +383,22 @@ impl Globals {
 
     /// Attach `win` to its assigned monitor's focus list.
     pub fn attach(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win) {
-            if let Some(mon) = self.monitors.get_mut(mid) {
-                mon.clients.insert(0, win);
-            }
+        if let Some(mid) = self.clients.monitor_id(win)
+            && let Some(mon) = self.monitors.get_mut(mid)
+        {
+            mon.clients.insert(0, win);
         }
     }
 
     /// Detach `win` from its assigned monitor's focus list.
     pub fn detach(&mut self, win: WindowId) {
         let monitor_id = self.clients.monitor_id(win);
-        if let Some(mid) = monitor_id {
-            if let Some(mon) = self.monitors.get_mut(mid) {
-                if mon.clients.contains(&win) {
-                    mon.clients.retain(|&w| w != win);
-                    return;
-                }
-            }
+        if let Some(mid) = monitor_id
+            && let Some(mon) = self.monitors.get_mut(mid)
+            && mon.clients.contains(&win)
+        {
+            mon.clients.retain(|&w| w != win);
+            return;
         }
 
         // Fallback: search all monitors if not found on the assigned one.
@@ -412,12 +411,12 @@ impl Globals {
 
     /// Attach `win` to its assigned monitor's stacking list.
     pub fn attach_stack(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win) {
-            if let Some(mon) = self.monitors.get_mut(mid) {
-                mon.stack.insert(0, win);
-                if mon.sel.is_none() {
-                    mon.sel = Some(win);
-                }
+        if let Some(mid) = self.clients.monitor_id(win)
+            && let Some(mon) = self.monitors.get_mut(mid)
+        {
+            mon.stack.insert(0, win);
+            if mon.sel.is_none() {
+                mon.sel = Some(win);
             }
         }
     }
@@ -435,11 +434,12 @@ impl Globals {
                     mon.sel = None;
                     let selected = mon.selected_tag_mask();
                     for &c_win in &mon.stack {
-                        if let Some(c) = clients.get(&c_win) {
-                            if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
-                                mon.sel = Some(c_win);
-                                break;
-                            }
+                        if let Some(c) = clients.get(&c_win)
+                            && c.is_visible_on_tags(selected.bits())
+                            && !c.is_hidden
+                        {
+                            mon.sel = Some(c_win);
+                            break;
                         }
                     }
                 }
@@ -448,12 +448,11 @@ impl Globals {
             false
         };
 
-        if let Some(mid) = monitor_id {
-            if let Some(mon) = self.monitors.get_mut(mid) {
-                if handle_monitor(mon, &self.clients) {
-                    return;
-                }
-            }
+        if let Some(mid) = monitor_id
+            && let Some(mon) = self.monitors.get_mut(mid)
+            && handle_monitor(mon, &self.clients)
+        {
+            return;
         }
 
         // Fallback: search all monitors if not found on the assigned one.

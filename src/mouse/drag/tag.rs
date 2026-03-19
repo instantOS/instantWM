@@ -136,26 +136,24 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
     // Clear state first so re-entrant calls are safe.
     ctx.g_mut().drag.tag.active = false;
 
-    if cursor_on_bar {
-        if let Some((x, _, _)) = last_motion {
-            let position = {
-                let core = ctx.core();
-                let mon = core.g.selected_monitor();
-                let local_x = x - mon.work_rect.x;
-                mon.bar_position_at_x(core, local_x)
-            };
+    if cursor_on_bar && let Some((x, _, _)) = last_motion {
+        let position = {
+            let core = ctx.core();
+            let mon = core.g.selected_monitor();
+            let local_x = x - mon.work_rect.x;
+            mon.bar_position_at_x(core, local_x)
+        };
 
-            if let BarPosition::Tag(tag_idx) = position {
-                let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
-                if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
-                    if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
-                        crate::tags::client_tags::set_client_tag_ctx(ctx, win, tag_mask);
-                    }
-                } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
-                    crate::tags::client_tags::tag_all_ctx(ctx, tag_mask);
-                } else if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
-                    crate::tags::client_tags::follow_tag_ctx(ctx, win, tag_mask);
+        if let BarPosition::Tag(tag_idx) = position {
+            let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
+            if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
+                if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
+                    crate::tags::client_tags::set_client_tag_ctx(ctx, win, tag_mask);
                 }
+            } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
+                crate::tags::client_tags::tag_all_ctx(ctx, tag_mask);
+            } else if let Some(win) = ctx.g_mut().monitor(selmon_id).and_then(|m| m.sel) {
+                crate::tags::client_tags::follow_tag_ctx(ctx, win, tag_mask);
             }
         }
     }

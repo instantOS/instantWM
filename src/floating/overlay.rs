@@ -505,13 +505,13 @@ pub fn set_overlay_mode(ctx: &mut WmCtx, mode: OverlayMode) {
     }
 
     let mon = ctx.g_mut().selected_monitor();
-    if let Some(overlay_win) = mon.overlay {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win) {
-            if mode.is_vertical() {
-                client.geo.h = mon_wh / 3;
-            } else {
-                client.geo.w = mon_ww / 3;
-            }
+    if let Some(overlay_win) = mon.overlay
+        && let Some(client) = ctx.g_mut().clients.get_mut(&overlay_win)
+    {
+        if mode.is_vertical() {
+            client.geo.h = mon_wh / 3;
+        } else {
+            client.geo.w = mon_ww / 3;
         }
     }
 

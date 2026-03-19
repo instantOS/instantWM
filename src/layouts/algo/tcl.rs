@@ -163,10 +163,10 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 false,
             );
 
-            if cell_h != m.work_rect.h {
-                if let Some(c) = ctx.g_mut().clients.get(&win) {
-                    y = c.geo.y + c.total_height();
-                }
+            if cell_h != m.work_rect.h
+                && let Some(c) = ctx.g_mut().clients.get(&win)
+            {
+                y = c.geo.y + c.total_height();
             }
         }
     }
@@ -217,10 +217,10 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 false,
             );
 
-            if cell_h != m.work_rect.h {
-                if let Some(c) = ctx.g_mut().clients.get(&win) {
-                    y = c.geo.y + c.total_height();
-                }
+            if cell_h != m.work_rect.h
+                && let Some(c) = ctx.g_mut().clients.get(&win)
+            {
+                y = c.geo.y + c.total_height();
             }
         }
     }

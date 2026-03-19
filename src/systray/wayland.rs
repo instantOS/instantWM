@@ -557,18 +557,17 @@ fn reconcile_items_embedded(
     let mut seen = HashSet::new();
     for id in &alive {
         seen.insert(id.clone());
-        if let Some((service, path)) = parse_sni_id(id) {
-            if let Some((icon_rgba, icon_w, icon_h)) =
+        if let Some((service, path)) = parse_sni_id(id)
+            && let Some((icon_rgba, icon_w, icon_h)) =
                 fetch_item_icon_on_conn(conn, &service, &path)
-            {
-                let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
-                    service,
-                    path,
-                    icon_rgba,
-                    icon_w,
-                    icon_h,
-                }));
-            }
+        {
+            let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
+                service,
+                path,
+                icon_rgba,
+                icon_w,
+                icon_h,
+            }));
         }
     }
 
@@ -590,18 +589,17 @@ fn reconcile_items(
     let mut seen = HashSet::new();
     for id in services {
         seen.insert(id.clone());
-        if let Some((service, path)) = parse_sni_id(&id) {
-            if let Some((icon_rgba, icon_w, icon_h)) =
+        if let Some((service, path)) = parse_sni_id(&id)
+            && let Some((icon_rgba, icon_w, icon_h)) =
                 fetch_item_icon_on_conn(conn, &service, &path)
-            {
-                let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
-                    service,
-                    path,
-                    icon_rgba,
-                    icon_w,
-                    icon_h,
-                }));
-            }
+        {
+            let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
+                service,
+                path,
+                icon_rgba,
+                icon_w,
+                icon_h,
+            }));
         }
     }
 

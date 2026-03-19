@@ -322,42 +322,41 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 /// Clear `SUBSTRUCTURE_NOTIFY` on `root` and `STRUCTURE_NOTIFY` on `win` so
 /// that the imminent `unmap_window` call does not trigger an unmanage.
 fn suppress_unmap_events(conn: &x11rb::rust_connection::RustConnection, root: Window, win: Window) {
-    if let Ok(cookie) = conn.get_window_attributes(root) {
-        if let Ok(ra) = cookie.reply() {
-            let mask =
-                EventMask::from(ra.your_event_mask.bits() & !EventMask::SUBSTRUCTURE_NOTIFY.bits());
-            let _ = conn
-                .change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
-        }
+    if let Ok(cookie) = conn.get_window_attributes(root)
+        && let Ok(ra) = cookie.reply()
+    {
+        let mask =
+            EventMask::from(ra.your_event_mask.bits() & !EventMask::SUBSTRUCTURE_NOTIFY.bits());
+        let _ =
+            conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     }
 
-    if let Ok(cookie) = conn.get_window_attributes(win) {
-        if let Ok(ca) = cookie.reply() {
-            let mask =
-                EventMask::from(ca.your_event_mask.bits() & !EventMask::STRUCTURE_NOTIFY.bits());
-            let _ = conn
-                .change_window_attributes(win, &ChangeWindowAttributesAux::new().event_mask(mask));
-        }
+    if let Ok(cookie) = conn.get_window_attributes(win)
+        && let Ok(ca) = cookie.reply()
+    {
+        let mask = EventMask::from(ca.your_event_mask.bits() & !EventMask::STRUCTURE_NOTIFY.bits());
+        let _ =
+            conn.change_window_attributes(win, &ChangeWindowAttributesAux::new().event_mask(mask));
     }
 }
 
 /// Re-read and restore the event masks on `root` and `win` after an unmap.
 fn restore_event_masks(conn: &x11rb::rust_connection::RustConnection, root: Window, win: Window) {
-    if let Ok(cookie) = conn.get_window_attributes(root) {
-        if let Ok(ra) = cookie.reply() {
-            let _ = conn.change_window_attributes(
-                root,
-                &ChangeWindowAttributesAux::new().event_mask(ra.your_event_mask),
-            );
-        }
+    if let Ok(cookie) = conn.get_window_attributes(root)
+        && let Ok(ra) = cookie.reply()
+    {
+        let _ = conn.change_window_attributes(
+            root,
+            &ChangeWindowAttributesAux::new().event_mask(ra.your_event_mask),
+        );
     }
 
-    if let Ok(cookie) = conn.get_window_attributes(win) {
-        if let Ok(ca) = cookie.reply() {
-            let _ = conn.change_window_attributes(
-                win,
-                &ChangeWindowAttributesAux::new().event_mask(ca.your_event_mask),
-            );
-        }
+    if let Ok(cookie) = conn.get_window_attributes(win)
+        && let Ok(ca) = cookie.reply()
+    {
+        let _ = conn.change_window_attributes(
+            win,
+            &ChangeWindowAttributesAux::new().event_mask(ca.your_event_mask),
+        );
     }
 }

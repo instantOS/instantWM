@@ -60,12 +60,12 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         .g
         .monitors
         .find_monitor_for(event_win, ctx.core.g.clients.map())
+        && selmon_id != clicked_mon
+        && (focusfollowsmouse || e.detail <= 3)
     {
-        if selmon_id != clicked_mon && (focusfollowsmouse || e.detail <= 3) {
-            ctx.core.g.set_selected_monitor(clicked_mon);
-            selmon_id = clicked_mon;
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-        }
+        ctx.core.g.set_selected_monitor(clicked_mon);
+        selmon_id = clicked_mon;
+        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
     };
 
     // Determine the full bar position — this carries the exact target
@@ -131,26 +131,24 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         bar_pos = BarPosition::Root;
     };
 
-    if bar_pos == BarPosition::Root {
-        if let Some(mon) = ctx.core.g.monitor(selmon_id) {
-            if let Some(_selected_window) = mon.sel {
-                if let AltCursor::Resize(dir) = altcursor {
-                    crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
-                    let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
-                    let mut x11_ctx = ctx.reborrow();
-                    if btn == MouseButton::Right {
-                        crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
-                    } else if btn == MouseButton::Left {
-                        if dir == crate::types::ResizeDirection::Top {
-                            crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
-                        } else {
-                            crate::mouse::resize_mouse_directional(&mut x11_ctx, Some(dir), btn);
-                        }
-                    }
-                    return;
-                }
+    if bar_pos == BarPosition::Root
+        && let Some(mon) = ctx.core.g.monitor(selmon_id)
+        && let Some(_selected_window) = mon.sel
+        && let AltCursor::Resize(dir) = altcursor
+    {
+        crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
+        let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
+        let mut x11_ctx = ctx.reborrow();
+        if btn == MouseButton::Right {
+            crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
+        } else if btn == MouseButton::Left {
+            if dir == crate::types::ResizeDirection::Top {
+                crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
+            } else {
+                crate::mouse::resize_mouse_directional(&mut x11_ctx, Some(dir), btn);
             }
         }
+        return;
     };
 
     let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
@@ -329,15 +327,14 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                     &ctx.core,
                     ctx.x11.conn,
                     ctx.x11_runtime.root,
-                ) {
-                    if Some(newc) != selected_window {
-                        crate::focus::focus_soft_x11(
-                            &mut ctx.core,
-                            &ctx.x11,
-                            ctx.x11_runtime,
-                            Some(newc),
-                        );
-                    }
+                ) && Some(newc) != selected_window
+                {
+                    crate::focus::focus_soft_x11(
+                        &mut ctx.core,
+                        &ctx.x11,
+                        ctx.x11_runtime,
+                        Some(newc),
+                    );
                 }
             }
             return;
@@ -356,12 +353,12 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                 .monitors
                 .find_monitor_for(event_win, ctx.core.g.clients.map())
         };
-        if let Some(new_mon_id) = target_mon {
-            if new_mon_id != selmon_id {
-                ctx.core.g.set_selected_monitor(new_mon_id);
-                crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-                return;
-            }
+        if let Some(new_mon_id) = target_mon
+            && new_mon_id != selmon_id
+        {
+            ctx.core.g.set_selected_monitor(new_mon_id);
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
+            return;
         }
     }
 
@@ -476,12 +473,11 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         if let Some(new_mon) =
             crate::types::find_monitor_by_rect(ctx.core.g.monitors.monitors(), &rect)
                 .or(Some(ctx.core.g.selected_monitor_id()))
+            && new_mon != selmon_id
         {
-            if new_mon != selmon_id {
-                ctx.core.g.set_selected_monitor(new_mon);
-                crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-                return;
-            }
+            ctx.core.g.set_selected_monitor(new_mon);
+            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
+            return;
         }
     };
 

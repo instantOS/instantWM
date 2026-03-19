@@ -149,16 +149,16 @@ fn dispatch_pointer_motion(
 
     // Phase 3: Handle resize drag motion (early return path)
     let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        if handle_resize_drag_motion(
+    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
+        && handle_resize_drag_motion(
             &mut ctx,
             state,
             pointer_handle,
             pointer_focus.clone(),
             time_msec,
-        ) {
-            return;
-        }
+        )
+    {
+        return;
     }
 
     // Phase 4: Handle bar interaction (early return path)
@@ -276,14 +276,13 @@ fn resolve_pointer_focus(
 
     // If the logical window differs from the surface Smithay found,
     // clear pointer focus so events don't fall through to the background.
-    if !in_bar_band && !in_bar_guard_band {
-        if let Some(logical) = hovered_win {
-            if let Some((surf, _)) = &pointer_focus {
-                if find_hovered_window_for_surface(wm, surf) != Some(logical) {
-                    pointer_focus = None;
-                }
-            }
-        }
+    if !in_bar_band
+        && !in_bar_guard_band
+        && let Some(logical) = hovered_win
+        && let Some((surf, _)) = &pointer_focus
+        && find_hovered_window_for_surface(wm, surf) != Some(logical)
+    {
+        pointer_focus = None;
     }
 
     (pointer_focus, hovered_win)

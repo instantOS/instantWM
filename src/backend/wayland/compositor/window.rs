@@ -51,33 +51,33 @@ impl WaylandState {
         }
 
         // Check for unmanaged X11 overlay
-        if let Some(x11) = window.x11_surface() {
-            if is_unmanaged_x11_overlay(x11) {
-                if is_launcher_x11_surface(x11) {
-                    return WindowType::Launcher;
-                }
-                return WindowType::Overlay;
-            }
-        }
-
-        // Check window marker for overlay classification
-        if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
-            if marker.is_overlay {
-                // Check if it's a launcher by title/class
-                if let Some(x11) = window.x11_surface() {
-                    if is_launcher_x11_surface(x11) {
-                        return WindowType::Launcher;
-                    }
-                }
-                return WindowType::Overlay;
-            }
-        }
-
-        // Check X11 surface properties
-        if let Some(x11) = window.x11_surface() {
+        if let Some(x11) = window.x11_surface()
+            && is_unmanaged_x11_overlay(x11)
+        {
             if is_launcher_x11_surface(x11) {
                 return WindowType::Launcher;
             }
+            return WindowType::Overlay;
+        }
+
+        // Check window marker for overlay classification
+        if let Some(marker) = window.user_data().get::<WindowIdMarker>()
+            && marker.is_overlay
+        {
+            // Check if it's a launcher by title/class
+            if let Some(x11) = window.x11_surface()
+                && is_launcher_x11_surface(x11)
+            {
+                return WindowType::Launcher;
+            }
+            return WindowType::Overlay;
+        }
+
+        // Check X11 surface properties
+        if let Some(x11) = window.x11_surface()
+            && is_launcher_x11_surface(x11)
+        {
+            return WindowType::Launcher;
         }
 
         WindowType::Normal
@@ -152,12 +152,11 @@ impl WaylandState {
         self.window_index.insert(window_id, window.clone());
         self.ensure_client_for_window(window_id);
 
-        if let Some(title) = self.window_title(window_id) {
-            if let Some(g) = self.globals_mut() {
-                if let Some(client) = g.clients.get_mut(&window_id) {
-                    client.name = title;
-                }
-            }
+        if let Some(title) = self.window_title(window_id)
+            && let Some(g) = self.globals_mut()
+            && let Some(client) = g.clients.get_mut(&window_id)
+        {
+            client.name = title;
         }
 
         if window.toplevel().is_some() {
@@ -172,10 +171,10 @@ impl WaylandState {
             self.last_configured_size.insert(window_id, target);
         }
         if let Some(g) = self.globals_mut() {
-            if let Some(monitor_id) = g.clients.monitor_id(window_id) {
-                if let Some(mon) = g.monitor_mut(monitor_id) {
-                    mon.sel = Some(window_id);
-                }
+            if let Some(monitor_id) = g.clients.monitor_id(window_id)
+                && let Some(mon) = g.monitor_mut(monitor_id)
+            {
+                mon.sel = Some(window_id);
             }
             g.dirty.layout = true;
             g.dirty.space = true;
@@ -216,10 +215,10 @@ impl WaylandState {
             self.space.raise_element(&element, false);
 
             // XWayland requires us to explicitly restack the X11 surface so X clients draw correctly
-            if let Some(surface) = element.x11_surface() {
-                if let Some(xwm) = self.xwm.as_mut() {
-                    let _ = xwm.raise_window(surface);
-                }
+            if let Some(surface) = element.x11_surface()
+                && let Some(xwm) = self.xwm.as_mut()
+            {
+                let _ = xwm.raise_window(surface);
             }
         }
         self.raise_unmanaged_x11_windows();
@@ -259,12 +258,12 @@ impl WaylandState {
         }
 
         // Check if window is alive - don't focus dying windows
-        if let Some(ref win) = focus_window {
-            if !win.alive() {
-                log::debug!("set_focus: window {:?} is dying, clearing focus", window);
-                self.clear_keyboard_focus();
-                return;
-            }
+        if let Some(ref win) = focus_window
+            && !win.alive()
+        {
+            log::debug!("set_focus: window {:?} is dying, clearing focus", window);
+            self.clear_keyboard_focus();
+            return;
         }
 
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
@@ -276,12 +275,11 @@ impl WaylandState {
             .filter(|&old_id| old_id != window);
 
         // Deactivate the previously focused window
-        if let Some(old_id) = previously_focused {
-            if let Some(old_window) = self.window_index.get(&old_id).cloned() {
-                if old_window.set_activated(false) {
-                    self.send_toplevel_configure(&old_window, None);
-                }
-            }
+        if let Some(old_id) = previously_focused
+            && let Some(old_window) = self.window_index.get(&old_id).cloned()
+            && old_window.set_activated(false)
+        {
+            self.send_toplevel_configure(&old_window, None);
         }
 
         // Activate the new window and set keyboard focus
@@ -301,14 +299,12 @@ impl WaylandState {
         }
 
         // Update WM state to match - mon.sel is the source of truth
-        if let Some(g) = self.globals_mut() {
-            if let Some(_client) = g.clients.get_mut(&window) {
-                if let Some(mon_id) = g.clients.monitor_id(window) {
-                    if let Some(mon) = g.monitor_mut(mon_id) {
-                        mon.sel = Some(window);
-                    }
-                }
-            }
+        if let Some(g) = self.globals_mut()
+            && let Some(_client) = g.clients.get_mut(&window)
+            && let Some(mon_id) = g.clients.monitor_id(window)
+            && let Some(mon) = g.monitor_mut(mon_id)
+        {
+            mon.sel = Some(window);
         }
     }
 
@@ -419,10 +415,10 @@ impl WaylandState {
             keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
         }
         // Clear WM state as well
-        if let Some(g) = self.globals_mut() {
-            if let Some(mon) = g.selected_monitor_mut_opt() {
-                mon.sel = None;
-            }
+        if let Some(g) = self.globals_mut()
+            && let Some(mon) = g.selected_monitor_mut_opt()
+        {
+            mon.sel = None;
         }
     }
 
@@ -591,11 +587,10 @@ impl WaylandState {
                 return Some((result.0, result.1 + surface_origin));
             }
         }
-        if let Some((window, loc)) = self.space.element_under(point) {
-            if let Some(result) = window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
-            {
-                return Some((result.0, result.1 + loc));
-            }
+        if let Some((window, loc)) = self.space.element_under(point)
+            && let Some(result) = window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
+        {
+            return Some((result.0, result.1 + loc));
         }
         None
     }
@@ -655,17 +650,17 @@ impl WaylandState {
         let globals = self.globals()?;
 
         for window in self.space.elements().rev() {
-            if let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) {
-                if let Some(c) = globals.clients.get(&win_id) {
-                    let bw = c.border_width;
-                    // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
-                    if root_x >= c.geo.x
-                        && root_x < c.geo.x + c.geo.w + 2 * bw
-                        && root_y >= c.geo.y
-                        && root_y < c.geo.y + c.geo.h + 2 * bw
-                    {
-                        return Some(win_id);
-                    }
+            if let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id)
+                && let Some(c) = globals.clients.get(&win_id)
+            {
+                let bw = c.border_width;
+                // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
+                if root_x >= c.geo.x
+                    && root_x < c.geo.x + c.geo.w + 2 * bw
+                    && root_y >= c.geo.y
+                    && root_y < c.geo.y + c.geo.h + 2 * bw
+                {
+                    return Some(win_id);
                 }
             }
         }

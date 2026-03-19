@@ -109,18 +109,18 @@ impl ClientManager {
     }
 
     pub fn save_border_width(&mut self, win: WindowId) {
-        if let Some(client) = self.clients.get_mut(&win) {
-            if client.border_width != 0 {
-                client.old_border_width = client.border_width;
-            }
+        if let Some(client) = self.clients.get_mut(&win)
+            && client.border_width != 0
+        {
+            client.old_border_width = client.border_width;
         }
     }
 
     pub fn restore_border_width(&mut self, win: WindowId) {
-        if let Some(client) = self.clients.get_mut(&win) {
-            if client.old_border_width != 0 {
-                client.border_width = client.old_border_width;
-            }
+        if let Some(client) = self.clients.get_mut(&win)
+            && client.old_border_width != 0
+        {
+            client.border_width = client.old_border_width;
         }
     }
 }

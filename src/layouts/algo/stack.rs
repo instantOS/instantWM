@@ -130,10 +130,10 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            if tw != m.work_rect.w {
-                if let Some(c) = ctx.g.clients.get(&client.win) {
-                    tx += c.total_width();
-                }
+            if tw != m.work_rect.w
+                && let Some(c) = ctx.g.clients.get(&client.win)
+            {
+                tx += c.total_width();
             }
         }
     }
@@ -201,10 +201,10 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0,
             );
 
-            if th != m.work_rect.h {
-                if let Some(c) = ctx.g.clients.get(&client.win) {
-                    stack_y_offset += c.total_height();
-                }
+            if th != m.work_rect.h
+                && let Some(c) = ctx.g.clients.get(&client.win)
+            {
+                stack_y_offset += c.total_height();
             }
         }
     }

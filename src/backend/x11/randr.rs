@@ -276,23 +276,23 @@ fn apply_output_config(
     modes: &[randr::ModeInfo],
 ) {
     // Handle enable/disable
-    if let Some(enable) = config.enable {
-        if !enable {
-            // Disable the output by setting CRTC to None
-            if output_info.crtc != 0 {
-                let _ = conn.randr_set_crtc_config(
-                    output_info.crtc,
-                    x11rb::CURRENT_TIME,
-                    config_timestamp,
-                    0,
-                    0,
-                    0, // No mode
-                    randr::Rotation::ROTATE0,
-                    &[], // No outputs
-                );
-            }
-            return;
+    if let Some(enable) = config.enable
+        && !enable
+    {
+        // Disable the output by setting CRTC to None
+        if output_info.crtc != 0 {
+            let _ = conn.randr_set_crtc_config(
+                output_info.crtc,
+                x11rb::CURRENT_TIME,
+                config_timestamp,
+                0,
+                0,
+                0, // No mode
+                randr::Rotation::ROTATE0,
+                &[], // No outputs
+            );
         }
+        return;
     }
 
     // Find the mode to use
@@ -350,23 +350,23 @@ fn apply_output_config_fallback(
     modes: &[randr::ModeInfo],
 ) {
     // Handle enable/disable
-    if let Some(enable) = config.enable {
-        if !enable {
-            // Disable the output by setting CRTC to None
-            if output_info.crtc != 0 {
-                let _ = conn.randr_set_crtc_config(
-                    output_info.crtc,
-                    x11rb::CURRENT_TIME,
-                    config_timestamp,
-                    0,
-                    0,
-                    0, // No mode
-                    randr::Rotation::ROTATE0,
-                    &[], // No outputs
-                );
-            }
-            return;
+    if let Some(enable) = config.enable
+        && !enable
+    {
+        // Disable the output by setting CRTC to None
+        if output_info.crtc != 0 {
+            let _ = conn.randr_set_crtc_config(
+                output_info.crtc,
+                x11rb::CURRENT_TIME,
+                config_timestamp,
+                0,
+                0,
+                0, // No mode
+                randr::Rotation::ROTATE0,
+                &[], // No outputs
+            );
         }
+        return;
     }
 
     // Find the mode to use

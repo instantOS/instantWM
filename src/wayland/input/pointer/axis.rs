@@ -21,10 +21,10 @@ fn resolve_scroll_factor(
     input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
 ) -> f64 {
     for key in &["type:pointer", "type:touchpad", "*"] {
-        if let Some(cfg) = input_config.get(*key) {
-            if let Some(factor) = cfg.scroll_factor {
-                return factor.max(0.0);
-            }
+        if let Some(cfg) = input_config.get(*key)
+            && let Some(factor) = cfg.scroll_factor
+        {
+            return factor.max(0.0);
         }
     }
     1.0
@@ -38,10 +38,10 @@ fn resolve_natural_scroll(
     input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
 ) -> bool {
     for key in &["type:pointer", "type:touchpad", "*"] {
-        if let Some(cfg) = input_config.get(*key) {
-            if let Some(natural_scroll) = cfg.natural_scroll {
-                return natural_scroll == ToggleSetting::Enabled;
-            }
+        if let Some(cfg) = input_config.get(*key)
+            && let Some(natural_scroll) = cfg.natural_scroll
+        {
+            return natural_scroll == ToggleSetting::Enabled;
         }
     }
     false

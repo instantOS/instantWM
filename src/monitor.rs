@@ -176,12 +176,12 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         ctx.g_mut().monitors.selected_monitor_idx -= 1;
     }
 
-    if bar_win != WindowId::default() {
-        if let WmCtx::X11(x11) = ctx {
-            let x11_bar_win: Window = bar_win.into();
-            let _ = x11rb::protocol::xproto::unmap_window(x11.x11.conn, x11_bar_win);
-            let _ = x11rb::protocol::xproto::destroy_window(x11.x11.conn, x11_bar_win);
-        }
+    if bar_win != WindowId::default()
+        && let WmCtx::X11(x11) = ctx
+    {
+        let x11_bar_win: Window = bar_win.into();
+        let _ = x11rb::protocol::xproto::unmap_window(x11.x11.conn, x11_bar_win);
+        let _ = x11rb::protocol::xproto::destroy_window(x11.x11.conn, x11_bar_win);
     }
 }
 
@@ -343,10 +343,10 @@ pub fn update_geom(ctx: &mut WmCtx) -> bool {
     }
 
     // Fall back to Xinerama for X11
-    if let WmCtx::X11(x11) = ctx {
-        if let Some(result) = update_from_xinerama(x11) {
-            return result;
-        }
+    if let WmCtx::X11(x11) = ctx
+        && let Some(result) = update_from_xinerama(x11)
+    {
+        return result;
     }
 
     // Final fallback to single monitor
@@ -531,17 +531,16 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         let bar_height = g.cfg.bar_height;
 
         for (i, info) in unique.iter().enumerate() {
-            if let Some(m) = g.monitors.get_mut(i) {
-                if m.monitor_rect.x != info.x
+            if let Some(m) = g.monitors.get_mut(i)
+                && (m.monitor_rect.x != info.x
                     || m.monitor_rect.y != info.y
                     || m.monitor_rect.w != info.w
-                    || m.monitor_rect.h != info.h
-                {
-                    m.num = i as i32;
-                    m.monitor_rect = *info;
-                    m.work_rect = *info;
-                    m.update_bar_position(bar_height);
-                }
+                    || m.monitor_rect.h != info.h)
+            {
+                m.num = i as i32;
+                m.monitor_rect = *info;
+                m.work_rect = *info;
+                m.update_bar_position(bar_height);
             }
         }
         (
@@ -580,12 +579,11 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         x11.core.g.monitors.set_sel_idx(0);
         if let Ok(cookie) =
             x11rb::protocol::xproto::query_pointer(x11.x11.conn, x11.x11_runtime.root)
+            && let Ok(reply) = cookie.reply()
         {
-            if let Ok(reply) = cookie.reply() {
-                let ptr = (reply.root_x as i32, reply.root_y as i32);
-                if let Some(m) = x11.core.g.monitors.find_monitor_at_pointer(ptr) {
-                    x11.core.g.monitors.set_sel_idx(m);
-                }
+            let ptr = (reply.root_x as i32, reply.root_y as i32);
+            if let Some(m) = x11.core.g.monitors.find_monitor_at_pointer(ptr) {
+                x11.core.g.monitors.set_sel_idx(m);
             }
         }
     }

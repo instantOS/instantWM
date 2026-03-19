@@ -30,26 +30,26 @@ pub fn push(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 
     let selmon_id = ctx.g_mut().selected_monitor_id();
 
-    if let Some(mon) = ctx.g_mut().monitors.get_mut(selmon_id) {
-        if let Some(pos) = mon.clients.iter().position(|&w| w == win) {
-            match direction {
-                Direction::Up => {
-                    if pos > 0 {
-                        mon.clients.swap(pos, pos - 1);
-                    } else {
-                        let last = mon.clients.pop();
-                        if let Some(last_win) = last {
-                            mon.clients.insert(1, last_win);
-                        }
+    if let Some(mon) = ctx.g_mut().monitors.get_mut(selmon_id)
+        && let Some(pos) = mon.clients.iter().position(|&w| w == win)
+    {
+        match direction {
+            Direction::Up => {
+                if pos > 0 {
+                    mon.clients.swap(pos, pos - 1);
+                } else {
+                    let last = mon.clients.pop();
+                    if let Some(last_win) = last {
+                        mon.clients.insert(1, last_win);
                     }
                 }
-                Direction::Down => {
-                    if pos + 1 < mon.clients.len() {
-                        mon.clients.swap(pos, pos + 1);
-                    } else {
-                        let first = mon.clients.remove(0);
-                        mon.clients.push(first);
-                    }
+            }
+            Direction::Down => {
+                if pos + 1 < mon.clients.len() {
+                    mon.clients.swap(pos, pos + 1);
+                } else {
+                    let first = mon.clients.remove(0);
+                    mon.clients.push(first);
                 }
             }
         }

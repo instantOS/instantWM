@@ -25,10 +25,10 @@ pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<W
 
     for i in iter_start..m.clients.len() {
         let win = m.clients[i];
-        if let Some(c) = g.clients.get(&win) {
-            if c.is_visible_on_tags(selected) {
-                return Some(win);
-            }
+        if let Some(c) = g.clients.get(&win)
+            && c.is_visible_on_tags(selected)
+        {
+            return Some(win);
         }
     }
 

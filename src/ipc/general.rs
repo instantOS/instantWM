@@ -49,12 +49,11 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> IpcResponse {
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if wm.ctx().is_wayland() {
-        if let crate::backend::BackendRef::Wayland(wayland) = wm.ctx().backend() {
-            if let Some(display) = wayland.xdisplay() {
-                cmd.env("DISPLAY", format!(":{display}"));
-            }
-        }
+    if wm.ctx().is_wayland()
+        && let crate::backend::BackendRef::Wayland(wayland) = wm.ctx().backend()
+        && let Some(display) = wayland.xdisplay()
+    {
+        cmd.env("DISPLAY", format!(":{display}"));
     }
     match cmd.spawn() {
         Ok(child) => IpcResponse::ok(format!("pid={}", child.id())),

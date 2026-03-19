@@ -264,10 +264,10 @@ fn focus_generic(
     let (target, selection_state_changed) = update_focus_state(core, result);
 
     // Unfocus the previous window if target changed
-    if current_sel != target {
-        if let Some(cur_win) = current_sel {
-            backend.unfocus_current(core, cur_win);
-        }
+    if current_sel != target
+        && let Some(cur_win) = current_sel
+    {
+        backend.unfocus_current(core, cur_win);
     }
 
     if selection_state_changed {
@@ -435,12 +435,12 @@ pub fn hover_focus_target_x11(
     }
 
     if let Some(win) = hovered_win {
-        if let Some(mid) = core.g.clients.monitor_id(win) {
-            if mid != core.g.selected_monitor_id() {
-                core.g.set_selected_monitor(mid);
-                let _ = focus_x11(core, x11, x11_runtime, None, None);
-                return;
-            }
+        if let Some(mid) = core.g.clients.monitor_id(win)
+            && mid != core.g.selected_monitor_id()
+        {
+            core.g.set_selected_monitor(mid);
+            let _ = focus_x11(core, x11, x11_runtime, None, None);
+            return;
         }
 
         let hovered_is_floating = core
@@ -458,16 +458,16 @@ pub fn hover_focus_target_x11(
             return;
         }
     } else {
-        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(x11.conn, x11_runtime.root) {
-            if let Ok(reply) = cookie.reply() {
-                let ptr = (reply.root_x as i32, reply.root_y as i32);
-                if let Some(new_mon_id) = core.g.monitors.find_monitor_at_pointer(ptr) {
-                    if new_mon_id != core.g.selected_monitor_id() {
-                        core.g.set_selected_monitor(new_mon_id);
-                        let _ = focus_x11(core, x11, x11_runtime, None, None);
-                        return;
-                    }
-                }
+        if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(x11.conn, x11_runtime.root)
+            && let Ok(reply) = cookie.reply()
+        {
+            let ptr = (reply.root_x as i32, reply.root_y as i32);
+            if let Some(new_mon_id) = core.g.monitors.find_monitor_at_pointer(ptr)
+                && new_mon_id != core.g.selected_monitor_id()
+            {
+                core.g.set_selected_monitor(new_mon_id);
+                let _ = focus_x11(core, x11, x11_runtime, None, None);
+                return;
             }
         }
     }
@@ -501,10 +501,10 @@ pub fn hover_focus_target_wayland(
     }
 
     // Switch monitor if the hovered window lives on a different one.
-    if let Some(mid) = core.g.clients.monitor_id(hovered_win) {
-        if mid != core.g.selected_monitor_id() {
-            core.g.set_selected_monitor(mid);
-        }
+    if let Some(mid) = core.g.clients.monitor_id(hovered_win)
+        && mid != core.g.selected_monitor_id()
+    {
+        core.g.set_selected_monitor(mid);
     }
 
     // Respect the "don't focus floating windows on hover" setting.
@@ -714,11 +714,12 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let last_mon_id = last_client.monitor_id;
 
     let sel_mon_id = ctx.g().selected_monitor_id();
-    if !ctx.g().monitors.is_empty() && sel_mon_id != last_mon_id {
-        if let Some(sel) = ctx.g().monitor(sel_mon_id).and_then(|m| m.sel) {
-            unfocus_win(ctx, sel, false);
-            ctx.g_mut().set_selected_monitor(last_mon_id);
-        }
+    if !ctx.g().monitors.is_empty()
+        && sel_mon_id != last_mon_id
+        && let Some(sel) = ctx.g().monitor(sel_mon_id).and_then(|m| m.sel)
+    {
+        unfocus_win(ctx, sel, false);
+        ctx.g_mut().set_selected_monitor(last_mon_id);
     }
 
     if let Some(cur) = ctx.selected_client() {

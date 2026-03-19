@@ -41,15 +41,15 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     if !variant.is_empty() {
         cmd.arg("-variant").arg(variant);
     }
-    if let Some(ref opts) = options {
-        if !opts.is_empty() {
-            cmd.arg("-option").arg("").arg("-option").arg(opts);
-        }
+    if let Some(ref opts) = options
+        && !opts.is_empty()
+    {
+        cmd.arg("-option").arg("").arg("-option").arg(opts);
     }
-    if let Some(ref m) = model {
-        if !m.is_empty() {
-            cmd.arg("-model").arg(m);
-        }
+    if let Some(ref m) = model
+        && !m.is_empty()
+    {
+        cmd.arg("-model").arg(m);
     }
 
     cmd.spawn()

@@ -110,11 +110,11 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
 fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let layout = ctx.g().monitor(monitor_id).map(|m| m.current_layout());
-    if let Some(layout) = layout {
-        if let Some(mut m) = ctx.g().monitor(monitor_id).cloned() {
-            layout.arrange(ctx, &mut m);
-            ctx.g_mut().monitors.set_monitor(monitor_id, m);
-        }
+    if let Some(layout) = layout
+        && let Some(mut m) = ctx.g().monitor(monitor_id).cloned()
+    {
+        layout.arrange(ctx, &mut m);
+        ctx.g_mut().monitors.set_monitor(monitor_id, m);
     }
 }
 
@@ -176,15 +176,15 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let mut fullscreen_stack = Vec::new();
     if let Some(m) = ctx.g().monitor(monitor_id) {
         for &win in &m.stack {
-            if let Some(c) = ctx.client(win) {
-                if c.is_visible_on_tags(selected_tags) {
-                    if c.is_true_fullscreen() {
-                        fullscreen_stack.push(win);
-                    } else if c.is_floating {
-                        floating_stack.push(win);
-                    } else {
-                        tiled_stack.push(win);
-                    }
+            if let Some(c) = ctx.client(win)
+                && c.is_visible_on_tags(selected_tags)
+            {
+                if c.is_true_fullscreen() {
+                    fullscreen_stack.push(win);
+                } else if c.is_floating {
+                    floating_stack.push(win);
+                } else {
+                    tiled_stack.push(win);
                 }
             }
         }

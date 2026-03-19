@@ -116,10 +116,8 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             };
 
             // Border width clearing is X11-specific
-            if clear_border {
-                if let WmCtx::X11(x11) = ctx {
-                    x11.x11.set_border_width(win, 0);
-                }
+            if clear_border && let WmCtx::X11(x11) = ctx {
+                x11.x11.set_border_width(win, 0);
             }
             false // No animation needed for tiling
         }
@@ -131,10 +129,10 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let mon = ctx.g().selected_monitor();
     let selected_window = match mon.sel {
         Some(sel) if Some(sel) != mon.overlay => {
-            if let Some(c) = ctx.client(sel) {
-                if c.is_true_fullscreen() {
-                    return;
-                }
+            if let Some(c) = ctx.client(sel)
+                && c.is_true_fullscreen()
+            {
+                return;
             }
             Some(sel)
         }
@@ -147,10 +145,8 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let should_animate = set_window_mode(ctx, win, WindowMode::ToggleFloat);
 
     // Animate when going to floating mode
-    if should_animate {
-        if let Some(saved_geo) = ctx.g().clients.effective_float_geo(win) {
-            animate_client(ctx, win, &saved_geo, 7, 0);
-        }
+    if should_animate && let Some(saved_geo) = ctx.g().clients.effective_float_geo(win) {
+        animate_client(ctx, win, &saved_geo, 7, 0);
     }
 
     let selmon_id = ctx.g().selected_monitor_id();

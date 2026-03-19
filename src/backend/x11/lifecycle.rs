@@ -91,10 +91,10 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     ctx.core.g.attach(w);
     ctx.core.g.attach_stack(w);
 
-    if let Some(monitor_id) = ctx.core.g.clients.monitor_id(w) {
-        if let Some(mon) = ctx.core.g.monitor_mut(monitor_id) {
-            mon.sel = Some(w);
-        }
+    if let Some(monitor_id) = ctx.core.g.clients.monitor_id(w)
+        && let Some(mon) = ctx.core.g.monitor_mut(monitor_id)
+    {
+        mon.sel = Some(w);
     }
 
     register_client_root(&ctx.x11, ctx.x11_runtime, w);
@@ -135,12 +135,12 @@ fn assign_initial_monitor_and_tags(
     trans: Option<WindowId>,
 ) {
     let trans_client = trans.filter(|win| g.clients.contains_key(win));
-    if let Some(tc_win) = trans_client {
-        if let Some(tc) = g.clients.get(&tc_win) {
-            c.monitor_id = tc.monitor_id;
-            c.tags = tc.tags;
-            return;
-        }
+    if let Some(tc_win) = trans_client
+        && let Some(tc) = g.clients.get(&tc_win)
+    {
+        c.monitor_id = tc.monitor_id;
+        c.tags = tc.tags;
+        return;
     }
     c.monitor_id = g.selected_monitor_id();
     c.tags = initial_tags_for_monitor(g, c.monitor_id);
@@ -326,28 +326,26 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
         .get(&w)
         .map(|c| c.is_hidden)
         .unwrap_or(false);
-    if !initially_hidden {
-        if let WmCtx::X11(ctx_x11) = ctx {
-            set_client_state(
-                &ctx_x11.core,
-                &ctx_x11.x11,
-                ctx_x11.x11_runtime,
-                w,
-                WM_STATE_NORMAL,
-            );
-        }
+    if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
+        set_client_state(
+            &ctx_x11.core,
+            &ctx_x11.x11,
+            ctx_x11.x11_runtime,
+            w,
+            WM_STATE_NORMAL,
+        );
     }
-    if let Some(selected_window) = ctx.selected_client() {
-        if let WmCtx::X11(ctx_x11) = ctx {
-            let mut core = ctx_x11.core.reborrow();
-            unfocus_win_x11(
-                &mut core,
-                &ctx_x11.x11,
-                ctx_x11.x11_runtime,
-                selected_window,
-                false,
-            );
-        }
+    if let Some(selected_window) = ctx.selected_client()
+        && let WmCtx::X11(ctx_x11) = ctx
+    {
+        let mut core = ctx_x11.core.reborrow();
+        unfocus_win_x11(
+            &mut core,
+            &ctx_x11.x11,
+            ctx_x11.x11_runtime,
+            selected_window,
+            false,
+        );
     }
     initially_hidden
 }

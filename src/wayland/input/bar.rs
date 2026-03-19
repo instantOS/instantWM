@@ -97,10 +97,10 @@ pub fn dispatch_wayland_bar_click(
                     .get(idx)
                     .map(|it| (menu.service.clone(), menu.path.clone(), it.id, it.enabled))
             });
-            if let Some((service, path, id, enabled)) = target {
-                if enabled {
-                    runtime.dispatch_menu_click_item(service, path, id);
-                }
+            if let Some((service, path, id, enabled)) = target
+                && enabled
+            {
+                runtime.dispatch_menu_click_item(service, path, id);
             }
         }
         wm.wayland_systray_menu = None;

@@ -145,21 +145,21 @@ pub fn resolve_cursor_presentation(
         }
     };
 
-    if let Some(icon) = dnd_icon {
-        if smithay::utils::IsAlive::alive(icon) {
-            let hotspot = with_states(icon, |states| {
-                states
-                    .data_map
-                    .get::<Mutex<CursorImageAttributes>>()
-                    .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
-                    .unwrap_or((0, 0).into())
-            });
-            return CursorPresentation::DndIcon {
-                icon: icon.clone(),
-                hotspot,
-                cursor: Box::new(base),
-            };
-        }
+    if let Some(icon) = dnd_icon
+        && smithay::utils::IsAlive::alive(icon)
+    {
+        let hotspot = with_states(icon, |states| {
+            states
+                .data_map
+                .get::<Mutex<CursorImageAttributes>>()
+                .and_then(|attrs| attrs.lock().ok().map(|guard| guard.hotspot))
+                .unwrap_or((0, 0).into())
+        });
+        return CursorPresentation::DndIcon {
+            icon: icon.clone(),
+            hotspot,
+            cursor: Box::new(base),
+        };
     }
 
     base
@@ -474,13 +474,13 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
 
     for window in state.space.elements() {
         // Only notify windows that are actually visible on this output.
-        if let Some(out_geo) = output_geo {
-            if let Some(win_loc) = state.space.element_location(window) {
-                let win_size = window.geometry().size;
-                let win_rect = smithay::utils::Rectangle::new(win_loc, win_size);
-                if !out_geo.overlaps(win_rect) {
-                    continue;
-                }
+        if let Some(out_geo) = output_geo
+            && let Some(win_loc) = state.space.element_location(window)
+        {
+            let win_size = window.geometry().size;
+            let win_rect = smithay::utils::Rectangle::new(win_loc, win_size);
+            if !out_geo.overlaps(win_rect) {
+                continue;
             }
         }
 

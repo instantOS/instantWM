@@ -228,10 +228,10 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if special_next != SpecialNext::None {
-        if let SpecialNext::Float = special_next {
-            if let Some(c) = core.g.clients.get_mut(&win) {
-                c.is_floating = true;
-            }
+        if let SpecialNext::Float = special_next
+            && let Some(c) = core.g.clients.get_mut(&win)
+        {
+            c.is_floating = true;
         }
         core.g.behavior.specialnext = SpecialNext::None;
     } else {
@@ -248,10 +248,10 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
             }
 
             // Special case: Onboard (on-screen keyboard) is always sticky.
-            if rule.class == Some("Onboard") {
-                if let Some(c) = core.g.clients.get_mut(&win) {
-                    c.issticky = true;
-                }
+            if rule.class == Some("Onboard")
+                && let Some(c) = core.g.clients.get_mut(&win)
+            {
+                c.issticky = true;
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
@@ -365,10 +365,10 @@ fn apply_monitor_rule(core: &mut CoreCtx, win: WindowId, rule: &crate::types::Ru
         .find(|(_i, m)| m.num == target_num as i32)
         .map(|(i, _)| i);
 
-    if let Some(mid) = target_mid {
-        if let Some(c) = core.g.clients.get_mut(&win) {
-            c.monitor_id = mid;
-        }
+    if let Some(mid) = target_mid
+        && let Some(c) = core.g.clients.get_mut(&win)
+    {
+        c.monitor_id = mid;
     }
 }
 
@@ -445,10 +445,10 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
         set_fullscreen_x11(ctx_x11, win, true);
     }
 
-    if wtype == Some(atom_dialog) {
-        if let Some(client) = ctx_x11.core.g.clients.get_mut(&win) {
-            client.is_floating = true;
-        }
+    if wtype == Some(atom_dialog)
+        && let Some(client) = ctx_x11.core.g.clients.get_mut(&win)
+    {
+        client.is_floating = true;
     }
 }
 

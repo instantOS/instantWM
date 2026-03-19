@@ -65,14 +65,13 @@ impl WaylandState {
 
     /// Set the display mode for a display.
     pub fn set_display_mode(&mut self, display: &str, width: i32, height: i32) {
-        if let Some(output) = self.space.outputs().find(|o| o.name() == display).cloned() {
-            if let Some(mode) = output
+        if let Some(output) = self.space.outputs().find(|o| o.name() == display).cloned()
+            && let Some(mode) = output
                 .modes()
                 .into_iter()
                 .find(|m| m.size.w == width && m.size.h == height)
-            {
-                output.change_current_state(Some(mode), None, None, None);
-            }
+        {
+            output.change_current_state(Some(mode), None, None, None);
         }
     }
 
@@ -97,33 +96,30 @@ impl WaylandState {
                 .map(|g| g.loc)
                 .unwrap_or_default();
 
-            if let Some(ref res) = config.resolution {
-                if let Some((w_str, h_str)) = res.split_once('x') {
-                    if let (Ok(w), Ok(h)) = (w_str.parse::<i32>(), h_str.parse::<i32>()) {
-                        if let Some(mode) = output.modes().into_iter().find(|m| {
-                            m.size.w == w
-                                && m.size.h == h
-                                && config
-                                    .refresh_rate
-                                    .map(|r| (m.refresh as f32 / 1000.0 - r).abs() < 0.1)
-                                    .unwrap_or(true)
-                        }) {
-                            current_mode = Some(mode);
-                        }
-                    }
-                }
+            if let Some(ref res) = config.resolution
+                && let Some((w_str, h_str)) = res.split_once('x')
+                && let (Ok(w), Ok(h)) = (w_str.parse::<i32>(), h_str.parse::<i32>())
+                && let Some(mode) = output.modes().into_iter().find(|m| {
+                    m.size.w == w
+                        && m.size.h == h
+                        && config
+                            .refresh_rate
+                            .map(|r| (m.refresh as f32 / 1000.0 - r).abs() < 0.1)
+                            .unwrap_or(true)
+                })
+            {
+                current_mode = Some(mode);
             }
 
             if let Some(scale) = config.scale {
                 current_scale = Scale::Fractional(scale as f64);
             }
 
-            if let Some(ref pos) = config.position {
-                if let Some((x_str, y_str)) = pos.split_once(',') {
-                    if let (Ok(x), Ok(y)) = (x_str.parse::<i32>(), y_str.parse::<i32>()) {
-                        current_location = (x, y).into();
-                    }
-                }
+            if let Some(ref pos) = config.position
+                && let Some((x_str, y_str)) = pos.split_once(',')
+                && let (Ok(x), Ok(y)) = (x_str.parse::<i32>(), y_str.parse::<i32>())
+            {
+                current_location = (x, y).into();
             }
 
             output.change_current_state(

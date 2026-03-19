@@ -229,10 +229,10 @@ pub mod cursor {
             if let Some(frame) = load_cursor_frame(renderer, theme, name, size) {
                 return Some(frame);
             }
-            if theme != "default" {
-                if let Some(frame) = load_cursor_frame(renderer, "default", name, size) {
-                    return Some(frame);
-                }
+            if theme != "default"
+                && let Some(frame) = load_cursor_frame(renderer, "default", name, size)
+            {
+                return Some(frame);
             }
         }
         None

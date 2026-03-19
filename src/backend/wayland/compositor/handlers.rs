@@ -72,12 +72,11 @@ impl CompositorHandler for WaylandState {
         on_commit_buffer_handler::<Self>(surface);
         let _ = self.popups.commit(surface);
 
-        if let Some(popup) = self.popups.find_popup(surface) {
-            if let PopupKind::Xdg(ref popup_surface) = popup {
-                if !popup_surface.is_initial_configure_sent() {
-                    let _ = popup_surface.send_configure();
-                }
-            }
+        if let Some(popup) = self.popups.find_popup(surface)
+            && let PopupKind::Xdg(ref popup_surface) = popup
+            && !popup_surface.is_initial_configure_sent()
+        {
+            let _ = popup_surface.send_configure();
         }
 
         if let Some(window) = self
@@ -283,15 +282,15 @@ impl XwmHandler for WaylandState {
         self.space.map_element(element.clone(), geo.loc, false);
         self.window_index.insert(win, element);
         self.ensure_client_for_window(win);
-        if let Some(g) = self.globals_mut() {
-            if let Some(c) = g.clients.get_mut(&win) {
-                c.geo.x = geo.loc.x;
-                c.geo.y = geo.loc.y;
-                c.geo.w = geo.size.w.max(1);
-                c.geo.h = geo.size.h.max(1);
-                c.float_geo = c.geo;
-                c.name = window.title();
-            }
+        if let Some(g) = self.globals_mut()
+            && let Some(c) = g.clients.get_mut(&win)
+        {
+            c.geo.x = geo.loc.x;
+            c.geo.y = geo.loc.y;
+            c.geo.w = geo.size.w.max(1);
+            c.geo.h = geo.size.h.max(1);
+            c.float_geo = c.geo;
+            c.name = window.title();
         }
         let _ = window.configure(Some(geo));
         if let Some(g) = self.globals_mut() {
@@ -443,13 +442,13 @@ impl XwmHandler for WaylandState {
             }
             return;
         };
-        if let Some(g) = self.globals_mut() {
-            if let Some(c) = g.clients.get_mut(&win) {
-                c.geo.x = geometry.loc.x;
-                c.geo.y = geometry.loc.y;
-                c.geo.w = geometry.size.w.max(1);
-                c.geo.h = geometry.size.h.max(1);
-            }
+        if let Some(g) = self.globals_mut()
+            && let Some(c) = g.clients.get_mut(&win)
+        {
+            c.geo.x = geometry.loc.x;
+            c.geo.y = geometry.loc.y;
+            c.geo.w = geometry.size.w.max(1);
+            c.geo.h = geometry.size.h.max(1);
         }
         self.resize_window(
             win,
@@ -541,10 +540,10 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         let title = self.window_title(win);
-        if let Some(g) = self.globals_mut() {
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.name = title.unwrap_or_default();
-            }
+        if let Some(g) = self.globals_mut()
+            && let Some(client) = g.clients.get_mut(&win)
+        {
+            client.name = title.unwrap_or_default();
         }
         self.update_foreign_toplevel(win);
     }
@@ -719,16 +718,16 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            if let Some(g) = self.globals_mut() {
-                if let Some(client) = g.clients.get_mut(&win) {
-                    client.is_fullscreen = true;
-                }
-                g.dirty.space = true;
-                g.dirty.layout = true;
-                if let Some(mon) = g.selected_monitor_mut_opt() {
-                    mon.fullscreen = Some(win);
-                }
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.is_fullscreen = true;
+            }
+            g.dirty.space = true;
+            g.dirty.layout = true;
+            if let Some(mon) = g.selected_monitor_mut_opt() {
+                mon.fullscreen = Some(win);
             }
         }
         surface.with_pending_state(|state| {
@@ -738,18 +737,18 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            if let Some(g) = self.globals_mut() {
-                if let Some(client) = g.clients.get_mut(&win) {
-                    client.is_fullscreen = false;
-                }
-                g.dirty.space = true;
-                g.dirty.layout = true;
-                if let Some(mon) = g.selected_monitor_mut_opt() {
-                    if mon.fullscreen == Some(win) {
-                        mon.fullscreen = None;
-                    }
-                }
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.is_fullscreen = false;
+            }
+            g.dirty.space = true;
+            g.dirty.layout = true;
+            if let Some(mon) = g.selected_monitor_mut_opt()
+                && mon.fullscreen == Some(win)
+            {
+                mon.fullscreen = None;
             }
         }
         surface.with_pending_state(|state| {
@@ -803,12 +802,11 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         if let Some(win) = self.window_id_for_surface(&surface) {
             // Update the WM's selected window to match
             let monitor_id = self.globals().and_then(|g| g.clients.monitor_id(win));
-            if let Some(g) = self.globals_mut() {
-                if let Some(mon_id) = monitor_id {
-                    if let Some(mon) = g.monitor_mut(mon_id) {
-                        mon.sel = Some(win);
-                    }
-                }
+            if let Some(g) = self.globals_mut()
+                && let Some(mon_id) = monitor_id
+                && let Some(mon) = g.monitor_mut(mon_id)
+            {
+                mon.sel = Some(win);
             }
             // Focus the window
             self.set_focus(win);
@@ -938,11 +936,12 @@ impl WlrLayerShellHandler for WaylandState {
             } else if let (Some(tags), Some(stack)) = (selected_tags, stack) {
                 // Find the first visible window to focus
                 for &win in &stack {
-                    if let Some(c) = g.clients.get(&win) {
-                        if c.is_visible_on_tags(tags.bits()) && !c.is_hidden {
-                            self.set_focus(win);
-                            break;
-                        }
+                    if let Some(c) = g.clients.get(&win)
+                        && c.is_visible_on_tags(tags.bits())
+                        && !c.is_hidden
+                    {
+                        self.set_focus(win);
+                        break;
                     }
                 }
             }

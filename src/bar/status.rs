@@ -781,26 +781,21 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     continue;
                 }
 
-                if !i3bar_header_seen {
-                    if let Some(header) = parse_i3bar_header(text) {
-                        i3bar_header_seen = true;
-                        if header.click_events {
-                            if let Some(mut stdin) = child.stdin.take() {
-                                std::thread::spawn(move || {
-                                    let mut first_click_event = true;
-                                    while flush_i3bar_click_events(
-                                        &mut stdin,
-                                        &mut first_click_event,
-                                    )
-                                    .is_ok()
-                                    {
-                                        std::thread::sleep(std::time::Duration::from_millis(25));
-                                    }
-                                });
+                if !i3bar_header_seen && let Some(header) = parse_i3bar_header(text) {
+                    i3bar_header_seen = true;
+                    if header.click_events
+                        && let Some(mut stdin) = child.stdin.take()
+                    {
+                        std::thread::spawn(move || {
+                            let mut first_click_event = true;
+                            while flush_i3bar_click_events(&mut stdin, &mut first_click_event)
+                                .is_ok()
+                            {
+                                std::thread::sleep(std::time::Duration::from_millis(25));
                             }
-                        }
-                        continue;
+                        });
                     }
+                    continue;
                 }
 
                 send_status_ipc(text);

@@ -442,12 +442,11 @@ pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
 fn get_atom_prop(x11: &X11BackendRef, win: WindowId, atom: u32) -> u32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    if let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 2) {
-        if let Ok(reply) = cookie.reply() {
-            if let Some(val) = reply.value32().and_then(|mut v| v.next()) {
-                return val;
-            }
-        }
+    if let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 2)
+        && let Ok(reply) = cookie.reply()
+        && let Some(val) = reply.value32().and_then(|mut v| v.next())
+    {
+        return val;
     }
     0
 }

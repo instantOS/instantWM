@@ -386,10 +386,10 @@ fn process_completed_crtcs(
         return;
     }
     for crtc in &completed_crtcs {
-        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc) {
-            if let Err(err) = entry.surface.frame_submitted() {
-                log::warn!("frame_submitted failed for {:?}: {err}", crtc);
-            }
+        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc)
+            && let Err(err) = entry.surface.frame_submitted()
+        {
+            log::warn!("frame_submitted failed for {:?}: {err}", crtc);
         }
     }
     // Clear in-flight tracking so these CRTCs can render again.
@@ -486,13 +486,13 @@ fn render_outputs(
 
             if rendered {
                 shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
-                if let Some(failed_frames) = render_failures.remove(&entry.crtc) {
-                    if failed_frames >= 3 {
-                        log::info!(
-                            "DRM render recovered on {:?} after {failed_frames} failed frames",
-                            entry.crtc
-                        );
-                    }
+                if let Some(failed_frames) = render_failures.remove(&entry.crtc)
+                    && failed_frames >= 3
+                {
+                    log::info!(
+                        "DRM render recovered on {:?} after {failed_frames} failed frames",
+                        entry.crtc
+                    );
                 }
             } else {
                 let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
