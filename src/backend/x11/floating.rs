@@ -1,7 +1,7 @@
 //! X11 floating window helpers.
 
 use crate::backend::x11::X11BackendRef;
-use crate::globals::X11RuntimeConfig;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::types::WindowId;
 
 pub fn apply_floating_borderscheme(

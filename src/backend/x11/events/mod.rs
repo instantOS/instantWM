@@ -57,7 +57,7 @@ pub(crate) fn is_override_redirect(_core: &CoreCtx, x11: &X11BackendRef, win: Wi
 fn classify_windows(
     core: &CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &crate::backend::x11::X11RuntimeConfig,
     children: Vec<Window>,
 ) -> (Vec<WindowId>, Vec<WindowId>) {
     let mut managed = Vec::new();

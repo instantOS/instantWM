@@ -43,7 +43,8 @@ use crate::client::state::{
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
 use crate::focus::focus_soft;
-use crate::globals::{Globals, X11RuntimeConfig};
+use crate::backend::x11::X11RuntimeConfig;
+use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect, WindowId};
 use std::cmp::max;
@@ -646,7 +647,7 @@ pub fn cleanup(wm: &mut Wm) {
 
 pub fn is_window_iconic(
     x11: &X11BackendRef,
-    x11_runtime: &crate::globals::X11RuntimeConfig,
+    x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) -> bool {
     let x11_win: Window = win.into();

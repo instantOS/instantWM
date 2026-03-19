@@ -8,7 +8,7 @@ use crate::backend::x11::X11Backend;
 use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
 use crate::drw::Drw;
-use crate::globals::XlibDisplay;
+use crate::backend::x11::XlibDisplay;
 use crate::types::*;
 use crate::wm::Wm;
 
@@ -142,7 +142,7 @@ fn setup_signal_handlers() {
     }
 }
 
-fn init_atoms(x11_runtime: &mut crate::globals::X11RuntimeConfig, conn: &RustConnection) {
+fn init_atoms(x11_runtime: &mut crate::backend::x11::X11RuntimeConfig, conn: &RustConnection) {
     let wm_protocols = intern_atom(conn, "WM_PROTOCOLS", false);
     let wm_delete = intern_atom(conn, "WM_DELETE_WINDOW", false);
     let wm_state = intern_atom(conn, "WM_STATE", false);

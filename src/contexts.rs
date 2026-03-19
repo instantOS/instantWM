@@ -12,7 +12,7 @@ use crate::backend::BackendRef;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
-use crate::globals::X11RuntimeConfig;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {

@@ -163,7 +163,7 @@ impl Client {
         mask: crate::types::TagMask,
         core: &mut crate::contexts::CoreCtx,
         x11: &crate::backend::x11::X11BackendRef,
-        x11_runtime: &mut crate::globals::X11RuntimeConfig,
+        x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     ) {
         let tag_mask = TagMask::from_bits(core.g.tags.mask());
         let effective_mask = mask & tag_mask;

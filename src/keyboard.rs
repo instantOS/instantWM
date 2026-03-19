@@ -7,7 +7,7 @@ use crate::floating::{
     SnapDir,
 };
 use crate::focus::{direction_focus, focus_stack};
-use crate::globals::X11RuntimeConfig;
+use crate::backend::x11::X11RuntimeConfig;
 
 use crate::layouts::arrange;
 use crate::types::*;

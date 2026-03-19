@@ -16,7 +16,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
-use crate::globals::X11RuntimeConfig;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;

@@ -1,7 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::client::set_client_state;
 use crate::contexts::CoreCtx;
-use crate::globals::X11RuntimeConfig;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::types::Systray;
 use crate::types::*;
 use x11rb::connection::Connection;

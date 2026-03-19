@@ -5,13 +5,69 @@
 //! functionality while still allowing existing call-sites to use the raw
 //! connection.
 
+use libc::c_void;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 use x11rb::CURRENT_TIME;
 
 use crate::backend::BackendOps;
+use crate::drw::{Cursor, Drw};
+use crate::types::color::{BorderScheme, StatusScheme};
+use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::{Rect, WindowId};
+use crate::types::Atom;
+
+#[derive(Clone, Copy)]
+pub struct XlibDisplay(pub *mut c_void);
+unsafe impl Send for XlibDisplay {}
+unsafe impl Sync for XlibDisplay {}
+
+/// X11-specific runtime configuration.
+/// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.
+#[derive(Clone)]
+pub struct X11RuntimeConfig {
+    pub wmatom: WmAtoms,
+    pub netatom: NetAtoms,
+    pub xatom: XAtoms,
+    pub motifatom: Atom,
+    pub numlockmask: u32,
+    pub screen: i32,
+    pub root: Window,
+    /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
+    pub wmcheckwin: Window,
+    pub xlibdisplay: XlibDisplay,
+    pub drw: Option<Drw>,
+    /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
+    pub borderscheme: BorderScheme,
+    /// X11 color scheme for status bar.
+    pub statusscheme: StatusScheme,
+    /// X11 cursors for different cursor states.
+    pub cursors: [Option<Cursor>; 10],
+    /// Last cursor index applied to the X11 root cursor (caching to avoid redundant requests).
+    pub last_x11_cursor_index: Option<usize>,
+}
+
+impl Default for X11RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            wmatom: WmAtoms::default(),
+            netatom: NetAtoms::default(),
+            xatom: XAtoms::default(),
+            motifatom: 0,
+            numlockmask: 0,
+            screen: 0,
+            root: 0,
+            wmcheckwin: 0,
+            xlibdisplay: XlibDisplay(std::ptr::null_mut()),
+            drw: None,
+            borderscheme: BorderScheme::default(),
+            statusscheme: StatusScheme::default(),
+            cursors: [const { None }; 10],
+            last_x11_cursor_index: None,
+        }
+    }
+}
 
 pub mod bar;
 pub mod client;

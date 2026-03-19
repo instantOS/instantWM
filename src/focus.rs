@@ -108,7 +108,7 @@ trait FocusBackendOps {
 
 struct X11FocusBackend<'a> {
     x11: &'a X11BackendRef<'a>,
-    x11_runtime: &'a mut crate::globals::X11RuntimeConfig,
+    x11_runtime: &'a mut crate::backend::x11::X11RuntimeConfig,
     systray: Option<&'a crate::types::Systray>,
 }
 
@@ -297,7 +297,7 @@ fn focus_generic(
 pub fn focus_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &mut crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     systray: Option<&crate::types::Systray>,
     win: Option<WindowId>,
 ) -> anyhow::Result<()> {
@@ -324,7 +324,7 @@ pub fn focus_wayland(
 pub(crate) fn focus_soft_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &mut crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     win: Option<WindowId>,
 ) {
     if let Err(e) = focus_x11(core, x11, x11_runtime, None, win) {
@@ -425,7 +425,7 @@ pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
 pub fn hover_focus_target_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
-    x11_runtime: &mut crate::globals::X11RuntimeConfig,
+    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
