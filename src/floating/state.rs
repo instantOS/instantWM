@@ -1,6 +1,7 @@
 //! Floating state transitions and geometry persistence.
 
 use crate::animation::animate_client;
+use crate::backend::x11::X11BackendRef;
 use crate::backend::BackendOps;
 use crate::client::restore_border_width;
 use crate::contexts::{CoreCtx, WmCtx};
@@ -19,7 +20,8 @@ pub enum WindowMode {
 
 /// Common helper for restoring border width when transitioning to floating.
 /// Returns the restored border width value.
-fn restore_client_border(core: &mut CoreCtx, backend: &impl BackendOps, win: WindowId) -> i32 {
+/// This is X11-specific since Wayland doesn't support border widths.
+fn restore_client_border(core: &mut CoreCtx, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
     restore_border_width(core, win);
     let restored_bw = core
         .g
@@ -27,7 +29,7 @@ fn restore_client_border(core: &mut CoreCtx, backend: &impl BackendOps, win: Win
         .get(&win)
         .map(|c| c.border_width)
         .unwrap_or(0);
-    BackendOps::set_border_width(backend, win, restored_bw);
+    x11.set_border_width(win, restored_bw);
     restored_bw
 }
 
@@ -73,15 +75,15 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             // Restore borders
             match ctx {
                 WmCtx::X11(x11) => {
-                    restore_client_border(&mut x11.core, &x11.backend, win);
+                    restore_client_border(&mut x11.core, &x11.x11, win);
                     crate::backend::x11::floating::apply_floating_borderscheme(
                         &x11.x11,
                         win,
                         x11.x11_runtime,
                     );
                 }
-                WmCtx::Wayland(wl) => {
-                    restore_client_border(&mut wl.core, &wl.backend, win);
+                WmCtx::Wayland(_) => {
+                    // Wayland doesn't support border widths, nothing to restore
                 }
             }
 
@@ -113,8 +115,11 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
                 false
             };
 
+            // Border width clearing is X11-specific
             if clear_border {
-                ctx.backend().set_border_width(win, 0);
+                if let WmCtx::X11(x11) = ctx {
+                    x11.x11.set_border_width(win, 0);
+                }
             }
             false // No animation needed for tiling
         }

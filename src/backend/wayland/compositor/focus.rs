@@ -120,7 +120,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::enter(
-                        &surface.into_owned(),
+                        surface.as_ref(),
                         seat,
                         data,
                         keys,
@@ -148,7 +148,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::leave(
-                        &surface.into_owned(),
+                        surface.as_ref(),
                         seat,
                         data,
                         serial,
@@ -177,7 +177,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::key(
-                        &surface.into_owned(),
+                        surface.as_ref(),
                         seat,
                         data,
                         key,
@@ -217,7 +217,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::modifiers(
-                        &surface.into_owned(),
+                        surface.as_ref(),
                         seat,
                         data,
                         modifiers,

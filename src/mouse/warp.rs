@@ -12,8 +12,8 @@
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
 
 use crate::backend::x11::X11BackendRef;
-use crate::contexts::{CoreCtx, WmCtx};
 use crate::backend::x11::X11RuntimeConfig;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::input::AltCursor;
 use crate::types::*;
 use x11rb::connection::Connection;

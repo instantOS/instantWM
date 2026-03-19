@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::too_many_arguments)]
 //! Move and drop operations for window dragging.
 //!
 //! This module contains the core logic for moving windows with the mouse,
@@ -7,13 +8,13 @@ use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_window_mode, SnapDir, WindowMode};
-use crate::layouts::{arrange, restack};
+use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
 use crate::types::geometry::Rect;
 use crate::types::SnapPosition;
 use crate::types::*;
 
-use crate::mouse::constants::{DRAG_THRESHOLD, MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
+use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 
 use crate::mouse::monitor::handle_client_monitor_switch;
 use crate::mouse::warp::get_root_ptr;

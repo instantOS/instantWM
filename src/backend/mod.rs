@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::large_enum_variant)]
 //! Backend abstraction.
 //!
 //! This module supports multiple window-system backends:
@@ -26,7 +27,6 @@ pub trait BackendOps {
     fn set_focus(&self, window: WindowId);
     fn map_window(&self, window: WindowId);
     fn unmap_window(&self, window: WindowId);
-    fn set_border_width(&self, window: WindowId, width: i32);
 
     /// Check if a window still exists in the backend.
     ///
@@ -168,13 +168,6 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.unmap_window(window),
             BackendRef::Wayland(wayland) => wayland.unmap_window(window),
-        }
-    }
-
-    fn set_border_width(&self, window: WindowId, width: i32) {
-        match self {
-            BackendRef::X11(x11) => x11.set_border_width(window, width),
-            BackendRef::Wayland(wayland) => wayland.set_border_width(window, width),
         }
     }
 

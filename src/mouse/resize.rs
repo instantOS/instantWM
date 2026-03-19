@@ -259,7 +259,7 @@ pub fn resize_mouse_directional(
                 };
 
                 if should_toggle {
-                    with_wm_ctx_x11(ctx, |ctx| toggle_floating(ctx));
+                    with_wm_ctx_x11(ctx, toggle_floating);
                 } else {
                     let is_floating = match ctx.core.client(win) {
                         Some(c) => c.is_floating,
@@ -355,7 +355,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
                     .g
                     .clients
                     .get(&win)
-                    .map(|c| (c.geo, c.size_hints.clone(), c.min_aspect, c.max_aspect))
+                    .map(|c| (c.geo, c.size_hints, c.min_aspect, c.max_aspect))
                 {
                     let mut nw = raw_nw;
                     let mut nh = raw_nh;

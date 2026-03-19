@@ -2,7 +2,6 @@
 //!
 //! This module handles root-window gestures like vertical swipes.
 
-use crate::backend::x11::grab::mouse_drag_loop;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::warp::get_root_ptr;
 use crate::types::*;

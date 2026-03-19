@@ -2,14 +2,14 @@
 //!
 //! This module is split into focused sub-modules:
 //!
-//! - [`snap`]       — snap positions, the navigation matrix, apply/change/reset snap
-//! - [`state`]      — save/restore float geometry & border width; set_window_mode;
-//!                    toggle/set/change floating state; toggle_maximized
-//! - [`movement`]   — keyboard move, resize, center window, scale client
-//! - [`batch`]      — save/restore all floating positions, distribute clients
-//! - [`helpers`]    — check_floating, visible_client, has_tiling_layout, apply_size
+//! - [`snap`]    — snap positions, the navigation matrix, apply/change/reset snap
+//! - [`state`]   — save/restore float geometry & border width; set_window_mode;
+//!   toggle/set/change floating state; toggle_maximized
+//! - [`movement`] — keyboard move, resize, center window, scale client
+//! - [`batch`]   — save/restore all floating positions, distribute clients
+//! - [`helpers`] — check_floating, visible_client, has_tiling_layout, apply_size
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden
-//! - [`overlay`]    — floating windows anchored to screen edges with animations
+//! - [`overlay`] — floating windows anchored to screen edges with animations
 
 mod batch;
 mod helpers;
@@ -43,15 +43,9 @@ pub use state::{
 // ── overlay ───────────────────────────────────────────────────────────────────
 
 /// Create an overlay window.
-pub use overlay::{
-    create_overlay, hide_overlay, overlay_exists, reset_overlay, set_overlay, set_overlay_mode,
-    show_overlay,
-};
+pub use overlay::{create_overlay, hide_overlay, set_overlay, set_overlay_mode, show_overlay};
 
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
 /// Make a window a scratchpad.
-pub use scratchpad::{
-    scratchpad_list, scratchpad_make, scratchpad_show_name, scratchpad_status, scratchpad_toggle,
-    scratchpad_unmake, unhide_one,
-};
+pub use scratchpad::{scratchpad_make, scratchpad_show_name, scratchpad_toggle, unhide_one};

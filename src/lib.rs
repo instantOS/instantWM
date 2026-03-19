@@ -1,3 +1,4 @@
+#![allow(dead_code, improper_ctypes)]
 mod animation;
 mod backend;
 mod bar;

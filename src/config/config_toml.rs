@@ -1,3 +1,4 @@
+#![allow(clippy::derivable_impls)]
 use crate::config::appearance::{
     get_border_colors, get_close_button_colors, get_fonts, get_status_bar_colors, get_tag_colors,
     get_window_colors,

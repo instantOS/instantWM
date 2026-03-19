@@ -285,22 +285,18 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
 
     let candidate = if forward {
         (current_idx + 1) % layouts_len
+    } else if current_idx == 0 {
+        layouts_len - 1
     } else {
-        if current_idx == 0 {
-            layouts_len - 1
-        } else {
-            current_idx - 1
-        }
+        current_idx - 1
     };
     let final_layout = if all_layouts[candidate].is_overview() {
         let final_idx = if forward {
             (candidate + 1) % layouts_len
+        } else if candidate == 0 {
+            layouts_len - 1
         } else {
-            if candidate == 0 {
-                layouts_len - 1
-            } else {
-                candidate - 1
-            }
+            candidate - 1
         };
         all_layouts[final_idx]
     } else {

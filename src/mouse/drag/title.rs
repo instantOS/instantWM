@@ -4,14 +4,13 @@
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
 use crate::backend::x11::grab::mouse_drag_loop;
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::layouts::restack;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::drag::move_drop::promote_to_floating;
 use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
-use crate::types::geometry::Rect;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;

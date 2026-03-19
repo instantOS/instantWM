@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_closure)]
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
 use std::rc::Rc;

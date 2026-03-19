@@ -68,7 +68,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                 location.to_f64(),
             ));
             let motion = smithay::input::pointer::MotionEvent {
-                location: pointer_location.clone(),
+                location: pointer_location,
                 serial,
                 time: event.time_msec(),
             };

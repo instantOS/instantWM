@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_pattern_matching)]
 //! Window management operations for WaylandState.
 //!
 //! This module contains all window-related methods on WaylandState,
@@ -302,7 +303,7 @@ impl WaylandState {
 
         // Update WM state to match - mon.sel is the source of truth
         if let Some(g) = self.globals_mut() {
-            if let Some(client) = g.clients.get_mut(&window) {
+            if let Some(_client) = g.clients.get_mut(&window) {
                 if let Some(mon_id) = g.clients.monitor_id(window) {
                     if let Some(mon) = g.monitor_mut(mon_id) {
                         mon.sel = Some(window);

@@ -1,18 +1,18 @@
+#![allow(dead_code)]
 //! Client termination: graceful close and forceful kill.
 //!
 //! # The three entry points
 //!
 //! * [`kill_client`]  – kill the currently selected window.  Tries a graceful
-//!                      `WM_DELETE_WINDOW` message first; falls back to
-//!                      `XKillClient` if the protocol is not supported.
-//!                      Plays a closing animation unless the window is already
-//!                      animating or is fullscreen.
+//!   `WM_DELETE_WINDOW` message first; falls back to `XKillClient` if the
+//!   protocol is not supported.  Plays a closing animation unless the window
+//!   is already animating or is fullscreen.
 //!
-//! * [`shut_kill`]    – like [`kill_client`], but if the monitor has no
-//!                      clients at all it shuts the whole session down instead.
+//! * [`shut_kill`]   – like [`kill_client`], but if the monitor has no clients
+//!   at all it shuts the whole session down instead.
 //!
-//! * [`close_win`]    – close an arbitrary window identified by its `Window`
-//!                      ID. Used by the close button drawn in the bar.
+//! * [`close_win`]   – close an arbitrary window identified by its `Window` ID.
+//!   Used by the close button drawn in the bar.
 //!
 //! # Graceful vs. forceful termination
 //!

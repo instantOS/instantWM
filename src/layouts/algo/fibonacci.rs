@@ -77,9 +77,9 @@ pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// and which becomes the *remainder* for subsequent clients:
 ///
 /// - `spiral = true`  — the client takes the outer half; the remainder shrinks
-///                      inward (classic golden-ratio spiral).
+///   inward (classic golden-ratio spiral).
 /// - `spiral = false` — the client takes the inner half; the remainder grows
-///                      outward (dwindle / Fibonacci staircase).
+///   outward (dwindle / Fibonacci staircase).
 pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     // ── count tiled clients ───────────────────────────────────────────────
     let n = m.tiled_client_count(ctx.g_mut().clients.map()) as u32;

@@ -137,7 +137,7 @@ fn socket_path() -> PathBuf {
 fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Result<()> {
     let data = bincode::encode_to_vec(response, bincode::config::standard()).unwrap_or_else(|_| {
         bincode::encode_to_vec(
-            &IpcResponse::err("serialization error"),
+            IpcResponse::err("serialization error"),
             bincode::config::standard(),
         )
         .unwrap()

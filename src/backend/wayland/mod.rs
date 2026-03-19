@@ -164,8 +164,6 @@ impl BackendOps for WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.unmap_window(window));
     }
 
-    fn set_border_width(&self, _window: WindowId, _width: i32) {}
-
     fn window_exists(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.window_exists(window))
             .unwrap_or(false)

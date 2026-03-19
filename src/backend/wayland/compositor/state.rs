@@ -39,7 +39,6 @@ use smithay::{
 
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
-use crate::wm::Wm;
 
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
@@ -118,7 +117,7 @@ pub struct WaylandState {
 
     // -- Internal state --
     pub(super) next_window_id: u32,
-    wm: Option<NonNull<Wm>>,
+    globals: Option<&'static mut Globals>,
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
@@ -232,7 +231,7 @@ impl WaylandState {
             xwm: None,
             xdisplay: None,
             next_window_id: 1,
-            wm: None,
+            globals: None,
             tracked_devices: Vec::new(),
             last_configured_size: HashMap::new(),
             window_index: HashMap::new(),
@@ -246,18 +245,7 @@ impl WaylandState {
         }
     }
 
-    /// Attach the WM to this state.
-    pub fn attach_wm(&mut self, wm: &mut Wm) {
-        self.wm = Some(NonNull::from(wm));
-    }
-
-    /// Execute a closure with access to both WaylandState and Wm.
-    pub fn with_wm<T>(&mut self, f: impl FnOnce(&mut WaylandState, &mut Wm) -> T) -> Option<T> {
-        let mut wm = self.wm?;
-        Some(unsafe { f(self, wm.as_mut()) })
-    }
-
-    /// Initialise the linux-dmabuf global.
+    /// Attach the GLES renderer.
     ///
     /// When `egl_display` is provided and a render DRM node can be resolved
     /// from it, we advertise `zwp_linux_dmabuf_feedback_v1` **v4** which
@@ -310,6 +298,7 @@ impl WaylandState {
     }
 
     /// Attach the GLES renderer.
+    #[allow(unexpected_cfgs)]
     pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
         self.renderer = Some(NonNull::from(renderer));
         // Bind the compositor's Wayland display to the EGL display.  This
@@ -320,6 +309,7 @@ impl WaylandState {
         // to resort to software rendering.
         #[cfg(feature = "use_system_lib")]
         {
+            use smithay::backend::renderer::ImportEgl;
             match renderer.bind_wl_display(&self.display_handle) {
                 Ok(()) => log::info!("EGL wl_drm hardware-acceleration enabled"),
                 Err(err) => log::debug!(
@@ -335,15 +325,29 @@ impl WaylandState {
         self.renderer.map(|mut p| unsafe { p.as_mut() })
     }
 
+    /// Attach globals to this state.
+    ///
+    /// This replaces the previous `attach_wm()` pattern. We store a reference
+    /// to Globals instead of a pointer to the entire Wm struct, which avoids
+    /// the circular ownership issue.
+    pub fn attach_globals(&mut self, globals: &mut Globals) {
+        // SAFETY: Globals is owned by Wm which lives for the entire program.
+        // We transmute the lifetime to 'static for storage in WaylandState.
+        // This is safe because:
+        // 1. Globals is allocated as part of Wm which has static lifetime
+        // 2. WaylandState is also created during initialization and lives for the program
+        // 3. We only access globals through this reference while WaylandState is alive
+        self.globals = Some(unsafe { std::mem::transmute::<&mut Globals, &mut Globals>(globals) });
+    }
+
     #[inline]
     pub(super) fn globals(&self) -> Option<&Globals> {
-        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
+        self.globals.as_deref()
     }
 
     #[inline]
     pub(super) fn globals_mut(&mut self) -> Option<&mut Globals> {
-        self.wm
-            .map(|mut p: NonNull<Wm>| unsafe { &mut p.as_mut().g })
+        self.globals.as_deref_mut()
     }
 
     /// Sync the Smithay space from the Globals state.

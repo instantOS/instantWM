@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::needless_range_loop)]
 //! Linked-list management for the per-monitor client lists.
 //!
 //! All list mutation is now delegated to `ClientManager` methods to maintain

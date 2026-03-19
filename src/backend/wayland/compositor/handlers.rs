@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::let_unit_value, clippy::collapsible_match)]
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     backend::renderer::ImportDma,
@@ -45,7 +46,6 @@ use super::{
     state::{WaylandClientState, WaylandState, WindowIdMarker},
     window::{is_unmanaged_x11_overlay, WindowType},
 };
-use crate::types::ResizeDirection;
 
 impl CompositorHandler for WaylandState {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
@@ -175,7 +175,7 @@ impl DmabufHandler for WaylandState {
     fn dmabuf_imported(
         &mut self,
         _global: &DmabufGlobal,
-        mut dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
+        dmabuf: smithay::backend::allocator::dmabuf::Dmabuf,
         notifier: ImportNotifier,
     ) {
         // Tag the dmabuf with the render node so clients know which device to use.

@@ -33,19 +33,16 @@
 // Re-export from submodules
 pub use gesture::gesture_mouse;
 pub use move_drop::{
-    clear_bar_hover, complete_move_drop, handle_bar_drop, on_motion, prepare_drag_target,
-    snap_to_monitor_edges, snap_window_to_monitor_edges, update_bar_hover, update_bar_hover_simple,
-    MoveState,
+    clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
+    snap_window_to_monitor_edges, update_bar_hover_simple, MoveState,
 };
 pub use tag::{drag_tag, drag_tag_begin, drag_tag_finish, drag_tag_motion};
 pub use title::{
     title_drag_begin, title_drag_finish, title_drag_motion, window_title_mouse_handler,
-    window_title_mouse_handler_right,
 };
 
 use crate::contexts::WmCtx;
 use crate::floating::{set_window_mode, WindowMode};
-use crate::layouts::arrange;
 use crate::types::*;
 
 // Submodules

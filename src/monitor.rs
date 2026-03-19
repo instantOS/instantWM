@@ -229,7 +229,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     attach(ctx, win);
     attach_stack(ctx, win);
     if let WmCtx::X11(x11) = ctx {
-        set_client_tag_prop(&mut x11.core, &x11.x11, x11.x11_runtime, win);
+        set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
 
     focus_soft(ctx, None);
@@ -450,13 +450,13 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
             x: 0,
             y: 0,
             w: sw,
-            h: h,
+            h,
         };
         m.work_rect = Rect {
             x: 0,
             y: 0,
             w: sw,
-            h: h,
+            h,
         };
         m.update_bar_position(bar_height);
     }
@@ -514,7 +514,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     let new_count = unique.len();
 
     // Borrow g in a limited scope for monitor updates
-    let (old_count, template, mfact, nmaster, showbar, topbar, bar_height) = {
+    let (old_count, _template, _mfact, _nmaster, _showbar, _topbar, _bar_height) = {
         let g = &mut x11.core.g;
         let old_count = g.monitors.count();
 
@@ -528,7 +528,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
             g.monitors.push(mon);
         }
 
-        let mut dirty = new_count > old_count;
+        let _dirty = new_count > old_count;
         let bar_height = g.cfg.bar_height;
 
         for (i, info) in unique.iter().enumerate() {
@@ -542,7 +542,6 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
                     m.monitor_rect = *info;
                     m.work_rect = *info;
                     m.update_bar_position(bar_height);
-                    dirty = true;
                 }
             }
         }

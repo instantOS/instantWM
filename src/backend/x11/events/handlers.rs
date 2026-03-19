@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
 use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
@@ -9,7 +10,6 @@ use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
     AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
 };
-use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::CURRENT_TIME;
@@ -135,14 +135,14 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     if bar_pos == BarPosition::Root {
         if let Some(mon) = ctx.core.g.monitor(selmon_id) {
             if let Some(selected_window) = mon.sel {
-                let is_floating = ctx
+                let _is_floating = ctx
                     .core
                     .g
                     .clients
                     .get(&selected_window)
                     .map(|c| c.is_floating)
                     .unwrap_or(false);
-                let has_tiling = mon.is_tiling_layout();
+                let _has_tiling = mon.is_tiling_layout();
                 if let AltCursor::Resize(dir) = altcursor {
                     crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
                     let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);

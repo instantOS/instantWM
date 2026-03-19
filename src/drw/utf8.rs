@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::needless_range_loop)]
 //! UTF-8 decoding utilities.
 //!
 //! This is a direct port of the UTF-8 decoding logic from the original C `drw.c`.

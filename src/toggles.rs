@@ -25,7 +25,7 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
 pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
     if let WmCtx::X11(x11) = ctx {
         ctrl_toggle(&mut x11.core.g.tags.prefix, action);
-        grab_keys_x11(&mut x11.core, &x11.x11, x11.x11_runtime);
+        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
     } else {
         let mut prefix = ctx.g().tags.prefix;
         ctrl_toggle(&mut prefix, action);
@@ -103,13 +103,11 @@ pub fn toggle_double_draw(core: &mut CoreCtx) {
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
-    {
-        if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
-            client.is_locked = !client.is_locked;
-        } else {
-            return;
-        }
-    };
+    if let Some(client) = ctx.g_mut().clients.get_mut(&win) {
+        client.is_locked = !client.is_locked;
+    } else {
+        return;
+    }
 
     let selmon_id = ctx.g().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));

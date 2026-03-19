@@ -1,14 +1,4 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
-//!
-//! # Responsibilities
-//!
-//! * [`get_state`]   – read the current `WM_STATE` property from the X server.
-//!                     Used once during [`crate::backend::x11::lifecycle::manage`] to seed
-//!                     [`crate::types::Client::is_hidden`].
-//! * [`show_hide`]   – recursively walk the stack list, positioning visible
-//!                     clients on-screen and off-screen clients off to the left.
-//! * [`show`]        – unmap → animate → arrange a previously hidden client.
-//! * [`hide`]        – animate → unmap → iconic-state a visible client.
 
 use crate::animation::animate_client_x11;
 use crate::backend::x11::X11BackendRef;
@@ -250,13 +240,7 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let _ = ctx.x11.conn.map_window(x11_win);
     let _ = ctx.x11.conn.flush();
 
-    set_client_state(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
-        win,
-        WM_STATE_NORMAL,
-    );
+    set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, win, WM_STATE_NORMAL);
 
     // Start the window slightly above its target position so the animation
     // slides it down into place.
@@ -318,13 +302,7 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
         let _ = ctx.x11.conn.unmap_window(x11_win);
         let _ = ctx.x11.conn.flush();
-        set_client_state(
-            &mut ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            win,
-            WM_STATE_ICONIC,
-        );
+        set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, win, WM_STATE_ICONIC);
 
         restore_event_masks(ctx.x11.conn, root, x11_win);
     }

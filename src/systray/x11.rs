@@ -1,7 +1,8 @@
+#![allow(dead_code, clippy::too_many_arguments)]
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::client::set_client_state;
 use crate::contexts::CoreCtx;
-use crate::backend::x11::X11RuntimeConfig;
 use crate::types::Systray;
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -21,7 +22,7 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
     }
 
     let mut w: u32 = 0;
-    if let Some(ref systray) = systray {
+    if let Some(systray) = systray {
         for &icon_win in &systray.icons {
             if let Some(c) = core.g.clients.get(&icon_win) {
                 w += c.geo.w as u32 + core.g.cfg.systray_spacing as u32;
@@ -359,7 +360,6 @@ pub fn update_systray(
         }
     }
 
-    let systray_win = systray_win;
     let x11_systray_win: Window = systray_win.into();
     let x11_bar_win: Window = bar_win.into();
 

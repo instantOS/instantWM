@@ -4,7 +4,6 @@ use crate::backend::x11::lifecycle::{is_window_iconic, manage};
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
-use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
 // ---------------------------------------------------------------------------
@@ -145,8 +144,7 @@ pub mod handlers;
 pub mod loop_fn;
 pub mod setup;
 
-pub use handlers::*;
-pub use loop_fn::{dispatch_event, run};
+pub use loop_fn::run;
 pub use setup::{check_other_wm, setup, setup_root};
 
 // ---------------------------------------------------------------------------

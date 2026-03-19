@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! X11 mouse backend helpers.
 
 use crate::contexts::{CoreCtx, WmCtxX11};
@@ -30,7 +31,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     // otherwise get the current client geometry.
     let grab_start_rect = float_restore_geo
         .or_else(|| ctx.core.g.clients.geo(win))
-        .unwrap_or(Rect::default());
+        .unwrap_or_default();
 
     let mut state = MoveState {
         start_x,

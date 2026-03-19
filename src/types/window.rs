@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::type_complexity)]
 //! Window system and resource types.
 //!
 //! Types for keyboard bindings, mouse buttons, and X commands.

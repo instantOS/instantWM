@@ -1,12 +1,13 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use smithay::backend::allocator::gbm::GbmDevice;
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, DrmEvent};
+use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -22,7 +23,6 @@ use smithay::reexports::wayland_server::Display;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
-use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
@@ -54,7 +54,7 @@ pub fn run() -> ! {
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_wm(&mut wm);
+    state.attach_globals(&mut wm.g);
     if let WmBackend::Wayland(ref wayland) = wm.backend {
         wayland.attach_state(&mut state);
     }
@@ -104,6 +104,9 @@ pub fn run() -> ! {
     spawn_xwayland(&state, &loop_handle);
     wm.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
 
+    let wm_cell = Rc::new(RefCell::new(wm));
+    let wm_cell_for_closure = Rc::clone(&wm_cell);
+
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
     libinput_context
@@ -119,13 +122,15 @@ pub fn run() -> ! {
                 (s.total_width, s.total_height)
             };
 
-            let any_input = state
-                .with_wm(|state, wm| {
-                    crate::wayland::input::drm::dispatch_libinput_event(
-                        event, state, wm, total_w, total_h,
-                    )
-                })
-                .unwrap_or(false);
+            let mut wm_ref = wm_cell_for_closure.borrow_mut();
+            let any_input = crate::wayland::input::drm::dispatch_libinput_event(
+                event,
+                state,
+                &mut wm_ref,
+                total_w,
+                total_h,
+            );
+            drop(wm_ref);
 
             if any_input {
                 let mut s = shared_cb.lock().unwrap();
@@ -151,7 +156,7 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    if let Some(ref cmd) = wm.g.cfg.status_command {
+    if let Some(ref cmd) = wm_cell.borrow().g.cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
     } else {
         crate::bar::status::spawn_default_status();
@@ -162,7 +167,7 @@ pub fn run() -> ! {
 
     run_event_loop(
         event_loop,
-        &mut wm,
+        &mut wm_cell.borrow_mut(),
         &mut state,
         &shared,
         &mut output_surfaces,
@@ -203,6 +208,15 @@ fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> (i32, i32
 }
 
 /// Initialize shared DRM state with render flags for each CRTC.
+///
+/// The `Arc<Mutex<SharedDrmState>>` is necessary because multiple execution contexts
+/// access the shared state concurrently:
+/// - Session handlers (pause/activate) run in **libseat callback context** (VT switch events)
+/// - Vblank handlers run in **DRM event callback context** (page flip completion)
+/// - The event loop processes state in **normal thread context**
+///
+/// These contexts all access `render_flags`, `completed_crtcs`, and `pending_crtcs`,
+/// so a mutex is required to synchronize access across callback threads.
 fn init_shared_state(
     output_surfaces: &[OutputSurfaceEntry],
     total_width: i32,
@@ -312,8 +326,6 @@ fn run_event_loop(
 
     event_loop
         .run(Duration::from_millis(16), state, move |state| {
-            state.attach_wm(wm);
-
             process_completed_crtcs(state, shared, output_surfaces);
 
             super::common::arrange_layout_if_dirty(wm, state);
@@ -486,7 +498,7 @@ fn render_outputs(
                 let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
                 *failed_frames += 1;
 
-                if *failed_frames == 1 || *failed_frames % 60 == 0 {
+                if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
                     log::warn!(
                         "DRM render failed on {:?} (consecutive failures: {})",
                         entry.crtc,

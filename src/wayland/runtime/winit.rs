@@ -6,13 +6,12 @@
 use std::process::exit;
 use std::time::Duration;
 
-use smithay::backend::input::{AbsolutePositionEvent, InputEvent};
+use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
-use smithay::utils::Point;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::WaylandBackend;
@@ -42,7 +41,7 @@ pub fn run() -> ! {
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut display_handle = display.handle();
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_wm(&mut wm);
+    state.attach_globals(&mut wm.g);
     if let WmBackend::Wayland(ref wayland) = wm.backend {
         wayland.attach_state(&mut state);
     }
@@ -96,8 +95,6 @@ pub fn run() -> ! {
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {
-            state.attach_wm(&mut wm);
-
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
                     crate::wayland::input::handle_resize(&mut wm, &output, size.w, size.h);

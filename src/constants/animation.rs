@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Animation timing and frame count constants.
 
 /// Default animation frame count for smooth animations.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Client lifecycle: adopting and releasing X11 windows.
 //!
 //! Note on title initialization: `update_title` writes into `globals.clients`,
@@ -8,13 +9,13 @@
 //! # The two entry points
 //!
 //! * [`manage`]   – called when the WM first sees a window (either at startup
-//!                  via `QueryTree`, or at runtime via a `MapRequest` event).
-//!                  Builds a [`Client`], attaches it to the correct monitor and
-//!                  linked lists, applies rules/hints, and arranges the monitor.
+//!   via `QueryTree`, or at runtime via a `MapRequest` event).
+//!   Builds a [`Client`], attaches it to the correct monitor and linked lists,
+//!   applies rules/hints, and arranges the monitor.
 //!
 //! * [`unmanage`] – called when a window is destroyed or deliberately withdrawn.
-//!                  Detaches it from every list, optionally restores X11 state
-//!                  (border, event mask, WM_STATE), and re-focuses.
+//!   Detaches it from every list, optionally restores X11 state (border, event
+//!   mask, WM_STATE), and re-focuses.
 //!
 //! # Monitor assignment
 //!
@@ -42,8 +43,8 @@ use crate::client::state::{
 };
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
-use crate::focus::focus_soft;
 use crate::backend::x11::X11RuntimeConfig;
+use crate::focus::focus_soft;
 use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, Rect, WindowId};
@@ -239,7 +240,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(ctx_x11.core.g, &ctx_x11.x11, ctx_x11.x11_runtime, w);
-    set_client_tag_prop(&mut ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    set_client_tag_prop(&ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
 }
 
@@ -473,7 +474,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
                     .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
 
             set_client_state(
-                &mut ctx.core,
+                &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
                 win,
@@ -489,7 +490,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         let tmp = ctx.reborrow();
         focus_soft(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
+    update_client_list(&ctx.core, &ctx.x11, ctx.x11_runtime);
 
     if let Some(mid) = monitor_id {
         let mut tmp = WmCtx::X11(ctx.reborrow());
@@ -636,7 +637,8 @@ pub fn cleanup(wm: &mut Wm) {
 
     if let Some(ref drw) = wm.x11_runtime.drw {
         for cursor in &wm.x11_runtime.cursors {
-            if let Some(ref cur) = cursor {
+            if cursor.is_some() {
+                let cur = cursor.as_ref().unwrap();
                 drw.cur_free(cur);
             }
         }

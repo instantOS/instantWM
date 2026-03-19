@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_else_if)]
 //! Focus management using explicit WM context.
 //!
 //! This module provides window focus functionality via `CoreCtx`, avoiding
@@ -9,7 +10,7 @@ use crate::client::{refresh_border_color_x11, set_focus_x11, set_urgent, unfocus
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, InputFocus, PropMode, Window};
+use x11rb::protocol::xproto::{ConnectionExt, InputFocus};
 use x11rb::CURRENT_TIME;
 
 /// Result of resolving a focus target, containing both the target window
@@ -577,7 +578,7 @@ where
 }
 
 fn get_directional_candidates(
-    clients: &Vec<WindowId>,
+    clients: &[WindowId],
     globals_map: &std::collections::HashMap<WindowId, Client>,
     selected_tags: TagMask,
     source_win: WindowId,

@@ -235,9 +235,9 @@ pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), Strin
     let state = &ctx.g().keyboard_layout;
 
     // Parse the layout argument
-    let index = if layout.starts_with('#') {
+    let index = if let Some(stripped) = layout.strip_prefix('#') {
         // Index format: #1, #2, etc.
-        let idx = layout[1..]
+        let idx = stripped
             .parse::<usize>()
             .map_err(|_| format!("invalid index '{}'", layout))?;
         // Convert to 0-based

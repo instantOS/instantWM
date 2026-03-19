@@ -34,7 +34,6 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 }
 
 /// Raise a window to the top of the stack (backend-agnostic).
-
 /// Calculate the y offset based on showbar and fullscreen clients.
 fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
     let bar_height = ctx.g().cfg.bar_height;

@@ -1,13 +1,9 @@
+#![allow(dead_code)]
 //! Layout-driven client operations.
 //!
 //! These are small operations that sit at the boundary between the client and
 //! the layout engine.  They are collected here so that neither `geometry.rs`
 //! nor the layout algorithms need to know about each other's internals.
-//!
-//! # Contents
-//!
-//! * [`zoom`] – promote the selected window to the master slot (or, if it
-//!              already is master, promote the next tiled window instead).
 
 use crate::backend::BackendOps;
 use crate::client::list::{next_tiled, pop};

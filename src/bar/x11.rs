@@ -1,6 +1,6 @@
 use crate::backend::x11::X11BackendRef;
-use crate::contexts::CoreCtx;
 use crate::backend::x11::X11RuntimeConfig;
+use crate::contexts::CoreCtx;
 use crate::types::{Monitor, Systray, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;

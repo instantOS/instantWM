@@ -13,10 +13,10 @@ use x11rb::CURRENT_TIME;
 
 use crate::backend::BackendOps;
 use crate::drw::{Cursor, Drw};
-use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
-use crate::types::{Rect, WindowId};
+use crate::types::color::{BorderScheme, StatusScheme};
 use crate::types::Atom;
+use crate::types::{Rect, WindowId};
 
 #[derive(Clone, Copy)]
 pub struct XlibDisplay(pub *mut c_void);
@@ -101,6 +101,16 @@ impl<'a> X11BackendRef<'a> {
     pub fn new(conn: &'a RustConnection, screen_num: usize) -> Self {
         Self { conn, screen_num }
     }
+
+    /// Set the border width of a window.
+    /// This is X11-specific as Wayland doesn't support border widths.
+    pub fn set_border_width(&self, window: WindowId, width: i32) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new().border_width(width.max(0) as u32),
+        );
+    }
 }
 
 /// RAII guard for X server grabs.
@@ -175,14 +185,6 @@ impl BackendOps for X11BackendRef<'_> {
     fn unmap_window(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.unmap_window(x11_win);
-    }
-
-    fn set_border_width(&self, window: WindowId, width: i32) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().border_width(width.max(0) as u32),
-        );
     }
 
     fn window_exists(&self, window: WindowId) -> bool {

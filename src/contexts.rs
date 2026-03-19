@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::needless_borrow)]
 //! Context split for backend-specific operations.
 //!
 //! Core state (`Globals`, tags/layouts/monitors/clients/config) remains
@@ -7,12 +8,12 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
-use crate::backend::x11::X11RuntimeConfig;
 use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
@@ -293,7 +294,10 @@ impl<'a> WmCtx<'a> {
         if let Some(client) = self.g_mut().clients.get_mut(&win) {
             client.border_width = width.max(0);
         }
-        self.backend().set_border_width(win, width);
+        // Border width is X11-specific; Wayland doesn't support border width
+        if let WmCtx::X11(ref x11) = self {
+            x11.x11.set_border_width(win, width);
+        }
     }
 
     pub fn map_window(&self, win: WindowId) {

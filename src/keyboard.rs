@@ -1,13 +1,13 @@
 use std::rc::Rc;
 
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{
     change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating, unhide_one,
     SnapDir,
 };
 use crate::focus::{direction_focus, focus_stack};
-use crate::backend::x11::X11RuntimeConfig;
 
 use crate::layouts::arrange;
 use crate::types::*;
@@ -256,7 +256,7 @@ pub fn up_press(ctx: &mut WmCtx) {
         let mon = ctx.g().selected_monitor();
         let sel = mon.sel;
         let overlay = mon.overlay;
-        let is_floating = sel.map_or(false, |w| ctx.g().clients.is_floating(w));
+        let is_floating = sel.is_some_and(|w| ctx.g().clients.is_floating(w));
         (sel, overlay, is_floating)
     };
 

@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::unnecessary_map_or)]
 //! Structured data and low-level logic for clients.
 
 use crate::types::{Client, ClientId, WindowId};

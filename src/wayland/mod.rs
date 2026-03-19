@@ -14,6 +14,3 @@ pub mod init;
 pub mod input;
 pub mod render;
 pub mod runtime;
-
-// Re-export commonly used items
-pub use render::borders::render_border_elements;

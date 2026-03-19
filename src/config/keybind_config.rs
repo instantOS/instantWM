@@ -1,3 +1,4 @@
+#![allow(clippy::get_first, clippy::type_complexity, clippy::print_literal)]
 //! TOML-configurable keybindings.
 //!
 //! Parses `[[keybinds]]` and `[[desktop_keybinds]]` entries from the config

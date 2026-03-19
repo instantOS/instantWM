@@ -1,14 +1,15 @@
+#![allow(dead_code)]
 //! Fullscreen and fake-fullscreen state management.
 //!
 //! # Responsibilities
 //!
-//! * [`set_fullscreen`]          – enter/exit real fullscreen, updating
-//!                                 `_NET_WM_STATE` and animating the transition.
-//! * [`toggle_fake_fullscreen`]  – toggle "fake" fullscreen (window fills the
-//!                                 monitor but still participates in the layout).
-//! * [`save_border_width`]       – snapshot the current border width before
-//!                                 entering fullscreen.
-//! * [`restore_border_width`]    – reinstate the saved border width on exit.
+//! * [`set_fullscreen`]         – enter/exit real fullscreen, updating
+//!   `_NET_WM_STATE` and animating the transition.
+//! * [`toggle_fake_fullscreen`] – toggle "fake" fullscreen (window fills the
+//!   monitor but still participates in the layout).
+//! * [`save_border_width`]      – snapshot the current border width before
+//!   entering fullscreen.
+//! * [`restore_border_width`]   – reinstate the saved border width on exit.
 //!
 //! ## Real vs. fake fullscreen
 //!

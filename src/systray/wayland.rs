@@ -34,6 +34,14 @@ struct WatcherState {
 }
 
 /// D-Bus interface object served at `/StatusNotifierWatcher`.
+///
+/// The `Arc<Mutex<WatcherState>>` is required for thread safety because:
+/// 1. `StatusNotifierWatcherService` implements a `#[zbus::interface]` whose methods are
+///    invoked by zbus from its internal thread pool when D-Bus method calls arrive.
+/// 2. Multiple D-Bus clients can send concurrent requests (e.g., apps registering items).
+/// 3. The systray thread also accesses this state via `reconcile_items_embedded()`.
+///    Without the Mutex, this would introduce data races between the zbus thread pool and the
+///    systray thread. RefCell is insufficient because it is not thread-safe (`!Send + !Sync`).
 struct StatusNotifierWatcherService {
     state: Arc<Mutex<WatcherState>>,
 }
@@ -431,7 +439,7 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
         }
 
         ticks = ticks.wrapping_add(1);
-        if ticks % 33 == 0 {
+        if ticks.is_multiple_of(33) {
             reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
         }
 

@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::type_complexity)]
 //! Pointer motion handling.
 
 use smithay::backend::input::{AbsolutePositionEvent, InputBackend, PointerMotionEvent};
@@ -13,18 +14,12 @@ use crate::types::AltCursor;
 use crate::types::BarPosition;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
-use crate::wayland::input::bar::{
-    dispatch_wayland_bar_click, dispatch_wayland_bar_scroll, update_wayland_bar_hit_state,
-    wayland_button_to_wm_button,
-};
-use crate::wayland::input::pointer::button::find_hovered_window;
+use crate::wayland::input::bar::update_wayland_bar_hit_state;
 use crate::wayland::input::pointer::drag::{
     update_wayland_selected_resize_offer, wayland_active_drag_window,
     wayland_hover_resize_drag_motion,
 };
 use crate::wm::Wm;
-
-use crate::wayland::input::bar;
 
 /// Unified pointer motion event that abstracts over input source.
 #[derive(Debug, Clone, Copy)]

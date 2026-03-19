@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::large_enum_variant, clippy::io_other_error)]
 use crate::contexts::CoreCtx;
 use crate::types::Monitor;
 use serde::{Deserialize, Serialize};

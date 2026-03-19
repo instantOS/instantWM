@@ -2,10 +2,10 @@
 //!
 //! `Wm` owns all runtime state and the active backend.
 
+use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::{X11Backend, X11BackendRef};
 use crate::backend::{Backend, BackendRef};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
-use crate::backend::x11::X11RuntimeConfig;
 use crate::globals::Globals;
 use crate::types::{Systray, WaylandSystray, WaylandSystrayMenu};
 

@@ -1,3 +1,4 @@
+#![allow(dead_code, clippy::unnecessary_cast)]
 //! Overview layout — a bird's-eye view of every client across all tags.
 //!
 //! All clients (regardless of their tag) are arranged in a square grid so the

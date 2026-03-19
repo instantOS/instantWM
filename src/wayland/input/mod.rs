@@ -18,11 +18,10 @@ pub use keyboard::handle_keyboard;
 pub use pointer::{
     handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
-    motion_event_from_winit, MotionEvent,
+    motion_event_from_winit,
 };
 
 use crate::monitor::update_geom;
-use crate::types::*;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};

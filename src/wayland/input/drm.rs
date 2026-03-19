@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! DRM/libinput-specific input handling.
 
 use smithay::backend::input::InputEvent;

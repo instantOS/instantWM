@@ -3,7 +3,6 @@ use crate::config::commands::ExternalCommands;
 use crate::config::ModeConfig;
 use crate::monitor::MonitorManager;
 use crate::types::*;
-use x11rb::protocol::xproto::Window;
 
 /// Runtime configuration - values loaded from config
 /// These are set during initialization and updated on reload
@@ -427,8 +426,8 @@ impl Globals {
     pub fn detach_stack(&mut self, win: WindowId) {
         let monitor_id = self.clients.monitor_id(win);
 
-        let mut handle_monitor = |mon: &mut crate::types::Monitor,
-                                  clients: &crate::client::manager::ClientManager|
+        let handle_monitor = |mon: &mut crate::types::Monitor,
+                              clients: &crate::client::manager::ClientManager|
          -> bool {
             if mon.stack.contains(&win) {
                 mon.stack.retain(|&w| w != win);
@@ -506,8 +505,8 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
 
     g.cfg.windowcolors = cfg.windowcolors.clone();
     g.cfg.closebuttoncolors = cfg.closebuttoncolors.clone();
-    g.cfg.bordercolors = cfg.bordercolors.clone();
-    g.cfg.statusbarcolors = cfg.statusbarcolors.clone();
+    g.cfg.bordercolors = cfg.bordercolors;
+    g.cfg.statusbarcolors = cfg.statusbarcolors;
 
     g.cfg.keys = cfg.keys.clone();
     g.cfg.desktop_keybinds = cfg.desktop_keybinds.clone();
@@ -582,12 +581,14 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag>
         } else {
             String::new()
         };
-        let mut tag = crate::types::Tag::default();
-        tag.name = name;
-        tag.alt_name = alt_name;
-        tag.nmaster = cfg.nmaster;
-        tag.mfact = cfg.mfact;
-        tag.showbar = cfg.showbar;
+        let tag = crate::types::Tag {
+            name,
+            alt_name,
+            nmaster: cfg.nmaster,
+            mfact: cfg.mfact,
+            showbar: cfg.showbar,
+            ..Default::default()
+        };
         template.push(tag);
     }
     template

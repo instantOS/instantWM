@@ -13,7 +13,7 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -213,7 +213,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     let selected = mon.selected_tags();
 
     for (_w, c) in mon.iter_clients(ctx.g().clients.map()) {
-        if c.is_visible_on_tags(selected) && !(c.is_floating || !has_tiling) {
+        if c.is_visible_on_tags(selected) && !c.is_floating && has_tiling {
             return true;
         }
     }

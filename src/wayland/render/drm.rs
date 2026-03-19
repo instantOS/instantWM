@@ -8,8 +8,7 @@ use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
-use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
-use smithay::backend::renderer::element::Kind;
+use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::ImportDma;
@@ -20,7 +19,6 @@ use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::utils::{Physical, Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::types::Rect;
 use crate::wayland::common::{
     build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
     resolve_cursor_presentation, send_frame_callbacks, CursorPresentation,
@@ -340,7 +338,6 @@ pub mod state {
     use smithay::backend::renderer::damage::OutputDamageTracker;
     use smithay::output::Output;
     use smithay::reexports::drm::control::crtc;
-    use smithay::utils::Point;
 
     use crate::types::Rect;
     use crate::wm::Wm;

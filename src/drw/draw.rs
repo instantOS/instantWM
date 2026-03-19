@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 //! The [`Drw`] drawing context.
 //!
 //! `Drw` owns an X11 display connection, a pixmap, a GC, and a fontset.
@@ -675,7 +676,7 @@ impl Drw {
     ///
     /// * `direction` — `true` = left-to-right, `false` = right-to-left.
     /// * `slash`     — if `true` the trailing edge is a vertical slash rather
-    ///                 than a horizontal midpoint.
+    ///   than a horizontal midpoint.
     pub fn arrow(&self, x: i16, y: i16, w: u16, h: u16, direction: bool, slash: bool) {
         if self.display.is_null() {
             return;
@@ -804,10 +805,9 @@ impl Drw {
     /// * `lpad`          — horizontal padding added before the first glyph.
     /// * `invert`        — swap fg/bg colors.
     /// * `detail_height` — if `> 0`, the bottom `detail_height` pixels of the
-    ///                     background are painted in the *detail* color.
-    ///                     Pass `0` for a plain background, `-1` to skip the
-    ///                     ellipsis-width calculation (used when drawing `"..."`
-    ///                     itself to avoid infinite recursion).
+    ///   background are painted in the *detail* color.
+    ///   Pass `0` for a plain background, `-1` to skip the ellipsis-width
+    ///   calculation (used when drawing `"..."` itself to avoid infinite recursion).
     ///
     /// # Returns
     ///

@@ -217,7 +217,7 @@ pub struct ClientListIter<'a> {
 
 impl<'a> ClientListIter<'a> {
     #[inline]
-    pub fn new(clients: &'a Vec<WindowId>, map: &'a HashMap<WindowId, Client>) -> Self {
+    pub fn new(clients: &'a [WindowId], map: &'a HashMap<WindowId, Client>) -> Self {
         Self {
             iter: clients.iter(),
             clients: map,
@@ -229,12 +229,15 @@ impl<'a> Iterator for ClientListIter<'a> {
     type Item = (WindowId, &'a Client);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(&win) = self.iter.next() {
+        loop {
+            let win = match self.iter.next() {
+                Some(&w) => w,
+                None => return None,
+            };
             if let Some(c) = self.clients.get(&win) {
                 return Some((win, c));
             }
         }
-        None
     }
 }
 
@@ -249,7 +252,7 @@ pub struct ClientStackIter<'a>(ClientListIter<'a>);
 
 impl<'a> ClientStackIter<'a> {
     #[inline]
-    pub fn new(stack: &'a Vec<WindowId>, map: &'a HashMap<WindowId, Client>) -> Self {
+    pub fn new(stack: &'a [WindowId], map: &'a HashMap<WindowId, Client>) -> Self {
         Self(ClientListIter::new(stack, map))
     }
 }

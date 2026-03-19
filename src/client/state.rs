@@ -1,24 +1,12 @@
+#![allow(dead_code)]
 //! X11 property management for client windows.
 //!
 //! This module owns everything related to reading and writing X11 properties
 //! that describe a client's state.  It is the bridge between the WM's internal
 //! bookkeeping and the X server's property store.
-//!
-//! # Responsibilities
-//!
-//! * [`set_client_state`]     – write `WM_STATE` (normal / iconic / withdrawn).
-//! * [`set_client_tag_prop`]  – write `_NET_CLIENT_INFO` (tag mask + monitor).
-//! * [`update_client_list`]   – rebuild `_NET_CLIENT_LIST` on the root window.
-//! * [`update_title_x11`]     – refresh `Client::name` from `_NET_WM_NAME` / `WM_NAME`.
-//! * [`update_title_wayland`] – refresh `Client::name` from Wayland surfaces.
-//! * [`apply_rules`]          – match the client against the configured rules and
-//!                              apply floating / tag / monitor overrides.
-//! * [`update_window_type`]   – handle `_NET_WM_WINDOW_TYPE` and `_NET_WM_STATE`.
-//! * [`update_wm_hints`]      – parse `WM_HINTS` (input model, urgency flag).
-//! * [`update_motif_hints`]   – parse Motif `_MOTIF_WM_HINTS` decoration hints.
-//! * [`get_atom_prop`]        – read a single-atom X11 property (internal helper).
 
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,
@@ -27,7 +15,6 @@ use crate::client::focus::clear_urgency_hint;
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::backend::x11::X11RuntimeConfig;
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -502,7 +489,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     // If the window is already focused, clear the urgency flag on the X server
     // so decorations don't keep flashing.
     if is_selected && is_urgent {
-        clear_urgency_hint(&mut ctx.core, &ctx.x11, win);
+        clear_urgency_hint(&ctx.core, &ctx.x11, win);
     }
 
     if let Some(client) = ctx.core.g.clients.get_mut(&win) {

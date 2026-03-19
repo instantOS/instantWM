@@ -268,7 +268,7 @@ impl Default for ColorSchemeRgba {
 }
 
 /// Tag scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct TagColorSet {
     pub inactive: ColorSchemeRgba,
@@ -277,19 +277,6 @@ pub struct TagColorSet {
     pub nofocus: ColorSchemeRgba,
     pub empty: ColorSchemeRgba,
     pub urgent: ColorSchemeRgba,
-}
-
-impl Default for TagColorSet {
-    fn default() -> Self {
-        Self {
-            inactive: ColorSchemeRgba::empty(),
-            filled: ColorSchemeRgba::empty(),
-            focus: ColorSchemeRgba::empty(),
-            nofocus: ColorSchemeRgba::empty(),
-            empty: ColorSchemeRgba::empty(),
-            urgent: ColorSchemeRgba::empty(),
-        }
-    }
 }
 
 impl TagColorSet {
@@ -317,7 +304,7 @@ impl TagColorSet {
 }
 
 /// Window scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct WindowColorSet {
     pub focus: ColorSchemeRgba,
@@ -328,21 +315,6 @@ pub struct WindowColorSet {
     pub overlay: ColorSchemeRgba,
     pub overlay_focus: ColorSchemeRgba,
     pub urgent: ColorSchemeRgba,
-}
-
-impl Default for WindowColorSet {
-    fn default() -> Self {
-        Self {
-            focus: ColorSchemeRgba::empty(),
-            normal: ColorSchemeRgba::empty(),
-            minimized: ColorSchemeRgba::empty(),
-            sticky: ColorSchemeRgba::empty(),
-            sticky_focus: ColorSchemeRgba::empty(),
-            overlay: ColorSchemeRgba::empty(),
-            overlay_focus: ColorSchemeRgba::empty(),
-            urgent: ColorSchemeRgba::empty(),
-        }
-    }
 }
 
 impl WindowColorSet {
@@ -374,22 +346,12 @@ impl WindowColorSet {
 }
 
 /// Close button scheme groupings (non-hover or hover).
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct CloseButtonColorSet {
     pub normal: ColorSchemeRgba,
     pub locked: ColorSchemeRgba,
     pub fullscreen: ColorSchemeRgba,
-}
-
-impl Default for CloseButtonColorSet {
-    fn default() -> Self {
-        Self {
-            normal: ColorSchemeRgba::empty(),
-            locked: ColorSchemeRgba::empty(),
-            fullscreen: ColorSchemeRgba::empty(),
-        }
-    }
 }
 
 impl CloseButtonColorSet {

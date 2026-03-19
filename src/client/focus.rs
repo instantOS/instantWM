@@ -1,22 +1,22 @@
+#![allow(dead_code, clippy::too_many_arguments)]
 //! Client focus management and X11 input plumbing.
 //!
 //! # Responsibilities
 //!
 //! * [`configure_x11`]  – send a synthetic `ConfigureNotify` to a client so it
-//!                       knows its current geometry without waiting for a real
-//!                       configure event.
+//!   knows its current geometry without waiting for a real configure event.
 //! * [`send_event_x11`] – send an arbitrary `ClientMessage`, with optional
-//!                       `WM_PROTOCOLS` existence check.
+//!   `WM_PROTOCOLS` existence check.
 //! * [`set_focus_x11`]  – give input focus to a client window.
-//! * [`unfocus_win_x11`]- remove focus from a client (reset border colour,
-//!                       optionally redirect focus to the root).
-//! * [`grab_buttons_x11`]- (un)grab mouse buttons on a client depending on
-//!                       whether it is currently focused.
+//! * [`unfocus_win_x11`] – remove focus from a client (reset border colour,
+//!   optionally redirect focus to the root).
+//! * [`grab_buttons_x11`] – (un)grab mouse buttons on a client depending on
+//!   whether it is currently focused.
 
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::X11RuntimeConfig;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
-use crate::backend::x11::X11RuntimeConfig;
 use crate::types::WindowId;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;

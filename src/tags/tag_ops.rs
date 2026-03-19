@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! Type-safe tag operations.
 //!
 //! This module provides ergonomic wrappers around tag operations using
@@ -10,8 +11,6 @@ use crate::types::{TagMask, TagSelection};
 ///
 /// This is the preferred way to switch tag views as it provides
 /// semantic meaning and type safety.
-///
-
 pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
     let num_tags = ctx.g().tags.count();
     let current_mask = TagMask::from_bits(ctx.g().selected_monitor().selected_tags());
