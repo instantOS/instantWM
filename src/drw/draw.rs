@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! Drw::new()          – open display, create pixmap + GC
-//!   └─ fontset_create – load fonts into the linked-list fontset
+//!   └─ fontset_create – load fonts into the fontset vector
 //!   └─ set_scheme     – choose the active color scheme
 //!   └─ text / rect / circ / arrow  – render into the pixmap
 //!   └─ map            – blit the pixmap to the target window
@@ -70,8 +70,8 @@ pub struct Drw {
     /// Active color scheme.
     scheme: Option<ColorScheme>,
 
-    /// Loaded fontset (linked list, head node).
-    pub fonts: Option<Box<Fnt>>,
+    /// Loaded fontset (vector of fonts for fallback chain).
+    pub fonts: Option<Vec<Fnt>>,
 
     depth: u8,
     visual: *mut libc::c_void,
@@ -429,7 +429,7 @@ impl Drw {
 
 impl Drw {
     /// Replace the active fontset.
-    pub fn set_fontset(&mut self, font: Option<Box<Fnt>>) {
+    pub fn set_fontset(&mut self, font: Option<Vec<Fnt>>) {
         self.fonts = font;
     }
 
@@ -437,24 +437,25 @@ impl Drw {
     ///
     /// Fonts are stored in the order given; the first font is tried first when
     /// rendering each glyph.  Returns a clone of `self.fonts` for convenience.
-    pub fn fontset_create(&mut self, fonts: &[&str]) -> Result<Option<Box<Fnt>>, String> {
+    pub fn fontset_create(&mut self, font_names: &[&str]) -> Result<Option<Vec<Fnt>>, String> {
         if self.display.is_null() {
             return Ok(None);
         }
-        // Load in reverse so prepending produces the correct order.
-        let mut head: Option<Box<Fnt>> = None;
-        for &name in fonts.iter().rev() {
-            if let Some(mut fnt) = self.load_font_by_name(name)? {
-                fnt.next = head;
-                head = Some(fnt);
+        let mut fonts = Vec::new();
+        for &name in font_names {
+            if let Some(fnt) = self.load_font_by_name(name)? {
+                fonts.push(fnt);
             }
         }
-        self.fonts = head;
+        if fonts.is_empty() {
+            return Ok(None);
+        }
+        self.fonts = Some(fonts);
         Ok(self.fonts.clone())
     }
 
-    /// Load a single font by name string, returning a heap-allocated [`Fnt`].
-    fn load_font_by_name(&self, name: &str) -> Result<Option<Box<Fnt>>, String> {
+    /// Load a single font by name string, returning a [`Fnt`].
+    fn load_font_by_name(&self, name: &str) -> Result<Option<Fnt>, String> {
         self.xfont_create(Some(name), None)
     }
 
@@ -465,7 +466,7 @@ impl Drw {
         &self,
         fontname: Option<&str>,
         fontpattern: Option<*mut FcPattern>,
-    ) -> Result<Option<Box<Fnt>>, String> {
+    ) -> Result<Option<Fnt>, String> {
         if self.display.is_null() {
             return Ok(None);
         }
@@ -498,15 +499,14 @@ impl Drw {
 
         let (ascent, descent) = unsafe { ((*xfont).ascent, (*xfont).descent) };
 
-        Ok(Some(Box::new(Fnt {
+        Ok(Some(Fnt {
             display: self.display,
             h: (ascent + descent) as u32,
             xfont,
             pattern,
-            next: None,
             ascent,
             owns_resources: true,
-        })))
+        }))
     }
 }
 
@@ -942,7 +942,7 @@ impl Drw {
 
                 // Find which font in the fallback chain can render this char.
                 while !charexists {
-                    let font_count = self.fonts.as_ref().unwrap().count();
+                    let font_count = self.fonts.as_ref().unwrap().len();
                     for cur_idx in 0..font_count {
                         let cur_font = self.fonts.as_ref().unwrap().get(cur_idx).unwrap();
 
@@ -1082,11 +1082,11 @@ impl Drw {
             FcCharSetAddChar(fccharset, codepoint);
 
             let fonts_ref = self.fonts.as_ref().unwrap();
-            if fonts_ref.pattern.is_null() {
+            if fonts_ref[0].pattern.is_null() {
                 panic!("drw: the first font in the cache must be loaded from a font name string.");
             }
 
-            let fcpattern = FcPatternDuplicate(fonts_ref.pattern);
+            let fcpattern = FcPatternDuplicate(fonts_ref[0].pattern);
             FcPatternAddCharSet(fcpattern, FC_CHARSET.as_ptr(), fccharset);
             FcPatternAddBool(fcpattern, FC_SCALABLE.as_ptr(), FC_TRUE);
             FcConfigSubstitute(ptr::null_mut(), fcpattern, FC_MATCH_PATTERN);
@@ -1111,8 +1111,8 @@ impl Drw {
             match self.xfont_create(None, Some(match_pattern)) {
                 Ok(Some(new_font)) => {
                     if XftCharExists(self.display, new_font.xfont, codepoint) != 0 {
-                        *usedfont_idx = self.fonts.as_ref().unwrap().count();
-                        self.fonts.as_mut().unwrap().push_back(new_font);
+                        *usedfont_idx = self.fonts.as_ref().unwrap().len();
+                        self.fonts.as_mut().unwrap().push(new_font);
                     } else {
                         drop(new_font);
                         if self.nomatches.len() >= NOMATCHES_LEN {

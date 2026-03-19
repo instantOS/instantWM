@@ -228,7 +228,12 @@ fn init_drw_and_schemes(wm: &mut Wm) {
         panic!("no fonts could be loaded.");
     }
 
-    let font_height = drw.fonts.as_ref().map(|f| f.h).unwrap_or(12);
+    let font_height = drw
+        .fonts
+        .as_ref()
+        .and_then(|f| f.first())
+        .map(|font| font.h)
+        .unwrap_or(12);
     let bar_height = wm.g.cfg.bar_height;
     let bar_height = if bar_height > 0 {
         font_height + bar_height as u32

@@ -1,14 +1,13 @@
 //! Font loading and management.
 //!
-//! [`Fnt`] is a singly-linked list node representing one loaded Xft font.
-//! Multiple fonts are chained together to form a *fontset*: when rendering a
-//! glyph the drawing code walks the list until it finds a font that contains
-//! the required codepoint (Unicode fallback).
+//! [`Fnt`] represents one loaded Xft font. Fonts are stored in a [`Vec`] to form
+//! a *fontset*: when rendering a glyph the drawing code walks the vector until
+//! it finds a font that contains the required codepoint (Unicode fallback).
 //!
 //! # Ownership model
 //!
-//! Only the *head* node of a fontset that was created by [`Drw::fontset_create`]
-//! carries `owns_resources = true`.  Clones produced by [`Clone`] always set
+//! Only the original `Fnt` created by [`Drw::fontset_create`] carries
+//! `owns_resources = true`.  Clones produced by [`Clone`] always set
 //! `owns_resources = false` so that resources are freed exactly once when the
 //! original is dropped.
 
@@ -37,9 +36,6 @@ pub struct Fnt {
     /// Required when performing fallback font matching (see `Drw::text`).
     pub pattern: *mut FcPattern,
 
-    /// Next font in the fallback chain, or `None` for the last font.
-    pub next: Option<Box<Fnt>>,
-
     /// Font ascent in pixels (used to vertically centre glyphs).
     pub(super) ascent: i32,
 
@@ -63,7 +59,6 @@ impl Clone for Fnt {
             h: self.h,
             xfont: self.xfont,
             pattern: self.pattern,
-            next: self.next.clone(),
             ascent: self.ascent,
             owns_resources: false,
         }
@@ -82,33 +77,6 @@ impl Fnt {
     pub fn ascent(&self) -> i32 {
         self.ascent
     }
-
-    /// Iterate over every font in the linked list, starting with `self`.
-    pub fn iter(&self) -> FontIter<'_> {
-        FontIter {
-            current: Some(self),
-        }
-    }
-
-    /// Count the total number of fonts in this fontset (including `self`).
-    pub fn count(&self) -> usize {
-        self.iter().count()
-    }
-
-    /// Return the font at position `idx` in the linked list, or `None` if the
-    /// list is shorter than `idx + 1`.
-    pub fn get(&self, idx: usize) -> Option<&Fnt> {
-        self.iter().nth(idx)
-    }
-
-    /// Append `font` to the tail of this linked list.
-    pub fn push_back(&mut self, font: Box<Fnt>) {
-        let mut tail = self;
-        while tail.next.is_some() {
-            tail = tail.next.as_mut().unwrap();
-        }
-        tail.next = Some(font);
-    }
 }
 
 impl Drop for Fnt {
@@ -125,22 +93,5 @@ impl Drop for Fnt {
                 }
             }
         }
-    }
-}
-
-// ── FontIter ─────────────────────────────────────────────────────────────────
-
-/// Iterator over the fonts in a [`Fnt`] linked list.
-pub struct FontIter<'a> {
-    current: Option<&'a Fnt>,
-}
-
-impl<'a> Iterator for FontIter<'a> {
-    type Item = &'a Fnt;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let node = self.current?;
-        self.current = node.next.as_deref();
-        Some(node)
     }
 }

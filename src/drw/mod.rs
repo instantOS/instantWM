@@ -55,9 +55,9 @@ mod font;
 #[allow(unused_imports)]
 pub use color::{COL_BG, COL_DETAIL, COL_FG, Color, Cursor};
 
-// Font linked-list type and its iterator.
+// Font type.
 #[allow(unused_imports)]
-pub use font::{Fnt, FontIter};
+pub use font::Fnt;
 
 // The main drawing context.
 pub use draw::Drw;
