@@ -7,15 +7,15 @@ use std::process::exit;
 use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{

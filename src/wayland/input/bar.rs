@@ -1,6 +1,6 @@
+use crate::backend::Backend;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::status::emit_i3bar_status_click;
-use crate::backend::Backend;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
@@ -103,14 +103,11 @@ pub fn dispatch_wayland_bar_click(
         };
         if data.wayland_systray_runtime.as_ref().is_some() {
             if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
-                let target = data
-                    .wayland_systray_menu
-                    .as_ref()
-                    .and_then(|menu| {
-                        menu.items
-                            .get(idx)
-                            .map(|it| (menu.service.clone(), menu.path.clone(), it.id, it.enabled))
-                    });
+                let target = data.wayland_systray_menu.as_ref().and_then(|menu| {
+                    menu.items
+                        .get(idx)
+                        .map(|it| (menu.service.clone(), menu.path.clone(), it.id, it.enabled))
+                });
                 if let Some((service, path, id, enabled)) = target
                     && enabled
                 {

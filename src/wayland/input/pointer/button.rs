@@ -5,8 +5,8 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
-use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
 use crate::backend::Backend;
+use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
 use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
@@ -114,15 +114,17 @@ pub fn handle_pointer_button<B: InputBackend>(
 
             // Check if we should close - only Wayland has systray menu
             let should_close = match &mut wm.backend {
-                Backend::Wayland(data) => data.wayland_systray_menu.as_ref().is_some()
-                    && crate::systray::wayland::hit_test_wayland_systray_menu_item(
-                        &core,
-                        &data.wayland_systray,
-                        data.wayland_systray_menu.as_ref(),
-                        &mon,
-                        local_x,
-                    )
-                    .is_none(),
+                Backend::Wayland(data) => {
+                    data.wayland_systray_menu.as_ref().is_some()
+                        && crate::systray::wayland::hit_test_wayland_systray_menu_item(
+                            &core,
+                            &data.wayland_systray,
+                            data.wayland_systray_menu.as_ref(),
+                            &mon,
+                            local_x,
+                        )
+                        .is_none()
+                }
                 Backend::X11(_) => false,
             };
             should_close

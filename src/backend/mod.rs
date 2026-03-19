@@ -172,9 +172,7 @@ pub enum BackendRef<'a> {
 impl<'a> BackendRef<'a> {
     pub fn from_backend(backend: &'a Backend) -> Self {
         match backend {
-            Backend::X11(data) => {
-                BackendRef::X11(X11BackendRef::new(&data.conn, data.screen_num))
-            }
+            Backend::X11(data) => BackendRef::X11(X11BackendRef::new(&data.conn, data.screen_num)),
             Backend::Wayland(data) => BackendRef::Wayland(&data.backend),
         }
     }
