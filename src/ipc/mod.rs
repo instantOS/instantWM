@@ -1,4 +1,4 @@
-use crate::ipc_types::{IpcCommand, IpcRequest, IpcResponse};
+use crate::ipc_types::{IpcCommand, IpcRequest, Response};
 use crate::reload::reload_config;
 use crate::wm::Wm;
 use std::fs;
@@ -65,7 +65,7 @@ impl IpcServer {
                 Ok(0) => break,
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(_) => {
-                    let _ = send_response(&mut stream, &IpcResponse::err("read error"));
+                    let _ = send_response(&mut stream, &Response::err("read error"));
                     return;
                 }
                 _ => break,
@@ -73,7 +73,7 @@ impl IpcServer {
         }
 
         if buffer.is_empty() {
-            let _ = send_response(&mut stream, &IpcResponse::err("empty request"));
+            let _ = send_response(&mut stream, &Response::err("empty request"));
             return;
         }
 
@@ -83,7 +83,7 @@ impl IpcServer {
                 Err(e) => {
                     let _ = send_response(
                         &mut stream,
-                        &IpcResponse::err(format!("deserialize error: {}", e)),
+                        &Response::err(format!("deserialize error: {}", e)),
                     );
                     return;
                 }
@@ -91,11 +91,11 @@ impl IpcServer {
 
         // Validate protocol version (skip if ignore_version is set)
         if let Err(e) = request.validate_version() {
-            let _ = send_response(&mut stream, &IpcResponse::err(e));
+            let _ = send_response(&mut stream, &Response::err(e));
             return;
         }
 
-        let response = handle_command(wm, request.command, request.json_output);
+        let response = handle_command(wm, request.command);
         let _ = send_response(&mut stream, &response);
     }
 }
@@ -120,24 +120,20 @@ fn socket_path() -> PathBuf {
     PathBuf::from(format!("/tmp/instantwm-{}.sock", uid))
 }
 
-fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Result<()> {
-    let data = bincode::encode_to_vec(response, bincode::config::standard()).unwrap_or_else(|_| {
-        bincode::encode_to_vec(
-            IpcResponse::err("serialization error"),
-            bincode::config::standard(),
-        )
-        .unwrap()
+fn send_response(stream: &mut UnixStream, response: &Response) -> std::io::Result<()> {
+    let data = serde_json::to_vec(response).unwrap_or_else(|_| {
+        serde_json::to_vec(&Response::err("serialization error")).unwrap()
     });
     stream.write_all(&data)?;
     stream.flush()
 }
 
-fn handle_command(wm: &mut Wm, cmd: IpcCommand, json_output: bool) -> IpcResponse {
+fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
     match cmd {
         IpcCommand::Status => general::get_status(wm),
         IpcCommand::Reload => match reload_config(wm) {
-            Ok(()) => IpcResponse::ok(""),
-            Err(err) => IpcResponse::err(err),
+            Ok(()) => Response::ok(),
+            Err(err) => Response::err(err),
         },
         IpcCommand::RunAction { name, args } => general::run_action(wm, name, args),
         IpcCommand::Spawn(command) => general::spawn_command(wm, command),
@@ -149,9 +145,9 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand, json_output: bool) -> IpcRespons
         IpcCommand::SpecialNext(arg) => general::set_special_next_cmd(wm, arg),
         IpcCommand::UpdateStatus(text) => general::update_status(wm, text),
         IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(wm, cmd),
-        IpcCommand::Window(cmd) => window::handle_window_command(wm, cmd, json_output),
+        IpcCommand::Window(cmd) => window::handle_window_command(wm, cmd),
         IpcCommand::Tag(cmd) => tag::handle_tag_command(wm, cmd),
-        IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd, json_output),
+        IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd),
         IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(wm, cmd),
         IpcCommand::Toggle(cmd) => toggle::handle_toggle_command(wm, cmd),
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),

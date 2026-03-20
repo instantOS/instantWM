@@ -1,9 +1,9 @@
-use crate::ipc_types::{IpcResponse, MonitorCommand};
+use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, focus_n_mon};
 use crate::types::MonitorDirection;
 use crate::wm::Wm;
 
-pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> IpcResponse {
+pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
     match cmd {
         MonitorCommand::List => list_monitors(wm),
         MonitorCommand::Switch { index } => switch_monitor(wm, index as i32),
@@ -28,31 +28,12 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> IpcResponse {
     }
 }
 
-/// Information about a single monitor for JSON output.
-#[derive(Debug, serde::Serialize)]
-struct MonitorInfo {
-    id: usize,
-    index: i32,
-    width: i32,
-    height: i32,
-    x: i32,
-    y: i32,
-    is_primary: bool,
-}
-
-/// Root structure for monitor list JSON output.
-#[derive(Debug, serde::Serialize)]
-struct MonitorList {
-    monitors: Vec<MonitorInfo>,
-    selected: usize,
-}
-
-fn list_monitors(wm: &Wm) -> IpcResponse {
+fn list_monitors(wm: &Wm) -> Response {
     let selected_id = wm.g.selected_monitor_id();
 
-    let monitors: Vec<MonitorInfo> =
+    let monitors: Vec<crate::ipc_types::MonitorInfo> =
         wm.g.monitors_iter()
-            .map(|(id, m)| MonitorInfo {
+            .map(|(id, m)| crate::ipc_types::MonitorInfo {
                 id,
                 index: m.num,
                 width: m.monitor_rect.w,
@@ -63,36 +44,28 @@ fn list_monitors(wm: &Wm) -> IpcResponse {
             })
             .collect();
 
-    let list = MonitorList {
-        monitors,
-        selected: selected_id,
-    };
-
-    match serde_json::to_string_pretty(&list) {
-        Ok(json) => IpcResponse::ok(json),
-        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
-    }
+    Response::MonitorList(monitors)
 }
 
-fn switch_monitor(wm: &mut Wm, index: i32) -> IpcResponse {
+fn switch_monitor(wm: &mut Wm, index: i32) -> Response {
     focus_n_mon(&mut wm.ctx(), index);
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-fn next_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
+fn next_monitor(wm: &mut Wm, count: i32) -> Response {
     let direction = MonitorDirection::new(count.max(1));
     for _ in 0..count.max(1) {
         focus_monitor(&mut wm.ctx(), direction);
     }
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-fn prev_monitor(wm: &mut Wm, count: i32) -> IpcResponse {
+fn prev_monitor(wm: &mut Wm, count: i32) -> Response {
     let direction = MonitorDirection::new(-count.max(1));
     for _ in 0..count.max(1) {
         focus_monitor(&mut wm.ctx(), direction);
     }
-    IpcResponse::ok("")
+    Response::ok()
 }
 
 fn set_monitor_config(
@@ -103,7 +76,7 @@ fn set_monitor_config(
     position: Option<String>,
     scale: Option<f32>,
     enable: Option<bool>,
-) -> IpcResponse {
+) -> Response {
     let resolved_id = if identifier == "focused" {
         let name = wm.g.selected_monitor().name.clone();
         if name.is_empty() {
@@ -125,5 +98,5 @@ fn set_monitor_config(
 
     wm.g.cfg.monitors.insert(resolved_id, config);
     wm.g.dirty.monitor_config = true;
-    IpcResponse::ok("")
+    Response::ok()
 }

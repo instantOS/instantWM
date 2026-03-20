@@ -1,86 +1,16 @@
-use crate::ipc_types::{IpcResponse, WindowCommand};
+use crate::ipc_types::{
+    GeometryInfo, Response, SizeHintsInfo, WindowCommand, WindowGeometryInfo, WindowInfo,
+    WindowState,
+};
 use crate::types::WindowId;
 use crate::wm::Wm;
 
-pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand, json_output: bool) -> IpcResponse {
+pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
     match cmd {
-        WindowCommand::List(window_id) => {
-            list_windows(wm, window_id.map(WindowId::from), json_output)
-        }
+        WindowCommand::List(window_id) => list_windows(wm, window_id.map(WindowId::from)),
         WindowCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
         WindowCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
     }
-}
-
-/// Information about a single window for JSON output.
-#[derive(Debug, serde::Serialize)]
-struct WindowInfo {
-    id: u64,
-    title: String,
-    monitor: usize,
-    tags: Vec<u32>,
-    geometry: GeometryInfo,
-    border_width: i32,
-    state: WindowState,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    scratchpad: Option<ScratchpadInfo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    size_hints: Option<SizeHintsInfo>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct GeometryInfo {
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct WindowState {
-    floating: bool,
-    fullscreen: bool,
-    #[serde(rename = "fake_fullscreen")]
-    fake_fullscreen: bool,
-    sticky: bool,
-    hidden: bool,
-    urgent: bool,
-    locked: bool,
-    fixed_size: bool,
-    never_focus: bool,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct ScratchpadInfo {
-    name: String,
-    #[serde(rename = "restore_tags")]
-    restore_tags: Vec<u32>,
-}
-
-#[derive(Debug, serde::Serialize)]
-struct SizeHintsInfo {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    min_width: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    min_height: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_width: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_height: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    base_width: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    base_height: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    width_increment: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    height_increment: Option<i32>,
-}
-
-/// Root structure for window list JSON output.
-#[derive(Debug, serde::Serialize)]
-struct WindowList {
-    windows: Vec<WindowInfo>,
 }
 
 /// Convert a tags bitmask to an array of 1-indexed tag numbers.
@@ -94,17 +24,26 @@ fn tags_from_mask(tags_mask: u32, valid_mask: u32) -> Vec<u32> {
 }
 
 /// Build scratchpad info from a client if it's a scratchpad window.
-fn build_scratchpad_info(c: &crate::types::client::Client) -> Option<ScratchpadInfo> {
+fn build_scratchpad_info(
+    c: &crate::types::client::Client,
+) -> Option<crate::ipc_types::ScratchpadInfo> {
     if !c.is_scratchpad() {
         return None;
     }
-    Some(ScratchpadInfo {
+    Some(crate::ipc_types::ScratchpadInfo {
         name: c.scratchpad_name.clone(),
-        restore_tags: tags_from_mask(c.scratchpad_restore_tags, u32::MAX),
+        visible: c.issticky,
+        window_id: Some(c.win.0),
+        monitor: Some(c.monitor_id),
+        x: Some(c.geo.x),
+        y: Some(c.geo.y),
+        width: Some(c.geo.w),
+        height: Some(c.geo.h),
+        floating: c.is_floating,
+        fullscreen: c.is_fullscreen,
     })
 }
 
-/// Build size hints info from a client, only including non-default values.
 fn build_size_hints(c: &crate::types::client::Client) -> Option<SizeHintsInfo> {
     if c.size_hints_valid <= 0 {
         return None;
@@ -122,7 +61,6 @@ fn build_size_hints(c: &crate::types::client::Client) -> Option<SizeHintsInfo> {
     })
 }
 
-/// Build window state info from a client.
 fn build_window_state(c: &crate::types::client::Client) -> WindowState {
     WindowState {
         floating: c.is_floating,
@@ -137,7 +75,6 @@ fn build_window_state(c: &crate::types::client::Client) -> WindowState {
     }
 }
 
-/// Convert a single client to WindowInfo for JSON output.
 fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) -> WindowInfo {
     WindowInfo {
         id: c.win.0 as u64,
@@ -157,7 +94,7 @@ fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) 
     }
 }
 
-fn list_windows(wm: &Wm, parsed_id: Option<WindowId>, json_output: bool) -> IpcResponse {
+fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id;
     let mut wins: Vec<_> = if let Some(win) = target {
         wm.g.clients.get(&win).into_iter().collect()
@@ -172,47 +109,7 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>, json_output: bool) -> IpcR
         .map(|c| client_to_window_info(c, tag_mask))
         .collect();
 
-    if json_output {
-        match serde_json::to_string_pretty(&WindowList { windows }) {
-            Ok(json) => IpcResponse::ok(json),
-            Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
-        }
-    } else {
-        if windows.is_empty() {
-            return IpcResponse::ok("No windows".to_string());
-        }
-        let mut output = String::new();
-        output.push_str(&format!(
-            "{:<8} {:<25} {:<8} {:<10} {}\n",
-            "ID", "TITLE", "MONITOR", "TAGS", "STATE"
-        ));
-        output.push_str(&format!(
-            "{:<8} {:<25} {:<8} {:<10} {}\n",
-            "------", "---------------------", "--------", "----------", "-----"
-        ));
-        for w in &windows {
-            let state = format_state(&w.state);
-            let tags = if w.tags.is_empty() {
-                String::from("-")
-            } else {
-                w.tags
-                    .iter()
-                    .map(|t| t.to_string())
-                    .collect::<Vec<_>>()
-                    .join(",")
-            };
-            let title = if w.title.len() > 24 {
-                format!("{}...", &w.title[..21])
-            } else {
-                w.title.clone()
-            };
-            output.push_str(&format!(
-                "{:<8} {:<25} {:<8} {:<10} {}\n",
-                w.id, title, w.monitor, tags, state
-            ));
-        }
-        IpcResponse::ok(output.trim_end().to_string())
-    }
+    Response::WindowList(windows)
 }
 
 fn format_state(state: &WindowState) -> String {
@@ -242,29 +139,22 @@ fn format_state(state: &WindowState) -> String {
     parts.join(", ")
 }
 
-fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> IpcResponse {
+fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id.or_else(|| wm.g.selected_win());
     let Some(win) = target else {
-        return IpcResponse::err("no target window");
+        return Response::err("no target window");
     };
     crate::client::close_win(&mut wm.ctx(), win);
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-/// Geometry information for a single window (JSON output).
-#[derive(Debug, serde::Serialize)]
-struct WindowGeometryInfo {
-    id: u64,
-    geometry: GeometryInfo,
-}
-
-fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
+fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id.or_else(|| wm.g.selected_win());
     let Some(win) = target else {
-        return IpcResponse::err("no target window");
+        return Response::err("no target window");
     };
     let Some(c) = wm.g.clients.get(&win) else {
-        return IpcResponse::err("window not found");
+        return Response::err("window not found");
     };
 
     let info = WindowGeometryInfo {
@@ -277,8 +167,5 @@ fn window_geometry(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
         },
     };
 
-    match serde_json::to_string_pretty(&info) {
-        Ok(json) => IpcResponse::ok(json),
-        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
-    }
+    Response::WindowGeometry(info)
 }
