@@ -465,7 +465,7 @@ define_actions!(
     "toggle_show_tags" => "show/hide tag bar" => |ctx: &mut WmCtx, _args: &[String]| toggle_show_tags(ctx, ToggleAction::Toggle),
     "toggle_double_draw" => "toggle double draw mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_double_draw(&mut ctx.core_mut().globals_mut().behavior),
     "mode_toggle" ("mode_name") => "toggle a mode (enter if not active, else return to default)" => |ctx: &mut WmCtx, args: &[String]| {
-        if let Some(name) = args.get(0) {
+        if let Some(name) = args.first() {
             toggle_mode(ctx, name);
         }
     },
@@ -648,7 +648,7 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
                     index.remove(&combo);
                 }
             }
-            ActionSpec::Named(name) if name.to_ascii_lowercase() == "none" => {
+            ActionSpec::Named(name) if name.eq_ignore_ascii_case("none") => {
                 // Remove existing binding
                 if let Some(&idx) = index.get(&combo) {
                     keys[idx] = None;
