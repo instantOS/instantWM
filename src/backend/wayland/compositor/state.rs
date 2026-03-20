@@ -364,7 +364,10 @@ impl WaylandState {
     /// Execute a closure with a mutable reference to the WM and WaylandState.
     /// This is a specialized helper to avoid double-borrowing when we need
     /// to pass `&mut WaylandState` to a function that also needs `&mut Wm`.
-    pub fn with_wm_mut_unified<T>(&mut self, f: impl FnOnce(&mut Wm, &mut WaylandState) -> T) -> Option<T> {
+    pub fn with_wm_mut_unified<T>(
+        &mut self,
+        f: impl FnOnce(&mut Wm, &mut WaylandState) -> T,
+    ) -> Option<T> {
         self.wm.map(|mut p| {
             let wm = unsafe { p.as_mut() };
             f(wm, self)

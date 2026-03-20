@@ -107,7 +107,6 @@ impl WaylandFocus for PointerFocusTarget {
     }
 }
 
-
 impl PointerFocusTarget {
     fn with_surface<F>(&self, f: F)
     where
@@ -267,7 +266,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::enter(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::enter(surface, seat, data, event)
+        });
     }
 
     fn motion(
@@ -276,7 +277,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::MotionEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::motion(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::motion(surface, seat, data, event)
+        });
     }
 
     fn relative_motion(
@@ -285,7 +288,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::RelativeMotionEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::relative_motion(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::relative_motion(surface, seat, data, event)
+        });
     }
 
     fn button(
@@ -294,7 +299,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::button(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::button(surface, seat, data, event)
+        });
     }
 
     fn axis(
@@ -303,11 +310,15 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         frame: smithay::input::pointer::AxisFrame,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::axis(surface, seat, data, frame));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::axis(surface, seat, data, frame)
+        });
     }
 
     fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::frame(surface, seat, data));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::frame(surface, seat, data)
+        });
     }
 
     fn gesture_swipe_begin(
@@ -316,7 +327,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_swipe_begin(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_swipe_begin(surface, seat, data, event)
+        });
     }
 
     fn gesture_swipe_update(
@@ -325,7 +338,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_swipe_update(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_swipe_update(surface, seat, data, event)
+        });
     }
 
     fn gesture_swipe_end(
@@ -334,7 +349,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_swipe_end(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_swipe_end(surface, seat, data, event)
+        });
     }
 
     fn gesture_pinch_begin(
@@ -343,7 +360,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_pinch_begin(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_pinch_begin(surface, seat, data, event)
+        });
     }
 
     fn gesture_pinch_update(
@@ -352,7 +371,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_pinch_update(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_pinch_update(surface, seat, data, event)
+        });
     }
 
     fn gesture_pinch_end(
@@ -361,7 +382,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_pinch_end(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_pinch_end(surface, seat, data, event)
+        });
     }
 
     fn gesture_hold_begin(
@@ -370,7 +393,9 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_hold_begin(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_hold_begin(surface, seat, data, event)
+        });
     }
 
     fn gesture_hold_end(
@@ -379,13 +404,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         data: &mut WaylandState,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::gesture_hold_end(surface, seat, data, event));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::gesture_hold_end(surface, seat, data, event)
+        });
     }
 
     fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial, time: u32) {
-        self.with_surface(|surface| smithay::input::pointer::PointerTarget::leave(surface, seat, data, serial, time));
+        self.with_surface(|surface| {
+            smithay::input::pointer::PointerTarget::leave(surface, seat, data, serial, time)
+        });
     }
-
 }
 
 // -- TouchTarget implementation --
@@ -398,7 +426,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         event: &smithay::input::touch::DownEvent,
         seq: Serial,
     ) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::down(surface, seat, data, event, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::down(surface, seat, data, event, seq)
+        });
     }
 
     fn up(
@@ -408,7 +438,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         event: &smithay::input::touch::UpEvent,
         seq: Serial,
     ) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::up(surface, seat, data, event, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::up(surface, seat, data, event, seq)
+        });
     }
 
     fn motion(
@@ -418,15 +450,21 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         event: &smithay::input::touch::MotionEvent,
         seq: Serial,
     ) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::motion(surface, seat, data, event, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::motion(surface, seat, data, event, seq)
+        });
     }
 
     fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::frame(surface, seat, data, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::frame(surface, seat, data, seq)
+        });
     }
 
     fn cancel(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::cancel(surface, seat, data, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::cancel(surface, seat, data, seq)
+        });
     }
 
     fn shape(
@@ -436,7 +474,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         event: &smithay::input::touch::ShapeEvent,
         seq: Serial,
     ) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::shape(surface, seat, data, event, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::shape(surface, seat, data, event, seq)
+        });
     }
 
     fn orientation(
@@ -446,7 +486,8 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         event: &smithay::input::touch::OrientationEvent,
         seq: Serial,
     ) {
-        self.with_surface(|surface| smithay::input::touch::TouchTarget::orientation(surface, seat, data, event, seq));
+        self.with_surface(|surface| {
+            smithay::input::touch::TouchTarget::orientation(surface, seat, data, event, seq)
+        });
     }
-
 }

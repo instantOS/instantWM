@@ -83,7 +83,7 @@ pub fn run() -> ! {
     state.init_screencopy_manager();
     state.attach_wm(&mut wm);
 
-    let cursor_manager = init_cursor_manager(&mut renderer, &state.cursor_config);
+    let cursor_manager = init_cursor_manager(&state.cursor_config);
 
     let mut output_surfaces =
         build_output_surfaces(&mut drm_device, &mut renderer, &state, &gbm_device);
@@ -168,13 +168,13 @@ pub fn run() -> ! {
 }
 
 /// Initialize cursor manager from environment or defaults.
-fn init_cursor_manager(renderer: &mut GlesRenderer, config: &CursorConfig) -> CursorManager {
+fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
     let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
     let cursor_size = std::env::var("XCURSOR_SIZE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(config.size);
-    CursorManager::new(renderer, &cursor_theme, cursor_size)
+    CursorManager::new(&cursor_theme, cursor_size as u8)
 }
 
 /// Compute total screen dimensions from output surfaces.

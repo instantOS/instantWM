@@ -220,7 +220,10 @@ fn focus_overlay_if_launcher(state: &mut WaylandState, element: &smithay::deskto
 }
 
 /// Focus a layer surface if it requests keyboard focus.
-fn focus_layer_if_requested(state: &mut WaylandState, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+fn focus_layer_if_requested(
+    state: &mut WaylandState,
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) {
     use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, LayerSurfaceCachedState};
     let interactivity = with_states(surface, |states| {
         states
@@ -793,6 +796,51 @@ impl XdgShellHandler for WaylandState {
         });
         surface.send_configure();
     }
+
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
+            let is_currently_floating = g.clients.get(&win).map(|c| c.is_floating).unwrap_or(false);
+
+            if let Some(client) = g.clients.get_mut(&win) {
+                if !is_currently_floating {
+                    client.float_geo = client.geo;
+                }
+                client.is_floating = true;
+            }
+            g.dirty.space = true;
+            g.dirty.layout = true;
+            if let Some(mon) = g.selected_monitor_mut_opt() {
+                mon.fullscreen = Some(win);
+            }
+        }
+        surface.with_pending_state(|state| {
+            state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
+        });
+        surface.send_configure();
+    }
+
+    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.is_floating = false;
+            }
+            g.dirty.space = true;
+            g.dirty.layout = true;
+            if let Some(mon) = g.selected_monitor_mut_opt()
+                && mon.fullscreen == Some(win)
+            {
+                mon.fullscreen = None;
+            }
+        }
+        surface.with_pending_state(|state| {
+            state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
+        });
+        surface.send_configure();
+    }
 }
 
 impl XdgDecorationHandler for WaylandState {
@@ -964,10 +1012,7 @@ fn trigger_pointer_focus_update(state: &mut WaylandState) {
     if let (Some(pointer), Some(keyboard)) = (pointer_handle, keyboard_handle) {
         state.with_wm_mut_unified(|wm, state| {
             crate::wayland::input::pointer::motion::dispatch_pointer_motion(
-                wm,
-                state,
-                &pointer,
-                &keyboard,
+                wm, state, &pointer, &keyboard,
                 0, // time doesn't strictly matter for forced update
             );
         });

@@ -218,11 +218,15 @@ pub fn render_drm_output(
         state.dnd_icon.as_ref(),
     );
 
+    let cursor_scale = entry.output.current_scale().integer_scale();
+    let millis = start_time.elapsed().as_millis() as u32;
     let cursor_elements: Vec<DrmExtras> = build_cursor_elements(
         renderer,
         cursor_manager,
         &cursor_presentation,
         local_pointer,
+        cursor_scale,
+        millis,
     );
 
     let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
@@ -295,20 +299,25 @@ fn build_cursor_elements(
     cursor_manager: &CursorManager,
     cursor_presentation: &CursorPresentation,
     local_pointer: Point<f64, smithay::utils::Logical>,
+    scale: i32,
+    millis: u32,
 ) -> Vec<DrmExtras> {
     let mut custom_elements = Vec::new();
 
     match cursor_presentation {
         CursorPresentation::Hidden => {}
         CursorPresentation::Named(_) => {
-            if let Some(cursor_elem) =
-                cursor_manager.render_element(local_pointer, cursor_presentation)
-            {
+            if let Some(cursor_elem) = cursor_manager.render_element(
+                local_pointer,
+                cursor_presentation,
+                scale,
+                millis,
+                renderer,
+            ) {
                 custom_elements.push(DrmExtras::Cursor(cursor_elem));
             }
         }
         CursorPresentation::Surface { surface, hotspot } => {
-            // Double-check that the surface is still alive before rendering.
             if !smithay::utils::IsAlive::alive(surface) {
                 return custom_elements;
             }
@@ -321,7 +330,7 @@ fn build_cursor_elements(
                     renderer,
                     surface,
                     cursor_loc,
-                    smithay::utils::Scale::from(1.0),
+                    smithay::utils::Scale::from(scale as f64),
                     1.0,
                     smithay::backend::renderer::element::Kind::Cursor,
                 );
@@ -334,20 +343,19 @@ fn build_cursor_elements(
             hotspot,
             cursor,
         } => {
-            // Render the base cursor first
             custom_elements.extend(build_cursor_elements(
                 renderer,
                 cursor_manager,
                 cursor,
                 local_pointer,
+                scale,
+                millis,
             ));
 
-            // Double-check that the drag icon surface is still alive before rendering.
             if !smithay::utils::IsAlive::alive(icon) {
                 return custom_elements;
             }
 
-            // Then render the drag icon
             let dnd_loc = smithay::utils::Point::<i32, smithay::utils::Physical>::from((
                 (local_pointer.x - hotspot.x as f64).round() as i32,
                 (local_pointer.y - hotspot.y as f64).round() as i32,
@@ -357,7 +365,7 @@ fn build_cursor_elements(
                     renderer,
                     icon,
                     dnd_loc,
-                    smithay::utils::Scale::from(1.0),
+                    smithay::utils::Scale::from(scale as f64),
                     1.0,
                     smithay::backend::renderer::element::Kind::Cursor,
                 );
