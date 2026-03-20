@@ -11,8 +11,7 @@ use smithay::{
     utils::SERIAL_COUNTER,
     wayland::{
         buffer::BufferHandler,
-        compositor::CompositorHandler,
-        compositor::with_states,
+        compositor::{CompositorHandler, get_parent, is_sync_subsurface, with_states},
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
@@ -69,6 +68,27 @@ impl CompositorHandler for WaylandState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         on_commit_buffer_handler::<Self>(surface);
+
+        // Check if this commit is from a pending toplevel that has finally
+        // produced a buffer.  If so, promote it to a managed window.
+        if let Some(pos) = self
+            .pending_toplevels
+            .iter()
+            .position(|t| t.wl_surface() == surface)
+        {
+            let has_buffer =
+                smithay::backend::renderer::utils::with_renderer_surface_state(surface, |state| {
+                    state.buffer().is_some()
+                })
+                .unwrap_or(false);
+            if has_buffer {
+                let toplevel = self.pending_toplevels.swap_remove(pos);
+                let _ = self.map_new_toplevel(toplevel);
+            }
+            // No else: the surface stays in pending_toplevels until it
+            // either commits a buffer or is destroyed.
+        }
+
         self.popups.commit(surface);
 
         if let Some(popup) = self.popups.find_popup(surface)
@@ -570,7 +590,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        let _ = self.map_new_toplevel(surface);
+        // Defer window creation until the surface commits its first buffer.
+        // Some clients (e.g. clipboard tools) create a toplevel but never
+        // render anything — promoting them immediately causes a spurious
+        // layout rearrange.
+        self.pending_toplevels.push(surface);
     }
 
     fn title_changed(&mut self, surface: ToplevelSurface) {
@@ -604,6 +628,17 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        // If the surface was still pending (never committed a buffer),
+        // just remove it — no window management state was ever created.
+        if let Some(pos) = self
+            .pending_toplevels
+            .iter()
+            .position(|t| t.wl_surface() == surface.wl_surface())
+        {
+            self.pending_toplevels.swap_remove(pos);
+            return;
+        }
+
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };

@@ -138,6 +138,14 @@ pub struct WaylandState {
     /// Pending screencopy frames waiting to be fulfilled during the next render.
     pub pending_screencopies: Vec<PendingScreencopy>,
 
+    /// Toplevel surfaces that have not yet committed a buffer.
+    ///
+    /// Some clients (e.g. clipboard tools like `wl-copy`) create an XDG
+    /// toplevel surface but never render anything into it.  Deferring
+    /// window creation until the first buffer commit avoids a spurious
+    /// layout rearrange that the user would see as a brief window shift.
+    pub(super) pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
+
     /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
     /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
@@ -256,6 +264,7 @@ impl WaylandState {
             window_animations: HashMap::new(),
             foreign_toplevel_handles: HashMap::new(),
             pending_screencopies: Vec::new(),
+            pending_toplevels: Vec::new(),
             pending_warp: None,
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
