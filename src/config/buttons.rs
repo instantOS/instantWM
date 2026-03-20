@@ -16,7 +16,7 @@ use crate::mouse::{
 };
 use crate::tags::view::toggle_view_tag;
 use crate::tags::{follow_tag_ctx, set_client_tag_ctx, shift_view, toggle_tag_ctx};
-use crate::toggles::{toggle_locked, toggle_prefix};
+use crate::toggles::{toggle_locked, toggle_mode};
 use crate::types::{
     BarPosition, Button, Direction, MouseButton, StackDirection, TagMask, WindowId,
 };
@@ -202,6 +202,6 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(SideBar, 0, button:MouseButton::Left => |ctx, arg| gesture_mouse(ctx, arg.btn)),
         btn!(StartMenu, 0,     button:MouseButton::Left  => |ctx, _| spawn(ctx, &["instantstartmenu"])),
         btn!(StartMenu, 0,     button:MouseButton::Right => |ctx, _| spawn(ctx, &["quickmenu"])),
-        btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_prefix(ctx)),
+        btn!(StartMenu, SHIFT, button:MouseButton::Left  => |ctx, _| toggle_mode(ctx, "prefix")),
     ]
 }

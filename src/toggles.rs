@@ -1,7 +1,6 @@
 use crate::client::manager::ClientManager;
 use crate::contexts::WmCtx;
 use crate::globals::WmBehavior;
-use crate::keyboard::grab_keys_x11;
 use crate::layouts::arrange;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -118,6 +117,20 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     for win in clients {
         crate::client::show(ctx, win);
     }
+}
+
+pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
+    let mode = if ctx.core().globals().behavior.current_mode == name {
+        "default"
+    } else {
+        name
+    };
+    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+    if let WmCtx::X11(x11) = ctx {
+        crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+    }
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {

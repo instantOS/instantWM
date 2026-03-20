@@ -1,5 +1,5 @@
 pub use crate::layouts::LayoutKind;
-pub use crate::types::{MonitorDirection, PrefixMode, SpecialNext};
+pub use crate::types::{MonitorDirection, SpecialNext};
 use bincode::{Decode, Encode};
 
 /// Protocol version generated at compile time from crate version and git hash.

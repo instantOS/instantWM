@@ -159,7 +159,6 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::TagMon(dir) => general::tag_mon(wm, dir),
         IpcCommand::FollowMon(dir) => general::follow_mon(wm, dir),
         IpcCommand::Layout(val) => general::set_layout(wm, val),
-        IpcCommand::Prefix(arg) => general::set_prefix(wm, arg),
         IpcCommand::Border(arg) => general::set_border(wm, arg),
         IpcCommand::SpecialNext(arg) => general::set_special_next_cmd(wm, arg),
         IpcCommand::UpdateStatus(text) => general::update_status(wm, text),

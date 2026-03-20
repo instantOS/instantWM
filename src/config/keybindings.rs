@@ -22,9 +22,9 @@ use crate::tags::{
     follow_view, last_view, move_client, quit, send_to_monitor, shift_tag, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
+use crate::contexts::WmCtx;
 use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_desktop_mode, toggle_double_draw, toggle_prefix,
-    toggle_show_tags, toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{Direction, Key, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
@@ -250,7 +250,18 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | MOD1, XK_SPACE => |ctx| {
             crate::keyboard_layout::cycle_keyboard_layout(ctx, true);
         }),
-        key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| toggle_desktop_mode(ctx, ToggleAction::Toggle)),
+        key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| {
+            let mode = if ctx.core().globals().behavior.current_mode == "desktop" {
+                "default"
+            } else {
+                "desktop"
+            };
+            ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+            if let WmCtx::X11(x11) = ctx {
+                crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+            }
+            ctx.request_bar_update(None);
+        }),
         key!(MODKEY | CONTROL,     XK_R     => |ctx| ctx.request_bar_update(None)),
         key!(MODKEY | CONTROL,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {
@@ -266,7 +277,18 @@ pub fn get_keys() -> Vec<Key> {
         }),
         key!(MODKEY | SHIFT | CONTROL,    XK_Q   => |_| quit()),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, &["instanthotkeys", "gui"])),
-        key!(MODKEY,  XK_F2 => toggle_prefix),
+        key!(MODKEY,  XK_F2 => |ctx| {
+            let mode = if ctx.core().globals().behavior.current_mode == "prefix" {
+                "default"
+            } else {
+                "prefix"
+            };
+            ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+            if let WmCtx::X11(x11) = ctx {
+                crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+            }
+            ctx.request_bar_update(None);
+        }),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, &["kitty"])),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, menu::SMART)),
         key!(MODKEY | CONTROL,     XK_SPACE           => |ctx| spawn(ctx, menu::RUN)),
