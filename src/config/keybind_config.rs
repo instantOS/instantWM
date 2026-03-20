@@ -715,4 +715,42 @@ mod tests {
         let merged = merge_keybinds(defaults, &specs);
         assert_eq!(merged.len(), 0);
     }
+
+    #[test]
+    fn test_merge_keybinds_adds_and_overrides() {
+        let action1 = Rc::new(|_: &mut WmCtx| {});
+        let defaults = vec![
+            Key {
+                mod_mask: MODKEY,
+                keysym: XK_RETURN,
+                action: action1.clone(),
+            },
+            Key {
+                mod_mask: MODKEY,
+                keysym: XK_Q,
+                action: action1.clone(),
+            },
+        ];
+
+        let specs = vec![
+            // Override Q
+            KeybindSpec {
+                modifiers: vec!["Super".to_string()],
+                key: "q".to_string(),
+                action: ActionSpec::Named("zoom".to_string()),
+            },
+            // Add Space
+            KeybindSpec {
+                modifiers: vec!["Super".to_string()],
+                key: "space".to_string(),
+                action: ActionSpec::Named("toggle_bar".to_string()),
+            },
+        ];
+
+        let merged = merge_keybinds(defaults, &specs);
+        assert_eq!(merged.len(), 3);
+        assert_eq!(merged[0].keysym, XK_RETURN);
+        assert_eq!(merged[1].keysym, XK_Q);
+        assert_eq!(merged[2].keysym, XK_SPACE);
+    }
 }

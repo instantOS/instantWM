@@ -223,36 +223,62 @@ pub fn init_config() -> Config {
     };
 
     let mut modes = std::collections::HashMap::new();
+
+    // Helper for merging mode keybinds
+    let merge_mode = |spec: Option<&config_toml::ModeSpec>,
+                      default_desc: &str,
+                      default_transient: bool,
+                      default_keybinds: Vec<Key>|
+     -> ModeConfig {
+        if let Some(spec) = spec {
+            let keybinds = keybind_config::merge_keybinds(default_keybinds, &spec.keybinds);
+            ModeConfig {
+                description: spec.description.clone().or_else(|| Some(default_desc.to_string())),
+                transient: spec.transient.unwrap_or(default_transient),
+                keybinds,
+            }
+        } else {
+            ModeConfig {
+                description: Some(default_desc.to_string()),
+                transient: default_transient,
+                keybinds: default_keybinds,
+            }
+        }
+    };
+
+    // Special handling for default modes: prefix and desktop
+    modes.insert(
+        "prefix".to_string(),
+        merge_mode(
+            theme.modes.get("prefix"),
+            "prefix",
+            true,
+            desktop_keybinds.clone(),
+        ),
+    );
+
+    modes.insert(
+        "desktop".to_string(),
+        merge_mode(
+            theme.modes.get("desktop"),
+            "desktop",
+            false,
+            desktop_keybinds.clone(),
+        ),
+    );
+
+    // Add all other user-defined modes
     for (name, spec) in &theme.modes {
+        if name == "prefix" || name == "desktop" {
+            continue;
+        }
         let keybinds = keybind_config::merge_keybinds(Vec::new(), &spec.keybinds);
         modes.insert(
             name.clone(),
             ModeConfig {
                 description: spec.description.clone(),
-                transient: spec.transient,
+                transient: spec.transient.unwrap_or(false),
                 keybinds,
-            },
-        );
-    }
-
-    // Add default prefix and desktop modes if not already defined
-    if !modes.contains_key("prefix") {
-        modes.insert(
-            "prefix".to_string(),
-            ModeConfig {
-                description: Some("prefix".to_string()),
-                transient: true,
-                keybinds: desktop_keybinds.clone(),
-            },
-        );
-    }
-    if !modes.contains_key("desktop") {
-        modes.insert(
-            "desktop".to_string(),
-            ModeConfig {
-                description: Some("desktop".to_string()),
-                transient: false,
-                keybinds: desktop_keybinds.clone(),
             },
         );
     }
