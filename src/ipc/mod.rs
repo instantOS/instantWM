@@ -121,9 +121,8 @@ fn socket_path() -> PathBuf {
 }
 
 fn send_response(stream: &mut UnixStream, response: &Response) -> std::io::Result<()> {
-    let data = serde_json::to_vec(response).unwrap_or_else(|_| {
-        serde_json::to_vec(&Response::err("serialization error")).unwrap()
-    });
+    let data = serde_json::to_vec(response)
+        .unwrap_or_else(|_| serde_json::to_vec(&Response::err("serialization error")).unwrap());
     stream.write_all(&data)?;
     stream.flush()
 }
