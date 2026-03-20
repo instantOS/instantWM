@@ -26,16 +26,16 @@ use std::collections::VecDeque;
 
 use super::color::{Color, Cursor};
 use super::ffi::{
-    FcCharSetAddChar, FcCharSetCreate, FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute,
-    FcInit, FcNameParse, FcPattern, FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy,
-    FcPatternDuplicate, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap,
-    XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc,
-    XDrawRectangle, XFillArc, XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap,
-    XGlyphInfo, XOpenDisplay, XRenderColor, XSetForeground, XSetLineAttributes, XSync,
-    XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate,
-    XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName,
-    XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, FC_CHARSET,
-    FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE,
+    FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE, FcCharSetAddChar, FcCharSetCreate,
+    FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute, FcInit, FcNameParse, FcPattern,
+    FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy, FcPatternDuplicate, XCloseDisplay,
+    XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap, XDefaultColormap, XDefaultDepth,
+    XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc, XDrawRectangle, XFillArc,
+    XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay,
+    XRenderColor, XSetForeground, XSetLineAttributes, XSync, XftCharExists, XftColor,
+    XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate, XftDrawDestroy,
+    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
+    XftInit, XftResult, XftTextExtentsUtf8, XlibGc,
 };
 use super::font::Fnt;
 
@@ -684,11 +684,7 @@ impl Drw {
         let origin_x = if direction { x } else { x + w as i16 };
         let delta_x = if direction { w as i16 } else { -(w as i16) };
         let tip_y = if slash {
-            if direction {
-                0
-            } else {
-                h as i16
-            }
+            if direction { 0 } else { h as i16 }
         } else {
             h as i16 / 2
         };

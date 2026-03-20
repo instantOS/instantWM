@@ -144,7 +144,9 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
     if let Some((is_floating, bw)) = client_info {
         if is_floating {
-            save_floating(ctx, win);
+            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                save_floating(client);
+            }
         }
         let geo = Rect {
             x: work_rect.x,

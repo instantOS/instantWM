@@ -1,4 +1,5 @@
 use crate::contexts::{CoreCtx, WmCtx};
+use crate::globals::WmBehavior;
 use crate::keyboard::grab_keys_x11;
 use crate::layouts::arrange;
 use crate::tags::get_tag_width;
@@ -52,8 +53,8 @@ pub fn toggle_prefix(ctx: &mut WmCtx) {
     ctx.request_bar_update(Some(selmon_id));
 }
 
-pub fn toggle_animated(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.globals_mut().behavior.animated, action);
+pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
+    ctrl_toggle(&mut behavior.animated, action);
 }
 
 pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
@@ -79,8 +80,8 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
     core.globals_mut().clients.update_geometry(win, geo);
 }
 
-pub fn set_special_next(core: &mut CoreCtx, value: SpecialNext) {
-    core.globals_mut().behavior.specialnext = value;
+pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
+    behavior.specialnext = value;
 }
 
 pub fn set_prefix_mode(ctx: &mut WmCtx, value: bool) {
@@ -90,19 +91,16 @@ pub fn set_prefix_mode(ctx: &mut WmCtx, value: bool) {
     ctx.request_bar_update(Some(selmon_id));
 }
 
-pub fn toggle_focus_follows_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(&mut core.globals_mut().behavior.focus_follows_mouse, action);
+pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
+    ctrl_toggle(&mut behavior.focus_follows_mouse, action);
 }
 
-pub fn toggle_focus_follows_float_mouse(core: &mut CoreCtx, action: ToggleAction) {
-    ctrl_toggle(
-        &mut core.globals_mut().behavior.focus_follows_float_mouse,
-        action,
-    );
+pub fn toggle_focus_follows_float_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
+    ctrl_toggle(&mut behavior.focus_follows_float_mouse, action);
 }
 
-pub fn toggle_double_draw(core: &mut CoreCtx) {
-    core.globals_mut().behavior.double_draw = !core.globals_mut().behavior.double_draw;
+pub fn toggle_double_draw(behavior: &mut WmBehavior) {
+    behavior.double_draw = !behavior.double_draw;
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {

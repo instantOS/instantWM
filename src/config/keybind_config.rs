@@ -185,10 +185,10 @@ use crate::floating::{create_overlay, scratchpad_make, scratchpad_toggle, set_ov
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
+    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
 };
+use crate::monitor::{Direction as PushDirection, reorder_client};
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
-use crate::monitor::{reorder_client, Direction as PushDirection};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
@@ -459,9 +459,9 @@ define_actions!(
         }
     },
     "toggle_alt_tag" => "toggle alt-tag mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_alt_tag(ctx, ToggleAction::Toggle),
-    "toggle_animated" => "toggle window animations" => |ctx: &mut WmCtx, _args: &[String]| toggle_animated(ctx.core_mut(), ToggleAction::Toggle),
+    "toggle_animated" => "toggle window animations" => |ctx: &mut WmCtx, _args: &[String]| toggle_animated(&mut ctx.core_mut().globals_mut().behavior, ToggleAction::Toggle),
     "toggle_show_tags" => "show/hide tag bar" => |ctx: &mut WmCtx, _args: &[String]| toggle_show_tags(ctx, ToggleAction::Toggle),
-    "toggle_double_draw" => "toggle double draw mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_double_draw(ctx.core_mut()),
+    "toggle_double_draw" => "toggle double draw mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_double_draw(&mut ctx.core_mut().globals_mut().behavior),
     "toggle_prefix" => "toggle prefix mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_prefix(ctx),
     "unhide_all" => "show all hidden windows" => |ctx: &mut WmCtx, _args: &[String]| unhide_all(ctx),
     "hide" => "hide focused window" => |ctx: &mut WmCtx, _args: &[String]| {

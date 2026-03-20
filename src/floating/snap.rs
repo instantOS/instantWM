@@ -209,7 +209,9 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
 
     // Restore border width for all positions except Maximized (which needs bw=0).
     if snap_status != SnapPosition::Maximized {
-        restore_border_width(&mut ctx.core, win);
+        if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+            restore_border_width(client);
+        }
     }
 
     // Compute target rect based on snap position.
@@ -269,8 +271,8 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
             h: m_mh / 2,
         },
         SnapPosition::Maximized => {
-            save_border_width(&mut ctx.core, win);
             if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+                save_border_width(client);
                 client.border_width = 0;
             }
             Rect {
@@ -320,8 +322,8 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     if is_floating || !tiling {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             client.snap_status = SnapPosition::None;
+            restore_border_width(client);
         }
-        restore_border_width(ctx.core_mut(), win);
         super::state::restore_floating_geometry(ctx, win);
 
         // apply_size is X11-specific

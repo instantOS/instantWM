@@ -22,7 +22,9 @@ pub enum WindowMode {
 /// Returns the restored border width value.
 /// This is X11-specific since Wayland doesn't support border widths.
 fn restore_client_border(core: &mut CoreCtx, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
-    restore_border_width(core, win);
+    if let Some(client) = core.globals_mut().clients.get_mut(&win) {
+        restore_border_width(client);
+    }
     let restored_bw = core
         .globals()
         .clients
@@ -33,10 +35,8 @@ fn restore_client_border(core: &mut CoreCtx, x11: &X11BackendRef<'_>, win: Windo
     restored_bw
 }
 
-pub fn save_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        client.float_geo = client.geo;
-    }
+pub fn save_floating_geometry(client: &mut Client) {
+    client.float_geo = client.geo;
 }
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
@@ -211,7 +211,9 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 
         // Save floating geometry so we can restore it on toggle-off.
         if super::helpers::check_floating(ctx.core(), win) {
-            save_floating_geometry(ctx, win);
+            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                save_floating_geometry(client);
+            }
         }
     }
 

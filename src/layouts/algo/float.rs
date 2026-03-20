@@ -35,7 +35,7 @@
 use crate::backend::BackendOps;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::types::{Monitor, Rect, SnapPosition, WindowId};
+use crate::types::{Client, Monitor, Rect, SnapPosition, WindowId};
 
 // ── float_left ─────────────────────────────────────────────────────────────────
 
@@ -138,8 +138,6 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
 /// Called before any operation that will move a floating client (such as the
 /// overview layout), so the original position can be restored afterwards via
 /// `restore_floating_win`.
-pub fn save_floating(ctx: &mut WmCtx<'_>, win: WindowId) {
-    if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        c.float_geo = c.geo;
-    }
+pub fn save_floating(client: &mut Client) {
+    client.float_geo = client.geo;
 }

@@ -95,7 +95,7 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
 }
 
 pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> IpcResponse {
-    set_special_next(wm.ctx().core_mut(), mode);
+    set_special_next(&mut wm.ctx().core_mut().globals_mut().behavior, mode);
     IpcResponse::ok("")
 }
 

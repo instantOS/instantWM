@@ -4,12 +4,12 @@ use std::rc::Rc;
 
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::client::{close_win, kill_client};
-use crate::config::commands_common::{defaults, media, menu, ROFI_WINDOW_SWITCH};
+use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu};
 use crate::focus::focus_stack;
-use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
+use crate::layouts::{LayoutKind, cycle_layout_direction, set_layout};
 
 use crate::floating::{create_overlay, hide_overlay, set_overlay, show_overlay, toggle_floating};
-use crate::monitor::{reorder_client, Direction as PushDirection};
+use crate::monitor::{Direction as PushDirection, reorder_client};
 use crate::mouse::{
     drag_tag, draw_window, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
     window_title_mouse_handler,

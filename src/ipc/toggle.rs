@@ -11,15 +11,15 @@ pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> IpcResponse {
     match cmd {
         ToggleCommand::Animated(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_animated(ctx.core_mut(), action);
+            toggle_animated(&mut ctx.core_mut().globals_mut().behavior, action);
         }
         ToggleCommand::FocusFollowsMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_mouse(ctx.core_mut(), action);
+            toggle_focus_follows_mouse(&mut ctx.core_mut().globals_mut().behavior, action);
         }
         ToggleCommand::FocusFollowsFloatMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            toggle_focus_follows_float_mouse(ctx.core_mut(), action);
+            toggle_focus_follows_float_mouse(&mut ctx.core_mut().globals_mut().behavior, action);
         }
         ToggleCommand::AltTab(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));

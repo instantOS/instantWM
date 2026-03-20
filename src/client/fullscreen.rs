@@ -75,7 +75,9 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             c.oldstate = c.is_floating as i32;
         }
 
-        ctx_x11.core.globals_mut().clients.save_border_width(win);
+        if let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
+            crate::client::save_border_width(client);
+        }
 
         if !is_fake_fs {
             // Remove the border.
@@ -133,7 +135,9 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             c.is_floating = c.oldstate != 0;
         }
 
-        ctx_x11.core.globals_mut().clients.restore_border_width(win);
+        if let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
+            crate::client::restore_border_width(client);
+        }
 
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.

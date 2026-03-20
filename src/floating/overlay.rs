@@ -208,9 +208,8 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
         mon.overlaystatus = 0;
     }
 
-    save_border_width(ctx.core_mut(), temp_client);
-
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&temp_client) {
+        save_border_width(client);
         client.border_width = 0;
         client.is_locked = true;
 

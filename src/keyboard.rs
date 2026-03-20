@@ -399,9 +399,8 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             let border_width = ctx.core().globals().cfg.border_width_px;
             ctx.set_border(win, border_width);
 
-            save_floating_geometry(ctx, win);
-
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                save_floating_geometry(client);
                 client.snap_status = SnapPosition::Maximized;
             }
 
