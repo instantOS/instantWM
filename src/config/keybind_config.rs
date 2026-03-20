@@ -218,46 +218,80 @@ pub fn get_all_actions() -> Vec<ActionMeta> {
     actions
 }
 
-/// Print all actions to stdout with documentation.
-/// Used by both instantwm --list-actions and instantwmctl action --list.
-pub fn print_actions(json: bool) {
-    let actions = get_all_actions();
+/// Get all actions as ActionInfo for use in IPC responses.
+pub fn get_actions_for_ipc() -> Vec<crate::ipc_types::ActionInfo> {
+    get_all_actions()
+        .into_iter()
+        .map(|a| crate::ipc_types::ActionInfo {
+            name: a.name.to_string(),
+            description: Some(a.doc.to_string()),
+            arg_example: a.arg_example.map(|s| s.to_string()),
+        })
+        .collect()
+}
 
-    if json {
-        match serde_json::to_string_pretty(&actions) {
-            Ok(json) => println!("{}", json),
-            Err(e) => eprintln!("Error generating JSON: {}", e),
-        }
-        return;
-    }
-
-    // Determine max name length for alignment
+pub fn format_action_list_text(actions: &[crate::ipc_types::ActionInfo]) -> String {
+    let mut output = String::new();
     let max_name_len = actions.iter().map(|a| a.name.len()).max().unwrap_or(0);
+    let name_width = max_name_len.max(8);
 
-    println!(
+    use std::fmt::Write;
+    writeln!(
+        output,
         "{:<width$} | {:<20} | DESCRIPTION",
         "ACTION",
         "ARGUMENTS",
-        width = max_name_len
-    );
-    println!(
+        width = name_width
+    )
+    .unwrap();
+    writeln!(
+        output,
         "{:-<width$}-|-{:-<20}-|-{:-<30}",
         "",
         "",
         "",
-        width = max_name_len
-    );
+        width = name_width
+    )
+    .unwrap();
 
-    for action in &actions {
-        let args = action.arg_example.unwrap_or("-");
-        println!(
+    for action in actions {
+        let args = action.arg_example.as_deref().unwrap_or("-");
+        let desc = action.description.as_deref().unwrap_or("");
+        writeln!(
+            output,
             "{:<width$} | {:<20} | {}",
             action.name,
             args,
-            action.doc,
-            width = max_name_len
-        );
+            desc,
+            width = name_width
+        )
+        .unwrap();
     }
+    output
+}
+
+/// Print all actions to stdout with documentation.
+/// Used by instantwm --list-actions.
+pub fn print_actions(json: bool) {
+    let actions: Vec<crate::ipc_types::ActionInfo> = get_all_actions()
+        .into_iter()
+        .map(|a| crate::ipc_types::ActionInfo {
+            name: a.name.to_string(),
+            description: Some(a.doc.to_string()),
+            arg_example: a.arg_example.map(|s| s.to_string()),
+        })
+        .collect();
+
+    if json {
+        if let Ok(output) = serde_json::to_string_pretty(&actions) {
+            println!("{}", output);
+        } else {
+            eprintln!("Error generating JSON");
+        }
+        return;
+    }
+
+    print!("{}", format_action_list_text(&actions));
 }
 
 /// Macro to define all WM actions in one place.

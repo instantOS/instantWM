@@ -1,7 +1,7 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::{command_to_ipc, format_response, get_default_socket, Cli, IpcClient};
+use ctl::{Cli, IpcClient, command_to_ipc, format_response, get_default_socket};
 use instantwm::ipc_types::IpcCommand;
 
 #[cfg(test)]
@@ -20,15 +20,11 @@ fn main() {
     let cli = Cli::parse();
 
     let command = match &cli.command {
-        ctl::CommandKind::Action {
-            name,
-            args,
-            list,
-            json,
-        } => {
+        ctl::CommandKind::Action { name, args, list } => {
             if *list {
-                use instantwm::config::keybind_config::print_actions;
-                print_actions(*json);
+                let actions = instantwm::config::keybind_config::get_actions_for_ipc();
+                let response = instantwm::ipc_types::Response::ActionList(actions);
+                format_response(&response, cli.json);
                 return;
             }
             let name = match name {
@@ -48,11 +44,11 @@ fn main() {
         _ => command_to_ipc(cli.command.clone()),
     };
 
-    if let IpcCommand::UpdateStatus(text) = &command {
-        if text == "-" {
-            handle_status_from_stdin(cli.ignore_version_mismatches);
-            return;
-        }
+    if let IpcCommand::UpdateStatus(text) = &command
+        && text == "-"
+    {
+        handle_status_from_stdin(cli.ignore_version_mismatches);
+        return;
     }
 
     let socket = get_default_socket();

@@ -202,12 +202,7 @@ fn format_action_list(actions: &[ActionInfo], json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(actions).unwrap());
     } else {
-        for a in actions {
-            if let Some(desc) = &a.description {
-                println!("{} - {}", a.name, desc);
-            } else {
-                println!("{}", a.name);
-            }
-        }
+        let output = instantwm::config::keybind_config::format_action_list_text(actions);
+        print!("{}", output);
     }
 }

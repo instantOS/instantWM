@@ -187,8 +187,6 @@ pub enum CommandKind {
         args: Vec<String>,
         #[arg(long, short = 'l')]
         list: bool,
-        #[arg(long, short = 'j')]
-        json: bool,
     },
     Status,
     Reload,
@@ -271,7 +269,6 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
             name,
             args,
             list: _,
-            json: _,
         } => {
             let name = name.expect("action name required (use --list to see available actions)");
             IpcCommand::RunAction { name, args }

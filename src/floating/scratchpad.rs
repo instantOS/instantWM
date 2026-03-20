@@ -185,11 +185,8 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
     let mut shown_count = 0;
 
     for name in scratchpad_names {
-        match scratchpad_show_name(ctx, &name) {
-            Ok(_) => {
-                shown_count += 1;
-            }
-            Err(_) => {}
+        if let Ok(_) = scratchpad_show_name(ctx, &name) {
+            shown_count += 1;
         }
     }
 

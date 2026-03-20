@@ -333,6 +333,7 @@ pub struct TagInfo {
 pub struct ActionInfo {
     pub name: String,
     pub description: Option<String>,
+    pub arg_example: Option<String>,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
