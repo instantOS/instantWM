@@ -247,7 +247,7 @@ pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
             }
 
             // Special case: Onboard (on-screen keyboard) is always sticky.
-            if rule.class == Some("Onboard")
+            if rule.class.as_deref() == Some("Onboard")
                 && let Some(c) = core.globals_mut().clients.get_mut(&win)
             {
                 c.issticky = true;
@@ -287,14 +287,17 @@ fn rule_matches(
 ) -> bool {
     let title_match = rule
         .title
+        .as_ref()
         .map(|t| bytes_contains(client_name.as_bytes(), t))
         .unwrap_or(true);
     let class_match = rule
         .class
+        .as_ref()
         .map(|c| bytes_contains(class_bytes, c))
         .unwrap_or(true);
     let instance_match = rule
         .instance
+        .as_ref()
         .map(|i| bytes_contains(instance_bytes, i))
         .unwrap_or(true);
 

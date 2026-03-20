@@ -271,7 +271,7 @@ pub fn init_config() -> Config {
         desktop_keybinds,
         modes,
         buttons: buttons::get_buttons(),
-        rules: rules::get_rules(),
+        rules: rules::merge_rules(rules::get_rules(), theme.rules),
 
         // --- External commands ---
         external_commands: default_commands(),

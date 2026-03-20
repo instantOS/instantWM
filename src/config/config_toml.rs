@@ -6,6 +6,7 @@ use crate::config::keybind_config::KeybindSpec;
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
+    Rule,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -48,6 +49,9 @@ pub struct ThemeConfig {
     pub status_command: Option<String>,
     /// User-defined modes (sway-like modes).
     pub modes: std::collections::HashMap<String, ModeSpec>,
+    /// Window rules.
+    #[serde(default)]
+    pub rules: Vec<Rule>,
 }
 
 impl Default for ThemeConfig {
@@ -63,6 +67,7 @@ impl Default for ThemeConfig {
             monitors: std::collections::HashMap::new(),
             status_command: None,
             modes: std::collections::HashMap::new(),
+            rules: Vec::new(),
         }
     }
 }

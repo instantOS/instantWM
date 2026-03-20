@@ -6,6 +6,17 @@
 use super::commands::SCRATCHPAD_CLASS;
 use crate::types::{MonitorRule, Rule, RuleFloat};
 
+use std::borrow::Cow;
+
+/// Merge default rules with TOML-configured rules.
+///
+/// TOML rules are prepended to the defaults, so they match first.
+pub fn merge_rules(defaults: Vec<Rule>, toml_rules: Vec<Rule>) -> Vec<Rule> {
+    let mut rules = toml_rules;
+    rules.extend(defaults);
+    rules
+}
+
 /// Build the list of window placement rules.
 pub fn get_rules() -> Vec<Rule> {
     vec![
@@ -19,7 +30,7 @@ pub fn get_rules() -> Vec<Rule> {
         float("Guake"),
         // --- Centered floating ---
         Rule {
-            class: Some("instantfloat"),
+            class: Some(Cow::Borrowed("instantfloat")),
             instance: None,
             title: None,
             tags: 0,
@@ -28,7 +39,7 @@ pub fn get_rules() -> Vec<Rule> {
         },
         // --- Scratchpad ---
         Rule {
-            class: Some(SCRATCHPAD_CLASS),
+            class: Some(Cow::Borrowed(SCRATCHPAD_CLASS)),
             instance: None,
             title: None,
             tags: 0,
@@ -51,7 +62,7 @@ pub fn get_rules() -> Vec<Rule> {
 /// A rule that makes `class` float freely.
 fn float(class: &'static str) -> Rule {
     Rule {
-        class: Some(class),
+        class: Some(Cow::Borrowed(class)),
         instance: None,
         title: None,
         tags: 0,
@@ -63,7 +74,7 @@ fn float(class: &'static str) -> Rule {
 /// A rule that makes `class` float at fullscreen size.
 fn fullscreen_float(class: &'static str) -> Rule {
     Rule {
-        class: Some(class),
+        class: Some(Cow::Borrowed(class)),
         instance: None,
         title: None,
         tags: 0,
