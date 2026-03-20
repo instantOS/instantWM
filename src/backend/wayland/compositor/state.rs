@@ -24,12 +24,15 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         output::OutputManagerState,
+        pointer_gestures::PointerGesturesState,
+        relative_pointer::RelativePointerManagerState,
         selection::data_device::DataDeviceState,
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
+        viewporter::ViewporterState,
         xdg_activation::XdgActivationState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
         xwayland_shell::XWaylandShellState,
@@ -102,6 +105,9 @@ pub struct WaylandState {
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
+    pub pointer_gestures_state: PointerGesturesState,
+    pub relative_pointer_manager_state: RelativePointerManagerState,
+    pub viewporter_state: ViewporterState,
     /// DRM node used for rendering, needed to tag imported dmabufs.
     pub(super) render_node: Option<DrmNode>,
     renderer: Option<NonNull<GlesRenderer>>,
@@ -219,6 +225,9 @@ impl WaylandState {
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
+        let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
+        let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
+        let viewporter_state = ViewporterState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -246,6 +255,9 @@ impl WaylandState {
             dmabuf_state,
             dmabuf_global: None,
             foreign_toplevel_list_state,
+            pointer_gestures_state,
+            relative_pointer_manager_state,
+            viewporter_state,
             render_node: None,
             renderer: None,
             seat,

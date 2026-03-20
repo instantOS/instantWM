@@ -38,7 +38,8 @@ pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_layer_shell,
-    delegate_output, delegate_seat, delegate_shm, delegate_xdg_activation, delegate_xdg_decoration,
+    delegate_output, delegate_pointer_gestures, delegate_relative_pointer, delegate_seat,
+    delegate_shm, delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration,
     delegate_xdg_shell, delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
 };
 
@@ -49,12 +50,15 @@ use smithay::{
 delegate_compositor!(WaylandState);
 delegate_data_device!(WaylandState);
 delegate_dmabuf!(WaylandState);
-delegate_shm!(WaylandState);
-delegate_seat!(WaylandState);
-delegate_xdg_shell!(WaylandState);
-delegate_xdg_decoration!(WaylandState);
-delegate_xdg_activation!(WaylandState);
 delegate_layer_shell!(WaylandState);
 delegate_output!(WaylandState);
+delegate_pointer_gestures!(WaylandState);
+delegate_relative_pointer!(WaylandState);
+delegate_seat!(WaylandState);
+delegate_shm!(WaylandState);
+delegate_viewporter!(WaylandState);
+delegate_xdg_activation!(WaylandState);
+delegate_xdg_decoration!(WaylandState);
+delegate_xdg_shell!(WaylandState);
 delegate_xwayland_keyboard_grab!(WaylandState);
 delegate_xwayland_shell!(WaylandState);
