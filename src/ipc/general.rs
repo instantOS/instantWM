@@ -1,4 +1,4 @@
-use crate::ipc_types::IpcResponse;
+use crate::ipc_types::Response;
 use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
@@ -6,9 +6,8 @@ use crate::toggles::{set_border_width, set_special_next};
 use crate::types::{MonitorDirection, SpecialNext};
 use crate::wm::Wm;
 
-pub fn set_wallpaper(wm: &mut Wm, path: String) -> IpcResponse {
+pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
     if wm.ctx().is_wayland() {
-        // Use swaybg on Wayland
         let _ = std::process::Command::new("killall").arg("swaybg").status();
         let status = std::process::Command::new("swaybg")
             .arg("-i")
@@ -17,35 +16,34 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> IpcResponse {
             .arg("fill")
             .spawn();
         match status {
-            Ok(_) => IpcResponse::ok(format!("Wallpaper set to {}", path)),
-            Err(e) => IpcResponse::err(format!("Failed to spawn swaybg: {}", e)),
+            Ok(_) => Response::Message(format!("Wallpaper set to {}", path)),
+            Err(e) => Response::err(format!("Failed to spawn swaybg: {}", e)),
         }
     } else {
-        // Use feh on X11
         let status = std::process::Command::new("feh")
             .arg("--bg-fill")
             .arg(&path)
             .spawn();
         match status {
-            Ok(_) => IpcResponse::ok(format!("Wallpaper set to {}", path)),
-            Err(e) => IpcResponse::err(format!("Failed to spawn feh: {}", e)),
+            Ok(_) => Response::Message(format!("Wallpaper set to {}", path)),
+            Err(e) => Response::err(format!("Failed to spawn feh: {}", e)),
         }
     }
 }
 
-pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> IpcResponse {
+pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
     use crate::config::keybind_config::compile_action_with_args;
     if let Some(action) = compile_action_with_args(&name, &args) {
         action(&mut wm.ctx());
-        IpcResponse::ok("")
+        Response::ok()
     } else {
-        IpcResponse::err(format!("unknown or invalid action '{name}'"))
+        Response::err(format!("unknown or invalid action '{name}'"))
     }
 }
 
-pub fn spawn_command(wm: &mut Wm, command: String) -> IpcResponse {
+pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     if command.trim().is_empty() {
-        return IpcResponse::err("spawn requires a command");
+        return Response::err("spawn requires a command");
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
@@ -56,32 +54,32 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> IpcResponse {
         cmd.env("DISPLAY", format!(":{display}"));
     }
     match cmd.spawn() {
-        Ok(child) => IpcResponse::ok(format!("pid={}", child.id())),
-        Err(err) => IpcResponse::err(format!("spawn failed: {}", err)),
+        Ok(child) => Response::Message(format!("pid={}", child.id())),
+        Err(err) => Response::err(format!("spawn failed: {}", err)),
     }
 }
 
-pub fn warp_focus(wm: &mut Wm) -> IpcResponse {
+pub fn warp_focus(wm: &mut Wm) -> Response {
     crate::mouse::warp::warp_to_focus(&mut wm.ctx());
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-pub fn tag_mon(wm: &mut Wm, direction: MonitorDirection) -> IpcResponse {
+pub fn tag_mon(wm: &mut Wm, direction: MonitorDirection) -> Response {
     send_to_monitor(&mut wm.ctx(), direction);
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-pub fn follow_mon(wm: &mut Wm, direction: MonitorDirection) -> IpcResponse {
+pub fn follow_mon(wm: &mut Wm, direction: MonitorDirection) -> Response {
     move_to_monitor_and_follow(&mut wm.ctx(), direction);
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> IpcResponse {
+pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> Response {
     layouts_set_layout(&mut wm.ctx(), layout);
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
+pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
     let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
     if let Some(win) = wm.ctx().selected_client() {
         set_border_width(
@@ -90,15 +88,15 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
             val as i32,
         );
     }
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> IpcResponse {
+pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
     set_special_next(&mut wm.ctx().core_mut().globals_mut().behavior, mode);
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-pub fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
+pub fn update_status(wm: &mut Wm, text: String) -> Response {
     if !text.starts_with("instantwm-") {
         crate::bar::status::CUSTOM_STATUS_RECEIVED
             .store(true, std::sync::atomic::Ordering::Relaxed);
@@ -118,29 +116,16 @@ pub fn update_status(wm: &mut Wm, text: String) -> IpcResponse {
     }
     wm.bar.mark_dirty();
 
-    IpcResponse::ok("")
+    Response::ok()
 }
 
-/// Status information for the running instantWM instance.
-#[derive(Debug, serde::Serialize)]
-struct WmStatusInfo {
-    version: String,
-    protocol_version: String,
-    build_commit: String,
-    backend: String,
-    running: bool,
-    monitors: usize,
-    windows: usize,
-    tags: usize,
-}
-
-pub fn get_status(wm: &Wm) -> IpcResponse {
+pub fn get_status(wm: &Wm) -> Response {
     let backend = match &wm.backend {
         crate::backend::Backend::X11(_) => "x11",
         crate::backend::Backend::Wayland(_) => "wayland",
     };
 
-    let info = WmStatusInfo {
+    let info = crate::ipc_types::WmStatusInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         protocol_version: crate::ipc_types::IPC_PROTOCOL_VERSION.to_string(),
         build_commit: env!("INSTANTWM_BUILD_COMMIT").to_string(),
@@ -151,8 +136,5 @@ pub fn get_status(wm: &Wm) -> IpcResponse {
         tags: wm.g.tags.num_tags,
     };
 
-    match serde_json::to_string_pretty(&info) {
-        Ok(json) => IpcResponse::ok(json),
-        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
-    }
+    Response::Status(info)
 }

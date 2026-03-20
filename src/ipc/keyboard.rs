@@ -1,30 +1,40 @@
-use crate::ipc_types::{IpcResponse, KeyboardCommand};
+use crate::ipc_types::{KeyboardCommand, KeyboardLayoutInfo, Response};
 use crate::keyboard_layout;
 use crate::wm::Wm;
 
-pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> IpcResponse {
+pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
     let mut ctx = wm.ctx();
     match cmd {
         KeyboardCommand::Next => {
             let status = keyboard_layout::cycle_keyboard_layout(&mut ctx, true);
-            IpcResponse::ok(status)
+            Response::Message(status)
         }
         KeyboardCommand::Prev => {
             let status = keyboard_layout::cycle_keyboard_layout(&mut ctx, false);
-            IpcResponse::ok(status)
+            Response::Message(status)
         }
         KeyboardCommand::Status => {
             let status = keyboard_layout::keyboard_layout_status(&ctx);
-            IpcResponse::ok(status)
+            Response::Message(status)
         }
         KeyboardCommand::List => {
-            let list = keyboard_layout::keyboard_layout_list(&ctx);
-            IpcResponse::ok(list)
+            let state = &ctx.core().globals().keyboard_layout;
+            let layouts: Vec<KeyboardLayoutInfo> = state
+                .layouts
+                .iter()
+                .enumerate()
+                .map(|(i, l)| KeyboardLayoutInfo {
+                    name: l.name.clone(),
+                    variant: l.variant.clone(),
+                    is_active: i == state.current,
+                })
+                .collect();
+            Response::KeyboardLayoutList(layouts)
         }
         KeyboardCommand::ListAll => {
             let layouts = keyboard_layout::get_all_keyboard_layouts();
             let list = layouts.join("\n");
-            IpcResponse::ok(list)
+            Response::Message(list)
         }
         KeyboardCommand::Set(layouts) => {
             let globals_layouts: Vec<crate::globals::KeyboardLayout> = layouts
@@ -35,7 +45,7 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> IpcResponse
                 })
                 .collect();
             keyboard_layout::set_keyboard_layouts(&mut ctx, globals_layouts);
-            IpcResponse::ok("")
+            Response::ok()
         }
         KeyboardCommand::Add(layout) => {
             let globals_layout = crate::globals::KeyboardLayout {
@@ -43,14 +53,14 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> IpcResponse
                 variant: layout.variant,
             };
             match keyboard_layout::add_keyboard_layout(&mut ctx, globals_layout) {
-                Ok(()) => IpcResponse::ok(""),
-                Err(e) => IpcResponse::err(e),
+                Ok(()) => Response::ok(),
+                Err(e) => Response::err(e),
             }
         }
         KeyboardCommand::Remove(layout) => {
             match keyboard_layout::remove_keyboard_layout(&mut ctx, &layout) {
-                Ok(()) => IpcResponse::ok(""),
-                Err(e) => IpcResponse::err(e),
+                Ok(()) => Response::ok(),
+                Err(e) => Response::err(e),
             }
         }
     }

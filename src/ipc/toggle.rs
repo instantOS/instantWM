@@ -1,4 +1,4 @@
-use crate::ipc_types::{IpcResponse, ToggleCommand};
+use crate::ipc_types::{Response, ToggleCommand};
 use crate::toggles::{
     toggle_alt_tag, toggle_animated, toggle_focus_follows_float_mouse, toggle_focus_follows_mouse,
     toggle_show_tags,
@@ -6,7 +6,7 @@ use crate::toggles::{
 use crate::types::ToggleAction;
 use crate::wm::Wm;
 
-pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> IpcResponse {
+pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> Response {
     let mut ctx = wm.ctx();
     match cmd {
         ToggleCommand::Animated(arg) => {
@@ -30,5 +30,5 @@ pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> IpcResponse {
             toggle_show_tags(&mut ctx, action);
         }
     }
-    IpcResponse::ok("")
+    Response::ok()
 }
