@@ -1,7 +1,7 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::{Cli, IpcClient, command_to_ipc, format_response, get_default_socket};
+use ctl::{command_to_ipc, format_response, get_default_socket, Cli, IpcClient};
 use instantwm::ipc_types::IpcCommand;
 
 #[cfg(test)]
@@ -31,9 +31,15 @@ fn main() {
                 print_actions(*json);
                 return;
             }
-            let name = name
-                .clone()
-                .expect("action name required (use --list to see available actions)");
+            let name = match name {
+                Some(name) => name.clone(),
+                None => {
+                    eprintln!(
+                        "instantwmctl: action name required (use --list to see available actions)"
+                    );
+                    std::process::exit(1);
+                }
+            };
             IpcCommand::RunAction {
                 name,
                 args: args.clone(),

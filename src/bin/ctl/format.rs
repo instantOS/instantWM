@@ -32,12 +32,16 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
             return;
         }
         println!(
-            "{:<8} {:<25} {:<8} {:<10} {}",
+            "{:<8} {:<50} {:<8} {:<15} {:<20}",
             "ID", "TITLE", "MONITOR", "TAGS", "STATE"
         );
         println!(
-            "{:<8} {:<25} {:<8} {:<10} {}",
-            "------", "---------------------", "--------", "----------", "-----"
+            "{:<8} {:<50} {:<8} {:<15} {:<20}",
+            "------",
+            "--------------------------------------------------",
+            "--------",
+            "---------------",
+            "--------------------"
         );
         for w in windows {
             let state = format_window_state(&w.state);
@@ -50,13 +54,13 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
                     .collect::<Vec<_>>()
                     .join(",")
             };
-            let title = if w.title.len() > 24 {
-                format!("{}...", &w.title[..21])
+            let title = if w.title.len() > 50 {
+                format!("{}...", &w.title[..47])
             } else {
                 w.title.clone()
             };
             println!(
-                "{:<8} {:<25} {:<8} {:<10} {}",
+                "{:<8} {:<50} {:<8} {:<15} {:<20}",
                 w.id, title, w.monitor, tags, state
             );
         }
@@ -119,6 +123,11 @@ fn format_scratchpad_list(scratchpads: &[ScratchpadInfo], json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(scratchpads).unwrap());
     } else {
+        if scratchpads.is_empty() {
+            println!("No scratchpads");
+            println!("Use 'instantwmctl scratchpad make' to create one");
+            return;
+        }
         for sp in scratchpads {
             let marker = if sp.visible { "*" } else { " " };
             let status = if sp.visible { "visible" } else { "hidden" };
