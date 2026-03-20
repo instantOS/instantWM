@@ -1,9 +1,7 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -110,38 +108,18 @@ pub fn run() -> ! {
         data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
     }
 
-    let wm_cell = Rc::new(RefCell::new(wm));
-    let wm_cell_for_closure = Rc::clone(&wm_cell);
-
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
     libinput_context
         .udev_assign_seat(&seat_name)
         .expect("libinput assign seat");
 
-    let shared_cb = Arc::clone(&shared);
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let (total_w, total_h) = {
-                let s = shared_cb.lock().unwrap();
-                (s.total_width, s.total_height)
-            };
-
-            let mut wm_ref = wm_cell_for_closure.borrow_mut();
-            let any_input = crate::wayland::input::drm::dispatch_libinput_event(
-                event,
-                state,
-                &mut wm_ref,
-                total_w,
-                total_h,
-            );
-            drop(wm_ref);
-
-            if any_input {
-                let mut s = shared_cb.lock().unwrap();
-                s.mark_pointer_output_dirty(state.pointer_location.x as i32);
-            }
+            // Queue events for processing in the main event loop body,
+            // where `&mut Wm` is available without `Rc<RefCell<>>`.
+            state.pending_libinput_events.push(event);
         })
         .expect("failed to insert libinput source");
 
@@ -162,7 +140,7 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    if let Some(ref cmd) = wm_cell.borrow().g.cfg.status_command {
+    if let Some(ref cmd) = wm.g.cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
     } else {
         crate::bar::status::spawn_default_status();
@@ -173,7 +151,7 @@ pub fn run() -> ! {
 
     run_event_loop(
         event_loop,
-        &mut wm_cell.borrow_mut(),
+        &mut wm,
         &mut state,
         &shared,
         &mut output_surfaces,
@@ -334,6 +312,10 @@ fn run_event_loop(
         .run(Duration::from_millis(16), state, move |state| {
             process_completed_crtcs(state, shared, output_surfaces);
 
+            // Drain queued libinput events (pushed by the calloop source
+            // callback) and dispatch them now that we have `&mut Wm`.
+            process_pending_libinput_events(wm, state, shared);
+
             super::common::arrange_layout_if_dirty(wm, state);
 
             process_ipc(ipc_server, wm, shared);
@@ -376,6 +358,41 @@ fn run_event_loop(
             }
         })
         .expect("event loop run");
+}
+
+/// Drain and dispatch queued libinput events.
+///
+/// Events are pushed into `WaylandState::pending_libinput_events` by the
+/// calloop source callback (which doesn't have access to `Wm`).  We process
+/// them here in the main event-loop body where `&mut Wm` is available.
+fn process_pending_libinput_events(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    let events: Vec<_> = std::mem::take(&mut state.pending_libinput_events);
+    if events.is_empty() {
+        return;
+    }
+
+    let (total_w, total_h) = {
+        let s = shared.lock().unwrap();
+        (s.total_width, s.total_height)
+    };
+
+    let mut any_input = false;
+    for event in events {
+        any_input |= crate::wayland::input::drm::dispatch_libinput_event(
+            event, state, wm, total_w, total_h,
+        );
+    }
+
+    if any_input {
+        shared
+            .lock()
+            .unwrap()
+            .mark_pointer_output_dirty(state.pointer_location.x as i32);
+    }
 }
 
 /// Process frame submissions for completed CRTCs.
