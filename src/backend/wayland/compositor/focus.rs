@@ -42,6 +42,7 @@ impl From<PopupKind> for KeyboardFocusTarget {
 /// target individual surfaces (e.g. subsurfaces within a window).
 #[derive(Debug, Clone, PartialEq)]
 pub enum PointerFocusTarget {
+    Window(Window),
     WlSurface(WlSurface),
     Popup(PopupKind),
 }
@@ -55,9 +56,7 @@ impl From<PopupKind> for PointerFocusTarget {
 impl From<KeyboardFocusTarget> for PointerFocusTarget {
     fn from(target: KeyboardFocusTarget) -> Self {
         match target {
-            KeyboardFocusTarget::Window(w) => {
-                PointerFocusTarget::WlSurface(w.wl_surface().unwrap().into_owned())
-            }
+            KeyboardFocusTarget::Window(w) => PointerFocusTarget::Window(w),
             KeyboardFocusTarget::WlSurface(s) => PointerFocusTarget::WlSurface(s),
             KeyboardFocusTarget::Popup(p) => PointerFocusTarget::Popup(p),
         }
@@ -79,6 +78,7 @@ impl IsAlive for KeyboardFocusTarget {
 impl IsAlive for PointerFocusTarget {
     fn alive(&self) -> bool {
         match self {
+            PointerFocusTarget::Window(w) => w.alive(),
             PointerFocusTarget::WlSurface(s) => s.alive(),
             PointerFocusTarget::Popup(p) => p.alive(),
         }
@@ -100,6 +100,7 @@ impl WaylandFocus for KeyboardFocusTarget {
 impl WaylandFocus for PointerFocusTarget {
     fn wl_surface(&self) -> Option<Cow<'_, WlSurface>> {
         match self {
+            PointerFocusTarget::Window(w) => w.wl_surface(),
             PointerFocusTarget::WlSurface(s) => Some(Cow::Borrowed(s)),
             PointerFocusTarget::Popup(p) => Some(Cow::Borrowed(p.wl_surface())),
         }
@@ -253,6 +254,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::MotionEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::enter(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::enter(s, seat, data, event);
             }
@@ -269,6 +280,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::MotionEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::motion(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::motion(s, seat, data, event);
             }
@@ -285,6 +306,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::RelativeMotionEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::relative_motion(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::relative_motion(s, seat, data, event);
             }
@@ -306,6 +337,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::button(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::button(s, seat, data, event);
             }
@@ -322,6 +363,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         frame: smithay::input::pointer::AxisFrame,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::axis(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        frame,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::axis(s, seat, data, frame);
             }
@@ -333,6 +384,11 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::frame(surface.as_ref(), seat, data);
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::frame(s, seat, data);
             }
@@ -349,6 +405,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_swipe_begin(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_swipe_begin(s, seat, data, event);
             }
@@ -370,6 +436,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_swipe_update(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_swipe_update(s, seat, data, event);
             }
@@ -391,6 +467,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_swipe_end(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_swipe_end(s, seat, data, event);
             }
@@ -412,6 +498,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_pinch_begin(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_pinch_begin(s, seat, data, event);
             }
@@ -433,6 +529,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_pinch_update(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_pinch_update(s, seat, data, event);
             }
@@ -454,6 +560,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_pinch_end(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_pinch_end(s, seat, data, event);
             }
@@ -475,6 +591,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_hold_begin(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_hold_begin(s, seat, data, event);
             }
@@ -496,6 +622,16 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::gesture_hold_end(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::gesture_hold_end(s, seat, data, event);
             }
@@ -512,6 +648,17 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial, time: u32) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::pointer::PointerTarget::leave(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        serial,
+                        time,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::pointer::PointerTarget::leave(s, seat, data, serial, time);
             }
@@ -539,6 +686,17 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seq: Serial,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::down(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                        seq,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::down(s, seat, data, event, seq);
             }
@@ -556,6 +714,17 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seq: Serial,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::up(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                        seq,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::up(s, seat, data, event, seq);
             }
@@ -573,6 +742,17 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seq: Serial,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::motion(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                        seq,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::motion(s, seat, data, event, seq);
             }
@@ -584,6 +764,11 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
 
     fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::frame(surface.as_ref(), seat, data, seq);
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::frame(s, seat, data, seq);
             }
@@ -595,6 +780,11 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
 
     fn cancel(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::cancel(surface.as_ref(), seat, data, seq);
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::cancel(s, seat, data, seq);
             }
@@ -612,6 +802,17 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seq: Serial,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::shape(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                        seq,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::shape(s, seat, data, event, seq);
             }
@@ -629,6 +830,17 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seq: Serial,
     ) {
         match self {
+            PointerFocusTarget::Window(w) => {
+                if let Some(surface) = w.wl_surface() {
+                    smithay::input::touch::TouchTarget::orientation(
+                        surface.as_ref(),
+                        seat,
+                        data,
+                        event,
+                        seq,
+                    );
+                }
+            }
             PointerFocusTarget::WlSurface(s) => {
                 smithay::input::touch::TouchTarget::orientation(s, seat, data, event, seq);
             }
