@@ -6,17 +6,33 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
     let inputs = &mut wm.g.cfg.input;
     match cmd {
         InputCommand::List(identifier) => {
-            let entries: Vec<_> = match &identifier {
-                Some(id) => inputs
-                    .iter()
-                    .filter(|(k, _)| k.as_str() == id.as_str())
-                    .collect(),
-                None => inputs.iter().collect(),
+            let mut entries: Vec<(String, &crate::config::config_toml::InputConfig)> =
+                match &identifier {
+                    Some(id) => inputs
+                        .iter()
+                        .filter(|(k, _)| k.as_str() == id.as_str())
+                        .map(|(k, v)| (k.clone(), v))
+                        .collect(),
+                    None => inputs.iter().map(|(k, v)| (k.clone(), v)).collect(),
+                };
+
+            // If no specific entry exists for '*' or if no entries at all,
+            // and the user requested '*' or no specific identifier, show the defaults for '*'.
+            let show_defaults = match &identifier {
+                Some(id) => id == "*" && entries.is_empty(),
+                None => entries.is_empty(),
             };
+
+            let default_cfg = crate::config::config_toml::InputConfig::default();
+            if show_defaults {
+                entries.push(("*".to_string(), &default_cfg));
+            }
+
             if entries.is_empty() {
-                return IpcResponse::ok(
-                    "no input configuration found\n\nHint: Use 'instantwmctl mouse devices' to see connected physical devices.\n      Common identifiers are 'type:pointer', 'type:touchpad', or '*'.",
-                );
+                return IpcResponse::ok(format!(
+                    "no input configuration found for '{}'\n\nHint: Use 'instantwmctl mouse devices' to see connected physical devices.\n      Common identifiers are 'type:pointer', 'type:touchpad', or '*'.",
+                    identifier.unwrap_or_default()
+                ));
             }
             let info: Vec<String> = entries
                 .iter()

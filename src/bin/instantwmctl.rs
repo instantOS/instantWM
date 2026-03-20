@@ -293,8 +293,10 @@ enum InputAction {
     ///
     /// Shows configuration for all device types, or for a specific
     /// identifier (e.g., "type:touchpad", "type:pointer", "*").
+    ///
+    /// Note: if using '*', ensure it is quoted to avoid shell expansion.
     List {
-        /// Device identifier (e.g., "type:touchpad", "type:pointer", "*")
+        /// Device identifier (e.g., "type:touchpad", "type:pointer", "'*'")
         identifier: Option<String>,
     },
     /// List all connected physical input devices.
@@ -303,12 +305,13 @@ enum InputAction {
     ///
     /// Value must be between -1.0 and 1.0.
     /// Negative values slow down, positive values speed up.
-    /// Identifier examples: "type:touchpad", "type:pointer", "*"
+    /// Identifier examples: "type:touchpad", "type:pointer", "'*'"
+    /// Note: if using '*', ensure it is quoted to avoid shell expansion.
     #[command(alias = "pointer-accel")]
     Speed {
         /// Acceleration value (-1.0 to 1.0)
         value: f64,
-        /// Device identifier (e.g., "type:pointer", "type:touchpad", "*")
+        /// Device identifier (e.g., "type:pointer", "type:touchpad", "'*'")
         /// Defaults to "*" (all devices) if not provided.
         #[arg(short, long)]
         identifier: Option<String>,
@@ -316,26 +319,31 @@ enum InputAction {
     /// Set acceleration profile.
     ///
     /// "flat" disables acceleration, "adaptive" applies dynamic acceleration.
+    /// Note: if using '*', ensure it is quoted to avoid shell expansion.
     AccelProfile {
         /// Profile: "flat" or "adaptive"
         profile: String,
-        /// Device identifier
+        /// Device identifier (e.g., "'*'")
         #[arg(short, long)]
         identifier: Option<String>,
     },
     /// Enable or disable tap-to-click.
+    ///
+    /// Note: if using '*', ensure it is quoted to avoid shell expansion.
     Tap {
         /// "on"/"enabled" or "off"/"disabled"
         state: String,
-        /// Device identifier
+        /// Device identifier (e.g., "'*'")
         #[arg(short, long)]
         identifier: Option<String>,
     },
     /// Enable or disable natural (inverted) scrolling.
+    ///
+    /// Note: if using '*', ensure it is quoted to avoid shell expansion.
     NaturalScroll {
         /// "on"/"enabled" or "off"/"disabled"
         state: String,
-        /// Device identifier
+        /// Device identifier (e.g., "'*'")
         #[arg(short, long)]
         identifier: Option<String>,
     },
@@ -343,10 +351,11 @@ enum InputAction {
     ///
     /// Values greater than 1.0 increase scroll speed,
     /// values less than 1.0 decrease it.
+    /// Note: if using '*', ensure it is quoted to avoid shell expansion.
     ScrollFactor {
         /// Scroll speed multiplier (must be non-negative)
         value: f64,
-        /// Device identifier
+        /// Device identifier (e.g., "'*'")
         #[arg(short, long)]
         identifier: Option<String>,
     },
