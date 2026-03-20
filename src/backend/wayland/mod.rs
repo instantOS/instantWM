@@ -243,4 +243,40 @@ impl BackendOps for WaylandBackend {
         })
         .unwrap_or_default()
     }
+
+    fn get_input_devices(&self) -> Vec<String> {
+        self.with_state(|state: &mut WaylandState| {
+            state
+                .tracked_devices
+                .iter()
+                .map(|d| {
+                    use smithay::reexports::input::DeviceCapability;
+                    let mut caps = Vec::new();
+                    if d.has_capability(DeviceCapability::Keyboard) {
+                        caps.push("keyboard");
+                    }
+                    if d.has_capability(DeviceCapability::Pointer) {
+                        caps.push("pointer");
+                    }
+                    if d.has_capability(DeviceCapability::Touch) {
+                        caps.push("touch");
+                    }
+                    if d.has_capability(DeviceCapability::TabletTool) {
+                        caps.push("tablet_tool");
+                    }
+                    if d.has_capability(DeviceCapability::TabletPad) {
+                        caps.push("tablet_pad");
+                    }
+                    if d.has_capability(DeviceCapability::Gesture) {
+                        caps.push("gesture");
+                    }
+                    if d.has_capability(DeviceCapability::Switch) {
+                        caps.push("switch");
+                    }
+                    format!("{} (capabilities: {})", d.name(), caps.join(", "))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+    }
 }

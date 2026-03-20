@@ -70,6 +70,11 @@ pub trait BackendOps {
     fn get_outputs(&self) -> Vec<BackendOutputInfo> {
         Vec::new()
     }
+
+    /// Get list of input devices (Wayland only)
+    fn get_input_devices(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// X11-specific backend data.
@@ -159,6 +164,13 @@ impl Backend {
         match self {
             Self::X11(_) => None,
             Self::Wayland(data) => Some(data),
+        }
+    }
+
+    pub fn get_input_devices(&self) -> Vec<String> {
+        match self {
+            Self::X11(_) => Vec::new(),
+            Self::Wayland(data) => data.backend.get_input_devices(),
         }
     }
 }

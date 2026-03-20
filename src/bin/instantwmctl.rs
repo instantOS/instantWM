@@ -297,49 +297,58 @@ enum InputAction {
         /// Device identifier (e.g., "type:touchpad", "type:pointer", "*")
         identifier: Option<String>,
     },
+    /// List all connected physical input devices.
+    Devices,
     /// Set pointer acceleration speed.
     ///
     /// Value must be between -1.0 and 1.0.
     /// Negative values slow down, positive values speed up.
     /// Identifier examples: "type:touchpad", "type:pointer", "*"
-    PointerAccel {
-        /// Device identifier (e.g., "type:pointer", "type:touchpad", "*")
-        identifier: String,
+    #[command(alias = "pointer-accel")]
+    Speed {
         /// Acceleration value (-1.0 to 1.0)
         value: f64,
+        /// Device identifier (e.g., "type:pointer", "type:touchpad", "*")
+        /// Defaults to "*" (all devices) if not provided.
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
     /// Set acceleration profile.
     ///
     /// "flat" disables acceleration, "adaptive" applies dynamic acceleration.
     AccelProfile {
-        /// Device identifier
-        identifier: String,
         /// Profile: "flat" or "adaptive"
         profile: String,
+        /// Device identifier
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
     /// Enable or disable tap-to-click.
     Tap {
-        /// Device identifier
-        identifier: String,
-        /// "enabled" or "disabled"
+        /// "on"/"enabled" or "off"/"disabled"
         state: String,
+        /// Device identifier
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
     /// Enable or disable natural (inverted) scrolling.
     NaturalScroll {
-        /// Device identifier
-        identifier: String,
-        /// "enabled" or "disabled"
+        /// "on"/"enabled" or "off"/"disabled"
         state: String,
+        /// Device identifier
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
     /// Set scroll factor (speed multiplier).
     ///
     /// Values greater than 1.0 increase scroll speed,
     /// values less than 1.0 decrease it.
     ScrollFactor {
-        /// Device identifier
-        identifier: String,
         /// Scroll speed multiplier (must be non-negative)
         value: f64,
+        /// Device identifier
+        #[arg(short, long)]
+        identifier: Option<String>,
     },
 }
 
@@ -625,7 +634,8 @@ fn main() {
         CommandKind::Mouse { action } => {
             let cmd = match action {
                 InputAction::List { identifier } => InputCommand::List(identifier),
-                InputAction::PointerAccel { identifier, value } => {
+                InputAction::Devices => InputCommand::Devices,
+                InputAction::Speed { identifier, value } => {
                     InputCommand::PointerAccel { identifier, value }
                 }
                 InputAction::AccelProfile {
@@ -637,11 +647,11 @@ fn main() {
                 },
                 InputAction::Tap { identifier, state } => InputCommand::Tap {
                     identifier,
-                    enabled: state == "enabled",
+                    enabled: state == "enabled" || state == "on",
                 },
                 InputAction::NaturalScroll { identifier, state } => InputCommand::NaturalScroll {
                     identifier,
-                    enabled: state == "enabled",
+                    enabled: state == "enabled" || state == "on",
                 },
                 InputAction::ScrollFactor { identifier, value } => {
                     InputCommand::ScrollFactor { identifier, value }

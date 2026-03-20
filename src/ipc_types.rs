@@ -198,16 +198,33 @@ pub enum ToggleCommand {
 pub enum InputCommand {
     /// List all input settings for a device identifier (or all if None).
     List(Option<String>),
+    /// List all available physical input devices.
+    Devices,
     /// Set pointer acceleration speed [-1.0, 1.0].
-    PointerAccel { identifier: String, value: f64 },
+    PointerAccel {
+        identifier: Option<String>,
+        value: f64,
+    },
     /// Set acceleration profile (flat or adaptive).
-    AccelProfile { identifier: String, profile: String },
+    AccelProfile {
+        identifier: Option<String>,
+        profile: String,
+    },
     /// Enable or disable tap-to-click.
-    Tap { identifier: String, enabled: bool },
+    Tap {
+        identifier: Option<String>,
+        enabled: bool,
+    },
     /// Enable or disable natural scrolling.
-    NaturalScroll { identifier: String, enabled: bool },
+    NaturalScroll {
+        identifier: Option<String>,
+        enabled: bool,
+    },
     /// Set scroll factor (multiplier).
-    ScrollFactor { identifier: String, value: f64 },
+    ScrollFactor {
+        identifier: Option<String>,
+        value: f64,
+    },
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
