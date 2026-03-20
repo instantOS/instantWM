@@ -30,7 +30,7 @@ mod cursor;
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    CURSOR_SIZE, DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
     SharedDrmState, sync_monitors_from_outputs_vec,
 };
 

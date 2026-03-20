@@ -66,7 +66,10 @@ impl WaylandState {
                 continue;
             };
 
-            if matches!(typ, WindowType::Launcher | WindowType::Overlay) {
+            if matches!(
+                typ,
+                WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
+            ) {
                 let Some(loc) = self.space.element_location(window) else {
                     continue;
                 };

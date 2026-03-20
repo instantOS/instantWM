@@ -44,6 +44,9 @@ impl WaylandState {
             if super::x11::is_launcher_x11_surface(x11) {
                 return WindowType::Launcher;
             }
+            if x11.is_override_redirect() {
+                return WindowType::Unmanaged;
+            }
             return WindowType::Overlay;
         }
 
@@ -76,8 +79,8 @@ impl WaylandState {
     /// keyboard input should go to the window without triggering keybindings.
     pub fn should_suppress_shortcuts_for(&self, window: &Window) -> bool {
         match self.classify_window(window) {
-            WindowType::Overlay | WindowType::Launcher => true,
-            WindowType::Normal | WindowType::Unmanaged | WindowType::Dying => false,
+            WindowType::Overlay | WindowType::Launcher | WindowType::Unmanaged => true,
+            WindowType::Normal | WindowType::Dying => false,
         }
     }
 
@@ -95,7 +98,7 @@ impl WaylandState {
             .collect();
 
         windows.sort_by_key(|(_, typ)| match typ {
-            WindowType::Launcher | WindowType::Overlay => 0,
+            WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged => 0,
             _ => 1,
         });
         windows
