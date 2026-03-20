@@ -247,13 +247,13 @@ enum ToggleAction {
         /// Action: toggle, enable, or disable
         action: Option<String>,
     },
-    /// Toggle or set alt-tab free mode (enables prefix-based window switching).
+    /// Toggle or set sticky prefix mode (enables prefix-based window switching).
     ///
     /// Action argument:
     ///   (empty), 0, or 2: toggle
     ///   1: disable (set false)
     ///   other: enable (set true)
-    AltTab {
+    StickyPrefix {
         /// Action: toggle, enable, or disable
         action: Option<String>,
     },
@@ -568,7 +568,7 @@ fn main() {
                 ToggleAction::FocusFollowsFloatMouse { action } => {
                     ToggleCommand::FocusFollowsFloatMouse(action)
                 }
-                ToggleAction::AltTab { action } => ToggleCommand::AltTab(action),
+                ToggleAction::StickyPrefix { action } => ToggleCommand::StickyPrefix(action),
                 ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
                 ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
             };

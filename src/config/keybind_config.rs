@@ -49,6 +49,8 @@ pub enum StructuredAction {
     Spawn(Vec<String>),
     /// Remove the default binding for this key combo: `{ unbind = true }`.
     Unbind(bool),
+    /// Explicitly set an action to none (synonym for unbind if matching default): `action = "none"`.
+    None,
     /// Set layout: `{ set_layout = "tile" }`.
     SetLayout(String),
     /// Focus stack direction: `{ focus_stack = "next" }`.
@@ -327,6 +329,7 @@ macro_rules! define_actions {
 define_actions!(
     // Client operations
     "zoom" => "zoom client into master area" => |ctx: &mut WmCtx, _args: &[String]| zoom(ctx),
+    "none" => "explicitly unbind/ignore this key combination" => |_: &mut WmCtx, _args: &[String]| {},
     "kill" => "close focused window gracefully" => |ctx: &mut WmCtx, _args: &[String]| {
         if let Some(win) = ctx.selected_client() {
             kill_client(ctx, win)
@@ -540,6 +543,7 @@ pub fn compile_named_action(name: &str) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
 fn compile_action(spec: &ActionSpec) -> Option<Rc<dyn Fn(&mut WmCtx)>> {
     match spec {
         ActionSpec::Structured(StructuredAction::Unbind(_)) => None,
+        ActionSpec::Structured(StructuredAction::None) => None,
 
         ActionSpec::Structured(StructuredAction::Spawn(argv)) => {
             let argv = argv.clone();
@@ -630,7 +634,15 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
         let combo = (mod_mask, keysym);
 
         match &spec.action {
-            ActionSpec::Structured(StructuredAction::Unbind(true)) => {
+            ActionSpec::Structured(StructuredAction::Unbind(true))
+            | ActionSpec::Structured(StructuredAction::None) => {
+                // Remove existing binding
+                if let Some(&idx) = index.get(&combo) {
+                    keys[idx] = None;
+                    index.remove(&combo);
+                }
+            }
+            ActionSpec::Named(name) if name.to_ascii_lowercase() == "none" => {
                 // Remove existing binding
                 if let Some(&idx) = index.get(&combo) {
                     keys[idx] = None;
@@ -659,4 +671,48 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
     }
 
     keys.into_iter().flatten().collect()
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_keybinds_none_action_removes_default() {
+        let action = Rc::new(|_: &mut WmCtx| {});
+        let defaults = vec![Key {
+            mod_mask: MOD1, // Mod1
+            keysym: XK_P, // 'p'
+            action: action.clone(),
+        }];
+
+        let specs = vec![KeybindSpec {
+            modifiers: vec!["Mod1".to_string()],
+            key: "p".to_string(),
+            action: ActionSpec::Named("none".to_string()),
+        }];
+
+        let merged = merge_keybinds(defaults, &specs);
+        assert_eq!(merged.len(), 0);
+    }
+
+    #[test]
+    fn test_merge_keybinds_structured_none_removes_default() {
+        let action = Rc::new(|_: &mut WmCtx| {});
+        let defaults = vec![Key {
+            mod_mask: MOD1, // Mod1
+            keysym: XK_P, // 'p'
+            action: action.clone(),
+        }];
+
+        let specs = vec![KeybindSpec {
+            modifiers: vec!["Mod1".to_string()],
+            key: "p".to_string(),
+            action: ActionSpec::Structured(StructuredAction::None),
+        }];
+
+        let merged = merge_keybinds(defaults, &specs);
+        assert_eq!(merged.len(), 0);
+    }
 }

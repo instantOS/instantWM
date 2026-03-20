@@ -109,7 +109,6 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
     let keys = core.globals().cfg.keys.as_slice();
     let desktop_keybinds = core.globals().cfg.desktop_keybinds.as_slice();
     let modes = &core.globals().cfg.modes;
-    let free_alt_tab = true;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
@@ -149,9 +148,6 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
         for key in keys {
             if keysym == key.keysym {
                 for &modif in &modifiers {
-                    if free_alt_tab && key.mod_mask == ModMask::M1.bits() as u32 {
-                        continue;
-                    }
                     let _ = grab_key(
                         conn,
                         false,

@@ -23,8 +23,8 @@ use crate::tags::{
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
 use crate::toggles::{
-    alt_tab_free, toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix,
-    toggle_show_tags, toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix, toggle_show_tags,
+    toggle_sticky, toggle_sticky_prefix, unhide_all,
 };
 use crate::types::{Direction, Key, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
@@ -250,7 +250,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | MOD1, XK_SPACE => |ctx| {
             crate::keyboard_layout::cycle_keyboard_layout(ctx, true);
         }),
-        key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| alt_tab_free(ctx, ToggleAction::Toggle)),
+        key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| toggle_sticky_prefix(ctx, ToggleAction::Toggle)),
         key!(MODKEY | CONTROL,     XK_R     => |ctx| ctx.request_bar_update(None)),
         key!(MODKEY | CONTROL,  XK_H => |ctx| {
             if let Some(win) = ctx.selected_client() {

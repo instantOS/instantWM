@@ -24,7 +24,7 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     ctx.request_bar_update(None);
 }
 
-pub fn alt_tab_free(ctx: &mut WmCtx, action: ToggleAction) {
+pub fn toggle_sticky_prefix(ctx: &mut WmCtx, action: ToggleAction) {
     if let WmCtx::X11(x11) = ctx {
         ctrl_toggle(&mut x11.core.globals_mut().tags.prefix, action);
         grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
