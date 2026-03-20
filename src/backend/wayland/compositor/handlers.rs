@@ -610,6 +610,20 @@ impl XdgShellHandler for WaylandState {
         _surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         _configure: smithay::wayland::shell::xdg::Configure,
     ) {
+        // This handler is intentionally empty, same as niri.
+        //
+        // Smithay's XdgShellState handles the internal ack tracking
+        // (pending_configures queue, last_acked state) automatically.
+        //
+        // We don't need to track resize grab state (unlike anvil) because
+        // instantWM doesn't implement interactive resize grabs that require
+        // WaitingForFinalAck/WaitingForCommit state transitions.
+        //
+        // We don't update decoration mode based on acked configure because
+        // instantWM always forces ServerSide decorations.
+        //
+        // We don't track window geometry from configure because instantWM
+        // manages window geometry internally.
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
@@ -1074,5 +1088,17 @@ fn trigger_pointer_focus_update(state: &mut WaylandState) {
                 0, // time doesn't strictly matter for forced update
             );
         });
+    }
+}
+
+impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
+    fn inhibit(&mut self, surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        self.idle_inhibiting_surfaces.insert(surface);
+        log::debug!("idle inhibited for surface");
+    }
+
+    fn uninhibit(&mut self, surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+        self.idle_inhibiting_surfaces.remove(&surface);
+        log::debug!("idle uninhibited for surface");
     }
 }

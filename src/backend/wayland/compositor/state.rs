@@ -1,7 +1,8 @@
-use std::collections::HashMap;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::collections::{HashMap, HashSet};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::IsAlive;
 use smithay::{
     backend::allocator::Format,
@@ -10,12 +11,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupManager, Space, Window},
     input::{
-        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
+        Seat, SeatState,
     },
     reexports::{
-        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
+        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -23,13 +24,14 @@ use smithay::{
         compositor::CompositorState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
+        idle_inhibit::IdleInhibitManagerState,
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
         relative_pointer::RelativePointerManagerState,
         selection::data_device::DataDeviceState,
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -108,6 +110,9 @@ pub struct WaylandState {
     pub pointer_gestures_state: PointerGesturesState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
+    pub idle_inhibit_manager_state: IdleInhibitManagerState,
+    /// Surfaces that have active idle inhibitors.
+    pub idle_inhibiting_surfaces: HashSet<WlSurface>,
     /// DRM node used for rendering, needed to tag imported dmabufs.
     pub(super) render_node: Option<DrmNode>,
     renderer: Option<NonNull<GlesRenderer>>,
@@ -228,6 +233,7 @@ impl WaylandState {
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
+        let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -258,6 +264,8 @@ impl WaylandState {
             pointer_gestures_state,
             relative_pointer_manager_state,
             viewporter_state,
+            idle_inhibit_manager_state,
+            idle_inhibiting_surfaces: HashSet::new(),
             render_node: None,
             renderer: None,
             seat,
