@@ -151,10 +151,8 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
             .get(&win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
-        if is_urgent {
-            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
-                c.clear_urgency();
-            }
+        if is_urgent && let Some(c) = core.globals_mut().clients.get_mut(&win) {
+            c.clear_urgency();
         }
         self.wayland.backend.set_focus(win);
     }

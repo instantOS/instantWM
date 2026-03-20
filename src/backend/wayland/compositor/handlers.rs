@@ -538,11 +538,12 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
-        let title = self.window_title(win);
-        if let Some(g) = self.globals_mut()
-            && let Some(client) = g.clients.get_mut(&win)
-        {
-            client.name = title.unwrap_or_default();
+        let props = self.window_properties(win);
+        if let Some(g) = self.globals_mut() {
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.name = props.title.clone();
+            }
+            crate::client::apply_rules(g, win, &props);
         }
         self.update_foreign_toplevel(win);
     }
@@ -551,6 +552,10 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
+        let props = self.window_properties(win);
+        if let Some(g) = self.globals_mut() {
+            crate::client::apply_rules(g, win, &props);
+        }
         self.update_foreign_toplevel(win);
     }
 

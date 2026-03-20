@@ -31,7 +31,7 @@ pub fn setup_root(wm: &mut Wm) {
     };
 
     let root = data.x11_runtime.root;
-    let netatom = data.x11_runtime.netatom.clone();
+    let netatom = data.x11_runtime.netatom;
     let wm_check_atom = netatom.wm_check;
     let wm_name_atom = netatom.wm_name;
     let supported_atoms: Vec<u32> = vec![

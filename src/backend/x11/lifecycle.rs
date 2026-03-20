@@ -155,7 +155,7 @@ fn insert_client_and_apply_rules(
     c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
         == crate::client::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
-    apply_rules(core, x11, w);
+    apply_rules(core, x11, x11_cfg, w);
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
@@ -654,10 +654,8 @@ pub fn cleanup(wm: &mut Wm) {
     let _ = conn.delete_property(root, x11_runtime.netatom.wm_check);
 
     if let Some(ref drw) = x11_runtime.drw {
-        for cursor in &x11_runtime.cursors {
-            if let Some(cur) = cursor {
-                drw.cur_free(cur);
-            }
+        for cur in x11_runtime.cursors.iter().flatten() {
+            drw.cur_free(cur);
         }
     }
 

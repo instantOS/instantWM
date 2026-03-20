@@ -34,7 +34,7 @@ pub fn run() -> ! {
     ensure_dbus_session();
     let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
     if let Some(wayland) = wm.backend.wayland_data_mut() {
-        init_wayland_globals(&mut (*wm).g, wayland);
+        init_wayland_globals(&mut wm.g, wayland);
     }
 
     let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("wayland event loop");
@@ -43,7 +43,7 @@ pub fn run() -> ! {
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut display_handle = display.handle();
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_wm(&mut *wm);
+    state.attach_wm(&mut wm);
     if let WmBackend::Wayland(data) = &mut wm.backend {
         data.backend.attach_state(&mut state);
     }
@@ -103,17 +103,17 @@ pub fn run() -> ! {
         .run(Duration::from_millis(16), &mut state, move |state| {
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
-                    crate::wayland::input::handle_resize(&mut *wm, &output, size.w, size.h);
+                    crate::wayland::input::handle_resize(&mut wm, &output, size.w, size.h);
                 }
                 WinitEvent::Input(event) => match event {
                     InputEvent::Keyboard { event } => {
-                        handle_keyboard(&mut *wm, state, &keyboard_handle, event);
+                        handle_keyboard(&mut wm, state, &keyboard_handle, event);
                     }
                     InputEvent::PointerMotionAbsolute { event } => {
                         let size = backend.window_size();
                         let motion_event = motion_event_from_winit(event, size);
                         handle_pointer_motion(
-                            &mut *wm,
+                            &mut wm,
                             state,
                             &pointer_handle,
                             &keyboard_handle,
@@ -122,7 +122,7 @@ pub fn run() -> ! {
                     }
                     InputEvent::PointerButton { event } => {
                         handle_pointer_button(
-                            &mut *wm,
+                            &mut wm,
                             state,
                             &pointer_handle,
                             &keyboard_handle,
@@ -132,7 +132,7 @@ pub fn run() -> ! {
                     }
                     InputEvent::PointerAxis { event } => {
                         handle_pointer_axis(
-                            &mut *wm,
+                            &mut wm,
                             state,
                             &pointer_handle,
                             &keyboard_handle,
@@ -148,23 +148,23 @@ pub fn run() -> ! {
                 _ => {}
             });
 
-            super::common::arrange_layout_if_dirty(&mut *wm, state);
-            super::common::process_ipc_commands(&mut ipc_server, &mut *wm);
-            super::common::apply_monitor_config_if_dirty(&mut *wm);
+            super::common::arrange_layout_if_dirty(&mut wm, state);
+            super::common::process_ipc_commands(&mut ipc_server, &mut wm);
+            super::common::apply_monitor_config_if_dirty(&mut wm);
 
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
             wm.g.dirty.input_config = false;
 
-            super::common::sync_space_if_dirty(&mut *wm, state);
+            super::common::sync_space_if_dirty(&mut wm, state);
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
             apply_pending_warp(state, &pointer_handle);
 
             render_frame(
-                &mut *wm,
+                &mut wm,
                 state,
                 &mut backend,
                 &output,

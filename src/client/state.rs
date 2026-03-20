@@ -13,8 +13,10 @@ use crate::client::constants::{
 // use crate::client::focus::clear_urgency_hint_x11;
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize;
+use crate::client::rules::WindowProperties;
+use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -207,197 +209,25 @@ fn read_window_title(
 /// After rule matching, the final tag mask is clamped to the current tag set.
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
-pub fn apply_rules(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+pub fn apply_rules(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    // --- Read WM_CLASS -------------------------------------------------------
     let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
+    let title = read_window_title(core, x11, x11_runtime, win);
 
-    // --- Initialise fields we are about to set -------------------------------
-    if let Some(c) = core.globals_mut().clients.get_mut(&win) {
-        c.is_floating = false;
-        c.tags = 0;
-    }
-
-    let special_next = core.globals().behavior.specialnext;
-    let rules = core.globals().cfg.rules.clone();
-    let tag_mask = core.globals().tags.mask();
-    let bar_height = core.globals().cfg.bar_height;
-
-    // --- Handle SpecialNext shortcut or normal rule matching -----------------
-    if special_next != SpecialNext::None {
-        if let SpecialNext::Float = special_next
-            && let Some(c) = core.globals_mut().clients.get_mut(&win)
-        {
-            c.is_floating = true;
-        }
-        core.globals_mut().behavior.specialnext = SpecialNext::None;
-    } else {
-        let client_name = core
-            .globals()
-            .clients
-            .get(&win)
-            .map(|c| c.name.clone())
-            .unwrap_or_default();
-
-        for rule in &rules {
-            if !rule_matches(rule, &client_name, &class_bytes, &instance_bytes) {
-                continue;
-            }
-
-            // Special case: Onboard (on-screen keyboard) is always sticky.
-            if rule.class.as_deref() == Some("Onboard")
-                && let Some(c) = core.globals_mut().clients.get_mut(&win)
-            {
-                c.issticky = true;
-            }
-
-            // Look up monitor geometry for FloatFullscreen / Float rules.
-            let mon_geo = core
-                .globals()
-                .clients
-                .monitor_id(win)
-                .and_then(|mid| core.globals().monitor(mid))
-                .map(|m| (m.monitor_rect, m.work_rect, m.showbar));
-
-            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
-                apply_float_rule(c, &rule.isfloating, mon_geo, bar_height);
-                c.tags |= rule.tags;
-            }
-
-            apply_monitor_rule(core, win, rule);
-        }
-    }
-
-    // --- Clamp tags to the valid tag mask ------------------------------------
-    clamp_client_tags(core, win, tag_mask);
-}
-
-/// Return `true` when `rule` matches all provided window identifiers.
-///
-/// Each criterion is optional; an absent criterion always matches.
-/// Title is matched against a UTF-8 `String`; class and instance are matched
-/// against raw X11 `WM_CLASS` bytes.
-fn rule_matches(
-    rule: &crate::types::Rule,
-    client_name: &str,
-    class_bytes: &[u8],
-    instance_bytes: &[u8],
-) -> bool {
-    let title_match = rule
-        .title
-        .as_ref()
-        .map(|t| bytes_contains(client_name.as_bytes(), t))
-        .unwrap_or(true);
-    let class_match = rule
-        .class
-        .as_ref()
-        .map(|c| bytes_contains(class_bytes, c))
-        .unwrap_or(true);
-    let instance_match = rule
-        .instance
-        .as_ref()
-        .map(|i| bytes_contains(instance_bytes, i))
-        .unwrap_or(true);
-
-    title_match && class_match && instance_match
-}
-
-/// Return `true` when `needle` appears as a contiguous subsequence of `haystack`.
-#[inline]
-fn bytes_contains(haystack: &[u8], needle: &str) -> bool {
-    let nb = needle.as_bytes();
-    haystack.windows(nb.len()).any(|w| w == nb)
-}
-
-/// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
-/// using the monitor information supplied via `mon_geo`.
-///
-/// `mon_geo` is `(monitor_rect, work_rect, showbar)` and may be `None` when the
-/// client is not yet placed on any monitor (geometry adjustments are skipped).
-fn apply_float_rule(
-    client: &mut crate::types::client::Client,
-    float_rule: &RuleFloat,
-    mon_geo: Option<(Rect, Rect, bool)>,
-    bar_height: i32,
-) {
-    let (monitor_rect, work_rect, showbar) = mon_geo.unwrap_or_default();
-
-    match float_rule {
-        RuleFloat::FloatCenter => {
-            client.is_floating = true;
-        }
-        RuleFloat::FloatFullscreen => {
-            client.is_floating = true;
-            client.geo.w = monitor_rect.w;
-            client.geo.h = work_rect.h;
-            client.geo.x = monitor_rect.x;
-            if showbar {
-                client.geo.y = monitor_rect.y + bar_height;
-            }
-        }
-        RuleFloat::Scratchpad => {
-            client.is_floating = true;
-        }
-        RuleFloat::Float => {
-            client.is_floating = true;
-            if showbar {
-                client.geo.y = monitor_rect.y + bar_height;
-            }
-        }
-        RuleFloat::Tiled => {
-            client.is_floating = false;
-        }
-    }
-}
-
-/// Move `win` to the monitor named in `rule.monitor`, if any.
-///
-/// The monitor index lookup borrow is fully released before the client map
-/// is mutated, satisfying Rust's aliasing rules.
-fn apply_monitor_rule(core: &mut CoreCtx, win: WindowId, rule: &crate::types::Rule) {
-    let MonitorRule::Index(target_num) = rule.monitor else {
-        return;
+    let props = WindowProperties {
+        class: String::from_utf8_lossy(&class_bytes).into_owned(),
+        instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
+        title,
     };
 
-    let target_mid = core
-        .globals()
-        .monitors_iter()
-        .find(|(_i, m)| m.num == target_num as i32)
-        .map(|(i, _)| i);
-
-    if let Some(mid) = target_mid
-        && let Some(c) = core.globals_mut().clients.get_mut(&win)
-    {
-        c.monitor_id = mid;
-    }
-}
-
-/// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
-/// tags when no rule-assigned tag is currently visible.
-fn clamp_client_tags(core: &mut CoreCtx, win: WindowId, tag_mask: u32) {
-    let (client_mon_id, client_tags) = core
-        .globals()
-        .clients
-        .get(&win)
-        .map(|c| (c.monitor_id, c.tags))
-        .unwrap_or((0, 0));
-
-    let Some(mon) = core.globals().monitor(client_mon_id) else {
-        return;
-    };
-
-    let active_tags = mon.selected_tags();
-    let new_tags = if client_tags & tag_mask != 0 {
-        client_tags & tag_mask
-    } else {
-        active_tags
-    };
-
-    if let Some(c) = core.globals_mut().clients.get_mut(&win) {
-        c.tags = new_tags;
-    }
+    apply_rules_generic(core.globals_mut(), win, &props);
 }
 
 /// Read the `WM_CLASS` property and return `(class_bytes, instance_bytes)`.

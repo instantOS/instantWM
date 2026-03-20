@@ -31,6 +31,7 @@ pub mod kill;
 pub mod layout_ops;
 pub mod lifecycle;
 pub mod manager;
+pub mod rules;
 pub mod state;
 pub mod visibility;
 
@@ -41,6 +42,9 @@ pub mod visibility;
 // here.  Internal cross-module references use their direct paths
 // (e.g. `crate::client::geometry::resize`) so they don't need to appear here.
 // ---------------------------------------------------------------------------
+
+// -- Rules ------------------------------------------------------------------
+pub use rules::{WindowProperties, apply_rules};
 
 // -- Constants ---------------------------------------------------------------
 pub use constants::WM_STATE_WITHDRAWN;

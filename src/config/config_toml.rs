@@ -4,9 +4,8 @@ use crate::config::appearance::{
 };
 use crate::config::keybind_config::KeybindSpec;
 use crate::types::{
-    BorderColorConfig, CloseButtonColorConfigs, StatusColorConfig, TagColorConfigs,
+    BorderColorConfig, CloseButtonColorConfigs, Rule, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
-    Rule,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;

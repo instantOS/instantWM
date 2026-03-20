@@ -113,7 +113,8 @@ pub fn handle_pointer_button<B: InputBackend>(
             let local_x = root_x - mon.work_rect.x;
 
             // Check if we should close - only Wayland has systray menu
-            let should_close = match &mut wm.backend {
+
+            match &mut wm.backend {
                 Backend::Wayland(data) => {
                     data.wayland_systray_menu.as_ref().is_some()
                         && crate::systray::wayland::hit_test_wayland_systray_menu_item(
@@ -126,8 +127,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                         .is_none()
                 }
                 Backend::X11(_) => false,
-            };
-            should_close
+            }
         } else {
             false
         };
