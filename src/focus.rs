@@ -5,7 +5,7 @@
 
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
-use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
+use crate::client::{clear_urgency_hint_x11, set_focus_x11, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
 use x11rb::CURRENT_TIME;
@@ -109,7 +109,10 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
             .map(|c| c.is_urgent)
             .unwrap_or(false);
         if is_urgent {
-            set_urgent(core, self.x11, win, false);
+            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
+                c.clear_urgency();
+            }
+            clear_urgency_hint_x11(self.x11, win);
         }
         set_focus_x11(core, self.x11, &*self.x11_runtime, win);
     }
@@ -141,7 +144,18 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         // Wayland doesn't need explicit unfocus - focus is managed by the backend
     }
 
-    fn focus_window(&self, _core: &mut CoreCtx, win: WindowId) {
+    fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
+        let is_urgent = core
+            .globals()
+            .clients
+            .get(&win)
+            .map(|c| c.is_urgent)
+            .unwrap_or(false);
+        if is_urgent {
+            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
+                c.clear_urgency();
+            }
+        }
         self.wayland.backend.set_focus(win);
     }
 

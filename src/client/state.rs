@@ -10,7 +10,7 @@ use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,
 };
-use crate::client::focus::clear_urgency_hint;
+// use crate::client::focus::clear_urgency_hint_x11;
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
@@ -483,14 +483,6 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
-    let is_selected = ctx.core.globals().selected_monitor().sel == Some(win);
-
-    // If the window is already focused, clear the urgency flag on the X server
-    // so decorations don't keep flashing.
-    if is_selected && is_urgent {
-        clear_urgency_hint(&ctx.core, &ctx.x11, win);
-    }
-
     if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
         client.is_urgent = is_urgent;
         client.never_focus = if flags & WM_HINTS_INPUT_HINT != 0 {
@@ -506,7 +498,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 ///
 /// This function is currently reserved for future EWMH compliance use but is
 /// kept here so the property plumbing is in one place.
-pub fn set_urgent(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: bool) {
+pub fn set_urgent_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: bool) {
     let conn = x11.conn;
 
     // Update the internal flag first.

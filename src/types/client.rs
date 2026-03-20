@@ -111,6 +111,11 @@ impl Client {
             && !self.is_hidden
     }
 
+    /// Clear the urgency flag for this client.
+    pub fn clear_urgency(&mut self) {
+        self.is_urgent = false;
+    }
+
     /// Check if the client is in true fullscreen mode (not fake fullscreen).
     #[inline]
     pub fn is_true_fullscreen(&self) -> bool {
