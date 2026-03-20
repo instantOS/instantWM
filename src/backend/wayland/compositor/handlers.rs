@@ -321,10 +321,10 @@ impl XwmHandler for WaylandState {
         let window_id = window.window_id();
         let was_focused = self.is_x11_surface_focused(window_id);
 
-        // Clear keyboard focus from the dying surface *before* unmapping so
+        // Clear seat focus from the dying surface *before* unmapping so
         // the Smithay seat never holds a dead target.
         if was_focused {
-            self.clear_keyboard_focus();
+            self.clear_seat_focus();
         }
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
@@ -360,9 +360,9 @@ impl XwmHandler for WaylandState {
         let is_overlay = self.window_id_for_x11_surface(&window).is_none();
         let was_focused = self.is_x11_surface_focused(window_id);
 
-        // Clear keyboard focus from the dying surface *before* cleanup.
+        // Clear seat focus from the dying surface *before* cleanup.
         if was_focused {
-            self.clear_keyboard_focus();
+            self.clear_seat_focus();
         }
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
@@ -573,13 +573,37 @@ impl XdgShellHandler for WaylandState {
             g.clients.remove(&win);
             g.dirty.layout = true;
             g.dirty.space = true;
-            g.selected_win()
+
+            // If the destroyed window was selected, find the next visible
+            // window from the stack so we don't leave mon.sel pointing at
+            // a dead window.
+            let sel_mon_id = g.selected_monitor_id();
+            let mon = g.monitor_mut(sel_mon_id);
+            if let Some(mon) = mon {
+                if mon.sel == Some(win) {
+                    // Walk the stack to find the first visible, non-hidden client
+                    let selected_tags = mon.selected_tags();
+                    let next = mon.stack.iter().find_map(|&w| {
+                        g.clients.get(&w).and_then(|c| {
+                            if c.is_visible_on_tags(selected_tags) && !c.is_hidden {
+                                Some(w)
+                            } else {
+                                None
+                            }
+                        })
+                    });
+                    mon.sel = next;
+                }
+                mon.sel
+            } else {
+                None
+            }
         };
-        // Update Smithay keyboard focus to match mon.sel.
+        // Update Smithay seat focus to match the resolved mon.sel.
         if let Some(new_win) = new_sel {
             self.set_focus(new_win);
         } else {
-            self.clear_keyboard_focus();
+            self.clear_seat_focus();
         }
     }
 
@@ -797,9 +821,10 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        // Find the window associated with this surface and focus it
+        // Find the window associated with this surface and focus it.
+        // We update mon.sel here because activation is an explicit user
+        // intent (e.g. from another app) and the WM should reflect it.
         if let Some(win) = self.window_id_for_surface(&surface) {
-            // Update the WM's selected window to match
             let monitor_id = self.globals().and_then(|g| g.clients.monitor_id(win));
             if let Some(g) = self.globals_mut()
                 && let Some(mon_id) = monitor_id
@@ -807,7 +832,6 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             {
                 mon.sel = Some(win);
             }
-            // Focus the window
             self.set_focus(win);
             log::debug!(
                 "xdg_activation: activated window (app_id: {:?})",
@@ -894,57 +918,16 @@ impl WlrLayerShellHandler for WaylandState {
             }
         }
 
-        // If the keyboard was focused on this layer surface, we need to
-        // clear focus and restore it to a window
-        // Note: We also try to restore focus even if we didn't detect keyboard focus
-        // on the layer surface, because Smithay may have already cleared it
+        // If the keyboard was focused on this layer surface, clear seat focus
+        // and restore it to the WM's selected window.
         if keyboard_focused_on_layer {
-            // Clear keyboard focus on the seat first
-            let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
-            }
+            self.clear_seat_focus();
         }
 
-        // Always try to restore focus to a window after a layer surface is destroyed.
-        // This handles the case where the layer surface had keyboard focus but we
-        // couldn't detect it (Smithay may have already cleared it).
-        if let Some(g) = self.globals_mut() {
-            let sel_mon_id = g.selected_monitor_id();
-            let (target, selected_tags, stack) = {
-                let mon = match g.monitor_mut(sel_mon_id) {
-                    Some(m) => m,
-                    None => {
-                        // No monitor, nothing to focus
-                        return;
-                    }
-                };
-                // Try to focus the selected window, or find another visible window
-                if let Some(target) = mon.sel {
-                    (Some(target), None, None)
-                } else {
-                    // Collect stack and tags for finding a visible window
-                    let tags = mon.selected_tag_mask();
-                    let stack_copy = mon.stack.clone();
-                    (None, Some(tags), Some(stack_copy))
-                }
-            };
-
-            if let Some(target) = target {
-                self.set_focus(target);
-            } else if let (Some(tags), Some(stack)) = (selected_tags, stack) {
-                // Find the first visible window to focus
-                for &win in &stack {
-                    if let Some(c) = g.clients.get(&win)
-                        && c.is_visible_on_tags(tags.bits())
-                        && !c.is_hidden
-                    {
-                        self.set_focus(win);
-                        break;
-                    }
-                }
-            }
-        }
+        // Restore seat focus to mon.sel (the WM's selected window).
+        // Layer surfaces are not managed windows, so mon.sel should still be
+        // valid. We just need to re-apply seat focus.
+        self.restore_focus_after_overlay();
     }
 }
 

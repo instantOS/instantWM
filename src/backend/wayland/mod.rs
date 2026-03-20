@@ -105,12 +105,12 @@ impl WaylandBackend {
     }
 
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.focused_window() == Some(window))
+        self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
             .unwrap_or(false)
     }
 
     pub fn clear_keyboard_focus(&self) {
-        let _ = self.with_state(|state: &mut WaylandState| state.clear_keyboard_focus());
+        let _ = self.with_state(|state: &mut WaylandState| state.clear_seat_focus());
     }
 
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {

@@ -171,6 +171,8 @@ impl WaylandState {
             self.last_configured_size.insert(window_id, target);
         }
         if let Some(g) = self.globals_mut() {
+            // Set mon.sel for the newly created window so the WM layer knows
+            // to focus it when it runs the next arrange/focus pass.
             if let Some(monitor_id) = g.clients.monitor_id(window_id)
                 && let Some(mon) = g.monitor_mut(monitor_id)
             {
@@ -179,6 +181,7 @@ impl WaylandState {
             g.dirty.layout = true;
             g.dirty.space = true;
         }
+        // Apply seat focus immediately so the new window can receive input.
         self.set_focus(window_id);
         self.create_foreign_toplevel(window_id);
         window_id
@@ -236,24 +239,23 @@ impl WaylandState {
         self.raise_unmanaged_x11_windows();
     }
 
-    /// Set focus to the given window.
+    /// Apply keyboard focus to a window on the Smithay seat.
     ///
-    /// This is the single entry point for keyboard focus. It ensures:
-    /// 1. The window exists and is alive
-    /// 2. Keyboard focus is actually set on the Smithay seat
-    /// 3. WM state (mon.sel) is updated to match
+    /// This is a **seat-only** operation. It:
+    /// 1. Deactivates the previously focused window (via Smithay activated state)
+    /// 2. Activates the new window
+    /// 3. Sets Smithay keyboard focus
     ///
-    /// # Authority
-    /// The WM's `mon.sel` is the source of truth for which window should be
-    /// focused. This method updates both the Smithay seat and WM state.
+    /// It does **not** update `mon.sel`. The WM layer (`focus_generic` /
+    /// `focus_soft`) is the single authority for `mon.sel`.
     pub fn set_focus(&mut self, window: WindowId) {
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
 
-        // If the window doesn't exist in our index, don't leave stale state.
+        // If the window doesn't exist in our index, clear seat focus.
         if focus_window.is_none() && !self.window_index.contains_key(&window) {
-            log::warn!("set_focus: window {:?} not found, clearing focus", window);
-            self.clear_keyboard_focus();
+            log::warn!("set_focus: window {:?} not found, clearing seat focus", window);
+            self.clear_seat_focus();
             return;
         }
 
@@ -261,8 +263,8 @@ impl WaylandState {
         if let Some(ref win) = focus_window
             && !win.alive()
         {
-            log::debug!("set_focus: window {:?} is dying, clearing focus", window);
-            self.clear_keyboard_focus();
+            log::debug!("set_focus: window {:?} is dying, clearing seat focus", window);
+            self.clear_seat_focus();
             return;
         }
 
@@ -296,15 +298,6 @@ impl WaylandState {
                     window
                 );
             }
-        }
-
-        // Update WM state to match - mon.sel is the source of truth
-        if let Some(g) = self.globals_mut()
-            && let Some(_client) = g.clients.get_mut(&window)
-            && let Some(mon_id) = g.clients.monitor_id(window)
-            && let Some(mon) = g.monitor_mut(mon_id)
-        {
-            mon.sel = Some(window);
         }
     }
 
@@ -360,13 +353,17 @@ impl WaylandState {
     }
 
     /// Unmap a window (hide it).
+    ///
+    /// Clears Smithay seat focus if this window holds it, but does **not**
+    /// touch `mon.sel`. The WM layer will reconcile focus after the
+    /// show/hide pass.
     pub fn unmap_window(&mut self, window: WindowId) {
         if let Some(element) = self.window_index.get(&window).cloned() {
             self.space.unmap_elem(&element);
         }
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
-        self.clear_keyboard_focus_if_focused(window);
+        self.clear_seat_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
             g.dirty.layout = true;
             g.dirty.space = true;
@@ -374,6 +371,9 @@ impl WaylandState {
     }
 
     /// Remove all tracking for a window.
+    ///
+    /// Clears seat focus if this window holds it, but does **not** touch
+    /// `mon.sel`. The caller is responsible for WM focus reconciliation.
     pub(super) fn remove_window_tracking(&mut self, window: WindowId) {
         if let Some(element) = self.window_index.get(&window).cloned() {
             self.space.unmap_elem(&element);
@@ -381,7 +381,7 @@ impl WaylandState {
         self.window_index.remove(&window);
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
-        self.clear_keyboard_focus_if_focused(window);
+        self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
         if let Some(g) = self.globals_mut() {
             g.dirty.layout = true;
@@ -405,36 +405,43 @@ impl WaylandState {
             })
     }
 
-    /// Explicitly clear keyboard focus on the Smithay seat so that the
-    /// seat is not left pointing at a dead / dying surface.
+    /// Clear keyboard focus on the Smithay seat only.
     ///
-    /// Also clears WM state (mon.sel) to indicate no window is focused.
-    pub(crate) fn clear_keyboard_focus(&mut self) {
+    /// This does **not** touch `mon.sel`. Use this when the seat focus
+    /// needs to be cleared (e.g. the focused surface is dying) but the WM
+    /// layer will reconcile `mon.sel` separately.
+    pub(crate) fn clear_seat_focus(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
         }
-        // Clear WM state as well
-        if let Some(g) = self.globals_mut()
-            && let Some(mon) = g.selected_monitor_mut_opt()
-        {
-            mon.sel = None;
+    }
+
+    /// Clear seat focus if the given window currently holds it.
+    ///
+    /// Checks the actual Smithay seat keyboard focus (not `mon.sel`).
+    /// Used when a window is unmapped or removed to avoid leaving the
+    /// keyboard seat pointing at a dead surface.
+    fn clear_seat_focus_if_focused(&mut self, window: WindowId) {
+        let is_seat_focused = self.is_seat_focused_on(window);
+        if is_seat_focused {
+            self.clear_seat_focus();
         }
     }
 
-    /// Clear keyboard focus if the given window is currently focused.
-    /// Used when a window is unmapped or removed to avoid leaving the
-    /// keyboard seat pointing at a dead surface.
-    fn clear_keyboard_focus_if_focused(&mut self, window: WindowId) {
-        // Check if this window is currently focused (via WM state)
-        let is_focused = self
-            .globals()
-            .and_then(|g| g.selected_win())
-            .is_some_and(|sel| sel == window);
-
-        if is_focused {
-            self.clear_keyboard_focus();
-        }
+    /// Check if the Smithay seat keyboard focus is currently on the given window.
+    pub(crate) fn is_seat_focused_on(&self, window: WindowId) -> bool {
+        self.seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|focus| match focus {
+                KeyboardFocusTarget::Window(w) => {
+                    w.user_data()
+                        .get::<WindowIdMarker>()
+                        .is_some_and(|m| m.id == window)
+                }
+                _ => false,
+            })
     }
 
     /// Send a configure event to a toplevel surface with the specified size.
@@ -454,10 +461,11 @@ impl WaylandState {
         }
     }
 
-    /// Restore focus after an overlay (e.g., dmenu) is closed.
+    /// Restore seat focus after an overlay (e.g., dmenu) is closed.
     ///
     /// This method is called when an overlay window (popup, menu, dmenu)
-    /// is closed or unfocused. It restores focus to the WM's selected window.
+    /// is closed or unfocused. It restores seat focus to the WM's selected
+    /// window (`mon.sel`), which is not modified here.
     pub(super) fn restore_focus_after_overlay(&mut self) {
         // Get the WM's selected window from globals
         let target = self.globals().and_then(|g| g.selected_win()).filter(|w| {
@@ -469,11 +477,9 @@ impl WaylandState {
         if let Some(win) = target {
             self.set_focus(win);
         } else {
-            // No valid target — explicitly clear keyboard focus so the seat
-            // doesn't keep pointing at the dead overlay surface. Without
-            // this, WM shortcuts stay suppressed (the input handler sees an
-            // overlay as the current focus and blocks keybindings).
-            self.clear_keyboard_focus();
+            // No valid target — clear seat focus so it doesn't point at
+            // the dead overlay surface.
+            self.clear_seat_focus();
         }
     }
 

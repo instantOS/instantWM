@@ -278,11 +278,7 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
-    if ctx.core().globals().selected_monitor().sel.is_some() {
-        arrange(ctx, Some(selected_monitor_id));
-    } else {
-        ctx.request_bar_update(Some(selected_monitor_id));
-    }
+    arrange(ctx, Some(selected_monitor_id));
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
