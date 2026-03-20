@@ -22,6 +22,12 @@ mod tests {
 #[derive(Debug, Parser)]
 #[command(name = "instantwmctl", version, disable_help_subcommand = true)]
 struct Cli {
+    /// Ignore version mismatches between instantwmctl and instantWM.
+    ///
+    /// This allows connecting even when the client and server versions differ,
+    /// which may cause unexpected behavior. Use with caution.
+    #[arg(long)]
+    ignore_version_mismatches: bool,
     #[command(subcommand)]
     command: CommandKind,
 }
@@ -699,8 +705,10 @@ fn main() {
                     });
 
                     if let Ok(mut stream) = UnixStream::connect(&socket) {
-                        let request =
-                            IpcRequest::new(IpcCommand::UpdateStatus(trim_line.to_string()));
+                        let request = IpcRequest::new_ignore_version(
+                            IpcCommand::UpdateStatus(trim_line.to_string()),
+                            cli.ignore_version_mismatches,
+                        );
                         if let Ok(data) =
                             bincode::encode_to_vec(&request, bincode::config::standard())
                         {
@@ -733,7 +741,7 @@ fn main() {
         }
     };
 
-    let request = IpcRequest::new(request);
+    let request = IpcRequest::new_ignore_version(request, cli.ignore_version_mismatches);
     let data = match bincode::encode_to_vec(&request, bincode::config::standard()) {
         Ok(d) => d,
         Err(e) => {

@@ -52,6 +52,7 @@ impl From<crate::globals::KeyboardLayout> for KeyboardLayout {
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct IpcRequest {
     pub version: String,
+    pub ignore_version: bool,
     pub command: IpcCommand,
 }
 
@@ -60,12 +61,25 @@ impl IpcRequest {
     pub fn new(command: IpcCommand) -> Self {
         Self {
             version: IPC_PROTOCOL_VERSION.to_string(),
+            ignore_version: false,
+            command,
+        }
+    }
+
+    /// Create a new IPC request with the current protocol version and version ignore flag.
+    pub fn new_ignore_version(command: IpcCommand, ignore: bool) -> Self {
+        Self {
+            version: IPC_PROTOCOL_VERSION.to_string(),
+            ignore_version: ignore,
             command,
         }
     }
 
     /// Validate that the request's protocol version matches the expected version.
     pub fn validate_version(&self) -> Result<(), String> {
+        if self.ignore_version {
+            return Ok(());
+        }
         if self.version == IPC_PROTOCOL_VERSION {
             Ok(())
         } else {
