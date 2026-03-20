@@ -22,7 +22,6 @@ mod keyboard_layout;
 pub mod layouts;
 mod monitor;
 mod mouse;
-mod push;
 pub mod reload;
 pub mod startup;
 mod systray;

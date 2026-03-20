@@ -185,11 +185,11 @@ use crate::floating::{create_overlay, scratchpad_make, scratchpad_toggle, set_ov
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
+    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
+use crate::monitor::{reorder_client, Direction as PushDirection};
 use crate::mouse::{begin_keyboard_move, draw_window};
-use crate::push::{Direction as PushDirection, push};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
     toggle_overview, win_view,
@@ -401,12 +401,12 @@ define_actions!(
     // Push (reorder in stack)
     "push_up" => "push window up in stack" => |ctx: &mut WmCtx, _args: &[String]| {
         if let Some(win) = ctx.selected_client() {
-            push(ctx, win, PushDirection::Up)
+            reorder_client(ctx, win, PushDirection::Up)
         }
     },
     "push_down" => "push window down in stack" => |ctx: &mut WmCtx, _args: &[String]| {
         if let Some(win) = ctx.selected_client() {
-            push(ctx, win, PushDirection::Down)
+            reorder_client(ctx, win, PushDirection::Down)
         }
     },
 

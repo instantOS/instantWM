@@ -4,16 +4,16 @@ use std::rc::Rc;
 
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::client::{close_win, kill_client};
-use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu};
+use crate::config::commands_common::{defaults, media, menu, ROFI_WINDOW_SWITCH};
 use crate::focus::focus_stack;
-use crate::layouts::{LayoutKind, cycle_layout_direction, set_layout};
+use crate::layouts::{cycle_layout_direction, set_layout, LayoutKind};
 
 use crate::floating::{create_overlay, hide_overlay, set_overlay, show_overlay, toggle_floating};
+use crate::monitor::{reorder_client, Direction as PushDirection};
 use crate::mouse::{
     drag_tag, draw_window, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
     window_title_mouse_handler,
 };
-use crate::push::{Direction as PushDirection, push};
 use crate::tags::view::toggle_view_tag;
 use crate::tags::{follow_tag_ctx, set_client_tag_ctx, shift_view, toggle_tag_ctx};
 use crate::toggles::{toggle_locked, toggle_prefix};
@@ -81,12 +81,12 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(WinTitle(WindowId(0)), 0,     button:MouseButton::ScrollDown => |ctx, _| focus_stack(ctx, StackDirection::Next)),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollUp   => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                push(ctx, win, PushDirection::Up)
+                reorder_client(ctx, win, PushDirection::Up)
             }
         }),
         btn!(WinTitle(WindowId(0)), SHIFT, button:MouseButton::ScrollDown => |ctx, _| {
             if let Some(win) = ctx.selected_client() {
-                push(ctx, win, PushDirection::Down)
+                reorder_client(ctx, win, PushDirection::Down)
             }
         }),
         btn!(WinTitle(WindowId(0)), CONTROL, button:MouseButton::ScrollUp   => |ctx, _| {
