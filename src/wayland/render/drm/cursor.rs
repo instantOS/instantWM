@@ -31,27 +31,36 @@ struct CursorFrame {
 /// (in priority order, including legacy fallback names).
 const CURSOR_TABLE: &[(CursorIcon, &[&str])] = &[
     (CursorIcon::Default, &["left_ptr", "default", "arrow"]),
-    (CursorIcon::ContextMenu, &["context-menu"]),
-    (CursorIcon::Help, &["help", "question_arrow", "whats_this"]),
-    (CursorIcon::Pointer, &["pointer", "hand2", "hand1", "hand"]),
+    (CursorIcon::ContextMenu, &["context-menu", "left_ptr"]),
+    (
+        CursorIcon::Help,
+        &["help", "question_arrow", "whats_this", "left_ptr"],
+    ),
+    (
+        CursorIcon::Pointer,
+        &["pointer", "pointing_hand", "hand2", "hand1", "hand"],
+    ),
     (
         CursorIcon::Progress,
-        &["progress", "left_ptr_watch", "half-busy"],
+        &["progress", "left_ptr_watch", "half-busy", "watch", "wait"],
     ),
-    (CursorIcon::Wait, &["wait", "watch"]),
-    (CursorIcon::Cell, &["cell", "plus"]),
-    (CursorIcon::Crosshair, &["crosshair", "cross"]),
+    (CursorIcon::Wait, &["wait", "watch", "progress"]),
+    (CursorIcon::Cell, &["cell", "plus", "crosshair"]),
+    (CursorIcon::Crosshair, &["crosshair", "cross", "cell"]),
     (CursorIcon::Text, &["text", "xterm", "ibeam"]),
     (CursorIcon::VerticalText, &["vertical-text"]),
-    (CursorIcon::Alias, &["alias", "link"]),
+    (
+        CursorIcon::Alias,
+        &["alias", "link", "pointing_hand", "hand2", "hand"],
+    ),
     (CursorIcon::Copy, &["copy", "dnd-copy"]),
-    (CursorIcon::Move, &["move", "fleur"]),
+    (CursorIcon::Move, &["move", "fleur", "all-scroll"]),
     (CursorIcon::NoDrop, &["no-drop", "dnd-none"]),
     (
         CursorIcon::NotAllowed,
         &["not-allowed", "crossed_circle", "forbidden"],
     ),
-    (CursorIcon::Grab, &["grab", "openhand", "hand1"]),
+    (CursorIcon::Grab, &["grab", "openhand", "hand1", "hand"]),
     (
         CursorIcon::Grabbing,
         &["grabbing", "closedhand", "fleur", "move"],
