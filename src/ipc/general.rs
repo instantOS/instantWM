@@ -1,5 +1,5 @@
 use crate::ipc_types::IpcResponse;
-use crate::layouts::{set_layout as layouts_set_layout, LayoutKind};
+use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 use crate::toggles::{set_border_width, set_special_next};
@@ -80,7 +80,6 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> IpcResponse {
     layouts_set_layout(&mut wm.ctx(), layout);
     IpcResponse::ok("")
 }
-
 
 pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
     let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);

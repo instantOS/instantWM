@@ -233,7 +233,10 @@ pub fn init_config() -> Config {
         if let Some(spec) = spec {
             let keybinds = keybind_config::merge_keybinds(default_keybinds, &spec.keybinds);
             ModeConfig {
-                description: spec.description.clone().or_else(|| Some(default_desc.to_string())),
+                description: spec
+                    .description
+                    .clone()
+                    .or_else(|| Some(default_desc.to_string())),
                 transient: spec.transient.unwrap_or(default_transient),
                 keybinds,
             }
@@ -249,22 +252,12 @@ pub fn init_config() -> Config {
     // Special handling for default modes: prefix and desktop
     modes.insert(
         "prefix".to_string(),
-        merge_mode(
-            theme.modes.get("prefix"),
-            "prefix",
-            true,
-            Vec::new(),
-        ),
+        merge_mode(theme.modes.get("prefix"), "prefix", true, Vec::new()),
     );
 
     modes.insert(
         "desktop".to_string(),
-        merge_mode(
-            theme.modes.get("desktop"),
-            "desktop",
-            false,
-            Vec::new(),
-        ),
+        merge_mode(theme.modes.get("desktop"), "desktop", false, Vec::new()),
     );
 
     // Add all other user-defined modes

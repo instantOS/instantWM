@@ -13,7 +13,6 @@ use crate::layouts::arrange;
 // zoom
 // ---------------------------------------------------------------------------
 
-
 fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
     ctx.core_mut().globals_mut().detach(win);
     ctx.core_mut().globals_mut().attach(win);

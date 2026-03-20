@@ -74,8 +74,6 @@ pub enum SpecialNext {
     Float,
 }
 
-
-
 impl From<u32> for SpecialNext {
     fn from(value: u32) -> Self {
         if value == 0 { Self::None } else { Self::Float }

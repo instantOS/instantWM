@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
+use crate::contexts::WmCtx;
 use crate::floating::{
     center_window, distribute_clients, key_resize, scratchpad_make, scratchpad_toggle,
     toggle_maximized,
@@ -22,9 +23,9 @@ use crate::tags::{
     follow_view, last_view, move_client, quit, send_to_monitor, shift_tag, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
-use crate::contexts::WmCtx;
 use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_show_tags, toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_show_tags, toggle_sticky,
+    unhide_all,
 };
 use crate::types::{Direction, Key, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;

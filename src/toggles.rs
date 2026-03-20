@@ -23,7 +23,6 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     ctx.request_bar_update(None);
 }
 
-
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.issticky = !client.issticky;
@@ -33,7 +32,6 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     };
     arrange(ctx, Some(monitor_id));
 }
-
 
 pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
     ctrl_toggle(&mut behavior.animated, action);
@@ -65,7 +63,6 @@ pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) 
 pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
     behavior.specialnext = value;
 }
-
 
 pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
     ctrl_toggle(&mut behavior.focus_follows_mouse, action);

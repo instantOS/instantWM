@@ -679,7 +679,6 @@ pub fn merge_keybinds(defaults: Vec<Key>, specs: &[KeybindSpec]) -> Vec<Key> {
     keys.into_iter().flatten().collect()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,7 +688,7 @@ mod tests {
         let action = Rc::new(|_: &mut WmCtx| {});
         let defaults = vec![Key {
             mod_mask: MOD1, // Mod1
-            keysym: XK_P, // 'p'
+            keysym: XK_P,   // 'p'
             action: action.clone(),
         }];
 
@@ -708,7 +707,7 @@ mod tests {
         let action = Rc::new(|_: &mut WmCtx| {});
         let defaults = vec![Key {
             mod_mask: MOD1, // Mod1
-            keysym: XK_P, // 'p'
+            keysym: XK_P,   // 'p'
             action: action.clone(),
         }];
 

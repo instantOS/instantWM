@@ -130,6 +130,26 @@ pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
 
 pub fn key_release_x11(_ctx: &mut WmCtxX11, _e: &KeyReleaseEvent) {}
 
+fn grab_keys_for_key<C: Connection>(
+    conn: &C,
+    root: Window,
+    modifiers: &[u16],
+    key: &Key,
+    keycode: u8,
+) {
+    for &modif in modifiers {
+        let _ = grab_key(
+            conn,
+            false,
+            root,
+            ((key.mod_mask as u16) | modif).into(),
+            keycode,
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+        );
+    }
+}
+
 pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     let conn = x11.conn;
     let root = x11_runtime.root;
@@ -175,34 +195,14 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
 
         for key in keys {
             if keysym == key.keysym {
-                for &modif in &modifiers {
-                    let _ = grab_key(
-                        conn,
-                        false,
-                        root,
-                        ((key.mod_mask as u16) | modif).into(),
-                        keycode,
-                        GrabMode::ASYNC,
-                        GrabMode::ASYNC,
-                    );
-                }
+                grab_keys_for_key(conn, root, &modifiers, key, keycode);
             }
         }
 
         for mode in modes.values() {
             for key in &mode.keybinds {
                 if keysym == key.keysym {
-                    for &modif in &modifiers {
-                        let _ = grab_key(
-                            conn,
-                            false,
-                            root,
-                            ((key.mod_mask as u16) | modif).into(),
-                            keycode,
-                            GrabMode::ASYNC,
-                            GrabMode::ASYNC,
-                        );
-                    }
+                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
                 }
             }
         }
@@ -214,17 +214,7 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
         if selected_window.is_none() || is_any_mode {
             for key in desktop_keybinds {
                 if keysym == key.keysym {
-                    for &modif in &modifiers {
-                        let _ = grab_key(
-                            conn,
-                            false,
-                            root,
-                            ((key.mod_mask as u16) | modif).into(),
-                            keycode,
-                            GrabMode::ASYNC,
-                            GrabMode::ASYNC,
-                        );
-                    }
+                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
                 }
             }
         }
