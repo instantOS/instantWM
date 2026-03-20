@@ -117,7 +117,13 @@ pub struct WaylandState {
     pub xdisplay: Option<u32>,
 
     // -- Internal state --
-    pub(super) next_window_id: u32,
+    next_window_id: u32,
+    /// Back-reference to the main WM state.
+    ///
+    /// This is a raw pointer because `Wm` owns the `Backend`, which in turn
+    /// wants to reference `WaylandState`. Since `WaylandState` is owned by
+    /// the event loop, a standard `Rc/RefCell` cycle would be difficult
+    /// to manage and performantly access from Smithay's handlers.
     wm: Option<NonNull<Wm>>,
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,

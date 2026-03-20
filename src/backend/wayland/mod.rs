@@ -56,24 +56,33 @@ use crate::backend::BackendOps;
 use crate::types::{Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
+///
+/// This struct acts as a bridge between the generic `Wm` logic and the
+/// Smithay-specific `WaylandState`. Since `WaylandState` is owned by the
+/// event loop (calloop), and the `Wm` struct (which owns this backend)
+/// is passed into the event loop's callback, we use an `Option<NonNull>`
+/// pointer to establish a safe-at-runtime circular reference.
+///
+/// This design avoids the overhead of `Rc<RefCell<...>>` cycles while
+/// maintaining the ability for the WM to perform backend-specific actions.
 use std::cell::RefCell;
 use std::ptr::NonNull;
 
 use crate::backend::wayland::compositor::WaylandState;
 
 pub struct WaylandBackend {
-    state: RefCell<NonNull<WaylandState>>,
+    state: RefCell<Option<NonNull<WaylandState>>>,
 }
 
 impl WaylandBackend {
     pub fn new() -> Self {
         Self {
-            state: RefCell::new(NonNull::dangling()),
+            state: RefCell::new(None),
         }
     }
 
     pub fn attach_state(&self, state: &mut WaylandState) {
-        *self.state.borrow_mut() = NonNull::from(state);
+        *self.state.borrow_mut() = Some(NonNull::from(state));
     }
 
     pub fn close_window(&self, window: WindowId) -> bool {
@@ -120,8 +129,8 @@ impl WaylandBackend {
     }
 
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
-        let mut ptr = *self.state.borrow();
-        Some(unsafe { f(ptr.as_mut()) })
+        let maybe_ptr = *self.state.borrow();
+        maybe_ptr.map(|mut ptr| unsafe { f(ptr.as_mut()) })
     }
 }
 
