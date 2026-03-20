@@ -172,9 +172,14 @@ enum ScratchpadAction {
         name: Option<String>,
     },
     /// Show a scratchpad (make visible on current tag).
+    ///
+    /// Use --all to show all scratchpads at once.
     Show {
-        /// Scratchpad name (required)
-        name: String,
+        /// Scratchpad name (required if not using --all)
+        name: Option<String>,
+        /// Show all scratchpads.
+        #[arg(short, long)]
+        all: bool,
     },
     /// Hide a scratchpad (remove from current tag).
     Hide {
@@ -638,7 +643,13 @@ fn main() {
             let cmd = match action {
                 ScratchpadAction::List { window_id: _ } => ScratchpadCommand::List,
                 ScratchpadAction::Status { name } => ScratchpadCommand::Status(name),
-                ScratchpadAction::Show { name } => ScratchpadCommand::Show(name),
+                ScratchpadAction::Show { name, all } => {
+                    if all {
+                        ScratchpadCommand::ShowAll
+                    } else {
+                        ScratchpadCommand::Show(name)
+                    }
+                }
                 ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
                 ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
                 ScratchpadAction::Create { name } => ScratchpadCommand::Create(name),

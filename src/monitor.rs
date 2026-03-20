@@ -468,7 +468,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .monitors
         .set_sel_idx(target_mon);
 
-    crate::floating::scratchpad_show_name(ctx, &sp_name);
+    let _ = crate::floating::scratchpad_show_name(ctx, &sp_name);
 
     if let Some(selected_window) = ctx
         .core_mut()

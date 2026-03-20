@@ -642,7 +642,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     };
 
     if last_client.is_scratchpad() {
-        crate::floating::scratchpad_show_name(ctx, &last_client.scratchpad_name);
+        let _ = crate::floating::scratchpad_show_name(ctx, &last_client.scratchpad_name);
         return;
     }
 

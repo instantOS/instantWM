@@ -2,9 +2,11 @@ use crate::ipc_types::{IpcResponse, WindowCommand};
 use crate::types::WindowId;
 use crate::wm::Wm;
 
-pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> IpcResponse {
+pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand, json_output: bool) -> IpcResponse {
     match cmd {
-        WindowCommand::List(window_id) => list_windows(wm, window_id.map(WindowId::from)),
+        WindowCommand::List(window_id) => {
+            list_windows(wm, window_id.map(WindowId::from), json_output)
+        }
         WindowCommand::Geom(window_id) => window_geometry(wm, window_id.map(WindowId::from)),
         WindowCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
     }
@@ -155,7 +157,7 @@ fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) 
     }
 }
 
-fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
+fn list_windows(wm: &Wm, parsed_id: Option<WindowId>, json_output: bool) -> IpcResponse {
     let target = parsed_id;
     let mut wins: Vec<_> = if let Some(win) = target {
         wm.g.clients.get(&win).into_iter().collect()
@@ -170,10 +172,74 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
         .map(|c| client_to_window_info(c, tag_mask))
         .collect();
 
-    match serde_json::to_string_pretty(&WindowList { windows }) {
-        Ok(json) => IpcResponse::ok(json),
-        Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
+    if json_output {
+        match serde_json::to_string_pretty(&WindowList { windows }) {
+            Ok(json) => IpcResponse::ok(json),
+            Err(e) => IpcResponse::err(format!("JSON serialization failed: {}", e)),
+        }
+    } else {
+        if windows.is_empty() {
+            return IpcResponse::ok("No windows".to_string());
+        }
+        let mut output = String::new();
+        output.push_str(&format!(
+            "{:<8} {:<25} {:<8} {:<10} {}\n",
+            "ID", "TITLE", "MONITOR", "TAGS", "STATE"
+        ));
+        output.push_str(&format!(
+            "{:<8} {:<25} {:<8} {:<10} {}\n",
+            "------", "---------------------", "--------", "----------", "-----"
+        ));
+        for w in &windows {
+            let state = format_state(&w.state);
+            let tags = if w.tags.is_empty() {
+                String::from("-")
+            } else {
+                w.tags
+                    .iter()
+                    .map(|t| t.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            let title = if w.title.len() > 24 {
+                format!("{}...", &w.title[..21])
+            } else {
+                w.title.clone()
+            };
+            output.push_str(&format!(
+                "{:<8} {:<25} {:<8} {:<10} {}\n",
+                w.id, title, w.monitor, tags, state
+            ));
+        }
+        IpcResponse::ok(output.trim_end().to_string())
     }
+}
+
+fn format_state(state: &WindowState) -> String {
+    let mut parts = Vec::new();
+    if state.fullscreen {
+        parts.push("Fullscreen");
+    } else if state.floating {
+        parts.push("Floating");
+    } else {
+        parts.push("Normal");
+    }
+    if state.sticky {
+        parts.push("sticky");
+    }
+    if state.hidden {
+        parts.push("hidden");
+    }
+    if state.urgent {
+        parts.push("urgent");
+    }
+    if state.locked {
+        parts.push("locked");
+    }
+    if state.fixed_size {
+        parts.push("fixed");
+    }
+    parts.join(", ")
 }
 
 fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> IpcResponse {

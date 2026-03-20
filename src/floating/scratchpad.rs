@@ -3,6 +3,20 @@ use crate::globals::Globals;
 use crate::layouts::{arrange, restack};
 use crate::types::*;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ScratchpadInfo {
+    pub name: String,
+    pub visible: bool,
+    pub window_id: Option<u32>,
+    pub monitor: Option<usize>,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub width: Option<i32>,
+    pub height: Option<i32>,
+    pub floating: bool,
+    pub fullscreen: bool,
+}
+
 pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     let clients: Vec<WindowId> = ctx
         .core_mut()
@@ -101,10 +115,21 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx) {
     arrange(ctx, Some(monitor_id));
 }
 
-pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
+pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, String> {
     let Some(found) = scratchpad_find(ctx.core().globals(), name) else {
-        return;
+        return Err(format!("scratchpad '{}' not found", name));
     };
+
+    let was_sticky = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&found)
+        .is_some_and(|c| c.issticky);
+
+    if was_sticky {
+        return Ok(format!("scratchpad '{}' is already visible", name));
+    }
 
     let current_mon = ctx.core_mut().globals_mut().selected_monitor_id();
     let target_mon = ctx
@@ -141,6 +166,40 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) {
         if focusfollowsmouse {
             ctx.warp_cursor_to_client(found);
         }
+    }
+
+    Ok(format!("shown scratchpad '{}'", name))
+}
+
+pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
+    let scratchpad_names: Vec<String> = ctx
+        .core()
+        .globals()
+        .monitors_iter_all()
+        .flat_map(|mon| mon.iter_clients(ctx.core().globals().clients.map()))
+        .filter(|(_, c)| c.is_scratchpad() && !c.issticky)
+        .map(|(_, c)| c.scratchpad_name.clone())
+        .collect();
+
+    let mut shown_count = 0;
+
+    for name in scratchpad_names {
+        match scratchpad_show_name(ctx, &name) {
+            Ok(_) => {
+                shown_count += 1;
+            }
+            Err(_) => {}
+        }
+    }
+
+    if shown_count > 0 {
+        Some(format!(
+            "shown {} scratchpad{}",
+            shown_count,
+            if shown_count == 1 { "" } else { "s" }
+        ))
+    } else {
+        None
     }
 }
 
@@ -193,7 +252,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     if is_sticky {
         scratchpad_hide_name(ctx, name);
     } else {
-        scratchpad_show_name(ctx, name);
+        let _ = scratchpad_show_name(ctx, name);
     }
 }
 
@@ -233,33 +292,93 @@ pub fn scratchpad_status(g: &Globals, name: &str) -> String {
     status
 }
 
-/// List all scratchpads with their visibility status.
-///
-/// Returns a formatted string like:
-/// ```text
-/// * term     (visible)
-///   music    (hidden)
-/// ```
-pub fn scratchpad_list(g: &Globals) -> String {
-    let mut out = String::new();
-    let mut first = true;
+fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
+    let mut scratchpads = Vec::new();
 
     for mon in g.monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(g.clients.map()) {
+        for (c_win, c) in mon.iter_clients(g.clients.map()) {
             if c.is_scratchpad() {
-                if !first {
-                    out.push('\n');
-                }
-                let marker = if c.issticky { "* " } else { "  " };
-                let status = if c.issticky { "(visible)" } else { "(hidden)" };
-                out.push_str(&format!("{}{} {}", marker, c.scratchpad_name, status));
-                first = false;
+                scratchpads.push(ScratchpadInfo {
+                    name: c.scratchpad_name.clone(),
+                    visible: c.issticky,
+                    window_id: Some(c_win.0),
+                    monitor: Some(c.monitor_id),
+                    x: Some(c.geo.x),
+                    y: Some(c.geo.y),
+                    width: Some(c.geo.w),
+                    height: Some(c.geo.h),
+                    floating: c.is_floating,
+                    fullscreen: c.is_fullscreen,
+                });
             }
         }
     }
 
-    if first {
-        out.push_str("no scratchpads");
+    scratchpads
+}
+
+pub fn scratchpad_list_json(g: &Globals) -> String {
+    let scratchpads = collect_scratchpad_info(g);
+    serde_json::to_string_pretty(&scratchpads).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// List all scratchpads with detailed information.
+///
+/// Returns a formatted string like:
+/// ```text
+/// * term     visible    window: 12345    monitor: 0    800x600+100+50    floating
+///   music    hidden     window: 67890    monitor: 1    400x300+200+100
+/// ```
+pub fn scratchpad_list(g: &Globals) -> String {
+    let scratchpads = collect_scratchpad_info(g);
+
+    if scratchpads.is_empty() {
+        return "no scratchpads".to_string();
+    }
+
+    let mut out = String::new();
+
+    for sp in scratchpads {
+        if !out.is_empty() {
+            out.push('\n');
+        }
+
+        let marker = if sp.visible { "* " } else { "  " };
+        let status = if sp.visible { "visible" } else { "hidden" };
+
+        let geometry =
+            if let (Some(w), Some(h), Some(x), Some(y)) = (sp.width, sp.height, sp.x, sp.y) {
+                format!("{}x{}+{}+{}", w, h, x, y)
+            } else {
+                "unknown geometry".to_string()
+            };
+
+        let window_str = if let Some(wid) = sp.window_id {
+            format!("window: {}", wid)
+        } else {
+            "no window".to_string()
+        };
+
+        let monitor_str = if let Some(mon) = sp.monitor {
+            format!("monitor: {}", mon)
+        } else {
+            "no monitor".to_string()
+        };
+
+        let flags = if sp.fullscreen && sp.floating {
+            " fullscreen, floating"
+        } else if sp.fullscreen {
+            " fullscreen"
+        } else if sp.floating {
+            " floating"
+        } else {
+            ""
+        };
+
+        out.push_str(&format!(
+            "{}{:<12} {:<8}  {:<18} {:<14} {}{}",
+            marker, sp.name, status, window_str, monitor_str, geometry, flags
+        ));
     }
 
     out

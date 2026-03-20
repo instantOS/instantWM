@@ -95,7 +95,7 @@ impl IpcServer {
             return;
         }
 
-        let response = handle_command(wm, request.command);
+        let response = handle_command(wm, request.command, request.json_output);
         let _ = send_response(&mut stream, &response);
     }
 }
@@ -132,7 +132,7 @@ fn send_response(stream: &mut UnixStream, response: &IpcResponse) -> std::io::Re
     stream.flush()
 }
 
-fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
+fn handle_command(wm: &mut Wm, cmd: IpcCommand, json_output: bool) -> IpcResponse {
     match cmd {
         IpcCommand::Status => general::get_status(wm),
         IpcCommand::Reload => match reload_config(wm) {
@@ -149,9 +149,9 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> IpcResponse {
         IpcCommand::SpecialNext(arg) => general::set_special_next_cmd(wm, arg),
         IpcCommand::UpdateStatus(text) => general::update_status(wm, text),
         IpcCommand::Monitor(cmd) => monitor::handle_monitor_command(wm, cmd),
-        IpcCommand::Window(cmd) => window::handle_window_command(wm, cmd),
+        IpcCommand::Window(cmd) => window::handle_window_command(wm, cmd, json_output),
         IpcCommand::Tag(cmd) => tag::handle_tag_command(wm, cmd),
-        IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd),
+        IpcCommand::Scratchpad(cmd) => scratchpad::handle_scratchpad_command(wm, cmd, json_output),
         IpcCommand::Keyboard(cmd) => keyboard::handle_keyboard_command(wm, cmd),
         IpcCommand::Toggle(cmd) => toggle::handle_toggle_command(wm, cmd),
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),

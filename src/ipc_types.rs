@@ -153,7 +153,9 @@ pub enum ScratchpadCommand {
     /// Toggle scratchpad visibility.
     Toggle(Option<String>),
     /// Show a scratchpad (make visible on current tag).
-    Show(String),
+    Show(Option<String>),
+    /// Show all scratchpads.
+    ShowAll,
     /// Hide a scratchpad (remove from current tag).
     Hide(String),
     /// Get scratchpad visibility status.
