@@ -156,7 +156,7 @@ fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) 
 }
 
 fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> IpcResponse {
-    let target = parsed_id.or_else(|| wm.g.selected_win());
+    let target = parsed_id;
     let mut wins: Vec<_> = if let Some(win) = target {
         wm.g.clients.get(&win).into_iter().collect()
     } else {
