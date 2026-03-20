@@ -280,6 +280,34 @@ impl Monitor {
         self.sel = win;
     }
 
+    /// Find the next tiled client on this monitor starting after `start_win`.
+    pub fn next_tiled(
+        &self,
+        clients: &HashMap<WindowId, Client>,
+        start_win: Option<WindowId>,
+    ) -> Option<WindowId> {
+        let selected = self.selected_tags();
+
+        let start_idx = if let Some(win) = start_win {
+            self.clients.iter().position(|&w| w == win)
+        } else {
+            None
+        };
+
+        let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
+
+        for &win in self.clients.iter().skip(iter_start) {
+            if let Some(c) = clients.get(&win)
+                && !c.is_floating
+                && c.is_visible_on_tags(selected)
+                && !c.is_hidden
+            {
+                return Some(win);
+            }
+        }
+        None
+    }
+
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
         if !self.showbar {

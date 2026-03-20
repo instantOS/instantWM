@@ -96,10 +96,8 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         let is_floating = c.is_floating;
 
         // Persist float geometry so restore works after leaving overview.
-        if is_floating {
-            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                save_floating(client);
-            }
+        if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            save_floating(client);
         }
 
         resize(

@@ -89,7 +89,11 @@ pub fn set_prefix(wm: &mut Wm, mode: PrefixMode) -> IpcResponse {
 pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> IpcResponse {
     let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
     if let Some(win) = wm.ctx().selected_client() {
-        set_border_width(&mut wm.ctx().core_mut().globals_mut().clients, win, val as i32);
+        set_border_width(
+            &mut wm.ctx().core_mut().globals_mut().clients,
+            win,
+            val as i32,
+        );
     }
     IpcResponse::ok("")
 }

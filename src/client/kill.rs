@@ -37,7 +37,7 @@ use x11rb::protocol::xproto::{ConnectionExt, Window};
 /// Plays a closing animation (unless already animating or fullscreen),
 /// then calls the backend-specific close operation.
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
-    let Some(client) = ctx.client(win).cloned() else {
+    let Some(client) = ctx.client(win) else {
         return;
     };
 
@@ -46,10 +46,12 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
     }
 
     let is_fullscreen = client.is_fullscreen;
+    let monitor_id = client.monitor_id;
+
     let mon_mh = ctx
         .core()
         .globals()
-        .monitor(client.monitor_id)
+        .monitor(monitor_id)
         .map(|m| m.monitor_rect.h)
         .unwrap_or(0);
 

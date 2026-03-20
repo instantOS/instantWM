@@ -210,10 +210,10 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
             .fullscreen = Some(win);
 
         // Save floating geometry so we can restore it on toggle-off.
-        if super::helpers::check_floating(ctx.core(), win) {
-            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                save_floating_geometry(client);
-            }
+        if super::helpers::check_floating(ctx.core(), win)
+            && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win)
+        {
+            save_floating_geometry(client);
         }
     }
 

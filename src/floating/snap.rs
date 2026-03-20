@@ -208,10 +208,10 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
     };
 
     // Restore border width for all positions except Maximized (which needs bw=0).
-    if snap_status != SnapPosition::Maximized {
-        if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
-            restore_border_width(client);
-        }
+    if snap_status != SnapPosition::Maximized
+        && let Some(client) = ctx.core.globals_mut().clients.get_mut(&win)
+    {
+        restore_border_width(client);
     }
 
     // Compute target rect based on snap position.
