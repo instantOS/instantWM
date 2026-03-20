@@ -169,17 +169,21 @@ impl WaylandState {
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<WindowId> {
-        use smithay::desktop::WindowSurfaceType;
-
         self.window_index.iter().find_map(|(win, window)| {
             if window.wl_surface().as_deref() == Some(surface) {
                 return Some(*win);
             }
 
-            let owns_surface = window
-                .surface_under((0.0, 0.0), WindowSurfaceType::ALL)
-                .map(|(hit_surface, _)| hit_surface == *surface)
-                .unwrap_or(false);
+            // A window owns a surface if it's anywhere in its subsurface or popup tree.
+            // Using a large negative offset for surface_under is not reliable.
+            // Instead, we check if the surface is part of this window's surface hierarchy.
+            let mut owns_surface = false;
+            window.with_surfaces(|s, _| {
+                if s == surface {
+                    owns_surface = true;
+                }
+            });
+
             if owns_surface { Some(*win) } else { None }
         })
     }

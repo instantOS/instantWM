@@ -280,7 +280,8 @@ fn resolve_pointer_focus(
         && !in_bar_guard_band
         && let Some(logical) = hovered_win
         && let Some((surf, _)) = &pointer_focus
-        && find_hovered_window_for_surface(wm, surf) != Some(logical)
+        && let Some(actual_win) = find_hovered_window_for_surface(wm, surf)
+        && actual_win != logical
     {
         pointer_focus = None;
     }
