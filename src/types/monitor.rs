@@ -258,6 +258,18 @@ impl Monitor {
         self.sel
     }
 
+    /// Walk the stacking list and return the first visible, non-hidden
+    /// client on the currently selected tags.
+    pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
+        let tags = self.selected_tags();
+        self.stack.iter().find_map(|&w| {
+            clients
+                .get(&w)
+                .filter(|c| c.is_visible_on_tags(tags) && !c.is_hidden)
+                .map(|_| w)
+        })
+    }
+
     /// Check if this monitor has a selected client.
     pub fn has_selection(&self) -> bool {
         self.sel.is_some()

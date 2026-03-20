@@ -387,9 +387,9 @@ impl XwmHandler for WaylandState {
             }
         }
 
-        if was_focused {
-            self.restore_focus_after_overlay();
-        }
+        // Recover mon.sel if it was cleared by detach_stack, then
+        // re-apply seat focus.
+        self.restore_focus_after_overlay();
     }
 
     fn configure_request(
@@ -569,20 +569,15 @@ impl XdgShellHandler for WaylandState {
                 return;
             };
             g.detach(win);
-            // detach_stack already recovers mon.sel if the removed window
-            // was selected — it walks the stack for the next visible client.
             g.detach_stack(win);
             g.clients.remove(&win);
             g.dirty.layout = true;
             g.dirty.space = true;
         }
-        // Apply the resolved mon.sel (set by detach_stack) to the Smithay seat.
-        let new_sel = self.focused_window();
-        if let Some(new_win) = new_sel {
-            self.set_focus(new_win);
-        } else {
-            self.clear_seat_focus();
-        }
+
+        // Recover mon.sel if it was cleared by detach_stack (walks the
+        // stack for the next visible window), then re-apply seat focus.
+        self.restore_focus_after_overlay();
     }
 
     fn popup_destroyed(&mut self, _surface: PopupSurface) {

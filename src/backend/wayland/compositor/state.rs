@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
 
 use smithay::utils::IsAlive;
@@ -10,12 +10,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupManager, Space, Window},
     input::{
+        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
-        Seat, SeatState,
     },
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -27,7 +27,7 @@ use smithay::{
         selection::data_device::DataDeviceState,
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, XdgShellState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
         xdg_activation::XdgActivationState,
@@ -368,6 +368,11 @@ impl WaylandState {
                 g.clients.remove(&win);
             }
         }
+
+        // Recover mon.sel if it was cleared by detach_stack, then
+        // re-apply seat focus so the Smithay seat doesn't point at a
+        // dead surface.
+        self.restore_focus_after_overlay();
 
         let Some(g) = self.globals() else {
             return;

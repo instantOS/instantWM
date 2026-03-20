@@ -254,7 +254,10 @@ impl WaylandState {
 
         // If the window doesn't exist in our index, clear seat focus.
         if focus_window.is_none() && !self.window_index.contains_key(&window) {
-            log::warn!("set_focus: window {:?} not found, clearing seat focus", window);
+            log::warn!(
+                "set_focus: window {:?} not found, clearing seat focus",
+                window
+            );
             self.clear_seat_focus();
             return;
         }
@@ -263,7 +266,10 @@ impl WaylandState {
         if let Some(ref win) = focus_window
             && !win.alive()
         {
-            log::debug!("set_focus: window {:?} is dying, clearing seat focus", window);
+            log::debug!(
+                "set_focus: window {:?} is dying, clearing seat focus",
+                window
+            );
             self.clear_seat_focus();
             return;
         }
@@ -435,11 +441,10 @@ impl WaylandState {
             .get_keyboard()
             .and_then(|k| k.current_focus())
             .is_some_and(|focus| match focus {
-                KeyboardFocusTarget::Window(w) => {
-                    w.user_data()
-                        .get::<WindowIdMarker>()
-                        .is_some_and(|m| m.id == window)
-                }
+                KeyboardFocusTarget::Window(w) => w
+                    .user_data()
+                    .get::<WindowIdMarker>()
+                    .is_some_and(|m| m.id == window),
                 _ => false,
             })
     }
@@ -461,24 +466,43 @@ impl WaylandState {
         }
     }
 
-    /// Restore seat focus after an overlay (e.g., dmenu) is closed.
+    /// Restore seat focus after an overlay (e.g., dmenu) is closed, or
+    /// after a window was destroyed and `mon.sel` was cleared.
     ///
-    /// This method is called when an overlay window (popup, menu, dmenu)
-    /// is closed or unfocused. It restores seat focus to the WM's selected
-    /// window (`mon.sel`), which is not modified here.
+    /// If `mon.sel` is valid and alive, applies seat focus to it.
+    /// If `mon.sel` is `None` or stale, walks the monitor stack to find
+    /// the next visible window and updates `mon.sel` before focusing.
     pub(super) fn restore_focus_after_overlay(&mut self) {
-        // Get the WM's selected window from globals
-        let target = self.globals().and_then(|g| g.selected_win()).filter(|w| {
-            // Window must exist and be alive
-            self.window_index.contains_key(w)
-                && self.window_index.get(w).is_some_and(|win| win.alive())
+        // First, try mon.sel as-is.
+        let valid_sel = self.globals().and_then(|g| g.selected_win()).filter(|&w| {
+            self.window_index.contains_key(&w)
+                && self.window_index.get(&w).is_some_and(|win| win.alive())
         });
 
-        if let Some(win) = target {
+        if let Some(win) = valid_sel {
+            // mon.sel is valid — just apply seat focus.
+            self.set_focus(win);
+            return;
+        }
+
+        // mon.sel is None or stale.  Walk the stack to find the next
+        // visible window and update mon.sel.
+        let recovered = if let Some(g) = self.globals_mut() {
+            let sel_mon_id = g.selected_monitor_id();
+            let next = g
+                .monitor(sel_mon_id)
+                .and_then(|m| m.first_visible_client(g.clients.map()));
+            if let Some(mon) = g.monitor_mut(sel_mon_id) {
+                mon.sel = next;
+            }
+            next
+        } else {
+            None
+        };
+
+        if let Some(win) = recovered {
             self.set_focus(win);
         } else {
-            // No valid target — clear seat focus so it doesn't point at
-            // the dead overlay surface.
             self.clear_seat_focus();
         }
     }

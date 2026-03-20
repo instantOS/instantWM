@@ -410,39 +410,28 @@ impl Globals {
     }
 
     /// Attach `win` to its assigned monitor's stacking list.
+    ///
+    /// Does **not** modify `mon.sel` — callers are responsible for
+    /// deciding selection via `focus_soft` or explicit assignment.
     pub fn attach_stack(&mut self, win: WindowId) {
         if let Some(mid) = self.clients.monitor_id(win)
             && let Some(mon) = self.monitors.get_mut(mid)
         {
             mon.stack.insert(0, win);
-            if mon.sel.is_none() {
-                mon.sel = Some(win);
-            }
         }
     }
 
     /// Detach `win` from its assigned monitor's stacking list.
+    ///
+    /// Pure list operation — does **not** modify `mon.sel`.
+    /// Callers are responsible for focus recovery (e.g. `focus_soft`,
+    /// `restore_focus_after_overlay`, or explicit `mon.sel` assignment).
     pub fn detach_stack(&mut self, win: WindowId) {
         let monitor_id = self.clients.monitor_id(win);
 
-        let handle_monitor = |mon: &mut crate::types::Monitor,
-                              clients: &crate::client::manager::ClientManager|
-         -> bool {
+        let handle_monitor = |mon: &mut crate::types::Monitor| -> bool {
             if mon.stack.contains(&win) {
                 mon.stack.retain(|&w| w != win);
-                if mon.sel == Some(win) {
-                    mon.sel = None;
-                    let selected = mon.selected_tag_mask();
-                    for &c_win in &mon.stack {
-                        if let Some(c) = clients.get(&c_win)
-                            && c.is_visible_on_tags(selected.bits())
-                            && !c.is_hidden
-                        {
-                            mon.sel = Some(c_win);
-                            break;
-                        }
-                    }
-                }
                 return true;
             }
             false
@@ -450,14 +439,14 @@ impl Globals {
 
         if let Some(mid) = monitor_id
             && let Some(mon) = self.monitors.get_mut(mid)
-            && handle_monitor(mon, &self.clients)
+            && handle_monitor(mon)
         {
             return;
         }
 
         // Fallback: search all monitors if not found on the assigned one.
         for mon in self.monitors.iter_all_mut() {
-            if handle_monitor(mon, &self.clients) {
+            if handle_monitor(mon) {
                 return;
             }
         }

@@ -382,9 +382,8 @@ fn process_pending_libinput_events(
 
     let mut any_input = false;
     for event in events {
-        any_input |= crate::wayland::input::drm::dispatch_libinput_event(
-            event, state, wm, total_w, total_h,
-        );
+        any_input |=
+            crate::wayland::input::drm::dispatch_libinput_event(event, state, wm, total_w, total_h);
     }
 
     if any_input {

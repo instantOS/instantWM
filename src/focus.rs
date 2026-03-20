@@ -43,15 +43,7 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
     });
 
     if target.is_none() {
-        for &c_win in &mon.stack {
-            let Some(c) = core.globals().clients.get(&c_win) else {
-                continue;
-            };
-            if c.is_visible_on_tags(selected.bits()) && !c.is_hidden {
-                target = Some(c_win);
-                break;
-            }
-        }
+        target = mon.first_visible_client(core.globals().clients.map());
     }
 
     Some(FocusTargetResult {
@@ -222,10 +214,7 @@ pub fn focus_x11(
     x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     win: Option<WindowId>,
 ) -> anyhow::Result<()> {
-    let mut backend = X11FocusBackend {
-        x11,
-        x11_runtime,
-    };
+    let mut backend = X11FocusBackend { x11, x11_runtime };
     focus_generic(core, win, &mut backend)
 }
 
@@ -261,12 +250,7 @@ pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
     match ctx {
         X11(x11_ctx) => {
-            if let Err(e) = focus_x11(
-                &mut x11_ctx.core,
-                &x11_ctx.x11,
-                x11_ctx.x11_runtime,
-                win,
-            ) {
+            if let Err(e) = focus_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, win) {
                 log::warn!("focus_soft X11({:?}) failed: {}", win, e);
             }
         }
