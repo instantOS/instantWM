@@ -170,6 +170,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         let mid = ctx.core_mut().globals_mut().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
+        crate::layouts::restack(ctx, mid);
     }
 
     if focusfollowsmouse {
