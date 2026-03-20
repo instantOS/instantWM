@@ -93,6 +93,26 @@ impl WaylandState {
             WindowType::Normal | WindowType::Unmanaged | WindowType::Dying => false,
         }
     }
+
+    /// Iterator over windows in z-order (top-to-bottom), along with their type.
+    ///
+    /// This follows the render-order defined in `assemble_scene_elements!`:
+    /// 1. Overlays and Launchers
+    /// 2. Others (Normal, Unmanaged)
+    pub fn windows_in_z_order(&self) -> Vec<(&Window, WindowType)> {
+        let mut windows: Vec<(&Window, WindowType)> = self
+            .space
+            .elements()
+            .rev()
+            .map(|w| (w, self.classify_window(w)))
+            .collect();
+
+        windows.sort_by_key(|(_, typ)| match typ {
+            WindowType::Launcher | WindowType::Overlay => 0,
+            _ => 1,
+        });
+        windows
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -522,16 +542,13 @@ impl WaylandState {
 
     pub(super) fn raise_unmanaged_x11_windows(&mut self) {
         let overlays: Vec<_> = self
-            .space
-            .elements()
-            .filter(|w| match w.user_data().get::<WindowIdMarker>() {
-                Some(m) => m.is_overlay,
-                None => w.x11_surface().is_some(),
-            })
-            .cloned()
+            .windows_in_z_order()
+            .into_iter()
+            .filter(|(_, typ)| matches!(typ, WindowType::Launcher | WindowType::Overlay))
+            .map(|(w, _)| w.clone())
             .collect();
         for w in overlays {
-            self.space.raise_element(&w, true);
+            self.space.raise_element(&w, false);
         }
     }
 
@@ -558,15 +575,10 @@ impl WaylandState {
     ) -> Vec<(Window, Point<i32, smithay::utils::Physical>)> {
         use smithay::utils::Physical;
 
-        self.space
-            .elements()
-            .filter(|w| match w.user_data().get::<WindowIdMarker>() {
-                Some(m) => m.is_overlay,
-                // Windows with no marker are unmananged override-redirect X11
-                // surfaces mapped directly (e.g. via mapped_override_redirect_window).
-                None => w.x11_surface().is_some(),
-            })
-            .filter_map(|w| {
+        self.windows_in_z_order()
+            .into_iter()
+            .filter(|(_, typ)| matches!(typ, WindowType::Launcher | WindowType::Overlay))
+            .filter_map(|(w, _)| {
                 let loc = self.space.element_location(w)?;
                 // Translate from global compositor coordinates to the
                 // per-output local coordinate space, then convert to physical
@@ -605,22 +617,20 @@ impl WaylandState {
     )> {
         use smithay::desktop::WindowSurfaceType;
 
-        for window in self.space.elements().rev() {
+        for (window, _) in self.windows_in_z_order() {
             let Some(loc) = self.space.element_location(window) else {
                 continue;
             };
             let geo_offset = window.geometry().loc;
             let surface_origin = loc - geo_offset;
+
+            // We check ALL surfaces (including children/popups) for all windows
+            // in their respective Z-order.
             if let Some(result) =
-                window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::POPUP)
+                window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
             {
                 return Some((result.0, result.1 + surface_origin));
             }
-        }
-        if let Some((window, loc)) = self.space.element_under(point)
-            && let Some(result) = window.surface_under(point - loc.to_f64(), WindowSurfaceType::ALL)
-        {
-            return Some((result.0, result.1 + loc));
         }
         None
     }
@@ -679,18 +689,37 @@ impl WaylandState {
         let root_y = point.y.round() as i32;
         let globals = self.globals()?;
 
-        for window in self.space.elements().rev() {
-            if let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id)
-                && let Some(c) = globals.clients.get(&win_id)
-            {
-                let bw = c.border_width;
-                // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
-                if root_x >= c.geo.x
-                    && root_x < c.geo.x + c.geo.w + 2 * bw
-                    && root_y >= c.geo.y
-                    && root_y < c.geo.y + c.geo.h + 2 * bw
+        for (window, typ) in self.windows_in_z_order() {
+            let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
+                continue;
+            };
+
+            if matches!(typ, WindowType::Launcher | WindowType::Overlay) {
+                let Some(loc) = self.space.element_location(window) else {
+                    continue;
+                };
+                let geo = window.geometry();
+                let relative_loc = loc + geo.loc;
+
+                if root_x >= relative_loc.x
+                    && root_x < relative_loc.x + geo.size.w
+                    && root_y >= relative_loc.y
+                    && root_y < relative_loc.y + geo.size.h
                 {
                     return Some(win_id);
+                }
+            } else {
+                // Fall back to managed windows with borders
+                if let Some(c) = globals.clients.get(&win_id) {
+                    let bw = c.border_width;
+                    // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
+                    if root_x >= c.geo.x
+                        && root_x < c.geo.x + c.geo.w + 2 * bw
+                        && root_y >= c.geo.y
+                        && root_y < c.geo.y + c.geo.h + 2 * bw
+                    {
+                        return Some(win_id);
+                    }
                 }
             }
         }
