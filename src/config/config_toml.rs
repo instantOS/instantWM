@@ -23,6 +23,9 @@ pub struct ModeSpec {
     /// Optional description shown in status bar when mode is active.
     #[serde(default)]
     pub description: Option<String>,
+    /// Whether the mode is transient (reset to default after any keybind).
+    #[serde(default)]
+    pub transient: bool,
     /// Keybinds for this mode.
     #[serde(default)]
     pub keybinds: Vec<KeybindSpec>,

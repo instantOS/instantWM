@@ -94,6 +94,8 @@ pub enum PrefixMode {
     /// Enable prefix mode.
     #[default]
     Enable,
+    /// Toggle prefix mode.
+    Toggle,
 }
 
 impl From<u32> for SpecialNext {
@@ -107,6 +109,7 @@ impl From<PrefixMode> for bool {
         match mode {
             PrefixMode::Enable => true,
             PrefixMode::Disable => false,
+            PrefixMode::Toggle => true, // Default to true if converted to bool
         }
     }
 }

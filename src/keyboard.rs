@@ -42,14 +42,14 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
     let current_mode = ctx.core().globals().behavior.current_mode.clone();
+    let mut transient = false;
 
     let action = if !current_mode.is_empty() && current_mode != "default" {
         // Look ONLY in mode-specific keybindings
-        ctx.core()
-            .globals()
-            .cfg
-            .modes
-            .get(&current_mode)
+        let mode_cfg = ctx.core().globals().cfg.modes.get(&current_mode);
+        transient = mode_cfg.map(|m| m.transient).unwrap_or(false);
+
+        mode_cfg
             .and_then(|mode| {
                 mode.keybinds.iter().find(|key| {
                     keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
@@ -86,6 +86,10 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
 
     if let Some(action) = action {
         action(ctx);
+        if transient {
+            ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
+            ctx.request_bar_update(None);
+        }
         true
     } else {
         false
@@ -180,7 +184,10 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
         }
 
         let selected_window = core.selected_client();
-        if selected_window.is_none() {
+        let current_mode = &core.globals().behavior.current_mode;
+        let is_desktop_mode = current_mode == "prefix" || current_mode == "desktop";
+
+        if selected_window.is_none() || is_desktop_mode {
             for key in desktop_keybinds {
                 if keysym == key.keysym {
                     for &modif in &modifiers {

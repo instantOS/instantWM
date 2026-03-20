@@ -241,13 +241,13 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
-    if ctx.core().globals().tags.prefix {
+    if ctx.core().globals().behavior.current_mode == "prefix" {
         for mon in ctx.core_mut().globals_mut().monitors_iter_all_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.set_layout(layout);
             }
         }
-        ctx.core_mut().globals_mut().tags.prefix = false;
+        ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
     } else {
         let m = ctx.core_mut().globals_mut().selected_monitor_mut();
         let tag = m.current_tag;
@@ -259,13 +259,13 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
-    if ctx.core().globals().tags.prefix {
+    if ctx.core().globals().behavior.current_mode == "prefix" {
         for mon in ctx.core_mut().globals_mut().monitors_iter_all_mut() {
             for tag in mon.tags.iter_mut() {
                 tag.layouts.toggle_slot();
             }
         }
-        ctx.core_mut().globals_mut().tags.prefix = false;
+        ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
     } else {
         let m = ctx.core_mut().globals_mut().selected_monitor_mut();
         let tag = m.current_tag;

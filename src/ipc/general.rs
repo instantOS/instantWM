@@ -82,7 +82,12 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> IpcResponse {
 }
 
 pub fn set_prefix(wm: &mut Wm, mode: PrefixMode) -> IpcResponse {
-    set_prefix_mode(&mut wm.ctx(), mode.into());
+    let value = match mode {
+        PrefixMode::Enable => true,
+        PrefixMode::Disable => false,
+        PrefixMode::Toggle => wm.ctx().core().globals().behavior.current_mode != "prefix",
+    };
+    set_prefix_mode(&mut wm.ctx(), value);
     IpcResponse::ok("")
 }
 

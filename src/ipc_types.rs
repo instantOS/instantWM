@@ -185,8 +185,8 @@ pub enum ToggleCommand {
     FocusFollowsMouse(Option<String>),
     /// Toggle or set focus follows mouse for floating windows only.
     FocusFollowsFloatMouse(Option<String>),
-    /// Toggle or set sticky prefix mode (enables prefix-based window switching).
-    StickyPrefix(Option<String>),
+    /// Toggle or set desktop mode (enables prefix-based window switching).
+    DesktopMode(Option<String>),
     /// Toggle or set alt-tag mode (shows alternative tag names in bar).
     AltTag(Option<String>),
     /// Toggle or set hide tags visibility (hides tag bar).

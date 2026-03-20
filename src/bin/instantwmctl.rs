@@ -247,13 +247,13 @@ enum ToggleAction {
         /// Action: toggle, enable, or disable
         action: Option<String>,
     },
-    /// Toggle or set sticky prefix mode (enables prefix-based window switching).
+    /// Toggle or set desktop mode (enables prefix-based window switching).
     ///
     /// Action argument:
     ///   (empty), 0, or 2: toggle
     ///   1: disable (set false)
     ///   other: enable (set true)
-    StickyPrefix {
+    DesktopMode {
         /// Action: toggle, enable, or disable
         action: Option<String>,
     },
@@ -568,7 +568,7 @@ fn main() {
                 ToggleAction::FocusFollowsFloatMouse { action } => {
                     ToggleCommand::FocusFollowsFloatMouse(action)
                 }
-                ToggleAction::StickyPrefix { action } => ToggleCommand::StickyPrefix(action),
+                ToggleAction::DesktopMode { action } => ToggleCommand::DesktopMode(action),
                 ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
                 ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
             };

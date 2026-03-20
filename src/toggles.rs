@@ -24,15 +24,20 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     ctx.request_bar_update(None);
 }
 
-pub fn toggle_sticky_prefix(ctx: &mut WmCtx, action: ToggleAction) {
-    if let WmCtx::X11(x11) = ctx {
-        ctrl_toggle(&mut x11.core.globals_mut().tags.prefix, action);
-        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+pub fn toggle_desktop_mode(ctx: &mut WmCtx, _action: ToggleAction) {
+    let mode = if ctx.core().globals().behavior.current_mode == "desktop" {
+        "default"
     } else {
-        let mut prefix = ctx.core().globals().tags.prefix;
-        ctrl_toggle(&mut prefix, action);
-        ctx.core_mut().globals_mut().tags.prefix = prefix;
+        "desktop"
+    };
+
+    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+
+    if let WmCtx::X11(x11) = ctx {
+        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
     }
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    ctx.request_bar_update(Some(selmon_id));
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
@@ -46,8 +51,17 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_prefix(ctx: &mut WmCtx) {
-    let next = !ctx.core().globals().tags.prefix;
-    ctx.core_mut().globals_mut().tags.prefix = next;
+    let mode = if ctx.core().globals().behavior.current_mode == "prefix" {
+        "default"
+    } else {
+        "prefix"
+    };
+
+    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+
+    if let WmCtx::X11(x11) = ctx {
+        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+    }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));
@@ -85,7 +99,12 @@ pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
 }
 
 pub fn set_prefix_mode(ctx: &mut WmCtx, value: bool) {
-    ctx.core_mut().globals_mut().tags.prefix = value;
+    let mode = if value { "prefix" } else { "default" };
+    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+
+    if let WmCtx::X11(x11) = ctx {
+        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+    }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.request_bar_update(Some(selmon_id));

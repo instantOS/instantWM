@@ -107,6 +107,8 @@ use crate::types::{
 pub struct ModeConfig {
     /// Optional description shown in status bar when mode is active.
     pub description: Option<String>,
+    /// Whether the mode is transient (reset to default after any keybind).
+    pub transient: bool,
     /// Keybinds for this mode.
     pub keybinds: Vec<Key>,
 }
@@ -227,7 +229,30 @@ pub fn init_config() -> Config {
             name.clone(),
             ModeConfig {
                 description: spec.description.clone(),
+                transient: spec.transient,
                 keybinds,
+            },
+        );
+    }
+
+    // Add default prefix and desktop modes if not already defined
+    if !modes.contains_key("prefix") {
+        modes.insert(
+            "prefix".to_string(),
+            ModeConfig {
+                description: Some("prefix".to_string()),
+                transient: true,
+                keybinds: desktop_keybinds.clone(),
+            },
+        );
+    }
+    if !modes.contains_key("desktop") {
+        modes.insert(
+            "desktop".to_string(),
+            ModeConfig {
+                description: Some("desktop".to_string()),
+                transient: false,
+                keybinds: desktop_keybinds.clone(),
             },
         );
     }
