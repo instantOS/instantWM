@@ -4,7 +4,6 @@ use std::rc::Rc;
 
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
-use crate::contexts::WmCtx;
 use crate::floating::{
     center_window, distribute_clients, key_resize, scratchpad_make, scratchpad_toggle,
     toggle_maximized,
@@ -252,16 +251,7 @@ pub fn get_keys() -> Vec<Key> {
             crate::keyboard_layout::cycle_keyboard_layout(ctx, true);
         }),
         key!(MODKEY | SHIFT | CONTROL | MOD1,   XK_TAB   => |ctx| {
-            let mode = if ctx.core().globals().behavior.current_mode == "desktop" {
-                "default"
-            } else {
-                "desktop"
-            };
-            ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
-            if let WmCtx::X11(x11) = ctx {
-                crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
-            }
-            ctx.request_bar_update(None);
+            crate::toggles::toggle_mode(ctx, "desktop");
         }),
         key!(MODKEY | CONTROL,     XK_R     => |ctx| ctx.request_bar_update(None)),
         key!(MODKEY | CONTROL,  XK_H => |ctx| {
@@ -279,16 +269,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | SHIFT | CONTROL,    XK_Q   => |_| quit()),
         key!(MODKEY,  XK_F1 => |ctx| spawn(ctx, &["instanthotkeys", "gui"])),
         key!(MODKEY,  XK_F2 => |ctx| {
-            let mode = if ctx.core().globals().behavior.current_mode == "prefix" {
-                "default"
-            } else {
-                "prefix"
-            };
-            ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
-            if let WmCtx::X11(x11) = ctx {
-                crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
-            }
-            ctx.request_bar_update(None);
+            crate::toggles::toggle_mode(ctx, "prefix");
         }),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, &["kitty"])),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, menu::SMART)),
