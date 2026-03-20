@@ -23,10 +23,7 @@ pub struct IpcServer {
 
 impl IpcServer {
     pub fn bind() -> std::io::Result<Self> {
-        let path = socket_path();
-        if path.exists() {
-            let _ = fs::remove_file(&path);
-        }
+        let path = get_available_socket_path();
         let listener = UnixListener::bind(&path)?;
         listener.set_nonblocking(true)?;
         unsafe { std::env::set_var("INSTANTWM_SOCKET", &path) };
@@ -112,12 +109,26 @@ impl std::os::unix::io::AsRawFd for IpcServer {
     }
 }
 
-fn socket_path() -> PathBuf {
-    if let Ok(p) = std::env::var("INSTANTWM_SOCKET") {
-        return PathBuf::from(p);
-    }
+fn get_available_socket_path() -> PathBuf {
     let uid = unsafe { libc::geteuid() };
-    PathBuf::from(format!("/tmp/instantwm-{}.sock", uid))
+    let mut i = 0;
+    loop {
+        let path = if i == 0 {
+            PathBuf::from(format!("/tmp/instantwm-{}.sock", uid))
+        } else {
+            PathBuf::from(format!("/tmp/instantwm-{}-{}.sock", uid, i))
+        };
+
+        if path.exists() {
+            if UnixStream::connect(&path).is_ok() {
+                i += 1;
+                continue;
+            } else {
+                let _ = fs::remove_file(&path);
+            }
+        }
+        return path;
+    }
 }
 
 fn send_response(stream: &mut UnixStream, response: &Response) -> std::io::Result<()> {
