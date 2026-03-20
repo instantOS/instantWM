@@ -112,6 +112,8 @@ pub enum ModeCommand {
     List,
     /// Set the current mode (enter a mode).
     Set(String),
+    /// Toggle the current mode (enter if not active, else return to default).
+    Toggle(String),
 }
 
 /// Scratchpad-related commands.
@@ -185,8 +187,6 @@ pub enum ToggleCommand {
     FocusFollowsMouse(Option<String>),
     /// Toggle or set focus follows mouse for floating windows only.
     FocusFollowsFloatMouse(Option<String>),
-    /// Toggle or set desktop mode (enables prefix-based window switching).
-    DesktopMode(Option<String>),
     /// Toggle or set alt-tag mode (shows alternative tag names in bar).
     AltTag(Option<String>),
     /// Toggle or set hide tags visibility (hides tag bar).
@@ -234,8 +234,6 @@ pub enum IpcCommand {
     FollowMon(MonitorDirection),
     /// Set the layout type.
     Layout(LayoutKind),
-    /// Enable or disable prefix mode for special keybindings.
-    Prefix(PrefixMode),
     /// Set border width for the selected window.
     Border(Option<u32>),
     /// Set special next mode for cycling through windows.

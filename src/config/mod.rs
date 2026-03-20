@@ -253,7 +253,7 @@ pub fn init_config() -> Config {
             theme.modes.get("prefix"),
             "prefix",
             true,
-            desktop_keybinds.clone(),
+            Vec::new(),
         ),
     );
 
@@ -263,7 +263,7 @@ pub fn init_config() -> Config {
             theme.modes.get("desktop"),
             "desktop",
             false,
-            desktop_keybinds.clone(),
+            Vec::new(),
         ),
     );
 

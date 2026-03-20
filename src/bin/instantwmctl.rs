@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout, LayoutKind,
-    ModeCommand, MonitorCommand, MonitorDirection, PrefixMode, ScratchpadCommand, SpecialNext,
-    TagCommand, ToggleCommand, WindowCommand,
+    ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, SpecialNext, TagCommand,
+    ToggleCommand, WindowCommand,
 };
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -247,16 +247,6 @@ enum ToggleAction {
         /// Action: toggle, enable, or disable
         action: Option<String>,
     },
-    /// Toggle or set desktop mode (enables prefix-based window switching).
-    ///
-    /// Action argument:
-    ///   (empty), 0, or 2: toggle
-    ///   1: disable (set false)
-    ///   other: enable (set true)
-    DesktopMode {
-        /// Action: toggle, enable, or disable
-        action: Option<String>,
-    },
     /// Toggle or set alt-tag mode (shows alternative tag names in bar).
     ///
     /// Action argument:
@@ -367,6 +357,11 @@ enum ModeAction {
         /// Mode name (use "default" to exit current mode)
         name: String,
     },
+    /// Toggle a mode (enter if not active, else return to default).
+    Toggle {
+        /// Mode name (e.g., "prefix", "desktop")
+        name: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -439,11 +434,10 @@ enum CommandKind {
         /// Layout name (e.g., "tile", "grid", "monocle")
         name: LayoutKind,
     },
-    /// Enable or disable prefix mode for special keybindings.
-    Prefix {
-        /// Enable or disable prefix mode (default: enable)
-        mode: PrefixMode,
-    },
+    /// Toggle prefix mode (one-time desktop commands).
+    Prefix,
+    /// Toggle desktop mode (persistent desktop commands).
+    Desktop,
     /// Set border width for the selected window.
     Border {
         /// Border width in pixels (defaults to configured BORDERPX)
@@ -568,7 +562,6 @@ fn main() {
                 ToggleAction::FocusFollowsFloatMouse { action } => {
                     ToggleCommand::FocusFollowsFloatMouse(action)
                 }
-                ToggleAction::DesktopMode { action } => ToggleCommand::DesktopMode(action),
                 ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
                 ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
             };
@@ -585,7 +578,8 @@ fn main() {
         CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
         CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
         CommandKind::Layout { name } => IpcCommand::Layout(name),
-        CommandKind::Prefix { mode } => IpcCommand::Prefix(mode),
+        CommandKind::Prefix => IpcCommand::Mode(ModeCommand::Toggle("prefix".to_string())),
+        CommandKind::Desktop => IpcCommand::Mode(ModeCommand::Toggle("desktop".to_string())),
         CommandKind::Border { width } => IpcCommand::Border(width),
         CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
         CommandKind::Keyboard { action } => {
@@ -659,6 +653,7 @@ fn main() {
             let cmd = match action {
                 ModeAction::List => ModeCommand::List,
                 ModeAction::Set { name } => ModeCommand::Set(name),
+                ModeAction::Toggle { name } => ModeCommand::Toggle(name),
             };
             IpcCommand::Mode(cmd)
         }

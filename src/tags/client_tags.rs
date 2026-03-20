@@ -63,11 +63,7 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn follow_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
-    let old_mode = ctx.core().globals().behavior.current_mode.clone();
     set_client_tag_ctx(ctx, win, mask);
-    if old_mode == "prefix" {
-        ctx.core_mut().globals_mut().behavior.current_mode = "prefix".to_string();
-    }
     crate::tags::view::view(ctx, mask);
 }
 

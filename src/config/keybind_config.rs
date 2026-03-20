@@ -198,8 +198,8 @@ use crate::tags::{
 };
 use crate::toggles::toggle_bar;
 use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_prefix, toggle_show_tags,
-    toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_show_tags, toggle_sticky,
+    unhide_all,
 };
 use crate::types::{Direction, MonitorDirection, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
@@ -465,7 +465,19 @@ define_actions!(
     "toggle_animated" => "toggle window animations" => |ctx: &mut WmCtx, _args: &[String]| toggle_animated(&mut ctx.core_mut().globals_mut().behavior, ToggleAction::Toggle),
     "toggle_show_tags" => "show/hide tag bar" => |ctx: &mut WmCtx, _args: &[String]| toggle_show_tags(ctx, ToggleAction::Toggle),
     "toggle_double_draw" => "toggle double draw mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_double_draw(&mut ctx.core_mut().globals_mut().behavior),
-    "toggle_prefix" => "toggle prefix mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_prefix(ctx),
+    "toggle_prefix" => "toggle prefix mode" => |ctx: &mut WmCtx, _args: &[String]| {
+        let mode = if ctx.core().globals().behavior.current_mode == "prefix" {
+            "default"
+        } else {
+            "prefix"
+        };
+        ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
+        if let WmCtx::X11(x11) = ctx {
+            crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+        }
+        let selmon_id = ctx.core().globals().selected_monitor_id();
+        ctx.request_bar_update(Some(selmon_id));
+    },
     "unhide_all" => "show all hidden windows" => |ctx: &mut WmCtx, _args: &[String]| unhide_all(ctx),
     "hide" => "hide focused window" => |ctx: &mut WmCtx, _args: &[String]| {
         if let Some(win) = ctx.selected_client() {

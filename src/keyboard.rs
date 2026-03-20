@@ -45,7 +45,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let mut transient = false;
 
     let action = if !current_mode.is_empty() && current_mode != "default" {
-        // Look ONLY in mode-specific keybindings
+        // Look FIRST in mode-specific keybindings
         let mode_cfg = ctx.core().globals().cfg.modes.get(&current_mode);
         transient = mode_cfg.map(|m| m.transient).unwrap_or(false);
 
@@ -56,6 +56,30 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                 })
             })
             .map(|key| Rc::clone(&key.action))
+            .or_else(|| {
+                // Fallback to global/desktop bindings
+                ctx.core()
+                    .globals()
+                    .cfg
+                    .keys
+                    .iter()
+                    .find(|key| {
+                        keysym == key.keysym
+                            && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                    })
+                    .or_else(|| {
+                        ctx.core()
+                            .globals()
+                            .cfg
+                            .desktop_keybinds
+                            .iter()
+                            .find(|key| {
+                                keysym == key.keysym
+                                    && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                            })
+                    })
+                    .map(|key| Rc::clone(&key.action))
+            })
     } else {
         // Normal mode
         ctx.core()
@@ -185,9 +209,9 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
 
         let selected_window = core.selected_client();
         let current_mode = &core.globals().behavior.current_mode;
-        let is_desktop_mode = current_mode == "prefix" || current_mode == "desktop";
+        let is_any_mode = !current_mode.is_empty() && current_mode != "default";
 
-        if selected_window.is_none() || is_desktop_mode {
+        if selected_window.is_none() || is_any_mode {
             for key in desktop_keybinds {
                 if keysym == key.keysym {
                     for &modif in &modifiers {

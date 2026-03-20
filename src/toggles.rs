@@ -24,21 +24,6 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
     ctx.request_bar_update(None);
 }
 
-pub fn toggle_desktop_mode(ctx: &mut WmCtx, _action: ToggleAction) {
-    let mode = if ctx.core().globals().behavior.current_mode == "desktop" {
-        "default"
-    } else {
-        "desktop"
-    };
-
-    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
-
-    if let WmCtx::X11(x11) = ctx {
-        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
-    }
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    ctx.request_bar_update(Some(selmon_id));
-}
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
@@ -50,22 +35,6 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     arrange(ctx, Some(monitor_id));
 }
 
-pub fn toggle_prefix(ctx: &mut WmCtx) {
-    let mode = if ctx.core().globals().behavior.current_mode == "prefix" {
-        "default"
-    } else {
-        "prefix"
-    };
-
-    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
-
-    if let WmCtx::X11(x11) = ctx {
-        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
-    }
-
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    ctx.request_bar_update(Some(selmon_id));
-}
 
 pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
     ctrl_toggle(&mut behavior.animated, action);
@@ -98,17 +67,6 @@ pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
     behavior.specialnext = value;
 }
 
-pub fn set_prefix_mode(ctx: &mut WmCtx, value: bool) {
-    let mode = if value { "prefix" } else { "default" };
-    ctx.core_mut().globals_mut().behavior.current_mode = mode.to_string();
-
-    if let WmCtx::X11(x11) = ctx {
-        grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
-    }
-
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    ctx.request_bar_update(Some(selmon_id));
-}
 
 pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
     ctrl_toggle(&mut behavior.focus_follows_mouse, action);

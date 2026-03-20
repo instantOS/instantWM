@@ -74,42 +74,10 @@ pub enum SpecialNext {
     Float,
 }
 
-/// Prefix mode for special keybindings.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Default,
-    bincode::Decode,
-    bincode::Encode,
-    serde::Serialize,
-    serde::Deserialize,
-    clap::ValueEnum,
-)]
-pub enum PrefixMode {
-    /// Disable prefix mode.
-    Disable,
-    /// Enable prefix mode.
-    #[default]
-    Enable,
-    /// Toggle prefix mode.
-    Toggle,
-}
+
 
 impl From<u32> for SpecialNext {
     fn from(value: u32) -> Self {
         if value == 0 { Self::None } else { Self::Float }
-    }
-}
-
-impl From<PrefixMode> for bool {
-    fn from(mode: PrefixMode) -> Self {
-        match mode {
-            PrefixMode::Enable => true,
-            PrefixMode::Disable => false,
-            PrefixMode::Toggle => true, // Default to true if converted to bool
-        }
     }
 }
