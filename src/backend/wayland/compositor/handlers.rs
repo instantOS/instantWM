@@ -631,6 +631,13 @@ impl XdgShellHandler for WaylandState {
         // Some clients (e.g. clipboard tools) create a toplevel but never
         // render anything — promoting them immediately causes a spurious
         // layout rearrange.
+        //
+        // We must still send an initial configure, otherwise well-behaved
+        // clients (e.g. GTK) will wait forever for it and never commit
+        // a buffer — deadlocking window creation.
+        if !surface.is_initial_configure_sent() {
+            let _ = surface.send_configure();
+        }
         self.pending_toplevels.push(surface);
     }
 
