@@ -106,7 +106,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
             .globals()
             .clients
             .get(&win)
-            .map(|c| c.isurgent)
+            .map(|c| c.is_urgent)
             .unwrap_or(false);
         if is_urgent {
             set_urgent(core, self.x11, win, false);
@@ -359,11 +359,7 @@ pub fn hover_focus_target(
 /// Common hover-focus guard checks shared by both backends.
 ///
 /// Returns `true` when hover focus should proceed for `hovered_win`.
-fn should_hover_focus(
-    core: &CoreCtx,
-    hovered_win: Option<WindowId>,
-    entering_root: bool,
-) -> bool {
+fn should_hover_focus(core: &CoreCtx, hovered_win: Option<WindowId>, entering_root: bool) -> bool {
     let Some(win) = hovered_win else {
         return false;
     };

@@ -32,7 +32,7 @@ impl ClientBarStats {
                 continue;
             }
             occupied |= client.tags;
-            if client.isurgent {
+            if client.is_urgent {
                 stats.urgent_tags |= client.tags;
             }
         }

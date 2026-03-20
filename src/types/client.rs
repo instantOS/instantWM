@@ -44,7 +44,7 @@ pub struct Client {
     /// Whether the window is floating.
     pub is_floating: bool,
     /// Whether the window has urgency hint.
-    pub isurgent: bool,
+    pub is_urgent: bool,
     /// Whether the window should never receive focus.
     pub never_focus: bool,
     /// Old window state.

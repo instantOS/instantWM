@@ -700,7 +700,7 @@ impl Globals {
             SchemeWin::Sticky
         } else if c.is_hidden {
             SchemeWin::Minimized
-        } else if c.isurgent {
+        } else if c.is_urgent {
             SchemeWin::Urgent
         } else {
             SchemeWin::Normal

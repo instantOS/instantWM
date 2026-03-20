@@ -492,7 +492,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
-        client.isurgent = is_urgent;
+        client.is_urgent = is_urgent;
         client.never_focus = if flags & WM_HINTS_INPUT_HINT != 0 {
             input == 0
         } else {
@@ -511,7 +511,7 @@ pub fn set_urgent(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: b
 
     // Update the internal flag first.
     if let Some(client) = core.globals_mut().clients.get_mut(&win) {
-        client.isurgent = urg;
+        client.is_urgent = urg;
     }
 
     // Read the current WM_HINTS so we only modify the urgency bit.

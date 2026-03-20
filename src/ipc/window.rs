@@ -128,7 +128,7 @@ fn build_window_state(c: &crate::types::client::Client) -> WindowState {
         fake_fullscreen: c.isfakefullscreen,
         sticky: c.issticky,
         hidden: c.is_hidden,
-        urgent: c.isurgent,
+        urgent: c.is_urgent,
         locked: c.is_locked,
         fixed_size: c.is_fixed_size,
         never_focus: c.never_focus,

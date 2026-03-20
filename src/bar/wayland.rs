@@ -620,7 +620,7 @@ fn bar_render_key(
             win.hash(&mut hasher);
             c.name.hash(&mut hasher);
             c.tags.hash(&mut hasher);
-            c.isurgent.hash(&mut hasher);
+            c.is_urgent.hash(&mut hasher);
             c.is_locked.hash(&mut hasher);
             c.is_fullscreen.hash(&mut hasher);
             c.is_hidden.hash(&mut hasher);
