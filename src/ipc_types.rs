@@ -185,8 +185,13 @@ pub enum ScratchpadCommand {
     ShowAll,
     Hide(String),
     Status(Option<String>),
-    Create(Option<String>),
-    Delete,
+    Create {
+        name: String,
+        window_id: Option<u32>,
+    },
+    Delete {
+        window_id: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]

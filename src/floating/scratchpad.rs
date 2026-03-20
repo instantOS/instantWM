@@ -36,13 +36,13 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     false
 }
 
-pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
-    let Some(name) = name else { return };
+pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>) {
     if name.is_empty() {
         return;
     }
 
-    let Some(selected_window) = ctx.core_mut().globals_mut().selected_monitor().sel else {
+    let target = window_id.or_else(|| ctx.core_mut().globals_mut().selected_monitor().sel);
+    let Some(selected_window) = target else {
         return;
     };
 
@@ -82,8 +82,9 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: Option<&str>) {
     }
 }
 
-pub fn scratchpad_unmake(ctx: &mut WmCtx) {
-    let Some(selected_window) = ctx.core_mut().globals_mut().selected_monitor().sel else {
+pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
+    let target = window_id.or_else(|| ctx.core_mut().globals_mut().selected_monitor().sel);
+    let Some(selected_window) = target else {
         return;
     };
 

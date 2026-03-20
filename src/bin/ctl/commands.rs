@@ -112,10 +112,16 @@ pub enum ScratchpadAction {
     Toggle {
         name: Option<String>,
     },
+    #[command(alias = "make")]
     Create {
-        name: Option<String>,
+        name: String,
+        #[arg(long, short = 'w')]
+        window_id: Option<u32>,
     },
-    Delete,
+    Delete {
+        #[arg(long, short = 'w')]
+        window_id: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -392,8 +398,12 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                 }
                 ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
                 ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
-                ScratchpadAction::Create { name } => ScratchpadCommand::Create(name),
-                ScratchpadAction::Delete => ScratchpadCommand::Delete,
+                ScratchpadAction::Create { name, window_id } => {
+                    ScratchpadCommand::Create { name, window_id }
+                }
+                ScratchpadAction::Delete { window_id } => {
+                    ScratchpadCommand::Delete { window_id }
+                }
             };
             IpcCommand::Scratchpad(cmd)
         }

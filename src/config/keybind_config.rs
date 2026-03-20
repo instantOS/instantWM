@@ -183,14 +183,14 @@ use crate::animation;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{center_window, distribute_clients, key_resize, toggle_maximized};
-use crate::floating::{create_overlay, scratchpad_make, scratchpad_toggle, set_overlay};
+use crate::floating::{create_overlay, scratchpad_toggle, set_overlay};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
+    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
 };
-use crate::monitor::{Direction as PushDirection, reorder_client};
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
+use crate::monitor::{reorder_client, Direction as PushDirection};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
@@ -483,7 +483,7 @@ define_actions!(
 
     // Scratchpad
     "scratchpad_toggle" => "toggle scratchpad" => |ctx: &mut WmCtx, _args: &[String]| scratchpad_toggle(ctx, None),
-    "scratchpad_make" => "make focused client a scratchpad" => |ctx: &mut WmCtx, _args: &[String]| scratchpad_make(ctx, None),
+
 
     // Bar
     "toggle_bar" => "toggle status bar" => |ctx: &mut WmCtx, _args: &[String]| toggle_bar(ctx),
