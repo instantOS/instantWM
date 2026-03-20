@@ -65,15 +65,11 @@ pub use focus::{
 pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen, toggle_fake_fullscreen_x11};
 
 pub fn save_border_width(client: &mut crate::types::Client) {
-    if client.border_width != 0 {
-        client.old_border_width = client.border_width;
-    }
+    client.save_border_width();
 }
 
 pub fn restore_border_width(client: &mut crate::types::Client) {
-    if client.old_border_width != 0 {
-        client.border_width = client.old_border_width;
-    }
+    client.restore_border_width();
 }
 
 // -- X11 state / properties --------------------------------------------------

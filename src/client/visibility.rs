@@ -162,20 +162,15 @@ pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn show(ctx: &mut WmCtx, win: WindowId) {
-    let is_hidden = ctx
-        .core()
-        .globals()
-        .clients
-        .get(&win)
-        .map(|c| c.is_hidden)
-        .unwrap_or(false);
-    if !is_hidden {
-        return;
-    }
-
-    if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        if !c.is_hidden {
+            return;
+        }
         c.is_hidden = false;
-    }
+        c.monitor_id
+    } else {
+        return;
+    };
 
     if let WmCtx::X11(ctx_x11) = ctx {
         show_x11(ctx_x11, win);
@@ -184,35 +179,35 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // (called inside arrange below) checks !is_hidden and calls map_window
     // itself, so the window reappears as a side-effect of the arrange pass.
 
-    let monitor_id = ctx.core().globals().clients.monitor_id(win);
     crate::focus::focus_soft(ctx, Some(win));
-    if let Some(mid) = monitor_id {
-        arrange(ctx, Some(mid));
-    }
+    arrange(ctx, Some(monitor_id));
 }
 
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
-    let (is_hidden, monitor_id) = match ctx.client(win) {
-        Some(c) => (c.is_hidden, c.monitor_id),
-        None => return,
-    };
-    if is_hidden {
+    let monitor_id = if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        if c.is_hidden {
+            return;
+        }
+        let mid = c.monitor_id;
+
+        match ctx {
+            WmCtx::X11(ctx_x11) => {
+                hide_x11(ctx_x11, win);
+            }
+            WmCtx::Wayland(_) => {
+                ctx.backend().unmap_window(win);
+                ctx.backend().flush();
+            }
+        }
+
+        if let Some(c_mut) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            c_mut.is_hidden = true;
+        }
+
+        mid
+    } else {
         return;
-    }
-
-    match ctx {
-        WmCtx::X11(ctx_x11) => {
-            hide_x11(ctx_x11, win);
-        }
-        WmCtx::Wayland(_) => {
-            ctx.backend().unmap_window(win);
-            ctx.backend().flush();
-        }
-    }
-
-    if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        c.is_hidden = true;
-    }
+    };
 
     let snext = ctx
         .core()

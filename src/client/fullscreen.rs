@@ -73,18 +73,18 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = true;
             c.oldstate = c.is_floating as i32;
-        }
+            c.save_border_width();
 
-        if let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-            crate::client::save_border_width(client);
-        }
-
-        if !is_fake_fs {
-            // Remove the border.
-            if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
+            if !is_fake_fs {
+                // Remove the border.
                 c.border_width = 0;
             }
 
+            // Mark as floating so the layout engine leaves it alone.
+            c.is_floating = true;
+        }
+
+        if !is_fake_fs {
             let mon_rect = ctx_x11
                 .core
                 .globals()
@@ -113,11 +113,6 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             );
             let _ = ctx_x11.x11.conn.flush();
         }
-
-        // Mark as floating so the layout engine leaves it alone.
-        if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-            c.is_floating = true;
-        }
     } else if !fullscreen && is_fs {
         // ---- Exit fullscreen ------------------------------------------------
 
@@ -133,10 +128,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = false;
             c.is_floating = c.oldstate != 0;
-        }
-
-        if let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-            crate::client::restore_border_width(client);
+            c.restore_border_width();
         }
 
         if !is_fake_fs {

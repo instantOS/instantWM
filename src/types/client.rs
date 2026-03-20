@@ -163,6 +163,23 @@ impl Client {
         }
     }
 
+    pub fn update_geometry(&mut self, rect: Rect) {
+        self.old_geo = self.geo;
+        self.geo = rect;
+    }
+
+    pub fn save_border_width(&mut self) {
+        if self.border_width != 0 {
+            self.old_border_width = self.border_width;
+        }
+    }
+
+    pub fn restore_border_width(&mut self) {
+        if self.old_border_width != 0 {
+            self.border_width = self.old_border_width;
+        }
+    }
+
     pub fn set_tags(
         &mut self,
         mask: crate::types::TagMask,

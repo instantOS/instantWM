@@ -102,24 +102,7 @@ impl ClientManager {
 
     pub fn update_geometry(&mut self, win: WindowId, rect: crate::types::Rect) {
         if let Some(client) = self.clients.get_mut(&win) {
-            client.old_geo = client.geo;
-            client.geo = rect;
-        }
-    }
-
-    pub fn save_border_width(&mut self, win: WindowId) {
-        if let Some(client) = self.clients.get_mut(&win)
-            && client.border_width != 0
-        {
-            client.old_border_width = client.border_width;
-        }
-    }
-
-    pub fn restore_border_width(&mut self, win: WindowId) {
-        if let Some(client) = self.clients.get_mut(&win)
-            && client.old_border_width != 0
-        {
-            client.border_width = client.old_border_width;
+            client.update_geometry(rect);
         }
     }
 }

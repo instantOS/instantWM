@@ -1,4 +1,5 @@
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::client::manager::ClientManager;
+use crate::contexts::WmCtx;
 use crate::globals::WmBehavior;
 use crate::keyboard::grab_keys_x11;
 use crate::layouts::arrange;
@@ -41,7 +42,6 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     } else {
         return;
     };
-
     arrange(ctx, Some(monitor_id));
 }
 
@@ -57,11 +57,11 @@ pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
     ctrl_toggle(&mut behavior.animated, action);
 }
 
-pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
+pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) {
     let new_bw = width;
 
     let geo = {
-        if let Some(client) = core.globals_mut().clients.get_mut(&win) {
+        if let Some(client) = clients.get_mut(&win) {
             let old_bw = client.border_width;
             let d = old_bw - new_bw;
             client.border_width = new_bw;
@@ -77,7 +77,7 @@ pub fn set_border_width(core: &mut CoreCtx, win: WindowId, width: i32) {
         }
     };
 
-    core.globals_mut().clients.update_geometry(win, geo);
+    clients.update_geometry(win, geo);
 }
 
 pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
