@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
     MonitorCommand, MonitorDirection, ScratchpadCommand, SpecialNext, TagCommand, ToggleCommand,
-    WindowCommand,
+    Transform, WindowCommand,
 };
 
 #[derive(Debug, Clone)]
@@ -64,7 +64,7 @@ pub enum MonitorAction {
         #[arg(long, short = 's')]
         scale: Option<f32>,
         #[arg(long, short = 't')]
-        transform: Option<String>,
+        transform: Option<Transform>,
         #[arg(long, conflicts_with = "disable")]
         enable: bool,
         #[arg(long, conflicts_with = "enable")]

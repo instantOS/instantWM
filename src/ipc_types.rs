@@ -84,6 +84,69 @@ impl IpcRequest {
     }
 }
 
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Encode,
+    Decode,
+    serde::Serialize,
+    serde::Deserialize,
+    clap::ValueEnum,
+)]
+pub enum Transform {
+    Normal,
+    #[serde(rename = "90")]
+    #[value(name = "90")]
+    _90,
+    #[serde(rename = "180")]
+    #[value(name = "180")]
+    _180,
+    #[serde(rename = "270")]
+    #[value(name = "270")]
+    _270,
+    Flipped,
+    #[serde(rename = "flipped-90")]
+    #[value(name = "flipped-90")]
+    Flipped90,
+    #[serde(rename = "flipped-180")]
+    #[value(name = "flipped-180")]
+    Flipped180,
+    #[serde(rename = "flipped-270")]
+    #[value(name = "flipped-270")]
+    Flipped270,
+}
+
+impl Transform {
+    pub fn to_smithay(self) -> smithay::utils::Transform {
+        match self {
+            Transform::Normal => smithay::utils::Transform::Normal,
+            Transform::_90 => smithay::utils::Transform::_90,
+            Transform::_180 => smithay::utils::Transform::_180,
+            Transform::_270 => smithay::utils::Transform::_270,
+            Transform::Flipped => smithay::utils::Transform::Flipped,
+            Transform::Flipped90 => smithay::utils::Transform::Flipped90,
+            Transform::Flipped180 => smithay::utils::Transform::Flipped180,
+            Transform::Flipped270 => smithay::utils::Transform::Flipped270,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Transform::Normal => "normal".to_string(),
+            Transform::_90 => "90".to_string(),
+            Transform::_180 => "180".to_string(),
+            Transform::_270 => "270".to_string(),
+            Transform::Flipped => "flipped".to_string(),
+            Transform::Flipped90 => "flipped-90".to_string(),
+            Transform::Flipped180 => "flipped-180".to_string(),
+            Transform::Flipped270 => "flipped-270".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum MonitorCommand {
     List,
@@ -102,7 +165,7 @@ pub enum MonitorCommand {
         refresh_rate: Option<f32>,
         position: Option<String>,
         scale: Option<f32>,
-        transform: Option<String>,
+        transform: Option<Transform>,
         enable: Option<bool>,
     },
 }

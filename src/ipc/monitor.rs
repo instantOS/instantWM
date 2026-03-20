@@ -24,7 +24,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             refresh_rate,
             position,
             scale,
-            transform,
+            transform.map(|t| t.to_string()),
             enable,
         ),
     }

@@ -1092,12 +1092,18 @@ fn trigger_pointer_focus_update(state: &mut WaylandState) {
 }
 
 impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
-    fn inhibit(&mut self, surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+    fn inhibit(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
         self.idle_inhibiting_surfaces.insert(surface);
         log::debug!("idle inhibited for surface");
     }
 
-    fn uninhibit(&mut self, surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+    fn uninhibit(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
         self.idle_inhibiting_surfaces.remove(&surface);
         log::debug!("idle uninhibited for surface");
     }
