@@ -11,7 +11,7 @@ mod client;
 pub mod config;
 mod constants;
 mod contexts;
-mod drw;
+
 mod floating;
 mod focus;
 mod globals;

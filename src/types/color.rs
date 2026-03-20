@@ -2,8 +2,8 @@
 //!
 //! Types for managing colors in the window manager UI.
 
-use crate::bar::color::{Rgba, deserialize_hex_color, serialize_hex_color};
-use crate::drw::Color;
+use crate::backend::x11::draw::Color;
+use crate::bar::color::{deserialize_hex_color, serialize_hex_color, Rgba};
 use serde::{Deserialize, Serialize};
 
 // =============================================================================

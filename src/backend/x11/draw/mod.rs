@@ -42,7 +42,7 @@ mod font;
 // ── Public re-exports ─────────────────────────────────────────────────────────
 //
 // Everything below forms the *stable* public API of this module.  Callers
-// should import from `crate::drw::*` rather than from the sub-modules
+// should import from `crate::backend::x11::draw::*` rather than from the sub-modules
 // directly.
 
 // Color / cursor types.

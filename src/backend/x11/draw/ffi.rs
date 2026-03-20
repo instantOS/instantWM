@@ -1,7 +1,7 @@
 //! Raw FFI bindings for X11, Xft, and Fontconfig.
 //!
 //! This module is the single place where all `extern "C"` declarations live.
-//! Nothing here is meant to be used directly outside of the `drw` module —
+//! Nothing here is meant to be used directly outside of the `draw` module —
 //! consumers should go through the safe wrappers in the parent module.
 
 use std::os::raw::{c_char, c_int, c_ulong};

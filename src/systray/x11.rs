@@ -197,7 +197,7 @@ pub fn update_systray(
 
     // Flush Xlib display to ensure all Xlib requests are sent before using x11rb
     unsafe {
-        crate::drw::XFlush(x11_runtime.xlibdisplay.0);
+        crate::backend::x11::draw::XFlush(x11_runtime.xlibdisplay.0);
     }
 
     let (x, bar_y, _showbar, bar_win) = {

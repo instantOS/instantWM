@@ -48,7 +48,7 @@ pub fn draw_bar(
     }
 
     let drw = {
-        let Some(drw) = x11_runtime.drw.as_mut() else {
+        let Some(drw) = x11_runtime.draw.as_mut() else {
             return;
         };
         if !drw.has_display() {

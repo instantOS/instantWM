@@ -138,7 +138,7 @@ pub fn animate_client_x11(
 
     let effective_frames = if !ctx.x11_runtime.xlibdisplay.0.is_null() {
         let queued_events = unsafe {
-            crate::drw::XEventsQueued(
+            crate::backend::x11::draw::XEventsQueued(
                 ctx.x11_runtime.xlibdisplay.0 as *mut std::os::raw::c_void,
                 QUEUED_ALREADY,
             )

@@ -26,16 +26,16 @@ use std::collections::VecDeque;
 
 use super::color::{Color, Cursor};
 use super::ffi::{
-    FC_CHARSET, FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE, FcCharSetAddChar, FcCharSetCreate,
-    FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute, FcInit, FcNameParse, FcPattern,
-    FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy, FcPatternDuplicate, XCloseDisplay,
-    XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap, XDefaultColormap, XDefaultDepth,
-    XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc, XDrawRectangle, XFillArc,
-    XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap, XGlyphInfo, XOpenDisplay,
-    XRenderColor, XSetForeground, XSetLineAttributes, XSync, XftCharExists, XftColor,
-    XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate, XftDrawDestroy,
-    XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName, XftFontOpenPattern,
-    XftInit, XftResult, XftTextExtentsUtf8, XlibGc,
+    FcCharSetAddChar, FcCharSetCreate, FcCharSetDestroy, FcConfigSubstitute, FcDefaultSubstitute,
+    FcInit, FcNameParse, FcPattern, FcPatternAddBool, FcPatternAddCharSet, FcPatternDestroy,
+    FcPatternDuplicate, XCloseDisplay, XCopyArea, XCreateFontCursor, XCreateGC, XCreatePixmap,
+    XDefaultColormap, XDefaultDepth, XDefaultRootWindow, XDefaultScreen, XDefaultVisual, XDrawArc,
+    XDrawRectangle, XFillArc, XFillPolygon, XFillRectangle, XFreeCursor, XFreeGC, XFreePixmap,
+    XGlyphInfo, XOpenDisplay, XRenderColor, XSetForeground, XSetLineAttributes, XSync,
+    XftCharExists, XftColor, XftColorAllocName, XftColorAllocValue, XftDraw, XftDrawCreate,
+    XftDrawDestroy, XftDrawStringUtf8, XftFont, XftFontClose, XftFontMatch, XftFontOpenName,
+    XftFontOpenPattern, XftInit, XftResult, XftTextExtentsUtf8, XlibGc, FC_CHARSET,
+    FC_MATCH_PATTERN, FC_SCALABLE, FC_TRUE,
 };
 use super::font::Fnt;
 
@@ -51,7 +51,7 @@ const NOMATCHES_LEN: usize = 64;
 ///
 /// Wraps an Xlib display, a server-side pixmap used as an off-screen buffer,
 /// a graphics context (GC), the active color scheme, and the fontset.
-// Note: the name `Drw` matches dwm's `drw` (drawing context) naming.
+// Note: the name `Drw` matches dwm's drawing context naming.
 pub struct Drw {
     /// Pixmap / drawable width.
     pub w: u32,
@@ -477,19 +477,19 @@ impl Drw {
             let c_name = CString::new(name).map_err(|_| "Invalid font name")?;
             xfont = unsafe { XftFontOpenName(self.display, self.screen, c_name.as_ptr()) };
             if xfont.is_null() {
-                eprintln!("drw: cannot load font '{}'", name);
+                eprintln!("draw: cannot load font '{}'", name);
                 return Ok(None);
             }
             pattern = unsafe { FcNameParse(c_name.as_ptr() as *const u8) };
             if pattern.is_null() {
-                eprintln!("drw: cannot parse font name '{}' to Fc pattern", name);
+                eprintln!("draw: cannot parse font name '{}' to Fc pattern", name);
                 unsafe { XftFontClose(self.display, xfont) };
                 return Ok(None);
             }
         } else if let Some(pat) = fontpattern {
             xfont = unsafe { XftFontOpenPattern(self.display, pat) };
             if xfont.is_null() {
-                eprintln!("drw: cannot load font from Fc pattern");
+                eprintln!("draw: cannot load font from Fc pattern");
                 return Ok(None);
             }
             pattern = pat;
@@ -684,7 +684,11 @@ impl Drw {
         let origin_x = if direction { x } else { x + w as i16 };
         let delta_x = if direction { w as i16 } else { -(w as i16) };
         let tip_y = if slash {
-            if direction { 0 } else { h as i16 }
+            if direction {
+                0
+            } else {
+                h as i16
+            }
         } else {
             h as i16 / 2
         };
@@ -1083,7 +1087,7 @@ impl Drw {
 
             let fonts_ref = self.fonts.as_ref().unwrap();
             if fonts_ref[0].pattern.is_null() {
-                panic!("drw: the first font in the cache must be loaded from a font name string.");
+                panic!("draw: the first font in the cache must be loaded from a font name string.");
             }
 
             let fcpattern = FcPatternDuplicate(fonts_ref[0].pattern);

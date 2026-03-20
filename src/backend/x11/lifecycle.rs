@@ -653,7 +653,7 @@ pub fn cleanup(wm: &mut Wm) {
     let _ = conn.delete_property(root, x11_runtime.netatom.supported);
     let _ = conn.delete_property(root, x11_runtime.netatom.wm_check);
 
-    if let Some(ref drw) = x11_runtime.drw {
+    if let Some(ref drw) = x11_runtime.draw {
         for cur in x11_runtime.cursors.iter().flatten() {
             drw.cur_free(cur);
         }

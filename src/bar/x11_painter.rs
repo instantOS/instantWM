@@ -1,5 +1,5 @@
+use crate::backend::x11::draw::Drw;
 use crate::bar::paint::{BarPainter, BarScheme};
-use crate::drw::Drw;
 use crate::types::ColorScheme;
 use std::collections::HashMap;
 

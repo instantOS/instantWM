@@ -12,7 +12,7 @@ use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, Sta
 use x11rb::rust_connection::RustConnection;
 
 use crate::backend::BackendOps;
-use crate::drw::{Cursor, Drw};
+use crate::backend::x11::draw::{Cursor, Drw};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::color::{BorderScheme, StatusScheme};
@@ -37,7 +37,7 @@ pub struct X11RuntimeConfig {
     /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
     pub wmcheckwin: Window,
     pub xlibdisplay: XlibDisplay,
-    pub drw: Option<Drw>,
+    pub draw: Option<Drw>,
     /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
     pub borderscheme: BorderScheme,
     /// X11 color scheme for status bar.
@@ -60,7 +60,7 @@ impl Default for X11RuntimeConfig {
             root: 0,
             wmcheckwin: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
-            drw: None,
+            draw: None,
             borderscheme: BorderScheme::default(),
             statusscheme: StatusScheme::default(),
             cursors: [const { None }; 10],
@@ -71,6 +71,7 @@ impl Default for X11RuntimeConfig {
 
 pub mod bar;
 pub mod client;
+pub mod draw;
 pub mod events;
 pub mod floating;
 pub mod grab;

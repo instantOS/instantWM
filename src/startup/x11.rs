@@ -4,11 +4,11 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::Backend as WmBackend;
+use crate::backend::x11::draw::Drw;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
+use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
-use crate::drw::Drw;
 use crate::types::*;
 use crate::wm::Wm;
 
@@ -247,7 +247,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     );
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
-    data.x11_runtime.drw = Some(drw);
+    data.x11_runtime.draw = Some(drw);
     wm.g.cfg.bar_height = bar_height as i32;
     wm.g.cfg.horizontal_padding = font_height as i32;
 }
