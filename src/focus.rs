@@ -735,11 +735,25 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
 pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
     if let Some(target) = get_direction_focus_candidate(ctx.core(), direction) {
         focus_soft(ctx, Some(target));
+        restack_after_focus(ctx);
     }
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     if let Some(target) = get_stack_focus_target(ctx.core(), direction) {
         focus_soft(ctx, Some(target));
+        restack_after_focus(ctx);
     }
+}
+
+/// Restack after a focus change so the Z-order reflects the new `mon.sel`.
+///
+/// In monocle layout all tiled windows overlap, so the focused window must
+/// be raised to the top. This is also correct for other tiling layouts
+/// (the selected window is moved to the top of its layer) and is a no-op
+/// for non-tiling layouts (floating-only raises `mon.sel` directly).
+/// Both X11 and Wayland go through the same `restack` path.
+fn restack_after_focus(ctx: &mut WmCtx) {
+    let monitor_id = ctx.core().globals().selected_monitor_id();
+    crate::layouts::restack(ctx, monitor_id);
 }
