@@ -102,6 +102,7 @@ pub enum MonitorCommand {
         refresh_rate: Option<f32>,
         position: Option<String>,
         scale: Option<f32>,
+        transform: Option<String>,
         enable: Option<bool>,
     },
 }

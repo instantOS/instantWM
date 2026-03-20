@@ -63,6 +63,8 @@ pub enum MonitorAction {
         pos: Option<String>,
         #[arg(long, short = 's')]
         scale: Option<f32>,
+        #[arg(long, short = 't')]
+        transform: Option<String>,
         #[arg(long, conflicts_with = "disable")]
         enable: bool,
         #[arg(long, conflicts_with = "enable")]
@@ -287,6 +289,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     rate,
                     pos,
                     scale,
+                    transform,
                     enable,
                     disable,
                 } => {
@@ -303,6 +306,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                         refresh_rate: rate,
                         position: pos,
                         scale,
+                        transform,
                         enable: enable_val,
                     }
                 }

@@ -8,6 +8,20 @@ use smithay::utils::Transform;
 
 use super::state::WaylandState;
 
+fn parse_transform(transform_str: &str) -> Option<Transform> {
+    match transform_str.to_lowercase().as_str() {
+        "normal" => Some(Transform::Normal),
+        "90" => Some(Transform::_90),
+        "180" => Some(Transform::_180),
+        "270" => Some(Transform::_270),
+        "flipped" => Some(Transform::Flipped),
+        "flipped-90" | "flipped90" => Some(Transform::Flipped90),
+        "flipped-180" | "flipped180" => Some(Transform::Flipped180),
+        "flipped-270" | "flipped270" => Some(Transform::Flipped270),
+        _ => None,
+    }
+}
+
 impl WaylandState {
     /// Create and register a default output.
     pub fn create_output(&mut self, name: &str, width: i32, height: i32) -> Output {
@@ -115,6 +129,8 @@ impl WaylandState {
                 current_scale = Scale::Fractional(scale as f64);
             }
 
+            let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));
+
             if let Some(ref pos) = config.position
                 && let Some((x_str, y_str)) = pos.split_once(',')
                 && let (Ok(x), Ok(y)) = (x_str.parse::<i32>(), y_str.parse::<i32>())
@@ -124,7 +140,7 @@ impl WaylandState {
 
             output.change_current_state(
                 current_mode,
-                Some(current_transform),
+                new_transform.or(Some(current_transform)),
                 Some(current_scale),
                 Some(current_location),
             );

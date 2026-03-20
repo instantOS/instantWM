@@ -15,6 +15,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             refresh_rate,
             position,
             scale,
+            transform,
             enable,
         } => set_monitor_config(
             wm,
@@ -23,6 +24,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             refresh_rate,
             position,
             scale,
+            transform,
             enable,
         ),
     }
@@ -75,6 +77,7 @@ fn set_monitor_config(
     refresh_rate: Option<f32>,
     position: Option<String>,
     scale: Option<f32>,
+    transform: Option<String>,
     enable: Option<bool>,
 ) -> Response {
     let resolved_id = if identifier == "focused" {
@@ -93,6 +96,7 @@ fn set_monitor_config(
         refresh_rate,
         position,
         scale,
+        transform,
         enable,
     };
 

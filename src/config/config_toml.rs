@@ -105,6 +105,8 @@ pub struct MonitorConfig {
     pub position: Option<String>,
     /// Scale factor (e.g., 1.0, 2.0).
     pub scale: Option<f32>,
+    /// Transform (e.g., "normal", "90", "180", "270", "flipped", "flipped-90", "flipped-180", "flipped-270").
+    pub transform: Option<String>,
     /// Whether the monitor is enabled.
     pub enable: Option<bool>,
 }
