@@ -161,18 +161,32 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
     }
 }
 
+/// Outcome of a focus operation, used to decide whether a restack is needed.
+pub(crate) struct FocusOutcome {
+    /// `true` when `mon.sel` actually changed.
+    changed: bool,
+    /// The monitor that owns the new selection.
+    monitor_id: MonitorId,
+}
+
 /// Generic focus implementation shared between X11 and Wayland.
 fn focus_generic(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<FocusOutcome> {
     let result = match resolve_focus_target(core, win) {
         Some(r) => r,
-        None => return Ok(()),
+        None => {
+            return Ok(FocusOutcome {
+                changed: false,
+                monitor_id: core.globals().selected_monitor_id(),
+            });
+        }
     };
 
     let current_sel = result.current_sel;
+    let sel_mon_id = result.sel_mon_id;
     let (target, selection_state_changed) = update_focus_state(core, result);
 
     // Track the previously focused window for focus-last-client.
@@ -201,7 +215,10 @@ fn focus_generic(
         backend.focus_none(core);
     }
 
-    Ok(())
+    Ok(FocusOutcome {
+        changed: focus_changed,
+        monitor_id: sel_mon_id,
+    })
 }
 
 /// Set focus to a window, or to the root if None.
@@ -213,7 +230,7 @@ pub fn focus_x11(
     x11: &X11BackendRef,
     x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     win: Option<WindowId>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<FocusOutcome> {
     let mut backend = X11FocusBackend { x11, x11_runtime };
     focus_generic(core, win, &mut backend)
 }
@@ -224,7 +241,7 @@ pub fn focus_wayland(
     core: &mut CoreCtx,
     wayland: &WaylandCtx,
     win: Option<WindowId>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<FocusOutcome> {
     let mut backend = WaylandFocusBackend { wayland };
     focus_generic(core, win, &mut backend)
 }
@@ -243,22 +260,34 @@ pub(crate) fn focus_soft_x11(
 
 /// Best-effort focus - backend-agnostic entry point.
 ///
-/// Calls the appropriate backend focus function and logs any errors,
-/// but does not propagate them. This is suitable for use in event
-/// handlers where focus failures should not abort the operation.
+/// Updates `mon.sel`, backend seat focus, and — when the selection actually
+/// changed — restacks the affected monitor so that Z-order stays in sync.
+/// This is critical for overlapping layouts (monocle, floating) where the
+/// focused window must be visually on top.
 pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
-    match ctx {
+    let outcome = match ctx {
         X11(x11_ctx) => {
-            if let Err(e) = focus_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, win) {
-                log::warn!("focus_soft X11({:?}) failed: {}", win, e);
+            match focus_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, win) {
+                Ok(o) => o,
+                Err(e) => {
+                    log::warn!("focus_soft X11({:?}) failed: {}", win, e);
+                    return;
+                }
             }
         }
         Wayland(wayland_ctx) => {
-            if let Err(e) = focus_wayland(&mut wayland_ctx.core, &wayland_ctx.wayland, win) {
-                log::warn!("focus_soft Wayland({:?}) failed: {}", win, e);
+            match focus_wayland(&mut wayland_ctx.core, &wayland_ctx.wayland, win) {
+                Ok(o) => o,
+                Err(e) => {
+                    log::warn!("focus_soft Wayland({:?}) failed: {}", win, e);
+                    return;
+                }
             }
         }
+    };
+    if outcome.changed {
+        crate::layouts::restack(ctx, outcome.monitor_id);
     }
 }
 
@@ -290,12 +319,16 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
 }
 
 /// Backend-agnostic hover-focus entry point.
+///
+/// Checks focus-follows-mouse guards, then delegates to `focus_soft` which
+/// handles `mon.sel`, backend seat focus, and restacking in one place.
 pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) {
-    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    use crate::contexts::{WmCtx::*, WmCtxX11};
+
     match ctx {
         X11(WmCtxX11 {
             core,
@@ -303,12 +336,60 @@ pub fn hover_focus_target(
             x11_runtime,
             ..
         }) => {
+            // X11 has extra pointer-query logic for monitor switching when
+            // hovered_win is None, so it keeps its own path.
             hover_focus_target_x11(core, x11, x11_runtime, hovered_win, entering_root);
         }
-        Wayland(WmCtxWayland { core, wayland, .. }) => {
-            hover_focus_target_wayland(core, wayland, hovered_win, entering_root);
+        Wayland(_) => {
+            if !should_hover_focus(ctx.core(), hovered_win, entering_root) {
+                return;
+            }
+            // Switch monitor if the hovered window lives on a different one.
+            if let Some(win) = hovered_win
+                && let Some(mid) = ctx.core().globals().clients.monitor_id(win)
+                && mid != ctx.core().globals().selected_monitor_id()
+            {
+                ctx.core_mut().globals_mut().set_selected_monitor(mid);
+            }
+            focus_soft(ctx, hovered_win);
         }
     }
+}
+
+/// Common hover-focus guard checks shared by both backends.
+///
+/// Returns `true` when hover focus should proceed for `hovered_win`.
+fn should_hover_focus(
+    core: &CoreCtx,
+    hovered_win: Option<WindowId>,
+    entering_root: bool,
+) -> bool {
+    let Some(win) = hovered_win else {
+        return false;
+    };
+    if !core.globals().behavior.focus_follows_mouse {
+        return false;
+    }
+    // Already focused — nothing to do.
+    if core.selected_client() == Some(win) {
+        return false;
+    }
+    // Respect the "don't focus floating windows on hover" setting.
+    let hovered_is_floating = core
+        .globals()
+        .clients
+        .get(&win)
+        .map(|c| c.is_floating)
+        .unwrap_or(false);
+    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
+    if !core.globals().behavior.focus_follows_float_mouse
+        && hovered_is_floating
+        && has_tiling
+        && !entering_root
+    {
+        return false;
+    }
+    true
 }
 
 /// Backend-agnostic cursor query for hover logic.
@@ -378,64 +459,6 @@ pub fn hover_focus_target_x11(
     }
 
     let _ = focus_x11(core, x11, x11_runtime, hovered_win);
-}
-
-/// Wayland hover-focus: update WM selection and keyboard focus when the
-/// pointer enters a different client surface.
-///
-/// Guards:
-///   - `focus_follows_mouse` must be enabled.
-///   - Floating windows are skipped when `focus_follows_float_mouse` is off
-///     and the layout is tiling.
-///   - If the hovered window is already selected, nothing happens.
-///
-/// Delegates to `focus_wayland` so that `mon.sel`, the activated state, and
-/// the Smithay keyboard focus are all updated through a single path —
-/// identical to click-to-focus.
-pub fn hover_focus_target_wayland(
-    core: &mut CoreCtx,
-    wayland: &WaylandCtx,
-    hovered_win: Option<WindowId>,
-    entering_root: bool,
-) {
-    let Some(hovered_win) = hovered_win else {
-        return;
-    };
-    if !core.globals().behavior.focus_follows_mouse {
-        return;
-    }
-
-    // Switch monitor if the hovered window lives on a different one.
-    if let Some(mid) = core.globals().clients.monitor_id(hovered_win)
-        && mid != core.globals().selected_monitor_id()
-    {
-        core.globals_mut().set_selected_monitor(mid);
-    }
-
-    // Respect the "don't focus floating windows on hover" setting.
-    let hovered_is_floating = core
-        .globals()
-        .clients
-        .get(&hovered_win)
-        .map(|c| c.is_floating)
-        .unwrap_or(false);
-    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
-    if !core.globals().behavior.focus_follows_float_mouse
-        && hovered_is_floating
-        && has_tiling
-        && !entering_root
-    {
-        return;
-    }
-
-    // No-op if already focused.
-    if core.selected_client() == Some(hovered_win) {
-        return;
-    }
-
-    // Use the full focus path so mon.sel, activation, and keyboard focus
-    // are all consistent.
-    let _ = focus_wayland(core, wayland, Some(hovered_win));
 }
 
 /// Focus a client in the given direction.
@@ -719,25 +742,11 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
 pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
     if let Some(target) = get_direction_focus_candidate(ctx.core(), direction) {
         focus_soft(ctx, Some(target));
-        restack_after_focus(ctx);
     }
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     if let Some(target) = get_stack_focus_target(ctx.core(), direction) {
         focus_soft(ctx, Some(target));
-        restack_after_focus(ctx);
     }
-}
-
-/// Restack after a focus change so the Z-order reflects the new `mon.sel`.
-///
-/// In monocle layout all tiled windows overlap, so the focused window must
-/// be raised to the top. This is also correct for other tiling layouts
-/// (the selected window is moved to the top of its layer) and is a no-op
-/// for non-tiling layouts (floating-only raises `mon.sel` directly).
-/// Both X11 and Wayland go through the same `restack` path.
-fn restack_after_focus(ctx: &mut WmCtx) {
-    let monitor_id = ctx.core().globals().selected_monitor_id();
-    crate::layouts::restack(ctx, monitor_id);
 }
