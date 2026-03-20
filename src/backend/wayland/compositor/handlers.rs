@@ -605,6 +605,13 @@ impl XdgShellHandler for WaylandState {
         &mut self.xdg_shell_state
     }
 
+    fn ack_configure(
+        &mut self,
+        _surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        _configure: smithay::wayland::shell::xdg::Configure,
+    ) {
+    }
+
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         // Defer window creation until the surface commits its first buffer.
         // Some clients (e.g. clipboard tools) create a toplevel but never
