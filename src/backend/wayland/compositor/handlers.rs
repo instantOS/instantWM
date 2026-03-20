@@ -902,7 +902,6 @@ impl WlrLayerShellHandler for WaylandState {
         let mut map = layer_map_for_output(&target_output);
         let _ = map.map_layer(&layer_surface);
         map.arrange();
-        trigger_pointer_focus_update(self);
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -932,7 +931,6 @@ impl WlrLayerShellHandler for WaylandState {
                 map.unmap_layer(&layer);
             }
         }
-        trigger_pointer_focus_update(self);
 
         // If the keyboard was focused on this layer surface, clear seat focus
         // and restore it to the WM's selected window.
