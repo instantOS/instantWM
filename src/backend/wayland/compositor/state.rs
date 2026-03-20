@@ -117,7 +117,7 @@ pub struct WaylandState {
     pub xdisplay: Option<u32>,
 
     // -- Internal state --
-    next_window_id: u32,
+    pub(super) next_window_id: u32,
     /// Back-reference to the main WM state.
     ///
     /// This is a raw pointer because `Wm` owns the `Backend`, which in turn
