@@ -564,42 +564,20 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         self.remove_window_tracking(win);
-        let new_sel = {
+        {
             let Some(g) = self.globals_mut() else {
                 return;
             };
             g.detach(win);
+            // detach_stack already recovers mon.sel if the removed window
+            // was selected — it walks the stack for the next visible client.
             g.detach_stack(win);
             g.clients.remove(&win);
             g.dirty.layout = true;
             g.dirty.space = true;
-
-            // If the destroyed window was selected, find the next visible
-            // window from the stack so we don't leave mon.sel pointing at
-            // a dead window.
-            let sel_mon_id = g.selected_monitor_id();
-            let mon = g.monitor_mut(sel_mon_id);
-            if let Some(mon) = mon {
-                if mon.sel == Some(win) {
-                    // Walk the stack to find the first visible, non-hidden client
-                    let selected_tags = mon.selected_tags();
-                    let next = mon.stack.iter().find_map(|&w| {
-                        g.clients.get(&w).and_then(|c| {
-                            if c.is_visible_on_tags(selected_tags) && !c.is_hidden {
-                                Some(w)
-                            } else {
-                                None
-                            }
-                        })
-                    });
-                    mon.sel = next;
-                }
-                mon.sel
-            } else {
-                None
-            }
-        };
-        // Update Smithay seat focus to match the resolved mon.sel.
+        }
+        // Apply the resolved mon.sel (set by detach_stack) to the Smithay seat.
+        let new_sel = self.focused_window();
         if let Some(new_win) = new_sel {
             self.set_focus(new_win);
         } else {

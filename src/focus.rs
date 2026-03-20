@@ -5,7 +5,7 @@
 
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
-use crate::client::{refresh_border_color_x11, set_focus_x11, set_urgent, unfocus_win_x11};
+use crate::client::{set_focus_x11, set_urgent, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
 use x11rb::CURRENT_TIME;
@@ -91,13 +91,6 @@ trait FocusBackendOps {
     fn focus_none(&self, core: &mut CoreCtx);
     /// Called when selection state changes (focused <-> unfocused).
     fn on_selection_changed(&self, core: &mut CoreCtx);
-    /// Called after focus state is updated, before focusing a window.
-    fn post_state_update(
-        &mut self,
-        core: &mut CoreCtx,
-        previous: Option<WindowId>,
-        current: Option<WindowId>,
-    );
     /// Return `true` when the backend's seat focus is out of sync with the
     /// requested target and needs to be re-applied even though the WM-level
     /// selection (`mon.sel`) did not change.
@@ -109,7 +102,6 @@ trait FocusBackendOps {
 struct X11FocusBackend<'a> {
     x11: &'a X11BackendRef<'a>,
     x11_runtime: &'a mut crate::backend::x11::X11RuntimeConfig,
-    systray: Option<&'a crate::types::Systray>,
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
@@ -146,23 +138,6 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     fn on_selection_changed(&self, core: &mut CoreCtx) {
         crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
-
-    fn post_state_update(
-        &mut self,
-        core: &mut CoreCtx,
-        previous: Option<WindowId>,
-        current: Option<WindowId>,
-    ) {
-        let _ = self.systray;
-        core.bar.mark_dirty();
-
-        if let Some(win) = previous.filter(|win| Some(*win) != current) {
-            refresh_border_color_x11(core, self.x11, &*self.x11_runtime, win, false);
-        }
-        if let Some(win) = current {
-            refresh_border_color_x11(core, self.x11, &*self.x11_runtime, win, true);
-        }
-    }
 }
 
 struct WaylandFocusBackend<'a> {
@@ -192,60 +167,6 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
             None => false,
         }
     }
-
-    fn post_state_update(
-        &mut self,
-        core: &mut CoreCtx,
-        previous: Option<WindowId>,
-        current: Option<WindowId>,
-    ) {
-        core.bar.mark_dirty();
-
-        let Some(current) = current else {
-            return;
-        };
-        let Some(monitor_id) = core.globals().clients.monitor_id(current) else {
-            return;
-        };
-        if previous == Some(current) {
-            return;
-        }
-
-        // Only explicitly restack if the focused window is tiled.
-        // Floating windows should not automatically pop to the top just
-        // from being hovered, otherwise they flicker rapidly when overlapping.
-        if core.globals().clients.is_floating(current) {
-            return;
-        }
-
-        let mut stack = Vec::new();
-        let mut floating = Vec::new();
-        let Some(monitor) = core.globals().monitor(monitor_id) else {
-            return;
-        };
-        let selected_tags = monitor.selected_tags();
-        let bar_win = monitor.bar_win;
-        for &win in &monitor.stack {
-            let Some(client) = core.globals().clients.get(&win) else {
-                continue;
-            };
-            if !client.is_visible_on_tags(selected_tags) {
-                continue;
-            }
-            if client.is_floating {
-                floating.push(win);
-            } else {
-                stack.push(win);
-            }
-        }
-        if let Some(idx) = stack.iter().position(|&win| win == current) {
-            let selected = stack.remove(idx);
-            stack.push(selected);
-        }
-        stack.push(bar_win);
-        stack.extend(floating);
-        self.wayland.backend.restack(&stack);
-    }
 }
 
 /// Generic focus implementation shared between X11 and Wayland.
@@ -262,10 +183,12 @@ fn focus_generic(
     let current_sel = result.current_sel;
     let (target, selection_state_changed) = update_focus_state(core, result);
 
-    // Unfocus the previous window if target changed
+    // Track the previously focused window for focus-last-client.
+    // This is done in the shared path so both backends behave identically.
     if current_sel != target
         && let Some(cur_win) = current_sel
     {
+        core.focus.last_client = cur_win;
         backend.unfocus_current(core, cur_win);
     }
 
@@ -275,15 +198,14 @@ fn focus_generic(
 
     let focus_changed = current_sel != target;
     let needs_refocus = backend.needs_focus_refresh(target);
-    if focus_changed {
-        backend.post_state_update(core, current_sel, target);
-    }
 
     if let Some(w) = target {
         if focus_changed || needs_refocus {
+            core.bar.mark_dirty();
             backend.focus_window(core, w);
         }
     } else if focus_changed {
+        core.bar.mark_dirty();
         backend.focus_none(core);
     }
 
@@ -298,13 +220,11 @@ pub fn focus_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
-    systray: Option<&crate::types::Systray>,
     win: Option<WindowId>,
 ) -> anyhow::Result<()> {
     let mut backend = X11FocusBackend {
         x11,
         x11_runtime,
-        systray,
     };
     focus_generic(core, win, &mut backend)
 }
@@ -327,7 +247,7 @@ pub(crate) fn focus_soft_x11(
     x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     win: Option<WindowId>,
 ) {
-    if let Err(e) = focus_x11(core, x11, x11_runtime, None, win) {
+    if let Err(e) = focus_x11(core, x11, x11_runtime, win) {
         log::warn!("focus_x11({:?}) failed: {}", win, e);
     }
 }
@@ -341,12 +261,10 @@ pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
     match ctx {
         X11(x11_ctx) => {
-            let systray = x11_ctx.systray.as_deref();
             if let Err(e) = focus_x11(
                 &mut x11_ctx.core,
                 &x11_ctx.x11,
                 x11_ctx.x11_runtime,
-                systray,
                 win,
             ) {
                 log::warn!("focus_soft X11({:?}) failed: {}", win, e);
@@ -360,12 +278,17 @@ pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     }
 }
 
-/// Backend-agnostic unfocus - does match internally.
+/// Backend-agnostic unfocus.
 ///
-/// For X11: calls unfocus_win_x11 (resets border, releases buttons, clears focus).
-/// For Wayland: currently just tracks last_client (border/focus handled differently).
+/// Records the window in `last_client` (for focus-last), then delegates
+/// to backend-specific cleanup (border/buttons on X11, nothing extra on
+/// Wayland since the Smithay seat is updated by the focus path).
 pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_root: bool) {
-    use crate::contexts::{WmCtx::*, WmCtxWayland, WmCtxX11};
+    use crate::contexts::{WmCtx::*, WmCtxX11};
+    if win == WindowId::default() {
+        return;
+    }
+    ctx.core_mut().focus.last_client = win;
     match ctx {
         X11(WmCtxX11 {
             core,
@@ -375,8 +298,9 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
         }) => {
             unfocus_win_x11(core, x11, x11_runtime, win, redirect_to_root);
         }
-        Wayland(WmCtxWayland { core, .. }) => {
-            core.focus.last_client = win;
+        Wayland(_) => {
+            // Seat focus is managed by the focus path (focus_generic →
+            // set_focus / clear_seat_focus). No extra backend work needed.
         }
     }
 }
@@ -438,7 +362,7 @@ pub fn hover_focus_target_x11(
             && mid != core.globals().selected_monitor_id()
         {
             core.globals_mut().set_selected_monitor(mid);
-            let _ = focus_x11(core, x11, x11_runtime, None, None);
+            let _ = focus_x11(core, x11, x11_runtime, None);
             return;
         }
 
@@ -464,12 +388,12 @@ pub fn hover_focus_target_x11(
             && new_mon_id != core.globals().selected_monitor_id()
         {
             core.globals_mut().set_selected_monitor(new_mon_id);
-            let _ = focus_x11(core, x11, x11_runtime, None, None);
+            let _ = focus_x11(core, x11, x11_runtime, None);
             return;
         }
     }
 
-    let _ = focus_x11(core, x11, x11_runtime, None, hovered_win);
+    let _ = focus_x11(core, x11, x11_runtime, hovered_win);
 }
 
 /// Wayland hover-focus: update WM selection and keyboard focus when the
