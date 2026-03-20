@@ -197,6 +197,7 @@ pub struct Config {
     /// Monitor configuration.
     pub monitors: std::collections::HashMap<String, config_toml::MonitorConfig>,
     pub status_command: Option<String>,
+    pub cursor: config_toml::CursorConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -330,5 +331,6 @@ pub fn init_config() -> Config {
         input: theme.input.clone(),
         monitors: theme.monitors.clone(),
         status_command: theme.status_command.clone(),
+        cursor: theme.cursor.clone(),
     }
 }

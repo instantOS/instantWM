@@ -50,6 +50,8 @@ pub struct ThemeConfig {
     pub status_command: Option<String>,
     /// User-defined modes (sway-like modes).
     pub modes: std::collections::HashMap<String, ModeSpec>,
+    /// Cursor configuration (Wayland only).
+    pub cursor: CursorConfig,
     /// Window rules.
     #[serde(default)]
     pub rules: Vec<Rule>,
@@ -68,7 +70,25 @@ impl Default for ThemeConfig {
             monitors: std::collections::HashMap::new(),
             status_command: None,
             modes: std::collections::HashMap::new(),
+            cursor: CursorConfig::default(),
             rules: Vec::new(),
+        }
+    }
+}
+
+/// Cursor configuration for Wayland.
+#[derive(Debug, Deserialize, Clone, Serialize)]
+#[serde(default)]
+pub struct CursorConfig {
+    pub theme: String,
+    pub size: u32,
+}
+
+impl Default for CursorConfig {
+    fn default() -> Self {
+        Self {
+            theme: "Adwaita".to_string(),
+            size: 24,
         }
     }
 }

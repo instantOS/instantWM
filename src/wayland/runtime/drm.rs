@@ -21,6 +21,7 @@ use smithay::reexports::wayland_server::Display;
 use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::config::config_toml::CursorConfig;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
@@ -54,7 +55,6 @@ pub fn run() -> ! {
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_wm(&mut wm);
     if let WmBackend::Wayland(data) = &mut wm.backend {
         data.backend.attach_state(&mut state);
     }
@@ -81,8 +81,9 @@ pub fn run() -> ! {
         Some(&egl_display),
     );
     state.init_screencopy_manager();
+    state.attach_wm(&mut wm);
 
-    let cursor_manager = init_cursor_manager(&mut renderer);
+    let cursor_manager = init_cursor_manager(&mut renderer, &state.cursor_config);
 
     let mut output_surfaces =
         build_output_surfaces(&mut drm_device, &mut renderer, &state, &gbm_device);
@@ -167,12 +168,12 @@ pub fn run() -> ! {
 }
 
 /// Initialize cursor manager from environment or defaults.
-fn init_cursor_manager(renderer: &mut GlesRenderer) -> CursorManager {
-    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| "default".to_string());
+fn init_cursor_manager(renderer: &mut GlesRenderer, config: &CursorConfig) -> CursorManager {
+    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
     let cursor_size = std::env::var("XCURSOR_SIZE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
-        .unwrap_or(crate::wayland::render::drm::CURSOR_SIZE);
+        .unwrap_or(config.size);
     CursorManager::new(renderer, &cursor_theme, cursor_size)
 }
 

@@ -37,6 +37,7 @@ use smithay::{
     xwayland::X11Wm,
 };
 
+use crate::config::config_toml::CursorConfig;
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
@@ -109,6 +110,7 @@ pub struct WaylandState {
     pub seat: Seat<WaylandState>,
     pub keyboard: KeyboardHandle<WaylandState>,
     pub pointer: PointerHandle<WaylandState>,
+    pub cursor_config: CursorConfig,
     pub cursor_image_status: smithay::input::pointer::CursorImageStatus,
     pub cursor_icon_override: Option<smithay::input::pointer::CursorIcon>,
 
@@ -241,6 +243,7 @@ impl WaylandState {
             seat,
             keyboard,
             pointer,
+            cursor_config: CursorConfig::default(),
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             cursor_icon_override: None,
             xwm: None,
@@ -343,6 +346,7 @@ impl WaylandState {
 
     /// Attach the WM to this state.
     pub fn attach_wm(&mut self, wm: &mut Wm) {
+        self.cursor_config = wm.g.cfg.cursor.clone();
         self.wm = Some(NonNull::from(wm));
     }
 

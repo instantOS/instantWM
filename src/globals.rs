@@ -58,6 +58,9 @@ pub struct RuntimeConfig {
 
     // Status command
     pub status_command: Option<String>,
+
+    // Cursor configuration
+    pub cursor: crate::config::config_toml::CursorConfig,
 }
 
 impl Default for RuntimeConfig {
@@ -95,6 +98,7 @@ impl Default for RuntimeConfig {
             input: std::collections::HashMap::new(),
             monitors: std::collections::HashMap::new(),
             status_command: None,
+            cursor: crate::config::config_toml::CursorConfig::default(),
         }
     }
 }
@@ -504,6 +508,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();
     g.cfg.status_command = cfg.status_command.clone();
+    g.cfg.cursor = cfg.cursor.clone();
 
     // Initialize keyboard layout state from config
     let mut layouts: Vec<KeyboardLayout> = cfg
