@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
-    InputCommand, IpcCommand, IpcRequest, IpcResponse, KeyboardCommand, KeyboardLayout, LayoutKind,
-    ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, SpecialNext, TagCommand,
+    InputCommand, IpcCommand, IpcRequest, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
+    MonitorCommand, MonitorDirection, Response, ScratchpadCommand, SpecialNext, TagCommand,
     ToggleCommand, WindowCommand,
 };
 use std::io::{Read, Write};
@@ -716,14 +716,15 @@ fn main() {
                     });
 
                     if let Ok(mut stream) = UnixStream::connect(&socket) {
-                        let request = IpcRequest::new_with_options(
-                            IpcCommand::UpdateStatus(trim_line.to_string()),
-                            cli.ignore_version_mismatches,
-                            cli.json,
-                        );
-                        if let Ok(data) =
-                            bincode::encode_to_vec(&request, bincode::config::standard())
-                        {
+                        let request = if cli.ignore_version_mismatches {
+                            IpcRequest::new_ignore_version(
+                                IpcCommand::UpdateStatus(trim_line.to_string()),
+                                true,
+                            )
+                        } else {
+                            IpcRequest::new(IpcCommand::UpdateStatus(trim_line.to_string()))
+                        };
+                        if let Ok(data) = serde_json::to_vec(&request) {
                             let _ = stream.write_all(&data);
                         }
                     }
@@ -753,8 +754,12 @@ fn main() {
         }
     };
 
-    let request = IpcRequest::new_with_options(request, cli.ignore_version_mismatches, cli.json);
-    let data = match bincode::encode_to_vec(&request, bincode::config::standard()) {
+    let request = if cli.ignore_version_mismatches {
+        IpcRequest::new_ignore_version(request, true)
+    } else {
+        IpcRequest::new(request)
+    };
+    let data = match serde_json::to_vec(&request) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("instantwmctl: serialization failed: {}", e);
@@ -774,9 +779,8 @@ fn main() {
         std::process::exit(1);
     }
 
-    let response: IpcResponse = match bincode::decode_from_slice(&data, bincode::config::standard())
-    {
-        Ok((r, _)) => r,
+    let response: Response = match serde_json::from_slice(&data) {
+        Ok(r) => r,
         Err(e) => {
             eprintln!(
                 "instantwmctl: deserialization failed: {} (this might be caused by a version mismatch between instantwm and instantwmctl)",
@@ -787,14 +791,185 @@ fn main() {
     };
 
     match response {
-        IpcResponse::Ok(msg) => {
-            if !msg.is_empty() {
-                print!("{}", msg);
-            }
-        }
-        IpcResponse::Err(msg) => {
+        Response::Ok => {}
+        Response::Err(msg) => {
             eprintln!("ERR {}", msg);
             std::process::exit(1);
         }
+        Response::WindowList(windows) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&windows).unwrap());
+            } else {
+                if windows.is_empty() {
+                    println!("No windows");
+                    return;
+                }
+                println!(
+                    "{:<8} {:<25} {:<8} {:<10} {}",
+                    "ID", "TITLE", "MONITOR", "TAGS", "STATE"
+                );
+                println!(
+                    "{:<8} {:<25} {:<8} {:<10} {}",
+                    "------", "---------------------", "--------", "----------", "-----"
+                );
+                for w in &windows {
+                    let state = format_window_state(&w.state);
+                    let tags = if w.tags.is_empty() {
+                        String::from("-")
+                    } else {
+                        w.tags
+                            .iter()
+                            .map(|t| t.to_string())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    };
+                    let title = if w.title.len() > 24 {
+                        format!("{}...", &w.title[..21])
+                    } else {
+                        w.title.clone()
+                    };
+                    println!(
+                        "{:<8} {:<25} {:<8} {:<10} {}",
+                        w.id, title, w.monitor, tags, state
+                    );
+                }
+            }
+        }
+        Response::WindowGeometry(geom) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&geom).unwrap());
+            } else {
+                println!(
+                    "{}x{}+{}+{}",
+                    geom.geometry.width, geom.geometry.height, geom.geometry.x, geom.geometry.y
+                );
+            }
+        }
+        Response::MonitorList(monitors) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&monitors).unwrap());
+            } else {
+                for m in &monitors {
+                    let marker = if m.is_primary { "*" } else { " " };
+                    println!(
+                        "{}{}: {}x{}+{}+{}",
+                        marker, m.index, m.width, m.height, m.x, m.y
+                    );
+                }
+            }
+        }
+        Response::ScratchpadList(scratchpads) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&scratchpads).unwrap());
+            } else {
+                for sp in &scratchpads {
+                    let marker = if sp.visible { "*" } else { " " };
+                    let status = if sp.visible { "visible" } else { "hidden" };
+                    let geometry = if let (Some(w), Some(h), Some(x), Some(y)) =
+                        (sp.width, sp.height, sp.x, sp.y)
+                    {
+                        format!("{}x{}+{}+{}", w, h, x, y)
+                    } else {
+                        "unknown geometry".to_string()
+                    };
+                    println!(
+                        "{}{:<12} {:<8}  window: {:?}    {}",
+                        marker, sp.name, status, sp.window_id, geometry
+                    );
+                }
+            }
+        }
+        Response::ModeList(modes) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&modes).unwrap());
+            } else {
+                for m in &modes {
+                    let marker = if m.is_active { "*" } else { " " };
+                    let desc = m.description.as_deref().unwrap_or("(no description)");
+                    println!("{} {} - {}", marker, m.name, desc);
+                }
+            }
+        }
+        Response::Status(status) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&status).unwrap());
+            } else {
+                println!("instantWM {} ({})", status.version, status.backend);
+                println!("Protocol: {}", status.protocol_version);
+                println!("Commit: {}", status.build_commit);
+                println!("Running: {}", status.running);
+                println!("Monitors: {}", status.monitors);
+                println!("Windows: {}", status.windows);
+                println!("Tags: {}", status.tags);
+            }
+        }
+        Response::KeyboardLayoutList(layouts) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&layouts).unwrap());
+            } else {
+                for l in &layouts {
+                    let variant = l.variant.as_deref().unwrap_or("");
+                    let marker = if l.is_active { "*" } else { " " };
+                    if variant.is_empty() {
+                        println!("{}{}", marker, l.name);
+                    } else {
+                        println!("{} {} ({})", marker, l.name, variant);
+                    }
+                }
+            }
+        }
+        Response::TagList(tags) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&tags).unwrap());
+            } else {
+                for t in &tags {
+                    let name = t.name.as_deref().unwrap_or("(unnamed)");
+                    println!("{}: {}", t.index, name);
+                }
+            }
+        }
+        Response::ActionList(actions) => {
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&actions).unwrap());
+            } else {
+                for a in &actions {
+                    if let Some(desc) = &a.description {
+                        println!("{} - {}", a.name, desc);
+                    } else {
+                        println!("{}", a.name);
+                    }
+                }
+            }
+        }
+        Response::Message(msg) => {
+            print!("{}", msg);
+        }
     }
+}
+
+fn format_window_state(state: &instantwm::ipc_types::WindowState) -> String {
+    let mut parts = Vec::new();
+    if state.fullscreen {
+        parts.push("Fullscreen");
+    } else if state.floating {
+        parts.push("Floating");
+    } else {
+        parts.push("Normal");
+    }
+    if state.sticky {
+        parts.push("sticky");
+    }
+    if state.hidden {
+        parts.push("hidden");
+    }
+    if state.urgent {
+        parts.push("urgent");
+    }
+    if state.locked {
+        parts.push("locked");
+    }
+    if state.fixed_size {
+        parts.push("fixed");
+    }
+    parts.join(", ")
 }

@@ -1,6 +1,6 @@
 use crate::floating::scratchpad::{
-    scratchpad_hide_name, scratchpad_list, scratchpad_make, scratchpad_show_all,
-    scratchpad_show_name, scratchpad_status, scratchpad_toggle, scratchpad_unmake,
+    scratchpad_hide_name, scratchpad_make, scratchpad_show_all, scratchpad_show_name,
+    scratchpad_status, scratchpad_toggle, scratchpad_unmake,
 };
 use crate::ipc_types::{Response, ScratchpadCommand, ScratchpadInfo};
 use crate::wm::Wm;

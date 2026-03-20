@@ -1,8 +1,8 @@
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
-use crate::ipc_types::{InputCommand, IpcResponse};
+use crate::ipc_types::{InputCommand, Response};
 use crate::wm::Wm;
 
-pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
+pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
     let inputs = &mut wm.g.cfg.input;
     match cmd {
         InputCommand::List(identifier) => {
@@ -16,8 +16,6 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
                     None => inputs.iter().map(|(k, v)| (k.clone(), v)).collect(),
                 };
 
-            // If no specific entry exists for '*' or if no entries at all,
-            // and the user requested '*' or no specific identifier, show the defaults for '*'.
             let show_defaults = match &identifier {
                 Some(id) => id == "*" && entries.is_empty(),
                 None => entries.is_empty(),
@@ -29,7 +27,7 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
             }
 
             if entries.is_empty() {
-                return IpcResponse::ok(format!(
+                return Response::Message(format!(
                     "no input configuration found for '{}'\n\nHint: Use 'instantwmctl mouse devices' to see connected physical devices.\n      Common identifiers are 'type:pointer', 'type:touchpad', or '*'.",
                     identifier.unwrap_or_default()
                 ));
@@ -43,14 +41,16 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
                     )
                 })
                 .collect();
-            return IpcResponse::ok(info.join("\n\n"));
+            return Response::Message(info.join("\n\n"));
         }
         InputCommand::Devices => {
             let devices = wm.backend.get_input_devices();
             if devices.is_empty() {
-                return IpcResponse::ok("no input devices detected (or not supported by backend)");
+                return Response::Message(
+                    "no input devices detected (or not supported by backend)".to_string(),
+                );
             }
-            return IpcResponse::ok(devices.join("\n"));
+            return Response::Message(devices.join("\n"));
         }
         InputCommand::PointerAccel { identifier, value } => {
             let identifier = identifier.unwrap_or_else(|| "*".to_string());
@@ -65,7 +65,7 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
                 "flat" => AccelProfile::Flat,
                 "adaptive" => AccelProfile::Adaptive,
                 _ => {
-                    return IpcResponse::err(format!(
+                    return Response::err(format!(
                         "unknown accel profile '{profile}' (expected 'flat' or 'adaptive')"
                     ));
                 }
@@ -105,5 +105,5 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> IpcResponse {
         }
     }
     wm.g.dirty.input_config = true;
-    IpcResponse::ok("")
+    Response::ok()
 }
