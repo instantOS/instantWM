@@ -139,6 +139,8 @@ const CURSOR_TABLE: &[(CursorIcon, &[&str])] = &[
     (CursorIcon::AllScroll, &["all-scroll", "fleur", "move"]),
     (CursorIcon::ZoomIn, &["zoom-in"]),
     (CursorIcon::ZoomOut, &["zoom-out"]),
+    (CursorIcon::DndAsk, &["dnd-ask", "dnd-none"]),
+    (CursorIcon::AllResize, &["all-resize", "fleur", "move"]),
 ];
 
 /// Manages system cursor textures and decides what to render each frame.
