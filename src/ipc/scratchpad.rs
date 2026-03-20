@@ -1,6 +1,6 @@
 use crate::floating::scratchpad::{
     scratchpad_hide_name, scratchpad_make, scratchpad_show_all, scratchpad_show_name,
-    scratchpad_status, scratchpad_toggle, scratchpad_unmake,
+    scratchpad_toggle, scratchpad_unmake,
 };
 use crate::ipc_types::{Response, ScratchpadCommand, ScratchpadInfo};
 use crate::types::WindowId;
@@ -35,8 +35,11 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             Response::ok()
         }
         ScratchpadCommand::Status(name) => {
-            let status = scratchpad_status(&wm.g, name.as_deref().unwrap_or(""));
-            Response::Message(status)
+            let mut scratchpads = collect_scratchpad_info(&wm.g);
+            if let Some(ref n) = name {
+                scratchpads.retain(|sp| sp.name == *n);
+            }
+            Response::ScratchpadList(scratchpads)
         }
         ScratchpadCommand::Create { name, window_id } => {
             scratchpad_make(&mut wm.ctx(), &name, window_id.map(WindowId::from));

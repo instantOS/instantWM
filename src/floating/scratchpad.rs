@@ -186,7 +186,7 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
     let mut shown_count = 0;
 
     for name in scratchpad_names {
-        if let Ok(_) = scratchpad_show_name(ctx, &name) {
+        if scratchpad_show_name(ctx, &name).is_ok() {
             shown_count += 1;
         }
     }
@@ -253,42 +253,6 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     } else {
         let _ = scratchpad_show_name(ctx, name);
     }
-}
-
-pub fn scratchpad_status(g: &Globals, name: &str) -> String {
-    if !name.is_empty() && name != "all" {
-        let found = scratchpad_find(g, name);
-        let visible = found
-            .and_then(|w| g.clients.get(&w))
-            .is_some_and(|c| c.issticky);
-
-        return format!("ipc:scratchpad:{}:{}", name, if visible { 1 } else { 0 });
-    }
-
-    let mut status = String::from("ipc:scratchpads:");
-    let mut first = true;
-
-    for mon in g.monitors_iter_all() {
-        for (_c_win, c) in mon.iter_clients(g.clients.map()) {
-            if c.is_scratchpad() {
-                if !first {
-                    status.push(',');
-                }
-                status.push_str(&format!(
-                    "{}={}",
-                    c.scratchpad_name,
-                    if c.issticky { 1 } else { 0 }
-                ));
-                first = false;
-            }
-        }
-    }
-
-    if first {
-        status.push_str("none");
-    }
-
-    status
 }
 
 fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {

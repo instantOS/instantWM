@@ -187,10 +187,10 @@ use crate::floating::{create_overlay, scratchpad_toggle, set_overlay};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
+    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
 };
+use crate::monitor::{Direction as PushDirection, reorder_client};
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
-use crate::monitor::{reorder_client, Direction as PushDirection};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,

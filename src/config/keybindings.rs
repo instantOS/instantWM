@@ -3,7 +3,7 @@
 use std::rc::Rc;
 
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen, zoom};
-use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
+use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
 use crate::floating::{
     center_window, distribute_clients, key_resize, scratchpad_toggle, toggle_maximized,
 };
@@ -11,10 +11,10 @@ use crate::floating::{create_overlay, set_overlay};
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, down_press, space_toggle, up_key, up_press};
 use crate::layouts::{
-    cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout, LayoutKind,
+    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
 };
+use crate::monitor::{Direction as PushDirection, reorder_client};
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
-use crate::monitor::{reorder_client, Direction as PushDirection};
 use crate::mouse::warp::warp_to_focus;
 use crate::mouse::{begin_keyboard_move, draw_window, moveresize, resize_mouse_from_cursor};
 use crate::tags::{

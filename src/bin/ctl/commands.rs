@@ -401,9 +401,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                 ScratchpadAction::Create { name, window_id } => {
                     ScratchpadCommand::Create { name, window_id }
                 }
-                ScratchpadAction::Delete { window_id } => {
-                    ScratchpadCommand::Delete { window_id }
-                }
+                ScratchpadAction::Delete { window_id } => ScratchpadCommand::Delete { window_id },
             };
             IpcCommand::Scratchpad(cmd)
         }

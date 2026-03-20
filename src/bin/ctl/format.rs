@@ -125,21 +125,48 @@ fn format_scratchpad_list(scratchpads: &[ScratchpadInfo], json: bool) {
     } else {
         if scratchpads.is_empty() {
             println!("No scratchpads");
-            println!("Use 'instantwmctl scratchpad make' to create one");
+            println!("Use 'instantwmctl scratchpad create <name>' to create one");
             return;
         }
+        println!(
+            "{:<12} {:<8} {:<8} {:<8} {:<20} {:<8}",
+            "NAME", "STATUS", "ID", "MONITOR", "GEOMETRY", "FLAGS"
+        );
+        println!(
+            "{:<12} {:<8} {:<8} {:<8} {:<20} {:<8}",
+            "-----------", "--------", "--------", "--------", "--------------------", "--------"
+        );
         for sp in scratchpads {
-            let marker = if sp.visible { "*" } else { " " };
             let status = if sp.visible { "visible" } else { "hidden" };
+            let id = sp
+                .window_id
+                .map(|w| w.to_string())
+                .unwrap_or_else(|| "-".into());
+            let monitor = sp
+                .monitor
+                .map(|m| m.to_string())
+                .unwrap_or_else(|| "-".into());
             let geometry =
                 if let (Some(w), Some(h), Some(x), Some(y)) = (sp.width, sp.height, sp.x, sp.y) {
                     format!("{}x{}+{}+{}", w, h, x, y)
                 } else {
-                    "unknown geometry".to_string()
+                    "-".to_string()
                 };
+            let mut flags = Vec::new();
+            if sp.fullscreen {
+                flags.push("fullscreen");
+            }
+            if sp.floating {
+                flags.push("floating");
+            }
             println!(
-                "{}{:<12} {:<8}  window: {:?}    {}",
-                marker, sp.name, status, sp.window_id, geometry
+                "{:<12} {:<8} {:<8} {:<8} {:<20} {}",
+                sp.name,
+                status,
+                id,
+                monitor,
+                geometry,
+                flags.join(", ")
             );
         }
     }
