@@ -428,12 +428,26 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
             new_m.clients = old_m.clients.clone();
             new_m.stack = old_m.stack.clone();
             new_m.sel = old_m.sel;
+
+            if old_m.monitor_rect.w != new_m.monitor_rect.w
+                || old_m.monitor_rect.h != new_m.monitor_rect.h
+                || old_m.monitor_rect.x != new_m.monitor_rect.x
+                || old_m.monitor_rect.y != new_m.monitor_rect.y
+            {
+                changed = true;
+            }
         }
     }
 
     ctx.core_mut().globals_mut().monitors.monitors = new_monitors;
     if ctx.core().globals().monitors.selected_monitor_idx >= ctx.core().globals().monitors.len() {
         ctx.core_mut().globals_mut().monitors.selected_monitor_idx = 0;
+    }
+
+    if changed {
+        ctx.core_mut().globals_mut().dirty.layout = true;
+        // The bar renderer also needs a poke
+        ctx.core_mut().bar.mark_dirty();
     }
 
     changed
