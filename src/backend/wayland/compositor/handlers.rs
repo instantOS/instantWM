@@ -98,10 +98,26 @@ impl CompositorHandler for WaylandState {
             let _ = popup_surface.send_configure();
         }
 
+        // Skip sync subsurfaces - they don't receive their own commits
+        if is_sync_subsurface(surface) {
+            return;
+        }
+
+        // Find the root surface by walking up the surface tree
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+
+        // Only call on_commit for the root surface, not for subsurfaces
+        if surface != &root {
+            return;
+        }
+
         if let Some(window) = self
             .space
             .elements()
-            .find(|w| w.wl_surface().as_deref() == Some(surface))
+            .find(|w| w.wl_surface().as_deref() == Some(&root))
             .cloned()
         {
             window.on_commit();
