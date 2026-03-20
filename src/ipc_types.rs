@@ -54,6 +54,9 @@ pub struct IpcRequest {
     pub version: String,
     pub ignore_version: bool,
     pub command: IpcCommand,
+    /// Request JSON-formatted output instead of human-readable text.
+    #[serde(default)]
+    pub json_output: bool,
 }
 
 impl IpcRequest {
@@ -63,6 +66,7 @@ impl IpcRequest {
             version: IPC_PROTOCOL_VERSION.to_string(),
             ignore_version: false,
             command,
+            json_output: false,
         }
     }
 
@@ -72,6 +76,17 @@ impl IpcRequest {
             version: IPC_PROTOCOL_VERSION.to_string(),
             ignore_version: ignore,
             command,
+            json_output: false,
+        }
+    }
+
+    /// Create a new IPC request with all options.
+    pub fn new_with_options(command: IpcCommand, ignore_version: bool, json_output: bool) -> Self {
+        Self {
+            version: IPC_PROTOCOL_VERSION.to_string(),
+            ignore_version,
+            command,
+            json_output,
         }
     }
 

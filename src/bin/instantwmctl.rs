@@ -28,6 +28,9 @@ struct Cli {
     /// which may cause unexpected behavior. Use with caution.
     #[arg(long)]
     ignore_version_mismatches: bool,
+    /// Output results in JSON format instead of human-readable text.
+    #[arg(long, short = 'j')]
+    json: bool,
     #[command(subcommand)]
     command: CommandKind,
 }
@@ -458,8 +461,6 @@ enum CommandKind {
         /// Layout name (e.g., "tile", "grid", "monocle")
         name: LayoutKind,
     },
-    /// Toggle prefix mode (one-time desktop commands).
-    Prefix,
     /// Toggle desktop mode (persistent desktop commands).
     Desktop,
     /// Set border width for the selected window.
@@ -602,7 +603,6 @@ fn main() {
         CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
         CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
         CommandKind::Layout { name } => IpcCommand::Layout(name),
-        CommandKind::Prefix => IpcCommand::Mode(ModeCommand::Toggle("prefix".to_string())),
         CommandKind::Desktop => IpcCommand::Mode(ModeCommand::Toggle("desktop".to_string())),
         CommandKind::Border { width } => IpcCommand::Border(width),
         CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
@@ -705,9 +705,10 @@ fn main() {
                     });
 
                     if let Ok(mut stream) = UnixStream::connect(&socket) {
-                        let request = IpcRequest::new_ignore_version(
+                        let request = IpcRequest::new_with_options(
                             IpcCommand::UpdateStatus(trim_line.to_string()),
                             cli.ignore_version_mismatches,
+                            cli.json,
                         );
                         if let Ok(data) =
                             bincode::encode_to_vec(&request, bincode::config::standard())
@@ -741,7 +742,7 @@ fn main() {
         }
     };
 
-    let request = IpcRequest::new_ignore_version(request, cli.ignore_version_mismatches);
+    let request = IpcRequest::new_with_options(request, cli.ignore_version_mismatches, cli.json);
     let data = match bincode::encode_to_vec(&request, bincode::config::standard()) {
         Ok(d) => d,
         Err(e) => {
