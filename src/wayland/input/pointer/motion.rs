@@ -126,7 +126,7 @@ pub fn handle_pointer_motion(
 }
 
 /// Unified pointer motion: update WM hover focus, propagate to clients, handle drags.
-fn dispatch_pointer_motion(
+pub fn dispatch_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,

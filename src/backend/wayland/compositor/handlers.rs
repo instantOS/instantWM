@@ -87,6 +87,7 @@ impl CompositorHandler for WaylandState {
             window.on_commit();
         }
 
+        let mut layer_surface = None;
         for output in self.space.outputs() {
             let mut map = layer_map_for_output(output);
             if let Some(layer) = map
@@ -106,8 +107,12 @@ impl CompositorHandler for WaylandState {
                 if !initial_configure_sent {
                     layer.layer_surface().send_configure();
                 }
+                layer_surface = Some(surface.clone());
                 break;
             }
+        }
+        if let Some(surface) = layer_surface {
+            focus_layer_if_requested(self, &surface);
         }
     }
 }
@@ -199,7 +204,8 @@ impl DmabufHandler for WaylandState {
 /// input right away.
 fn focus_overlay_if_launcher(state: &mut WaylandState, element: &smithay::desktop::Window) {
     // Use the unified window classifier
-    if state.classify_window(element) != WindowType::Launcher {
+    let typ = state.classify_window(element);
+    if typ != WindowType::Launcher && typ != WindowType::Unmanaged {
         return;
     }
 
@@ -208,6 +214,31 @@ fn focus_overlay_if_launcher(state: &mut WaylandState, element: &smithay::deskto
         keyboard.set_focus(
             state,
             Some(KeyboardFocusTarget::Window(element.clone())),
+            serial,
+        );
+    }
+}
+
+/// Focus a layer surface if it requests keyboard focus.
+fn focus_layer_if_requested(state: &mut WaylandState, surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface) {
+    use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, LayerSurfaceCachedState};
+    let interactivity = with_states(surface, |states| {
+        states
+            .cached_state
+            .get::<LayerSurfaceCachedState>()
+            .current()
+            .keyboard_interactivity
+    });
+
+    if interactivity == KeyboardInteractivity::None {
+        return;
+    }
+
+    let serial = SERIAL_COUNTER.next_serial();
+    if let Some(keyboard) = state.seat.get_keyboard() {
+        keyboard.set_focus(
+            state,
+            Some(KeyboardFocusTarget::WlSurface(surface.clone())),
             serial,
         );
     }
@@ -253,11 +284,13 @@ impl XwmHandler for WaylandState {
                 self.space.map_element(existing.clone(), geo.loc, false);
                 self.space.raise_element(&existing, false);
                 focus_overlay_if_launcher(self, &existing);
+                trigger_pointer_focus_update(self);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
                 self.space.map_element(element.clone(), geo.loc, false);
                 self.space.raise_element(&element, false);
                 focus_overlay_if_launcher(self, &element);
+                trigger_pointer_focus_update(self);
             }
             return;
         }
@@ -311,6 +344,7 @@ impl XwmHandler for WaylandState {
         self.space.map_element(element.clone(), geo.loc, false);
         self.space.raise_element(&element, false);
         focus_overlay_if_launcher(self, &element);
+        trigger_pointer_focus_update(self);
     }
 
     fn unmapped_window(
@@ -342,6 +376,7 @@ impl XwmHandler for WaylandState {
                 self.space.unmap_elem(&element);
             }
         }
+        trigger_pointer_focus_update(self);
         if !window.is_override_redirect() {
             let _ = window.set_mapped(false);
         }
@@ -386,6 +421,7 @@ impl XwmHandler for WaylandState {
                 self.space.unmap_elem(&element);
             }
         }
+        trigger_pointer_focus_update(self);
 
         // Recover mon.sel if it was cleared by detach_stack, then
         // re-apply seat focus.
@@ -866,6 +902,7 @@ impl WlrLayerShellHandler for WaylandState {
         let mut map = layer_map_for_output(&target_output);
         let _ = map.map_layer(&layer_surface);
         map.arrange();
+        trigger_pointer_focus_update(self);
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -895,6 +932,7 @@ impl WlrLayerShellHandler for WaylandState {
                 map.unmap_layer(&layer);
             }
         }
+        trigger_pointer_focus_update(self);
 
         // If the keyboard was focused on this layer surface, clear seat focus
         // and restore it to the WM's selected window.
@@ -920,3 +958,20 @@ impl smithay::wayland::foreign_toplevel_list::ForeignToplevelListHandler for Way
 }
 
 smithay::delegate_foreign_toplevel_list!(WaylandState);
+
+/// Trigger a pointer focus update to ensure hover state is correct.
+fn trigger_pointer_focus_update(state: &mut WaylandState) {
+    let pointer_handle = state.seat.get_pointer();
+    let keyboard_handle = state.seat.get_keyboard();
+    if let (Some(pointer), Some(keyboard)) = (pointer_handle, keyboard_handle) {
+        state.with_wm_mut_unified(|wm, state| {
+            crate::wayland::input::pointer::motion::dispatch_pointer_motion(
+                wm,
+                state,
+                &pointer,
+                &keyboard,
+                0, // time doesn't strictly matter for forced update
+            );
+        });
+    }
+}
