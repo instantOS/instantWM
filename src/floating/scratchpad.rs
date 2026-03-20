@@ -1,9 +1,10 @@
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::layouts::{arrange, restack};
-use crate::types::*;
+use crate::types::{SCRATCHPAD_MASK, WindowId};
+use bincode::{Decode, Encode};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct ScratchpadInfo {
     pub name: String,
     pub visible: bool,

@@ -23,7 +23,8 @@ impl IpcClient {
             IpcRequest::new(command)
         };
 
-        let data = serde_json::to_vec(&request).map_err(|e| IpcError::Serialize(e.to_string()))?;
+        let data = bincode::encode_to_vec(&request, bincode::config::standard())
+            .map_err(|e| IpcError::Serialize(e.to_string()))?;
 
         self.stream
             .write_all(&data)
@@ -35,7 +36,9 @@ impl IpcClient {
             .read_to_end(&mut data)
             .map_err(|e| IpcError::Read(e.to_string()))?;
 
-        serde_json::from_slice(&data).map_err(|e| IpcError::Deserialize(e.to_string()))
+        let (response, _) = bincode::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| IpcError::Deserialize(e.to_string()))?;
+        Ok(response)
     }
 }
 

@@ -214,7 +214,7 @@ pub enum IpcCommand {
     Mode(ModeCommand),
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct GeometryInfo {
     pub x: i32,
     pub y: i32,
@@ -222,7 +222,7 @@ pub struct GeometryInfo {
     pub height: i32,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowState {
     pub floating: bool,
     pub fullscreen: bool,
@@ -236,7 +236,7 @@ pub struct WindowState {
     pub never_focus: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct SizeHintsInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_width: Option<i32>,
@@ -256,7 +256,7 @@ pub struct SizeHintsInfo {
     pub height_increment: Option<i32>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowInfo {
     pub id: u64,
     pub title: String,
@@ -271,13 +271,13 @@ pub struct WindowInfo {
     pub size_hints: Option<SizeHintsInfo>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowGeometryInfo {
     pub id: u64,
     pub geometry: GeometryInfo,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct MonitorInfo {
     pub id: usize,
     pub index: i32,
@@ -296,14 +296,14 @@ pub struct MonitorListInfo {
 
 pub use crate::floating::scratchpad::ScratchpadInfo;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct ModeInfo {
     pub name: String,
     pub description: Option<String>,
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WmStatusInfo {
     pub version: String,
     pub protocol_version: String,
@@ -315,27 +315,27 @@ pub struct WmStatusInfo {
     pub tags: usize,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct KeyboardLayoutInfo {
     pub name: String,
     pub variant: Option<String>,
     pub is_active: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct TagInfo {
     pub index: u32,
     pub name: Option<String>,
     pub mask: u32,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct ActionInfo {
     pub name: String,
     pub description: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum Response {
     Ok,
     Err(String),
