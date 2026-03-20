@@ -1,6 +1,6 @@
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
-use crate::layouts::{arrange, restack};
+use crate::layouts::arrange;
 use crate::types::{SCRATCHPAD_MASK, WindowId};
 use bincode::{Decode, Encode};
 
@@ -75,11 +75,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>)
         client.is_floating = true;
     }
 
-    let selected_monitor_id = ctx.core_mut().globals_mut().selected_monitor_id();
-    crate::focus::focus_soft(ctx, None);
-    if !ctx.core_mut().globals_mut().monitors.is_empty() {
-        arrange(ctx, Some(selected_monitor_id));
-    }
+    crate::client::hide(ctx, selected_window);
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
@@ -103,7 +99,9 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let restore_tags = client.scratchpad_restore_tags;
     let monitor_id = client.monitor_id;
 
+    let mut was_hidden = false;
     if let Some(client) = ctx.client_mut(selected_window) {
+        was_hidden = client.is_hidden;
         client.scratchpad_name.clear();
         client.issticky = false;
         client.tags = if restore_tags != 0 {
@@ -114,7 +112,11 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
         client.scratchpad_restore_tags = 0;
     }
 
-    arrange(ctx, Some(monitor_id));
+    if was_hidden {
+        crate::client::show(ctx, selected_window);
+    } else {
+        arrange(ctx, Some(monitor_id));
+    }
 }
 
 pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, String> {
@@ -160,14 +162,18 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     }
 
     let focusfollowsmouse = ctx.core_mut().globals_mut().behavior.focus_follows_mouse;
-    if !ctx.core_mut().globals_mut().monitors.is_empty() {
+
+    let is_hidden = ctx.core().globals().clients.get(&found).map(|c| c.is_hidden).unwrap_or(false);
+    if is_hidden {
+        crate::client::show(ctx, found);
+    } else {
         let mid = ctx.core_mut().globals_mut().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
-        restack(ctx, mid);
-        if focusfollowsmouse {
-            ctx.warp_cursor_to_client(found);
-        }
+    }
+
+    if focusfollowsmouse {
+        ctx.warp_cursor_to_client(found);
     }
 
     Ok(format!("shown scratchpad '{}'", name))
@@ -213,13 +219,11 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     if !client.issticky {
         return;
     }
-    let monitor_id = client.monitor_id;
 
     client.issticky = false;
     client.tags = SCRATCHPAD_MASK;
 
-    crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(monitor_id));
+    crate::client::hide(ctx, found);
 }
 
 pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
