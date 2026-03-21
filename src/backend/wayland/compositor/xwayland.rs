@@ -1,7 +1,4 @@
-use smithay::{
-    utils::SERIAL_COUNTER,
-    xwayland::XwmHandler,
-};
+use smithay::{utils::SERIAL_COUNTER, xwayland::XwmHandler};
 
 use super::{
     focus::KeyboardFocusTarget,

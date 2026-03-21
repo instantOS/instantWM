@@ -163,7 +163,13 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
 
     let focusfollowsmouse = ctx.core_mut().globals_mut().behavior.focus_follows_mouse;
 
-    let is_hidden = ctx.core().globals().clients.get(&found).map(|c| c.is_hidden).unwrap_or(false);
+    let is_hidden = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&found)
+        .map(|c| c.is_hidden)
+        .unwrap_or(false);
     if is_hidden {
         crate::client::show(ctx, found);
     } else {

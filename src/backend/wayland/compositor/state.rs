@@ -249,8 +249,7 @@ impl WaylandState {
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
-        let session_lock_manager_state =
-            SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();

@@ -11,10 +11,7 @@ use smithay::{
     },
 };
 
-use super::{
-    focus::KeyboardFocusTarget,
-    state::WaylandState,
-};
+use super::{focus::KeyboardFocusTarget, state::WaylandState};
 
 /// Focus a layer surface if it requests keyboard focus.
 fn focus_layer_if_requested(
