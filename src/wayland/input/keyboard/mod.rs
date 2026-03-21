@@ -2,6 +2,8 @@
 
 use smithay::backend::input::{InputBackend, KeyboardKeyEvent};
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, LayerSurfaceCachedState};
 
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
 use crate::wayland::common::modifiers_to_x11_mask;
@@ -24,9 +26,19 @@ pub fn handle_keyboard<B: InputBackend>(
             // should be suppressed. This handles all overlay types consistently.
             !state.should_suppress_shortcuts_for(w)
         }
-        // WlSurface (e.g. layer shell surfaces like the bar) and Popups:
-        // allow WM shortcuts so compositor keybindings keep working.
-        Some(KeyboardFocusTarget::WlSurface(_)) => true,
+        // Layer shell surfaces (e.g. rofi, dmenu) that request exclusive keyboard
+        // interactivity must receive all input — suppress WM shortcuts for them.
+        // Non-exclusive surfaces (e.g. the bar) still allow WM shortcuts.
+        Some(KeyboardFocusTarget::WlSurface(ref s)) => {
+            let interactivity = with_states(s, |states| {
+                states
+                    .cached_state
+                    .get::<LayerSurfaceCachedState>()
+                    .current()
+                    .keyboard_interactivity
+            });
+            interactivity != KeyboardInteractivity::Exclusive
+        }
         Some(KeyboardFocusTarget::Popup(_)) => false,
     };
     let key_code = event.key_code();
