@@ -4,8 +4,7 @@
 //!
 //! * [`kill_client`]  – kill the currently selected window.  Tries a graceful
 //!   `WM_DELETE_WINDOW` message first; falls back to `XKillClient` if the
-//!   protocol is not supported.  Plays a closing animation unless the window
-//!   is already animating or is fullscreen.
+//!   protocol is not supported.
 //!
 //! * [`shut_kill`]   – like [`kill_client`], but if the monitor has no clients
 //!   at all it shuts the whole session down instead.
@@ -21,21 +20,21 @@
 //! other requests from the dying client are processed between the kill and the
 //! expected `DestroyNotify`.
 
-use crate::animation::animate_client;
 use crate::client::focus::send_event_x11;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{Rect, WindowId};
-use x11rb::CURRENT_TIME;
+use crate::types::WindowId;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
+use x11rb::CURRENT_TIME;
 
 // ---------------------------------------------------------------------------
 // kill_client
 // ---------------------------------------------------------------------------
 
-/// Backend-agnostic client kill with animation.
+/// Backend-agnostic client kill.
 ///
-/// Plays a closing animation (unless already animating or fullscreen),
-/// then calls the backend-specific close operation.
+/// Attempts a graceful close via `WM_DELETE_WINDOW` (X11) or
+/// `close` request (Wayland), falling back to `XKillClient` on X11
+/// if the protocol is not supported.
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
     let Some(client) = ctx.client(win) else {
         return;
@@ -45,37 +44,6 @@ pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let is_fullscreen = client.is_fullscreen;
-    let monitor_id = client.monitor_id;
-
-    let mon_mh = ctx
-        .core()
-        .globals()
-        .monitor(monitor_id)
-        .map(|m| m.monitor_rect.h)
-        .unwrap_or(0);
-
-    let animated = ctx.core().globals().behavior.animated;
-    let anim_client = ctx.core().focus.anim_client;
-
-    // Play closing animation for both X11 and Wayland
-    if animated && win != anim_client && !is_fullscreen {
-        ctx.core_mut().focus.anim_client = win;
-        animate_client(
-            ctx,
-            win,
-            &Rect {
-                x: 0,
-                y: mon_mh - 20,
-                w: 0,
-                h: 0,
-            },
-            10,
-            0,
-        );
-    }
-
-    // Backend-specific close operation
     force_close(ctx, win);
 }
 
