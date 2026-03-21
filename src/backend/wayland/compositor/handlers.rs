@@ -81,9 +81,25 @@ impl CompositorHandler for WaylandState {
                     state.buffer().is_some()
                 })
                 .unwrap_or(false);
+
+            let (w, h) = smithay::backend::renderer::utils::with_renderer_surface_state(surface, |state| {
+                state.surface_size().map(|s| (s.w, s.h)).unwrap_or((0, 0))
+            }).unwrap_or((0, 0));
+
             if has_buffer {
                 let toplevel = self.pending_toplevels.swap_remove(pos);
-                let _ = self.map_new_toplevel(toplevel);
+                let win = self.map_new_toplevel(toplevel);
+
+                // If the requested dimensions are 1x1 or 0x0, it's likely a dummy
+                // window (e.g. some clipboard tools use this to gain focus).
+                // Force it to float so it doesn't cause a layout shift.
+                if w <= 1 && h <= 1 {
+                    if let Some(g) = self.globals_mut() {
+                        if let Some(client) = g.clients.get_mut(&win) {
+                            client.is_floating = true;
+                        }
+                    }
+                }
             }
             // No else: the surface stays in pending_toplevels until it
             // either commits a buffer or is destroyed.
