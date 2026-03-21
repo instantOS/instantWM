@@ -103,6 +103,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 if !mode.is_empty() && mode != "default" {
                     ctx.core.globals_mut().behavior.current_mode = "default".to_string();
                     ctx.core.bar.mark_dirty();
+                    return;
                 } else {
                     let status_text = ctx.core.globals().bar_runtime.status_text.clone();
                     let parsed = ctx.core.bar.parsed_status_for_text(&status_text).clone();

@@ -124,6 +124,7 @@ pub fn dispatch_wayland_bar_click(
         if !mode.is_empty() && mode != "default" {
             wm.g.behavior.current_mode = "default".to_string();
             wm.bar.mark_dirty();
+            return;
         } else {
             let selmon = wm.g.selected_monitor().clone();
             let local_x = root_x - selmon.work_rect.x;

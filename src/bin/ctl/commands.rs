@@ -229,7 +229,6 @@ pub enum CommandKind {
     Layout {
         name: LayoutKind,
     },
-    Desktop,
     Border {
         width: Option<u32>,
     },
@@ -354,7 +353,6 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
         CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
         CommandKind::Layout { name } => IpcCommand::Layout(name),
-        CommandKind::Desktop => IpcCommand::Mode(ModeCommand::Toggle("desktop".to_string())),
         CommandKind::Border { width } => IpcCommand::Border(width),
         CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
         CommandKind::Keyboard { action } => {
