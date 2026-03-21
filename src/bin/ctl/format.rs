@@ -1,6 +1,6 @@
 use instantwm::ipc_types::{
-    ActionInfo, KeyboardLayoutInfo, ModeInfo, MonitorInfo, Response, ScratchpadInfo, TagInfo,
-    WindowGeometryInfo, WindowInfo, WmStatusInfo,
+    ActionInfo, DisplayModes, KeyboardLayoutInfo, ModeInfo, MonitorInfo, Response, ScratchpadInfo,
+    TagInfo, WindowGeometryInfo, WindowInfo, WmStatusInfo,
 };
 
 pub fn format_response(response: &Response, json: bool) {
@@ -13,6 +13,7 @@ pub fn format_response(response: &Response, json: bool) {
         Response::WindowList(windows) => format_window_list(windows, json),
         Response::WindowGeometry(geom) => format_window_geometry(geom, json),
         Response::MonitorList(monitors) => format_monitor_list(monitors, json),
+        Response::MonitorModes(modes) => format_monitor_modes(modes, json),
         Response::ScratchpadList(scratchpads) => format_scratchpad_list(scratchpads, json),
         Response::ModeList(modes) => format_mode_list(modes, json),
         Response::Status(status) => format_status(status, json),
@@ -231,5 +232,19 @@ fn format_action_list(actions: &[ActionInfo], json: bool) {
     } else {
         let output = instantwm::config::keybind_config::format_action_list_text(actions);
         print!("{}", output);
+    }
+}
+
+fn format_monitor_modes(displays: &[DisplayModes], json: bool) {
+    if json {
+        println!("{}", serde_json::to_string_pretty(displays).unwrap());
+    } else {
+        for display in displays {
+            println!("{}:", display.name);
+            for mode in &display.modes {
+                let rate = mode.refresh_mhz as f64 / 1000.0;
+                println!("  {}x{} @ {:.3}Hz", mode.width, mode.height, rate);
+            }
+        }
     }
 }

@@ -70,6 +70,10 @@ pub enum MonitorAction {
         #[arg(long, conflicts_with = "enable")]
         disable: bool,
     },
+    Modes {
+        #[arg(default_value = "focused")]
+        identifier: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -315,6 +319,9 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                         enable: enable_val,
                     }
                 }
+                MonitorAction::Modes { identifier } => MonitorCommand::Modes {
+                    identifier: Some(identifier),
+                },
             };
             IpcCommand::Monitor(cmd)
         }

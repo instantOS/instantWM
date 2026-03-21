@@ -85,6 +85,18 @@ impl WaylandBackend {
         *self.state.borrow_mut() = Some(NonNull::from(state));
     }
 
+    /// List available display modes for a display (format: "WIDTHxHEIGHT@REFRESH").
+    pub fn list_display_modes(&self, display: &str) -> Vec<String> {
+        self.with_state(|state: &mut WaylandState| state.list_display_modes(display))
+            .unwrap_or_default()
+    }
+
+    /// List all connected display names.
+    pub fn list_displays(&self) -> Vec<String> {
+        self.with_state(|state: &mut WaylandState| state.list_displays())
+            .unwrap_or_default()
+    }
+
     pub fn close_window(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.close_window(window))
             .unwrap_or(false)

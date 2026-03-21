@@ -168,6 +168,9 @@ pub enum MonitorCommand {
         transform: Option<Transform>,
         enable: Option<bool>,
     },
+    Modes {
+        identifier: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -365,6 +368,21 @@ pub struct MonitorListInfo {
 
 pub use crate::floating::scratchpad::ScratchpadInfo;
 
+/// A single display mode (resolution + refresh rate).
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub struct MonitorMode {
+    pub width: u32,
+    pub height: u32,
+    pub refresh_mhz: u32,
+}
+
+/// Modes for a specific display.
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub struct DisplayModes {
+    pub name: String,
+    pub modes: Vec<MonitorMode>,
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct ModeInfo {
     pub name: String,
@@ -412,6 +430,7 @@ pub enum Response {
     WindowList(Vec<WindowInfo>),
     WindowGeometry(WindowGeometryInfo),
     MonitorList(Vec<MonitorInfo>),
+    MonitorModes(Vec<DisplayModes>),
     ScratchpadList(Vec<ScratchpadInfo>),
     ModeList(Vec<ModeInfo>),
     Status(WmStatusInfo),
