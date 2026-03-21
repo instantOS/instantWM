@@ -28,10 +28,14 @@
 
 mod focus;
 mod handlers;
+mod layer_shell;
 pub mod output;
 pub mod screencopy;
+mod session_lock;
 mod state;
 pub mod window;
+mod xdg_shell;
+mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
