@@ -28,6 +28,7 @@ pub fn get_rules() -> Vec<Rule> {
         float("Pamac-installer"),
         float("xpad"),
         float("Guake"),
+        float("wl-copy"),
         // --- Centered floating ---
         Rule {
             class: Some(Cow::Borrowed("instantfloat")),
