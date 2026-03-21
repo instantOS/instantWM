@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
 
+use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::IsAlive;
 use smithay::{
@@ -29,6 +30,7 @@ use smithay::{
         pointer_gestures::PointerGesturesState,
         relative_pointer::RelativePointerManagerState,
         selection::data_device::DataDeviceState,
+        session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{XdgShellState, decoration::XdgDecorationState},
@@ -111,6 +113,11 @@ pub struct WaylandState {
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
+    pub session_lock_manager_state: SessionLockManagerState,
+    /// Current session lock state.
+    pub lock_state: SessionLockState,
+    /// Lock surfaces per output (keyed by output name).
+    pub lock_surfaces: HashMap<String, LockSurface>,
     /// Surfaces that have active idle inhibitors.
     pub idle_inhibiting_surfaces: HashSet<WlSurface>,
     /// DRM node used for rendering, needed to tag imported dmabufs.
@@ -180,6 +187,14 @@ pub struct WaylandState {
         Vec<smithay::backend::input::InputEvent<smithay::backend::libinput::LibinputInputBackend>>,
 }
 
+/// Tracks the current session lock state.
+#[derive(Debug, Default)]
+pub enum SessionLockState {
+    #[default]
+    Unlocked,
+    Locked(ExtSessionLockV1),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WindowIdMarker {
     pub id: WindowId,
@@ -234,6 +249,8 @@ impl WaylandState {
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
+        let session_lock_manager_state =
+            SessionLockManagerState::new::<Self, _>(&dh, |_| true);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -265,6 +282,9 @@ impl WaylandState {
             relative_pointer_manager_state,
             viewporter_state,
             idle_inhibit_manager_state,
+            session_lock_manager_state,
+            lock_state: SessionLockState::Unlocked,
+            lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
             render_node: None,
             renderer: None,
@@ -483,6 +503,11 @@ impl WaylandState {
         if let Err(e) = keyboard.set_xkb_config(self, config) {
             log::error!("failed to apply wayland keyboard layout: {}", e);
         }
+    }
+
+    /// Returns `true` if the session is currently locked.
+    pub fn is_locked(&self) -> bool {
+        matches!(self.lock_state, SessionLockState::Locked(_))
     }
 
     /// Flush pending data to clients.

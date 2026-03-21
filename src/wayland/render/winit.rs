@@ -46,37 +46,59 @@ pub fn render_frame(
     // Backend-specific: bind to get framebuffer
     let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
 
-    // Shared: build scene elements
-    let scene = build_common_scene_elements(wm, state, renderer, 0);
+    let mut render_elements: Vec<WaylandExtras>;
 
-    // Shared: get space render elements
-    let space_render_elements =
-        smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
-            .expect("space render elements");
+    if state.is_locked() {
+        // When locked, only render the lock surface for this output.
+        render_elements = Vec::with_capacity(4);
+        let output_name = output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            let lock_elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                    renderer,
+                    lock_surface.wl_surface(),
+                    smithay::utils::Point::<i32, smithay::utils::Physical>::from((0, 0)),
+                    smithay::utils::Scale::from(1.0),
+                    1.0,
+                    smithay::backend::renderer::element::Kind::Unspecified,
+                );
+            for elem in lock_elements {
+                render_elements.push(WaylandExtras::Surface(elem));
+            }
+        }
+    } else {
+        // Shared: build scene elements
+        let scene = build_common_scene_elements(wm, state, renderer, 0);
 
-    // Shared: count upper layer elements
-    let num_upper = count_upper_layer_render_elements(renderer, output);
+        // Shared: get space render elements
+        let space_render_elements =
+            smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
+                .expect("space render elements");
 
-    // Shared: get element counts for pre-allocation
-    let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
-    let mut render_elements = Vec::with_capacity(counts.total() + 2);
+        // Shared: count upper layer elements
+        let num_upper = count_upper_layer_render_elements(renderer, output);
 
-    // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
-    render_cursor_overlays(
-        renderer,
-        &cursor_presentation,
-        state.pointer.current_location(),
-        &mut render_elements,
-    );
+        // Shared: get element counts for pre-allocation
+        let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
+        render_elements = Vec::with_capacity(counts.total() + 2);
 
-    // Shared: assemble elements in z-order
-    super::assemble_scene_elements!(
-        WaylandExtras,
-        scene,
-        space_render_elements,
-        num_upper,
-        render_elements
-    );
+        // Backend-specific: render cursor overlays (client surface cursors and DnD icons)
+        render_cursor_overlays(
+            renderer,
+            &cursor_presentation,
+            state.pointer.current_location(),
+            &mut render_elements,
+        );
+
+        // Shared: assemble elements in z-order
+        super::assemble_scene_elements!(
+            WaylandExtras,
+            scene,
+            space_render_elements,
+            num_upper,
+            render_elements
+        );
+    }
 
     // Backend-specific: render with damage tracker
     let render_result = damage_tracker

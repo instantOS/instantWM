@@ -229,35 +229,63 @@ pub fn render_drm_output(
         millis,
     );
 
-    let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
-    let space_render_elements = smithay::desktop::space::space_render_elements(
-        renderer,
-        [&state.space],
-        &entry.output,
-        1.0,
-    )
-    .expect("space render elements");
+    let mut render_elements: Vec<DrmExtras>;
 
-    // Shared: count upper layer elements
-    let num_upper = count_upper_layer_render_elements(renderer, &entry.output);
+    if state.is_locked() {
+        // When locked, only render the lock surface (and cursor) for this output.
+        render_elements = Vec::with_capacity(cursor_elements.len() + 4);
+        for elem in cursor_elements {
+            render_elements.push(elem);
+        }
+        let output_name = entry.output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            let lock_elements: Vec<
+                smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<
+                    GlesRenderer,
+                >,
+            > = smithay::backend::renderer::element::surface::render_elements_from_surface_tree(
+                renderer,
+                lock_surface.wl_surface(),
+                smithay::utils::Point::<i32, Physical>::from((0, 0)),
+                smithay::utils::Scale::from(1.0),
+                1.0,
+                smithay::backend::renderer::element::Kind::Unspecified,
+            );
+            for elem in lock_elements {
+                render_elements.push(DrmExtras::Surface(elem));
+            }
+        }
+    } else {
+        let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
+        let space_render_elements = smithay::desktop::space::space_render_elements(
+            renderer,
+            [&state.space],
+            &entry.output,
+            1.0,
+        )
+        .expect("space render elements");
 
-    // Shared: get element counts for pre-allocation (include cursor elements)
-    let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
-    let mut render_elements = Vec::with_capacity(counts.total() + cursor_elements.len());
+        // Shared: count upper layer elements
+        let num_upper = count_upper_layer_render_elements(renderer, &entry.output);
 
-    // Backend-specific: cursor elements come first in DRM (winit handles cursor differently)
-    for elem in cursor_elements {
-        render_elements.push(elem);
+        // Shared: get element counts for pre-allocation (include cursor elements)
+        let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
+        render_elements = Vec::with_capacity(counts.total() + cursor_elements.len());
+
+        // Backend-specific: cursor elements come first in DRM (winit handles cursor differently)
+        for elem in cursor_elements {
+            render_elements.push(elem);
+        }
+
+        // Shared: assemble remaining elements in z-order
+        super::assemble_scene_elements!(
+            DrmExtras,
+            scene,
+            space_render_elements,
+            num_upper,
+            render_elements
+        );
     }
-
-    // Shared: assemble remaining elements in z-order
-    super::assemble_scene_elements!(
-        DrmExtras,
-        scene,
-        space_render_elements,
-        num_upper,
-        render_elements
-    );
 
     let render_result = entry.damage_tracker.render_output(
         renderer,
