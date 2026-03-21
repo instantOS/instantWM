@@ -42,6 +42,18 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let cleaned = clean_mask(mod_mask as u16, numlockmask);
 
     let current_mode = ctx.core().globals().behavior.current_mode.clone();
+
+    // Super + Escape always resets to default mode
+    if !current_mode.is_empty()
+        && current_mode != "default"
+        && keysym == crate::config::keysyms::XK_ESCAPE
+        && cleaned == clean_mask(crate::config::keybindings::MODKEY as u16, numlockmask)
+    {
+        ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
+        ctx.request_bar_update(None);
+        return true;
+    }
+
     let mut transient = false;
 
     let action = if !current_mode.is_empty() && current_mode != "default" {

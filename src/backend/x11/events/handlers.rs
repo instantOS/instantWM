@@ -99,23 +99,29 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             }
 
             if position == BarPosition::StatusText {
-                let status_text = ctx.core.globals().bar_runtime.status_text.clone();
-                let parsed = ctx.core.bar.parsed_status_for_text(&status_text).clone();
-                let click_targets = ctx
-                    .core
-                    .bar
-                    .monitor_hit_cache(monitor_id)
-                    .map(|h| h.status_click_targets.as_slice())
-                    .unwrap_or(&[]);
-                crate::bar::status::emit_i3bar_status_click(
-                    &parsed,
-                    click_targets,
-                    local_x,
-                    e.event_y as i32,
-                    e.detail,
-                    ctx.core.globals().cfg.bar_height,
-                    crate::util::clean_mask(e.state.into(), numlockmask),
-                );
+                let mode = &ctx.core.globals().behavior.current_mode;
+                if !mode.is_empty() && mode != "default" {
+                    ctx.core.globals_mut().behavior.current_mode = "default".to_string();
+                    ctx.core.bar.mark_dirty();
+                } else {
+                    let status_text = ctx.core.globals().bar_runtime.status_text.clone();
+                    let parsed = ctx.core.bar.parsed_status_for_text(&status_text).clone();
+                    let click_targets = ctx
+                        .core
+                        .bar
+                        .monitor_hit_cache(monitor_id)
+                        .map(|h| h.status_click_targets.as_slice())
+                        .unwrap_or(&[]);
+                    crate::bar::status::emit_i3bar_status_click(
+                        &parsed,
+                        click_targets,
+                        local_x,
+                        e.event_y as i32,
+                        e.detail,
+                        ctx.core.globals().cfg.bar_height,
+                        crate::util::clean_mask(e.state.into(), numlockmask),
+                    );
+                }
             }
 
             bar_pos = position;

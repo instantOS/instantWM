@@ -269,6 +269,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY,  XK_F2 => |ctx| {
             crate::toggles::toggle_mode(ctx, "prefix");
         }),
+        key!(MODKEY | SHIFT, XK_S          => |ctx| spawn(ctx, &["ins", "settings", "--gui"])),
         key!(MODKEY, XK_RETURN          => |ctx| spawn(ctx, &["kitty"])),
         key!(MODKEY, XK_SPACE           => |ctx| spawn(ctx, menu::SMART)),
         key!(MODKEY | CONTROL,     XK_SPACE           => |ctx| spawn(ctx, menu::RUN)),
