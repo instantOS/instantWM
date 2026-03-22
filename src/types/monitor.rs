@@ -74,6 +74,8 @@ pub struct Monitor {
     pub clients: Vec<WindowId>,
     /// Currently selected client.
     pub sel: Option<WindowId>,
+    /// Focus history per tag mask.
+    pub tag_focus_history: HashMap<u32, WindowId>,
     /// Overlay window.
     pub overlay: Option<WindowId>,
     /// Stack list (stacking order).
@@ -112,6 +114,7 @@ impl Default for Monitor {
             tags: Vec::new(),
             clients: Vec::new(),
             sel: None,
+            tag_focus_history: HashMap::new(),
             overlay: None,
             stack: Vec::new(),
             fullscreen: None,
