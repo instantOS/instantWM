@@ -4,7 +4,6 @@
 //! Wayland or X11 session.
 
 use std::process::exit;
-use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
@@ -87,7 +86,7 @@ pub fn run() -> ! {
 
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
-        .run(Duration::from_millis(16), &mut state, move |mut state| {
+        .run(None, &mut state, move |mut state| {
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
                     crate::wayland::input::handle_resize(&mut state.wm, &output, size.w, size.h);

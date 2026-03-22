@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
@@ -292,7 +291,7 @@ fn run_event_loop(
     let pointer_handle = state.pointer.clone();
 
     event_loop
-        .run(Duration::from_millis(16), state, move |state| {
+        .run(None, state, move |state| {
             process_completed_crtcs(state, shared, output_surfaces);
 
             process_pending_libinput_events(state, shared);
