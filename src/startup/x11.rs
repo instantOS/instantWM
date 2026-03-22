@@ -48,11 +48,7 @@ pub fn run() {
     run_autostart();
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
-    if let Some(ref cmd) = wm.g.cfg.status_command {
-        crate::bar::status::spawn_status_command(cmd);
-    } else {
-        crate::bar::status::spawn_default_status();
-    }
+    crate::runtime::spawn_status_bar(&wm);
 
     crate::backend::x11::events::run(&mut wm, &mut ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);

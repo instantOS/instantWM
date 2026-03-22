@@ -6,6 +6,8 @@
 //! connection.
 
 use libc::c_void;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
@@ -22,6 +24,15 @@ use crate::types::{Rect, WindowId};
 pub struct XlibDisplay(pub *mut c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
+
+/// A single in-flight window animation (non-blocking).
+#[derive(Clone, Debug)]
+pub struct X11WindowAnimation {
+    pub from: Rect,
+    pub to: Rect,
+    pub started_at: Instant,
+    pub duration: Duration,
+}
 
 /// X11-specific runtime configuration.
 /// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.
@@ -46,6 +57,8 @@ pub struct X11RuntimeConfig {
     pub cursors: [Option<Cursor>; 10],
     /// Last cursor index applied to the X11 root cursor (caching to avoid redundant requests).
     pub last_x11_cursor_index: Option<usize>,
+    /// Active non-blocking window animations, keyed by window id.
+    pub window_animations: HashMap<WindowId, X11WindowAnimation>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -65,6 +78,7 @@ impl Default for X11RuntimeConfig {
             statusscheme: StatusScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor_index: None,
+            window_animations: HashMap::new(),
         }
     }
 }

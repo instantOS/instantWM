@@ -92,11 +92,7 @@ pub fn run() -> ! {
 
     let start_time = std::time::Instant::now();
 
-    if let Some(ref cmd) = wm.g.cfg.status_command {
-        crate::bar::status::spawn_status_command(cmd);
-    } else {
-        crate::bar::status::spawn_default_status();
-    }
+    crate::runtime::spawn_status_bar(&wm);
 
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop

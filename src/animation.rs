@@ -1,14 +1,13 @@
+use crate::backend::x11::X11WindowAnimation;
 use crate::constants::animation::*;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::tags::view::scroll_view;
 use crate::types::*;
-use std::thread;
-use std::time::Duration;
-use x11rb::connection::Connection;
+use std::time::{Duration, Instant};
 
 /// Backend-agnostic animation entry point.
 ///
-/// On X11: performs smooth animation with easing.
+/// On X11: enqueues a non-blocking animation that is ticked by the calloop timer.
 /// On Wayland: immediately sets the geometry (Wayland handles transitions differently).
 pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
@@ -102,6 +101,11 @@ fn try_resize_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
     }
 }
 
+/// Enqueue a non-blocking X11 window animation.
+///
+/// Instead of blocking with `thread::sleep`, this computes the animation
+/// parameters and stores them in `X11RuntimeConfig::window_animations`.
+/// The calloop timer in the event loop ticks these animations at ~60 fps.
 pub fn animate_client_x11(
     ctx: &mut WmCtxX11<'_>,
     win: WindowId,
@@ -109,8 +113,6 @@ pub fn animate_client_x11(
     frames: i32,
     reset_pos: i32,
 ) {
-    // Handled below by !ctx.g_mut().behavior.animated or frames <= 0 check.
-
     let start_rect = match get_start_rect(&ctx.core, win, reset_pos) {
         Some(r) => r,
         None => return,
@@ -161,58 +163,66 @@ pub fn animate_client_x11(
         return;
     }
 
-    let dx = (rect.x - start_rect.x) as f64;
-    let dy = (rect.y - start_rect.y) as f64;
+    let dx = (rect.x - start_rect.x).abs();
+    let dy = (rect.y - start_rect.y).abs();
+    let dw = (actual_w - start_rect.w).abs();
+    let dh = (actual_h - start_rect.h).abs();
 
-    let dist_moved = (start_rect.x - rect.x).abs() > DISTANCE_THRESHOLD
-        || (start_rect.y - rect.y).abs() > DISTANCE_THRESHOLD
-        || (actual_w - start_rect.w).abs() > DISTANCE_THRESHOLD
-        || (actual_h - start_rect.h).abs() > DISTANCE_THRESHOLD;
+    let dist_moved =
+        dx > DISTANCE_THRESHOLD || dy > DISTANCE_THRESHOLD || dw > DISTANCE_THRESHOLD || dh > DISTANCE_THRESHOLD;
 
-    if dist_moved {
-        if rect.x == start_rect.x
-            && rect.y == start_rect.y
-            && start_rect.w < mon_w - MONITOR_WIDTH_THRESHOLD
-        {
-            let delta_w = actual_w - start_rect.w;
-            let delta_h = actual_h - start_rect.h;
-            if delta_w != 0 || delta_h != 0 {
-                animate_client_x11(
-                    ctx,
-                    win,
-                    &Rect {
-                        x: start_rect.x + delta_w,
-                        y: start_rect.y + delta_h,
-                        w: actual_w,
-                        h: actual_h,
-                    },
-                    effective_frames,
-                    0,
-                );
-            }
-        } else {
-            for time in 1..=effective_frames {
-                let progress = ease_out_cubic(time as f64 / effective_frames as f64);
-                let step_x = (start_rect.x as f64 + progress * dx) as i32;
-                let step_y = (start_rect.y as f64 + progress * dy) as i32;
-                try_resize_x11(
-                    ctx,
-                    win,
-                    &Rect {
-                        x: step_x,
-                        y: step_y,
-                        w: actual_w,
-                        h: actual_h,
-                    },
-                );
-                let _ = ctx.x11.conn.flush();
-                thread::sleep(Duration::from_micros(FRAME_SLEEP_MICROS));
-            }
+    if !dist_moved {
+        // Not enough movement to animate — just snap to final position.
+        try_resize_x11(ctx, win, &final_rect);
+        return;
+    }
+
+    // Special case: same position, only size changes, and window is small
+    // relative to monitor. Animate from offset instead.
+    if rect.x == start_rect.x
+        && rect.y == start_rect.y
+        && start_rect.w < mon_w - MONITOR_WIDTH_THRESHOLD
+    {
+        let delta_w = actual_w - start_rect.w;
+        let delta_h = actual_h - start_rect.h;
+        if delta_w != 0 || delta_h != 0 {
+            // Enqueue an animation from the offset position to the final position.
+            let from = Rect {
+                x: start_rect.x + delta_w,
+                y: start_rect.y + delta_h,
+                w: actual_w,
+                h: actual_h,
+            };
+            let duration =
+                Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
+            ctx.x11_runtime
+                .window_animations
+                .insert(win, X11WindowAnimation {
+                    from,
+                    to: final_rect,
+                    started_at: Instant::now(),
+                    duration,
+                });
+            return;
         }
     }
 
-    try_resize_x11(ctx, win, &final_rect);
-    let _ = ctx.x11.conn.flush();
+    // Enqueue the animation: from start_rect position to final rect.
+    let from = Rect {
+        x: start_rect.x,
+        y: start_rect.y,
+        w: actual_w,
+        h: actual_h,
+    };
+    let duration = Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
+    ctx.x11_runtime
+        .window_animations
+        .insert(win, X11WindowAnimation {
+            from,
+            to: final_rect,
+            started_at: Instant::now(),
+            duration,
+        });
 }
 
 pub fn check_animate_x11(

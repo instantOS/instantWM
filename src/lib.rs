@@ -23,6 +23,7 @@ pub mod layouts;
 mod monitor;
 mod mouse;
 pub mod reload;
+mod runtime;
 pub mod startup;
 mod systray;
 mod tags;

@@ -141,11 +141,7 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    if let Some(ref cmd) = wm.g.cfg.status_command {
-        crate::bar::status::spawn_status_command(cmd);
-    } else {
-        crate::bar::status::spawn_default_status();
-    }
+    crate::runtime::spawn_status_bar(&wm);
 
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
     state.led_state_tx = Some(led_state_tx);

@@ -1,73 +1,184 @@
+//! X11 event loop built on calloop.
+//!
+//! This replaces the previous raw `libc::poll` loop with a calloop-based
+//! event loop, bringing the X11 backend closer to the Wayland backend's
+//! architecture and making animations non-blocking.
+
+use std::os::unix::io::AsRawFd;
+use std::time::Duration;
+
+use calloop::generic::Generic;
+use calloop::timer::{TimeoutAction, Timer};
+use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
+
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::ipc::IpcServer;
+use crate::types::WindowId;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 
 use super::handlers;
 
 pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
-    use std::os::unix::io::AsRawFd;
+    let mut event_loop: EventLoop<Wm> =
+        EventLoop::try_new().expect("failed to create X11 calloop event loop");
+    let loop_handle = event_loop.handle();
 
-    // Pre-fetch the X11 connection file descriptor for poll(2).
+    // ── X11 connection fd source ────────────────────────────────────────
     let x11_fd = wm
         .backend
         .x11_conn()
         .map(|(conn, _)| conn.stream().as_raw_fd())
-        .unwrap_or(-1);
-    let ipc_fd = ipc_server.as_ref().map(|s| s.as_raw_fd()).unwrap_or(-1);
+        .expect("X11 backend must have a connection");
 
-    while wm.running {
-        // ── 1. Drain all pending X11 events ─────────────────────────────
-        let mut handled = false;
-        loop {
-            let event = wm
-                .backend
-                .x11_conn()
-                .and_then(|(conn, _)| conn.poll_for_event().ok())
-                .flatten();
-            match event {
-                Some(event) => {
-                    dispatch_event(wm, event);
-                    handled = true;
-                }
-                None => break,
-            }
-        }
+    let x11_source = Generic::new(
+        unsafe { std::os::unix::io::BorrowedFd::borrow_raw(x11_fd) },
+        Interest::READ,
+        Mode::Level,
+    );
+    loop_handle
+        .insert_source(x11_source, |_, _, _wm| {
+            // The actual event draining happens in the main loop body
+            // (we need &mut Wm which is the calloop data parameter).
+            // This source just wakes the loop when data arrives.
+            Ok(PostAction::Continue)
+        })
+        .expect("failed to insert X11 fd source");
 
-        // ── 2. Process any pending IPC commands ─────────────────────────
-        if let Some(server) = ipc_server.as_mut() {
-            server.process_pending(wm);
-        }
+    // ── IPC listener fd source ──────────────────────────────────────────
+    if let Some(server) = ipc_server.as_ref() {
+        let ipc_fd = server.as_raw_fd();
+        let ipc_source = Generic::new(
+            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
+            Interest::READ,
+            Mode::Level,
+        );
+        loop_handle
+            .insert_source(ipc_source, |_, _, _wm| Ok(PostAction::Continue))
+            .expect("failed to insert IPC fd source");
+    }
 
-        if wm.g.dirty.monitor_config {
-            let mut ctx = wm.ctx();
-            crate::monitor::apply_monitor_config(&mut ctx);
-        }
+    // ── Animation timer (~60 fps) ───────────────────────────────────────
+    // A persistent 16ms timer that ticks animations when active.
+    let timer = Timer::from_duration(Duration::from_millis(16));
+    loop_handle
+        .insert_source(timer, |_, _, wm| {
+            tick_x11_animations(wm);
+            TimeoutAction::ToDuration(Duration::from_millis(16))
+        })
+        .expect("failed to insert animation timer");
 
-        // ── 3. Wait for new data on X11 fd and/or IPC fd ────────────────
-        // Skip the wait when we just handled events — there may be more
-        // events that arrived while we were dispatching.
-        if !handled {
+    let loop_signal: LoopSignal = event_loop.get_signal();
+
+    event_loop
+        .run(None, wm, move |wm| {
+            // ── 1. Drain all pending X11 events ─────────────────────────
+            drain_x11_events(wm);
+
+            // ── 2. Process any pending IPC commands ─────────────────────
+            crate::runtime::process_ipc_commands(ipc_server, wm);
+
+            // ── 3. Apply monitor config if dirty ────────────────────────
+            crate::runtime::apply_monitor_config_if_dirty(wm);
+
+            // ── 4. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();
 
-            let mut fds = [
-                libc::pollfd {
-                    fd: x11_fd,
-                    events: libc::POLLIN,
-                    revents: 0,
-                },
-                libc::pollfd {
-                    fd: ipc_fd,
-                    events: libc::POLLIN,
-                    revents: 0,
-                },
-            ];
-            let nfds = if ipc_fd >= 0 { 2 } else { 1 };
-            // Block until data arrives (or 100ms timeout as safety net).
-            unsafe {
-                libc::poll(fds.as_mut_ptr(), nfds as libc::nfds_t, 100);
+            // ── 5. Stop loop if WM is shutting down ─────────────────────
+            if !wm.running {
+                loop_signal.stop();
             }
+        })
+        .expect("X11 event loop run");
+}
+
+/// Drain all pending X11 events from the connection and dispatch them.
+fn drain_x11_events(wm: &mut Wm) {
+    loop {
+        let event = wm
+            .backend
+            .x11_conn()
+            .and_then(|(conn, _)| conn.poll_for_event().ok())
+            .flatten();
+        match event {
+            Some(event) => dispatch_event(wm, event),
+            None => break,
+        }
+    }
+}
+
+/// Tick active X11 window animations, interpolating geometry each frame.
+fn tick_x11_animations(wm: &mut Wm) {
+    let data = match wm.backend.x11_data_mut() {
+        Some(d) => d,
+        None => return,
+    };
+
+    if data.x11_runtime.window_animations.is_empty() {
+        return;
+    }
+
+    let now = std::time::Instant::now();
+
+    // Collect finished animation targets and windows that need geometry updates.
+    let mut finished: Vec<(WindowId, crate::types::Rect)> = Vec::new();
+    let mut needs_flush = false;
+
+    for (win, anim) in data.x11_runtime.window_animations.iter() {
+        let elapsed = now.duration_since(anim.started_at);
+        let progress = if anim.duration.is_zero() {
+            1.0
+        } else {
+            (elapsed.as_secs_f64() / anim.duration.as_secs_f64()).min(1.0)
+        };
+        let eased = crate::animation::ease_out_cubic(progress);
+
+        let x = anim.from.x as f64 + (anim.to.x - anim.from.x) as f64 * eased;
+        let y = anim.from.y as f64 + (anim.to.y - anim.from.y) as f64 * eased;
+        let w = anim.from.w as f64 + (anim.to.w - anim.from.w) as f64 * eased;
+        let h = anim.from.h as f64 + (anim.to.h - anim.from.h) as f64 * eased;
+
+        let rect = crate::types::Rect {
+            x: x.round() as i32,
+            y: y.round() as i32,
+            w: w.round() as i32,
+            h: h.round() as i32,
+        };
+
+        if rect.is_valid() {
+            let x11_win: x11rb::protocol::xproto::Window = (*win).into();
+            let width = rect.w.max(1) as u32;
+            let height = rect.h.max(1) as u32;
+            let _ = data.conn.configure_window(
+                x11_win,
+                &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                    .x(rect.x)
+                    .y(rect.y)
+                    .width(width)
+                    .height(height),
+            );
+            needs_flush = true;
+        }
+
+        if progress >= 1.0 {
+            finished.push((*win, anim.to));
+        }
+    }
+
+    // Remove completed animations and update client geometry.
+    for (win, to) in &finished {
+        data.x11_runtime.window_animations.remove(win);
+        if let Some(client) = wm.g.clients.get_mut(win) {
+            client.old_geo = client.geo;
+            client.geo = *to;
+        }
+    }
+
+    if needs_flush {
+        if let Some(data) = wm.backend.x11_data() {
+            let _ = data.conn.flush();
         }
     }
 }
