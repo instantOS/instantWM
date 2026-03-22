@@ -11,6 +11,7 @@ mod client;
 pub mod config;
 mod constants;
 mod contexts;
+mod frame_clock;
 
 mod floating;
 mod focus;

@@ -29,6 +29,8 @@ pub struct OutputSurfaceEntry {
     pub x_offset: i32,
     pub width: i32,
     pub height: i32,
+    pub frame_clock: crate::frame_clock::FrameClock,
+    pub last_render_duration: std::time::Duration,
 }
 
 pub struct SharedDrmState {
@@ -39,6 +41,10 @@ pub struct SharedDrmState {
     pub completed_crtcs: Vec<crtc::Handle>,
     pub pending_crtcs: HashSet<crtc::Handle>,
     pub output_hit_regions: Vec<OutputHitRegion>,
+    /// Presentation times from VBlank events, keyed by CRTC
+    pub presentation_times: HashMap<crtc::Handle, std::time::Duration>,
+    /// Whether to delay rendering for lower latency (frame clock scheduling)
+    pub delay_rendering: bool,
 }
 
 impl SharedDrmState {
@@ -51,6 +57,8 @@ impl SharedDrmState {
             completed_crtcs: Vec::new(),
             pending_crtcs: HashSet::new(),
             output_hit_regions: Vec::new(),
+            presentation_times: HashMap::new(),
+            delay_rendering: true,
         }
     }
 

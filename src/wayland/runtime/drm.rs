@@ -251,13 +251,26 @@ fn setup_drm_vblank_handler(
 ) {
     let shared_vblank = Arc::clone(shared);
     loop_handle
-        .insert_source(drm_notifier, move |event, _metadata, _data| match event {
+        .insert_source(drm_notifier, move |event, meta, _data| match event {
             DrmEvent::VBlank(crtc) => {
+                // Extract presentation time from VBlank metadata if available
+                let presentation_time = meta
+                    .and_then(|m| match m.time {
+                        smithay::backend::drm::DrmEventTime::Monotonic(time) => Some(time),
+                        smithay::backend::drm::DrmEventTime::Realtime(_) => None,
+                    })
+                    .unwrap_or(std::time::Duration::ZERO);
+
                 let mut s = shared_vblank.lock().unwrap();
                 if let Some(flag) = s.render_flags.get_mut(&crtc) {
                     *flag = true;
                 }
                 s.completed_crtcs.push(crtc);
+
+                // Store presentation time for frame clock updates
+                if !presentation_time.is_zero() {
+                    s.presentation_times.insert(crtc, presentation_time);
+                }
             }
             DrmEvent::Error(err) => {
                 log::error!("DRM error: {err}");
@@ -399,18 +412,24 @@ fn process_completed_crtcs(
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
 ) {
-    let completed_crtcs = {
+    let (completed_crtcs, presentation_times) = {
         let mut s = shared.lock().unwrap();
-        std::mem::take(&mut s.completed_crtcs)
+        let crtcs = std::mem::take(&mut s.completed_crtcs);
+        let times = std::mem::take(&mut s.presentation_times);
+        (crtcs, times)
     };
     if completed_crtcs.is_empty() {
         return;
     }
     for crtc in &completed_crtcs {
-        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc)
-            && let Err(err) = entry.surface.frame_submitted()
-        {
-            log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc) {
+            if let Err(err) = entry.surface.frame_submitted() {
+                log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+            }
+            // Update frame clock with presentation time if available
+            if let Some(presentation_time) = presentation_times.get(crtc) {
+                entry.frame_clock.presented(*presentation_time);
+            }
         }
     }
     // Clear in-flight tracking so these CRTCs can render again.
@@ -458,16 +477,22 @@ fn render_outputs(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
 ) {
-    let (session_active, render_flags, pending_crtcs) = {
+    let (session_active, render_flags, pending_crtcs, delay_rendering) = {
         let mut s = shared.lock().unwrap();
         let flags = s.render_flags.clone();
         for flag in s.render_flags.values_mut() {
             *flag = false;
         }
-        (s.session_active, flags, s.pending_crtcs.clone())
+        (
+            s.session_active,
+            flags,
+            s.pending_crtcs.clone(),
+            s.delay_rendering,
+        )
     };
 
     let pointer_location = state.pointer_location;
+    let now = crate::frame_clock::monotonic_time();
 
     if session_active {
         for entry in output_surfaces.iter_mut() {
@@ -482,6 +507,30 @@ fn render_outputs(
                 shared.lock().unwrap().render_flags.insert(entry.crtc, true);
                 continue;
             }
+
+            // Frame clock scheduling: delay rendering until closer to presentation deadline
+            if delay_rendering {
+                let next_presentation = entry.frame_clock.next_presentation_time();
+                let time_until_presentation = if next_presentation > now {
+                    next_presentation - now
+                } else {
+                    std::time::Duration::ZERO
+                };
+
+                // If we have more time than render duration + margin, delay rendering
+                // The margin (1ms) accounts for scheduling jitter
+                let render_margin = std::time::Duration::from_micros(1000);
+                let should_delay =
+                    time_until_presentation > entry.last_render_duration + render_margin;
+
+                if should_delay {
+                    // Re-mark as dirty to render on next loop iteration
+                    shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                    continue;
+                }
+            }
+
+            let render_start = std::time::Instant::now();
             let rendered = render_drm_output(
                 state,
                 renderer,
@@ -490,8 +539,15 @@ fn render_outputs(
                 pointer_location,
                 start_time,
             );
+            let render_duration = render_start.elapsed();
 
             if rendered {
+                // Update estimated render duration (exponential moving average)
+                entry.last_render_duration = std::time::Duration::from_nanos(
+                    (entry.last_render_duration.as_nanos() as f64 * 0.8
+                        + render_duration.as_nanos() as f64 * 0.2) as u64,
+                );
+
                 shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
                 if let Some(failed_frames) = render_failures.remove(&entry.crtc)
                     && failed_frames >= 3

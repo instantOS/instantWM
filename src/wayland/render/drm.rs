@@ -150,6 +150,16 @@ pub fn build_output_surfaces(
 
         let damage_tracker = OutputDamageTracker::from_output(&output);
 
+        // Calculate refresh interval for frame clock
+        let vrefresh = mode.vrefresh();
+        let refresh_interval = if vrefresh > 0 {
+            Some(std::time::Duration::from_micros(
+                1_000_000 / vrefresh as u64,
+            ))
+        } else {
+            None
+        };
+
         output_surfaces.push(OutputSurfaceEntry {
             crtc: picked_crtc,
             surface: gbm_surface,
@@ -158,6 +168,8 @@ pub fn build_output_surfaces(
             x_offset: output_x_offset,
             width: mode_w,
             height: mode_h,
+            frame_clock: crate::frame_clock::FrameClock::new(refresh_interval),
+            last_render_duration: std::time::Duration::from_micros(1000), // Initial estimate: 1ms
         });
         output_x_offset += mode_w;
     }
