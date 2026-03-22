@@ -28,14 +28,19 @@ pub fn handle_keyboard<B: InputBackend>(
                 None => true,
                 Some(KeyboardFocusTarget::Window(_)) => true,
                 Some(KeyboardFocusTarget::WlSurface(ref s)) => {
-                    let interactivity = with_states(s, |states| {
-                        states
-                            .cached_state
-                            .get::<LayerSurfaceCachedState>()
-                            .current()
-                            .keyboard_interactivity
+                    let is_exclusive = with_states(s, |states| {
+                        if states.cached_state.has::<LayerSurfaceCachedState>() {
+                            states
+                                .cached_state
+                                .get::<LayerSurfaceCachedState>()
+                                .current()
+                                .keyboard_interactivity
+                                == KeyboardInteractivity::Exclusive
+                        } else {
+                            false
+                        }
                     });
-                    interactivity != KeyboardInteractivity::Exclusive
+                    !is_exclusive
                 }
                 Some(KeyboardFocusTarget::Popup(_)) => false,
             }
