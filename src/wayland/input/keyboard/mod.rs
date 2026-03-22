@@ -17,20 +17,24 @@ pub fn handle_keyboard<B: InputBackend>(
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let wm_shortcuts_allowed = match keyboard_handle.current_focus() {
-        None => true,
-        Some(KeyboardFocusTarget::Window(ref w)) => !state.should_suppress_shortcuts_for(w),
-        Some(KeyboardFocusTarget::WlSurface(ref s)) => {
-            let interactivity = with_states(s, |states| {
-                states
-                    .cached_state
-                    .get::<LayerSurfaceCachedState>()
-                    .current()
-                    .keyboard_interactivity
-            });
-            interactivity != KeyboardInteractivity::Exclusive
+    let wm_shortcuts_allowed = if keyboard_handle.is_grabbed() {
+        false
+    } else {
+        match keyboard_handle.current_focus() {
+            None => true,
+            Some(KeyboardFocusTarget::Window(_)) => true,
+            Some(KeyboardFocusTarget::WlSurface(ref s)) => {
+                let interactivity = with_states(s, |states| {
+                    states
+                        .cached_state
+                        .get::<LayerSurfaceCachedState>()
+                        .current()
+                        .keyboard_interactivity
+                });
+                interactivity != KeyboardInteractivity::Exclusive
+            }
+            Some(KeyboardFocusTarget::Popup(_)) => false,
         }
-        Some(KeyboardFocusTarget::Popup(_)) => false,
     };
     let key_code = event.key_code();
     let key_state = event.state();
