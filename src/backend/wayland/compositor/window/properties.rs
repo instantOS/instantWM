@@ -2,8 +2,8 @@ use smithay::desktop::Window;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
+use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
-use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -59,7 +59,7 @@ impl WaylandState {
         let app_id = self.window_app_id(window).unwrap_or_default();
         let handle = self
             .foreign_toplevel_list_state
-            .new_toplevel::<WaylandRuntime>(title, app_id);
+            .new_toplevel::<WaylandState>(title, app_id);
         self.foreign_toplevel_handles.insert(window, handle);
     }
 

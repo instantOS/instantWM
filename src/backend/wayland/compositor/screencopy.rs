@@ -36,7 +36,7 @@ use smithay::reexports::wayland_server::{
 };
 use smithay::utils::{Physical, Rectangle, Size};
 
-use super::{WaylandRuntime, WaylandState};
+use super::WaylandState;
 
 /// Protocol version we advertise.
 ///
@@ -87,7 +87,7 @@ impl WaylandState {
     /// bind it.
     pub fn init_screencopy_manager(&self) {
         self.display_handle
-            .create_global::<WaylandRuntime, ZwlrScreencopyManagerV1, ()>(SCREENCOPY_VERSION, ());
+            .create_global::<WaylandState, ZwlrScreencopyManagerV1, ()>(SCREENCOPY_VERSION, ());
     }
 }
 
@@ -95,7 +95,7 @@ impl WaylandState {
 // GlobalDispatch — binding the manager
 // ---------------------------------------------------------------------------
 
-impl GlobalDispatch<ZwlrScreencopyManagerV1, ()> for WaylandRuntime {
+impl GlobalDispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -112,7 +112,7 @@ impl GlobalDispatch<ZwlrScreencopyManagerV1, ()> for WaylandRuntime {
 // Dispatch — manager requests (capture_output, capture_output_region)
 // ---------------------------------------------------------------------------
 
-impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandRuntime {
+impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
     fn request(
         _state: &mut Self,
         _client: &Client,
@@ -202,7 +202,7 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandRuntime {
 // ---------------------------------------------------------------------------
 
 fn init_frame(
-    data_init: &mut DataInit<'_, WaylandRuntime>,
+    data_init: &mut DataInit<'_, WaylandState>,
     manager: &ZwlrScreencopyManagerV1,
     frame: New<ZwlrScreencopyFrameV1>,
     output: Output,
@@ -241,7 +241,7 @@ fn init_frame(
 // Dispatch — frame requests (copy, copy_with_damage, destroy)
 // ---------------------------------------------------------------------------
 
-impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandRuntime {
+impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
     fn request(
         state: &mut Self,
         _client: &Client,
@@ -297,7 +297,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandRuntime {
             return;
         }
 
-        state.state.pending_screencopies.push(PendingScreencopy {
+        state.pending_screencopies.push(PendingScreencopy {
             output: output.clone(),
             physical_region: *physical_region,
             overlay_cursor: *overlay_cursor,

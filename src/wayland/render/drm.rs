@@ -18,7 +18,7 @@ use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
 use smithay::utils::{Physical, Point, Rectangle};
 
-use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
+use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
@@ -146,7 +146,7 @@ pub fn build_output_surfaces(
             Some((output_x_offset, 0).into()),
         );
         output.set_preferred(out_mode);
-        let _global = output.create_global::<WaylandRuntime>(&state.display_handle);
+        let _global = output.create_global::<WaylandState>(&state.display_handle);
 
         let damage_tracker = OutputDamageTracker::from_output(&output);
 

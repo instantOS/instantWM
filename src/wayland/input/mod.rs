@@ -48,7 +48,7 @@ use smithay::utils::{SERIAL_COUNTER, Transform};
 pub fn apply_pending_warp(
     state: &mut crate::backend::wayland::compositor::WaylandState,
     pointer_handle: &smithay::input::pointer::PointerHandle<
-        crate::backend::wayland::compositor::WaylandRuntime,
+        crate::backend::wayland::compositor::WaylandState,
     >,
 ) -> bool {
     use crate::backend::wayland::compositor::PointerFocusTarget;
@@ -73,13 +73,8 @@ pub fn apply_pending_warp(
         time: time_msec,
     };
 
-    pointer_handle.motion(
-        crate::backend::wayland::compositor::WaylandRuntime::from_state_mut(state),
-        focus,
-        &motion,
-    );
-    pointer_handle
-        .frame(crate::backend::wayland::compositor::WaylandRuntime::from_state_mut(state));
+    pointer_handle.motion(state, focus, &motion);
+    pointer_handle.frame(state);
 
     true
 }

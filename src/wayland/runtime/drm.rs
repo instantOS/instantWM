@@ -1,7 +1,9 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -20,7 +22,7 @@ use smithay::reexports::wayland_server::Display;
 
 use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::WaylandBackend;
-use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
+use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -46,14 +48,14 @@ pub fn run() -> ! {
         init_wayland_globals(&mut wm.g, wayland);
     }
 
-    let event_loop: EventLoop<WaylandRuntime> = EventLoop::try_new().expect("event loop");
+    let event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
     let loop_handle = event_loop.handle();
 
     let (mut session, notifier) = LibSeatSession::new().expect("libseat session");
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
-    let display: Display<WaylandRuntime> = Display::new().expect("wayland display");
+    let display: Display<WaylandState> = Display::new().expect("wayland display");
 
     let (
         primary_gpu_path,
@@ -66,7 +68,7 @@ pub fn run() -> ! {
     ) = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
-    let mut state = WaylandState::new(display, &loop_handle, *wm);
+    let mut state = WaylandState::new(display, &loop_handle, *wm, Rc::new(RefCell::new(renderer)));
     if let WmBackend::Wayland(data) = unsafe { &mut *(&mut state.wm.backend as *mut _) } {
         data.backend.attach_state(&mut state);
     }
@@ -74,15 +76,17 @@ pub fn run() -> ! {
     crate::runtime::init_keyboard_layout(&mut state.wm);
 
     state.init_dmabuf_global(
-        renderer.dmabuf_formats().into_iter().collect(),
+        state.renderer.borrow().dmabuf_formats().into_iter().collect(),
         Some(&egl_display),
     );
     state.init_screencopy_manager();
 
     let cursor_manager = init_cursor_manager(&state.cursor_config);
 
-    let mut output_surfaces =
-        build_output_surfaces(&mut drm_device, &mut renderer, &state, &gbm_device);
+    let mut output_surfaces = {
+        let mut renderer_ref = state.renderer.borrow_mut();
+        build_output_surfaces(&mut drm_device, &mut *renderer_ref, &state, &gbm_device)
+    };
     for entry in &output_surfaces {
         state.space.map_output(&entry.output, (entry.x_offset, 0));
     }
@@ -114,9 +118,7 @@ pub fn run() -> ! {
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            // Queue events for processing in the main event loop body,
-            // where `&mut Wm` is available without `Rc<RefCell<>>`.
-            state.state.pending_libinput_events.push(event);
+            state.pending_libinput_events.push(event);
         })
         .expect("failed to insert libinput source");
 
@@ -142,15 +144,11 @@ pub fn run() -> ! {
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
     state.led_state_tx = Some(led_state_tx);
 
-    // The renderer is owned by `init_gpu` and cannot be moved into WaylandRuntime.
-    // Use `from_state_mut` to view `&mut WaylandState` as `&mut WaylandRuntime`
-    // (safe because only `state` fields are accessed in callbacks, never `renderer`).
     run_event_loop(
         event_loop,
-        WaylandRuntime::from_state_mut(&mut state),
+        &mut state,
         &shared,
         &mut output_surfaces,
-        &mut renderer,
         &cursor_manager,
         &mut ipc_server,
         &mut render_failures,
@@ -219,7 +217,7 @@ fn init_shared_state(
 
 /// Setup session pause/activate handlers for VT switching.
 fn setup_session_handlers(
-    loop_handle: &calloop::LoopHandle<WaylandRuntime>,
+    loop_handle: &calloop::LoopHandle<WaylandState>,
     notifier: smithay::backend::session::libseat::LibSeatSessionNotifier,
     shared: &Arc<Mutex<SharedDrmState>>,
     libinput_context: &mut Libinput,
@@ -255,7 +253,7 @@ fn setup_session_handlers(
 
 /// Setup DRM vblank handler for render synchronization.
 fn setup_drm_vblank_handler(
-    loop_handle: &calloop::LoopHandle<WaylandRuntime>,
+    loop_handle: &calloop::LoopHandle<WaylandState>,
     drm_notifier: smithay::backend::drm::DrmDeviceNotifier,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
@@ -288,11 +286,10 @@ fn setup_drm_vblank_handler(
 /// - DRM rendering
 #[allow(clippy::too_many_arguments)]
 fn run_event_loop(
-    mut event_loop: EventLoop<WaylandRuntime>,
-    runtime: &mut WaylandRuntime,
+    mut event_loop: EventLoop<WaylandState>,
+    state: &mut WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
-    renderer: &mut GlesRenderer,
     cursor_manager: &CursorManager,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
@@ -300,31 +297,29 @@ fn run_event_loop(
     led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
-    let pointer_handle = runtime.state.pointer.clone();
+    let pointer_handle = state.pointer.clone();
 
     event_loop
-        .run(Duration::from_millis(16), runtime, move |state| {
-            process_completed_crtcs(&mut state.state, shared, output_surfaces);
+        .run(Duration::from_millis(16), state, move |state| {
+            process_completed_crtcs(state, shared, output_surfaces);
 
-            // Drain queued libinput events (pushed by the calloop source
-            // callback) and dispatch them now that we have `&mut Wm`.
-            process_pending_libinput_events(&mut state.state, shared);
+            process_pending_libinput_events(state, shared);
 
-            super::common::arrange_layout_if_dirty(&mut state.state);
+            super::common::arrange_layout_if_dirty(state);
 
-            process_ipc(ipc_server, &mut state.state, shared);
+            process_ipc(ipc_server, state, shared);
 
-            if state.state.wm.g.dirty.input_config {
-                state.state.wm.g.dirty.input_config = false;
+            if state.wm.g.dirty.input_config {
+                state.wm.g.dirty.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.state.tracked_devices,
-                    &state.state.wm.g.cfg.input,
+                    &mut state.tracked_devices,
+                    &state.wm.g.cfg.input,
                 );
             }
 
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
-                for device in state.state.tracked_devices.iter_mut() {
+                for device in state.tracked_devices.iter_mut() {
                     use smithay::reexports::input::DeviceCapability;
                     if device.has_capability(DeviceCapability::Keyboard) {
                         device.led_update(leds);
@@ -332,17 +327,18 @@ fn run_event_loop(
                 }
             }
 
-            super::common::sync_space_if_dirty(&mut state.state);
-            state.state.tick_window_animations();
-            if state.state.has_active_window_animations() {
+            super::common::sync_space_if_dirty(state);
+            state.tick_window_animations();
+            if state.has_active_window_animations() {
                 shared.lock().unwrap().mark_all_dirty();
             }
 
-            process_cursor_warp(&mut state.state, &pointer_handle, shared);
+            process_cursor_warp(state, &pointer_handle, shared);
 
+            let mut renderer_ref = state.renderer.borrow_mut();
             render_outputs(
-                &mut state.state,
-                renderer,
+                state,
+                &mut *renderer_ref,
                 output_surfaces,
                 cursor_manager,
                 shared,
@@ -350,7 +346,7 @@ fn run_event_loop(
                 start_time,
             );
 
-            if state.state.display_handle.flush_clients().is_err() {
+            if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();
             }
         })
@@ -432,7 +428,7 @@ fn process_ipc(
 /// Apply compositor-side cursor warp.
 fn process_cursor_warp(
     state: &mut WaylandState,
-    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandRuntime>,
+    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
     if apply_pending_warp(state, pointer_handle) {

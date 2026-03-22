@@ -11,10 +11,7 @@ use smithay::{
     },
 };
 
-use super::{
-    focus::KeyboardFocusTarget,
-    state::{WaylandRuntime, WaylandState},
-};
+use super::{focus::KeyboardFocusTarget, state::WaylandState};
 
 /// Focus a layer surface if it requests keyboard focus.
 fn focus_layer_if_requested(
@@ -37,7 +34,7 @@ fn focus_layer_if_requested(
     let serial = SERIAL_COUNTER.next_serial();
     if let Some(keyboard) = state.seat.get_keyboard() {
         keyboard.set_focus(
-            WaylandRuntime::from_state_mut(state),
+            state,
             Some(KeyboardFocusTarget::WlSurface(surface.clone())),
             serial,
         );
@@ -78,9 +75,9 @@ pub(super) fn handle_layer_commit(
     }
 }
 
-impl WlrLayerShellHandler for WaylandRuntime {
+impl WlrLayerShellHandler for WaylandState {
     fn shell_state(&mut self) -> &mut WlrLayerShellState {
-        &mut self.state.wlr_layer_shell_state
+        &mut self.wlr_layer_shell_state
     }
 
     fn new_layer_surface(
@@ -94,7 +91,7 @@ impl WlrLayerShellHandler for WaylandRuntime {
         let target_output = output
             .as_ref()
             .and_then(Output::from_resource)
-            .or_else(|| self.state.space.outputs().next().cloned());
+            .or_else(|| self.space.outputs().next().cloned());
         let Some(target_output) = target_output else {
             return;
         };
@@ -108,7 +105,6 @@ impl WlrLayerShellHandler for WaylandRuntime {
 
         // Check if the keyboard is focused on this layer surface before we destroy it
         let keyboard_focused_on_layer = self
-            .state
             .seat
             .get_keyboard()
             .and_then(|k| k.current_focus())
@@ -120,7 +116,7 @@ impl WlrLayerShellHandler for WaylandRuntime {
                 }
             });
 
-        for output in self.state.space.outputs().cloned().collect::<Vec<_>>() {
+        for output in self.space.outputs().cloned().collect::<Vec<_>>() {
             let mut map = layer_map_for_output(&output);
             let layers: Vec<_> = map
                 .layers()
@@ -135,10 +131,10 @@ impl WlrLayerShellHandler for WaylandRuntime {
         // If the keyboard was focused on this layer surface, clear seat focus
         // and restore it to the WM's selected window.
         if keyboard_focused_on_layer {
-            self.state.clear_seat_focus();
+            self.clear_seat_focus();
         }
 
         // Restore seat focus to mon.sel (the WM's selected window).
-        self.state.restore_focus_after_overlay();
+        self.restore_focus_after_overlay();
     }
 }

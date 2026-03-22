@@ -1,9 +1,9 @@
 use smithay::utils::IsAlive;
 use smithay::utils::SERIAL_COUNTER;
 
+use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
-use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::types::WindowId;
 
 impl WaylandState {
@@ -62,12 +62,7 @@ impl WaylandState {
             }
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(WaylandRuntime::from_state_mut(self), focus, serial);
-            } else {
-                log::warn!(
-                    "set_focus: no keyboard seat available for window {:?}",
-                    window
-                );
+                keyboard.set_focus(self, focus, serial);
             }
         }
     }
@@ -102,11 +97,7 @@ impl WaylandState {
     pub(crate) fn clear_seat_focus(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(
-                WaylandRuntime::from_state_mut(self),
-                None::<KeyboardFocusTarget>,
-                serial,
-            );
+            keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
         }
     }
 

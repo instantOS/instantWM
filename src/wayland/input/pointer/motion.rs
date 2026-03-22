@@ -6,7 +6,7 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
-use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandRuntime, WaylandState};
+use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::mouse::hover::selected_hover_resize_target_at;
 use crate::mouse::set_cursor_style;
 use crate::types::AltCursor;
@@ -102,8 +102,8 @@ pub fn motion_event_from_winit(
 /// is abstracted via the `MotionEvent` type.
 pub fn handle_pointer_motion(
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandRuntime>,
-    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
     event: MotionEvent,
 ) {
     let output_width = state.wm.g.cfg.screen_width;
@@ -120,8 +120,8 @@ pub fn handle_pointer_motion(
 /// Unified pointer motion: update WM hover focus, propagate to clients, handle drags.
 pub fn dispatch_pointer_motion(
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandRuntime>,
-    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
     time_msec: u32,
 ) {
     let pointer_location = state.pointer_location;
@@ -163,8 +163,8 @@ pub fn dispatch_pointer_motion(
         };
         let focus = pointer_focus
             .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-        pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
-        pointer_handle.frame(WaylandRuntime::from_state_mut(state));
+        pointer_handle.motion(state, focus, &motion);
+        pointer_handle.frame(state);
         return;
     }
 
@@ -201,7 +201,7 @@ pub fn dispatch_pointer_motion(
     let _ = update_wayland_bar_hit_state(&mut state.wm, root_x, root_y, false);
 
     // Phase 7: Handle tag/title drag motion
-    handle_wm_drag_motion(&mut state.wm, keyboard_handle, root_x, root_y);
+    handle_wm_drag_motion(state, keyboard_handle, root_x, root_y);
 
     // Phase 8: Dispatch final motion event to Smithay
     let focus =
@@ -213,13 +213,9 @@ pub fn dispatch_pointer_motion(
         serial,
         time: time_msec,
     };
-    pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
-    pointer_handle.frame(WaylandRuntime::from_state_mut(state));
+    pointer_handle.motion(state, focus, &motion);
+    pointer_handle.frame(state);
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper functions for dispatch_pointer_motion
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Compute whether the pointer is in the bar area or guard band below it.
 fn compute_bar_hit(
@@ -303,7 +299,7 @@ fn resolve_pointer_focus(
 /// Handle bar motion. Returns true if handled (early return).
 fn handle_bar_motion(
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandRuntime>,
+    pointer_handle: &PointerHandle<WaylandState>,
     pointer_focus: Option<(
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, smithay::utils::Logical>,
@@ -336,8 +332,8 @@ fn handle_bar_motion(
             serial,
             time: time_msec,
         };
-        pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
-        pointer_handle.frame(WaylandRuntime::from_state_mut(state));
+        pointer_handle.motion(state, focus, &motion);
+        pointer_handle.frame(state);
         return true;
     }
     false
@@ -428,21 +424,21 @@ fn update_pointer_focus(
 
 /// Handle tag and title drag motion.
 fn handle_wm_drag_motion(
-    wm: &mut Wm,
-    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
+    state: &mut WaylandState,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
     root_x: i32,
     root_y: i32,
 ) {
-    if wm.g.drag.tag.active {
-        let mut ctx = wm.ctx();
+    if state.wm.g.drag.tag.active {
+        let mut ctx = state.wm.ctx();
         if !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y) {
             let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
             crate::mouse::drag_tag_finish(&mut ctx, mod_state);
         }
     }
 
-    if wm.g.drag.interactive.active {
-        let mut ctx = wm.ctx();
+    if state.wm.g.drag.interactive.active {
+        let mut ctx = state.wm.ctx();
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
     }
 }

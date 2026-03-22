@@ -5,7 +5,7 @@ use smithay::input::keyboard::{FilterResult, KeyboardHandle};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, LayerSurfaceCachedState};
 
-use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandRuntime, WaylandState};
+use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
 use crate::wayland::common::modifiers_to_x11_mask;
 
 use smithay::utils::SERIAL_COUNTER;
@@ -13,7 +13,7 @@ use smithay::utils::SERIAL_COUNTER;
 /// Handle keyboard events.
 pub fn handle_keyboard<B: InputBackend>(
     state: &mut WaylandState,
-    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
@@ -35,18 +35,18 @@ pub fn handle_keyboard<B: InputBackend>(
     let key_code = event.key_code();
     let key_state = event.state();
     keyboard_handle.input(
-        WaylandRuntime::from_state_mut(state),
+        state,
         key_code,
         key_state,
         serial,
         event.time_msec(),
-        |data: &mut WaylandRuntime, modifiers, keysym| {
+        |data: &mut WaylandState, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
                 return FilterResult::Forward;
             }
             if wm_shortcuts_allowed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
-                let ctx = data.state.wm.ctx();
+                let ctx = data.wm.ctx();
                 let crate::contexts::WmCtx::Wayland(ctx) = ctx else {
                     return FilterResult::Forward;
                 };

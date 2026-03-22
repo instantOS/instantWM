@@ -38,7 +38,7 @@ mod xdg_shell;
 mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
-pub use state::{WaylandClientState, WaylandRuntime, WaylandState, WindowIdMarker};
+pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_idle_inhibit,
@@ -52,20 +52,20 @@ use smithay::{
 // Delegate macros — these MUST be at module level
 // ---------------------------------------------------------------------------
 
-delegate_compositor!(WaylandRuntime);
-delegate_data_device!(WaylandRuntime);
-delegate_dmabuf!(WaylandRuntime);
-delegate_idle_inhibit!(WaylandRuntime);
-delegate_layer_shell!(WaylandRuntime);
-delegate_output!(WaylandRuntime);
-delegate_pointer_gestures!(WaylandRuntime);
-delegate_relative_pointer!(WaylandRuntime);
-delegate_seat!(WaylandRuntime);
-delegate_shm!(WaylandRuntime);
-delegate_viewporter!(WaylandRuntime);
-delegate_xdg_activation!(WaylandRuntime);
-delegate_xdg_decoration!(WaylandRuntime);
-delegate_xdg_shell!(WaylandRuntime);
-delegate_session_lock!(WaylandRuntime);
-delegate_xwayland_keyboard_grab!(WaylandRuntime);
-delegate_xwayland_shell!(WaylandRuntime);
+delegate_compositor!(WaylandState);
+delegate_data_device!(WaylandState);
+delegate_dmabuf!(WaylandState);
+delegate_idle_inhibit!(WaylandState);
+delegate_layer_shell!(WaylandState);
+delegate_output!(WaylandState);
+delegate_pointer_gestures!(WaylandState);
+delegate_relative_pointer!(WaylandState);
+delegate_seat!(WaylandState);
+delegate_shm!(WaylandState);
+delegate_viewporter!(WaylandState);
+delegate_xdg_activation!(WaylandState);
+delegate_xdg_decoration!(WaylandState);
+delegate_xdg_shell!(WaylandState);
+delegate_session_lock!(WaylandState);
+delegate_xwayland_keyboard_grab!(WaylandState);
+delegate_xwayland_shell!(WaylandState);

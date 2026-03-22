@@ -2,7 +2,7 @@ use smithay::{utils::SERIAL_COUNTER, xwayland::XwmHandler};
 
 use super::{
     focus::KeyboardFocusTarget,
-    state::{WaylandRuntime, WaylandState, WindowIdMarker},
+    state::{WaylandState, WindowIdMarker},
     window::{WindowType, is_unmanaged_x11_overlay},
 };
 
@@ -22,7 +22,7 @@ pub(super) fn focus_overlay_if_launcher(
     let serial = SERIAL_COUNTER.next_serial();
     if let Some(keyboard) = state.seat.get_keyboard() {
         keyboard.set_focus(
-            WaylandRuntime::from_state_mut(state),
+            state,
             Some(KeyboardFocusTarget::Window(element.clone())),
             serial,
         );
@@ -40,12 +40,9 @@ pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
     }
 }
 
-impl XwmHandler for WaylandRuntime {
+impl XwmHandler for WaylandState {
     fn xwm_state(&mut self, _xwm: smithay::xwayland::xwm::XwmId) -> &mut smithay::xwayland::X11Wm {
-        self.state
-            .xwm
-            .as_mut()
-            .expect("XWayland is not initialized")
+        self.xwm.as_mut().expect("XWayland is not initialized")
     }
 
     fn new_window(
@@ -72,7 +69,6 @@ impl XwmHandler for WaylandRuntime {
             let window_id = window.window_id();
             let geo = window.geometry();
             let existing = self
-                .state
                 .space
                 .elements()
                 .find(|w| {
@@ -81,32 +77,28 @@ impl XwmHandler for WaylandRuntime {
                 })
                 .cloned();
             if let Some(existing) = existing {
-                self.state
-                    .space
-                    .map_element(existing.clone(), geo.loc, false);
-                self.state.space.raise_element(&existing, false);
-                focus_overlay_if_launcher(&mut self.state, &existing);
-                trigger_pointer_focus_update(&mut self.state);
+                self.space.map_element(existing.clone(), geo.loc, false);
+                self.space.raise_element(&existing, false);
+                focus_overlay_if_launcher(&mut *self, &existing);
+                trigger_pointer_focus_update(&mut *self);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
-                self.state
-                    .space
-                    .map_element(element.clone(), geo.loc, false);
-                self.state.space.raise_element(&element, false);
-                focus_overlay_if_launcher(&mut self.state, &element);
-                trigger_pointer_focus_update(&mut self.state);
+                self.space.map_element(element.clone(), geo.loc, false);
+                self.space.raise_element(&element, false);
+                focus_overlay_if_launcher(&mut *self, &element);
+                trigger_pointer_focus_update(&mut *self);
             }
             return;
         }
-        if let Some(win) = self.state.window_id_for_x11_surface(&window) {
-            self.state.map_window(win);
-            self.state.set_focus(win);
-            self.state.raise_window(win);
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.map_window(win);
+            self.set_focus(win);
+            self.raise_window(win);
             return;
         }
 
         let element = smithay::desktop::Window::new_x11_window(window.clone());
-        let win = self.state.alloc_window_id();
+        let win = self.alloc_window_id();
         let is_overlay = is_unmanaged_x11_overlay(&window);
         let _ = element
             .user_data()
@@ -115,13 +107,11 @@ impl XwmHandler for WaylandRuntime {
                 is_overlay,
             });
         let geo = window.geometry();
-        self.state
-            .space
-            .map_element(element.clone(), geo.loc, false);
-        self.state.window_index.insert(win, element);
-        self.state.ensure_client_for_window(win);
+        self.space.map_element(element.clone(), geo.loc, false);
+        self.window_index.insert(win, element);
+        self.ensure_client_for_window(win);
         {
-            let g = &mut self.state.wm.g;
+            let g = &mut self.wm.g;
             if let Some(c) = g.clients.get_mut(&win) {
                 c.geo.x = geo.loc.x;
                 c.geo.y = geo.loc.y;
@@ -133,13 +123,13 @@ impl XwmHandler for WaylandRuntime {
         }
         let _ = window.configure(Some(geo));
         {
-            let g = &mut self.state.wm.g;
+            let g = &mut self.wm.g;
             g.dirty.layout = true;
             g.dirty.space = true;
         }
-        self.state.create_foreign_toplevel(win);
-        self.state.set_focus(win);
-        self.state.raise_window(win);
+        self.create_foreign_toplevel(win);
+        self.set_focus(win);
+        self.raise_window(win);
     }
 
     fn mapped_override_redirect_window(
@@ -149,12 +139,10 @@ impl XwmHandler for WaylandRuntime {
     ) {
         let geo = window.geometry();
         let element = smithay::desktop::Window::new_x11_window(window);
-        self.state
-            .space
-            .map_element(element.clone(), geo.loc, false);
-        self.state.space.raise_element(&element, false);
-        focus_overlay_if_launcher(&mut self.state, &element);
-        trigger_pointer_focus_update(&mut self.state);
+        self.space.map_element(element.clone(), geo.loc, false);
+        self.space.raise_element(&element, false);
+        focus_overlay_if_launcher(&mut *self, &element);
+        trigger_pointer_focus_update(&mut *self);
     }
 
     fn unmapped_window(
@@ -163,19 +151,18 @@ impl XwmHandler for WaylandRuntime {
         window: smithay::xwayland::X11Surface,
     ) {
         let window_id = window.window_id();
-        let was_focused = self.state.is_x11_surface_focused(window_id);
+        let was_focused = self.is_x11_surface_focused(window_id);
 
         // Clear seat focus from the dying surface *before* unmapping so
         // the Smithay seat never holds a dead target.
         if was_focused {
-            self.state.clear_seat_focus();
+            self.clear_seat_focus();
         }
 
-        if let Some(win) = self.state.window_id_for_x11_surface(&window) {
-            self.state.unmap_window(win);
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.unmap_window(win);
         } else {
             let element = self
-                .state
                 .space
                 .elements()
                 .find(|w| {
@@ -184,16 +171,16 @@ impl XwmHandler for WaylandRuntime {
                 })
                 .cloned();
             if let Some(element) = element {
-                self.state.space.unmap_elem(&element);
+                self.space.unmap_elem(&element);
             }
         }
-        trigger_pointer_focus_update(&mut self.state);
+        trigger_pointer_focus_update(&mut *self);
         if !window.is_override_redirect() {
             let _ = window.set_mapped(false);
         }
 
         if was_focused {
-            self.state.restore_focus_after_overlay();
+            self.restore_focus_after_overlay();
         }
     }
 
@@ -203,23 +190,22 @@ impl XwmHandler for WaylandRuntime {
         window: smithay::xwayland::X11Surface,
     ) {
         let window_id = window.window_id();
-        let is_overlay = self.state.window_id_for_x11_surface(&window).is_none();
-        let was_focused = self.state.is_x11_surface_focused(window_id);
+        let is_overlay = self.window_id_for_x11_surface(&window).is_none();
+        let was_focused = self.is_x11_surface_focused(window_id);
 
         // Clear seat focus from the dying surface *before* cleanup.
         if was_focused {
-            self.state.clear_seat_focus();
+            self.clear_seat_focus();
         }
 
-        if let Some(win) = self.state.window_id_for_x11_surface(&window) {
-            self.state.remove_window_tracking(win);
-            let g = &mut self.state.wm.g;
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.remove_window_tracking(win);
+            let g = &mut self.wm.g;
             g.detach(win);
             g.detach_stack(win);
             g.clients.remove(&win);
         } else if is_overlay {
             let element = self
-                .state
                 .space
                 .elements()
                 .find(|w| {
@@ -228,14 +214,14 @@ impl XwmHandler for WaylandRuntime {
                 })
                 .cloned();
             if let Some(element) = element {
-                self.state.space.unmap_elem(&element);
+                self.space.unmap_elem(&element);
             }
         }
-        trigger_pointer_focus_update(&mut self.state);
+        trigger_pointer_focus_update(&mut *self);
 
         // Recover mon.sel if it was cleared by detach_stack, then
         // re-apply seat focus.
-        self.state.restore_focus_after_overlay();
+        self.restore_focus_after_overlay();
     }
 
     fn configure_request(
@@ -272,9 +258,8 @@ impl XwmHandler for WaylandRuntime {
         _above: Option<smithay::xwayland::xwm::X11Window>,
     ) {
         let window_id = window.window_id();
-        let Some(win) = self.state.window_id_for_x11_surface(&window) else {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
             let element = self
-                .state
                 .space
                 .elements()
                 .find(|w| {
@@ -283,15 +268,13 @@ impl XwmHandler for WaylandRuntime {
                 })
                 .cloned();
             if let Some(element) = element {
-                self.state
-                    .space
-                    .map_element(element.clone(), geometry.loc, false);
-                self.state.space.raise_element(&element, false);
+                self.space.map_element(element.clone(), geometry.loc, false);
+                self.space.raise_element(&element, false);
             }
             return;
         };
         {
-            let g = &mut self.state.wm.g;
+            let g = &mut self.wm.g;
             if let Some(c) = g.clients.get_mut(&win) {
                 c.geo.x = geometry.loc.x;
                 c.geo.y = geometry.loc.y;
@@ -299,7 +282,7 @@ impl XwmHandler for WaylandRuntime {
                 c.geo.h = geometry.size.h.max(1);
             }
         }
-        self.state.resize_window(
+        self.resize_window(
             win,
             crate::types::Rect {
                 x: geometry.loc.x,
@@ -325,14 +308,14 @@ impl XwmHandler for WaylandRuntime {
         window: smithay::xwayland::X11Surface,
         _button: u32,
     ) {
-        if let Some(win) = self.state.window_id_for_x11_surface(&window) {
-            self.state.set_focus(win);
-            self.state.raise_window(win);
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.set_focus(win);
+            self.raise_window(win);
         }
     }
 
     fn disconnected(&mut self, _xwm: smithay::xwayland::xwm::XwmId) {
-        self.state.xwm = None;
-        self.state.xdisplay = None;
+        self.xwm = None;
+        self.xdisplay = None;
     }
 }
