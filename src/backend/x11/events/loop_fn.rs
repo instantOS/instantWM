@@ -77,16 +77,13 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             // ── 1. Drain all pending X11 events ─────────────────────────
             drain_x11_events(wm);
 
-            // ── 2. Process any pending IPC commands ─────────────────────
-            crate::runtime::process_ipc_commands(ipc_server, wm);
+            // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
+            crate::runtime::event_loop_tick(wm, ipc_server);
 
-            // ── 3. Apply monitor config if dirty ────────────────────────
-            crate::runtime::apply_monitor_config_if_dirty(wm);
-
-            // ── 4. Flush X11 connection ─────────────────────────────────
+            // ── 3. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();
 
-            // ── 5. Stop loop if WM is shutting down ─────────────────────
+            // ── 4. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {
                 loop_signal.stop();
             }

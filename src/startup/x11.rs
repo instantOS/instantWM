@@ -4,15 +4,13 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::Backend as WmBackend;
+use crate::backend::x11::draw::Drw;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::Drw;
+use crate::backend::Backend as WmBackend;
 use crate::config::init_config;
 use crate::types::*;
 use crate::wm::Wm;
-
-use super::autostart::run_autostart;
 
 const XC_LEFT_PTR: u32 = 68;
 const XC_CROSSHAIR: u32 = 34;
@@ -45,10 +43,7 @@ pub fn run() {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
     }
-    run_autostart();
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
-
-    crate::runtime::spawn_status_bar(&wm);
+    let mut ipc_server = crate::runtime::late_init(&wm);
 
     crate::backend::x11::events::run(&mut wm, &mut ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);
@@ -76,10 +71,9 @@ fn wm_init(wm: &mut Wm) {
     crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
+    crate::runtime::init_keyboard_layout(wm);
     {
-        let mut ctx = wm.ctx();
-        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-        let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+        let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx() else {
             return;
         };
         crate::bar::x11::update_bars(

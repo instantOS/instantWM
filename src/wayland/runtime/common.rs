@@ -6,6 +6,9 @@
 //!
 //! This module extracts those shared steps so each backend's event loop
 //! only contains the minimal backend-specific match arms.
+//!
+//! Most helpers delegate to [`crate::runtime`] and add Wayland-specific
+//! behaviour (animation guards, dirty-space propagation, etc.).
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
@@ -13,16 +16,11 @@ use crate::wm::Wm;
 /// Arrange client layout when the dirty flag is set and no window
 /// animations are in progress.
 ///
-/// Shared between both winit and DRM event loops.
+/// Delegates to the shared [`crate::runtime::arrange_layout_if_dirty`]
+/// but additionally checks for active Wayland window animations.
 pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
-    if !wm.g.dirty.layout {
-        return;
-    }
-    let mut ctx = wm.ctx();
-    if !ctx.core().globals().clients.is_empty() && !state.has_active_window_animations() {
-        ctx.core_mut().globals_mut().dirty.layout = false;
-        let selected_monitor_id = ctx.core().globals().selected_monitor_id();
-        crate::layouts::arrange(&mut ctx, Some(selected_monitor_id));
+    if wm.g.dirty.layout && !state.has_active_window_animations() {
+        crate::runtime::arrange_layout_if_dirty(wm);
     }
 }
 
@@ -39,13 +37,6 @@ pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: 
         wm.g.dirty.layout = true;
     }
     handled
-}
-
-/// Apply monitor configuration when the dirty flag is set.
-///
-/// Re-exports the shared helper so existing Wayland call-sites keep working.
-pub fn apply_monitor_config_if_dirty(wm: &mut Wm) {
-    crate::runtime::apply_monitor_config_if_dirty(wm);
 }
 
 /// Synchronise the Smithay compositor space from WM globals when the

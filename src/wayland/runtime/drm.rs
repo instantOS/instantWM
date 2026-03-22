@@ -59,10 +59,7 @@ pub fn run() -> ! {
         data.backend.attach_state(&mut state);
     }
 
-    {
-        let mut ctx = wm.ctx();
-        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-    }
+    crate::runtime::init_keyboard_layout(&mut wm);
 
     let (
         primary_gpu_path,
@@ -425,7 +422,7 @@ fn process_ipc(
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
     let handled = super::common::process_ipc_commands(ipc_server, wm);
-    super::common::apply_monitor_config_if_dirty(wm);
+    crate::runtime::apply_monitor_config_if_dirty(wm);
     if handled {
         // DRM-specific: also mark space and all outputs dirty
         wm.g.dirty.space = true;

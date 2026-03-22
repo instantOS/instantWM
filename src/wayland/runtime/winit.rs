@@ -7,15 +7,15 @@ use std::process::exit;
 use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -48,11 +48,7 @@ pub fn run() -> ! {
         data.backend.attach_state(&mut state);
     }
 
-    // Apply the initial keyboard layout if configured.
-    {
-        let mut ctx = wm.ctx();
-        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-    }
+    crate::runtime::init_keyboard_layout(&mut wm);
 
     let (backend_init, mut winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
@@ -146,7 +142,7 @@ pub fn run() -> ! {
 
             super::common::arrange_layout_if_dirty(&mut wm, state);
             super::common::process_ipc_commands(&mut ipc_server, &mut wm);
-            super::common::apply_monitor_config_if_dirty(&mut wm);
+            crate::runtime::apply_monitor_config_if_dirty(&mut wm);
 
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is

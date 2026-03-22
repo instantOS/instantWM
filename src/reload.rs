@@ -13,9 +13,10 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.g.dirty.input_config = true;
     wm.bar.mark_dirty();
 
-    match &wm.backend {
-        Backend::X11(_) => reload_x11(wm),
-        Backend::Wayland(_) => reload_wayland(wm),
+    crate::runtime::init_keyboard_layout(wm);
+
+    if matches!(&wm.backend, Backend::X11(_)) {
+        reload_x11(wm);
     }
 
     Ok(())
@@ -36,7 +37,6 @@ fn reload_x11(wm: &mut Wm) {
 
     let ctx = wm.ctx();
     if let WmCtx::X11(mut x11_ctx) = ctx {
-        crate::keyboard_layout::init_keyboard_layout(&mut WmCtx::X11(x11_ctx.reborrow()));
         crate::bar::x11::update_bars(
             &mut x11_ctx.core,
             &x11_ctx.x11,
@@ -59,16 +59,11 @@ fn reload_x11(wm: &mut Wm) {
     }
 }
 
-fn reload_wayland(wm: &mut Wm) {
-    let mut ctx = wm.ctx();
-    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Backend as WmBackend;
     use crate::backend::wayland::WaylandBackend;
+    use crate::backend::Backend as WmBackend;
     use crate::config::ModeConfig;
 
     #[test]
