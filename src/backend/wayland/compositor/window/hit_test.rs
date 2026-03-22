@@ -1,7 +1,7 @@
 use smithay::utils::{Logical, Point};
 
-use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::types::WindowId;
 
 use super::classify::WindowType;
@@ -15,7 +15,7 @@ impl WaylandState {
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, Logical>,
     )> {
-        use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
+        use smithay::desktop::{layer_map_for_output, WindowSurfaceType};
 
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {
@@ -59,7 +59,7 @@ impl WaylandState {
     pub fn logical_window_under_pointer(&self, point: Point<f64, Logical>) -> Option<WindowId> {
         let root_x = point.x.round() as i32;
         let root_y = point.y.round() as i32;
-        let globals = self.globals()?;
+        let globals = &self.wm.g;
 
         for (window, typ) in self.windows_in_z_order() {
             let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {

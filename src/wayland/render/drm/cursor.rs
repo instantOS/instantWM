@@ -14,13 +14,13 @@ use std::rc::Rc;
 
 use anyhow::Context;
 use smithay::backend::allocator::Fourcc;
-use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::texture::{TextureBuffer, TextureRenderElement};
+use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::input::pointer::CursorIcon;
 use smithay::utils::{Physical, Point, Transform};
+use xcursor::parser::{parse_xcursor, Image};
 use xcursor::CursorTheme;
-use xcursor::parser::{Image, parse_xcursor};
 
 use crate::wayland::common::CursorPresentation;
 

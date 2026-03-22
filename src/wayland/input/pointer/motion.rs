@@ -6,7 +6,7 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
-use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
+use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandRuntime, WaylandState};
 use crate::contexts::WmCtxWayland;
 use crate::mouse::hover::selected_hover_resize_target_at;
 use crate::mouse::set_cursor_style;
@@ -104,8 +104,8 @@ pub fn motion_event_from_winit(
 pub fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    pointer_handle: &PointerHandle<WaylandRuntime>,
+    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
     event: MotionEvent,
 ) {
     let output_width = wm.g.cfg.screen_width;
@@ -129,8 +129,8 @@ pub fn handle_pointer_motion(
 pub fn dispatch_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    pointer_handle: &PointerHandle<WaylandRuntime>,
+    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
     time_msec: u32,
 ) {
     let pointer_location = state.pointer_location;
@@ -202,8 +202,8 @@ pub fn dispatch_pointer_motion(
         serial,
         time: time_msec,
     };
-    pointer_handle.motion(state, focus, &motion);
-    pointer_handle.frame(state);
+    pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
+    pointer_handle.frame(WaylandRuntime::from_state_mut(state));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ fn resolve_pointer_focus(
 fn handle_resize_drag_motion(
     ctx: &mut WmCtxWayland<'_>,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
+    pointer_handle: &PointerHandle<WaylandRuntime>,
     pointer_focus: Option<(
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, smithay::utils::Logical>,
@@ -319,8 +319,8 @@ fn handle_resize_drag_motion(
     };
     let focus =
         pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-    pointer_handle.motion(state, focus, &motion);
-    pointer_handle.frame(state);
+    pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
+    pointer_handle.frame(WaylandRuntime::from_state_mut(state));
     true
 }
 
@@ -328,7 +328,7 @@ fn handle_resize_drag_motion(
 fn handle_bar_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
+    pointer_handle: &PointerHandle<WaylandRuntime>,
     pointer_focus: Option<(
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, smithay::utils::Logical>,
@@ -361,8 +361,8 @@ fn handle_bar_motion(
             serial,
             time: time_msec,
         };
-        pointer_handle.motion(state, focus, &motion);
-        pointer_handle.frame(state);
+        pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
+        pointer_handle.frame(WaylandRuntime::from_state_mut(state));
         return true;
     }
     false
@@ -454,7 +454,7 @@ fn update_pointer_focus(
 /// Handle tag and title drag motion.
 fn handle_wm_drag_motion(
     wm: &mut Wm,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
     root_x: i32,
     root_y: i32,
 ) {

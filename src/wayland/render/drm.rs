@@ -1,10 +1,8 @@
 //! DRM/KMS rendering and GPU output management.
 
-use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
+use smithay::backend::allocator::Fourcc;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface};
-use smithay::backend::renderer::Bind;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -12,16 +10,18 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+use smithay::backend::renderer::Bind;
+use smithay::backend::renderer::ImportDma;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
-use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
+use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::utils::{Physical, Point, Rectangle};
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::wayland::common::{
-    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
+    resolve_cursor_presentation, send_frame_callbacks, CursorPresentation,
 };
 use crate::wm::Wm;
 
@@ -30,8 +30,8 @@ mod cursor;
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
-    SharedDrmState, sync_monitors_from_outputs_vec,
+    sync_monitors_from_outputs_vec, OutputHitRegion, OutputSurfaceEntry, SharedDrmState,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH,
 };
 
 pub mod state;
@@ -147,7 +147,7 @@ pub fn build_output_surfaces(
             Some((output_x_offset, 0).into()),
         );
         output.set_preferred(out_mode);
-        let _global = output.create_global::<WaylandState>(&state.display_handle);
+        let _global = output.create_global::<WaylandRuntime>(&state.display_handle);
 
         let damage_tracker = OutputDamageTracker::from_output(&output);
 

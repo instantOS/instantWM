@@ -6,7 +6,7 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::Backend;
-use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
+use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandRuntime, WaylandState};
 use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
@@ -22,8 +22,8 @@ use crate::wayland::input::pointer::drag::{
 pub fn handle_pointer_button<B: InputBackend>(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    pointer_handle: &PointerHandle<WaylandRuntime>,
+    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
     event: impl PointerButtonEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
@@ -40,7 +40,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                 0,
             );
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
-            pointer_handle.frame(state);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             return;
         }
 
@@ -60,7 +60,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location)
         {
             keyboard_handle.set_focus(
-                state,
+                WaylandRuntime::from_state_mut(state),
                 Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
                 serial,
             );
@@ -73,8 +73,8 @@ pub fn handle_pointer_button<B: InputBackend>(
                 serial,
                 time: event.time_msec(),
             };
-            pointer_handle.motion(state, focus, &motion);
-            pointer_handle.frame(state);
+            pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
         } else if let Some(win) = clicked_win {
             let mut ctx = wm.ctx();
             crate::focus::focus_soft(&mut ctx, Some(win));
@@ -99,7 +99,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                 button: event.button_code(),
                 state: event.state(),
             };
-            pointer_handle.button(state, &button);
+            pointer_handle.button(WaylandRuntime::from_state_mut(state), &button);
         }
 
         let maybe_close = if !consumed {
@@ -111,8 +111,6 @@ pub fn handle_pointer_button<B: InputBackend>(
             );
             let mon = core.globals().selected_monitor().clone();
             let local_x = root_x - mon.work_rect.x;
-
-            // Check if we should close - only Wayland has systray menu
 
             match &mut wm.backend {
                 Backend::Wayland(data) => {
@@ -132,7 +130,6 @@ pub fn handle_pointer_button<B: InputBackend>(
             false
         };
         if maybe_close {
-            // Only Wayland has a systray menu to close
             if let Backend::Wayland(data) = &mut wm.backend {
                 data.wayland_systray_menu = None;
             }
@@ -160,7 +157,7 @@ pub fn handle_pointer_button<B: InputBackend>(
                 button: event.button_code(),
                 state: event.state(),
             };
-            pointer_handle.button(state, &button);
+            pointer_handle.button(WaylandRuntime::from_state_mut(state), &button);
         }
 
         if wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button) {
@@ -175,7 +172,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         }
     }
 
-    pointer_handle.frame(state);
+    pointer_handle.frame(WaylandRuntime::from_state_mut(state));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

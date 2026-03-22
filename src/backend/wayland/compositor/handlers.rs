@@ -19,12 +19,12 @@ use smithay::{
 
 use super::{
     focus::KeyboardFocusTarget,
-    state::{WaylandClientState, WaylandState},
+    state::{WaylandClientState, WaylandRuntime},
 };
 
-impl CompositorHandler for WaylandState {
+impl CompositorHandler for WaylandRuntime {
     fn compositor_state(&mut self) -> &mut smithay::wayland::compositor::CompositorState {
-        &mut self.compositor_state
+        &mut self.state.compositor_state
     }
 
     fn client_compositor_state<'a>(
@@ -49,6 +49,7 @@ impl CompositorHandler for WaylandState {
         // Check if this commit is from a pending toplevel that has finally
         // produced a buffer.  If so, promote it to a managed window.
         if let Some(pos) = self
+            .state
             .pending_toplevels
             .iter()
             .position(|t| t.wl_surface() == surface)
@@ -59,14 +60,14 @@ impl CompositorHandler for WaylandState {
                 })
                 .unwrap_or(false);
             if has_buffer {
-                let toplevel = self.pending_toplevels.swap_remove(pos);
-                let _ = self.map_new_toplevel(toplevel);
+                let toplevel = self.state.pending_toplevels.swap_remove(pos);
+                let _ = self.state.map_new_toplevel(toplevel);
             }
         }
 
-        self.popups.commit(surface);
+        self.state.popups.commit(surface);
 
-        if let Some(popup) = self.popups.find_popup(surface)
+        if let Some(popup) = self.state.popups.find_popup(surface)
             && let PopupKind::Xdg(ref popup_surface) = popup
             && !popup_surface.is_initial_configure_sent()
         {
@@ -90,6 +91,7 @@ impl CompositorHandler for WaylandState {
         }
 
         if let Some(window) = self
+            .state
             .space
             .elements()
             .find(|w| w.wl_surface().as_deref() == Some(&root))
@@ -98,17 +100,17 @@ impl CompositorHandler for WaylandState {
             window.on_commit();
         }
 
-        super::layer_shell::handle_layer_commit(self, surface);
+        super::layer_shell::handle_layer_commit(&mut self.state, surface);
     }
 }
 
-impl ShmHandler for WaylandState {
+impl ShmHandler for WaylandRuntime {
     fn shm_state(&self) -> &smithay::wayland::shm::ShmState {
-        &self.shm_state
+        &self.state.shm_state
     }
 }
 
-impl BufferHandler for WaylandState {
+impl BufferHandler for WaylandRuntime {
     fn buffer_destroyed(
         &mut self,
         _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
@@ -116,9 +118,9 @@ impl BufferHandler for WaylandState {
     }
 }
 
-impl DmabufHandler for WaylandState {
+impl DmabufHandler for WaylandRuntime {
     fn dmabuf_state(&mut self) -> &mut DmabufState {
-        &mut self.dmabuf_state
+        &mut self.state.dmabuf_state
     }
 
     fn dmabuf_imported(
@@ -128,13 +130,14 @@ impl DmabufHandler for WaylandState {
         notifier: ImportNotifier,
     ) {
         // Tag the dmabuf with the render node so clients know which device to use.
-        if let Some(node) = self.render_node {
+        if let Some(node) = self.state.render_node {
             dmabuf.set_node(node);
         }
 
         let imported = self
-            .renderer_mut()
-            .and_then(|renderer| renderer.import_dmabuf(&dmabuf, None).ok())
+            .renderer
+            .import_dmabuf(&dmabuf, None)
+            .ok()
             .is_some();
         if imported {
             let _ = notifier.successful::<Self>();
@@ -144,14 +147,14 @@ impl DmabufHandler for WaylandState {
     }
 }
 
-impl ClientDndGrabHandler for WaylandState {
+impl ClientDndGrabHandler for WaylandRuntime {
     fn started(
         &mut self,
         _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
         icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
         _seat: smithay::input::Seat<Self>,
     ) {
-        self.dnd_icon = icon;
+        self.state.dnd_icon = icon;
     }
 
     fn dropped(
@@ -160,11 +163,11 @@ impl ClientDndGrabHandler for WaylandState {
         _accepted: bool,
         _seat: smithay::input::Seat<Self>,
     ) {
-        self.dnd_icon = None;
+        self.state.dnd_icon = None;
     }
 }
 
-impl ServerDndGrabHandler for WaylandState {
+impl ServerDndGrabHandler for WaylandRuntime {
     fn send(
         &mut self,
         _mime_type: String,
@@ -174,43 +177,43 @@ impl ServerDndGrabHandler for WaylandState {
     }
 }
 
-impl OutputHandler for WaylandState {}
+impl OutputHandler for WaylandRuntime {}
 
-impl smithay::wayland::foreign_toplevel_list::ForeignToplevelListHandler for WaylandState {
+impl smithay::wayland::foreign_toplevel_list::ForeignToplevelListHandler for WaylandRuntime {
     fn foreign_toplevel_list_state(
         &mut self,
     ) -> &mut smithay::wayland::foreign_toplevel_list::ForeignToplevelListState {
-        &mut self.foreign_toplevel_list_state
+        &mut self.state.foreign_toplevel_list_state
     }
 }
 
-smithay::delegate_foreign_toplevel_list!(WaylandState);
+smithay::delegate_foreign_toplevel_list!(WaylandRuntime);
 
-impl XWaylandShellHandler for WaylandState {
+impl XWaylandShellHandler for WaylandRuntime {
     fn xwayland_shell_state(
         &mut self,
     ) -> &mut smithay::wayland::xwayland_shell::XWaylandShellState {
-        &mut self.xwayland_shell_state
+        &mut self.state.xwayland_shell_state
     }
 }
 
-impl XWaylandKeyboardGrabHandler for WaylandState {
+impl XWaylandKeyboardGrabHandler for WaylandRuntime {
     fn keyboard_focus_for_xsurface(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
-        let win = self.window_id_for_surface(surface)?;
-        let window = self.window_index.get(&win)?;
+        let win = self.state.window_id_for_surface(surface)?;
+        let window = self.state.window_index.get(&win)?;
         Some(KeyboardFocusTarget::Window(window.clone()))
     }
 }
 
-impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
+impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandRuntime {
     fn inhibit(
         &mut self,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        self.idle_inhibiting_surfaces.insert(surface);
+        self.state.idle_inhibiting_surfaces.insert(surface);
         log::debug!("idle inhibited for surface");
     }
 
@@ -218,7 +221,7 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         &mut self,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        self.idle_inhibiting_surfaces.remove(&surface);
+        self.state.idle_inhibiting_surfaces.remove(&surface);
         log::debug!("idle uninhibited for surface");
     }
 }

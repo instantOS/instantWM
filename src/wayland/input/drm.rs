@@ -9,10 +9,10 @@ use smithay::input::pointer::{
 use smithay::reexports::input::event::gesture::{
     GestureEndEvent, GestureEventCoordinates, GestureEventTrait, GesturePinchEventTrait,
 };
-use smithay::reexports::input::{Event as LibinputRawEvent, event, event::EventTrait};
+use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::wayland::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
@@ -24,7 +24,7 @@ use crate::config::config_toml::{AccelProfile, ToggleSetting};
 pub fn raw_event_to_input_event(
     event: LibinputRawEvent,
 ) -> Option<InputEvent<LibinputInputBackend>> {
-    use event::{DeviceEvent, GestureEvent, keyboard::KeyboardEvent, pointer::PointerEvent};
+    use event::{keyboard::KeyboardEvent, pointer::PointerEvent, DeviceEvent, GestureEvent};
     Some(match event {
         LibinputRawEvent::Keyboard(KeyboardEvent::Key(e)) => InputEvent::Keyboard { event: e },
         LibinputRawEvent::Pointer(PointerEvent::Motion(e)) => {
@@ -157,7 +157,7 @@ pub fn dispatch_libinput_event(
             false
         }
         InputEvent::Keyboard { event } => {
-            handle_keyboard::<LibinputInputBackend>(wm, state, &keyboard_handle, event);
+            handle_keyboard::<LibinputInputBackend>(state, &keyboard_handle, event);
             true
         }
         InputEvent::PointerMotion { event } => {
@@ -198,8 +198,9 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 fingers: event.finger_count() as u32,
             };
-            pointer_handle.gesture_pinch_begin(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle
+                .gesture_pinch_begin(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GesturePinchUpdate { event } => {
@@ -209,8 +210,9 @@ pub fn dispatch_libinput_event(
                 scale: event.scale(),
                 rotation: event.angle_delta(),
             };
-            pointer_handle.gesture_pinch_update(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle
+                .gesture_pinch_update(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GesturePinchEnd { event } => {
@@ -219,8 +221,8 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 cancelled: event.cancelled(),
             };
-            pointer_handle.gesture_pinch_end(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle.gesture_pinch_end(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GestureSwipeBegin { event } => {
@@ -229,8 +231,9 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 fingers: event.finger_count() as u32,
             };
-            pointer_handle.gesture_swipe_begin(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle
+                .gesture_swipe_begin(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GestureSwipeUpdate { event } => {
@@ -238,8 +241,9 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 delta: Point::from((event.dx(), event.dy())),
             };
-            pointer_handle.gesture_swipe_update(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle
+                .gesture_swipe_update(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GestureSwipeEnd { event } => {
@@ -248,8 +252,8 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 cancelled: event.cancelled(),
             };
-            pointer_handle.gesture_swipe_end(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle.gesture_swipe_end(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GestureHoldBegin { event } => {
@@ -258,8 +262,9 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 fingers: event.finger_count() as u32,
             };
-            pointer_handle.gesture_hold_begin(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle
+                .gesture_hold_begin(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         InputEvent::GestureHoldEnd { event } => {
@@ -268,8 +273,8 @@ pub fn dispatch_libinput_event(
                 time: event.time(),
                 cancelled: event.cancelled(),
             };
-            pointer_handle.gesture_hold_end(state, &smithay_event);
-            pointer_handle.frame(state);
+            pointer_handle.gesture_hold_end(WaylandRuntime::from_state_mut(state), &smithay_event);
+            pointer_handle.frame(WaylandRuntime::from_state_mut(state));
             true
         }
         _ => false,

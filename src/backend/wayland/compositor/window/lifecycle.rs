@@ -23,16 +23,18 @@ impl WaylandState {
         self.ensure_client_for_window(window_id);
 
         if let Some(title) = self.window_title(window_id)
-            && let Some(g) = self.globals_mut()
-            && let Some(client) = g.clients.get_mut(&window_id)
+            && let Some(client) = self.wm.g.clients.get_mut(&window_id)
         {
             client.name = title;
         }
 
         if window.toplevel().is_some() {
             let (w, h) = self
-                .globals()
-                .and_then(|g| g.clients.get(&window_id).map(|c| (c.geo.w, c.geo.h)))
+                .wm
+                .g
+                .clients
+                .get(&window_id)
+                .map(|c| (c.geo.w, c.geo.h))
                 .unwrap_or((Self::MIN_WL_DIM, Self::MIN_WL_DIM));
             let target = (w.max(Self::MIN_WL_DIM), h.max(Self::MIN_WL_DIM));
             let size =
@@ -40,17 +42,15 @@ impl WaylandState {
             self.send_toplevel_configure(&window, Some(size));
             self.last_configured_size.insert(window_id, target);
         }
-        if let Some(g) = self.globals_mut() {
-            // Set mon.sel for the newly created window so the WM layer knows
-            // to focus it when it runs the next arrange/focus pass.
-            if let Some(monitor_id) = g.clients.monitor_id(window_id)
-                && let Some(mon) = g.monitor_mut(monitor_id)
-            {
-                mon.sel = Some(window_id);
-            }
-            g.dirty.layout = true;
-            g.dirty.space = true;
+        // Set mon.sel for the newly created window so the WM layer knows
+        // to focus it when it runs the next arrange/focus pass.
+        if let Some(monitor_id) = self.wm.g.clients.monitor_id(window_id)
+            && let Some(mon) = self.wm.g.monitor_mut(monitor_id)
+        {
+            mon.sel = Some(window_id);
         }
+        self.wm.g.dirty.layout = true;
+        self.wm.g.dirty.space = true;
         // Apply seat focus immediately so the new window can receive input.
         self.set_focus(window_id);
         self.create_foreign_toplevel(window_id);
@@ -75,8 +75,10 @@ impl WaylandState {
             let is_mapped = self.space.elements().any(|w| w == &element);
             if !is_mapped {
                 let loc: Point<i32, Logical> = self
-                    .globals()
-                    .and_then(|g| g.clients.get(&window))
+                    .wm
+                    .g
+                    .clients
+                    .get(&window)
                     .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
                     .unwrap_or(Point::from((0, 0)));
                 self.window_animations.remove(&window);
@@ -104,10 +106,8 @@ impl WaylandState {
         self.window_animations.remove(&window);
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
-        if let Some(g) = self.globals_mut() {
-            g.dirty.layout = true;
-            g.dirty.space = true;
-        }
+        self.wm.g.dirty.layout = true;
+        self.wm.g.dirty.space = true;
     }
 
     /// Remove all tracking for a window.
@@ -123,10 +123,8 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
-        if let Some(g) = self.globals_mut() {
-            g.dirty.layout = true;
-            g.dirty.space = true;
-        }
+        self.wm.g.dirty.layout = true;
+        self.wm.g.dirty.space = true;
     }
 
     /// Close a window.

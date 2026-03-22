@@ -35,7 +35,7 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
-use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
+use crate::backend::wayland::compositor::{WaylandClientState, WaylandRuntime, WaylandState};
 use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
@@ -273,7 +273,7 @@ pub fn ensure_dbus_session() {
 /// Returns the socket name (e.g. `"wayland-1"`) so callers can log it or pass
 /// it to child processes.
 pub fn setup_wayland_socket(
-    loop_handle: &LoopHandle<'static, WaylandState>,
+    loop_handle: &LoopHandle<'static, WaylandRuntime>,
     state: &WaylandState,
 ) -> String {
     let listening_socket = ListeningSocketSource::new_auto().expect("wayland socket");
@@ -285,8 +285,9 @@ pub fn setup_wayland_socket(
     apply_wayland_session_env(&socket_name);
 
     loop_handle
-        .insert_source(listening_socket, |client, _, data| {
+        .insert_source(listening_socket, |client, _, data: &mut WaylandRuntime| {
             let _ = data
+                .state
                 .display_handle
                 .insert_client(client, Arc::new(WaylandClientState::default()));
         })
@@ -309,7 +310,7 @@ pub fn setup_wayland_socket(
 ///
 /// Errors are logged and silently swallowed: a missing XWayland is non-fatal
 /// (pure Wayland clients still work).
-pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, WaylandState>) {
+pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, WaylandRuntime>) {
     match XWayland::spawn(
         &state.display_handle,
         None,
@@ -322,16 +323,16 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         Ok((xwayland, client)) => {
             unsafe { std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
             let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
+            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data: &mut WaylandRuntime| match event
             {
                 XWaylandEvent::Ready {
                     x11_socket,
                     display_number,
                 } => {
-                    data.xdisplay = Some(display_number);
+                    data.state.xdisplay = Some(display_number);
                     unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
                     match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
-                        Ok(wm) => data.xwm = Some(wm),
+                        Ok(wm) => data.state.xwm = Some(wm),
                         Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
                     }
                 }

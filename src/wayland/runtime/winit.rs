@@ -13,7 +13,7 @@ use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
@@ -37,23 +37,23 @@ pub fn run() -> ! {
         init_wayland_globals(&mut wm.g, wayland);
     }
 
-    let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("wayland event loop");
+    let mut event_loop: EventLoop<WaylandRuntime> =
+        EventLoop::try_new().expect("wayland event loop");
     let loop_handle = event_loop.handle();
 
-    let display: Display<WaylandState> = Display::new().expect("wayland display");
+    let display: Display<WaylandRuntime> = Display::new().expect("wayland display");
     let mut display_handle = display.handle();
-    let mut state = WaylandState::new(display, &loop_handle);
-    state.attach_wm(&mut wm);
-    if let WmBackend::Wayland(data) = &mut wm.backend {
+
+    let mut state = WaylandState::new(display, &loop_handle, *wm);
+    if let WmBackend::Wayland(data) = unsafe { &mut *(&mut state.wm.backend as *mut _) } {
         data.backend.attach_state(&mut state);
     }
 
-    crate::runtime::init_keyboard_layout(&mut wm);
+    crate::runtime::init_keyboard_layout(&mut state.wm);
 
     let (backend_init, mut winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
-    state.attach_renderer(backend.renderer());
     state.init_dmabuf_global(
         backend.renderer().dmabuf_formats().into_iter().collect(),
         Some(backend.renderer().egl_context().display()),
@@ -63,9 +63,9 @@ pub fn run() -> ! {
     let output_size = backend.window_size();
     let (initial_w, initial_h) =
         crate::wayland::common::sanitize_wayland_size(output_size.w, output_size.h);
-    wm.g.cfg.screen_width = initial_w;
-    wm.g.cfg.screen_height = initial_h;
-    update_geom(&mut wm.ctx());
+    state.wm.g.cfg.screen_width = initial_w;
+    state.wm.g.cfg.screen_height = initial_h;
+    update_geom(&mut state.wm.ctx());
 
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker =
@@ -78,7 +78,7 @@ pub fn run() -> ! {
     spawn_xwayland(&state, &loop_handle);
 
     // Initialize Wayland systray runtime - only applicable for Wayland backend
-    if let WmBackend::Wayland(data) = &mut wm.backend {
+    if let WmBackend::Wayland(data) = &mut state.wm.backend {
         data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
     }
 
@@ -88,48 +88,59 @@ pub fn run() -> ! {
 
     let start_time = std::time::Instant::now();
 
-    crate::runtime::spawn_status_bar(&wm);
+    crate::runtime::spawn_status_bar(&state.wm);
 
+    // The renderer lives inside `backend` and cannot be extracted.
+    // Use `from_state_mut` to view `&mut WaylandState` as `&mut WaylandRuntime`
+    // (safe because only `state` fields are accessed in callbacks, never `renderer`).
     let loop_signal: LoopSignal = event_loop.get_signal();
+    let runtime = WaylandRuntime::from_state_mut(&mut state);
     event_loop
-        .run(Duration::from_millis(16), &mut state, move |state| {
+        .run(Duration::from_millis(16), runtime, move |state| {
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
-                    crate::wayland::input::handle_resize(&mut wm, &output, size.w, size.h);
+                    crate::wayland::input::handle_resize(
+                        &mut state.state.wm,
+                        &output,
+                        size.w,
+                        size.h,
+                    );
                 }
                 WinitEvent::Input(event) => match event {
                     InputEvent::Keyboard { event } => {
-                        handle_keyboard(&mut wm, state, &keyboard_handle, event);
+                        handle_keyboard(&mut state.state, &keyboard_handle, event);
                     }
                     InputEvent::PointerMotionAbsolute { event } => {
                         let size = backend.window_size();
                         let motion_event = motion_event_from_winit(event, size);
                         handle_pointer_motion(
-                            &mut wm,
-                            state,
+                            unsafe { &mut *(&mut state.state.wm as *mut Wm) },
+                            &mut state.state,
                             &pointer_handle,
                             &keyboard_handle,
                             motion_event,
                         );
                     }
                     InputEvent::PointerButton { event } => {
+                        let pointer_location = state.state.pointer_location;
                         handle_pointer_button(
-                            &mut wm,
-                            state,
+                            unsafe { &mut *(&mut state.state.wm as *mut Wm) },
+                            unsafe { &mut *(&mut state.state as *mut WaylandState) },
                             &pointer_handle,
                             &keyboard_handle,
                             event,
-                            state.pointer_location,
+                            pointer_location,
                         );
                     }
                     InputEvent::PointerAxis { event } => {
+                        let pointer_location = state.state.pointer_location;
                         handle_pointer_axis(
-                            &mut wm,
-                            state,
+                            unsafe { &mut *(&mut state.state.wm as *mut Wm) },
+                            unsafe { &mut *(&mut state.state as *mut WaylandState) },
                             &pointer_handle,
                             &keyboard_handle,
                             event,
-                            state.pointer_location,
+                            pointer_location,
                         );
                     }
                     _ => {}
@@ -140,29 +151,41 @@ pub fn run() -> ! {
                 _ => {}
             });
 
-            super::common::arrange_layout_if_dirty(&mut wm, state);
-            super::common::process_ipc_commands(&mut ipc_server, &mut wm);
-            crate::runtime::apply_monitor_config_if_dirty(&mut wm);
+            {
+                let wm = unsafe { &mut *(&mut state.state.wm as *mut Wm) };
+                let s = unsafe { &*(&state.state as *const WaylandState) };
+                super::common::arrange_layout_if_dirty(wm, s);
+            }
+            super::common::process_ipc_commands(&mut ipc_server, &mut state.state.wm);
+            crate::runtime::apply_monitor_config_if_dirty(&mut state.state.wm);
 
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
-            wm.g.dirty.input_config = false;
+            state.state.wm.g.dirty.input_config = false;
 
-            super::common::sync_space_if_dirty(&mut wm, state);
+            {
+                let wm = unsafe { &mut *(&mut state.state.wm as *mut Wm) };
+                let s = unsafe { &mut *(&mut state.state as *mut WaylandState) };
+                super::common::sync_space_if_dirty(wm, s);
+            }
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
-            apply_pending_warp(state, &pointer_handle);
+            apply_pending_warp(&mut state.state, &pointer_handle);
 
-            render_frame(
-                &mut wm,
-                state,
-                &mut backend,
-                &output,
-                &mut damage_tracker,
-                start_time,
-            );
+            {
+                let wm = unsafe { &mut *(&mut state.state.wm as *mut Wm) };
+                let s = unsafe { &mut *(&mut state.state as *mut WaylandState) };
+                render_frame(
+                    wm,
+                    s,
+                    &mut backend,
+                    &output,
+                    &mut damage_tracker,
+                    start_time,
+                );
+            }
 
             if display_handle.flush_clients().is_err() {
                 loop_signal.stop();

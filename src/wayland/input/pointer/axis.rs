@@ -5,7 +5,7 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
 use smithay::utils::Point;
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::config::config_toml::ToggleSetting;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
@@ -50,8 +50,8 @@ fn resolve_natural_scroll(
 pub fn handle_pointer_axis<B: InputBackend>(
     wm: &mut Wm,
     state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
+    pointer_handle: &PointerHandle<WaylandRuntime>,
+    keyboard_handle: &KeyboardHandle<WaylandRuntime>,
     event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
@@ -97,6 +97,6 @@ pub fn handle_pointer_axis<B: InputBackend>(
         }
     }
 
-    pointer_handle.axis(state, frame);
-    pointer_handle.frame(state);
+    pointer_handle.axis(WaylandRuntime::from_state_mut(state), frame);
+    pointer_handle.frame(WaylandRuntime::from_state_mut(state));
 }

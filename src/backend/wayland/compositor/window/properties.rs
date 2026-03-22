@@ -2,8 +2,8 @@ use smithay::desktop::Window;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
-use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -59,7 +59,7 @@ impl WaylandState {
         let app_id = self.window_app_id(window).unwrap_or_default();
         let handle = self
             .foreign_toplevel_list_state
-            .new_toplevel::<Self>(title, app_id);
+            .new_toplevel::<WaylandRuntime>(title, app_id);
         self.foreign_toplevel_handles.insert(window, handle);
     }
 
@@ -95,18 +95,13 @@ impl WaylandState {
 
     /// Ensure a client exists for the given window.
     pub(crate) fn ensure_client_for_window(&mut self, window: WindowId) {
-        if self
-            .globals()
-            .is_some_and(|g| g.clients.contains_key(&window))
-        {
+        if self.wm.g.clients.contains_key(&window) {
             return;
         }
 
         let props = self.window_properties(window);
 
-        let Some(g) = self.globals_mut() else {
-            return;
-        };
+        let g = &mut self.wm.g;
         let monitor_id = g.selected_monitor_id();
         let (base_w, base_h) = g
             .monitor(monitor_id)
@@ -184,7 +179,11 @@ impl WaylandState {
                 }
             });
 
-            if owns_surface { Some(*win) } else { None }
+            if owns_surface {
+                Some(*win)
+            } else {
+                None
+            }
         })
     }
 

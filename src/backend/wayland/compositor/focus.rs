@@ -4,15 +4,15 @@ use smithay::{
     backend::input::KeyState,
     desktop::{PopupKind, Window},
     input::{
-        Seat,
         keyboard::{KeysymHandle, ModifiersState},
+        Seat,
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{IsAlive, Serial},
     wayland::seat::WaylandFocus,
 };
 
-use super::WaylandState;
+use super::WaylandRuntime;
 
 // ---------------------------------------------------------------------------
 // Focus target types
@@ -122,11 +122,11 @@ impl PointerFocusTarget {
 
 // -- KeyboardTarget implementation --
 
-impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTarget {
+impl smithay::input::keyboard::KeyboardTarget<WaylandRuntime> for KeyboardFocusTarget {
     fn enter(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         keys: Vec<KeysymHandle<'_>>,
         serial: Serial,
     ) {
@@ -157,7 +157,7 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
         }
     }
 
-    fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial) {
+    fn leave(&self, seat: &Seat<WaylandRuntime>, data: &mut WaylandRuntime, serial: Serial) {
         match self {
             KeyboardFocusTarget::Window(w) => {
                 if let Some(surface) = w.wl_surface() {
@@ -180,8 +180,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
 
     fn key(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         key: KeysymHandle<'_>,
         state: KeyState,
         serial: Serial,
@@ -222,8 +222,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
 
     fn modifiers(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         modifiers: ModifiersState,
         serial: Serial,
     ) {
@@ -259,11 +259,11 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
 
 // -- PointerTarget implementation --
 
-impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget {
+impl smithay::input::pointer::PointerTarget<WaylandRuntime> for PointerFocusTarget {
     fn enter(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.with_surface(|surface| {
@@ -273,8 +273,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn motion(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::MotionEvent,
     ) {
         self.with_surface(|surface| {
@@ -284,8 +284,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn relative_motion(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::RelativeMotionEvent,
     ) {
         self.with_surface(|surface| {
@@ -295,8 +295,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn button(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::ButtonEvent,
     ) {
         self.with_surface(|surface| {
@@ -306,8 +306,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn axis(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         frame: smithay::input::pointer::AxisFrame,
     ) {
         self.with_surface(|surface| {
@@ -315,7 +315,7 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         });
     }
 
-    fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState) {
+    fn frame(&self, seat: &Seat<WaylandRuntime>, data: &mut WaylandRuntime) {
         self.with_surface(|surface| {
             smithay::input::pointer::PointerTarget::frame(surface, seat, data)
         });
@@ -323,8 +323,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_swipe_begin(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
         self.with_surface(|surface| {
@@ -334,8 +334,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_swipe_update(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
         self.with_surface(|surface| {
@@ -345,8 +345,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_swipe_end(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
         self.with_surface(|surface| {
@@ -356,8 +356,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_pinch_begin(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
         self.with_surface(|surface| {
@@ -367,8 +367,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_pinch_update(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
         self.with_surface(|surface| {
@@ -378,8 +378,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_pinch_end(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
         self.with_surface(|surface| {
@@ -389,8 +389,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_hold_begin(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
         self.with_surface(|surface| {
@@ -400,8 +400,8 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
     fn gesture_hold_end(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
         self.with_surface(|surface| {
@@ -409,7 +409,13 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
         });
     }
 
-    fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial, time: u32) {
+    fn leave(
+        &self,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
+        serial: Serial,
+        time: u32,
+    ) {
         self.with_surface(|surface| {
             smithay::input::pointer::PointerTarget::leave(surface, seat, data, serial, time)
         });
@@ -418,11 +424,11 @@ impl smithay::input::pointer::PointerTarget<WaylandState> for PointerFocusTarget
 
 // -- TouchTarget implementation --
 
-impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
+impl smithay::input::touch::TouchTarget<WaylandRuntime> for PointerFocusTarget {
     fn down(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::touch::DownEvent,
         seq: Serial,
     ) {
@@ -433,8 +439,8 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
 
     fn up(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::touch::UpEvent,
         seq: Serial,
     ) {
@@ -445,8 +451,8 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
 
     fn motion(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::touch::MotionEvent,
         seq: Serial,
     ) {
@@ -455,13 +461,13 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         });
     }
 
-    fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
+    fn frame(&self, seat: &Seat<WaylandRuntime>, data: &mut WaylandRuntime, seq: Serial) {
         self.with_surface(|surface| {
             smithay::input::touch::TouchTarget::frame(surface, seat, data, seq)
         });
     }
 
-    fn cancel(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
+    fn cancel(&self, seat: &Seat<WaylandRuntime>, data: &mut WaylandRuntime, seq: Serial) {
         self.with_surface(|surface| {
             smithay::input::touch::TouchTarget::cancel(surface, seat, data, seq)
         });
@@ -469,8 +475,8 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
 
     fn shape(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::touch::ShapeEvent,
         seq: Serial,
     ) {
@@ -481,8 +487,8 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
 
     fn orientation(
         &self,
-        seat: &Seat<WaylandState>,
-        data: &mut WaylandState,
+        seat: &Seat<WaylandRuntime>,
+        data: &mut WaylandRuntime,
         event: &smithay::input::touch::OrientationEvent,
         seq: Serial,
     ) {

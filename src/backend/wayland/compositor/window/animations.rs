@@ -16,13 +16,11 @@ pub struct WaylandWindowAnimation {
 
 impl WaylandState {
     pub(crate) fn animations_enabled(&self) -> bool {
-        self.globals().map(|g| g.behavior.animated).unwrap_or(false)
+        self.wm.g.behavior.animated
     }
 
     pub(crate) fn interactive_motion_active(&self) -> bool {
-        self.globals()
-            .map(|g| g.drag.interactive.active && g.drag.interactive.dragging)
-            .unwrap_or(false)
+        self.wm.g.drag.interactive.active && self.wm.g.drag.interactive.dragging
     }
 
     pub(crate) fn set_window_target_location(
@@ -47,11 +45,11 @@ impl WaylandState {
         // to avoid animating from stale locations after map/unmap cycles.
         let current = actual_loc
             .or_else(|| {
-                self.globals().and_then(|g| {
-                    g.clients
-                        .get(&window_id)
-                        .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
-                })
+                self.wm
+                    .g
+                    .clients
+                    .get(&window_id)
+                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
             })
             .unwrap_or(target);
 

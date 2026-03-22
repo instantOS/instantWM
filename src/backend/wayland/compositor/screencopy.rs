@@ -22,8 +22,8 @@
 //! `wf-recorder` interpret this as Y-inverted content when the `Y_INVERT` flag
 //! is set, and flip the image accordingly.  We therefore always set this flag.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
@@ -36,7 +36,7 @@ use smithay::reexports::wayland_server::{
 };
 use smithay::utils::{Physical, Rectangle, Size};
 
-use super::WaylandState;
+use super::{WaylandRuntime, WaylandState};
 
 /// Protocol version we advertise.
 ///
@@ -87,7 +87,7 @@ impl WaylandState {
     /// bind it.
     pub fn init_screencopy_manager(&self) {
         self.display_handle
-            .create_global::<WaylandState, ZwlrScreencopyManagerV1, ()>(SCREENCOPY_VERSION, ());
+            .create_global::<WaylandRuntime, ZwlrScreencopyManagerV1, ()>(SCREENCOPY_VERSION, ());
     }
 }
 
@@ -95,7 +95,7 @@ impl WaylandState {
 // GlobalDispatch — binding the manager
 // ---------------------------------------------------------------------------
 
-impl GlobalDispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
+impl GlobalDispatch<ZwlrScreencopyManagerV1, ()> for WaylandRuntime {
     fn bind(
         _state: &mut Self,
         _handle: &DisplayHandle,
@@ -112,7 +112,7 @@ impl GlobalDispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
 // Dispatch — manager requests (capture_output, capture_output_region)
 // ---------------------------------------------------------------------------
 
-impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
+impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandRuntime {
     fn request(
         _state: &mut Self,
         _client: &Client,
@@ -202,7 +202,7 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
 // ---------------------------------------------------------------------------
 
 fn init_frame(
-    data_init: &mut DataInit<'_, WaylandState>,
+    data_init: &mut DataInit<'_, WaylandRuntime>,
     manager: &ZwlrScreencopyManagerV1,
     frame: New<ZwlrScreencopyFrameV1>,
     output: Output,
@@ -241,7 +241,7 @@ fn init_frame(
 // Dispatch — frame requests (copy, copy_with_damage, destroy)
 // ---------------------------------------------------------------------------
 
-impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
+impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandRuntime {
     fn request(
         state: &mut Self,
         _client: &Client,
@@ -297,7 +297,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             return;
         }
 
-        state.pending_screencopies.push(PendingScreencopy {
+        state.state.pending_screencopies.push(PendingScreencopy {
             output: output.clone(),
             physical_region: *physical_region,
             overlay_cursor: *overlay_cursor,

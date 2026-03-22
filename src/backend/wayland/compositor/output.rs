@@ -6,7 +6,7 @@
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::Transform;
 
-use super::state::WaylandState;
+use super::state::{WaylandRuntime, WaylandState};
 
 fn parse_transform(transform_str: &str) -> Option<Transform> {
     match transform_str.to_lowercase().as_str() {
@@ -50,7 +50,7 @@ impl WaylandState {
         );
         output.set_preferred(mode);
 
-        let _global = output.create_global::<WaylandState>(&self.display_handle);
+        let _global = output.create_global::<WaylandRuntime>(&self.display_handle);
         self.space.map_output(&output, (0, 0));
 
         output

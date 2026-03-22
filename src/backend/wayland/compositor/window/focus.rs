@@ -1,7 +1,7 @@
 use smithay::utils::IsAlive;
 use smithay::utils::SERIAL_COUNTER;
 
-use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
@@ -46,8 +46,9 @@ impl WaylandState {
 
         // Get the previously focused window from WM state (mon.sel)
         let previously_focused = self
-            .globals()
-            .and_then(|g| g.selected_win())
+            .wm
+            .g
+            .selected_win()
             .filter(|&old_id| old_id != window);
 
         // Deactivate the previously focused window
@@ -65,7 +66,7 @@ impl WaylandState {
             }
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, focus, serial);
+                keyboard.set_focus(WaylandRuntime::from_state_mut(self), focus, serial);
             } else {
                 log::warn!(
                     "set_focus: no keyboard seat available for window {:?}",
@@ -78,7 +79,7 @@ impl WaylandState {
     /// This returns the window that the WM thinks should be focused.
     /// For the actual Smithay seat focus, use `seat.get_keyboard().current_focus()`.
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.globals().and_then(|g| g.selected_win())
+        self.wm.g.selected_win()
     }
 
     /// Check whether the Smithay keyboard seat is currently focused on the
@@ -105,7 +106,7 @@ impl WaylandState {
     pub(crate) fn clear_seat_focus(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, None::<KeyboardFocusTarget>, serial);
+            keyboard.set_focus(WaylandRuntime::from_state_mut(self), None::<KeyboardFocusTarget>, serial);
         }
     }
 
@@ -143,7 +144,7 @@ impl WaylandState {
     /// the next visible window and updates `mon.sel` before focusing.
     pub(crate) fn restore_focus_after_overlay(&mut self) {
         // First, try mon.sel as-is.
-        let valid_sel = self.globals().and_then(|g| g.selected_win()).filter(|&w| {
+        let valid_sel = self.wm.g.selected_win().filter(|&w| {
             self.window_index.contains_key(&w)
                 && self.window_index.get(&w).is_some_and(|win| win.alive())
         });
@@ -156,17 +157,17 @@ impl WaylandState {
 
         // mon.sel is None or stale.  Walk the stack to find the next
         // visible window and update mon.sel.
-        let recovered = if let Some(g) = self.globals_mut() {
-            let sel_mon_id = g.selected_monitor_id();
-            let next = g
-                .monitor(sel_mon_id)
-                .and_then(|m| m.first_visible_client(g.clients.map()));
-            if let Some(mon) = g.monitor_mut(sel_mon_id) {
-                mon.sel = next;
-            }
+        let sel_mon_id = self.wm.g.selected_monitor_id();
+        let next = self
+            .wm
+            .g
+            .monitor(sel_mon_id)
+            .and_then(|m| m.first_visible_client(self.wm.g.clients.map()));
+        let recovered = if let Some(mon) = self.wm.g.monitor_mut(sel_mon_id) {
+            mon.sel = next;
             next
         } else {
-            None
+            next
         };
 
         if let Some(win) = recovered {
