@@ -159,6 +159,30 @@ impl WaylandState {
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
+    /// Get the window for a surface, including unmanaged windows in the space.
+    /// This is needed for X11 override-redirect windows (like dmenu) that are
+    /// mapped to the space but not added to window_index.
+    pub(crate) fn window_for_surface(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<smithay::desktop::Window> {
+        self.space
+            .elements()
+            .find(|w| {
+                if w.wl_surface().as_deref() == Some(surface) {
+                    return true;
+                }
+                let mut found = false;
+                w.with_surfaces(|surf, _| {
+                    if surf == surface {
+                        found = true;
+                    }
+                });
+                found
+            })
+            .cloned()
+    }
+
     /// Get the window ID for a surface.
     pub(crate) fn window_id_for_surface(
         &self,
