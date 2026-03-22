@@ -82,7 +82,19 @@ impl XdgShellHandler for WaylandState {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         // Defer window creation until the surface commits its first buffer.
+        // Send an initial configure with the selected monitor's work area size
+        // to ensure the client knows the correct size from the start.
+        // This prevents issues where clients pick their own default size before
+        // the WM properly communicates the desired dimensions.
         if !surface.is_initial_configure_sent() {
+            // Get the selected monitor's work area for a reasonable default size
+            let mon = self.wm.g.selected_monitor();
+            let w = mon.work_rect.w.max(Self::MIN_WL_DIM);
+            let h = mon.work_rect.h.max(Self::MIN_WL_DIM);
+            let size = smithay::utils::Size::new(w, h);
+            surface.with_pending_state(|state| {
+                state.size = Some(size);
+            });
             let _ = surface.send_configure();
         }
         self.pending_toplevels.push(surface);
