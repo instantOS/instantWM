@@ -218,13 +218,12 @@ impl WaylandState {
         let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<WaylandState>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<WaylandState>(&dh);
         let dmabuf_state = DmabufState::new();
-        let foreign_toplevel_list_state = ForeignToplevelListState::new::<WaylandState>(&dh);
-        let pointer_gestures_state = PointerGesturesState::new::<WaylandState>(&dh);
-        let relative_pointer_manager_state = RelativePointerManagerState::new::<WaylandState>(&dh);
-        let viewporter_state = ViewporterState::new::<WaylandState>(&dh);
-        let idle_inhibit_manager_state = IdleInhibitManagerState::new::<WaylandState>(&dh);
-        let session_lock_manager_state =
-            SessionLockManagerState::new::<WaylandState, _>(&dh, |_| true);
+        let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
+        let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
+        let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
+        let viewporter_state = ViewporterState::new::<Self>(&dh);
+        let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
+        let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
 
         // -- Seat (input devices) --
         let cursor_config = wm.g.cfg.cursor.clone();

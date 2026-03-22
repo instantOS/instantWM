@@ -24,7 +24,7 @@ fn main() {
             if *list {
                 let actions = instantwm::config::keybind_config::get_actions_for_ipc();
                 let response = instantwm::ipc_types::Response::ActionList(actions);
-                format_response(&response, cli.json);
+                format_response(&response, cli.json, None);
                 return;
             }
             let name = match name {
@@ -71,12 +71,16 @@ fn main() {
     let response = match client.send(command, cli.ignore_version_mismatches) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("instantwmctl: {}", e);
+            if let Some(version_msg) = IpcClient::check_version(&socket) {
+                eprintln!("instantwmctl: {}", version_msg);
+            } else {
+                eprintln!("instantwmctl: {}", e);
+            }
             std::process::exit(1);
         }
     };
 
-    format_response(&response, cli.json);
+    format_response(&response, cli.json, Some(&socket));
 }
 
 fn handle_status_from_stdin(ignore_version_mismatches: bool) {
