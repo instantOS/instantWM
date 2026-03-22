@@ -132,11 +132,19 @@ impl DmabufHandler for WaylandState {
             dmabuf.set_node(node);
         }
 
-        let imported = self.renderer.import_dmabuf(&dmabuf, None).ok().is_some();
-        if imported {
-            let _ = notifier.successful::<Self>();
+        if let Some(renderer) = self.renderer.as_mut() {
+            // DRM path: renderer is available, import immediately.
+            let imported = renderer.import_dmabuf(&dmabuf, None).ok().is_some();
+            if imported {
+                let _ = notifier.successful::<Self>();
+            } else {
+                notifier.failed();
+            }
         } else {
-            notifier.failed();
+            // Winit path: renderer is owned by the winit backend, not stored
+            // in state. Queue the import — it will be processed during
+            // render_frame when the renderer is available via backend.bind().
+            self.pending_dmabuf_imports.push((dmabuf, notifier));
         }
     }
 }

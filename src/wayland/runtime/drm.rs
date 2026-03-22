@@ -1,9 +1,7 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::process::exit;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -64,29 +62,23 @@ pub fn run() -> ! {
         _drm_fd,
         gbm_device,
         egl_display,
-        mut renderer,
+        renderer,
     ) = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
-    let mut state = WaylandState::new(display, &loop_handle, *wm, Rc::new(RefCell::new(renderer)));
-    if let WmBackend::Wayland(data) = unsafe { &mut *(&mut state.wm.backend as *mut _) } {
-        data.backend.attach_state(&mut state);
-    }
+    let dmabuf_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+    let mut state = WaylandState::new(display, &loop_handle, *wm, Some(renderer));
 
     crate::runtime::init_keyboard_layout(&mut state.wm);
 
-    state.init_dmabuf_global(
-        state.renderer.borrow().dmabuf_formats().into_iter().collect(),
-        Some(&egl_display),
-    );
+    state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
     state.init_screencopy_manager();
 
     let cursor_manager = init_cursor_manager(&state.cursor_config);
 
-    let mut output_surfaces = {
-        let mut renderer_ref = state.renderer.borrow_mut();
-        build_output_surfaces(&mut drm_device, &mut *renderer_ref, &state, &gbm_device)
-    };
+    let mut output_surfaces = state.with_renderer(|state, renderer| {
+        build_output_surfaces(&mut drm_device, renderer, state, &gbm_device)
+    });
     for entry in &output_surfaces {
         state.space.map_output(&entry.output, (entry.x_offset, 0));
     }
@@ -335,16 +327,34 @@ fn run_event_loop(
 
             process_cursor_warp(state, &pointer_handle, shared);
 
-            let mut renderer_ref = state.renderer.borrow_mut();
-            render_outputs(
-                state,
-                &mut *renderer_ref,
-                output_surfaces,
-                cursor_manager,
-                shared,
-                render_failures,
-                start_time,
-            );
+            // Phase 1: drain the command queue
+            let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
+                data.backend.drain_ops()
+            } else {
+                Vec::new()
+            };
+
+            state.with_renderer(|state, renderer| {
+                render_outputs(
+                    state,
+                    renderer,
+                    output_surfaces,
+                    cursor_manager,
+                    shared,
+                    render_failures,
+                    start_time,
+                );
+            });
+
+            // Phase 2: execute queued commands
+            for op in ops {
+                state.execute_command(op);
+            }
+
+            // Phase 3: sync caches
+            if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
+                data.backend.sync_cache(state);
+            }
 
             if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();

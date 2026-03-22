@@ -1,3 +1,4 @@
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -43,6 +44,15 @@ pub fn render_frame(
 
     // Backend-specific: bind to get framebuffer
     let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
+
+    // Process any deferred dmabuf imports from the handler
+    for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
+        if renderer.import_dmabuf(&dmabuf, None).is_ok() {
+            let _ = notifier.successful::<WaylandState>();
+        } else {
+            notifier.failed();
+        }
+    }
 
     let mut render_elements: Vec<WaylandExtras>;
 

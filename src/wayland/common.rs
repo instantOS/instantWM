@@ -287,7 +287,6 @@ pub fn setup_wayland_socket(
     loop_handle
         .insert_source(listening_socket, |client, _, data: &mut WaylandState| {
             let _ = data
-                .state
                 .display_handle
                 .insert_client(client, Arc::new(WaylandClientState::default()));
         })

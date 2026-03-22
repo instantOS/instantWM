@@ -59,7 +59,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         }
 
         // Resolve the window directly under the pointer via Smithay's surface hit-test.
-        let clicked_win = find_hovered_window(&state.wm, state, pointer_location);
+        let clicked_win = find_hovered_window(state, pointer_location);
 
         // Update focus before dispatching client button bindings.
         if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location)
@@ -189,19 +189,18 @@ pub fn handle_pointer_button<B: InputBackend>(
 
 /// Find the window under the pointer.
 pub fn find_hovered_window(
-    wm: &crate::wm::Wm,
     state: &WaylandState,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) -> Option<crate::types::WindowId> {
     if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
-        return find_hovered_window_for_surface(wm, &surface);
+        return find_hovered_window_for_surface(state, &surface);
     }
     state.logical_window_under_pointer(pointer_location)
 }
 
 /// Find hovered window for a surface.
 fn find_hovered_window_for_surface(
-    wm: &crate::wm::Wm,
+    state: &WaylandState,
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
 ) -> Option<crate::types::WindowId> {
     use smithay::wayland::compositor::with_states;
@@ -215,14 +214,7 @@ fn find_hovered_window_for_surface(
         return Some(win);
     }
 
-    let backend = match &wm.backend {
-        crate::backend::Backend::Wayland(data) => &data.backend,
-        _ => return None,
-    };
-
-    backend
-        .with_state(|state| state.window_id_for_surface(surface))
-        .flatten()
+    state.window_id_for_surface(surface)
 }
 
 /// Dispatch client button event.

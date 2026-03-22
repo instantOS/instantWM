@@ -1,7 +1,5 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::rc::Rc;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -13,12 +11,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupManager, Space, Window},
     input::{
+        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
-        Seat, SeatState,
     },
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -34,7 +32,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, XdgShellState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -134,8 +132,14 @@ pub struct WaylandState {
     // -- WM state (owned) --
     pub wm: Wm,
 
-    // -- Renderer (shared via Rc<RefCell> for backends that need shared access) --
-    pub renderer: Rc<RefCell<GlesRenderer>>,
+    // -- Renderer --
+    pub renderer: Option<GlesRenderer>,
+
+    // -- Pending dmabuf imports (used by winit path where renderer is not stored) --
+    pub pending_dmabuf_imports: Vec<(
+        smithay::backend::allocator::dmabuf::Dmabuf,
+        smithay::wayland::dmabuf::ImportNotifier,
+    )>,
 
     // -- Internal state --
     pub(super) next_window_id: u32,
@@ -175,7 +179,7 @@ impl WaylandState {
         display: Display<WaylandState>,
         handle: &LoopHandle<'static, WaylandState>,
         wm: Wm,
-        renderer: Rc<RefCell<GlesRenderer>>,
+        renderer: Option<GlesRenderer>,
     ) -> Self {
         let dh = display.handle();
 
@@ -281,6 +285,24 @@ impl WaylandState {
             led_state_tx: None,
             dnd_icon: None,
             pending_libinput_events: Vec::new(),
+            pending_dmabuf_imports: Vec::new(),
+        }
+    }
+
+    /// Temporarily extracts the renderer, calls `f` with both `&mut self` and
+    /// `&mut GlesRenderer`, then puts the renderer back. Restores the renderer
+    /// even if `f` panics, so we never leave `self.renderer` as `None`.
+    pub fn with_renderer<R>(
+        &mut self,
+        f: impl FnOnce(&mut WaylandState, &mut GlesRenderer) -> R,
+    ) -> R {
+        let mut renderer = self.renderer.take().expect("renderer missing (not DRM?)");
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self, &mut renderer)));
+        self.renderer = Some(renderer);
+        match result {
+            Ok(v) => v,
+            Err(p) => std::panic::resume_unwind(p),
         }
     }
 
@@ -401,5 +423,52 @@ impl WaylandState {
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
+    }
+
+    /// Convert a `KeyboardFocusTarget` to a `WindowId`.
+    ///
+    /// Returns the window ID if the focus target corresponds to a tracked window,
+    /// or `None` otherwise (e.g., focus on a raw surface or popup not in index).
+    pub(crate) fn keyboard_focus_to_window_id(
+        &self,
+        focus: &super::focus::KeyboardFocusTarget,
+    ) -> Option<crate::types::WindowId> {
+        use super::focus::KeyboardFocusTarget;
+        match focus {
+            KeyboardFocusTarget::Window(w) => w.user_data().get::<WindowIdMarker>().map(|m| m.id),
+            KeyboardFocusTarget::WlSurface(s) => self.window_id_for_surface(s),
+            KeyboardFocusTarget::Popup(p) => self.window_id_for_surface(&p.wl_surface()),
+        }
+    }
+
+    /// Execute a command from the WM command queue.
+    pub fn execute_command(&mut self, cmd: crate::backend::wayland::WmCommand) {
+        use crate::backend::wayland::WmCommand;
+        match cmd {
+            WmCommand::ResizeWindow(id, rect) => self.resize_window(id, rect),
+            WmCommand::RaiseWindow(id) => self.raise_window(id),
+            WmCommand::Restack(ids) => self.restack(&ids),
+            WmCommand::SetFocus(id) => self.set_focus(id),
+            WmCommand::MapWindow(id) => self.map_window(id),
+            WmCommand::UnmapWindow(id) => self.unmap_window(id),
+            WmCommand::Flush => self.flush(),
+            WmCommand::WarpPointer(x, y) => self.request_warp(x, y),
+            WmCommand::CloseWindow(id) => {
+                self.close_window(id);
+            }
+            WmCommand::ClearKeyboardFocus => self.clear_seat_focus(),
+            WmCommand::SetCursorIconOverride(icon) => self.cursor_icon_override = icon,
+            WmCommand::SetKeyboardLayout {
+                layout,
+                variant,
+                options,
+                model,
+            } => {
+                self.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref());
+            }
+            WmCommand::SetMonitorConfig { name, config } => {
+                self.set_output_config(&name, &config);
+            }
+        }
     }
 }

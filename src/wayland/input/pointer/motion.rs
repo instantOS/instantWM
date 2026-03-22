@@ -136,8 +136,7 @@ pub fn dispatch_pointer_motion(
         compute_bar_hit(&state.wm, root_x, root_y, active_drag_window);
 
     // Phase 2: Resolve pointer focus and hovered window
-    let (pointer_focus, hovered_win) =
-        resolve_pointer_focus(&state.wm, state, in_bar_band, in_bar_guard_band);
+    let (pointer_focus, hovered_win) = resolve_pointer_focus(state, in_bar_band, in_bar_guard_band);
 
     // Phase 3: Handle resize drag motion (early return path)
     let resize_drag_handled = {
@@ -253,7 +252,6 @@ fn compute_bar_hit(
 
 /// Resolve pointer focus and hovered window based on bar hit state.
 fn resolve_pointer_focus(
-    wm: &Wm,
     state: &WaylandState,
     in_bar_band: bool,
     in_bar_guard_band: bool,
@@ -276,7 +274,7 @@ fn resolve_pointer_focus(
     let hovered_win = if in_bar_band || in_bar_guard_band {
         None
     } else if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
-        find_hovered_window_for_surface(wm, &surface)
+        find_hovered_window_for_surface(state, &surface)
     } else {
         state.logical_window_under_pointer(pointer_location)
     };
@@ -287,7 +285,7 @@ fn resolve_pointer_focus(
         && !in_bar_guard_band
         && let Some(logical) = hovered_win
         && let Some((surf, _)) = &pointer_focus
-        && let Some(actual_win) = find_hovered_window_for_surface(wm, surf)
+        && let Some(actual_win) = find_hovered_window_for_surface(state, surf)
         && actual_win != logical
     {
         pointer_focus = None;
@@ -445,7 +443,7 @@ fn handle_wm_drag_motion(
 
 /// Find the hovered window for a given surface.
 fn find_hovered_window_for_surface(
-    wm: &Wm,
+    state: &WaylandState,
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
 ) -> Option<crate::types::WindowId> {
     use smithay::wayland::compositor::with_states;
@@ -459,12 +457,5 @@ fn find_hovered_window_for_surface(
         return Some(win);
     }
 
-    let backend = match &wm.backend {
-        crate::backend::Backend::Wayland(data) => &data.backend,
-        _ => return None,
-    };
-
-    backend
-        .with_state(|state| state.window_id_for_surface(surface))
-        .flatten()
+    state.window_id_for_surface(surface)
 }

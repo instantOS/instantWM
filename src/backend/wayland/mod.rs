@@ -53,96 +53,214 @@
 pub mod compositor;
 
 use crate::backend::BackendOps;
+use crate::backend::BackendOutputInfo;
 use crate::types::{Rect, WindowId};
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use crate::backend::wayland::compositor::WaylandState;
+
+/// Commands queued by WM logic, executed on WaylandState after WM returns.
+#[derive(Debug, Clone)]
+pub enum WmCommand {
+    ResizeWindow(WindowId, Rect),
+    RaiseWindow(WindowId),
+    Restack(Vec<WindowId>),
+    SetFocus(WindowId),
+    MapWindow(WindowId),
+    UnmapWindow(WindowId),
+    Flush,
+    WarpPointer(f64, f64),
+    CloseWindow(WindowId),
+    ClearKeyboardFocus,
+    SetCursorIconOverride(Option<smithay::input::pointer::CursorIcon>),
+    SetKeyboardLayout {
+        layout: String,
+        variant: String,
+        options: Option<String>,
+        model: Option<String>,
+    },
+    SetMonitorConfig {
+        name: String,
+        config: crate::config::config_toml::MonitorConfig,
+    },
+}
 
 /// Wayland backend placeholder/state wrapper.
 ///
 /// This struct acts as a bridge between the generic `Wm` logic and the
-/// Smithay-specific `WaylandState`. Since `WaylandState` is owned by the
-/// event loop (calloop), and the `Wm` struct (which owns this backend)
-/// is passed into the event loop's callback, we use an `Option<NonNull>`
-/// pointer to establish a safe-at-runtime circular reference.
-///
-/// This design avoids the overhead of `Rc<RefCell<...>>` cycles while
-/// maintaining the ability for the WM to perform backend-specific actions.
-use std::cell::RefCell;
-use std::ptr::NonNull;
-
-use crate::backend::wayland::compositor::WaylandState;
-
+/// Smithay-specific `WaylandState`. Commands from WM logic are queued and
+/// flushed after the WM returns, avoiding any need for raw pointers or
+/// unsafe code in the backend bridge.
 pub struct WaylandBackend {
-    state: RefCell<Option<NonNull<WaylandState>>>,
+    /// Pending operations from WM logic
+    pending_ops: RefCell<Vec<WmCommand>>,
+    /// Cached pointer location, updated by sync_cache each event loop tick
+    cached_pointer_location: RefCell<Option<(i32, i32)>>,
+    /// Cached xdisplay, updated by sync_cache
+    cached_xdisplay: RefCell<Option<u32>>,
+    /// Cached output info, updated by sync_cache
+    cached_outputs: RefCell<Vec<BackendOutputInfo>>,
+    /// Cached input device list, updated by sync_cache
+    cached_input_devices: RefCell<Vec<String>>,
+    /// Cached display names, updated by sync_cache
+    cached_displays: RefCell<Vec<String>>,
+    /// Cached display modes per display name, updated by sync_cache
+    cached_display_modes: RefCell<HashMap<String, Vec<String>>>,
+    /// Cached keyboard focus window, updated by sync_cache
+    cached_keyboard_focus: RefCell<Option<WindowId>>,
 }
 
 impl WaylandBackend {
     pub fn new() -> Self {
         Self {
-            state: RefCell::new(None),
+            pending_ops: RefCell::new(Vec::new()),
+            cached_pointer_location: RefCell::new(None),
+            cached_xdisplay: RefCell::new(None),
+            cached_outputs: RefCell::new(Vec::new()),
+            cached_input_devices: RefCell::new(Vec::new()),
+            cached_displays: RefCell::new(Vec::new()),
+            cached_display_modes: RefCell::new(HashMap::new()),
+            cached_keyboard_focus: RefCell::new(None),
         }
     }
 
-    pub fn attach_state(&self, state: &mut WaylandState) {
-        *self.state.borrow_mut() = Some(NonNull::from(state));
+    /// Drain all pending commands. Called from the event loop after WM logic.
+    pub fn drain_ops(&self) -> Vec<WmCommand> {
+        std::mem::take(&mut *self.pending_ops.borrow_mut())
     }
 
-    /// List available display modes for a display (format: "WIDTHxHEIGHT@REFRESH").
-    pub fn list_display_modes(&self, display: &str) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| state.list_display_modes(display))
-            .unwrap_or_default()
+    /// Update cached values from WaylandState. Called after WM logic completes.
+    pub fn sync_cache(&self, state: &WaylandState) {
+        let loc = state.pointer.current_location();
+        *self.cached_pointer_location.borrow_mut() =
+            Some((loc.x.round() as i32, loc.y.round() as i32));
+        *self.cached_xdisplay.borrow_mut() = state.xdisplay;
+        *self.cached_keyboard_focus.borrow_mut() = state
+            .keyboard
+            .current_focus()
+            .and_then(|focus| state.keyboard_focus_to_window_id(&focus));
+
+        // Update cached outputs
+        let outputs: Vec<_> = state
+            .space
+            .outputs()
+            .map(|o: &smithay::output::Output| BackendOutputInfo {
+                name: o.name(),
+                rect: {
+                    let geom = state.space.output_geometry(o).unwrap_or_default();
+                    Rect {
+                        x: geom.loc.x,
+                        y: geom.loc.y,
+                        w: geom.size.w,
+                        h: geom.size.h,
+                    }
+                },
+            })
+            .collect();
+        *self.cached_outputs.borrow_mut() = outputs;
+
+        // Update cached input devices
+        let devices: Vec<_> = state
+            .tracked_devices
+            .iter()
+            .map(|d: &smithay::reexports::input::Device| {
+                use smithay::reexports::input::DeviceCapability;
+                let mut caps = Vec::new();
+                if d.has_capability(DeviceCapability::Keyboard) {
+                    caps.push("keyboard");
+                }
+                if d.has_capability(DeviceCapability::Pointer) {
+                    caps.push("pointer");
+                }
+                if d.has_capability(DeviceCapability::Touch) {
+                    caps.push("touch");
+                }
+                if d.has_capability(DeviceCapability::TabletTool) {
+                    caps.push("tablet_tool");
+                }
+                if d.has_capability(DeviceCapability::TabletPad) {
+                    caps.push("tablet_pad");
+                }
+                if d.has_capability(DeviceCapability::Gesture) {
+                    caps.push("gesture");
+                }
+                if d.has_capability(DeviceCapability::Switch) {
+                    caps.push("switch");
+                }
+                format!("{} (capabilities: {})", d.name(), caps.join(", "))
+            })
+            .collect();
+        *self.cached_input_devices.borrow_mut() = devices;
+
+        // Update cached display names and modes
+        let displays = state.list_displays();
+        let mut display_modes = HashMap::new();
+        for display in &displays {
+            display_modes.insert(display.clone(), state.list_display_modes(display));
+        }
+        *self.cached_displays.borrow_mut() = displays;
+        *self.cached_display_modes.borrow_mut() = display_modes;
     }
 
-    /// List all connected display names.
+    // -- Public query methods (use cached values) --
+
+    /// List all connected display names (cached).
     pub fn list_displays(&self) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| state.list_displays())
+        self.cached_displays.borrow().clone()
+    }
+
+    /// List available display modes for a display (cached).
+    pub fn list_display_modes(&self, display: &str) -> Vec<String> {
+        self.cached_display_modes
+            .borrow()
+            .get(display)
+            .cloned()
             .unwrap_or_default()
-    }
-
-    pub fn close_window(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.close_window(window))
-            .unwrap_or(false)
-    }
-
-    pub fn window_title(&self, window: WindowId) -> Option<String> {
-        self.with_state(|state: &mut WaylandState| state.window_title(window))
-            .flatten()
     }
 
     pub fn xdisplay(&self) -> Option<u32> {
-        self.with_state(|state: &mut WaylandState| state.xdisplay)
-            .flatten()
+        *self.cached_xdisplay.borrow()
     }
 
     pub fn pointer_location(&self) -> Option<(i32, i32)> {
-        self.with_state(|state: &mut WaylandState| {
-            let loc = state.pointer.current_location();
-            (loc.x.round() as i32, loc.y.round() as i32)
-        })
+        *self.cached_pointer_location.borrow()
     }
 
-    pub fn warp_pointer(&self, x: f64, y: f64) {
-        let _ = self.with_state(|state: &mut WaylandState| {
-            state.request_warp(x, y);
-        });
+    pub fn window_title(&self, _window: WindowId) -> Option<String> {
+        // Wayland titles are pushed to WM via compositor events, not pulled.
+        None
     }
 
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
-            .unwrap_or(false)
+        self.cached_keyboard_focus
+            .borrow()
+            .is_some_and(|focus| focus == window)
+    }
+
+    pub fn close_window(&self, window: WindowId) -> bool {
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::CloseWindow(window));
+        true // optimistic — actual close happens during flush
     }
 
     pub fn clear_keyboard_focus(&self) {
-        let _ = self.with_state(|state: &mut WaylandState| state.clear_seat_focus());
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::ClearKeyboardFocus);
     }
 
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
-        let _ = self.with_state(|state: &mut WaylandState| {
-            state.cursor_icon_override = icon;
-        });
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::SetCursorIconOverride(icon));
     }
 
-    pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
-        let maybe_ptr = *self.state.borrow();
-        maybe_ptr.map(|mut ptr| unsafe { f(ptr.as_mut()) })
+    pub fn warp_pointer(&self, x: f64, y: f64) {
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::WarpPointer(x, y));
     }
 }
 
@@ -154,54 +272,64 @@ impl Default for WaylandBackend {
 
 impl BackendOps for WaylandBackend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
-        let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::ResizeWindow(window, rect));
     }
 
     fn raise_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.raise_window(window));
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::RaiseWindow(window));
     }
 
     fn restack(&self, windows: &[WindowId]) {
-        let _ = self.with_state(|state: &mut WaylandState| state.restack(windows));
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::Restack(windows.to_vec()));
     }
 
     fn set_focus(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.set_focus(window));
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::SetFocus(window));
     }
 
     fn map_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.map_window(window));
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::MapWindow(window));
     }
 
     fn unmap_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.unmap_window(window));
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::UnmapWindow(window));
     }
 
-    fn window_exists(&self, window: WindowId) -> bool {
-        self.with_state(|state: &mut WaylandState| state.window_exists(window))
-            .unwrap_or(false)
+    fn window_exists(&self, _window: WindowId) -> bool {
+        // Cannot query WaylandState here. The WM tracks window existence
+        // through its client list; destruction events remove windows reactively.
+        true
     }
 
     fn flush(&self) {
-        let _ = self.with_state(WaylandState::flush);
+        self.pending_ops.borrow_mut().push(WmCommand::Flush);
     }
 
     fn pointer_location(&self) -> Option<(i32, i32)> {
-        self.with_state(|state: &mut WaylandState| {
-            let loc = state.pointer.current_location();
-            (loc.x.round() as i32, loc.y.round() as i32)
-        })
+        *self.cached_pointer_location.borrow()
     }
 
     fn warp_pointer(&self, x: f64, y: f64) {
-        let _ = self.with_state(|state: &mut WaylandState| {
-            state.request_warp(x, y);
-        });
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::WarpPointer(x, y));
     }
 
-    fn window_title(&self, window: WindowId) -> Option<String> {
-        self.with_state(|state: &mut WaylandState| state.window_title(window))
-            .flatten()
+    fn window_title(&self, _window: WindowId) -> Option<String> {
+        // Titles are pushed to WM via compositor events, not pulled.
+        None
     }
 
     fn set_keyboard_layout(
@@ -211,83 +339,30 @@ impl BackendOps for WaylandBackend {
         options: Option<&str>,
         model: Option<&str>,
     ) {
-        let layout_str = layout.to_owned();
-        let variant_str = variant.to_owned();
-        let options_str = options.map(|s| s.to_owned());
-        let model_str = model.map(|s| s.to_owned());
-        let _ = self.with_state(move |state: &mut WaylandState| {
-            state.set_keyboard_layout(
-                &layout_str,
-                &variant_str,
-                options_str.as_deref(),
-                model_str.as_deref(),
-            );
-        });
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::SetKeyboardLayout {
+                layout: layout.to_owned(),
+                variant: variant.to_owned(),
+                options: options.map(|s| s.to_owned()),
+                model: model.map(|s| s.to_owned()),
+            });
     }
 
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
-        let name_str = name.to_owned();
-        let config_clone = config.clone();
-        let _ = self.with_state(move |state: &mut WaylandState| {
-            state.set_output_config(&name_str, &config_clone);
-        });
+        self.pending_ops
+            .borrow_mut()
+            .push(WmCommand::SetMonitorConfig {
+                name: name.to_owned(),
+                config: config.clone(),
+            });
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
-        self.with_state(|state: &mut WaylandState| {
-            state
-                .space
-                .outputs()
-                .map(|o| crate::backend::BackendOutputInfo {
-                    name: o.name(),
-                    rect: {
-                        let geom = state.space.output_geometry(o).unwrap_or_default();
-                        crate::types::Rect {
-                            x: geom.loc.x,
-                            y: geom.loc.y,
-                            w: geom.size.w,
-                            h: geom.size.h,
-                        }
-                    },
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+        self.cached_outputs.borrow().clone()
     }
 
     fn get_input_devices(&self) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| {
-            state
-                .tracked_devices
-                .iter()
-                .map(|d| {
-                    use smithay::reexports::input::DeviceCapability;
-                    let mut caps = Vec::new();
-                    if d.has_capability(DeviceCapability::Keyboard) {
-                        caps.push("keyboard");
-                    }
-                    if d.has_capability(DeviceCapability::Pointer) {
-                        caps.push("pointer");
-                    }
-                    if d.has_capability(DeviceCapability::Touch) {
-                        caps.push("touch");
-                    }
-                    if d.has_capability(DeviceCapability::TabletTool) {
-                        caps.push("tablet_tool");
-                    }
-                    if d.has_capability(DeviceCapability::TabletPad) {
-                        caps.push("tablet_pad");
-                    }
-                    if d.has_capability(DeviceCapability::Gesture) {
-                        caps.push("gesture");
-                    }
-                    if d.has_capability(DeviceCapability::Switch) {
-                        caps.push("switch");
-                    }
-                    format!("{} (capabilities: {})", d.name(), caps.join(", "))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+        self.cached_input_devices.borrow().clone()
     }
 }
