@@ -7,6 +7,10 @@ use smithay::{
         buffer::BufferHandler,
         compositor::{CompositorHandler, get_parent, is_sync_subsurface},
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        keyboard_shortcuts_inhibit::{
+            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
+            KeyboardShortcutsInhibitor,
+        },
         output::OutputHandler,
         seat::WaylandFocus,
         selection::data_device::{ClientDndGrabHandler, ServerDndGrabHandler},
@@ -210,8 +214,24 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
             }
         }
         // For unmanaged X11 surfaces (like dmenu), search in the space
-        self.window_for_surface(surface)
-            .map(KeyboardFocusTarget::Window)
+        if let Some(window) = self.window_for_surface(surface) {
+            return Some(KeyboardFocusTarget::Window(window));
+        }
+
+        // Fallback: If XWayland requests a grab for a surface that isn't mapped
+        // as a full window (e.g., grabbing the root window or a dummy surface),
+        // we must still allow the grab by returning the raw WlSurface.
+        Some(KeyboardFocusTarget::WlSurface(surface.clone()))
+    }
+}
+
+impl KeyboardShortcutsInhibitHandler for WaylandState {
+    fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
+        &mut self.keyboard_shortcuts_inhibit_state
+    }
+
+    fn new_inhibitor(&mut self, _inhibitor: KeyboardShortcutsInhibitor) {
+        // We handle the inhibitor implicitly via KeyboardShortcutsInhibitState::keyboard_shortcuts_inhibited
     }
 }
 
