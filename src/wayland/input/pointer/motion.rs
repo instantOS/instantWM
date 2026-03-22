@@ -7,7 +7,6 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandRuntime, WaylandState};
-use crate::contexts::WmCtxWayland;
 use crate::mouse::hover::selected_hover_resize_target_at;
 use crate::mouse::set_cursor_style;
 use crate::types::AltCursor;
@@ -102,32 +101,24 @@ pub fn motion_event_from_winit(
 /// This is the single entry point for all pointer motion. The motion source
 /// is abstracted via the `MotionEvent` type.
 pub fn handle_pointer_motion(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandRuntime>,
     keyboard_handle: &KeyboardHandle<WaylandRuntime>,
     event: MotionEvent,
 ) {
-    let output_width = wm.g.cfg.screen_width;
-    let output_height = wm.g.cfg.screen_height;
+    let output_width = state.wm.g.cfg.screen_width;
+    let output_height = state.wm.g.cfg.screen_height;
 
     // Compute and update pointer location
     state.pointer_location =
         event.compute_location(state.pointer_location, output_width, output_height);
 
     // Dispatch to focus/drag handling logic
-    dispatch_pointer_motion(
-        wm,
-        state,
-        pointer_handle,
-        keyboard_handle,
-        event.time_msec(),
-    );
+    dispatch_pointer_motion(state, pointer_handle, keyboard_handle, event.time_msec());
 }
 
 /// Unified pointer motion: update WM hover focus, propagate to clients, handle drags.
 pub fn dispatch_pointer_motion(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandRuntime>,
     keyboard_handle: &KeyboardHandle<WaylandRuntime>,
@@ -138,33 +129,48 @@ pub fn dispatch_pointer_motion(
     let root_y = pointer_location.y.round() as i32;
 
     // Get active drag window once - used in multiple phases
-    let active_drag_window = wayland_active_drag_window(wm);
+    let active_drag_window = wayland_active_drag_window(&mut state.wm);
 
     // Phase 1: Compute bar/guard band hit detection
-    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root_x, root_y, active_drag_window);
+    let (in_bar_band, in_bar_guard_band) =
+        compute_bar_hit(&state.wm, root_x, root_y, active_drag_window);
 
     // Phase 2: Resolve pointer focus and hovered window
     let (pointer_focus, hovered_win) =
-        resolve_pointer_focus(wm, state, in_bar_band, in_bar_guard_band);
+        resolve_pointer_focus(&state.wm, state, in_bar_band, in_bar_guard_band);
 
     // Phase 3: Handle resize drag motion (early return path)
-    let ctx = wm.ctx();
-    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-        && handle_resize_drag_motion(
-            &mut ctx,
-            state,
-            pointer_handle,
-            pointer_focus.clone(),
-            time_msec,
-        )
-    {
+    let resize_drag_handled = {
+        let ctx = state.wm.ctx();
+        if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+            let pointer_location = state.pointer_location;
+            wayland_hover_resize_drag_motion(
+                &mut ctx,
+                pointer_location.x.round() as i32,
+                pointer_location.y.round() as i32,
+            )
+        } else {
+            false
+        }
+    };
+    if resize_drag_handled {
+        // Send pointer events after ctx borrow is dropped
+        let serial = SERIAL_COUNTER.next_serial();
+        let motion = smithay::input::pointer::MotionEvent {
+            location: state.pointer_location,
+            serial,
+            time: time_msec,
+        };
+        let focus = pointer_focus
+            .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
+        pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
+        pointer_handle.frame(WaylandRuntime::from_state_mut(state));
         return;
     }
 
     // Phase 4: Handle bar interaction (early return path)
-    let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+    let bar_pos = update_wayland_bar_hit_state(&mut state.wm, root_x, root_y, false);
     if handle_bar_motion(
-        wm,
         state,
         pointer_handle,
         pointer_focus.clone(),
@@ -177,7 +183,7 @@ pub fn dispatch_pointer_motion(
 
     // Phase 5: Update hover resize state for floating windows
     let suppress_hover_focus = update_hover_resize_state(
-        wm,
+        &mut state.wm,
         root_x,
         root_y,
         hovered_win,
@@ -185,12 +191,17 @@ pub fn dispatch_pointer_motion(
     );
 
     // Phase 6: Update pointer focus based on drag state
-    update_pointer_focus(wm, active_drag_window, hovered_win, suppress_hover_focus);
+    update_pointer_focus(
+        &mut state.wm,
+        active_drag_window,
+        hovered_win,
+        suppress_hover_focus,
+    );
 
-    let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+    let _ = update_wayland_bar_hit_state(&mut state.wm, root_x, root_y, false);
 
     // Phase 7: Handle tag/title drag motion
-    handle_wm_drag_motion(wm, keyboard_handle, root_x, root_y);
+    handle_wm_drag_motion(&mut state.wm, keyboard_handle, root_x, root_y);
 
     // Phase 8: Dispatch final motion event to Smithay
     let focus =
@@ -289,44 +300,8 @@ fn resolve_pointer_focus(
     (pointer_focus, hovered_win)
 }
 
-/// Handle resize drag motion. Returns true if handled (early return).
-fn handle_resize_drag_motion(
-    ctx: &mut WmCtxWayland<'_>,
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandRuntime>,
-    pointer_focus: Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, smithay::utils::Logical>,
-    )>,
-    time_msec: u32,
-) -> bool {
-    let pointer_location = state.pointer_location;
-    if !wayland_hover_resize_drag_motion(
-        ctx,
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    ) {
-        return false;
-    }
-
-    // During an active resize drag, forward motion to Smithay to keep
-    // the pointer protocol in sync, but skip focus updates.
-    let serial = SERIAL_COUNTER.next_serial();
-    let motion = smithay::input::pointer::MotionEvent {
-        location: pointer_location,
-        serial,
-        time: time_msec,
-    };
-    let focus =
-        pointer_focus.map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-    pointer_handle.motion(WaylandRuntime::from_state_mut(state), focus, &motion);
-    pointer_handle.frame(WaylandRuntime::from_state_mut(state));
-    true
-}
-
 /// Handle bar motion. Returns true if handled (early return).
 fn handle_bar_motion(
-    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandRuntime>,
     pointer_focus: Option<(
@@ -338,9 +313,9 @@ fn handle_bar_motion(
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.pointer_location;
-    let is_drag = wm.g.drag.interactive.active || wm.g.drag.tag.active;
+    let is_drag = state.wm.g.drag.interactive.active || state.wm.g.drag.tag.active;
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
-        let ctx = wm.ctx();
+        let ctx = state.wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return true;
         };

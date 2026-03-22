@@ -8,7 +8,10 @@ impl WaylandState {
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {
             let border_width = self
-                .wm.g.clients.get(&window)
+                .wm
+                .g
+                .clients
+                .get(&window)
                 .map(|c| c.border_width)
                 .unwrap_or(0);
             let remap_immediately = self.interactive_motion_active();

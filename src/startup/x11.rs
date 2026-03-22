@@ -4,10 +4,10 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::x11::draw::Drw;
+use crate::backend::Backend as WmBackend;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::Backend as WmBackend;
+use crate::backend::x11::draw::Drw;
 use crate::config::init_config;
 use crate::types::*;
 use crate::wm::Wm;

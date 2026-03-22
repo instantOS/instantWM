@@ -179,11 +179,7 @@ impl WaylandState {
                 }
             });
 
-            if owns_surface {
-                Some(*win)
-            } else {
-                None
-            }
+            if owns_surface { Some(*win) } else { None }
         })
     }
 

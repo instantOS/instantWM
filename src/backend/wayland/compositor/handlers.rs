@@ -134,11 +134,7 @@ impl DmabufHandler for WaylandRuntime {
             dmabuf.set_node(node);
         }
 
-        let imported = self
-            .renderer
-            .import_dmabuf(&dmabuf, None)
-            .ok()
-            .is_some();
+        let imported = self.renderer.import_dmabuf(&dmabuf, None).ok().is_some();
         if imported {
             let _ = notifier.successful::<Self>();
         } else {

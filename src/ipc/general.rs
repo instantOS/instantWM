@@ -2,7 +2,7 @@ use crate::ipc_types::Response;
 use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
-use crate::toggles::{set_border_width, set_special_next};
+use crate::toggles::set_border_width;
 use crate::types::{MonitorDirection, SpecialNext};
 use crate::wm::Wm;
 
@@ -92,7 +92,11 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
 }
 
 pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
-    set_special_next(&mut wm.ctx().core_mut().globals_mut().behavior, mode);
+    wm.ctx()
+        .core_mut()
+        .globals_mut()
+        .behavior
+        .set_special_next(mode);
     Response::ok()
 }
 

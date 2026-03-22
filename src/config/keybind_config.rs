@@ -197,8 +197,7 @@ use crate::tags::{
     toggle_overview, win_view,
 };
 use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_bar, toggle_double_draw, toggle_mode, toggle_show_tags,
-    toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_bar, toggle_mode, toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{Direction, MonitorDirection, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
@@ -495,9 +494,9 @@ define_actions!(
         }
     },
     "toggle_alt_tag" => "toggle alt-tag mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_alt_tag(ctx, ToggleAction::Toggle),
-    "toggle_animated" => "toggle window animations" => |ctx: &mut WmCtx, _args: &[String]| toggle_animated(&mut ctx.core_mut().globals_mut().behavior, ToggleAction::Toggle),
+    "toggle_animated" => "toggle window animations" => |ctx: &mut WmCtx, _args: &[String]| ctx.core_mut().globals_mut().behavior.toggle_animated(ToggleAction::Toggle),
     "toggle_show_tags" => "show/hide tag bar" => |ctx: &mut WmCtx, _args: &[String]| toggle_show_tags(ctx, ToggleAction::Toggle),
-    "toggle_double_draw" => "toggle double draw mode" => |ctx: &mut WmCtx, _args: &[String]| toggle_double_draw(&mut ctx.core_mut().globals_mut().behavior),
+    "toggle_double_draw" => "toggle double draw mode" => |ctx: &mut WmCtx, _args: &[String]| ctx.core_mut().globals_mut().behavior.toggle_double_draw(),
     "mode_toggle" ("mode_name") => "toggle a mode (enter if not active, else return to default)" => |ctx: &mut WmCtx, args: &[String]| {
         if let Some(name) = args.first() {
             toggle_mode(ctx, name);

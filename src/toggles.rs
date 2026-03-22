@@ -1,6 +1,5 @@
 use crate::client::manager::ClientManager;
 use crate::contexts::WmCtx;
-use crate::globals::WmBehavior;
 use crate::layouts::arrange;
 use crate::tags::get_tag_width;
 use crate::types::*;
@@ -33,10 +32,6 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     arrange(ctx, Some(monitor_id));
 }
 
-pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.animated, action);
-}
-
 pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) {
     let new_bw = width;
 
@@ -58,22 +53,6 @@ pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) 
     };
 
     clients.update_geometry(win, geo);
-}
-
-pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
-    behavior.specialnext = value;
-}
-
-pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.focus_follows_mouse, action);
-}
-
-pub fn toggle_focus_follows_float_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.focus_follows_float_mouse, action);
-}
-
-pub fn toggle_double_draw(behavior: &mut WmBehavior) {
-    behavior.double_draw = !behavior.double_draw;
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {

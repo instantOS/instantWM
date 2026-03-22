@@ -21,10 +21,7 @@ use crate::tags::{
     follow_view, last_view, move_client, quit, send_to_monitor, shift_tag, shift_view,
     toggle_fullscreen_overview, toggle_overview, win_view,
 };
-use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_double_draw, toggle_show_tags, toggle_sticky,
-    unhide_all,
-};
+use crate::toggles::{toggle_alt_tag, toggle_show_tags, toggle_sticky, unhide_all};
 use crate::types::{Direction, Key, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
 
@@ -238,9 +235,9 @@ pub fn get_keys() -> Vec<Key> {
             }
         }),
         key!(MODKEY | MOD1,     XK_S  => |ctx| toggle_alt_tag(ctx, ToggleAction::Toggle)),
-        key!(MODKEY | SHIFT | MOD1,    XK_S  => |ctx| toggle_animated(&mut ctx.core_mut().globals_mut().behavior, ToggleAction::Toggle)),
+        key!(MODKEY | SHIFT | MOD1,    XK_S  => |ctx| ctx.core_mut().globals_mut().behavior.toggle_animated(ToggleAction::Toggle)),
         key!(MODKEY | SHIFT | CONTROL,    XK_S  => |ctx| toggle_show_tags(ctx, ToggleAction::Toggle)),
-        key!(MODKEY | SHIFT | MOD1,    XK_D  => |ctx| toggle_double_draw(&mut ctx.core_mut().globals_mut().behavior)),
+        key!(MODKEY | SHIFT | MOD1,    XK_D  => |ctx| ctx.core_mut().globals_mut().behavior.toggle_double_draw()),
         key!(MODKEY | SHIFT,     XK_SPACE => |ctx| {
             space_toggle(ctx)
         }),

@@ -1,9 +1,9 @@
 use smithay::utils::IsAlive;
 use smithay::utils::SERIAL_COUNTER;
 
-use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::types::WindowId;
 
 impl WaylandState {
@@ -45,11 +45,7 @@ impl WaylandState {
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
         // Get the previously focused window from WM state (mon.sel)
-        let previously_focused = self
-            .wm
-            .g
-            .selected_win()
-            .filter(|&old_id| old_id != window);
+        let previously_focused = self.wm.g.selected_win().filter(|&old_id| old_id != window);
 
         // Deactivate the previously focused window
         if let Some(old_id) = previously_focused
@@ -106,7 +102,11 @@ impl WaylandState {
     pub(crate) fn clear_seat_focus(&mut self) {
         let serial = SERIAL_COUNTER.next_serial();
         if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(WaylandRuntime::from_state_mut(self), None::<KeyboardFocusTarget>, serial);
+            keyboard.set_focus(
+                WaylandRuntime::from_state_mut(self),
+                None::<KeyboardFocusTarget>,
+                serial,
+            );
         }
     }
 

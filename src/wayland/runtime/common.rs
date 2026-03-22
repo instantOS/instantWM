@@ -11,16 +11,15 @@
 //! behaviour (animation guards, dirty-space propagation, etc.).
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::wm::Wm;
 
 /// Arrange client layout when the dirty flag is set and no window
 /// animations are in progress.
 ///
 /// Delegates to the shared [`crate::runtime::arrange_layout_if_dirty`]
 /// but additionally checks for active Wayland window animations.
-pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
-    if wm.g.dirty.layout && !state.has_active_window_animations() {
-        crate::runtime::arrange_layout_if_dirty(wm);
+pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
+    if state.wm.g.dirty.layout && !state.has_active_window_animations() {
+        crate::runtime::arrange_layout_if_dirty(&mut state.wm);
     }
 }
 
@@ -31,10 +30,13 @@ pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
 ///
 /// Returns `true` when at least one command was handled, so that
 /// backend-specific code can react (e.g. DRM marks all outputs dirty).
-pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: &mut Wm) -> bool {
-    let handled = crate::runtime::process_ipc_commands(ipc_server, wm);
+pub fn process_ipc_commands(
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    state: &mut WaylandState,
+) -> bool {
+    let handled = crate::runtime::process_ipc_commands(ipc_server, &mut state.wm);
     if handled {
-        wm.g.dirty.layout = true;
+        state.wm.g.dirty.layout = true;
     }
     handled
 }
@@ -44,9 +46,9 @@ pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: 
 ///
 /// Returns `true` when the space was dirty and got synchronised, so that
 /// backend-specific code can react (e.g. DRM marks all outputs dirty).
-pub fn sync_space_if_dirty(wm: &mut Wm, state: &mut WaylandState) -> bool {
-    if wm.g.dirty.space {
-        wm.g.dirty.space = false;
+pub fn sync_space_if_dirty(state: &mut WaylandState) -> bool {
+    if state.wm.g.dirty.space {
+        state.wm.g.dirty.space = false;
         state.sync_space_from_globals();
         true
     } else {

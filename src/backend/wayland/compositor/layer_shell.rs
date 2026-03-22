@@ -1,5 +1,5 @@
 use smithay::{
-    desktop::{layer_map_for_output, LayerSurface as DesktopLayerSurface, WindowSurfaceType},
+    desktop::{LayerSurface as DesktopLayerSurface, WindowSurfaceType, layer_map_for_output},
     output::Output,
     utils::SERIAL_COUNTER,
     wayland::{

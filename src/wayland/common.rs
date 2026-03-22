@@ -323,23 +323,27 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         Ok((xwayland, client)) => {
             unsafe { std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
             let handle_for_wm = loop_handle.clone();
-            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data: &mut WaylandRuntime| match event
-            {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => {
-                    data.state.xdisplay = Some(display_number);
-                    unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
-                    match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
-                        Ok(wm) => data.state.xwm = Some(wm),
-                        Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
+            if let Err(err) =
+                loop_handle.insert_source(xwayland, move |event, _, data: &mut WaylandRuntime| {
+                    match event {
+                        XWaylandEvent::Ready {
+                            x11_socket,
+                            display_number,
+                        } => {
+                            data.state.xdisplay = Some(display_number);
+                            unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
+                            match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone())
+                            {
+                                Ok(wm) => data.state.xwm = Some(wm),
+                                Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
+                            }
+                        }
+                        XWaylandEvent::Error => {
+                            log::error!("XWayland failed to start");
+                        }
                     }
-                }
-                XWaylandEvent::Error => {
-                    log::error!("XWayland failed to start");
-                }
-            }) {
+                })
+            {
                 log::error!("failed to insert XWayland source: {err}");
             }
         }
@@ -440,8 +444,7 @@ pub struct CommonSceneElements {
 
 /// Build the shared set of scene extras used by both startup renderers.
 pub fn build_common_scene_elements(
-    wm: &mut Wm,
-    state: &WaylandState,
+    state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     output_x_offset: i32,
 ) -> CommonSceneElements {
@@ -460,8 +463,8 @@ pub fn build_common_scene_elements(
         overlays.extend(elems);
     }
 
-    let bar = build_bar_elements(wm, renderer);
-    let borders = crate::wayland::render::borders::render_border_elements(&wm.g, state);
+    let bar = build_bar_elements(&mut state.wm, renderer);
+    let borders = crate::wayland::render::borders::render_border_elements(&state.wm.g, state);
 
     CommonSceneElements {
         overlays,

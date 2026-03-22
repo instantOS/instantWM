@@ -12,7 +12,6 @@ use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
 };
-use crate::wm::Wm;
 
 render_elements! {
     pub WaylandExtras<=GlesRenderer>;
@@ -24,7 +23,6 @@ render_elements! {
 
 /// Render a frame using the winit backend.
 pub fn render_frame(
-    wm: &mut Wm,
     state: &mut WaylandState,
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     output: &Output,
@@ -68,7 +66,7 @@ pub fn render_frame(
         }
     } else {
         // Shared: build scene elements
-        let scene = build_common_scene_elements(wm, state, renderer, 0);
+        let scene = build_common_scene_elements(state, renderer, 0);
 
         // Shared: get space render elements
         let space_render_elements =

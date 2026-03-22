@@ -3,7 +3,7 @@ use smithay::{utils::SERIAL_COUNTER, xwayland::XwmHandler};
 use super::{
     focus::KeyboardFocusTarget,
     state::{WaylandRuntime, WaylandState, WindowIdMarker},
-    window::{is_unmanaged_x11_overlay, WindowType},
+    window::{WindowType, is_unmanaged_x11_overlay},
 };
 
 /// Focus an overlay window if it's a launcher (dmenu, instantmenu).
@@ -34,13 +34,8 @@ pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
     let pointer_handle = state.seat.get_pointer();
     let keyboard_handle = state.seat.get_keyboard();
     if let (Some(pointer), Some(keyboard)) = (pointer_handle, keyboard_handle) {
-        // SAFETY: wm and state_pointee are disjoint borrows into WaylandState.
-        // We only read seat/space/pointer_location through state_pointee and
-        // read/write globals through wm. No aliasing occurs.
-        let wm = unsafe { &mut *(&mut state.wm as *mut crate::wm::Wm) };
-        let state_ref = unsafe { &mut *(state as *mut WaylandState) };
         crate::wayland::input::pointer::motion::dispatch_pointer_motion(
-            wm, state_ref, &pointer, &keyboard, 0,
+            state, &pointer, &keyboard, 0,
         );
     }
 }

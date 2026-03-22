@@ -1,7 +1,7 @@
 use smithay::utils::{Logical, Point};
 
-use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
 
 use super::classify::WindowType;
@@ -15,7 +15,7 @@ impl WaylandState {
         smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         Point<i32, Logical>,
     )> {
-        use smithay::desktop::{layer_map_for_output, WindowSurfaceType};
+        use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
         for output in outputs.iter().rev() {

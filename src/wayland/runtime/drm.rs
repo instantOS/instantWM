@@ -310,13 +310,9 @@ fn run_event_loop(
             // callback) and dispatch them now that we have `&mut Wm`.
             process_pending_libinput_events(&mut state.state, shared);
 
-            {
-                let wm = unsafe { &mut *(&mut state.state.wm as *mut Wm) };
-                let s = unsafe { &*(&state.state as *const WaylandState) };
-                super::common::arrange_layout_if_dirty(wm, s);
-            }
+            super::common::arrange_layout_if_dirty(&mut state.state);
 
-            process_ipc(ipc_server, &mut state.state.wm, shared);
+            process_ipc(ipc_server, &mut state.state, shared);
 
             if state.state.wm.g.dirty.input_config {
                 state.state.wm.g.dirty.input_config = false;
@@ -336,16 +332,15 @@ fn run_event_loop(
                 }
             }
 
-            {
-                let wm = unsafe { &mut *(&mut state.state.wm as *mut Wm) };
-                let s = unsafe { &mut *(&mut state.state as *mut WaylandState) };
-                process_animations(wm, s, shared);
+            super::common::sync_space_if_dirty(&mut state.state);
+            state.state.tick_window_animations();
+            if state.state.has_active_window_animations() {
+                shared.lock().unwrap().mark_all_dirty();
             }
 
             process_cursor_warp(&mut state.state, &pointer_handle, shared);
 
             render_outputs(
-                unsafe { &mut *(&mut state.state.wm as *mut Wm) },
                 &mut state.state,
                 renderer,
                 output_surfaces,
@@ -367,10 +362,7 @@ fn run_event_loop(
 /// Events are pushed into `WaylandState::pending_libinput_events` by the
 /// calloop source callback (which doesn't have access to `Wm`).  We process
 /// them here in the main event-loop body where `&mut Wm` is available.
-fn process_pending_libinput_events(
-    state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
-) {
+fn process_pending_libinput_events(state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
     let events: Vec<_> = std::mem::take(&mut state.pending_libinput_events);
     if events.is_empty() {
         return;
@@ -384,17 +376,7 @@ fn process_pending_libinput_events(
     let mut any_input = false;
     for event in events {
         any_input |=
-            {
-                let ws_ptr = state as *mut WaylandState;
-                let wm_ptr = unsafe { &mut (*ws_ptr).wm as *mut Wm };
-                crate::wayland::input::drm::dispatch_libinput_event(
-                    event,
-                    unsafe { &mut *ws_ptr },
-                    unsafe { &mut *wm_ptr },
-                    total_w,
-                    total_h,
-                )
-            };
+            crate::wayland::input::drm::dispatch_libinput_event(event, state, total_w, total_h);
     }
 
     if any_input {
@@ -435,26 +417,14 @@ fn process_completed_crtcs(
 /// Process IPC commands with DRM-specific output invalidation.
 fn process_ipc(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
-    wm: &mut Wm,
+    state: &mut WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
-    let handled = super::common::process_ipc_commands(ipc_server, wm);
-    crate::runtime::apply_monitor_config_if_dirty(wm);
+    let handled = super::common::process_ipc_commands(ipc_server, state);
+    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
     if handled {
         // DRM-specific: also mark space and all outputs dirty
-        wm.g.dirty.space = true;
-        shared.lock().unwrap().mark_all_dirty();
-    }
-}
-
-/// Process window animations and sync compositor space when dirty.
-fn process_animations(wm: &mut Wm, state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
-    if super::common::sync_space_if_dirty(wm, state) {
-        // DRM-specific: mark all outputs dirty after space sync
-        shared.lock().unwrap().mark_all_dirty();
-    }
-    state.tick_window_animations();
-    if state.has_active_window_animations() {
+        state.wm.g.dirty.space = true;
         shared.lock().unwrap().mark_all_dirty();
     }
 }
@@ -474,7 +444,6 @@ fn process_cursor_warp(
 /// Render all outputs that need it.
 #[allow(clippy::too_many_arguments)]
 fn render_outputs(
-    wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     output_surfaces: &mut [OutputSurfaceEntry],
@@ -508,7 +477,6 @@ fn render_outputs(
                 continue;
             }
             let rendered = render_drm_output(
-                wm,
                 state,
                 renderer,
                 entry,

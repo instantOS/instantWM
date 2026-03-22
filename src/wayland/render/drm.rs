@@ -1,8 +1,10 @@
 //! DRM/KMS rendering and GPU output management.
 
-use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface};
+use smithay::backend::renderer::Bind;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -10,28 +12,25 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::backend::renderer::Bind;
-use smithay::backend::renderer::ImportDma;
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
-use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::utils::{Physical, Point, Rectangle};
 
 use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
 use crate::wayland::common::{
-    build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
-    resolve_cursor_presentation, send_frame_callbacks, CursorPresentation,
+    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
+    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
 };
-use crate::wm::Wm;
 
 mod cursor;
 
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    sync_monitors_from_outputs_vec, OutputHitRegion, OutputSurfaceEntry, SharedDrmState,
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
+    SharedDrmState, sync_monitors_from_outputs_vec,
 };
 
 pub mod state;
@@ -186,7 +185,6 @@ fn connector_type_name(interface: connector::Interface) -> &'static str {
 }
 
 pub fn render_drm_output(
-    wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     entry: &mut OutputSurfaceEntry,
@@ -256,7 +254,7 @@ pub fn render_drm_output(
             }
         }
     } else {
-        let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
+        let scene = build_common_scene_elements(state, renderer, entry.x_offset);
         let space_render_elements = smithay::desktop::space::space_render_elements(
             renderer,
             [&state.space],

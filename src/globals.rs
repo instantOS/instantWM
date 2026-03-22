@@ -268,6 +268,28 @@ impl Default for WmBehavior {
     }
 }
 
+impl WmBehavior {
+    pub fn toggle_animated(&mut self, action: ToggleAction) {
+        action.apply(&mut self.animated);
+    }
+
+    pub fn set_special_next(&mut self, value: SpecialNext) {
+        self.specialnext = value;
+    }
+
+    pub fn toggle_focus_follows_mouse(&mut self, action: ToggleAction) {
+        action.apply(&mut self.focus_follows_mouse);
+    }
+
+    pub fn toggle_focus_follows_float_mouse(&mut self, action: ToggleAction) {
+        action.apply(&mut self.focus_follows_float_mouse);
+    }
+
+    pub fn toggle_double_draw(&mut self) {
+        self.double_draw = !self.double_draw;
+    }
+}
+
 /// Flags that signal pending work for the event loop.
 #[derive(Debug, Clone, Default)]
 pub struct DirtyFlags {

@@ -9,7 +9,7 @@ use smithay::input::pointer::{
 use smithay::reexports::input::event::gesture::{
     GestureEndEvent, GestureEventCoordinates, GestureEventTrait, GesturePinchEventTrait,
 };
-use smithay::reexports::input::{event, event::EventTrait, Event as LibinputRawEvent};
+use smithay::reexports::input::{Event as LibinputRawEvent, event, event::EventTrait};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{WaylandRuntime, WaylandState};
@@ -17,14 +17,13 @@ use crate::wayland::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
 };
-use crate::wm::Wm;
 
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
 
 pub fn raw_event_to_input_event(
     event: LibinputRawEvent,
 ) -> Option<InputEvent<LibinputInputBackend>> {
-    use event::{keyboard::KeyboardEvent, pointer::PointerEvent, DeviceEvent, GestureEvent};
+    use event::{DeviceEvent, GestureEvent, keyboard::KeyboardEvent, pointer::PointerEvent};
     Some(match event {
         LibinputRawEvent::Keyboard(KeyboardEvent::Key(e)) => InputEvent::Keyboard { event: e },
         LibinputRawEvent::Pointer(PointerEvent::Motion(e)) => {
@@ -139,7 +138,6 @@ pub fn reconfigure_all_devices(
 pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
-    wm: &mut Wm,
     total_w: i32,
     total_h: i32,
 ) -> bool {
@@ -148,7 +146,7 @@ pub fn dispatch_libinput_event(
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
-            configure_device(&mut device, &wm.g.cfg.input);
+            configure_device(&mut device, &state.wm.g.cfg.input);
             state.tracked_devices.push(device);
             false
         }
@@ -162,17 +160,16 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::PointerMotion { event } => {
             let motion_event = motion_event_from_libinput_relative(event);
-            handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, motion_event);
+            handle_pointer_motion(state, &pointer_handle, &keyboard_handle, motion_event);
             true
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let motion_event = motion_event_from_libinput_absolute(event, total_w, total_h);
-            handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, motion_event);
+            handle_pointer_motion(state, &pointer_handle, &keyboard_handle, motion_event);
             true
         }
         InputEvent::PointerButton { event } => {
             handle_pointer_button::<LibinputInputBackend>(
-                wm,
                 state,
                 &pointer_handle,
                 &keyboard_handle,
@@ -183,7 +180,6 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::PointerAxis { event } => {
             handle_pointer_axis::<LibinputInputBackend>(
-                wm,
                 state,
                 &pointer_handle,
                 &keyboard_handle,

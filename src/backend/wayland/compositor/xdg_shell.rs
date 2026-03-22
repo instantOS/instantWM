@@ -1,5 +1,8 @@
 use smithay::{
-    desktop::{PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, find_popup_root_surface},
+    desktop::{
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
+        find_popup_root_surface,
+    },
     input::{SeatHandler, pointer::Focus},
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
@@ -15,10 +18,7 @@ use smithay::{
     },
 };
 
-use super::{
-    focus::KeyboardFocusTarget,
-    state::WaylandRuntime,
-};
+use super::{focus::KeyboardFocusTarget, state::WaylandRuntime};
 
 impl SeatHandler for WaylandRuntime {
     type KeyboardFocus = KeyboardFocusTarget;
@@ -179,7 +179,11 @@ impl XdgShellHandler for WaylandRuntime {
             None => return,
         };
 
-        let mut grab = match self.state.popups.grab_popup(root, kind, &self.state.seat, serial) {
+        let mut grab = match self
+            .state
+            .popups
+            .grab_popup(root, kind, &self.state.seat, serial)
+        {
             Ok(g) => g,
             Err(_) => return,
         };

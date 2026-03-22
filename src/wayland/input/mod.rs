@@ -73,8 +73,13 @@ pub fn apply_pending_warp(
         time: time_msec,
     };
 
-    pointer_handle.motion(crate::backend::wayland::compositor::WaylandRuntime::from_state_mut(state), focus, &motion);
-    pointer_handle.frame(crate::backend::wayland::compositor::WaylandRuntime::from_state_mut(state));
+    pointer_handle.motion(
+        crate::backend::wayland::compositor::WaylandRuntime::from_state_mut(state),
+        focus,
+        &motion,
+    );
+    pointer_handle
+        .frame(crate::backend::wayland::compositor::WaylandRuntime::from_state_mut(state));
 
     true
 }
