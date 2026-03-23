@@ -409,6 +409,16 @@ fn run_event_loop(
                 shared.lock().unwrap().mark_content_dirty();
             }
 
+            // Tick animations and mark outputs dirty when active.
+            // This handles the case where drain_and_execute_ops started
+            // animations but dirty.space was not set, so sync_space_if_dirty
+            // returned false. Without this, the sleeping animation timer
+            // (86400s) would not wake to tick these animations.
+            if state.has_active_window_animations() {
+                state.tick_window_animations();
+                shared.lock().unwrap().mark_all_dirty();
+            }
+
             process_cursor_warp(state, &pointer_handle, shared);
 
             // Surface commits from client windows set content_dirty_pending.

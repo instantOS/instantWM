@@ -693,30 +693,15 @@ pub fn focus_stack_direction<F>(core: &CoreCtx, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
-    let mon = core.globals().selected_monitor();
-
-    let selected_window = mon.sel;
-    let stack = get_visible_stack(mon, core.globals().clients.map());
-
-    if stack.is_empty() {
-        focus_fn(None);
-        return;
-    }
-
-    let current_idx = match selected_window {
-        Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
-        None => 0,
-    };
-
-    let next_idx = if forward {
-        (current_idx + 1) % stack.len()
-    } else if current_idx == 0 {
-        stack.len() - 1
-    } else {
-        current_idx - 1
-    };
-
-    focus_fn(Some(stack[next_idx]));
+    let target = get_stack_focus_target(
+        core,
+        if forward {
+            StackDirection::Next
+        } else {
+            StackDirection::Previous
+        },
+    );
+    focus_fn(target);
 }
 
 fn get_visible_stack(

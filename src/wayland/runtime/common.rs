@@ -29,10 +29,15 @@ pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
 ///
 /// Returns `true` when the space was dirty and got synchronised, so that
 /// backend-specific code can react (e.g. DRM marks all outputs dirty).
+///
+/// After syncing, any newly-started window animations are ticked
+/// immediately so the first frame reflects the correct positions even
+/// when the animation calloop timer is dormant (sleeping for 86400s).
 pub fn sync_space_if_dirty(state: &mut WaylandState) -> bool {
     if state.wm.g.dirty.space {
         state.wm.g.dirty.space = false;
         state.sync_space_from_globals();
+        state.tick_window_animations();
         true
     } else {
         false
