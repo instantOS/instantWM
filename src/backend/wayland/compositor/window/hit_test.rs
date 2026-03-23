@@ -65,14 +65,14 @@ impl WaylandState {
             }
         }
 
-        // Phase 2: Check regular windows (only if no layer surface found)
+        // Phase 2a: Find hovered_win with early exit
+        // (short-circuits on first match since windows are in z-order top-to-bottom)
         if result.layer_surface.is_none() {
             for (window, typ) in self.windows_in_z_order() {
                 let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
                     continue;
                 };
 
-                // Check for logical window containment
                 if matches!(
                     typ,
                     WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
@@ -83,32 +83,31 @@ impl WaylandState {
                     let geo = window.geometry();
                     let relative_loc = loc + geo.loc;
 
-                    if result.hovered_win.is_none()
-                        && root_x >= relative_loc.x
+                    if root_x >= relative_loc.x
                         && root_x < relative_loc.x + geo.size.w
                         && root_y >= relative_loc.y
                         && root_y < relative_loc.y + geo.size.h
                     {
                         result.hovered_win = Some(win_id);
+                        break;
                     }
-                } else {
-                    // Managed windows with borders
-                    if result.hovered_win.is_none()
-                        && let Some(c) = globals.clients.get(&win_id)
+                } else if let Some(c) = globals.clients.get(&win_id) {
+                    let bw = c.border_width;
+                    if root_x >= c.geo.x
+                        && root_x < c.geo.x + c.geo.w + 2 * bw
+                        && root_y >= c.geo.y
+                        && root_y < c.geo.y + c.geo.h + 2 * bw
                     {
-                        let bw = c.border_width;
-                        if root_x >= c.geo.x
-                            && root_x < c.geo.x + c.geo.w + 2 * bw
-                            && root_y >= c.geo.y
-                            && root_y < c.geo.y + c.geo.h + 2 * bw
-                        {
-                            result.hovered_win = Some(win_id);
-                        }
+                        result.hovered_win = Some(win_id);
+                        break;
                     }
                 }
+            }
 
-                // Check for surface hit (for pointer events)
-                if result.window_surface.is_none() {
+            // Phase 2b: Find window_surface only if we need it and found a hovered_win
+            // Iterate in reverse z-order (bottom to top) so the first surface hit is the topmost
+            if result.hovered_win.is_some() && result.window_surface.is_none() {
+                for (window, _) in self.windows_in_z_order().into_iter().rev() {
                     let Some(loc) = self.space.element_location(window) else {
                         continue;
                     };
@@ -120,12 +119,8 @@ impl WaylandState {
                     {
                         result.window_surface =
                             Some((surface_result.0, surface_result.1 + surface_origin));
+                        break;
                     }
-                }
-
-                // Early exit if we found both
-                if result.window_surface.is_some() && result.hovered_win.is_some() {
-                    break;
                 }
             }
         }
