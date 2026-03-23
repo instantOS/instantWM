@@ -6,15 +6,15 @@
 use std::process::exit;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -171,6 +171,9 @@ pub fn run() -> ! {
             // flag so it doesn't stay dirty forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
             state.wm.g.dirty.input_config = false;
+
+            state.popups.cleanup();
+            state.refresh_popup_grab();
 
             if super::common::sync_space_if_dirty(state) {
                 needs_render = true;

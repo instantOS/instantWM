@@ -194,27 +194,33 @@ impl XdgShellHandler for WaylandState {
             Err(_) => return,
         };
 
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            if keyboard.is_grabbed()
-                && !(keyboard.has_grab(serial)
-                    || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
-            {
-                grab.ungrab(PopupUngrabStrategy::All);
-                return;
-            }
-            keyboard.set_focus(self, grab.current_grab(), serial);
+        let keyboard = self.seat.get_keyboard();
+        let pointer = self.seat.get_pointer();
+
+        let keyboard_grab_mismatches = keyboard.as_ref().is_some_and(|k| {
+            k.is_grabbed()
+                && !(k.has_grab(serial)
+                    || grab.previous_serial().is_some_and(|s| k.has_grab(s)))
+        });
+        let pointer_grab_mismatches = pointer.as_ref().is_some_and(|p| {
+            p.is_grabbed()
+                && !(p.has_grab(serial)
+                    || grab.previous_serial().is_some_and(|s| p.has_grab(s)))
+        });
+
+        if keyboard_grab_mismatches || pointer_grab_mismatches {
+            grab.ungrab(PopupUngrabStrategy::All);
+            return;
+        }
+
+        if let Some(ref keyboard) = keyboard {
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
-        if let Some(pointer) = self.seat.get_pointer() {
-            if pointer.is_grabbed()
-                && !(pointer.has_grab(serial)
-                    || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
-            {
-                grab.ungrab(PopupUngrabStrategy::All);
-                return;
-            }
-            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Clear);
+        if let Some(ref pointer) = pointer {
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
         }
+
+        self.popup_grab = Some(grab);
     }
 
     fn reposition_request(

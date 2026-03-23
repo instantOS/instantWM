@@ -372,6 +372,9 @@ fn run_event_loop(
 
             process_pending_libinput_events(state, shared);
 
+            state.popups.cleanup();
+            state.refresh_popup_grab();
+
             super::common::arrange_layout_if_dirty(state);
 
             if state.wm.g.dirty.input_config {

@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -9,14 +9,14 @@ use smithay::{
     backend::drm::DrmNode,
     backend::egl::{EGLDevice, EGLDisplay},
     backend::renderer::gles::GlesRenderer,
-    desktop::{PopupManager, Space, Window},
+    desktop::{PopupGrab, PopupManager, Space, Window},
     input::{
-        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
+        Seat, SeatState,
     },
     reexports::{
-        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
+        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -32,7 +32,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -91,6 +91,7 @@ pub struct WaylandState {
     // -- Desktop abstractions --
     pub space: Space<Window>,
     pub popups: PopupManager,
+    pub popup_grab: Option<PopupGrab<WaylandState>>,
 
     // -- Protocol states --
     pub compositor_state: CompositorState,
@@ -238,6 +239,7 @@ impl WaylandState {
             display_handle: dh,
             space: Space::default(),
             popups: PopupManager::default(),
+            popup_grab: None,
             compositor_state,
             shm_state,
             xdg_shell_state,
@@ -467,6 +469,17 @@ impl WaylandState {
             }
             WmCommand::SetMonitorConfig { name, config } => {
                 self.set_output_config(&name, &config);
+            }
+        }
+    }
+
+    pub fn refresh_popup_grab(&mut self) {
+        if let Some(ref mut grab) = self.popup_grab {
+            if grab.has_ended() {
+                if let Some(keyboard) = self.seat.get_keyboard() {
+                    keyboard.unset_grab(self);
+                }
+                self.popup_grab = None;
             }
         }
     }
