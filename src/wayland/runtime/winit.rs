@@ -4,12 +4,13 @@
 //! Wayland or X11 session.
 
 use std::process::exit;
+use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::wayland_server::Display;
 
 use crate::backend::Backend as WmBackend;
@@ -42,7 +43,7 @@ pub fn run() -> ! {
     let display: Display<WaylandState> = Display::new().expect("wayland display");
     let mut display_handle = display.handle();
 
-    let (backend_init, mut winit_loop) =
+    let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
     let dmabuf_formats: Vec<_> = backend.renderer().dmabuf_formats().into_iter().collect();
@@ -101,68 +102,75 @@ pub fn run() -> ! {
         |state| state.has_active_window_animations(),
     );
 
+    // Register winit as a proper calloop event source.
+    // This replaces manual dispatch_new_events() polling and ensures
+    // winit events (mouse, keyboard, resize) wake the event loop properly.
+    let loop_signal = event_loop.get_signal();
+    let loop_signal_for_winit = loop_signal.clone();
+    let pointer_handle_for_winit = pointer_handle.clone();
+    let output_for_winit = output.clone();
+    loop_handle
+        .insert_source(winit_loop, move |event, (), state| {
+            match event {
+                WinitEvent::Resized { size, .. } => {
+                    crate::wayland::input::handle_resize(
+                        &mut state.wm,
+                        &output_for_winit,
+                        size.w,
+                        size.h,
+                    );
+                }
+                WinitEvent::Input(event) => match event {
+                    InputEvent::Keyboard { event } => {
+                        handle_keyboard(state, &keyboard_handle, event);
+                    }
+                    InputEvent::PointerMotionAbsolute { event } => {
+                        let size = (state.wm.g.cfg.screen_width, state.wm.g.cfg.screen_height);
+                        let motion_event = motion_event_from_winit(event, size.into());
+                        handle_pointer_motion(
+                            state,
+                            &pointer_handle_for_winit,
+                            &keyboard_handle,
+                            motion_event,
+                        );
+                    }
+                    InputEvent::PointerButton { event } => {
+                        let pointer_location = state.pointer_location;
+                        handle_pointer_button(
+                            state,
+                            &pointer_handle_for_winit,
+                            &keyboard_handle,
+                            event,
+                            pointer_location,
+                        );
+                    }
+                    InputEvent::PointerAxis { event } => {
+                        let pointer_location = state.pointer_location;
+                        handle_pointer_axis(
+                            state,
+                            &pointer_handle_for_winit,
+                            &keyboard_handle,
+                            event,
+                            pointer_location,
+                        );
+                    }
+                    _ => {}
+                },
+                WinitEvent::CloseRequested => {
+                    loop_signal_for_winit.stop();
+                }
+                _ => {}
+            }
+        })
+        .expect("failed to insert winit event source");
+
     let start_time = std::time::Instant::now();
 
     crate::runtime::spawn_status_bar(&state.wm);
 
-    let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
-        .run(None, &mut state, move |state| {
+        .run(Duration::from_millis(16), &mut state, move |state| {
             let mut needs_render = false;
-
-            winit_loop.dispatch_new_events(|event| {
-                needs_render = true;
-                match event {
-                    WinitEvent::Resized { size, .. } => {
-                        crate::wayland::input::handle_resize(
-                            &mut state.wm,
-                            &output,
-                            size.w,
-                            size.h,
-                        );
-                    }
-                    WinitEvent::Input(event) => match event {
-                        InputEvent::Keyboard { event } => {
-                            handle_keyboard(state, &keyboard_handle, event);
-                        }
-                        InputEvent::PointerMotionAbsolute { event } => {
-                            let size = backend.window_size();
-                            let motion_event = motion_event_from_winit(event, size);
-                            handle_pointer_motion(
-                                state,
-                                &pointer_handle,
-                                &keyboard_handle,
-                                motion_event,
-                            );
-                        }
-                        InputEvent::PointerButton { event } => {
-                            let pointer_location = state.pointer_location;
-                            handle_pointer_button(
-                                state,
-                                &pointer_handle,
-                                &keyboard_handle,
-                                event,
-                                pointer_location,
-                            );
-                        }
-                        InputEvent::PointerAxis { event } => {
-                            let pointer_location = state.pointer_location;
-                            handle_pointer_axis(
-                                state,
-                                &pointer_handle,
-                                &keyboard_handle,
-                                event,
-                                pointer_location,
-                            );
-                        }
-                        _ => {}
-                    },
-                    WinitEvent::CloseRequested => {
-                        loop_signal.stop();
-                    }
-                    _ => {}
-                }
-            });
 
             if state.wm.g.dirty.layout {
                 needs_render = true;
