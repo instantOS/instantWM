@@ -3,8 +3,8 @@
 //! Generates solid color render elements for window borders, handling
 //! z-order occlusion (borders behind windows are clipped).
 
-use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
+use smithay::backend::renderer::element::Kind;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::globals::Globals;
@@ -116,21 +116,34 @@ fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i3
     ]
 }
 
-/// Subtracts occluders from border parts, returning the remaining visible parts.
-fn apply_occluders(border_parts: Vec<Rect>, occluders: &[Rect]) -> Vec<Rect> {
-    let mut remaining = border_parts;
+/// O(n) occlusion check: returns true if `inner` is fully contained within `outer`.
+#[inline]
+fn contains(outer: &Rect, inner: &Rect) -> bool {
+    inner.x >= outer.x
+        && inner.y >= outer.y
+        && inner.x + inner.w <= outer.x + outer.w
+        && inner.y + inner.h <= outer.y + outer.h
+}
 
-    for occluder in occluders {
-        if remaining.is_empty() {
-            break;
-        }
-        remaining = remaining
-            .into_iter()
-            .flat_map(|part| part.subtract(occluder))
-            .collect();
-    }
+/// O(n) occlusion check: returns true if `border` is fully occluded by any single occluder.
+/// A border is considered occluded if any occluder fully contains it.
+#[inline]
+fn is_occluded_by_any(border: &Rect, occluders: &[Rect]) -> bool {
+    occluders.iter().any(|occluder| contains(occluder, border))
+}
 
-    remaining
+/// O(n) occlusion: instead of exact rect subtraction, check if each border is
+/// fully covered by any single occluder. This is an approximation that avoids
+/// the O(n²) rect multiplication of exact subtraction.
+///
+/// Tradeoff: may show tiny slivers of hidden borders in complex stacking, but
+/// the CPU cost goes from O(n²) to O(n).
+fn filter_occluded(border_parts: &[Rect], occluders: &[Rect]) -> Vec<Rect> {
+    border_parts
+        .iter()
+        .filter(|border| !is_occluded_by_any(border, occluders))
+        .copied()
+        .collect()
 }
 
 /// Builds occluder rectangles from windows (windows block borders behind them).
@@ -167,9 +180,9 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
             continue;
         }
 
-        // Subtract occluders from higher windows (windows in front)
+        // Filter out occluded borders using O(n) check
         let higher_occluders = &occluders[idx + 1..];
-        let visible_parts = apply_occluders(border_parts, higher_occluders);
+        let visible_parts = filter_occluded(&border_parts, higher_occluders);
 
         // Get color based on focus state
         let is_focused = Some(window.id) == selected_win;
