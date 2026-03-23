@@ -1,3 +1,6 @@
+[workspace]
+members = [".", "tests/wlcs"]
+
 [package]
 name = "instantwm"
 version = "0.1.0"
@@ -60,6 +63,5 @@ lto = true
 codegen-units = 1
 strip = true
 
-[profile.dev]
-opt-level = 0
-debug = true
+[dev-dependencies]
+wlcs = "0.1"
