@@ -41,7 +41,9 @@ impl WaylandState {
             if let Some(surface) = element.x11_surface()
                 && let Some(xwm) = self.xwm.as_mut()
             {
-                let _ = xwm.raise_window(surface);
+                if let Err(e) = xwm.raise_window(surface) {
+                    log::warn!("Failed to restack X11 surface for window {:?}: {}", window, e);
+                }
             }
         }
         self.raise_unmanaged_x11_windows();
@@ -54,6 +56,15 @@ impl WaylandState {
                 // Focus / activation is managed by `set_focus`, so we pass `false`
                 // here to avoid overriding the focus state visually.
                 self.space.raise_element(&element, false);
+
+                // XWayland requires us to explicitly restack the X11 surface so X clients draw correctly
+                if let Some(surface) = element.x11_surface()
+                    && let Some(xwm) = self.xwm.as_mut()
+                {
+                    if let Err(e) = xwm.raise_window(surface) {
+                        log::warn!("Failed to restack X11 surface for window {:?}: {}", window, e);
+                    }
+                }
             }
         }
         self.raise_unmanaged_x11_windows();
