@@ -25,21 +25,9 @@ pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> 
     0
 }
 
-fn clean_mask(mask: u16, numlockmask: u32) -> u16 {
-    let lock_mask = ModMask::LOCK.bits();
-    mask & !(numlockmask as u16 | lock_mask)
-        & (ModMask::SHIFT.bits()
-            | ModMask::CONTROL.bits()
-            | ModMask::M1.bits()
-            | ModMask::M2.bits()
-            | ModMask::M3.bits()
-            | ModMask::M4.bits()
-            | ModMask::M5.bits())
-}
-
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
-    let cleaned = clean_mask(mod_mask as u16, numlockmask);
+    let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
 
     let current_mode = ctx.core().globals().behavior.current_mode.clone();
 
@@ -47,7 +35,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     if !current_mode.is_empty()
         && current_mode != "default"
         && keysym == crate::config::keysyms::XK_ESCAPE
-        && cleaned == clean_mask(crate::config::keybindings::MODKEY as u16, numlockmask)
+        && cleaned == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
         ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
         ctx.request_bar_update(None);
@@ -64,7 +52,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         mode_cfg
             .and_then(|mode| {
                 mode.keybinds.iter().find(|key| {
-                    keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                    keysym == key.keysym
+                        && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
                 })
             })
             .map(|key| Rc::clone(&key.action))
@@ -77,7 +66,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                     .iter()
                     .find(|key| {
                         keysym == key.keysym
-                            && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                            && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
                     })
                     .or_else(|| {
                         ctx.core()
@@ -87,7 +76,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                             .iter()
                             .find(|key| {
                                 keysym == key.keysym
-                                    && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                                    && crate::util::clean_mask(key.mod_mask, numlockmask) as u16
+                                        == cleaned
                             })
                     })
                     .map(|key| Rc::clone(&key.action))
@@ -100,7 +90,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             .keys
             .iter()
             .find(|key| {
-                keysym == key.keysym && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                keysym == key.keysym
+                    && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
             })
             .or_else(|| {
                 if ctx.selected_client().is_none() {
@@ -111,7 +102,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                         .iter()
                         .find(|key| {
                             keysym == key.keysym
-                                && clean_mask(key.mod_mask as u16, numlockmask) == cleaned
+                                && crate::util::clean_mask(key.mod_mask, numlockmask) as u16
+                                    == cleaned
                         })
                 } else {
                     None
