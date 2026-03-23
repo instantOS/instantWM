@@ -387,6 +387,16 @@ fn run_event_loop(
 
             process_cursor_warp(state, &pointer_handle, shared);
 
+            // Surface commits from client windows set content_dirty_pending.
+            // Propagate it to SharedDrmState so the VBlank handler will mark
+            // render_flags.  This must be checked on every tick (not just inside
+            // render_outputs) so that commits on an idle desktop wake up
+            // rendering on the next VBlank even when no CRTC is currently dirty.
+            if state.content_dirty_pending {
+                state.content_dirty_pending = false;
+                shared.lock().unwrap().mark_content_dirty();
+            }
+
             state.with_renderer(|state, renderer| {
                 render_outputs(
                     state,
