@@ -157,8 +157,6 @@ pub struct WaylandState {
     pub pointer_location: Point<f64, Logical>,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-    pub pending_libinput_events:
-        Vec<smithay::backend::input::InputEvent<smithay::backend::libinput::LibinputInputBackend>>,
     /// Set to true when a client surface commits new content.  The DRM event
     /// loop checks and clears this, calling `mark_content_dirty` to ensure
     /// the next VBlank schedules a render.
@@ -293,7 +291,6 @@ impl WaylandState {
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
-            pending_libinput_events: Vec::new(),
             pending_dmabuf_imports: Vec::new(),
             content_dirty_pending: false,
         }

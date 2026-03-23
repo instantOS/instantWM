@@ -82,6 +82,7 @@ pub fn dispatch_libinput_event(
     total_w: i32,
     total_h: i32,
 ) -> bool {
+    let _span = tracy_client::span!("dispatch_libinput_event");
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 

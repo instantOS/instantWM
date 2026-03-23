@@ -50,6 +50,8 @@ cosmic-text = { version = "0.12", features = ["shape-run-cache"] }
 zbus = { version = "5" }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 serde_json = "1.0"
+profiling = "1.0"
+tracy-client = { version = "0.18.4", default-features = false }
 
 [build-dependencies]
 
@@ -65,3 +67,6 @@ strip = true
 
 [dev-dependencies]
 wlcs = "0.1"
+
+[features]
+profile-with-tracy = ["profiling/profile-with-tracy", "tracy-client/default"]

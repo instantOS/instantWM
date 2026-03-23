@@ -113,9 +113,22 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
 
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+    let shared_input = Arc::clone(&shared);
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            state.pending_libinput_events.push(event);
+            let _span = tracy_client::span!("libinput callback");
+            let (total_w, total_h) = {
+                let s = shared_input.lock().unwrap();
+                (s.total_width, s.total_height)
+            };
+            let any_input =
+                crate::wayland::input::drm::dispatch_libinput_event(event, state, total_w, total_h);
+            if any_input {
+                shared_input
+                    .lock()
+                    .unwrap()
+                    .mark_pointer_output_dirty(state.pointer_location.x as i32);
+            }
         })
         .expect("failed to insert libinput source");
 
@@ -438,32 +451,12 @@ fn run_event_loop(
 
 /// Drain and dispatch queued libinput events.
 ///
-/// Events are pushed into `WaylandState::pending_libinput_events` by the
-/// calloop source callback (which doesn't have access to `Wm`).  We process
-/// them here in the main event-loop body where `&mut Wm` is available.
-fn process_pending_libinput_events(state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
-    let events: Vec<_> = std::mem::take(&mut state.pending_libinput_events);
-    if events.is_empty() {
-        return;
-    }
-
-    let (total_w, total_h) = {
-        let s = shared.lock().unwrap();
-        (s.total_width, s.total_height)
-    };
-
-    let mut any_input = false;
-    for event in events {
-        any_input |=
-            crate::wayland::input::drm::dispatch_libinput_event(event, state, total_w, total_h);
-    }
-
-    if any_input {
-        shared
-            .lock()
-            .unwrap()
-            .mark_pointer_output_dirty(state.pointer_location.x as i32);
-    }
+/// Events are now processed immediately in the libinput callback,
+/// so this function is a no-op kept for backwards compatibility.
+fn process_pending_libinput_events(
+    _state: &mut WaylandState,
+    _shared: &Arc<Mutex<SharedDrmState>>,
+) {
 }
 
 /// Process frame submissions for completed CRTCs.

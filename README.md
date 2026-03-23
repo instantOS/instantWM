@@ -47,3 +47,38 @@ just install
 
 This is just a quick list of some features. For a full list and explanation,
 please refer to the documentation.
+
+## Profiling with Tracy
+
+instantWM supports profiling with [Tracy](https://github.com/nicknisi/tracy) for performance analysis.
+
+### Building with Tracy Support
+
+```sh
+cargo build --features profile-with-tracy
+```
+
+### Running with Tracy
+
+1. Download and run the Tracy profiler from https://github.com/nicknisi/tracy/releases
+2. Launch instantWM with profiling enabled:
+
+```sh
+TRACY_ENABLE=1 ./target/release/instantwm
+```
+
+3. In the Tracy profiler UI, click **Connect** to attach to the running process
+
+### What to Profile
+
+Key spans to look for:
+- `libinput callback` - Input event processing latency
+- `dispatch_libinput_event` - Input event dispatch time
+- `render_outputs` - Frame rendering duration
+- `process_completed_crtcs` - VBlank handling
+
+### Interpreting Results
+
+- High latency in `libinput callback` indicates input processing is blocking
+- Multiple `render_outputs` calls per frame indicate redundant rendering
+- Frame drops often correlate with `mark_pointer_output_dirty` calls during mouse movement
