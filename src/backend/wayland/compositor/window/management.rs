@@ -41,7 +41,9 @@ impl WaylandState {
             if let Some(surface) = element.x11_surface()
                 && let Some(xwm) = self.xwm.as_mut()
             {
-                let _ = xwm.raise_window(surface);
+                if let Err(e) = xwm.raise_window(surface) {
+                    log::warn!("Failed to restack X11 surface for window {:?}: {}", window, e);
+                }
             }
         }
         self.raise_unmanaged_x11_windows();
@@ -59,7 +61,9 @@ impl WaylandState {
                 if let Some(surface) = element.x11_surface()
                     && let Some(xwm) = self.xwm.as_mut()
                 {
-                    let _ = xwm.raise_window(surface);
+                    if let Err(e) = xwm.raise_window(surface) {
+                        log::warn!("Failed to restack X11 surface for window {:?}: {}", window, e);
+                    }
                 }
             }
         }
