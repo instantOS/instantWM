@@ -385,16 +385,15 @@ fn run_event_loop(
                 );
             }
 
+            // Drain and execute commands BEFORE sync/render so that
+            // map/unmap from show_hide_wayland takes effect in the Space
+            // before we build render elements.  Without this, invisible
+            // windows would render for one extra frame after a tag switch.
+            drain_and_execute_ops(state);
+
             super::common::sync_space_if_dirty(state);
 
             process_cursor_warp(state, &pointer_handle, shared);
-
-            // Phase 1: drain the command queue
-            let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
-                data.backend.drain_ops()
-            } else {
-                Vec::new()
-            };
 
             state.with_renderer(|state, renderer| {
                 render_outputs(
@@ -408,12 +407,11 @@ fn run_event_loop(
                 );
             });
 
-            // Phase 2: execute queued commands
-            for op in ops {
-                state.execute_command(op);
-            }
+            // Second drain pass for any commands queued during execute_command
+            // or render (e.g. screencopy, surface lifecycle callbacks).
+            drain_and_execute_ops(state);
 
-            // Phase 3: sync caches
+            // Sync caches
             if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
                 data.backend.sync_cache(state);
             }
@@ -423,6 +421,22 @@ fn run_event_loop(
             }
         })
         .expect("event loop run");
+}
+
+/// Drain the WM command queue and execute each command on WaylandState.
+///
+/// Commands are queued by WM logic (e.g. `show_hide_wayland` pushes
+/// MapWindow/UnmapWindow).  They must be executed before building render
+/// elements so the Space reflects the correct visibility state.
+fn drain_and_execute_ops(state: &mut WaylandState) {
+    let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
+        data.backend.drain_ops()
+    } else {
+        Vec::new()
+    };
+    for op in ops {
+        state.execute_command(op);
+    }
 }
 
 /// Drain and dispatch queued libinput events.
