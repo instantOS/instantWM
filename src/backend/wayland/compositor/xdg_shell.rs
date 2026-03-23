@@ -1,5 +1,8 @@
 use smithay::{
-    desktop::{PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy, find_popup_root_surface},
+    desktop::{
+        PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
+        find_popup_root_surface,
+    },
     input::{SeatHandler, pointer::Focus},
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
@@ -15,10 +18,7 @@ use smithay::{
     },
 };
 
-use super::{
-    focus::KeyboardFocusTarget,
-    state::WaylandState,
-};
+use super::{focus::KeyboardFocusTarget, state::WaylandState};
 
 impl SeatHandler for WaylandState {
     type KeyboardFocus = KeyboardFocusTarget;

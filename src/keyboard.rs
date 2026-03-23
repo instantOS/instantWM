@@ -35,7 +35,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     if !current_mode.is_empty()
         && current_mode != "default"
         && keysym == crate::config::keysyms::XK_ESCAPE
-        && cleaned == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
+        && cleaned
+            == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
         ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
         ctx.request_bar_update(None);

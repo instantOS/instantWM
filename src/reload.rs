@@ -62,8 +62,8 @@ fn reload_x11(wm: &mut Wm) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::wayland::WaylandBackend;
     use crate::backend::Backend as WmBackend;
+    use crate::backend::wayland::WaylandBackend;
     use crate::config::ModeConfig;
 
     #[test]

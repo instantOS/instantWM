@@ -168,8 +168,10 @@ pub fn animate_client_x11(
     let dw = (actual_w - start_rect.w).abs();
     let dh = (actual_h - start_rect.h).abs();
 
-    let dist_moved =
-        dx > DISTANCE_THRESHOLD || dy > DISTANCE_THRESHOLD || dw > DISTANCE_THRESHOLD || dh > DISTANCE_THRESHOLD;
+    let dist_moved = dx > DISTANCE_THRESHOLD
+        || dy > DISTANCE_THRESHOLD
+        || dw > DISTANCE_THRESHOLD
+        || dh > DISTANCE_THRESHOLD;
 
     if !dist_moved {
         // Not enough movement to animate — just snap to final position.
@@ -193,16 +195,16 @@ pub fn animate_client_x11(
                 w: actual_w,
                 h: actual_h,
             };
-            let duration =
-                Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
-            ctx.x11_runtime
-                .window_animations
-                .insert(win, X11WindowAnimation {
+            let duration = Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
+            ctx.x11_runtime.window_animations.insert(
+                win,
+                X11WindowAnimation {
                     from,
                     to: final_rect,
                     started_at: Instant::now(),
                     duration,
-                });
+                },
+            );
             return;
         }
     }
@@ -215,14 +217,15 @@ pub fn animate_client_x11(
         h: actual_h,
     };
     let duration = Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
-    ctx.x11_runtime
-        .window_animations
-        .insert(win, X11WindowAnimation {
+    ctx.x11_runtime.window_animations.insert(
+        win,
+        X11WindowAnimation {
             from,
             to: final_rect,
             started_at: Instant::now(),
             duration,
-        });
+        },
+    );
 }
 
 pub fn check_animate_x11(

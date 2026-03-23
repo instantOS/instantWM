@@ -2,7 +2,9 @@ use smithay::{
     output::Output,
     reexports::wayland_server::Resource,
     utils::SERIAL_COUNTER,
-    wayland::session_lock::{LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker},
+    wayland::session_lock::{
+        LockSurface, SessionLockHandler, SessionLockManagerState, SessionLocker,
+    },
 };
 
 use super::{
@@ -64,9 +66,7 @@ impl SessionLockHandler for WaylandState {
         if let Some(keyboard) = self.seat.get_keyboard() {
             keyboard.set_focus(
                 self,
-                Some(KeyboardFocusTarget::WlSurface(
-                    surface.wl_surface().clone(),
-                )),
+                Some(KeyboardFocusTarget::WlSurface(surface.wl_surface().clone())),
                 serial,
             );
         }

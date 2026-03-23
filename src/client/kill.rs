@@ -23,8 +23,8 @@
 use crate::client::focus::send_event_x11;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::WindowId;
-use x11rb::protocol::xproto::{ConnectionExt, Window};
 use x11rb::CURRENT_TIME;
+use x11rb::protocol::xproto::{ConnectionExt, Window};
 
 // ---------------------------------------------------------------------------
 // kill_client

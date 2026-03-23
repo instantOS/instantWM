@@ -113,11 +113,28 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
 
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
+    let shared_input = Arc::clone(&shared);
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            // Queue events for processing in the main event loop body,
-            // where `&mut Wm` is available without `Rc<RefCell<>>`.
-            state.pending_libinput_events.push(event);
+            let (total_w, total_h) = {
+                let s = shared_input.lock().unwrap();
+                (s.total_width, s.total_height)
+            };
+
+            let any_input = state
+                .with_wm_mut_unified(|wm, state| {
+                    crate::wayland::input::drm::dispatch_libinput_event(
+                        event, state, wm, total_w, total_h,
+                    )
+                })
+                .unwrap_or(false);
+
+            if any_input {
+                shared_input
+                    .lock()
+                    .unwrap()
+                    .mark_pointer_output_dirty(state.pointer_location.x as i32);
+            }
         })
         .expect("failed to insert libinput source");
 
@@ -306,8 +323,8 @@ fn run_event_loop(
         .run(Duration::from_millis(16), state, move |state| {
             process_completed_crtcs(state, shared, output_surfaces);
 
-            // Drain queued libinput events (pushed by the calloop source
-            // callback) and dispatch them now that we have `&mut Wm`.
+            // Kept for compatibility; libinput is dispatched directly in the
+            // calloop callback now for lower input latency.
             process_pending_libinput_events(wm, state, shared);
 
             super::common::arrange_layout_if_dirty(wm, state);
@@ -436,8 +453,8 @@ fn process_animations(wm: &mut Wm, state: &mut WaylandState, shared: &Arc<Mutex<
         // DRM-specific: mark all outputs dirty after space sync
         shared.lock().unwrap().mark_all_dirty();
     }
-    state.tick_window_animations();
     if state.has_active_window_animations() {
+        state.tick_window_animations();
         shared.lock().unwrap().mark_all_dirty();
     }
 }
