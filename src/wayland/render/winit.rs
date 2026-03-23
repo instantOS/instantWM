@@ -138,6 +138,7 @@ pub fn render_frame(
 
     // Shared: send frame callbacks
     send_frame_callbacks(state, output, start_time.elapsed());
+    state.frame_callback_sequence = state.frame_callback_sequence.wrapping_add(1);
 }
 
 // Backend-specific: cursor handling via winit window API

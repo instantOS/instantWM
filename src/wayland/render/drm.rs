@@ -349,6 +349,7 @@ pub fn render_drm_output(
     }
 
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
+    state.frame_callback_sequence = state.frame_callback_sequence.wrapping_add(1);
     true
 }
 

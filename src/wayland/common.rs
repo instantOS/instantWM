@@ -35,7 +35,7 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
-use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
+use crate::backend::wayland::compositor::{SurfaceFrameThrottle, WaylandClientState, WaylandState};
 use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
@@ -484,7 +484,12 @@ pub fn build_common_scene_elements(
 /// Only windows whose geometry intersects the output receive callbacks,
 /// preventing off-screen windows from committing empty-damage frames in a
 /// busy loop (an approach borrowed from niri's per-output frame throttling).
-pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
+///
+/// Frame callback sending is throttled per-surface using `frame_callback_sequence`.
+/// A surface will not receive duplicate frame callbacks within a single sequence,
+/// preventing clients from busy-looping (commit → callback → commit).
+pub fn send_frame_callbacks(state: &mut WaylandState, output: &Output, elapsed: Duration) {
+    let sequence = state.frame_callback_sequence;
     let output_geo = state.space.output_geometry(output);
 
     for window in state.space.elements() {
@@ -500,6 +505,15 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         }
 
         if let Some(wl_surface) = window.wl_surface() {
+            // Check throttle: skip if already sent this surface on this output in this sequence
+            if let Some(throttle) = state.surface_frame_throttle.get(&*wl_surface) {
+                if let Some((last_output, last_seq)) = &throttle.last_sent {
+                    if last_output == output && *last_seq == sequence {
+                        continue;
+                    }
+                }
+            }
+
             send_frames_surface_tree(
                 &wl_surface,
                 output,
@@ -507,14 +521,36 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
                 Some(Duration::from_millis(16)),
                 surface_primary_scanout_output,
             );
+            state.surface_frame_throttle.insert(
+                wl_surface.clone().into_owned(),
+                SurfaceFrameThrottle {
+                    last_sent: Some((output.clone(), sequence)),
+                },
+            );
+
             if let Some(toplevel) = window.toplevel() {
                 for (popup, _) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
+                    let popup_surface = popup.wl_surface();
+                    if let Some(throttle) = state.surface_frame_throttle.get(&*popup_surface) {
+                        if let Some((last_output, last_seq)) = &throttle.last_sent {
+                            if last_output == output && *last_seq == sequence {
+                                continue;
+                            }
+                        }
+                    }
+
                     send_frames_surface_tree(
-                        popup.wl_surface(),
+                        &popup_surface,
                         output,
                         elapsed,
                         Some(Duration::from_millis(16)),
                         surface_primary_scanout_output,
+                    );
+                    state.surface_frame_throttle.insert(
+                        popup_surface.clone().to_owned(),
+                        SurfaceFrameThrottle {
+                            last_sent: Some((output.clone(), sequence)),
+                        },
                     );
                 }
             }

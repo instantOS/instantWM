@@ -51,6 +51,16 @@ use crate::wm::Wm;
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
 
+pub struct SurfaceFrameThrottle {
+    pub last_sent: Option<(smithay::output::Output, u32)>,
+}
+
+impl Default for SurfaceFrameThrottle {
+    fn default() -> Self {
+        Self { last_sent: None }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Per-client state
 // ---------------------------------------------------------------------------
@@ -161,6 +171,11 @@ pub struct WaylandState {
     /// loop checks and clears this, calling `mark_content_dirty` to ensure
     /// the next VBlank schedules a render.
     pub content_dirty_pending: bool,
+    /// Monotonic sequence number for frame callback throttle.
+    /// Incremented after each render cycle completes.
+    pub frame_callback_sequence: u32,
+    /// Per-surface frame callback throttle state.
+    pub surface_frame_throttle: HashMap<WlSurface, SurfaceFrameThrottle>,
 }
 
 /// Tracks the current session lock state.
@@ -293,6 +308,8 @@ impl WaylandState {
             dnd_icon: None,
             pending_dmabuf_imports: Vec::new(),
             content_dirty_pending: false,
+            frame_callback_sequence: 0,
+            surface_frame_throttle: HashMap::new(),
         }
     }
 

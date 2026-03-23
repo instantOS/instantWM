@@ -5,7 +5,7 @@ use smithay::{
     reexports::wayland_server::Client,
     wayland::{
         buffer::BufferHandler,
-        compositor::{CompositorHandler, get_parent, is_sync_subsurface},
+        compositor::{BufferAssignment, CompositorHandler, get_parent, is_sync_subsurface},
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         keyboard_shortcuts_inhibit::{
             KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
@@ -48,6 +48,26 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
+        // Find the root surface by walking up the surface tree
+        // We need this BEFORE calling on_commit_buffer_handler to check for new buffer
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+
+        // Check if root surface has a new buffer in pending state BEFORE
+        // on_commit_buffer_handler processes it
+        let has_new_buffer = smithay::wayland::compositor::with_states(&root, |states| {
+            let mut guard = states
+                .cached_state
+                .get::<smithay::wayland::compositor::SurfaceAttributes>();
+            guard
+                .pending()
+                .buffer
+                .as_ref()
+                .is_some_and(|b| matches!(b, BufferAssignment::NewBuffer(_)))
+        });
+
         on_commit_buffer_handler::<Self>(surface);
 
         // Check if this commit is from a pending toplevel that has finally
@@ -82,12 +102,6 @@ impl CompositorHandler for WaylandState {
             return;
         }
 
-        // Find the root surface by walking up the surface tree
-        let mut root = surface.clone();
-        while let Some(parent) = get_parent(&root) {
-            root = parent;
-        }
-
         // Only call on_commit for the root surface, not for subsurfaces
         if surface != &root {
             return;
@@ -104,7 +118,10 @@ impl CompositorHandler for WaylandState {
 
         // Mark content dirty so the DRM backend schedules a render on the
         // next VBlank.  The damage tracker will handle GPU-efficiency.
-        self.content_dirty_pending = true;
+        // Only set if root surface had a new buffer attached.
+        if has_new_buffer {
+            self.content_dirty_pending = true;
+        }
 
         super::layer_shell::handle_layer_commit(self, surface);
     }

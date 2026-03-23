@@ -38,7 +38,7 @@ mod xdg_shell;
 mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
-pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
+pub use state::{SurfaceFrameThrottle, WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_idle_inhibit,
