@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -11,12 +11,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupGrab, PopupManager, Space, Window},
     input::{
-        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
+        Seat, SeatState,
     },
     reexports::{
-        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
+        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -32,7 +32,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -157,6 +157,10 @@ pub struct WaylandState {
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub pending_libinput_events:
         Vec<smithay::backend::input::InputEvent<smithay::backend::libinput::LibinputInputBackend>>,
+    /// Set to true when a client surface commits new content.  The DRM event
+    /// loop checks and clears this, calling `mark_content_dirty` to ensure
+    /// the next VBlank schedules a render.
+    pub content_dirty_pending: bool,
 }
 
 /// Tracks the current session lock state.
@@ -287,6 +291,7 @@ impl WaylandState {
             dnd_icon: None,
             pending_libinput_events: Vec::new(),
             pending_dmabuf_imports: Vec::new(),
+            content_dirty_pending: false,
         }
     }
 

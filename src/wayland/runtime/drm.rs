@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
@@ -13,9 +12,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
-use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
-use smithay::reexports::calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
+use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
@@ -267,10 +264,11 @@ fn setup_drm_vblank_handler(
                     .unwrap_or(std::time::Duration::ZERO);
 
                 let mut s = shared_vblank.lock().unwrap();
-                // For fixed-rate displays, VBlank drives the render loop so we
-                // re-mark dirty. For VRR outputs, only content changes (input,
-                // animations, surface commits) should trigger renders — not VBlank.
-                if !s.vrr_crtcs.contains(&crtc) {
+                // For fixed-rate displays, VBlank drives the render loop but
+                // we only re-mark dirty when content has actually changed.
+                // For VRR outputs, only content changes (input, animations,
+                // surface commits) should trigger renders — not VBlank.
+                if !s.vrr_crtcs.contains(&crtc) && s.content_dirty {
                     if let Some(flag) = s.render_flags.get_mut(&crtc) {
                         *flag = true;
                     }
@@ -319,9 +317,13 @@ fn run_event_loop(
     // This makes IPC event-driven rather than polled every iteration
     if let Some(ipc) = ipc_server {
         let shared_ipc = Arc::clone(shared);
-        let source = Generic::new(ipc, Interest::READ, Mode::Level);
+        let source = smithay::reexports::calloop::generic::Generic::new(
+            ipc,
+            smithay::reexports::calloop::Interest::READ,
+            smithay::reexports::calloop::Mode::Level,
+        );
         loop_handle
-            .insert_source(source, move |_, ipc_server, state| {
+            .insert_source(source, move |_, ipc_server, state: &mut WaylandState| {
                 // SAFETY: We're not dropping the IpcServer, just calling process_pending
                 let ipc = unsafe { ipc_server.get_mut() };
                 if ipc.process_pending(&mut state.wm) {
@@ -330,18 +332,18 @@ fn run_event_loop(
                     state.wm.g.dirty.space = true;
                     shared_ipc.lock().unwrap().mark_all_dirty();
                 }
-                Ok(PostAction::Continue)
+                Ok(smithay::reexports::calloop::PostAction::Continue)
             })
             .expect("ipc source");
     }
 
-    // Animation timer - fires every 16ms when animations are active
-    // Also handles LED state checks (rare operation)
-    // Uses smart timing: long sleep when idle to reduce CPU usage
+    // Animation timer - fires every 16ms when animations are active.
+    // The tick callback also handles LED state checks from the keyboard.
+    // When animations are active, marks all DRM outputs dirty for re-render.
     let shared_anim = Arc::clone(shared);
-    let anim_timer = Timer::from_duration(Duration::from_millis(16));
-    loop_handle
-        .insert_source(anim_timer, move |_, _, state| {
+    super::calloop_helpers::setup_animation_timer(
+        &loop_handle,
+        move |state| {
             // Check LED state updates
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
@@ -352,17 +354,16 @@ fn run_event_loop(
                     }
                 }
             }
-
             state.tick_window_animations();
-            if state.has_active_window_animations() {
+        },
+        move |state| {
+            let active = state.has_active_window_animations();
+            if active {
                 shared_anim.lock().unwrap().mark_all_dirty();
-                TimeoutAction::ToDuration(Duration::from_millis(16))
-            } else {
-                // No animations, sleep until woken by something else
-                TimeoutAction::ToDuration(Duration::from_secs(86400))
             }
-        })
-        .expect("animation timer source");
+            active
+        },
+    );
 
     // Main event loop - no timeout needed since all work is event-driven
     // The timeout is only for safety in case we miss an event wakeup
@@ -421,22 +422,6 @@ fn run_event_loop(
             }
         })
         .expect("event loop run");
-}
-
-/// Drain the WM command queue and execute each command on WaylandState.
-///
-/// Commands are queued by WM logic (e.g. `show_hide_wayland` pushes
-/// MapWindow/UnmapWindow).  They must be executed before building render
-/// elements so the Space reflects the correct visibility state.
-fn drain_and_execute_ops(state: &mut WaylandState) {
-    let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
-        data.backend.drain_ops()
-    } else {
-        Vec::new()
-    };
-    for op in ops {
-        state.execute_command(op);
-    }
 }
 
 /// Drain and dispatch queued libinput events.
@@ -539,6 +524,7 @@ fn render_outputs(
     }
 
     let pointer_location = state.pointer_location;
+    let mut any_rendered = false;
 
     if session_active {
         for entry in output_surfaces.iter_mut() {
@@ -566,6 +552,7 @@ fn render_outputs(
             let render_duration = render_start.elapsed();
 
             if rendered {
+                any_rendered = true;
                 // Update estimated render duration (exponential moving average)
                 entry.last_render_duration = std::time::Duration::from_nanos(
                     (entry.last_render_duration.as_nanos() as f64 * 0.8
@@ -596,5 +583,11 @@ fn render_outputs(
                 shared.lock().unwrap().render_flags.insert(entry.crtc, true);
             }
         }
+    }
+
+    // If at least one frame was rendered, clear content_dirty so non-VRR
+    // outputs skip rendering on subsequent VBlanks until something changes.
+    if any_rendered {
+        shared.lock().unwrap().clear_content_dirty();
     }
 }

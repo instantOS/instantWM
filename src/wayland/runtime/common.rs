@@ -37,3 +37,19 @@ pub fn sync_space_if_dirty(state: &mut WaylandState) -> bool {
         false
     }
 }
+
+/// Drain the WM command queue and execute each command on WaylandState.
+///
+/// Commands are queued by WM logic (e.g. `show_hide_wayland` pushes
+/// MapWindow/UnmapWindow).  They must be executed before building render
+/// elements so the Space reflects the correct visibility state.
+pub fn drain_and_execute_ops(state: &mut WaylandState) {
+    let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
+        data.backend.drain_ops()
+    } else {
+        Vec::new()
+    };
+    for op in ops {
+        state.execute_command(op);
+    }
+}

@@ -98,6 +98,10 @@ impl CompositorHandler for WaylandState {
             window.on_commit();
         }
 
+        // Mark content dirty so the DRM backend schedules a render on the
+        // next VBlank.  The damage tracker will handle GPU-efficiency.
+        self.content_dirty_pending = true;
+
         super::layer_shell::handle_layer_commit(self, surface);
     }
 }

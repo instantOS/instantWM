@@ -6,15 +6,15 @@
 use std::process::exit;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -175,6 +175,11 @@ pub fn run() -> ! {
             state.popups.cleanup();
             state.refresh_popup_grab();
 
+            // Drain and execute commands BEFORE sync/render so that
+            // map/unmap from show_hide_wayland takes effect in the Space
+            // before we build render elements.
+            super::common::drain_and_execute_ops(state);
+
             if super::common::sync_space_if_dirty(state) {
                 needs_render = true;
             }
@@ -197,19 +202,11 @@ pub fn run() -> ! {
                 );
             }
 
-            // Phase 1: drain the command queue
-            let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
-                data.backend.drain_ops()
-            } else {
-                Vec::new()
-            };
+            // Second drain pass for any commands queued during execute_command
+            // or render (e.g. surface lifecycle callbacks).
+            super::common::drain_and_execute_ops(state);
 
-            // Phase 2: execute queued commands
-            for op in ops {
-                state.execute_command(op);
-            }
-
-            // Phase 3: sync caches
+            // Sync caches
             if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
                 data.backend.sync_cache(state);
             }

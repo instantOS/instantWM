@@ -14,10 +14,15 @@ use calloop::{Interest, LoopHandle, Mode, PostAction};
 
 /// Setup IPC as a calloop event source.
 ///
+/// Takes ownership of the `LoopHandle` (cheap Arc clone) so that callers
+/// with non-`'static` borrowed handles can register the source without
+/// running into lifetime issues with `insert_source`'s `'static` callback
+/// bound.
+///
 /// When a client connects, `on_ipc` is called with mutable access to the
 /// IpcServer and the event loop data.
 pub fn setup_ipc_source<Data: 'static>(
-    loop_handle: &LoopHandle<'static, Data>,
+    loop_handle: LoopHandle<'static, Data>,
     ipc_server: crate::ipc::IpcServer,
     mut on_ipc: impl FnMut(&mut crate::ipc::IpcServer, &mut Data) + 'static,
 ) {
