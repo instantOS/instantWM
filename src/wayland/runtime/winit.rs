@@ -52,6 +52,9 @@ pub fn run() -> ! {
     crate::runtime::init_keyboard_layout(&mut state.wm);
 
     state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
+
+    state.bind_egl_to_display(backend.renderer());
+
     state.init_screencopy_manager();
 
     let output_size = backend.window_size();
