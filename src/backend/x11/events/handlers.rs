@@ -419,7 +419,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::grab::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {

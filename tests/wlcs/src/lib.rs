@@ -1,22 +1,24 @@
-use std::time::Duration;
+use std::io;
+use std::os::unix::io::OwnedFd;
 use std::sync::mpsc;
 use std::thread;
-use std::os::unix::io::OwnedFd;
-use std::io;
+use std::time::Duration;
 
 use instantwm::backend::Backend;
 use instantwm::backend::wayland::WaylandBackend;
 use instantwm::backend::wayland::compositor::WaylandState;
-use instantwm::wm::Wm;
 use instantwm::wayland::input::pointer::motion::{MotionEvent, handle_pointer_motion};
+use instantwm::wm::Wm;
 
-use smithay::reexports::calloop::{EventLoop};
+use smithay::backend::input::{ButtonState, Device, InputBackend, PointerButtonEvent, UnusedEvent};
+use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::wayland_server::Display;
-use smithay::backend::input::{InputBackend, PointerButtonEvent, ButtonState, UnusedEvent, Device};
 
-use wlcs::{Wlcs, Pointer, Touch};
-use wlcs::ffi_display_server_api::{WlcsServerIntegration, WlcsIntegrationDescriptor, WlcsExtensionDescriptor};
+use wlcs::ffi_display_server_api::{
+    WlcsExtensionDescriptor, WlcsIntegrationDescriptor, WlcsServerIntegration,
+};
 use wlcs::ffi_wrappers::wlcs_server;
+use wlcs::{Pointer, Touch, Wlcs};
 
 /// Events sent from WLCS thread to the compositor thread
 enum WlcsEvent {
@@ -32,11 +34,21 @@ enum WlcsEvent {
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 struct MockDevice;
 impl Device for MockDevice {
-    fn id(&self) -> String { "mock".into() }
-    fn name(&self) -> String { "mock".into() }
-    fn has_capability(&self, _cap: smithay::backend::input::DeviceCapability) -> bool { true }
-    fn usb_id(&self) -> Option<(u32, u32)> { None }
-    fn syspath(&self) -> Option<std::path::PathBuf> { None }
+    fn id(&self) -> String {
+        "mock".into()
+    }
+    fn name(&self) -> String {
+        "mock".into()
+    }
+    fn has_capability(&self, _cap: smithay::backend::input::DeviceCapability) -> bool {
+        true
+    }
+    fn usb_id(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn syspath(&self) -> Option<std::path::PathBuf> {
+        None
+    }
 }
 
 struct MockBackend;
@@ -74,17 +86,27 @@ struct MockButtonEvent {
 }
 
 impl smithay::backend::input::Event<MockBackend> for MockButtonEvent {
-    fn time_msec(&self) -> u32 { 0 }
-    fn time(&self) -> u64 { 0 }
-    fn device(&self) -> MockDevice { MockDevice }
+    fn time_msec(&self) -> u32 {
+        0
+    }
+    fn time(&self) -> u64 {
+        0
+    }
+    fn device(&self) -> MockDevice {
+        MockDevice
+    }
 }
 
 impl PointerButtonEvent<MockBackend> for MockButtonEvent {
     fn button(&self) -> Option<smithay::backend::input::MouseButton> {
         None
     }
-    fn button_code(&self) -> u32 { self.button }
-    fn state(&self) -> ButtonState { self.state }
+    fn button_code(&self) -> u32 {
+        self.button
+    }
+    fn state(&self) -> ButtonState {
+        self.state
+    }
 }
 
 // The handle WLCS holds
@@ -100,21 +122,17 @@ impl Wlcs for InstantWmHandle {
 
     fn new() -> Self {
         let (command_tx, command_rx) = mpsc::channel();
-        
+
         let thread_handle = thread::spawn(move || {
-            let mut event_loop: EventLoop<'static, WaylandState> = EventLoop::try_new().expect("Failed to create event loop");
+            let mut event_loop: EventLoop<'static, WaylandState> =
+                EventLoop::try_new().expect("Failed to create event loop");
             let display = Display::new().expect("Failed to create display");
             let mut dh = display.handle();
-            
+
             let wayland_backend = WaylandBackend::new();
             let wm = Wm::new(Backend::new_wayland(wayland_backend));
 
-            let mut state = WaylandState::new(
-                display,
-                &event_loop.handle(),
-                wm,
-                None,
-            );
+            let mut state = WaylandState::new(display, &event_loop.handle(), wm, None);
 
             // Mock an output so we have some coordinate space
             let output = smithay::output::Output::new(
@@ -172,14 +190,22 @@ impl Wlcs for InstantWmHandle {
                         _ => {} // TODO: Touch
                     }
                 }
-                event_loop.dispatch(Some(Duration::from_millis(10)), &mut state).expect("Dispatch failed");
+                event_loop
+                    .dispatch(Some(Duration::from_millis(10)), &mut state)
+                    .expect("Dispatch failed");
                 state.flush();
             }
         });
 
         let extensions = vec![
-            WlcsExtensionDescriptor { name: "wl_compositor\0".as_ptr() as *const _, version: 4 },
-            WlcsExtensionDescriptor { name: "xdg_wm_base\0".as_ptr() as *const _, version: 1 },
+            WlcsExtensionDescriptor {
+                name: "wl_compositor\0".as_ptr() as *const _,
+                version: 4,
+            },
+            WlcsExtensionDescriptor {
+                name: "xdg_wm_base\0".as_ptr() as *const _,
+                version: 1,
+            },
         ];
 
         Self {
@@ -193,8 +219,7 @@ impl Wlcs for InstantWmHandle {
         }
     }
 
-    fn start(&mut self) {
-    }
+    fn start(&mut self) {}
 
     fn stop(&mut self) {
         let _ = self.command_tx.send(WlcsEvent::Exit);
@@ -205,19 +230,31 @@ impl Wlcs for InstantWmHandle {
 
     fn create_client_socket(&self) -> io::Result<OwnedFd> {
         let (s1, s2) = std::os::unix::net::UnixStream::pair()?;
-        self.command_tx.send(WlcsEvent::NewClient(s2)).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        self.command_tx
+            .send(WlcsEvent::NewClient(s2))
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         Ok(OwnedFd::from(s1))
     }
 
-    fn position_window_absolute(&self, _display: *mut wayland_sys::client::wl_display, _proxy: *mut wayland_sys::client::wl_proxy, _x: i32, _y: i32) {
+    fn position_window_absolute(
+        &self,
+        _display: *mut wayland_sys::client::wl_display,
+        _proxy: *mut wayland_sys::client::wl_proxy,
+        _x: i32,
+        _y: i32,
+    ) {
     }
 
     fn create_pointer(&mut self) -> Option<Self::Pointer> {
-        Some(InstantWmPointer { command_tx: self.command_tx.clone() })
+        Some(InstantWmPointer {
+            command_tx: self.command_tx.clone(),
+        })
     }
 
     fn create_touch(&mut self) -> Option<Self::Touch> {
-        Some(InstantWmTouch { command_tx: self.command_tx.clone() })
+        Some(InstantWmTouch {
+            command_tx: self.command_tx.clone(),
+        })
     }
 
     fn get_descriptor(&self) -> &WlcsIntegrationDescriptor {
@@ -231,20 +268,22 @@ struct InstantWmPointer {
 
 impl Pointer for InstantWmPointer {
     fn move_absolute(&mut self, x: i32, y: i32) {
-        let _ = self.command_tx.send(WlcsEvent::PointerMoveAbs { x: x as f64, y: y as f64 });
+        let _ = self.command_tx.send(WlcsEvent::PointerMoveAbs {
+            x: x as f64,
+            y: y as f64,
+        });
     }
-    fn move_relative(&mut self, _dx: i32, _dy: i32) {
-    }
+    fn move_relative(&mut self, _dx: i32, _dy: i32) {}
     fn button_down(&mut self, button: i32) {
-        let _ = self.command_tx.send(WlcsEvent::PointerButton { 
-            button: button as u32, 
-            state: ButtonState::Pressed 
+        let _ = self.command_tx.send(WlcsEvent::PointerButton {
+            button: button as u32,
+            state: ButtonState::Pressed,
         });
     }
     fn button_up(&mut self, button: i32) {
-        let _ = self.command_tx.send(WlcsEvent::PointerButton { 
-            button: button as u32, 
-            state: ButtonState::Released 
+        let _ = self.command_tx.send(WlcsEvent::PointerButton {
+            button: button as u32,
+            state: ButtonState::Released,
         });
     }
     fn destroy(&mut self) {}
@@ -256,10 +295,18 @@ struct InstantWmTouch {
 
 impl Touch for InstantWmTouch {
     fn touch_down(&mut self, x: i32, y: i32) {
-        let _ = self.command_tx.send(WlcsEvent::TouchDown { x: x as f64, y: y as f64, id: 0 });
+        let _ = self.command_tx.send(WlcsEvent::TouchDown {
+            x: x as f64,
+            y: y as f64,
+            id: 0,
+        });
     }
     fn touch_move(&mut self, x: i32, y: i32) {
-        let _ = self.command_tx.send(WlcsEvent::TouchMove { x: x as f64, y: y as f64, id: 0 });
+        let _ = self.command_tx.send(WlcsEvent::TouchMove {
+            x: x as f64,
+            y: y as f64,
+            id: 0,
+        });
     }
     fn touch_up(&mut self) {
         let _ = self.command_tx.send(WlcsEvent::TouchUp { id: 0 });

@@ -138,7 +138,7 @@ pub fn run() -> ! {
 
     let ctx = state.wm.ctx();
     let core = ctx.core();
-    crate::runtime::spawn_status_bar(&core);
+    crate::runtime::spawn_status_bar(core);
 
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
     state.led_state_tx = Some(led_state_tx);

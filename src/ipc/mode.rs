@@ -1,6 +1,6 @@
+use crate::backend::x11::grab::grab_keys_x11;
 use crate::contexts::WmCtx;
 use crate::ipc_types::{ModeCommand, ModeInfo, Response};
-use crate::keyboard::grab_keys_x11;
 use crate::wm::Wm;
 
 pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {

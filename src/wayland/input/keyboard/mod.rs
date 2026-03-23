@@ -20,30 +20,28 @@ pub fn handle_keyboard<B: InputBackend>(
     let serial = SERIAL_COUNTER.next_serial();
     let wm_shortcuts_allowed = if keyboard_handle.is_grabbed() {
         false
+    } else if state.seat.keyboard_shortcuts_inhibited() {
+        false
     } else {
-        if state.seat.keyboard_shortcuts_inhibited() {
-            false
-        } else {
-            match keyboard_handle.current_focus() {
-                None => true,
-                Some(KeyboardFocusTarget::Window(_)) => true,
-                Some(KeyboardFocusTarget::WlSurface(ref s)) => {
-                    let is_exclusive = with_states(s, |states| {
-                        if states.cached_state.has::<LayerSurfaceCachedState>() {
-                            states
-                                .cached_state
-                                .get::<LayerSurfaceCachedState>()
-                                .current()
-                                .keyboard_interactivity
-                                == KeyboardInteractivity::Exclusive
-                        } else {
-                            false
-                        }
-                    });
-                    !is_exclusive
-                }
-                Some(KeyboardFocusTarget::Popup(_)) => false,
+        match keyboard_handle.current_focus() {
+            None => true,
+            Some(KeyboardFocusTarget::Window(_)) => true,
+            Some(KeyboardFocusTarget::WlSurface(ref s)) => {
+                let is_exclusive = with_states(s, |states| {
+                    if states.cached_state.has::<LayerSurfaceCachedState>() {
+                        states
+                            .cached_state
+                            .get::<LayerSurfaceCachedState>()
+                            .current()
+                            .keyboard_interactivity
+                            == KeyboardInteractivity::Exclusive
+                    } else {
+                        false
+                    }
+                });
+                !is_exclusive
             }
+            Some(KeyboardFocusTarget::Popup(_)) => false,
         }
     };
     let key_code = event.key_code();
