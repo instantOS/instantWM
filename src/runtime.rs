@@ -1,8 +1,8 @@
 //! Shared event-loop tick helpers used by both X11 and Wayland backends.
 //!
-//! These functions operate purely on [`Wm`] and are backend-agnostic.
+//! These functions operate on [`WmCtx`] and are backend-agnostic.
 
-use crate::contexts::CoreCtx;
+use crate::contexts::WmCtx;
 use crate::wm::Wm;
 
 // ── Event-loop tick helpers ─────────────────────────────────────────────
@@ -12,23 +12,21 @@ use crate::wm::Wm;
 /// Used by the X11 event loop (which previously called `arrange()` directly
 /// from event handlers) and by the Wayland event loop (which may add an
 /// additional animation guard on top).
-pub fn arrange_layout_if_dirty(wm: &mut Wm) {
-    if !wm.g.dirty.layout {
+pub fn arrange_layout_if_dirty(ctx: &mut WmCtx) {
+    if !ctx.core().globals().dirty.layout {
         return;
     }
-    if wm.g.clients.is_empty() {
+    if ctx.core().globals().clients.is_empty() {
         return;
     }
-    let mut ctx = wm.ctx();
     let monitor_id = ctx.core().globals().selected_monitor_id();
-    crate::layouts::arrange(&mut ctx, Some(monitor_id));
+    crate::layouts::arrange(ctx, Some(monitor_id));
 }
 
 /// Apply monitor configuration when the dirty flag is set.
-pub fn apply_monitor_config_if_dirty(wm: &mut Wm) {
-    if wm.g.dirty.monitor_config {
-        let mut ctx = wm.ctx();
-        crate::monitor::apply_monitor_config(&mut ctx);
+pub fn apply_monitor_config_if_dirty(ctx: &mut WmCtx) {
+    if ctx.core().globals().dirty.monitor_config {
+        crate::monitor::apply_monitor_config(ctx);
     }
 }
 
