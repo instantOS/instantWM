@@ -13,7 +13,9 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+use smithay::reexports::calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
@@ -127,7 +129,7 @@ pub fn run() -> ! {
     run_autostart();
     spawn_wayland_smoke_window();
 
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+    let ipc_server = crate::ipc::IpcServer::bind().ok();
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
@@ -142,7 +144,7 @@ pub fn run() -> ! {
         &shared,
         &mut output_surfaces,
         &cursor_manager,
-        &mut ipc_server,
+        ipc_server,
         &mut render_failures,
         start_time,
         led_state_rx,
@@ -251,13 +253,26 @@ fn setup_drm_vblank_handler(
 ) {
     let shared_vblank = Arc::clone(shared);
     loop_handle
-        .insert_source(drm_notifier, move |event, _metadata, _data| match event {
+        .insert_source(drm_notifier, move |event, meta, _data| match event {
             DrmEvent::VBlank(crtc) => {
+                // Extract presentation time from VBlank metadata if available
+                let presentation_time = meta
+                    .and_then(|m| match m.time {
+                        smithay::backend::drm::DrmEventTime::Monotonic(time) => Some(time),
+                        smithay::backend::drm::DrmEventTime::Realtime(_) => None,
+                    })
+                    .unwrap_or(std::time::Duration::ZERO);
+
                 let mut s = shared_vblank.lock().unwrap();
                 if let Some(flag) = s.render_flags.get_mut(&crtc) {
                     *flag = true;
                 }
                 s.completed_crtcs.push(crtc);
+
+                // Store presentation time for frame clock updates
+                if !presentation_time.is_zero() {
+                    s.presentation_times.insert(crtc, presentation_time);
+                }
             }
             DrmEvent::Error(err) => {
                 log::error!("DRM error: {err}");
@@ -283,32 +298,43 @@ fn run_event_loop(
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
     cursor_manager: &CursorManager,
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    ipc_server: Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
     led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
+    let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
 
-    event_loop
-        .run(Duration::from_millis(16), state, move |state| {
-            process_completed_crtcs(state, shared, output_surfaces);
+    // Register IPC server as a calloop source if available
+    // This makes IPC event-driven rather than polled every iteration
+    if let Some(ipc) = ipc_server {
+        let shared_ipc = Arc::clone(shared);
+        let source = Generic::new(ipc, Interest::READ, Mode::Level);
+        loop_handle
+            .insert_source(source, move |_, ipc_server, state| {
+                // SAFETY: We're not dropping the IpcServer, just calling process_pending
+                let ipc = unsafe { ipc_server.get_mut() };
+                if ipc.process_pending(&mut state.wm) {
+                    state.wm.g.dirty.layout = true;
+                    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+                    state.wm.g.dirty.space = true;
+                    shared_ipc.lock().unwrap().mark_all_dirty();
+                }
+                Ok(PostAction::Continue)
+            })
+            .expect("ipc source");
+    }
 
-            process_pending_libinput_events(state, shared);
-
-            super::common::arrange_layout_if_dirty(state);
-
-            process_ipc(ipc_server, state, shared);
-
-            if state.wm.g.dirty.input_config {
-                state.wm.g.dirty.input_config = false;
-                crate::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.tracked_devices,
-                    &state.wm.g.cfg.input,
-                );
-            }
-
+    // Animation timer - fires every 16ms when animations are active
+    // Also handles LED state checks (rare operation)
+    // Uses smart timing: long sleep when idle to reduce CPU usage
+    let shared_anim = Arc::clone(shared);
+    let anim_timer = Timer::from_duration(Duration::from_millis(16));
+    loop_handle
+        .insert_source(anim_timer, move |_, _, state| {
+            // Check LED state updates
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
                 for device in state.tracked_devices.iter_mut() {
@@ -319,11 +345,36 @@ fn run_event_loop(
                 }
             }
 
-            super::common::sync_space_if_dirty(state);
             state.tick_window_animations();
             if state.has_active_window_animations() {
-                shared.lock().unwrap().mark_all_dirty();
+                shared_anim.lock().unwrap().mark_all_dirty();
+                TimeoutAction::ToDuration(Duration::from_millis(16))
+            } else {
+                // No animations, sleep until woken by something else
+                TimeoutAction::ToDuration(Duration::from_secs(86400))
             }
+        })
+        .expect("animation timer source");
+
+    // Main event loop - no timeout needed since all work is event-driven
+    // The timeout is only for safety in case we miss an event wakeup
+    event_loop
+        .run(None, state, move |state| {
+            process_completed_crtcs(state, shared, output_surfaces);
+
+            process_pending_libinput_events(state, shared);
+
+            super::common::arrange_layout_if_dirty(state);
+
+            if state.wm.g.dirty.input_config {
+                state.wm.g.dirty.input_config = false;
+                crate::wayland::input::drm::reconfigure_all_devices(
+                    &mut state.tracked_devices,
+                    &state.wm.g.cfg.input,
+                );
+            }
+
+            super::common::sync_space_if_dirty(state);
 
             process_cursor_warp(state, &pointer_handle, shared);
 
@@ -399,39 +450,30 @@ fn process_completed_crtcs(
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
 ) {
-    let completed_crtcs = {
+    let (completed_crtcs, presentation_times) = {
         let mut s = shared.lock().unwrap();
-        std::mem::take(&mut s.completed_crtcs)
+        let crtcs = std::mem::take(&mut s.completed_crtcs);
+        let times = std::mem::take(&mut s.presentation_times);
+        (crtcs, times)
     };
     if completed_crtcs.is_empty() {
         return;
     }
     for crtc in &completed_crtcs {
-        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc)
-            && let Err(err) = entry.surface.frame_submitted()
-        {
-            log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc) {
+            if let Err(err) = entry.surface.frame_submitted() {
+                log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+            }
+            // Update frame clock with presentation time if available
+            if let Some(presentation_time) = presentation_times.get(crtc) {
+                entry.frame_clock.presented(*presentation_time);
+            }
         }
     }
     // Clear in-flight tracking so these CRTCs can render again.
     let mut s = shared.lock().unwrap();
     for crtc in &completed_crtcs {
         s.pending_crtcs.remove(crtc);
-    }
-}
-
-/// Process IPC commands with DRM-specific output invalidation.
-fn process_ipc(
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-    state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
-) {
-    let handled = super::common::process_ipc_commands(ipc_server, state);
-    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
-    if handled {
-        // DRM-specific: also mark space and all outputs dirty
-        state.wm.g.dirty.space = true;
-        shared.lock().unwrap().mark_all_dirty();
     }
 }
 
@@ -458,16 +500,22 @@ fn render_outputs(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
 ) {
-    let (session_active, render_flags, pending_crtcs) = {
+    let (session_active, render_flags, pending_crtcs, delay_rendering) = {
         let mut s = shared.lock().unwrap();
         let flags = s.render_flags.clone();
         for flag in s.render_flags.values_mut() {
             *flag = false;
         }
-        (s.session_active, flags, s.pending_crtcs.clone())
+        (
+            s.session_active,
+            flags,
+            s.pending_crtcs.clone(),
+            s.delay_rendering,
+        )
     };
 
     let pointer_location = state.pointer_location;
+    let now = crate::frame_clock::monotonic_time();
 
     if session_active {
         for entry in output_surfaces.iter_mut() {
@@ -482,6 +530,30 @@ fn render_outputs(
                 shared.lock().unwrap().render_flags.insert(entry.crtc, true);
                 continue;
             }
+
+            // Frame clock scheduling: delay rendering until closer to presentation deadline
+            if delay_rendering {
+                let next_presentation = entry.frame_clock.next_presentation_time();
+                let time_until_presentation = if next_presentation > now {
+                    next_presentation - now
+                } else {
+                    std::time::Duration::ZERO
+                };
+
+                // If we have more time than render duration + margin, delay rendering
+                // The margin (1ms) accounts for scheduling jitter
+                let render_margin = std::time::Duration::from_micros(1000);
+                let should_delay =
+                    time_until_presentation > entry.last_render_duration + render_margin;
+
+                if should_delay {
+                    // Re-mark as dirty to render later
+                    shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                    continue;
+                }
+            }
+
+            let render_start = std::time::Instant::now();
             let rendered = render_drm_output(
                 state,
                 renderer,
@@ -490,8 +562,15 @@ fn render_outputs(
                 pointer_location,
                 start_time,
             );
+            let render_duration = render_start.elapsed();
 
             if rendered {
+                // Update estimated render duration (exponential moving average)
+                entry.last_render_duration = std::time::Duration::from_nanos(
+                    (entry.last_render_duration.as_nanos() as f64 * 0.8
+                        + render_duration.as_nanos() as f64 * 0.2) as u64,
+                );
+
                 shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
                 if let Some(failed_frames) = render_failures.remove(&entry.crtc)
                     && failed_frames >= 3

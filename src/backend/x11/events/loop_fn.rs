@@ -5,10 +5,8 @@
 //! architecture and making animations non-blocking.
 
 use std::os::unix::io::AsRawFd;
-use std::time::Duration;
 
 use calloop::generic::Generic;
-use calloop::timer::{TimeoutAction, Timer};
 use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
 use crate::backend::BackendOps;
@@ -21,7 +19,7 @@ use x11rb::protocol::xproto::ConnectionExt;
 
 use super::handlers;
 
-pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
+pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
     let mut event_loop: EventLoop<Wm> =
         EventLoop::try_new().expect("failed to create X11 calloop event loop");
     let loop_handle = event_loop.handle();
@@ -47,28 +45,25 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         })
         .expect("failed to insert X11 fd source");
 
-    // ── IPC listener fd source ──────────────────────────────────────────
-    if let Some(server) = ipc_server.as_ref() {
-        let ipc_fd = server.as_raw_fd();
-        let ipc_source = Generic::new(
-            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
-            Interest::READ,
-            Mode::Level,
-        );
-        loop_handle
-            .insert_source(ipc_source, |_, _, _wm| Ok(PostAction::Continue))
-            .expect("failed to insert IPC fd source");
+    // ── IPC as event-driven calloop source ──────────────────────────────
+    // This mirrors the Wayland/DRM backend approach - IPC is processed
+    // immediately when a client connects, not polled every iteration.
+    if let Some(ipc) = ipc_server {
+        crate::wayland::runtime::calloop_helpers::setup_ipc_source(&loop_handle, ipc, |ipc, wm| {
+            if ipc.process_pending(wm) {
+                crate::runtime::apply_monitor_config_if_dirty(wm);
+            }
+        });
     }
 
     // ── Animation timer (~60 fps) ───────────────────────────────────────
-    // A persistent 16ms timer that ticks animations when active.
-    let timer = Timer::from_duration(Duration::from_millis(16));
-    loop_handle
-        .insert_source(timer, |_, _, wm| {
-            tick_x11_animations(wm);
-            TimeoutAction::ToDuration(Duration::from_millis(16))
-        })
-        .expect("failed to insert animation timer");
+    // Uses smart timing: 16ms when animations active, long sleep when idle
+    // to reduce CPU usage. This mirrors the Wayland/DRM backend approach.
+    crate::wayland::runtime::calloop_helpers::setup_animation_timer(
+        &loop_handle,
+        |wm| tick_x11_animations(wm),
+        |wm| wm.has_active_animations(),
+    );
 
     let loop_signal: LoopSignal = event_loop.get_signal();
 
@@ -77,8 +72,10 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             // ── 1. Drain all pending X11 events ─────────────────────────
             drain_x11_events(wm);
 
-            // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
-            crate::runtime::event_loop_tick(wm, ipc_server);
+            // ── 2. Apply monitor config and arrange layout ──────────────
+            // NOTE: IPC is now handled by calloop source, not polled here
+            crate::runtime::apply_monitor_config_if_dirty(wm);
+            crate::runtime::arrange_layout_if_dirty(wm);
 
             // ── 3. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();

@@ -43,9 +43,9 @@ pub fn run() {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
     }
-    let mut ipc_server = crate::runtime::late_init(&wm);
+    let ipc_server = crate::runtime::late_init(&wm);
 
-    crate::backend::x11::events::run(&mut wm, &mut ipc_server);
+    crate::backend::x11::events::run(&mut wm, ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);
 }
 

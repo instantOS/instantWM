@@ -103,6 +103,12 @@ impl Drop for IpcServer {
     }
 }
 
+impl std::os::unix::io::AsFd for IpcServer {
+    fn as_fd(&self) -> std::os::unix::io::BorrowedFd<'_> {
+        self.listener.as_fd()
+    }
+}
+
 impl std::os::unix::io::AsRawFd for IpcServer {
     fn as_raw_fd(&self) -> std::os::unix::io::RawFd {
         self.listener.as_raw_fd()

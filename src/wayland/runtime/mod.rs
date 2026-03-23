@@ -7,6 +7,7 @@
 //! Shared per-tick logic lives in `common`; each backend only adds
 //! minimal backend-specific match arms.
 
+pub mod calloop_helpers;
 pub mod common;
 pub mod drm;
 pub mod winit;
