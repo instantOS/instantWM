@@ -32,6 +32,11 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
         if !props.title.is_empty() {
             c.name = props.title.clone();
         }
+        // wl-clipboard (wl-copy) creates dummy windows just to get keyboard focus.
+        // Float them immediately so they don't cause layout shifts.
+        if props.class == "wl-clipboard" || props.title == "wl-clipboard" {
+            c.is_floating = true;
+        }
     }
 
     let special_next = g.behavior.specialnext;
