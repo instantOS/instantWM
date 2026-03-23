@@ -87,6 +87,15 @@ impl SharedDrmState {
     /// VBlank.  If already dirty, this is a no-op (avoids redundant work).
     pub fn mark_content_dirty(&mut self) {
         self.content_dirty = true;
+        // For VRR, we want to render immediately when content is dirty.
+        // For non-VRR, we should also trigger an immediate render if no
+        // page flip is currently in flight, to "kick" the render loop out
+        // of idle.  If a flip is in flight, the VBlank handler will handle it.
+        for (crtc, flag) in self.render_flags.iter_mut() {
+            if self.vrr_crtcs.contains(crtc) || !self.pending_crtcs.contains(crtc) {
+                *flag = true;
+            }
+        }
     }
 
     pub fn mark_pointer_output_dirty(&mut self, px: i32) {

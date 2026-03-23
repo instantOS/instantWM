@@ -383,7 +383,9 @@ fn run_event_loop(
             // windows would render for one extra frame after a tag switch.
             super::common::drain_and_execute_ops(state);
 
-            super::common::sync_space_if_dirty(state);
+            if super::common::sync_space_if_dirty(state) {
+                shared.lock().unwrap().mark_content_dirty();
+            }
 
             process_cursor_warp(state, &pointer_handle, shared);
 

@@ -18,7 +18,7 @@ use crate::backend::wayland::compositor::WaylandState;
 /// Delegates to the shared [`crate::runtime::arrange_layout_if_dirty`]
 /// but additionally checks for active Wayland window animations.
 pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
-    if state.wm.g.dirty.layout && !state.has_active_window_animations() {
+    if state.wm.g.dirty.layout {
         crate::runtime::arrange_layout_if_dirty(&mut state.wm);
     }
 }
