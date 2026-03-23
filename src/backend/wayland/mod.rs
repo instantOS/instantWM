@@ -55,7 +55,7 @@ pub mod compositor;
 use crate::backend::BackendOps;
 use crate::backend::BackendOutputInfo;
 use crate::types::{Rect, WindowId};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -96,9 +96,9 @@ pub struct WaylandBackend {
     /// Pending operations from WM logic
     pending_ops: RefCell<Vec<WmCommand>>,
     /// Cached pointer location, updated by sync_cache each event loop tick
-    cached_pointer_location: RefCell<Option<(i32, i32)>>,
+    cached_pointer_location: Cell<Option<(i32, i32)>>,
     /// Cached xdisplay, updated by sync_cache
-    cached_xdisplay: RefCell<Option<u32>>,
+    cached_xdisplay: Cell<Option<u32>>,
     /// Cached output info, updated by sync_cache
     cached_outputs: RefCell<Vec<BackendOutputInfo>>,
     /// Cached input device list, updated by sync_cache
@@ -108,21 +108,25 @@ pub struct WaylandBackend {
     /// Cached display modes per display name, updated by sync_cache
     cached_display_modes: RefCell<HashMap<String, Vec<String>>>,
     /// Cached keyboard focus window, updated by sync_cache
-    cached_keyboard_focus: RefCell<Option<WindowId>>,
+    cached_keyboard_focus: Cell<Option<WindowId>>,
 }
 
 impl WaylandBackend {
     pub fn new() -> Self {
         Self {
             pending_ops: RefCell::new(Vec::new()),
-            cached_pointer_location: RefCell::new(None),
-            cached_xdisplay: RefCell::new(None),
+            cached_pointer_location: Cell::new(None),
+            cached_xdisplay: Cell::new(None),
             cached_outputs: RefCell::new(Vec::new()),
             cached_input_devices: RefCell::new(Vec::new()),
             cached_displays: RefCell::new(Vec::new()),
             cached_display_modes: RefCell::new(HashMap::new()),
-            cached_keyboard_focus: RefCell::new(None),
+            cached_keyboard_focus: Cell::new(None),
         }
+    }
+
+    fn push_op(&self, cmd: WmCommand) {
+        self.pending_ops.borrow_mut().push(cmd);
     }
 
     /// Drain all pending commands. Called from the event loop after WM logic.
@@ -133,13 +137,12 @@ impl WaylandBackend {
     /// Update cached values from WaylandState. Called after WM logic completes.
     pub fn sync_cache(&self, state: &WaylandState) {
         let loc = state.pointer.current_location();
-        *self.cached_pointer_location.borrow_mut() =
-            Some((loc.x.round() as i32, loc.y.round() as i32));
-        *self.cached_xdisplay.borrow_mut() = state.xdisplay;
-        *self.cached_keyboard_focus.borrow_mut() = state
+        self.cached_pointer_location.set(Some((loc.x.round() as i32, loc.y.round() as i32)));
+        self.cached_xdisplay.set(state.xdisplay);
+        self.cached_keyboard_focus.set(state
             .keyboard
             .current_focus()
-            .and_then(|focus| state.keyboard_focus_to_window_id(&focus));
+            .and_then(|focus| state.keyboard_focus_to_window_id(&focus)));
 
         // Update cached outputs
         let outputs: Vec<_> = state
@@ -220,11 +223,11 @@ impl WaylandBackend {
     }
 
     pub fn xdisplay(&self) -> Option<u32> {
-        *self.cached_xdisplay.borrow()
+        self.cached_xdisplay.get()
     }
 
     pub fn pointer_location(&self) -> Option<(i32, i32)> {
-        *self.cached_pointer_location.borrow()
+        self.cached_pointer_location.get()
     }
 
     pub fn window_title(&self, _window: WindowId) -> Option<String> {
@@ -233,34 +236,24 @@ impl WaylandBackend {
     }
 
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
-        self.cached_keyboard_focus
-            .borrow()
-            .is_some_and(|focus| focus == window)
+        self.cached_keyboard_focus.get().is_some_and(|focus| focus == window)
     }
 
     pub fn close_window(&self, window: WindowId) -> bool {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::CloseWindow(window));
+        self.push_op(WmCommand::CloseWindow(window));
         true // optimistic — actual close happens during flush
     }
 
     pub fn clear_keyboard_focus(&self) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::ClearKeyboardFocus);
+        self.push_op(WmCommand::ClearKeyboardFocus);
     }
 
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::SetCursorIconOverride(icon));
+        self.push_op(WmCommand::SetCursorIconOverride(icon));
     }
 
     pub fn warp_pointer(&self, x: f64, y: f64) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::WarpPointer(x, y));
+        self.push_op(WmCommand::WarpPointer(x, y));
     }
 }
 
@@ -272,39 +265,27 @@ impl Default for WaylandBackend {
 
 impl BackendOps for WaylandBackend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::ResizeWindow(window, rect));
+        self.push_op(WmCommand::ResizeWindow(window, rect));
     }
 
     fn raise_window(&self, window: WindowId) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::RaiseWindow(window));
+        self.push_op(WmCommand::RaiseWindow(window));
     }
 
     fn restack(&self, windows: &[WindowId]) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::Restack(windows.to_vec()));
+        self.push_op(WmCommand::Restack(windows.to_vec()));
     }
 
     fn set_focus(&self, window: WindowId) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::SetFocus(window));
+        self.push_op(WmCommand::SetFocus(window));
     }
 
     fn map_window(&self, window: WindowId) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::MapWindow(window));
+        self.push_op(WmCommand::MapWindow(window));
     }
 
     fn unmap_window(&self, window: WindowId) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::UnmapWindow(window));
+        self.push_op(WmCommand::UnmapWindow(window));
     }
 
     fn window_exists(&self, _window: WindowId) -> bool {
@@ -314,17 +295,15 @@ impl BackendOps for WaylandBackend {
     }
 
     fn flush(&self) {
-        self.pending_ops.borrow_mut().push(WmCommand::Flush);
+        self.push_op(WmCommand::Flush);
     }
 
     fn pointer_location(&self) -> Option<(i32, i32)> {
-        *self.cached_pointer_location.borrow()
+        self.cached_pointer_location.get()
     }
 
     fn warp_pointer(&self, x: f64, y: f64) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::WarpPointer(x, y));
+        self.push_op(WmCommand::WarpPointer(x, y));
     }
 
     fn window_title(&self, _window: WindowId) -> Option<String> {
@@ -339,23 +318,19 @@ impl BackendOps for WaylandBackend {
         options: Option<&str>,
         model: Option<&str>,
     ) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::SetKeyboardLayout {
-                layout: layout.to_owned(),
-                variant: variant.to_owned(),
-                options: options.map(|s| s.to_owned()),
-                model: model.map(|s| s.to_owned()),
-            });
+        self.push_op(WmCommand::SetKeyboardLayout {
+            layout: layout.to_owned(),
+            variant: variant.to_owned(),
+            options: options.map(|s| s.to_owned()),
+            model: model.map(|s| s.to_owned()),
+        });
     }
 
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
-        self.pending_ops
-            .borrow_mut()
-            .push(WmCommand::SetMonitorConfig {
-                name: name.to_owned(),
-                config: config.clone(),
-            });
+        self.push_op(WmCommand::SetMonitorConfig {
+            name: name.to_owned(),
+            config: config.clone(),
+        });
     }
 
     fn get_outputs(&self) -> Vec<crate::backend::BackendOutputInfo> {
