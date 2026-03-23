@@ -248,7 +248,8 @@ pub fn run() -> ! {
         .expect("failed to insert winit event source");
 
     let start_time = Instant::now();
-    let core = state.wm.ctx().core();
+    let ctx = state.wm.ctx();
+    let core = ctx.core();
     crate::runtime::spawn_status_bar(&core);
 
     event_loop

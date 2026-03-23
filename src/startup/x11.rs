@@ -72,10 +72,11 @@ fn wm_init(wm: &mut Wm) {
 
     // After atoms + drw exist, we can verify tag naming and create bars.
     {
+        // Call init_keyboard_layout before destructuring to avoid moving ctx
+        crate::keyboard_layout::init_keyboard_layout(&mut wm.ctx());
         let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx() else {
             return;
         };
-        crate::keyboard_layout::init_keyboard_layout(&mut ctx);
         crate::bar::x11::update_bars(
             &mut ctx.core,
             &ctx.x11,

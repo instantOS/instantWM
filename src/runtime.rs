@@ -35,7 +35,7 @@ pub fn apply_monitor_config_if_dirty(ctx: &mut WmCtx) {
 /// Spawn the configured status bar command, or the built-in default.
 pub fn spawn_status_bar(core: &CoreCtx) {
     if let Some(ref cmd) = core.globals().cfg.status_command {
-        crate::bar::status::spawn_status_command(cmd);
+        crate::bar::status::spawn_status_command(cmd.as_str());
     } else {
         crate::bar::status::spawn_default_status();
     }
@@ -48,7 +48,8 @@ pub fn spawn_status_bar(core: &CoreCtx) {
 pub fn late_init(wm: &mut Wm) -> Option<crate::ipc::IpcServer> {
     crate::startup::autostart::run_autostart();
     let ipc_server = crate::ipc::IpcServer::bind().ok();
-    let core = wm.ctx().core();
+    let ctx = wm.ctx();
+    let core = ctx.core();
     spawn_status_bar(&core);
     ipc_server
 }
