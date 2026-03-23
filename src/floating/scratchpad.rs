@@ -1,7 +1,7 @@
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::layouts::arrange;
-use crate::types::{SCRATCHPAD_MASK, WindowId};
+use crate::types::{WindowId, SCRATCHPAD_MASK};
 use bincode::{Decode, Encode};
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -266,7 +266,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     }
 }
 
-fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
+pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
     let mut scratchpads = Vec::new();
 
     for mon in g.monitors_iter_all() {
