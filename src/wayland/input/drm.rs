@@ -1,7 +1,7 @@
 //! DRM/libinput-specific input handling.
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::libinput::{LibinputInputBackend, PointerScrollAxis};
+use smithay::backend::libinput::LibinputInputBackend;
 use smithay::input::pointer::{
     GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
     GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
@@ -9,7 +9,6 @@ use smithay::input::pointer::{
 use smithay::reexports::input::event::gesture::{
     GestureEndEvent, GestureEventCoordinates, GestureEventTrait, GesturePinchEventTrait,
 };
-use smithay::reexports::input::{Event as LibinputRawEvent, event, event::EventTrait};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -19,64 +18,6 @@ use crate::wayland::input::{
 };
 
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
-
-pub fn raw_event_to_input_event(
-    event: LibinputRawEvent,
-) -> Option<InputEvent<LibinputInputBackend>> {
-    use event::{DeviceEvent, GestureEvent, keyboard::KeyboardEvent, pointer::PointerEvent};
-    Some(match event {
-        LibinputRawEvent::Keyboard(KeyboardEvent::Key(e)) => InputEvent::Keyboard { event: e },
-        LibinputRawEvent::Pointer(PointerEvent::Motion(e)) => {
-            InputEvent::PointerMotion { event: e }
-        }
-        LibinputRawEvent::Pointer(PointerEvent::MotionAbsolute(e)) => {
-            InputEvent::PointerMotionAbsolute { event: e }
-        }
-        LibinputRawEvent::Pointer(PointerEvent::Button(e)) => {
-            InputEvent::PointerButton { event: e }
-        }
-        LibinputRawEvent::Pointer(PointerEvent::ScrollWheel(e)) => InputEvent::PointerAxis {
-            event: PointerScrollAxis::Wheel(e),
-        },
-        LibinputRawEvent::Pointer(PointerEvent::ScrollFinger(e)) => InputEvent::PointerAxis {
-            event: PointerScrollAxis::Finger(e),
-        },
-        LibinputRawEvent::Pointer(PointerEvent::ScrollContinuous(e)) => InputEvent::PointerAxis {
-            event: PointerScrollAxis::Continuous(e),
-        },
-        LibinputRawEvent::Gesture(GestureEvent::Pinch(
-            event::gesture::GesturePinchEvent::Begin(e),
-        )) => InputEvent::GesturePinchBegin { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Pinch(
-            event::gesture::GesturePinchEvent::Update(e),
-        )) => InputEvent::GesturePinchUpdate { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Pinch(event::gesture::GesturePinchEvent::End(
-            e,
-        ))) => InputEvent::GesturePinchEnd { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Swipe(
-            event::gesture::GestureSwipeEvent::Begin(e),
-        )) => InputEvent::GestureSwipeBegin { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Swipe(
-            event::gesture::GestureSwipeEvent::Update(e),
-        )) => InputEvent::GestureSwipeUpdate { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Swipe(event::gesture::GestureSwipeEvent::End(
-            e,
-        ))) => InputEvent::GestureSwipeEnd { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Hold(event::gesture::GestureHoldEvent::Begin(
-            e,
-        ))) => InputEvent::GestureHoldBegin { event: e },
-        LibinputRawEvent::Gesture(GestureEvent::Hold(event::gesture::GestureHoldEvent::End(e))) => {
-            InputEvent::GestureHoldEnd { event: e }
-        }
-        LibinputRawEvent::Device(DeviceEvent::Added(e)) => InputEvent::DeviceAdded {
-            device: EventTrait::device(&e),
-        },
-        LibinputRawEvent::Device(DeviceEvent::Removed(e)) => InputEvent::DeviceRemoved {
-            device: EventTrait::device(&e),
-        },
-        _ => return None,
-    })
-}
 
 pub fn configure_device(
     device: &mut smithay::reexports::input::Device,
