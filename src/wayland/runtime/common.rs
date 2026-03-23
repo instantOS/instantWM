@@ -19,7 +19,8 @@ use crate::backend::wayland::compositor::WaylandState;
 /// but additionally checks for active Wayland window animations.
 pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
     if state.wm.g.dirty.layout {
-        crate::runtime::arrange_layout_if_dirty(&mut state.wm);
+        let mut ctx = state.wm.ctx();
+        crate::runtime::arrange_layout_if_dirty(&mut ctx);
     }
 }
 

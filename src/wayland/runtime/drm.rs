@@ -326,7 +326,8 @@ fn run_event_loop(
         super::calloop_helpers::setup_ipc_source(loop_handle.clone(), ipc, move |ipc, state| {
             if ipc.process_pending(&mut state.wm) {
                 state.wm.g.dirty.layout = true;
-                crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+                let mut ctx = state.wm.ctx();
+                crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
                 state.wm.g.dirty.space = true;
                 shared_ipc.lock().unwrap().mark_all_dirty();
             }

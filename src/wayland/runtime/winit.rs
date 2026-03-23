@@ -101,8 +101,9 @@ fn event_loop_tick(
     if state.wm.g.dirty.layout {
         needs_render = true;
     }
-    super::common::arrange_layout_if_dirty(state);
-    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+    let mut ctx = state.wm.ctx();
+    crate::runtime::arrange_layout_if_dirty(&mut ctx);
+    crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
 
     // Winit has no libinput devices to reconfigure, but clear the
     // flag so it doesn't stay dirty forever (scroll_factor is
@@ -212,7 +213,8 @@ pub fn run() -> ! {
         super::calloop_helpers::setup_ipc_source(loop_handle.clone(), ipc, move |ipc, state| {
             if ipc.process_pending(&mut state.wm) {
                 state.wm.g.dirty.layout = true;
-                crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+                let mut ctx = state.wm.ctx();
+                crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
                 state.wm.g.dirty.space = true;
             }
         });
