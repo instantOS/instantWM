@@ -197,7 +197,7 @@ pub fn dispatch_pointer_motion(
         suppress_hover_focus,
     );
 
-    let _ = update_wayland_bar_hit_state(&mut state.wm, root_x, root_y, false);
+    // Note: bar_pos already computed in Phase 4, no need to recompute
 
     // Phase 7: Handle tag/title drag motion
     handle_wm_drag_motion(state, keyboard_handle, root_x, root_y);
@@ -263,20 +263,25 @@ fn resolve_pointer_focus(
     Option<crate::types::WindowId>,
 ) {
     let pointer_location = state.pointer_location;
+
+    // Single unified hit-test instead of multiple separate calls
+    let hit_test = state.hit_test(pointer_location);
+
+    // Get layer surface first (needed for multiple checks)
+    let layer_surface = hit_test.layer_surface;
+
     let mut pointer_focus = if in_bar_band || in_bar_guard_band {
-        state.layer_surface_under_pointer(pointer_location)
+        layer_surface.clone()
     } else {
-        state
-            .layer_surface_under_pointer(pointer_location)
-            .or_else(|| state.surface_under_pointer(pointer_location))
+        layer_surface.clone().or(hit_test.window_surface)
     };
 
     let hovered_win = if in_bar_band || in_bar_guard_band {
         None
-    } else if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
-        find_hovered_window_for_surface(state, &surface)
+    } else if let Some((surface, _)) = &layer_surface {
+        find_hovered_window_for_surface(state, surface)
     } else {
-        state.logical_window_under_pointer(pointer_location)
+        hit_test.hovered_win
     };
 
     // If the logical window differs from the surface Smithay found,

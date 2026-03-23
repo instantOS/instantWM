@@ -517,11 +517,7 @@ fn render_outputs(
         for flag in s.render_flags.values_mut() {
             *flag = false;
         }
-        (
-            s.session_active,
-            flags,
-            s.pending_crtcs.clone(),
-        )
+        (s.session_active, flags, s.pending_crtcs.clone())
     };
 
     if !render_flags.values().any(|&v| v) {

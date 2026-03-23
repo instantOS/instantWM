@@ -60,9 +60,11 @@ pub fn apply_pending_warp(
 
     state.pointer_location = target;
 
-    let focus = state
-        .layer_surface_under_pointer(target)
-        .or_else(|| state.surface_under_pointer(target))
+    // Single unified hit-test instead of multiple separate calls
+    let hit_test = state.hit_test(target);
+    let focus = hit_test
+        .layer_surface
+        .or(hit_test.window_surface)
         .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
 
     let serial = SERIAL_COUNTER.next_serial();

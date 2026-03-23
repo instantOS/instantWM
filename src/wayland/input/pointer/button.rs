@@ -62,8 +62,9 @@ pub fn handle_pointer_button<B: InputBackend>(
         let clicked_win = find_hovered_window(state, pointer_location);
 
         // Update focus before dispatching client button bindings.
-        if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location)
-        {
+        // Single unified hit-test instead of multiple separate calls
+        let hit_test = state.hit_test(pointer_location);
+        if let Some((layer_surface, location)) = hit_test.layer_surface {
             keyboard_handle.set_focus(
                 state,
                 Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
@@ -192,10 +193,13 @@ pub fn find_hovered_window(
     state: &WaylandState,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) -> Option<crate::types::WindowId> {
-    if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
+    // Single unified hit-test instead of multiple separate calls
+    let hit_test = state.hit_test(pointer_location);
+
+    if let Some((surface, _)) = hit_test.layer_surface {
         return find_hovered_window_for_surface(state, &surface);
     }
-    state.logical_window_under_pointer(pointer_location)
+    hit_test.hovered_win
 }
 
 /// Find hovered window for a surface.

@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -11,12 +11,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupGrab, PopupManager, Space, Window},
     input::{
+        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
-        Seat, SeatState,
     },
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -32,7 +32,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, XdgShellState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
         viewporter::ViewporterState,

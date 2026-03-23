@@ -199,13 +199,11 @@ impl XdgShellHandler for WaylandState {
 
         let keyboard_grab_mismatches = keyboard.as_ref().is_some_and(|k| {
             k.is_grabbed()
-                && !(k.has_grab(serial)
-                    || grab.previous_serial().is_some_and(|s| k.has_grab(s)))
+                && !(k.has_grab(serial) || grab.previous_serial().is_some_and(|s| k.has_grab(s)))
         });
         let pointer_grab_mismatches = pointer.as_ref().is_some_and(|p| {
             p.is_grabbed()
-                && !(p.has_grab(serial)
-                    || grab.previous_serial().is_some_and(|s| p.has_grab(s)))
+                && !(p.has_grab(serial) || grab.previous_serial().is_some_and(|s| p.has_grab(s)))
         });
 
         if keyboard_grab_mismatches || pointer_grab_mismatches {

@@ -135,7 +135,11 @@ pub fn build_output_surfaces(
             "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?} (VRR: {})",
             mode.vrefresh(),
             picked_crtc,
-            if vrr_active { "enabled" } else { "not supported" }
+            if vrr_active {
+                "enabled"
+            } else {
+                "not supported"
+            }
         );
 
         let output = Output::new(
