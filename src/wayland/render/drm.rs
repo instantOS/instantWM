@@ -2,7 +2,7 @@
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface};
+use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface, VrrSupport};
 use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -110,6 +110,20 @@ pub fn build_output_surfaces(
         )
         .expect("GbmBufferedSurface::new");
 
+        // Enable VRR if the output supports it
+        let vrr_active = match gbm_surface.vrr_supported(conn_handle) {
+            Ok(VrrSupport::Supported | VrrSupport::RequiresModeset) => {
+                match gbm_surface.use_vrr(true) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        log::warn!("Failed to enable VRR: {e}");
+                        false
+                    }
+                }
+            }
+            _ => false,
+        };
+
         let (mode_w, mode_h) = mode.size();
         let (mode_w, mode_h) = (mode_w as i32, mode_h as i32);
         let output_name = format!(
@@ -118,9 +132,10 @@ pub fn build_output_surfaces(
             conn_info.interface_id()
         );
         log::info!(
-            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?}",
+            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?} (VRR: {})",
             mode.vrefresh(),
-            picked_crtc
+            picked_crtc,
+            if vrr_active { "enabled" } else { "not supported" }
         );
 
         let output = Output::new(
@@ -170,6 +185,7 @@ pub fn build_output_surfaces(
             height: mode_h,
             frame_clock: crate::frame_clock::FrameClock::new(refresh_interval),
             last_render_duration: std::time::Duration::from_micros(1000), // Initial estimate: 1ms
+            vrr_active,
         });
         output_x_offset += mode_w;
     }

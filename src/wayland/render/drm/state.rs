@@ -31,6 +31,8 @@ pub struct OutputSurfaceEntry {
     pub height: i32,
     pub frame_clock: crate::frame_clock::FrameClock,
     pub last_render_duration: std::time::Duration,
+    /// Whether VRR (Variable Refresh Rate) is active on this output.
+    pub vrr_active: bool,
 }
 
 pub struct SharedDrmState {
@@ -43,8 +45,9 @@ pub struct SharedDrmState {
     pub output_hit_regions: Vec<OutputHitRegion>,
     /// Presentation times from VBlank events, keyed by CRTC
     pub presentation_times: HashMap<crtc::Handle, std::time::Duration>,
-    /// Whether to delay rendering for lower latency (frame clock scheduling)
-    pub delay_rendering: bool,
+    /// CRTCs that have VRR enabled — these should not be re-marked dirty
+    /// on VBlank since they only present when a new frame is submitted.
+    pub vrr_crtcs: HashSet<crtc::Handle>,
 }
 
 impl SharedDrmState {
@@ -58,7 +61,7 @@ impl SharedDrmState {
             pending_crtcs: HashSet::new(),
             output_hit_regions: Vec::new(),
             presentation_times: HashMap::new(),
-            delay_rendering: true,
+            vrr_crtcs: HashSet::new(),
         }
     }
 

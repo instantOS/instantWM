@@ -204,6 +204,9 @@ fn init_shared_state(
                     x_offset: entry.x_offset,
                     width: entry.width,
                 });
+            if entry.vrr_active {
+                s.vrr_crtcs.insert(entry.crtc);
+            }
         }
     }
     shared
@@ -264,8 +267,13 @@ fn setup_drm_vblank_handler(
                     .unwrap_or(std::time::Duration::ZERO);
 
                 let mut s = shared_vblank.lock().unwrap();
-                if let Some(flag) = s.render_flags.get_mut(&crtc) {
-                    *flag = true;
+                // For fixed-rate displays, VBlank drives the render loop so we
+                // re-mark dirty. For VRR outputs, only content changes (input,
+                // animations, surface commits) should trigger renders — not VBlank.
+                if !s.vrr_crtcs.contains(&crtc) {
+                    if let Some(flag) = s.render_flags.get_mut(&crtc) {
+                        *flag = true;
+                    }
                 }
                 s.completed_crtcs.push(crtc);
 
