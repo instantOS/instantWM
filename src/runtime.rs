@@ -2,7 +2,7 @@
 //!
 //! These functions operate on [`WmCtx`] and are backend-agnostic.
 
-use crate::contexts::WmCtx;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::wm::Wm;
 
 // ── Event-loop tick helpers ─────────────────────────────────────────────
