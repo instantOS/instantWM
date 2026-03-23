@@ -43,7 +43,22 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
     });
 
     if target.is_none() {
-        target = mon.first_visible_client(core.globals().clients.map());
+        // Try focus history first.
+        if let Some(&hist_win) = mon.tag_focus_history.get(&selected.bits()) {
+            if core
+                .globals()
+                .clients
+                .get(&hist_win)
+                .is_some_and(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
+            {
+                target = Some(hist_win);
+            }
+        }
+
+        // Fallback to top of stack.
+        if target.is_none() {
+            target = mon.first_visible_client(core.globals().clients.map());
+        }
     }
 
     Some(FocusTargetResult {
@@ -66,6 +81,9 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<
 
     if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
+        if let Some(t) = target {
+            mon.tag_focus_history.insert(mon.selected_tags(), t);
+        }
     }
 
     (target, selection_state_changed)
