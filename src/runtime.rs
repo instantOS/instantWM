@@ -2,6 +2,7 @@
 //!
 //! These functions operate purely on [`Wm`] and are backend-agnostic.
 
+use crate::contexts::CoreCtx;
 use crate::wm::Wm;
 
 // ── Event-loop tick helpers ─────────────────────────────────────────────
@@ -33,15 +34,9 @@ pub fn apply_monitor_config_if_dirty(wm: &mut Wm) {
 
 // ── Startup helpers ─────────────────────────────────────────────────────
 
-/// Initialise the keyboard layout from the WM configuration.
-pub fn init_keyboard_layout(wm: &mut Wm) {
-    let mut ctx = wm.ctx();
-    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-}
-
 /// Spawn the configured status bar command, or the built-in default.
-pub fn spawn_status_bar(wm: &Wm) {
-    if let Some(ref cmd) = wm.g.cfg.status_command {
+pub fn spawn_status_bar(core: &CoreCtx) {
+    if let Some(ref cmd) = core.globals().cfg.status_command {
         crate::bar::status::spawn_status_command(cmd);
     } else {
         crate::bar::status::spawn_default_status();
@@ -52,9 +47,10 @@ pub fn spawn_status_bar(wm: &Wm) {
 ///
 /// Runs autostart, binds the IPC socket, and spawns the status bar.
 /// Each backend calls this before entering its event loop.
-pub fn late_init(wm: &Wm) -> Option<crate::ipc::IpcServer> {
+pub fn late_init(wm: &mut Wm) -> Option<crate::ipc::IpcServer> {
     crate::startup::autostart::run_autostart();
     let ipc_server = crate::ipc::IpcServer::bind().ok();
-    spawn_status_bar(wm);
+    let core = wm.ctx().core();
+    spawn_status_bar(&core);
     ipc_server
 }

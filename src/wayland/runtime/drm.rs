@@ -68,7 +68,8 @@ pub fn run() -> ! {
     let dmabuf_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
     let mut state = WaylandState::new(display, &loop_handle, *wm, Some(renderer));
 
-    crate::runtime::init_keyboard_layout(&mut state.wm);
+    let mut ctx = state.wm.ctx();
+    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
 
     state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
 
@@ -135,7 +136,8 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    crate::runtime::spawn_status_bar(&state.wm);
+    let core = state.wm.ctx().core();
+    crate::runtime::spawn_status_bar(&core);
 
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
     state.led_state_tx = Some(led_state_tx);

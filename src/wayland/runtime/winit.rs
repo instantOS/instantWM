@@ -174,7 +174,8 @@ pub fn run() -> ! {
     let egl_display = backend.renderer().egl_context().display().clone();
     let mut state = WaylandState::new(display, &loop_handle, *wm, None);
 
-    crate::runtime::init_keyboard_layout(&mut state.wm);
+    let mut ctx = state.wm.ctx();
+    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
 
     state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
     state.bind_egl_to_display(backend.renderer());
@@ -245,7 +246,8 @@ pub fn run() -> ! {
         .expect("failed to insert winit event source");
 
     let start_time = Instant::now();
-    crate::runtime::spawn_status_bar(&state.wm);
+    let core = state.wm.ctx().core();
+    crate::runtime::spawn_status_bar(&core);
 
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {

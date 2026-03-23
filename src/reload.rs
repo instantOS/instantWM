@@ -13,7 +13,8 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.g.dirty.input_config = true;
     wm.bar.mark_dirty();
 
-    crate::runtime::init_keyboard_layout(wm);
+    let mut ctx = wm.ctx();
+    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
 
     if matches!(&wm.backend, Backend::X11(_)) {
         reload_x11(wm);
