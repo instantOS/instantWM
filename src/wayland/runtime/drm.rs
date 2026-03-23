@@ -71,6 +71,11 @@ pub fn run() -> ! {
     crate::runtime::init_keyboard_layout(&mut state.wm);
 
     state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
+
+    state.with_renderer(|state, renderer| {
+        state.bind_egl_to_display(renderer);
+    });
+
     state.init_screencopy_manager();
 
     let cursor_manager = init_cursor_manager(&state.cursor_config);

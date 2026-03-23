@@ -316,6 +316,15 @@ impl WaylandState {
         }
     }
 
+    pub fn bind_egl_to_display<R>(&self, renderer: &mut R)
+    where
+        R: smithay::backend::renderer::ImportEgl,
+    {
+        if let Err(err) = renderer.bind_wl_display(&self.display_handle) {
+            log::warn!("failed to bind egl to wayland display: {}", err);
+        }
+    }
+
     pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
         if self.dmabuf_global.is_some() {
             return;
