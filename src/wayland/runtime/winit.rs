@@ -105,54 +105,66 @@ pub fn run() -> ! {
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
         .run(None, &mut state, move |state| {
-            winit_loop.dispatch_new_events(|event| match event {
-                WinitEvent::Resized { size, .. } => {
-                    crate::wayland::input::handle_resize(&mut state.wm, &output, size.w, size.h);
-                }
-                WinitEvent::Input(event) => match event {
-                    InputEvent::Keyboard { event } => {
-                        handle_keyboard(state, &keyboard_handle, event);
-                    }
-                    InputEvent::PointerMotionAbsolute { event } => {
-                        let size = backend.window_size();
-                        let motion_event = motion_event_from_winit(event, size);
-                        handle_pointer_motion(
-                            state,
-                            &pointer_handle,
-                            &keyboard_handle,
-                            motion_event,
+            let mut needs_render = false;
+
+            winit_loop.dispatch_new_events(|event| {
+                needs_render = true;
+                match event {
+                    WinitEvent::Resized { size, .. } => {
+                        crate::wayland::input::handle_resize(
+                            &mut state.wm,
+                            &output,
+                            size.w,
+                            size.h,
                         );
                     }
-                    InputEvent::PointerButton { event } => {
-                        let pointer_location = state.pointer_location;
-                        handle_pointer_button(
-                            state,
-                            &pointer_handle,
-                            &keyboard_handle,
-                            event,
-                            pointer_location,
-                        );
-                    }
-                    InputEvent::PointerAxis { event } => {
-                        let pointer_location = state.pointer_location;
-                        handle_pointer_axis(
-                            state,
-                            &pointer_handle,
-                            &keyboard_handle,
-                            event,
-                            pointer_location,
-                        );
+                    WinitEvent::Input(event) => match event {
+                        InputEvent::Keyboard { event } => {
+                            handle_keyboard(state, &keyboard_handle, event);
+                        }
+                        InputEvent::PointerMotionAbsolute { event } => {
+                            let size = backend.window_size();
+                            let motion_event = motion_event_from_winit(event, size);
+                            handle_pointer_motion(
+                                state,
+                                &pointer_handle,
+                                &keyboard_handle,
+                                motion_event,
+                            );
+                        }
+                        InputEvent::PointerButton { event } => {
+                            let pointer_location = state.pointer_location;
+                            handle_pointer_button(
+                                state,
+                                &pointer_handle,
+                                &keyboard_handle,
+                                event,
+                                pointer_location,
+                            );
+                        }
+                        InputEvent::PointerAxis { event } => {
+                            let pointer_location = state.pointer_location;
+                            handle_pointer_axis(
+                                state,
+                                &pointer_handle,
+                                &keyboard_handle,
+                                event,
+                                pointer_location,
+                            );
+                        }
+                        _ => {}
+                    },
+                    WinitEvent::CloseRequested => {
+                        loop_signal.stop();
                     }
                     _ => {}
-                },
-                WinitEvent::CloseRequested => {
-                    loop_signal.stop();
                 }
-                _ => {}
             });
 
+            if state.wm.g.dirty.layout {
+                needs_render = true;
+            }
             super::common::arrange_layout_if_dirty(state);
-            // IPC is now handled by calloop source, not polled here
             crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
 
             // Winit has no libinput devices to reconfigure, but clear the
@@ -160,19 +172,27 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             state.wm.g.dirty.input_config = false;
 
-            super::common::sync_space_if_dirty(state);
+            if super::common::sync_space_if_dirty(state) {
+                needs_render = true;
+            }
 
-            // Apply any compositor-side cursor warp requested during this tick
-            // (e.g. from a warp-to-focus keybinding or IPC command).
-            apply_pending_warp(state, &pointer_handle);
+            if apply_pending_warp(state, &pointer_handle) {
+                needs_render = true;
+            }
 
-            render_frame(
-                state,
-                &mut backend,
-                &output,
-                &mut damage_tracker,
-                start_time,
-            );
+            if state.has_active_window_animations() {
+                needs_render = true;
+            }
+
+            if needs_render {
+                render_frame(
+                    state,
+                    &mut backend,
+                    &output,
+                    &mut damage_tracker,
+                    start_time,
+                );
+            }
 
             // Phase 1: drain the command queue
             let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {

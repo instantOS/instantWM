@@ -37,7 +37,6 @@ pub fn render_frame(
         state.dnd_icon.as_ref(),
     );
     apply_cursor_presentation_internal(backend, &cursor_presentation);
-    state.tick_window_animations();
 
     // Backend-specific: get buffer age
     let buffer_age = backend.buffer_age().unwrap_or(0);

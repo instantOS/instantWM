@@ -118,8 +118,6 @@ fn tick_x11_animations(wm: &mut Wm) {
 
     // Collect finished animation targets and windows that need geometry updates.
     let mut finished: Vec<(WindowId, crate::types::Rect)> = Vec::new();
-    let mut needs_flush = false;
-
     for (win, anim) in data.x11_runtime.window_animations.iter() {
         let elapsed = now.duration_since(anim.started_at);
         let progress = if anim.duration.is_zero() {
@@ -153,7 +151,6 @@ fn tick_x11_animations(wm: &mut Wm) {
                     .width(width)
                     .height(height),
             );
-            needs_flush = true;
         }
 
         if progress >= 1.0 {
@@ -167,12 +164,6 @@ fn tick_x11_animations(wm: &mut Wm) {
         if let Some(client) = wm.g.clients.get_mut(win) {
             client.old_geo = client.geo;
             client.geo = *to;
-        }
-    }
-
-    if needs_flush {
-        if let Some(data) = wm.backend.x11_data() {
-            let _ = data.conn.flush();
         }
     }
 }

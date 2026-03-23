@@ -500,7 +500,7 @@ fn render_outputs(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
 ) {
-    let (session_active, render_flags, pending_crtcs, delay_rendering) = {
+    let (session_active, render_flags, pending_crtcs) = {
         let mut s = shared.lock().unwrap();
         let flags = s.render_flags.clone();
         for flag in s.render_flags.values_mut() {
@@ -510,12 +510,14 @@ fn render_outputs(
             s.session_active,
             flags,
             s.pending_crtcs.clone(),
-            s.delay_rendering,
         )
     };
 
+    if !render_flags.values().any(|&v| v) {
+        return;
+    }
+
     let pointer_location = state.pointer_location;
-    let now = crate::frame_clock::monotonic_time();
 
     if session_active {
         for entry in output_surfaces.iter_mut() {
@@ -529,28 +531,6 @@ fn render_outputs(
                 // Re-mark as dirty so we render after the VBlank arrives.
                 shared.lock().unwrap().render_flags.insert(entry.crtc, true);
                 continue;
-            }
-
-            // Frame clock scheduling: delay rendering until closer to presentation deadline
-            if delay_rendering {
-                let next_presentation = entry.frame_clock.next_presentation_time();
-                let time_until_presentation = if next_presentation > now {
-                    next_presentation - now
-                } else {
-                    std::time::Duration::ZERO
-                };
-
-                // If we have more time than render duration + margin, delay rendering
-                // The margin (1ms) accounts for scheduling jitter
-                let render_margin = std::time::Duration::from_micros(1000);
-                let should_delay =
-                    time_until_presentation > entry.last_render_duration + render_margin;
-
-                if should_delay {
-                    // Re-mark as dirty to render later
-                    shared.lock().unwrap().render_flags.insert(entry.crtc, true);
-                    continue;
-                }
             }
 
             let render_start = std::time::Instant::now();
