@@ -51,8 +51,11 @@ impl WaylandState {
         }
         self.wm.g.dirty.layout = true;
         self.wm.g.dirty.space = true;
-        // Apply seat focus immediately so the new window can receive input.
-        self.set_focus(window_id);
+        // Apply seat focus immediately so the new window can receive input,
+        // but not if a layer-shell launcher currently holds focus.
+        if !self.has_layer_keyboard_focus() {
+            self.set_focus(window_id);
+        }
         self.create_foreign_toplevel(window_id);
         window_id
     }
@@ -87,7 +90,8 @@ impl WaylandState {
                 // If this window was the pending focus target (set by focus_soft
                 // before arrange/show_hide ran), re-apply keyboard focus now that
                 // the window is actually in the space and reachable by set_focus.
-                if self.focused_window() == Some(window) {
+                // Skip if a layer-shell surface (launcher) currently has focus.
+                if self.focused_window() == Some(window) && !self.has_layer_keyboard_focus() {
                     self.set_focus(window);
                 }
             }

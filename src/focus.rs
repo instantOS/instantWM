@@ -356,6 +356,14 @@ pub fn hover_focus_target(
 ) {
     use crate::contexts::{WmCtx::*, WmCtxX11};
 
+    // Don't let hover-focus steal keyboard input from a
+    // layer-shell launcher (fuzzel/rofi/dmenu).
+    if let Wayland(wayland_ctx) = &*ctx {
+        if wayland_ctx.wayland.backend.has_layer_keyboard_focus() {
+            return;
+        }
+    }
+
     match ctx {
         X11(WmCtxX11 {
             core,

@@ -109,6 +109,8 @@ pub struct WaylandBackend {
     cached_display_modes: RefCell<HashMap<String, Vec<String>>>,
     /// Cached keyboard focus window, updated by sync_cache
     cached_keyboard_focus: RefCell<Option<WindowId>>,
+    /// True when a layer-shell surface wants keyboard focus (e.g. fuzzel/rofi/dmenu)
+    cached_has_layer_focus: RefCell<bool>,
 }
 
 impl WaylandBackend {
@@ -122,6 +124,7 @@ impl WaylandBackend {
             cached_displays: RefCell::new(Vec::new()),
             cached_display_modes: RefCell::new(HashMap::new()),
             cached_keyboard_focus: RefCell::new(None),
+            cached_has_layer_focus: RefCell::new(false),
         }
     }
 
@@ -140,6 +143,7 @@ impl WaylandBackend {
             .keyboard
             .current_focus()
             .and_then(|focus| state.keyboard_focus_to_window_id(&focus));
+        *self.cached_has_layer_focus.borrow_mut() = state.has_layer_keyboard_focus();
 
         // Update cached outputs
         let outputs: Vec<_> = state
@@ -236,6 +240,11 @@ impl WaylandBackend {
         self.cached_keyboard_focus
             .borrow()
             .is_some_and(|focus| focus == window)
+    }
+
+    /// Returns `true` when a layer-shell surface (fuzzel/rofi/dmenu) wants keyboard focus.
+    pub fn has_layer_keyboard_focus(&self) -> bool {
+        *self.cached_has_layer_focus.borrow()
     }
 
     pub fn close_window(&self, window: WindowId) -> bool {

@@ -361,7 +361,12 @@ impl WaylandState {
             self.wm.g.clients.remove(&win);
         }
 
-        self.restore_focus_after_overlay();
+        // Only restore WM window focus if no layer-shell surface (e.g.
+        // fuzzel/rofi/dmenu) currently wants keyboard input.  Without
+        // this guard the periodic sync tick steals focus from launchers.
+        if !self.has_layer_keyboard_focus() {
+            self.restore_focus_after_overlay();
+        }
 
         let g = &self.wm.g;
         let updates: Vec<(WindowId, Window, Rect, i32)> = self

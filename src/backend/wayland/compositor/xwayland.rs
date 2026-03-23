@@ -92,7 +92,9 @@ impl XwmHandler for WaylandState {
         }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             self.map_window(win);
-            self.set_focus(win);
+            if !self.has_layer_keyboard_focus() {
+                self.set_focus(win);
+            }
             self.raise_window(win);
             return;
         }
@@ -128,7 +130,9 @@ impl XwmHandler for WaylandState {
             g.dirty.space = true;
         }
         self.create_foreign_toplevel(win);
-        self.set_focus(win);
+        if !self.has_layer_keyboard_focus() {
+            self.set_focus(win);
+        }
         self.raise_window(win);
     }
 

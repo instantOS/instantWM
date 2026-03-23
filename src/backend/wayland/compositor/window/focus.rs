@@ -127,6 +127,16 @@ impl WaylandState {
             })
     }
 
+    /// Returns `true` when a layer-shell surface (e.g. fuzzel, rofi,
+    /// dmenu) currently wants keyboard focus.
+    ///
+    /// Used as a guard so that periodic focus reconciliation
+    /// (`sync_space_from_globals`, `map_window`, etc.) does not steal
+    /// keyboard focus away from an active launcher overlay.
+    pub(crate) fn has_layer_keyboard_focus(&self) -> bool {
+        self.keyboard_focus_layer_surface().is_some()
+    }
+
     /// Restore seat focus after an overlay (e.g., dmenu) is closed, or
     /// after a window was destroyed and `mon.sel` was cleared.
     ///
