@@ -23,24 +23,6 @@ pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
     }
 }
 
-/// Process pending IPC commands (Wayland wrapper).
-///
-/// Delegates to the shared [`crate::runtime::process_ipc_commands`] and
-/// additionally marks the layout dirty so the Wayland event loop re-arranges.
-///
-/// Returns `true` when at least one command was handled, so that
-/// backend-specific code can react (e.g. DRM marks all outputs dirty).
-pub fn process_ipc_commands(
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-    state: &mut WaylandState,
-) -> bool {
-    let handled = crate::runtime::process_ipc_commands(ipc_server, &mut state.wm);
-    if handled {
-        state.wm.g.dirty.layout = true;
-    }
-    handled
-}
-
 /// Synchronise the Smithay compositor space from WM globals when the
 /// dirty flag is set.
 ///

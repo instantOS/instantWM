@@ -2,9 +2,10 @@
 //!
 //! This module provides helper functions to set up common calloop sources
 //! (IPC, animation timer) that are shared across X11, Wayland/DRM, and winit
-//! backends.
+//! backends. Each helper accepts callbacks so backend-specific behaviour
+//! (e.g. DRM dirty-marking, LED state checks) can be injected without
+//! duplicating the boilerplate.
 
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use calloop::generic::Generic;
@@ -52,31 +53,6 @@ pub fn setup_animation_timer<Data: 'static>(
                 TimeoutAction::ToDuration(Duration::from_millis(16))
             } else {
                 // No animations, sleep until woken by something else
-                TimeoutAction::ToDuration(Duration::from_secs(86400))
-            }
-        })
-        .expect("animation timer source");
-}
-
-/// Setup animation timer with shared dirty state (for Wayland backends).
-///
-/// This variant marks shared state as dirty when animations are active,
-/// which is needed for the DRM backend's render scheduling.
-pub fn setup_animation_timer_with_dirty<Data: 'static>(
-    loop_handle: &LoopHandle<'static, Data>,
-    shared: &Arc<Mutex<crate::wayland::render::drm::SharedDrmState>>,
-    mut tick: impl FnMut(&mut Data) + 'static,
-    mut is_active: impl FnMut(&Data) -> bool + 'static,
-) {
-    let shared = Arc::clone(shared);
-    let timer = Timer::from_duration(Duration::from_millis(16));
-    loop_handle
-        .insert_source(timer, move |_, _, data| {
-            tick(data);
-            if is_active(data) {
-                shared.lock().unwrap().mark_all_dirty();
-                TimeoutAction::ToDuration(Duration::from_millis(16))
-            } else {
                 TimeoutAction::ToDuration(Duration::from_secs(86400))
             }
         })
