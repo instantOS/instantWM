@@ -14,9 +14,20 @@ impl WaylandState {
     /// 2. Activates the new window
     /// 3. Sets Smithay keyboard focus
     ///
+    /// If a layer-shell surface (e.g. fuzzel, rofi, dmenu) currently wants
+    /// keyboard focus this is a no-op so that no caller can accidentally
+    /// steal input from an active launcher.
+    ///
     /// It does **not** update `mon.sel`. The WM layer (`focus_generic` /
     /// `focus_soft`) is the single authority for `mon.sel`.
     pub fn set_focus(&mut self, window: WindowId) {
+        // A layer-shell surface with keyboard interactivity trumps any
+        // WM window focus request.  This single guard protects every
+        // call-site (sync_space, map_new_toplevel, hover focus, …).
+        if self.has_layer_keyboard_focus() {
+            return;
+        }
+
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
 
@@ -140,10 +151,16 @@ impl WaylandState {
     /// Restore seat focus after an overlay (e.g., dmenu) is closed, or
     /// after a window was destroyed and `mon.sel` was cleared.
     ///
+    /// If a layer-shell surface currently wants keyboard focus this is a
+    /// no-op — the layer surface keeps focus until it is destroyed.
+    ///
     /// If `mon.sel` is valid and alive, applies seat focus to it.
     /// If `mon.sel` is `None` or stale, walks the monitor stack to find
     /// the next visible window and updates `mon.sel` before focusing.
     pub(crate) fn restore_focus_after_overlay(&mut self) {
+        if self.has_layer_keyboard_focus() {
+            return;
+        }
         // First, try mon.sel as-is.
         let valid_sel = self.wm.g.selected_win().filter(|&w| {
             self.window_index.contains_key(&w)

@@ -159,10 +159,6 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn popup_destroyed(&mut self, _surface: PopupSurface) {
-        // Don't steal focus from a layer-shell launcher (fuzzel/rofi/dmenu).
-        if self.has_layer_keyboard_focus() {
-            return;
-        }
         if let Some(old_id) = self.focused_window() {
             if self.window_index.contains_key(&old_id) {
                 self.set_focus(old_id);
