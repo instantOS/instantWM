@@ -136,7 +136,8 @@ pub fn run() -> ! {
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    let core = state.wm.ctx().core();
+    let ctx = state.wm.ctx();
+    let core = ctx.core();
     crate::runtime::spawn_status_bar(&core);
 
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
