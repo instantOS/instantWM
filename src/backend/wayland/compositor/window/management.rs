@@ -40,14 +40,13 @@ impl WaylandState {
             // XWayland requires us to explicitly restack the X11 surface so X clients draw correctly
             if let Some(surface) = element.x11_surface()
                 && let Some(xwm) = self.xwm.as_mut()
+                && let Err(e) = xwm.raise_window(surface)
             {
-                if let Err(e) = xwm.raise_window(surface) {
-                    log::warn!(
-                        "Failed to restack X11 surface for window {:?}: {}",
-                        window,
-                        e
-                    );
-                }
+                log::warn!(
+                    "Failed to restack X11 surface for window {:?}: {}",
+                    window,
+                    e
+                );
             }
         }
         self.raise_unmanaged_x11_windows();
@@ -64,14 +63,13 @@ impl WaylandState {
                 // XWayland requires us to explicitly restack the X11 surface so X clients draw correctly
                 if let Some(surface) = element.x11_surface()
                     && let Some(xwm) = self.xwm.as_mut()
+                    && let Err(e) = xwm.raise_window(surface)
                 {
-                    if let Err(e) = xwm.raise_window(surface) {
-                        log::warn!(
-                            "Failed to restack X11 surface for window {:?}: {}",
-                            window,
-                            e
-                        );
-                    }
+                    log::warn!(
+                        "Failed to restack X11 surface for window {:?}: {}",
+                        window,
+                        e
+                    );
                 }
             }
         }

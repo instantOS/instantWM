@@ -50,6 +50,6 @@ pub fn late_init(wm: &mut Wm) -> Option<crate::ipc::IpcServer> {
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     let ctx = wm.ctx();
     let core = ctx.core();
-    spawn_status_bar(&core);
+    spawn_status_bar(core);
     ipc_server
 }

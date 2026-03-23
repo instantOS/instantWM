@@ -250,7 +250,7 @@ pub fn run() -> ! {
     let start_time = Instant::now();
     let ctx = state.wm.ctx();
     let core = ctx.core();
-    crate::runtime::spawn_status_bar(&core);
+    crate::runtime::spawn_status_bar(core);
 
     event_loop
         .run(Duration::from_millis(16), &mut state, move |state| {
