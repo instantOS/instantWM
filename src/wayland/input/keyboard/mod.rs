@@ -9,6 +9,7 @@ use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
 use crate::wayland::common::modifiers_to_x11_mask;
 
 use smithay::utils::SERIAL_COUNTER;
+use smithay::wayland::keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitorSeat;
 
 /// Handle keyboard events.
 pub fn handle_keyboard<B: InputBackend>(
@@ -17,20 +18,33 @@ pub fn handle_keyboard<B: InputBackend>(
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let wm_shortcuts_allowed = match keyboard_handle.current_focus() {
-        None => true,
-        Some(KeyboardFocusTarget::Window(ref w)) => !state.should_suppress_shortcuts_for(w),
-        Some(KeyboardFocusTarget::WlSurface(ref s)) => {
-            let interactivity = with_states(s, |states| {
-                states
-                    .cached_state
-                    .get::<LayerSurfaceCachedState>()
-                    .current()
-                    .keyboard_interactivity
-            });
-            interactivity != KeyboardInteractivity::Exclusive
+    let wm_shortcuts_allowed = if keyboard_handle.is_grabbed() {
+        false
+    } else {
+        if state.seat.keyboard_shortcuts_inhibited() {
+            false
+        } else {
+            match keyboard_handle.current_focus() {
+                None => true,
+                Some(KeyboardFocusTarget::Window(_)) => true,
+                Some(KeyboardFocusTarget::WlSurface(ref s)) => {
+                    let is_exclusive = with_states(s, |states| {
+                        if states.cached_state.has::<LayerSurfaceCachedState>() {
+                            states
+                                .cached_state
+                                .get::<LayerSurfaceCachedState>()
+                                .current()
+                                .keyboard_interactivity
+                                == KeyboardInteractivity::Exclusive
+                        } else {
+                            false
+                        }
+                    });
+                    !is_exclusive
+                }
+                Some(KeyboardFocusTarget::Popup(_)) => false,
+            }
         }
-        Some(KeyboardFocusTarget::Popup(_)) => false,
     };
     let key_code = event.key_code();
     let key_state = event.state();

@@ -25,6 +25,7 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         idle_inhibit::IdleInhibitManagerState,
+        keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState,
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
         relative_pointer::RelativePointerManagerState,
@@ -115,6 +116,7 @@ pub struct WaylandState {
     pub session_lock_manager_state: SessionLockManagerState,
     pub lock_state: SessionLockState,
     pub lock_surfaces: HashMap<String, LockSurface>,
+    pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
     pub idle_inhibiting_surfaces: HashSet<WlSurface>,
     pub(super) render_node: Option<DrmNode>,
 
@@ -229,6 +231,7 @@ impl WaylandState {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
         let cursor_config = wm.g.cfg.cursor.clone();
@@ -263,6 +266,7 @@ impl WaylandState {
             viewporter_state,
             idle_inhibit_manager_state,
             session_lock_manager_state,
+            keyboard_shortcuts_inhibit_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
