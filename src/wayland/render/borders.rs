@@ -116,7 +116,7 @@ fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i3
     ]
 }
 
-/// O(n) occlusion check: returns true if `inner` is fully contained within `outer`.
+/// Check if outer fully contains inner.
 #[inline]
 fn contains(outer: &Rect, inner: &Rect) -> bool {
     inner.x >= outer.x
@@ -125,25 +125,48 @@ fn contains(outer: &Rect, inner: &Rect) -> bool {
         && inner.y + inner.h <= outer.y + outer.h
 }
 
-/// O(n) occlusion check: returns true if `border` is fully occluded by any single occluder.
-/// A border is considered occluded if any occluder fully contains it.
+/// Check if border is fully covered by any single occluder.
 #[inline]
-fn is_occluded_by_any(border: &Rect, occluders: &[Rect]) -> bool {
-    occluders.iter().any(|occluder| contains(occluder, border))
+fn is_fully_covered(border: &Rect, occluders: &[Rect]) -> bool {
+    occluders.iter().any(|o| contains(o, border))
 }
 
-/// O(n) occlusion: instead of exact rect subtraction, check if each border is
-/// fully covered by any single occluder. This is an approximation that avoids
-/// the O(n²) rect multiplication of exact subtraction.
-///
-/// Tradeoff: may show tiny slivers of hidden borders in complex stacking, but
-/// the CPU cost goes from O(n²) to O(n).
-fn filter_occluded(border_parts: &[Rect], occluders: &[Rect]) -> Vec<Rect> {
-    border_parts
-        .iter()
-        .filter(|border| !is_occluded_by_any(border, occluders))
-        .copied()
-        .collect()
+/// Subtracts an occluder from a border rect, returning the remaining visible parts.
+/// Uses the Rect::subtract method which can return up to 4 pieces.
+#[inline]
+fn subtract_border(border: Rect, occluder: &Rect) -> Vec<Rect> {
+    border.subtract(occluder)
+}
+
+/// Applies occluders to a single border rect, returning visible parts.
+/// Uses exact subtraction to handle partial occlusion correctly.
+/// Returns empty vec if border is fully occluded.
+fn apply_occluders_to_border(border: Rect, occluders: &[Rect]) -> Vec<Rect> {
+    // Fast path: if fully covered by any single occluder, return empty immediately
+    if is_fully_covered(&border, occluders) {
+        return Vec::new();
+    }
+
+    let mut remaining = vec![border];
+
+    for occluder in occluders {
+        if remaining.is_empty() {
+            break;
+        }
+        // Each subtraction can produce up to 4 pieces, but in practice
+        // with typical window stacking, the count stays small
+        let mut new_remaining = Vec::with_capacity(remaining.len() * 4);
+        for part in remaining.drain(..) {
+            // Skip if this part is fully covered
+            if is_fully_covered(&part, &[*occluder]) {
+                continue;
+            }
+            new_remaining.extend(subtract_border(part, occluder));
+        }
+        remaining = new_remaining;
+    }
+
+    remaining
 }
 
 /// Builds occluder rectangles from windows (windows block borders behind them).
@@ -180,17 +203,19 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
             continue;
         }
 
-        // Filter out occluded borders using O(n) check
+        // Get occluders for this window (windows above it in z-order)
         let higher_occluders = &occluders[idx + 1..];
-        let visible_parts = filter_occluded(&border_parts, higher_occluders);
 
         // Get color based on focus state
         let is_focused = Some(window.id) == selected_win;
         let color = window.border_color(is_focused, colors);
 
-        // Create render elements for visible border parts
-        for part in visible_parts {
-            push_solid(&mut elements, part.x, part.y, part.w, part.h, color);
+        // For each border piece, apply occlusion
+        for border in border_parts {
+            let visible_parts = apply_occluders_to_border(border, higher_occluders);
+            for part in visible_parts {
+                push_solid(&mut elements, part.x, part.y, part.w, part.h, color);
+            }
         }
     }
 
