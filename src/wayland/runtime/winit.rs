@@ -4,7 +4,6 @@
 //! Wayland or X11 session.
 
 use std::process::exit;
-use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
@@ -79,7 +78,25 @@ pub fn run() -> ! {
 
     run_autostart();
     spawn_wayland_smoke_window();
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+    let ipc_server = crate::ipc::IpcServer::bind().ok();
+
+    // Setup IPC as event-driven calloop source (mirrors DRM/X11 approach)
+    if let Some(ipc) = ipc_server {
+        super::calloop_helpers::setup_ipc_source(&loop_handle, ipc, move |ipc, state| {
+            if ipc.process_pending(&mut state.wm) {
+                state.wm.g.dirty.layout = true;
+                crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+                state.wm.g.dirty.space = true;
+            }
+        });
+    }
+
+    // Setup animation timer (mirrors DRM/X11 approach)
+    super::calloop_helpers::setup_animation_timer(
+        &loop_handle,
+        |state| state.tick_window_animations(),
+        |state| state.has_active_window_animations(),
+    );
 
     let start_time = std::time::Instant::now();
 
@@ -87,20 +104,20 @@ pub fn run() -> ! {
 
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
-        .run(Duration::from_millis(16), &mut state, move |mut state| {
+        .run(None, &mut state, move |state| {
             winit_loop.dispatch_new_events(|event| match event {
                 WinitEvent::Resized { size, .. } => {
                     crate::wayland::input::handle_resize(&mut state.wm, &output, size.w, size.h);
                 }
                 WinitEvent::Input(event) => match event {
                     InputEvent::Keyboard { event } => {
-                        handle_keyboard(&mut state, &keyboard_handle, event);
+                        handle_keyboard(state, &keyboard_handle, event);
                     }
                     InputEvent::PointerMotionAbsolute { event } => {
                         let size = backend.window_size();
                         let motion_event = motion_event_from_winit(event, size);
                         handle_pointer_motion(
-                            &mut state,
+                            state,
                             &pointer_handle,
                             &keyboard_handle,
                             motion_event,
@@ -109,7 +126,7 @@ pub fn run() -> ! {
                     InputEvent::PointerButton { event } => {
                         let pointer_location = state.pointer_location;
                         handle_pointer_button(
-                            &mut state,
+                            state,
                             &pointer_handle,
                             &keyboard_handle,
                             event,
@@ -119,7 +136,7 @@ pub fn run() -> ! {
                     InputEvent::PointerAxis { event } => {
                         let pointer_location = state.pointer_location;
                         handle_pointer_axis(
-                            &mut state,
+                            state,
                             &pointer_handle,
                             &keyboard_handle,
                             event,
@@ -134,8 +151,8 @@ pub fn run() -> ! {
                 _ => {}
             });
 
-            super::common::arrange_layout_if_dirty(&mut state);
-            super::common::process_ipc_commands(&mut ipc_server, &mut state);
+            super::common::arrange_layout_if_dirty(state);
+            // IPC is now handled by calloop source, not polled here
             crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
 
             // Winit has no libinput devices to reconfigure, but clear the
@@ -143,14 +160,14 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             state.wm.g.dirty.input_config = false;
 
-            super::common::sync_space_if_dirty(&mut state);
+            super::common::sync_space_if_dirty(state);
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
-            apply_pending_warp(&mut state, &pointer_handle);
+            apply_pending_warp(state, &pointer_handle);
 
             render_frame(
-                &mut state,
+                state,
                 &mut backend,
                 &output,
                 &mut damage_tracker,

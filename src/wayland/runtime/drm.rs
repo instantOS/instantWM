@@ -13,7 +13,9 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+use smithay::reexports::calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
@@ -127,7 +129,7 @@ pub fn run() -> ! {
     run_autostart();
     spawn_wayland_smoke_window();
 
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+    let ipc_server = crate::ipc::IpcServer::bind().ok();
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
@@ -142,7 +144,7 @@ pub fn run() -> ! {
         &shared,
         &mut output_surfaces,
         &cursor_manager,
-        &mut ipc_server,
+        ipc_server,
         &mut render_failures,
         start_time,
         led_state_rx,
@@ -296,32 +298,43 @@ fn run_event_loop(
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
     cursor_manager: &CursorManager,
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    ipc_server: Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
     led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
+    let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
 
-    event_loop
-        .run(Duration::from_millis(16), state, move |state| {
-            process_completed_crtcs(state, shared, output_surfaces);
+    // Register IPC server as a calloop source if available
+    // This makes IPC event-driven rather than polled every iteration
+    if let Some(ipc) = ipc_server {
+        let shared_ipc = Arc::clone(shared);
+        let source = Generic::new(ipc, Interest::READ, Mode::Level);
+        loop_handle
+            .insert_source(source, move |_, ipc_server, state| {
+                // SAFETY: We're not dropping the IpcServer, just calling process_pending
+                let ipc = unsafe { ipc_server.get_mut() };
+                if ipc.process_pending(&mut state.wm) {
+                    state.wm.g.dirty.layout = true;
+                    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+                    state.wm.g.dirty.space = true;
+                    shared_ipc.lock().unwrap().mark_all_dirty();
+                }
+                Ok(PostAction::Continue)
+            })
+            .expect("ipc source");
+    }
 
-            process_pending_libinput_events(state, shared);
-
-            super::common::arrange_layout_if_dirty(state);
-
-            process_ipc(ipc_server, state, shared);
-
-            if state.wm.g.dirty.input_config {
-                state.wm.g.dirty.input_config = false;
-                crate::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.tracked_devices,
-                    &state.wm.g.cfg.input,
-                );
-            }
-
+    // Animation timer - fires every 16ms when animations are active
+    // Also handles LED state checks (rare operation)
+    // Uses smart timing: long sleep when idle to reduce CPU usage
+    let shared_anim = Arc::clone(shared);
+    let anim_timer = Timer::from_duration(Duration::from_millis(16));
+    loop_handle
+        .insert_source(anim_timer, move |_, _, state| {
+            // Check LED state updates
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
                 for device in state.tracked_devices.iter_mut() {
@@ -332,11 +345,36 @@ fn run_event_loop(
                 }
             }
 
-            super::common::sync_space_if_dirty(state);
             state.tick_window_animations();
             if state.has_active_window_animations() {
-                shared.lock().unwrap().mark_all_dirty();
+                shared_anim.lock().unwrap().mark_all_dirty();
+                TimeoutAction::ToDuration(Duration::from_millis(16))
+            } else {
+                // No animations, sleep until woken by something else
+                TimeoutAction::ToDuration(Duration::from_secs(86400))
             }
+        })
+        .expect("animation timer source");
+
+    // Main event loop - no timeout needed since all work is event-driven
+    // The timeout is only for safety in case we miss an event wakeup
+    event_loop
+        .run(None, state, move |state| {
+            process_completed_crtcs(state, shared, output_surfaces);
+
+            process_pending_libinput_events(state, shared);
+
+            super::common::arrange_layout_if_dirty(state);
+
+            if state.wm.g.dirty.input_config {
+                state.wm.g.dirty.input_config = false;
+                crate::wayland::input::drm::reconfigure_all_devices(
+                    &mut state.tracked_devices,
+                    &state.wm.g.cfg.input,
+                );
+            }
+
+            super::common::sync_space_if_dirty(state);
 
             process_cursor_warp(state, &pointer_handle, shared);
 
@@ -439,21 +477,6 @@ fn process_completed_crtcs(
     }
 }
 
-/// Process IPC commands with DRM-specific output invalidation.
-fn process_ipc(
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-    state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
-) {
-    let handled = super::common::process_ipc_commands(ipc_server, state);
-    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
-    if handled {
-        // DRM-specific: also mark space and all outputs dirty
-        state.wm.g.dirty.space = true;
-        shared.lock().unwrap().mark_all_dirty();
-    }
-}
-
 /// Apply compositor-side cursor warp.
 fn process_cursor_warp(
     state: &mut WaylandState,
@@ -524,7 +547,7 @@ fn render_outputs(
                     time_until_presentation > entry.last_render_duration + render_margin;
 
                 if should_delay {
-                    // Re-mark as dirty to render on next loop iteration
+                    // Re-mark as dirty to render later
                     shared.lock().unwrap().render_flags.insert(entry.crtc, true);
                     continue;
                 }
