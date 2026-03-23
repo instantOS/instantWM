@@ -23,7 +23,7 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Windo
     let at = |idx: usize| -> i32 { data.get(idx).copied().unwrap_or(0) as i32 };
 
     // Base size (idx 15-16), fallback to min size (idx 5-6)
-    (c.size_hints.basew, c.size_hints.baseh) =
+    (c.size_hints.base_width, c.size_hints.base_height) =
         if flags & SIZE_HINTS_P_BASE_SIZE != 0 && data.len() > 16 {
             (at(15), at(16))
         } else if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
@@ -33,22 +33,22 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Windo
         };
 
     // Min size (idx 5-6), fallback to base size
-    (c.size_hints.minw, c.size_hints.minh) = if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6
-    {
-        (at(5), at(6))
-    } else if flags & SIZE_HINTS_P_BASE_SIZE != 0 {
-        (c.size_hints.basew, c.size_hints.baseh)
-    } else {
-        (0, 0)
-    };
+    (c.size_hints.min_weight, c.size_hints.min_height) =
+        if flags & SIZE_HINTS_P_MIN_SIZE != 0 && data.len() > 6 {
+            (at(5), at(6))
+        } else if flags & SIZE_HINTS_P_BASE_SIZE != 0 {
+            (c.size_hints.base_width, c.size_hints.base_height)
+        } else {
+            (0, 0)
+        };
 
     // Max size (idx 7-8)
-    (c.size_hints.maxw, c.size_hints.maxh) = if flags & SIZE_HINTS_P_MAX_SIZE != 0 && data.len() > 8
-    {
-        (at(7), at(8))
-    } else {
-        (0, 0)
-    };
+    (c.size_hints.max_width, c.size_hints.max_height) =
+        if flags & SIZE_HINTS_P_MAX_SIZE != 0 && data.len() > 8 {
+            (at(7), at(8))
+        } else {
+            (0, 0)
+        };
 
     // Resize increments (idx 9-10)
     (c.size_hints.incw, c.size_hints.inch) =

@@ -43,7 +43,7 @@ smithay = { version = "0.7", default-features = false, features = [
     "xwayland",
 ] }
 calloop = { version = "0.14" }
-cosmic-text = "0.12"
+cosmic-text = { version = "0.12", features = ["shape-run-cache"] }
 zbus = { version = "5" }
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 serde_json = "1.0"

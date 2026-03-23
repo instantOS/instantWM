@@ -394,6 +394,29 @@ impl WaylandBarPainter {
             }
         }
     }
+
+    /// Internal text rendering with borrow-safe access to font_system and swash_cache.
+    fn render_text(&mut self, x: i32, y: i32, w: i32, h: i32, text: &str, color: [f32; 4]) {
+        if text.is_empty() || w <= 0 || h <= 0 {
+            return;
+        }
+        let mut fs = self.font_system.borrow_mut();
+        let mut sc = self.swash_cache.borrow_mut();
+        rasterize_text(
+            &mut self.pixels,
+            self.canvas_w,
+            self.canvas_h,
+            &mut fs,
+            &mut sc,
+            x,
+            y,
+            w,
+            h,
+            text,
+            color,
+            self.font_size,
+        );
+    }
 }
 
 impl BarPainter for WaylandBarPainter {
@@ -470,22 +493,7 @@ impl BarPainter for WaylandBarPainter {
             let text_x = x + lpad;
             let text_w = (w - lpad).max(0);
             if text_w > 0 {
-                let mut fs = self.font_system.borrow_mut();
-                let mut sc = self.swash_cache.borrow_mut();
-                rasterize_text(
-                    &mut self.pixels,
-                    self.canvas_w,
-                    self.canvas_h,
-                    &mut fs,
-                    &mut sc,
-                    text_x,
-                    y,
-                    text_w,
-                    h,
-                    text,
-                    fg,
-                    self.font_size,
-                );
+                self.render_text(text_x, y, text_w, h, text, fg);
             }
         }
         x + w
