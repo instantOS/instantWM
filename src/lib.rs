@@ -4,32 +4,32 @@
 // the main event loop thread. The FFI wrappers around Xlib/Xft types (Drw, Fnt,
 // Color, Cursor, XlibDisplay) are only accessed from this thread, so Send+Sync
 // is sound for these types.
-mod animation;
-mod backend;
-mod bar;
-mod client;
+pub mod animation;
+pub mod backend;
+pub mod bar;
+pub mod client;
 pub mod config;
-mod constants;
-mod contexts;
-mod frame_clock;
+pub mod constants;
+pub mod contexts;
+pub mod frame_clock;
 
-mod floating;
-mod focus;
-mod globals;
+pub mod floating;
+pub mod focus;
+pub mod globals;
 pub mod ipc;
 pub mod ipc_types;
-mod keyboard;
-mod keyboard_layout;
+pub mod keyboard;
+pub mod keyboard_layout;
 pub mod layouts;
-mod monitor;
-mod mouse;
+pub mod monitor;
+pub mod mouse;
 pub mod reload;
-mod runtime;
+pub mod runtime;
 pub mod startup;
-mod systray;
-mod tags;
-mod toggles;
+pub mod systray;
+pub mod tags;
+pub mod toggles;
 pub mod types;
-mod util;
-mod wayland;
-mod wm;
+pub mod util;
+pub mod wayland;
+pub mod wm;

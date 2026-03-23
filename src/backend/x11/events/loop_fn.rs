@@ -54,7 +54,8 @@ pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
             ipc,
             |ipc, wm| {
                 if ipc.process_pending(wm) {
-                    crate::runtime::apply_monitor_config_if_dirty(wm);
+                    let mut ctx = wm.ctx();
+                    crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
                 }
             },
         );
@@ -78,8 +79,9 @@ pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
 
             // ── 2. Apply monitor config and arrange layout ──────────────
             // NOTE: IPC is now handled by calloop source, not polled here
-            crate::runtime::apply_monitor_config_if_dirty(wm);
-            crate::runtime::arrange_layout_if_dirty(wm);
+            let mut ctx = wm.ctx();
+            crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
+            crate::runtime::arrange_layout_if_dirty(&mut ctx);
 
             // ── 3. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();
@@ -188,8 +190,12 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(&mut ctx, &e),
         x11rb::protocol::Event::Expose(e) => handlers::expose(&mut ctx, &e),
         x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(&mut ctx, &e),
-        x11rb::protocol::Event::KeyPress(e) => crate::keyboard::key_press_x11(&mut ctx, &e),
-        x11rb::protocol::Event::KeyRelease(e) => crate::keyboard::key_release_x11(&mut ctx, &e),
+        x11rb::protocol::Event::KeyPress(e) => {
+            crate::backend::x11::grab::key_press_x11(&mut ctx, &e)
+        }
+        x11rb::protocol::Event::KeyRelease(e) => {
+            crate::backend::x11::grab::key_release_x11(&mut ctx, &e)
+        }
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),

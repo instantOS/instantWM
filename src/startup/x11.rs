@@ -43,7 +43,7 @@ pub fn run() {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
     }
-    let ipc_server = crate::runtime::late_init(&wm);
+    let ipc_server = crate::runtime::late_init(&mut wm);
 
     crate::backend::x11::events::run(&mut wm, ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);
@@ -71,8 +71,9 @@ fn wm_init(wm: &mut Wm) {
     crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
-    crate::runtime::init_keyboard_layout(wm);
     {
+        // Call init_keyboard_layout before destructuring to avoid moving ctx
+        crate::keyboard_layout::init_keyboard_layout(&mut wm.ctx());
         let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx() else {
             return;
         };
@@ -88,7 +89,7 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.systray.as_deref_mut(),
         );
-        crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+        crate::backend::x11::grab::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
         crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
     }
 }

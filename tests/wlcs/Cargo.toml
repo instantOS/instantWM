@@ -1,0 +1,18 @@
+[package]
+name = "instantwm-wlcs"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wlcs = "0.1"
+instantwm = { path = "../.." }
+smithay = { version = "0.7", features = ["wayland_frontend", "desktop"] }
+calloop = "0.14"
+log = "0.4"
+wayland-server = "0.31"
+wayland-sys = { version = "0.31", features = ["client", "server"] }
+smol_str = "0.2"

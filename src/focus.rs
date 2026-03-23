@@ -148,7 +148,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_selection_changed(&self, core: &mut CoreCtx) {
-        crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
+        crate::backend::x11::grab::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 }
 

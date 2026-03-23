@@ -13,7 +13,8 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.g.dirty.input_config = true;
     wm.bar.mark_dirty();
 
-    crate::runtime::init_keyboard_layout(wm);
+    let mut ctx = wm.ctx();
+    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
 
     if matches!(&wm.backend, Backend::X11(_)) {
         reload_x11(wm);
@@ -49,7 +50,7 @@ fn reload_x11(wm: &mut Wm) {
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref_mut(),
         );
-        crate::keyboard::grab_keys_x11(&x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime);
+        crate::backend::x11::grab::grab_keys_x11(&x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime);
         crate::focus::focus_soft_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, None);
         crate::bar::x11::draw_bars_x11(
             &mut x11_ctx.core,
