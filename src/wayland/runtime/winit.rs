@@ -8,7 +8,6 @@ use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::ImportEgl;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
@@ -55,9 +54,7 @@ pub fn run() -> ! {
 
     state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
 
-    if let Err(err) = backend.renderer().bind_wl_display(&state.display_handle) {
-        log::warn!("failed to bind egl to wayland display: {}", err);
-    }
+    state.bind_egl_to_display(backend.renderer());
 
     state.init_screencopy_manager();
 

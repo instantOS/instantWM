@@ -9,7 +9,6 @@ use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::ImportEgl;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
@@ -75,9 +74,7 @@ pub fn run() -> ! {
     state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
 
     state.with_renderer(|state, renderer| {
-        if let Err(err) = renderer.bind_wl_display(&state.display_handle) {
-            log::warn!("failed to bind egl to wayland display: {}", err);
-        }
+        state.bind_egl_to_display(renderer);
     });
 
     state.init_screencopy_manager();
