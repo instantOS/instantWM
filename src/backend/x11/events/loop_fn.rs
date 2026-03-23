@@ -49,19 +49,23 @@ pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
     // This mirrors the Wayland/DRM backend approach - IPC is processed
     // immediately when a client connects, not polled every iteration.
     if let Some(ipc) = ipc_server {
-        crate::wayland::runtime::calloop_helpers::setup_ipc_source(&loop_handle, ipc, |ipc, wm| {
-            if ipc.process_pending(wm) {
-                crate::runtime::apply_monitor_config_if_dirty(wm);
-            }
-        });
+        crate::wayland::runtime::calloop_helpers::setup_ipc_source(
+            loop_handle.clone(),
+            ipc,
+            |ipc, wm| {
+                if ipc.process_pending(wm) {
+                    crate::runtime::apply_monitor_config_if_dirty(wm);
+                }
+            },
+        );
     }
 
     // ── Animation timer (~60 fps) ───────────────────────────────────────
     // Uses smart timing: 16ms when animations active, long sleep when idle
     // to reduce CPU usage. This mirrors the Wayland/DRM backend approach.
     crate::wayland::runtime::calloop_helpers::setup_animation_timer(
-        &loop_handle,
-        |wm| tick_x11_animations(wm),
+        loop_handle.clone(),
+        tick_x11_animations,
         |wm| wm.has_active_animations(),
     );
 

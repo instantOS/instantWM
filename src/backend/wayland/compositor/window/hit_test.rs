@@ -93,16 +93,16 @@ impl WaylandState {
                     }
                 } else {
                     // Managed windows with borders
-                    if result.hovered_win.is_none() {
-                        if let Some(c) = globals.clients.get(&win_id) {
-                            let bw = c.border_width;
-                            if root_x >= c.geo.x
-                                && root_x < c.geo.x + c.geo.w + 2 * bw
-                                && root_y >= c.geo.y
-                                && root_y < c.geo.y + c.geo.h + 2 * bw
-                            {
-                                result.hovered_win = Some(win_id);
-                            }
+                    if result.hovered_win.is_none()
+                        && let Some(c) = globals.clients.get(&win_id)
+                    {
+                        let bw = c.border_width;
+                        if root_x >= c.geo.x
+                            && root_x < c.geo.x + c.geo.w + 2 * bw
+                            && root_y >= c.geo.y
+                            && root_y < c.geo.y + c.geo.h + 2 * bw
+                        {
+                            result.hovered_win = Some(win_id);
                         }
                     }
                 }

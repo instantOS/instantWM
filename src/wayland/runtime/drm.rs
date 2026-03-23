@@ -268,10 +268,11 @@ fn setup_drm_vblank_handler(
                 // we only re-mark dirty when content has actually changed.
                 // For VRR outputs, only content changes (input, animations,
                 // surface commits) should trigger renders — not VBlank.
-                if !s.vrr_crtcs.contains(&crtc) && s.content_dirty {
-                    if let Some(flag) = s.render_flags.get_mut(&crtc) {
-                        *flag = true;
-                    }
+                if !s.vrr_crtcs.contains(&crtc)
+                    && s.content_dirty
+                    && let Some(flag) = s.render_flags.get_mut(&crtc)
+                {
+                    *flag = true;
                 }
                 s.completed_crtcs.push(crtc);
 
@@ -317,24 +318,14 @@ fn run_event_loop(
     // This makes IPC event-driven rather than polled every iteration
     if let Some(ipc) = ipc_server {
         let shared_ipc = Arc::clone(shared);
-        let source = smithay::reexports::calloop::generic::Generic::new(
-            ipc,
-            smithay::reexports::calloop::Interest::READ,
-            smithay::reexports::calloop::Mode::Level,
-        );
-        loop_handle
-            .insert_source(source, move |_, ipc_server, state: &mut WaylandState| {
-                // SAFETY: We're not dropping the IpcServer, just calling process_pending
-                let ipc = unsafe { ipc_server.get_mut() };
-                if ipc.process_pending(&mut state.wm) {
-                    state.wm.g.dirty.layout = true;
-                    crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
-                    state.wm.g.dirty.space = true;
-                    shared_ipc.lock().unwrap().mark_all_dirty();
-                }
-                Ok(smithay::reexports::calloop::PostAction::Continue)
-            })
-            .expect("ipc source");
+        super::calloop_helpers::setup_ipc_source(loop_handle.clone(), ipc, move |ipc, state| {
+            if ipc.process_pending(&mut state.wm) {
+                state.wm.g.dirty.layout = true;
+                crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
+                state.wm.g.dirty.space = true;
+                shared_ipc.lock().unwrap().mark_all_dirty();
+            }
+        });
     }
 
     // Animation timer - fires every 16ms when animations are active.
@@ -342,7 +333,7 @@ fn run_event_loop(
     // When animations are active, marks all DRM outputs dirty for re-render.
     let shared_anim = Arc::clone(shared);
     super::calloop_helpers::setup_animation_timer(
-        &loop_handle,
+        loop_handle.clone(),
         move |state| {
             // Check LED state updates
             while let Ok(led_state) = led_state_rx.try_recv() {
@@ -390,7 +381,7 @@ fn run_event_loop(
             // map/unmap from show_hide_wayland takes effect in the Space
             // before we build render elements.  Without this, invisible
             // windows would render for one extra frame after a tag switch.
-            drain_and_execute_ops(state);
+            super::common::drain_and_execute_ops(state);
 
             super::common::sync_space_if_dirty(state);
 
@@ -410,7 +401,7 @@ fn run_event_loop(
 
             // Second drain pass for any commands queued during execute_command
             // or render (e.g. screencopy, surface lifecycle callbacks).
-            drain_and_execute_ops(state);
+            super::common::drain_and_execute_ops(state);
 
             // Sync caches
             if let crate::backend::Backend::Wayland(data) = &state.wm.backend {

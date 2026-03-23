@@ -22,7 +22,7 @@ use calloop::{Interest, LoopHandle, Mode, PostAction};
 /// When a client connects, `on_ipc` is called with mutable access to the
 /// IpcServer and the event loop data.
 pub fn setup_ipc_source<Data: 'static>(
-    loop_handle: LoopHandle<'static, Data>,
+    loop_handle: LoopHandle<'_, Data>,
     ipc_server: crate::ipc::IpcServer,
     mut on_ipc: impl FnMut(&mut crate::ipc::IpcServer, &mut Data) + 'static,
 ) {
@@ -46,7 +46,7 @@ pub fn setup_ipc_source<Data: 'static>(
 /// When `is_active` returns false, the timer sleeps for a long time
 /// to avoid unnecessary CPU usage.
 pub fn setup_animation_timer<Data: 'static>(
-    loop_handle: &LoopHandle<'static, Data>,
+    loop_handle: LoopHandle<'_, Data>,
     mut tick: impl FnMut(&mut Data) + 'static,
     mut is_active: impl FnMut(&Data) -> bool + 'static,
 ) {

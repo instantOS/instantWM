@@ -7,11 +7,11 @@ pub fn format_response(response: &Response, json: bool, socket_path: Option<&str
     match response {
         Response::Ok => {}
         Response::Err(msg) => {
-            if let Some(socket) = socket_path {
-                if let Some(version_msg) = super::ipc::IpcClient::check_version(socket) {
-                    eprintln!("ERR {}", version_msg);
-                    std::process::exit(1);
-                }
+            if let Some(socket) = socket_path
+                && let Some(version_msg) = super::ipc::IpcClient::check_version(socket)
+            {
+                eprintln!("ERR {}", version_msg);
+                std::process::exit(1);
             }
             eprintln!("ERR {}", msg);
             std::process::exit(1);

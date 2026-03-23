@@ -6,15 +6,15 @@
 use std::process::exit;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -82,7 +82,7 @@ pub fn run() -> ! {
 
     // Setup IPC as event-driven calloop source (mirrors DRM/X11 approach)
     if let Some(ipc) = ipc_server {
-        super::calloop_helpers::setup_ipc_source(&loop_handle, ipc, move |ipc, state| {
+        super::calloop_helpers::setup_ipc_source(loop_handle.clone(), ipc, move |ipc, state| {
             if ipc.process_pending(&mut state.wm) {
                 state.wm.g.dirty.layout = true;
                 crate::runtime::apply_monitor_config_if_dirty(&mut state.wm);
@@ -93,7 +93,7 @@ pub fn run() -> ! {
 
     // Setup animation timer (mirrors DRM/X11 approach)
     super::calloop_helpers::setup_animation_timer(
-        &loop_handle,
+        loop_handle.clone(),
         |state| state.tick_window_animations(),
         |state| state.has_active_window_animations(),
     );
@@ -189,6 +189,12 @@ pub fn run() -> ! {
             }
 
             if state.has_active_window_animations() {
+                needs_render = true;
+            }
+
+            // Surface commits from client windows set content_dirty_pending.
+            if state.content_dirty_pending {
+                state.content_dirty_pending = false;
                 needs_render = true;
             }
 

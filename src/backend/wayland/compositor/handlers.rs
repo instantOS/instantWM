@@ -208,10 +208,10 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
-        if let Some(win) = self.window_id_for_surface(surface) {
-            if let Some(window) = self.window_index.get(&win) {
-                return Some(KeyboardFocusTarget::Window(window.clone()));
-            }
+        if let Some(win) = self.window_id_for_surface(surface)
+            && let Some(window) = self.window_index.get(&win)
+        {
+            return Some(KeyboardFocusTarget::Window(window.clone()));
         }
         // For unmanaged X11 surfaces (like dmenu), search in the space
         self.window_for_surface(surface)

@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -11,12 +11,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupGrab, PopupManager, Space, Window},
     input::{
+        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
-        Seat, SeatState,
     },
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -32,7 +32,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, XdgShellState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -443,7 +443,7 @@ impl WaylandState {
         match focus {
             KeyboardFocusTarget::Window(w) => w.user_data().get::<WindowIdMarker>().map(|m| m.id),
             KeyboardFocusTarget::WlSurface(s) => self.window_id_for_surface(s),
-            KeyboardFocusTarget::Popup(p) => self.window_id_for_surface(&p.wl_surface()),
+            KeyboardFocusTarget::Popup(p) => self.window_id_for_surface(p.wl_surface()),
         }
     }
 
@@ -479,13 +479,13 @@ impl WaylandState {
     }
 
     pub fn refresh_popup_grab(&mut self) {
-        if let Some(ref mut grab) = self.popup_grab {
-            if grab.has_ended() {
-                if let Some(keyboard) = self.seat.get_keyboard() {
-                    keyboard.unset_grab(self);
-                }
-                self.popup_grab = None;
+        if let Some(ref mut grab) = self.popup_grab
+            && grab.has_ended()
+        {
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.unset_grab(self);
             }
+            self.popup_grab = None;
         }
     }
 }

@@ -44,12 +44,14 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
 
     if target.is_none() {
         // Try focus history first
-        if let Some(&hist_win) = mon.tag_focus_history.get(&selected.bits()) {
-            if core.globals().clients.get(&hist_win).map_or(false, |c| {
-                c.is_visible_on_tags(selected.bits()) && !c.is_hidden
-            }) {
-                target = Some(hist_win);
-            }
+        if let Some(&hist_win) = mon.tag_focus_history.get(&selected.bits())
+            && core
+                .globals()
+                .clients
+                .get(&hist_win)
+                .is_some_and(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
+        {
+            target = Some(hist_win);
         }
 
         // Fallback to top of stack

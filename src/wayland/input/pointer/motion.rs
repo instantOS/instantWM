@@ -129,7 +129,7 @@ pub fn dispatch_pointer_motion(
     let root_y = pointer_location.y.round() as i32;
 
     // Get active drag window once - used in multiple phases
-    let active_drag_window = wayland_active_drag_window(&mut state.wm);
+    let active_drag_window = wayland_active_drag_window(&state.wm);
 
     // Phase 1: Compute bar/guard band hit detection
     let (in_bar_band, in_bar_guard_band) =
