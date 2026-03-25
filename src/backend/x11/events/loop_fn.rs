@@ -88,14 +88,16 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
 /// Drain all pending X11 events from the connection and dispatch them.
 fn drain_x11_events(wm: &mut Wm) {
     loop {
-        let event = wm
-            .backend
-            .x11_conn()
-            .and_then(|(conn, _)| conn.poll_for_event().ok())
-            .flatten();
-        match event {
-            Some(event) => dispatch_event(wm, event),
-            None => break,
+        let Some((conn, _)) = wm.backend.x11_conn() else {
+            break;
+        };
+        match conn.poll_for_event() {
+            Ok(Some(event)) => dispatch_event(wm, event),
+            Ok(None) => break,
+            Err(err) => {
+                log::warn!("X11 poll_for_event error: {}", err);
+                break;
+            }
         }
     }
 }

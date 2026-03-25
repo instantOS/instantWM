@@ -20,6 +20,18 @@ struct FocusTargetResult {
     current_sel: Option<WindowId>,
 }
 
+fn is_focusable_on_monitor(
+    core: &CoreCtx,
+    sel_mon_id: MonitorId,
+    selected: TagMask,
+    win: WindowId,
+) -> bool {
+    core.globals()
+        .clients
+        .get(&win)
+        .is_some_and(|c| c.monitor_id == sel_mon_id && c.is_visible(selected))
+}
+
 /// Resolve the focus target based on the requested window and current state.
 /// Returns `None` if there are no monitors (early exit case).
 fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTargetResult> {
@@ -34,22 +46,12 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
 
     // Use the requested window if it's visible, otherwise walk the stack
     // to find the first visible non-hidden client.
-    let mut target = win.filter(|w| {
-        core.globals()
-            .clients
-            .get(w)
-            .map(|c| c.is_visible(selected))
-            .unwrap_or(false)
-    });
+    let mut target = win.filter(|&w| is_focusable_on_monitor(core, sel_mon_id, selected, w));
 
     if target.is_none() {
         // Try focus history first.
         if let Some(&hist_win) = mon.tag_focus_history.get(&selected.bits())
-            && core
-                .globals()
-                .clients
-                .get(&hist_win)
-                .is_some_and(|c| c.is_visible(selected))
+            && is_focusable_on_monitor(core, sel_mon_id, selected, hist_win)
         {
             target = Some(hist_win);
         }

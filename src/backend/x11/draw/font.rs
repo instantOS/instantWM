@@ -36,6 +36,12 @@ pub struct Fnt {
     /// Required when performing fallback font matching (see `Drw::text`).
     pub pattern: *mut FcPattern,
 
+    /// Whether this font node owns `pattern` and should destroy it on drop.
+    ///
+    /// Fonts opened with `XftFontOpenPattern` transfer pattern ownership into
+    /// Xft, so destroying the pattern ourselves would double-free.
+    pub(super) owns_pattern: bool,
+
     /// Font ascent in pixels (used to vertically centre glyphs).
     pub(super) ascent: i32,
 
@@ -59,6 +65,7 @@ impl Clone for Fnt {
             h: self.h,
             xfont: self.xfont,
             pattern: self.pattern,
+            owns_pattern: false,
             ascent: self.ascent,
             owns_resources: false,
         }
@@ -85,7 +92,7 @@ impl Drop for Fnt {
         // which is guaranteed by the `Drw` owning both.
         unsafe {
             if self.owns_resources {
-                if !self.pattern.is_null() {
+                if self.owns_pattern && !self.pattern.is_null() {
                     FcPatternDestroy(self.pattern);
                 }
                 if !self.xfont.is_null() && !self.display.is_null() {
