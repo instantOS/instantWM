@@ -9,7 +9,9 @@ use crate::types::Gesture;
 /// Systray width must be cached in `core.globals().bar_runtime.systray_width` by the caller
 /// before invoking this function.
 pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
-    core.bar.recursion_enter();
+    if !core.bar.try_recursion_enter() {
+        return;
+    }
 
     let (monitor_num, work_rect_w, monitor_id) = match core.globals().monitor(mon_idx) {
         Some(m) => {

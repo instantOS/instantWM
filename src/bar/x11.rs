@@ -74,16 +74,16 @@ pub fn draw_bars_x11(
     for i in indices {
         draw_bar(core, x11_runtime, systray, i);
     }
+    core.bar.mark_drawn();
 }
 
 pub fn reset_bar_x11(
     core: &mut CoreCtx,
-    x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&Systray>,
+    _x11_runtime: &mut X11RuntimeConfig,
+    _systray: Option<&Systray>,
 ) {
-    let selmon_idx = core.globals().selected_monitor_id();
     crate::bar::renderer::reset_bar_common(core);
-    draw_bar(core, x11_runtime, systray, selmon_idx);
+    core.bar.mark_dirty();
 }
 
 /// Resize bar window with dependency injection.

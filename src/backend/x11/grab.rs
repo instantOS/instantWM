@@ -127,6 +127,16 @@ pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
     let _ = ctx.x11.conn.flush();
 }
 
+fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
+    if ctx.core.bar.needs_redraw() {
+        crate::bar::x11::draw_bars_x11(
+            &mut ctx.core,
+            ctx.x11_runtime,
+            ctx.systray.as_deref(),
+        );
+    }
+}
+
 /// Generic X11 mouse-drag event loop.
 ///
 /// Handles pointer grabbing, the motion-event loop (with throttling),
@@ -153,6 +163,8 @@ pub fn mouse_drag_loop<F>(
         return;
     }
 
+    pump_deferred_work(ctx);
+
     loop {
         // Wait for at least one event (blocking).
         let Some(mut event) = wait_event(ctx) else {
@@ -172,21 +184,26 @@ pub fn mouse_drag_loop<F>(
                     // x11rb doesn't let us un-read events easily, so we process
                     // the compressed motion *now*, then process this next_evt.
                     if !on_event(ctx, &event) {
+                        pump_deferred_work(ctx);
                         ungrab(ctx);
                         return;
                     }
+                    pump_deferred_work(ctx);
 
                     // Now process the non-motion event we peeked.
                     if let x11rb::protocol::Event::ButtonRelease(br) = next_evt
                         && br.detail == btn.as_u8()
                     {
+                        pump_deferred_work(ctx);
                         ungrab(ctx);
                         return;
                     }
                     if !on_event(ctx, &next_evt) {
+                        pump_deferred_work(ctx);
                         ungrab(ctx);
                         return;
                     }
+                    pump_deferred_work(ctx);
 
                     // We've processed the peeking; continue the main `wait_event` loop.
                     continue;
@@ -205,11 +222,14 @@ pub fn mouse_drag_loop<F>(
             _ => on_event(ctx, &event),
         };
 
+        pump_deferred_work(ctx);
+
         if !should_continue {
             break;
         }
     }
 
+    pump_deferred_work(ctx);
     ungrab(ctx);
 }
 

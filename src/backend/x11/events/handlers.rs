@@ -565,12 +565,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     if new_gesture != current_gesture {
         ctx.core.globals_mut().selected_monitor_mut().gesture = new_gesture;
-        crate::bar::x11::draw_bar(
-            &mut ctx.core,
-            ctx.x11_runtime,
-            ctx.systray.as_deref(),
-            selmon_id,
-        );
+        ctx.core.bar.mark_dirty();
     };
 }
 
@@ -597,11 +592,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
                 crate::client::update_wm_hints(ctx, event_win);
-                crate::bar::x11::draw_bars_x11(
-                    &mut ctx.core,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
+                ctx.core.bar.mark_dirty();
             }
             _ => {}
         }

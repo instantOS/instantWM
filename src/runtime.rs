@@ -23,6 +23,7 @@ pub fn event_loop_tick(wm: &mut Wm, ipc_server: &mut Option<crate::ipc::IpcServe
     let handled = process_ipc_commands(ipc_server, wm);
     apply_monitor_config_if_dirty(wm);
     arrange_layout_if_dirty(wm);
+    draw_x11_bars_if_dirty(wm);
     handled
 }
 
@@ -48,6 +49,21 @@ pub fn apply_monitor_config_if_dirty(wm: &mut Wm) {
     if wm.g.dirty.monitor_config {
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
+    }
+}
+
+pub fn draw_x11_bars_if_dirty(wm: &mut Wm) {
+    if !matches!(wm.backend, crate::backend::Backend::X11(_)) || !wm.bar.needs_redraw() {
+        return;
+    }
+
+    let ctx = wm.ctx();
+    if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
+        crate::bar::x11::draw_bars_x11(
+            &mut x11_ctx.core,
+            x11_ctx.x11_runtime,
+            x11_ctx.systray.as_deref(),
+        );
     }
 }
 

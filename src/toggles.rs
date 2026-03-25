@@ -172,12 +172,6 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
                 );
             }
             x11.core.bar.mark_dirty();
-            crate::bar::x11::draw_bar(
-                &mut x11.core,
-                x11.x11_runtime,
-                x11.systray.as_deref(),
-                selmon_idx,
-            );
         }
         WmCtx::Wayland(_) => {
             ctx.request_bar_update(Some(selmon_idx));

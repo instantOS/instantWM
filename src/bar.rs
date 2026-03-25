@@ -21,6 +21,7 @@ pub struct BarState {
     pausedraw: bool,
     draw_bar_recursion: usize,
     bar_update_seq: u64,
+    last_drawn_seq: u64,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
     /// Total width of the tag strip (including start menu)
@@ -79,15 +80,21 @@ impl BarState {
         self.pausedraw = paused;
     }
 
-    pub(crate) fn recursion_enter(&mut self) {
-        self.draw_bar_recursion += 1;
-        if self.draw_bar_recursion > 50 {
-            std::process::abort();
+    pub(crate) fn try_recursion_enter(&mut self) -> bool {
+        if self.draw_bar_recursion > 0 {
+            self.mark_dirty();
+            return false;
         }
+        self.draw_bar_recursion = 1;
+        true
     }
 
     pub(crate) fn recursion_exit(&mut self) {
         self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
+    }
+
+    pub fn is_drawing(&self) -> bool {
+        self.draw_bar_recursion > 0
     }
 
     /// Bump the backend-agnostic bar invalidation sequence.
@@ -98,6 +105,14 @@ impl BarState {
     /// Current bar invalidation sequence.
     pub fn update_seq(&self) -> u64 {
         self.bar_update_seq
+    }
+
+    pub fn needs_redraw(&self) -> bool {
+        self.bar_update_seq != self.last_drawn_seq
+    }
+
+    pub fn mark_drawn(&mut self) {
+        self.last_drawn_seq = self.bar_update_seq;
     }
 
     /// Clear cached widths. Called at the start of each bar render.
