@@ -386,6 +386,25 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    pub fn current_mode(&self) -> &str {
+        &self.core().globals().behavior.current_mode
+    }
+
+    pub fn set_current_mode(&mut self, mode: impl Into<String>) {
+        self.core_mut().globals_mut().behavior.current_mode = mode.into();
+    }
+
+    pub fn reset_mode(&mut self) {
+        self.set_current_mode("default");
+    }
+
+    pub fn with_behavior_mut<R>(
+        &mut self,
+        f: impl FnOnce(&mut crate::globals::WmBehavior) -> R,
+    ) -> R {
+        f(&mut self.core_mut().globals_mut().behavior)
+    }
+
     // For backend-specific operations, use match on the enum directly
     // instead of accessor methods that return Option.
 }

@@ -2,10 +2,10 @@
 //!
 //! Types for keyboard bindings, mouse buttons, and X commands.
 
-use std::fmt::Debug;
 use crate::actions::{ButtonAction, KeyAction};
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
+use std::fmt::Debug;
 
 /// Backend-agnostic window identifier.
 #[repr(transparent)]
