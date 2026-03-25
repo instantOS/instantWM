@@ -23,6 +23,20 @@ fn tag_mask_from_pos(pos: crate::types::BarPosition) -> Option<TagMask> {
     }
 }
 
+fn button_target_client(
+    ctx: &WmCtx<'_>,
+    arg: &crate::types::ButtonArg,
+) -> Option<crate::types::WindowId> {
+    arg.window
+        .or(match arg.pos {
+            crate::types::BarPosition::WinTitle(win)
+            | crate::types::BarPosition::CloseButton(win)
+            | crate::types::BarPosition::ResizeWidget(win) => Some(win),
+            _ => None,
+        })
+        .or_else(|| ctx.selected_client())
+}
+
 pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
     match action {
         KeyAction::Named { action, args } => execute_named_action(ctx, *action, args),
@@ -118,26 +132,32 @@ pub fn execute_button_action(
         }
         ButtonAction::ClientMoveDrag => match ctx {
             WmCtx::X11(ctx_x11) => {
+                if let Some(win) = button_target_client(&WmCtx::X11(ctx_x11.reborrow()), &arg) {
+                    let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+                    crate::focus::focus_soft(&mut wm_ctx, Some(win));
+                }
                 crate::backend::x11::mouse::move_mouse_x11(ctx_x11, arg.btn, None)
             }
             WmCtx::Wayland(_) => {
-                if let Some(win) = ctx.selected_client() {
+                if let Some(win) = button_target_client(ctx, &arg) {
+                    crate::focus::focus_soft(ctx, Some(win));
                     crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.rx, arg.ry, false);
                 }
             }
         },
         ButtonAction::ResizeSelectedAspect => {
-            if let Some(win) = ctx.selected_client() {
+            if let Some(win) = button_target_client(ctx, &arg) {
+                crate::focus::focus_soft(ctx, Some(win));
                 resize_aspect_mouse(ctx, win, arg.btn);
             }
         }
         ButtonAction::KillSelectedClient => {
-            if let Some(win) = ctx.selected_client() {
+            if let Some(win) = button_target_client(ctx, &arg) {
                 kill_client(ctx, win);
             }
         }
         ButtonAction::ToggleLockSelectedClient => {
-            if let Some(win) = ctx.selected_client() {
+            if let Some(win) = button_target_client(ctx, &arg) {
                 toggle_locked(ctx, win);
             }
         }
@@ -156,7 +176,7 @@ pub fn execute_button_action(
             }
         }
         ButtonAction::ScaleSelected { percent } => {
-            if let Some(win) = ctx.selected_client() {
+            if let Some(win) = button_target_client(ctx, &arg) {
                 crate::client::geometry::scale_client(ctx, win, *percent);
             }
         }

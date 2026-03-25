@@ -4,7 +4,7 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     center_window, create_overlay, distribute_clients, key_resize, scratchpad_toggle, set_overlay,
-    toggle_maximized,
+    toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
@@ -142,6 +142,7 @@ define_named_actions!(
     CreateOverlay => { name: "create_overlay", arg_example: None, doc: "create overlay from focused client", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { create_overlay(ctx, win); } } },
     ScratchpadToggle => { name: "scratchpad_toggle", arg_example: None, doc: "toggle scratchpad", run: |ctx, _args| { scratchpad_toggle(ctx, None); } },
     ToggleBar => { name: "toggle_bar", arg_example: None, doc: "toggle status bar", run: |ctx, _args| { toggle_bar(ctx); } },
+    ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { toggle_sticky(ctx, win); } } },
     ToggleAltTag => { name: "toggle_alt_tag", arg_example: None, doc: "toggle alt-tag mode", run: |ctx, _args| { toggle_alt_tag(ctx, ToggleAction::Toggle); } },
     ToggleAnimated => { name: "toggle_animated", arg_example: None, doc: "toggle window animations", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| toggle_animated(behavior, ToggleAction::Toggle)); } },

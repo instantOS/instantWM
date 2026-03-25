@@ -45,11 +45,6 @@ fn send_xembed_event(
 
 pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
-    // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
-    let conn = ctx.x11.conn;
-    let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
-    let _ = conn.flush();
-
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.globals().cfg.buttons.clone();
     let altcursor = ctx.core.globals().behavior.cursor_icon;
@@ -136,6 +131,29 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         bar_pos = BarPosition::Root;
     };
 
+    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
+    let client_binding_matched = bar_pos == BarPosition::ClientWin
+        && buttons_clone.iter().any(|button| {
+            button.matches(bar_pos)
+                && button.button.as_u8() == e.detail
+                && crate::util::clean_mask(button.mask, numlockmask) == clean_state
+        });
+
+    // Client button grabs use GrabMode::SYNC. Plain clicks should be replayed to
+    // the client after WM processing, but WM-owned modified clicks (e.g. Super+drag)
+    // must stay consumed by the WM so the initial press is not handed back to the
+    // client before the drag grab begins.
+    let conn = ctx.x11.conn;
+    let _ = conn.allow_events(
+        if client_binding_matched {
+            Allow::ASYNC_POINTER
+        } else {
+            Allow::REPLAY_POINTER
+        },
+        CURRENT_TIME,
+    );
+    let _ = conn.flush();
+
     if bar_pos == BarPosition::Root
         && let Some(mon) = ctx.core.globals().monitor(selmon_id)
         && mon.sel.is_some()
@@ -156,8 +174,6 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
-
     for button in &buttons_clone {
         if !button.matches(bar_pos) || button.button.as_u8() != e.detail {
             continue;
@@ -167,6 +183,12 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         }
         let arg = ButtonArg {
             pos: bar_pos,
+            window: ctx
+                .core
+                .globals()
+                .clients
+                .contains_key(&event_win)
+                .then_some(event_win),
             btn: button.button,
             rx: e.root_x as i32,
             ry: e.root_y as i32,
