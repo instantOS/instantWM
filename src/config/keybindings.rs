@@ -1,6 +1,6 @@
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
-use crate::actions::{argv, KeyAction, NamedAction};
+use crate::actions::{KeyAction, NamedAction, argv};
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
 use crate::types::Key;
 

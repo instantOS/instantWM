@@ -62,9 +62,6 @@ pub use drag::{
     title_drag_finish, title_drag_motion, window_title_mouse_handler,
 };
 
-// moveresize lives in floating::movement; re-exported here so keybindings.rs
-// can use the single import path `crate::mouse::moveresize`.
-pub use crate::floating::moveresize;
 
 // ── hover ─────────────────────────────────────────────────────────────────────
 

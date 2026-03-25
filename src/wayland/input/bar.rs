@@ -1,5 +1,5 @@
-use crate::backend::Backend;
 use crate::actions::execute_button_action;
+use crate::backend::Backend;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::status::emit_i3bar_status_click;
 use crate::contexts::WmCtxWayland;

@@ -28,7 +28,7 @@ pub use snap::{change_snap, reset_snap};
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{center_window, key_resize, moveresize};
+pub use movement::{center_window, key_resize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 //! Mouse button bindings.
 
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
-use crate::actions::{argv, ButtonAction, NamedAction};
+use crate::actions::{ButtonAction, NamedAction, argv};
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu};
 use crate::types::{BarPosition, Button, MouseButton, WindowId};
 
