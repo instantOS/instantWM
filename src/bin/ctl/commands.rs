@@ -5,6 +5,8 @@ use instantwm::ipc_types::{
     TagCommand, ToggleCommand, Transform, WindowCommand,
 };
 
+const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
+
 #[derive(Debug, Clone)]
 pub struct KeyboardLayoutArg {
     name: String,
@@ -403,14 +405,18 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     if all {
                         ScratchpadCommand::ShowAll
                     } else {
-                        ScratchpadCommand::Show(name)
+                        ScratchpadCommand::Show(Some(
+                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                        ))
                     }
                 }
                 ScratchpadAction::Hide { name, all } => {
                     if all {
                         ScratchpadCommand::HideAll
                     } else {
-                        ScratchpadCommand::Hide(name)
+                        ScratchpadCommand::Hide(Some(
+                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                        ))
                     }
                 }
                 ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),

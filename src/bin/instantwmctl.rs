@@ -86,6 +86,28 @@ mod tests {
             }
         ));
     }
+
+    #[test]
+    fn scratchpad_show_defaults_name_when_omitted() {
+        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "scratchpad", "show"]).command);
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Show(Some(name)))
+                if name == "instantwm_scratchpad"
+        ));
+    }
+
+    #[test]
+    fn scratchpad_hide_defaults_name_when_omitted() {
+        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "scratchpad", "hide"]).command);
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Hide(Some(name)))
+                if name == "instantwm_scratchpad"
+        ));
+    }
 }
 
 fn main() {
