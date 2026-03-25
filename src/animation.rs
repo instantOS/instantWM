@@ -84,7 +84,11 @@ fn get_x11_animation_start_rect(ctx: &WmCtxX11<'_>, win: WindowId, reset_pos: i3
     if let Some(animation) = ctx.x11_runtime.window_animations.get(&win) {
         let now = Instant::now();
         let current = interpolated_rect(animation, now);
-        return Some(if reset_pos != 0 { animation.to } else { current });
+        return Some(if reset_pos != 0 {
+            animation.to
+        } else {
+            current
+        });
     }
 
     get_start_rect(&ctx.core, win, reset_pos)
@@ -106,11 +110,7 @@ fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i3
     (target_w.min(mon_w), target_h.min(mon_h))
 }
 
-fn final_rect(
-    rect: &Rect,
-    actual_w: i32,
-    actual_h: i32,
-) -> Rect {
+fn final_rect(rect: &Rect, actual_w: i32, actual_h: i32) -> Rect {
     Rect {
         x: rect.x,
         y: rect.y,

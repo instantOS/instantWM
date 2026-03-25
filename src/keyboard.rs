@@ -74,6 +74,13 @@ struct KeyResolution {
     transient: bool,
 }
 
+pub(crate) fn desktop_bindings_enabled(
+    selected_client: Option<WindowId>,
+    current_mode: &str,
+) -> bool {
+    (!current_mode.is_empty() && current_mode != "default") || selected_client.is_none()
+}
+
 fn find_matching_action(
     keys: &[Key],
     keysym: u32,
@@ -115,7 +122,7 @@ fn resolve_key_action(
 
     find_matching_action(keys, keysym, cleaned, numlockmask)
         .or_else(|| {
-            if selected_client.is_none() {
+            if desktop_bindings_enabled(selected_client, current_mode) {
                 find_matching_action(desktop_keybinds, keysym, cleaned, numlockmask)
             } else {
                 None
@@ -214,11 +221,11 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
             }
         }
 
-        let selected_window = core.selected_client();
         let current_mode = &core.globals().behavior.current_mode;
-        let is_any_mode = !current_mode.is_empty() && current_mode != "default";
+        let desktop_bindings_enabled =
+            desktop_bindings_enabled(core.selected_client(), current_mode);
 
-        if selected_window.is_none() || is_any_mode {
+        if desktop_bindings_enabled {
             for key in desktop_keybinds {
                 if keysym == key.keysym {
                     grab_keys_for_key(conn, root, &modifiers, key, keycode);
@@ -520,5 +527,12 @@ mod tests {
             0,
         );
         assert!(blocked.is_none());
+    }
+
+    #[test]
+    fn desktop_bindings_enabled_in_non_default_mode_even_with_selection() {
+        assert!(desktop_bindings_enabled(Some(WindowId(1)), "resize"));
+        assert!(!desktop_bindings_enabled(Some(WindowId(1)), "default"));
+        assert!(desktop_bindings_enabled(None, "default"));
     }
 }

@@ -90,12 +90,6 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     ctx.core.globals_mut().attach(w);
     ctx.core.globals_mut().attach_stack(w);
 
-    if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(w)
-        && let Some(mon) = ctx.core.globals_mut().monitor_mut(monitor_id)
-    {
-        mon.sel = Some(w);
-    }
-
     register_client_root(&ctx.x11, ctx.x11_runtime, w);
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
