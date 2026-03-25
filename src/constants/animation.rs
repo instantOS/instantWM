@@ -15,11 +15,11 @@ pub const MOUSE_EVENT_RATE: u32 = 60;
 /// Border width multiplier for calculating total window dimensions.
 pub const BORDER_MULTIPLIER: i32 = 2;
 
-/// Number of queued events above which animations are skipped.
-pub const QUEUE_SKIP_THRESHOLD: i32 = 20;
+/// Number of concurrent X11 window animations that still get full animation.
+pub const X11_ANIM_FULL_THRESHOLD: usize = 4;
 
-/// Number of queued events above which animations are reduced.
-pub const QUEUE_REDUCE_THRESHOLD: i32 = 10;
+/// Number of concurrent X11 window animations after which new ones are shortened.
+pub const X11_ANIM_REDUCE_THRESHOLD: usize = 8;
 
 /// Minimum distance threshold for animation to be considered moving.
 pub const DISTANCE_THRESHOLD: i32 = 5;

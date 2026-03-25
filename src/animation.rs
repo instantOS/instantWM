@@ -40,8 +40,6 @@ pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, r
     }
 }
 
-const QUEUED_ALREADY: std::os::raw::c_int = 0;
-
 pub fn ease_out_cubic(t: f64) -> f64 {
     let t = t - 1.0;
     1.0 + t * t * t
@@ -171,20 +169,11 @@ pub fn animate_client_x11(
         return;
     }
 
-    let effective_frames = if !ctx.x11_runtime.xlibdisplay.0.is_null() {
-        let queued_events = unsafe {
-            crate::backend::x11::draw::XEventsQueued(
-                ctx.x11_runtime.xlibdisplay.0 as *mut std::os::raw::c_void,
-                QUEUED_ALREADY,
-            )
-        };
-        if queued_events > QUEUE_SKIP_THRESHOLD {
-            (frames / 2).max(2)
-        } else if queued_events > QUEUE_REDUCE_THRESHOLD {
-            (frames - 2).max(3)
-        } else {
-            frames
-        }
+    let in_flight = ctx.x11_runtime.window_animations.len();
+    let effective_frames = if in_flight >= X11_ANIM_REDUCE_THRESHOLD {
+        0
+    } else if in_flight >= X11_ANIM_FULL_THRESHOLD {
+        (frames / 2).max(2)
     } else {
         frames
     };

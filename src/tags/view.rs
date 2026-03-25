@@ -2,6 +2,7 @@
 
 use crate::contexts::{CoreCtx, WmCtx};
 // focus() is used via focus_soft() in this module
+use crate::layouts::LayoutKind;
 use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, WindowId};
 
@@ -182,6 +183,10 @@ pub fn win_view(ctx: &mut WmCtx) {
     crate::focus::focus_soft(ctx, Some(win));
 }
 
+fn overview_shortcut_targets_focused_window(current_tag: usize, layout: LayoutKind) -> bool {
+    current_tag == 0 || layout.is_overview()
+}
+
 pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
@@ -247,30 +252,64 @@ pub fn follow_view(ctx: &mut WmCtx) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    let (has_clients, current_tag, num_tags) = {
-        let has_clients = !ctx.core().globals().selected_monitor().clients.is_empty();
-        let current_tag = ctx.core().globals().selected_monitor().current_tag;
-        (has_clients, current_tag, ctx.core().globals().tags.count())
+    let (has_clients, current_tag, current_layout, num_tags) = {
+        let mon = ctx.core().globals().selected_monitor();
+        (
+            !mon.clients.is_empty(),
+            mon.current_tag,
+            mon.current_layout(),
+            ctx.core().globals().tags.count(),
+        )
     };
 
     if !has_clients {
-        if current_tag == 0 {
+        if overview_shortcut_targets_focused_window(current_tag, current_layout) {
             last_view(ctx);
         }
         return;
     }
 
-    match current_tag {
-        0 => {
-            crate::floating::restore_all_floating(ctx, Some(selmon_id));
-            win_view(ctx);
-        }
-        _ => {
-            crate::floating::save_all_floating(ctx, Some(selmon_id));
-            let all_tags = TagMask::all(num_tags);
-            view(ctx, all_tags);
-        }
+    if overview_shortcut_targets_focused_window(current_tag, current_layout) {
+        crate::floating::restore_all_floating(
+            ctx,
+            Some(ctx.core().globals().selected_monitor_id()),
+        );
+        win_view(ctx);
+    } else {
+        let selmon_id = ctx.core().globals().selected_monitor_id();
+        crate::floating::save_all_floating(ctx, Some(selmon_id));
+        let all_tags = TagMask::all(num_tags);
+        view(ctx, all_tags);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::overview_shortcut_targets_focused_window;
+    use crate::layouts::LayoutKind;
+
+    #[test]
+    fn overview_shortcut_targets_focused_window_for_tag_zero() {
+        assert!(overview_shortcut_targets_focused_window(
+            0,
+            LayoutKind::Tile
+        ));
+    }
+
+    #[test]
+    fn overview_shortcut_targets_focused_window_for_overview_layout() {
+        assert!(overview_shortcut_targets_focused_window(
+            3,
+            LayoutKind::Overview
+        ));
+    }
+
+    #[test]
+    fn overview_shortcut_enters_overview_from_normal_tag_layouts() {
+        assert!(!overview_shortcut_targets_focused_window(
+            3,
+            LayoutKind::Grid
+        ));
     }
 }
 
