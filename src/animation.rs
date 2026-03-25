@@ -108,19 +108,12 @@ fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i3
 
 fn final_rect(
     rect: &Rect,
-    start_rect: &Rect,
     actual_w: i32,
     actual_h: i32,
-    reset_pos: i32,
 ) -> Rect {
-    let (x, y) = if reset_pos != 0 {
-        (rect.x, rect.y)
-    } else {
-        (start_rect.x, start_rect.y)
-    };
     Rect {
-        x,
-        y,
+        x: rect.x,
+        y: rect.y,
         w: actual_w,
         h: actual_h,
     }
@@ -188,7 +181,7 @@ pub fn animate_client_x11(
         frames
     };
 
-    let final_rect = final_rect(rect, &start_rect, actual_w, actual_h, reset_pos);
+    let final_rect = final_rect(rect, actual_w, actual_h);
 
     if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
         client.old_geo = start_rect;
