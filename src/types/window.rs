@@ -1,12 +1,9 @@
-#![allow(clippy::type_complexity)]
 //! Window system and resource types.
 //!
 //! Types for keyboard bindings, mouse buttons, and X commands.
 
 use std::fmt::Debug;
-use std::rc::Rc;
-
-use crate::contexts::WmCtx;
+use crate::actions::{ButtonAction, KeyAction};
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 
@@ -43,13 +40,14 @@ pub struct ButtonArg {
 }
 
 /// A keyboard binding.
+#[derive(Clone)]
 pub struct Key {
     /// Modifier mask (e.g., Mod1Mask, ControlMask).
     pub mod_mask: u32,
     /// Keysym value.
     pub keysym: u32,
     /// Action to execute when key is pressed.
-    pub action: Rc<dyn Fn(&mut WmCtx)>,
+    pub action: KeyAction,
 }
 
 impl Debug for Key {
@@ -57,18 +55,8 @@ impl Debug for Key {
         f.debug_struct("Key")
             .field("mod_mask", &self.mod_mask)
             .field("keysym", &self.keysym)
-            .field("action", &"<closure>")
+            .field("action", &self.action)
             .finish()
-    }
-}
-
-impl Clone for Key {
-    fn clone(&self) -> Self {
-        Self {
-            mod_mask: self.mod_mask,
-            keysym: self.keysym,
-            action: Rc::clone(&self.action),
-        }
     }
 }
 
@@ -79,6 +67,7 @@ impl Clone for Key {
 /// `WinTitle`) only the variant discriminant is matched — the inner value
 /// (tag index, window handle) is passed to the action at call time so the
 /// handler always knows the exact target.
+#[derive(Clone)]
 pub struct Button {
     /// Which bar/screen region this binding applies to.
     pub target: BarPosition,
@@ -88,10 +77,8 @@ pub struct Button {
     pub button: MouseButton,
     /// Action to execute when button is pressed.
     ///
-    /// Arguments:
-    /// * `&mut WmCtx` — the window manager context (X11 or Wayland)
-    /// * `ButtonArg` — The exact bar region that was clicked, the mouse button that was pressed, and the x/y coordinates.
-    pub action: Rc<dyn Fn(&mut WmCtx, ButtonArg)>,
+    /// The exact target is provided to the executor via [`ButtonArg`].
+    pub action: ButtonAction,
 }
 
 impl Button {
@@ -110,19 +97,8 @@ impl Debug for Button {
             .field("target", &self.target)
             .field("mask", &self.mask)
             .field("button", &self.button)
-            .field("action", &"<closure>")
+            .field("action", &self.action)
             .finish()
-    }
-}
-
-impl Clone for Button {
-    fn clone(&self) -> Self {
-        Self {
-            target: self.target,
-            mask: self.mask,
-            button: self.button,
-            action: Rc::clone(&self.action),
-        }
     }
 }
 

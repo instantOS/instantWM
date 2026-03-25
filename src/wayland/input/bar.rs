@@ -1,4 +1,5 @@
 use crate::backend::Backend;
+use crate::actions::execute_button_action;
 use crate::bar::bar_position_to_gesture;
 use crate::bar::status::emit_i3bar_status_click;
 use crate::contexts::WmCtxWayland;
@@ -196,8 +197,9 @@ fn dispatch_wayland_bar_button(
             continue;
         }
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-        (b.action)(
+        execute_button_action(
             &mut wm_ctx,
+            &b.action,
             ButtonArg {
                 pos,
                 btn: b.button,

@@ -32,9 +32,11 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
 }
 
 pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
+    use crate::actions::execute_key_action;
     use crate::config::keybind_config::compile_action_with_args;
     if let Some(action) = compile_action_with_args(&name, &args) {
-        action(&mut wm.ctx());
+        let mut ctx = wm.ctx();
+        execute_key_action(&mut ctx, &action);
         Response::ok()
     } else {
         Response::err(format!("unknown or invalid action '{name}'"))

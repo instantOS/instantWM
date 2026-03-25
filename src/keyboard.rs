@@ -1,5 +1,4 @@
-use std::rc::Rc;
-
+use crate::actions::execute_key_action;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
@@ -57,7 +56,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                         && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
                 })
             })
-            .map(|key| Rc::clone(&key.action))
+            .map(|key| key.action.clone())
             .or_else(|| {
                 // Fallback to global/desktop bindings
                 ctx.core()
@@ -81,7 +80,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                                         == cleaned
                             })
                     })
-                    .map(|key| Rc::clone(&key.action))
+                    .map(|key| key.action.clone())
             })
     } else {
         // Normal mode
@@ -110,11 +109,11 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
                     None
                 }
             })
-            .map(|key| Rc::clone(&key.action))
+            .map(|key| key.action.clone())
     };
 
     if let Some(action) = action {
-        action(ctx);
+        execute_key_action(ctx, &action);
         if transient {
             ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
             ctx.request_bar_update(None);

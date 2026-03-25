@@ -1,5 +1,6 @@
 //! Pointer button handling.
 
+use crate::actions::execute_button_action;
 use smithay::backend::input::{InputBackend, PointerButtonEvent};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
@@ -237,8 +238,9 @@ fn dispatch_wayland_client_button(
             continue;
         }
         let mut ctx = wm.ctx();
-        (b.action)(
+        execute_button_action(
             &mut ctx,
+            &b.action,
             crate::types::ButtonArg {
                 pos: crate::types::BarPosition::ClientWin,
                 btn: b.button,
