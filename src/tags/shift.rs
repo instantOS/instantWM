@@ -6,7 +6,7 @@ use crate::contexts::WmCtx;
 use crate::backend::BackendOps;
 use crate::layouts::arrange;
 use crate::tags::sticky::reset_sticky_win;
-use crate::types::{Direction, OverlayMode, Rect, WindowId};
+use crate::types::{Direction, OverlayMode, Rect, TagMask, WindowId};
 
 pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
     shift_tag(ctx, dir, 1);
@@ -60,10 +60,10 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         match dir {
             Direction::Left if tagset > 1 => {
-                client.update_tag_mask(|tags| tags >> offset);
+                client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() >> offset));
             }
             Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
-                client.update_tag_mask(|tags| tags << offset);
+                client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() << offset));
             }
             _ => return,
         }

@@ -2,7 +2,7 @@ use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
-use crate::types::{SCRATCHPAD_MASK, WindowId};
+use crate::types::WindowId;
 use bincode::{Decode, Encode};
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -75,7 +75,7 @@ pub fn scratchpad_make(
     }
 
     let monitor_id = client.monitor_id;
-    client.set_tag_mask(SCRATCHPAD_MASK);
+    client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     client.issticky = matches!(status, ScratchpadInitialStatus::Shown);
 
     if !client.is_floating {
@@ -112,11 +112,11 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let mut was_hidden = false;
     if let Some(client) = ctx.client_mut(selected_window) {
         was_hidden = client.is_hidden;
-        client.set_tag_mask(if restore_tags != 0 {
+        client.set_tag_mask(crate::types::TagMask::from_bits(if restore_tags != 0 {
             restore_tags
         } else {
             monitor_tags
-        });
+        }));
     }
 
     if was_hidden {
@@ -235,7 +235,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     }
 
     client.issticky = false;
-    client.set_tag_mask(SCRATCHPAD_MASK);
+    client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
 
     crate::client::hide(ctx, found);
 }

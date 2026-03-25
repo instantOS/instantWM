@@ -29,7 +29,7 @@ pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
     {
         client.issticky = false;
         if let Some(tags) = target_tags {
-            client.set_tag_mask(tags);
+            client.set_tag_mask(crate::types::TagMask::from_bits(tags));
         }
     }
 }

@@ -188,6 +188,6 @@ fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: u32) {
     }
 
     if let Some(c) = g.clients.get_mut(&win) {
-        c.set_tag_mask(final_tags);
+        c.set_tag_mask(crate::types::TagMask::from_bits(final_tags));
     }
 }
