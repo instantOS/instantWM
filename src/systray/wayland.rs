@@ -962,23 +962,33 @@ fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
     let mut out = vec![0u8; need];
     for i in 0..px_count {
         let si = i * 4;
-        // D-Bus ARGB32 bytes are in network byte order (Big Endian), so A, R, G, B.
-        // Or if it's little-endian host order ARGB, then it's B, G, R, A.
-        // Qt actually serializes `QImage::Format_ARGB32` to D-Bus array of bytes
-        // which gives B, G, R, A on little-endian machines.
-        // Let's assume standard little-endian BGRA -> RGBA mapping here.
-        let b = bytes[si];
-        let g = bytes[si + 1];
-        let r = bytes[si + 2];
-        let a = bytes[si + 3];
-        // Our blit_rgba_bgra method takes RGBA byte array, but wait!
-        // In bar.rs `blit_rgba_bgra`, it actually parses the array as [R, G, B, A]
-        // and assigns it to ARGB8888 (Little-endian B, G, R, A buffer).
-        // So we must output [R, G, B, A] bytes exactly.
+        // StatusNotifierItem::IconPixmap stores ARGB32 pixels in network byte
+        // order, so each pixel arrives as A, R, G, B bytes on the wire.
+        let a = bytes[si];
+        let r = bytes[si + 1];
+        let g = bytes[si + 2];
+        let b = bytes[si + 3];
         out[si] = r;
         out[si + 1] = g;
         out[si + 2] = b;
         out[si + 3] = a;
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dbus_icon_bytes_to_rgba;
+
+    #[test]
+    fn dbus_icon_bytes_are_decoded_from_argb_to_rgba() {
+        let bytes = [
+            0xff, 0x00, 0x82, 0xc9, // opaque Nextcloud blue
+            0x40, 0x11, 0x22, 0x33, // translucent pixel
+        ];
+
+        let rgba = dbus_icon_bytes_to_rgba(&bytes, 2, 1).expect("valid icon bytes");
+
+        assert_eq!(rgba, vec![0x00, 0x82, 0xc9, 0xff, 0x11, 0x22, 0x33, 0x40]);
+    }
 }
