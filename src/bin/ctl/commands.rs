@@ -111,13 +111,16 @@ pub enum ScratchpadAction {
         all: bool,
     },
     Hide {
-        name: String,
+        name: Option<String>,
+        #[arg(short, long)]
+        all: bool,
     },
     Toggle {
         name: Option<String>,
     },
     #[command(alias = "make")]
     Create {
+        #[arg(default_value = "instantwm_scratchpad")]
         name: String,
         #[arg(long, short = 'w')]
         window_id: Option<u32>,
@@ -403,7 +406,13 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                         ScratchpadCommand::Show(name)
                     }
                 }
-                ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
+                ScratchpadAction::Hide { name, all } => {
+                    if all {
+                        ScratchpadCommand::HideAll
+                    } else {
+                        ScratchpadCommand::Hide(name)
+                    }
+                }
                 ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
                 ScratchpadAction::Create {
                     name,

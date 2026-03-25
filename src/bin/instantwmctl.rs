@@ -55,6 +55,37 @@ mod tests {
             } if name == "term"
         ));
     }
+
+    #[test]
+    fn scratchpad_create_defaults_name_when_omitted() {
+        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "create"]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ScratchpadAction::Create {
+                    name,
+                    window_id: None,
+                    status: ScratchpadInitialStatus::Hidden,
+                }
+            } if name == "instantwm_scratchpad"
+        ));
+    }
+
+    #[test]
+    fn parses_scratchpad_hide_all_flag() {
+        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "hide", "--all"]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ScratchpadAction::Hide {
+                    name: None,
+                    all: true
+                }
+            }
+        ));
+    }
 }
 
 fn main() {

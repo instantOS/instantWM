@@ -186,7 +186,8 @@ pub enum ScratchpadCommand {
     Toggle(Option<String>),
     Show(Option<String>),
     ShowAll,
-    Hide(String),
+    Hide(Option<String>),
+    HideAll,
     Status(Option<String>),
     Create {
         name: String,

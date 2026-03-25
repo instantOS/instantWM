@@ -223,6 +223,42 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
     }
 }
 
+pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
+    let scratchpad_names: Vec<String> = ctx
+        .core()
+        .globals()
+        .clients
+        .values()
+        .filter(|c| c.is_scratchpad() && c.issticky)
+        .map(|c| c.scratchpad_name.clone())
+        .collect();
+
+    let mut hidden_count = 0;
+
+    for name in scratchpad_names {
+        let was_visible = ctx
+            .core()
+            .globals()
+            .clients
+            .values()
+            .any(|c| c.is_scratchpad() && c.scratchpad_name == name && c.issticky);
+        scratchpad_hide_name(ctx, &name);
+        if was_visible {
+            hidden_count += 1;
+        }
+    }
+
+    if hidden_count > 0 {
+        Some(format!(
+            "hid {} scratchpad{}",
+            hidden_count,
+            if hidden_count == 1 { "" } else { "s" }
+        ))
+    } else {
+        None
+    }
+}
+
 pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     let Some(found) = scratchpad_find(ctx.core().globals(), name) else {
         return;
