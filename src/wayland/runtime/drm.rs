@@ -1,10 +1,16 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
+use std::cell::Cell;
 use std::collections::HashMap;
+use std::os::unix::io::AsRawFd;
 use std::process::exit;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use calloop::generic::Generic;
+use calloop::timer::{TimeoutAction, Timer};
+use calloop::{Interest, Mode, PostAction};
 use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
@@ -152,6 +158,29 @@ pub fn run() -> ! {
     spawn_wayland_smoke_window();
 
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+
+    // Register IPC listener fd so the event loop wakes on incoming commands.
+    if let Some(ref server) = ipc_server {
+        let ipc_fd = server.as_raw_fd();
+        let ipc_source = Generic::new(
+            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
+            Interest::READ,
+            Mode::Level,
+        );
+        event_loop
+            .handle()
+            .insert_source(ipc_source, |_, _, _| Ok(PostAction::Continue))
+            .expect("failed to insert IPC fd source");
+    }
+
+    // Ping source for initial frame kick and render-failure retries.
+    let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
+    event_loop
+        .handle()
+        .insert_source(retry_ping_source, |_, _, _| {})
+        .expect("ping source");
+    retry_ping.ping(); // Wake loop once to render the initial frame
+
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
@@ -172,6 +201,7 @@ pub fn run() -> ! {
         &mut render_failures,
         start_time,
         led_state_rx,
+        retry_ping,
     );
 
     exit(0);
@@ -315,12 +345,15 @@ fn run_event_loop(
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
     led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
+    retry_ping: calloop::ping::Ping,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
+    let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
+    let anim_timer_active = Rc::new(Cell::new(false));
 
     event_loop
-        .run(Duration::from_millis(16), state, move |state| {
+        .run(None, state, move |state| {
             process_completed_crtcs(state, shared, output_surfaces);
 
             // Kept for compatibility; libinput is dispatched directly in the
@@ -351,6 +384,25 @@ fn run_event_loop(
 
             process_animations(wm, state, shared);
 
+            // Arm an on-demand animation timer when animations are active.
+            if state.has_active_window_animations() && !anim_timer_active.get() {
+                anim_timer_active.set(true);
+                let active_flag = Rc::clone(&anim_timer_active);
+                let shared_anim = Arc::clone(shared);
+                let _ = loop_handle.insert_source(
+                    Timer::from_duration(Duration::from_millis(16)),
+                    move |_, _, state| {
+                        shared_anim.lock().unwrap().mark_all_dirty();
+                        if state.has_active_window_animations() {
+                            TimeoutAction::ToDuration(Duration::from_millis(16))
+                        } else {
+                            active_flag.set(false);
+                            TimeoutAction::Drop
+                        }
+                    },
+                );
+            }
+
             process_cursor_warp(state, &pointer_handle, shared);
 
             render_outputs(
@@ -363,6 +415,15 @@ fn run_event_loop(
                 render_failures,
                 start_time,
             );
+
+            // If any outputs still need rendering (e.g. render failure or
+            // EBUSY re-mark), ping the loop so it wakes up to retry.
+            {
+                let s = shared.lock().unwrap();
+                if s.render_flags.values().any(|&v| v) {
+                    retry_ping.ping();
+                }
+            }
 
             if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();

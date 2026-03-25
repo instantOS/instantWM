@@ -3,6 +3,7 @@
 //! The winit backend runs as a nested compositor inside an existing
 //! Wayland or X11 session.
 
+use std::os::unix::io::AsRawFd;
 use std::process::exit;
 use std::time::Duration;
 
@@ -10,7 +11,8 @@ use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
 use smithay::reexports::wayland_server::Display;
 
 use crate::backend::Backend as WmBackend;
@@ -86,88 +88,117 @@ pub fn run() -> ! {
     spawn_wayland_smoke_window();
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
+    // ── IPC listener fd source ──────────────────────────────────────────
+    if let Some(ref server) = ipc_server {
+        let ipc_fd = server.as_raw_fd();
+        let ipc_source = Generic::new(
+            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
+            Interest::READ,
+            Mode::Level,
+        );
+        loop_handle
+            .insert_source(ipc_source, |_, _, _| Ok(PostAction::Continue))
+            .expect("failed to insert IPC fd source");
+    }
+
     let start_time = std::time::Instant::now();
 
     crate::runtime::spawn_status_bar(&wm);
 
-    let loop_signal: LoopSignal = event_loop.get_signal();
-    event_loop
-        .run(Duration::from_millis(16), &mut state, move |state| {
-            winit_loop.dispatch_new_events(|event| match event {
-                WinitEvent::Resized { size, .. } => {
-                    crate::wayland::input::handle_resize(&mut wm, &output, size.w, size.h);
+    let mut running = true;
+    while running {
+        // Adaptive timeout: 16ms during animations/dirty state, 100ms when idle.
+        // We cannot use an infinite timeout because winit has no native calloop
+        // source — events are only available via polling dispatch_new_events.
+        let timeout = if state.has_active_window_animations()
+            || wm.g.dirty.layout
+            || wm.g.dirty.space
+        {
+            Duration::from_millis(16)
+        } else {
+            Duration::from_millis(100)
+        };
+
+        if event_loop.dispatch(Some(timeout), &mut state).is_err() {
+            break;
+        }
+
+        winit_loop.dispatch_new_events(|event| match event {
+            WinitEvent::Resized { size, .. } => {
+                crate::wayland::input::handle_resize(&mut wm, &output, size.w, size.h);
+            }
+            WinitEvent::Input(event) => match event {
+                InputEvent::Keyboard { event } => {
+                    handle_keyboard(&mut wm, &mut state, &keyboard_handle, event);
                 }
-                WinitEvent::Input(event) => match event {
-                    InputEvent::Keyboard { event } => {
-                        handle_keyboard(&mut wm, state, &keyboard_handle, event);
-                    }
-                    InputEvent::PointerMotionAbsolute { event } => {
-                        let size = backend.window_size();
-                        let motion_event = motion_event_from_winit(event, size);
-                        handle_pointer_motion(
-                            &mut wm,
-                            state,
-                            &pointer_handle,
-                            &keyboard_handle,
-                            motion_event,
-                        );
-                    }
-                    InputEvent::PointerButton { event } => {
-                        handle_pointer_button(
-                            &mut wm,
-                            state,
-                            &pointer_handle,
-                            &keyboard_handle,
-                            event,
-                            state.pointer_location,
-                        );
-                    }
-                    InputEvent::PointerAxis { event } => {
-                        handle_pointer_axis(
-                            &mut wm,
-                            state,
-                            &pointer_handle,
-                            &keyboard_handle,
-                            event,
-                            state.pointer_location,
-                        );
-                    }
-                    _ => {}
-                },
-                WinitEvent::CloseRequested => {
-                    loop_signal.stop();
+                InputEvent::PointerMotionAbsolute { event } => {
+                    let size = backend.window_size();
+                    let motion_event = motion_event_from_winit(event, size);
+                    handle_pointer_motion(
+                        &mut wm,
+                        &mut state,
+                        &pointer_handle,
+                        &keyboard_handle,
+                        motion_event,
+                    );
+                }
+                InputEvent::PointerButton { event } => {
+                    let loc = state.pointer_location;
+                    handle_pointer_button(
+                        &mut wm,
+                        &mut state,
+                        &pointer_handle,
+                        &keyboard_handle,
+                        event,
+                        loc,
+                    );
+                }
+                InputEvent::PointerAxis { event } => {
+                    let loc = state.pointer_location;
+                    handle_pointer_axis(
+                        &mut wm,
+                        &mut state,
+                        &pointer_handle,
+                        &keyboard_handle,
+                        event,
+                        loc,
+                    );
                 }
                 _ => {}
-            });
-
-            super::common::arrange_layout_if_dirty(&mut wm, state);
-            super::common::process_ipc_commands(&mut ipc_server, &mut wm);
-            crate::runtime::apply_monitor_config_if_dirty(&mut wm);
-
-            // Winit has no libinput devices to reconfigure, but clear the
-            // flag so it doesn't stay dirty forever (scroll_factor is
-            // already applied at the compositor level in handle_pointer_axis).
-            wm.g.dirty.input_config = false;
-
-            super::common::sync_space_if_dirty(&mut wm, state);
-
-            // Apply any compositor-side cursor warp requested during this tick
-            // (e.g. from a warp-to-focus keybinding or IPC command).
-            apply_pending_warp(state, &pointer_handle);
-
-            render_frame(
-                &mut wm,
-                state,
-                &mut backend,
-                &output,
-                &mut damage_tracker,
-                start_time,
-            );
-
-            if display_handle.flush_clients().is_err() {
-                loop_signal.stop();
+            },
+            WinitEvent::CloseRequested => {
+                running = false;
             }
-        })
-        .expect("wayland event loop run");
+            _ => {}
+        });
+
+        super::common::arrange_layout_if_dirty(&mut wm, &mut state);
+        super::common::process_ipc_commands(&mut ipc_server, &mut wm);
+        crate::runtime::apply_monitor_config_if_dirty(&mut wm);
+
+        // Winit has no libinput devices to reconfigure, but clear the
+        // flag so it doesn't stay dirty forever (scroll_factor is
+        // already applied at the compositor level in handle_pointer_axis).
+        wm.g.dirty.input_config = false;
+
+        super::common::sync_space_if_dirty(&mut wm, &mut state);
+
+        // Apply any compositor-side cursor warp requested during this tick
+        // (e.g. from a warp-to-focus keybinding or IPC command).
+        apply_pending_warp(&mut state, &pointer_handle);
+
+        render_frame(
+            &mut wm,
+            &mut state,
+            &mut backend,
+            &output,
+            &mut damage_tracker,
+            start_time,
+        );
+
+        if display_handle.flush_clients().is_err() {
+            running = false;
+        }
+    }
     exit(0);
 }

@@ -4,7 +4,9 @@
 //! event loop, bringing the X11 backend closer to the Wayland backend's
 //! architecture and making animations non-blocking.
 
+use std::cell::Cell;
 use std::os::unix::io::AsRawFd;
+use std::rc::Rc;
 use std::time::Duration;
 
 use calloop::generic::Generic;
@@ -60,15 +62,11 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             .expect("failed to insert IPC fd source");
     }
 
-    // ── Animation timer (~60 fps) ───────────────────────────────────────
-    // A persistent 16ms timer that ticks animations when active.
-    let timer = Timer::from_duration(Duration::from_millis(16));
-    loop_handle
-        .insert_source(timer, |_, _, wm| {
-            tick_x11_animations(wm);
-            TimeoutAction::ToDuration(Duration::from_millis(16))
-        })
-        .expect("failed to insert animation timer");
+    // ── Animation timer (on-demand, not persistent) ─────────────────────
+    // Instead of a persistent 16ms timer, we arm a one-shot timer only
+    // when animations are active. This lets the loop sleep when idle.
+    let animation_timer_active = Rc::new(Cell::new(false));
+    let loop_handle_for_timer = event_loop.handle();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
 
@@ -80,10 +78,36 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
             crate::runtime::event_loop_tick(wm, ipc_server);
 
-            // ── 3. Flush X11 connection ─────────────────────────────────
+            // ── 3. Arm animation timer if needed ────────────────────────
+            let has_animations = wm
+                .backend
+                .x11_data()
+                .map_or(false, |d| !d.x11_runtime.window_animations.is_empty());
+            if has_animations && !animation_timer_active.get() {
+                animation_timer_active.set(true);
+                let active_flag = Rc::clone(&animation_timer_active);
+                let _ = loop_handle_for_timer.insert_source(
+                    Timer::from_duration(Duration::from_millis(16)),
+                    move |_, _, wm| {
+                        tick_x11_animations(wm);
+                        let still_animating = wm
+                            .backend
+                            .x11_data()
+                            .map_or(false, |d| !d.x11_runtime.window_animations.is_empty());
+                        if still_animating {
+                            TimeoutAction::ToDuration(Duration::from_millis(16))
+                        } else {
+                            active_flag.set(false);
+                            TimeoutAction::Drop
+                        }
+                    },
+                );
+            }
+
+            // ── 4. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();
 
-            // ── 4. Stop loop if WM is shutting down ─────────────────────
+            // ── 5. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {
                 loop_signal.stop();
             }
