@@ -8,11 +8,51 @@ use instantwm::ipc_types::IpcCommand;
 mod tests {
     use super::*;
     use clap::Parser;
+    use instantwm::ipc_types::ScratchpadInitialStatus;
 
     #[test]
     fn parses_reload_command() {
         let cli = Cli::parse_from(["instantwmctl", "reload"]);
         assert!(matches!(cli.command, ctl::CommandKind::Reload));
+    }
+
+    #[test]
+    fn parses_scratchpad_create_status_flag() {
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "scratchpad",
+            "create",
+            "term",
+            "--status",
+            "shown",
+        ]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ctl::ScratchpadAction::Create {
+                    name,
+                    window_id: None,
+                    status: ScratchpadInitialStatus::Shown,
+                }
+            } if name == "term"
+        ));
+    }
+
+    #[test]
+    fn scratchpad_create_defaults_to_hidden() {
+        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "create", "term"]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ctl::ScratchpadAction::Create {
+                    name,
+                    window_id: None,
+                    status: ScratchpadInitialStatus::Hidden,
+                }
+            } if name == "term"
+        ));
     }
 }
 

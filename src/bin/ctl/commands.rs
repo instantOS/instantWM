@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
-    MonitorCommand, MonitorDirection, ScratchpadCommand, SpecialNext, TagCommand, ToggleCommand,
-    Transform, WindowCommand,
+    MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus, SpecialNext,
+    TagCommand, ToggleCommand, Transform, WindowCommand,
 };
 
 #[derive(Debug, Clone)]
@@ -121,6 +121,8 @@ pub enum ScratchpadAction {
         name: String,
         #[arg(long, short = 'w')]
         window_id: Option<u32>,
+        #[arg(long, default_value = "hidden")]
+        status: ScratchpadInitialStatus,
     },
     Delete {
         #[arg(long, short = 'w')]
@@ -403,9 +405,15 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                 }
                 ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
                 ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
-                ScratchpadAction::Create { name, window_id } => {
-                    ScratchpadCommand::Create { name, window_id }
-                }
+                ScratchpadAction::Create {
+                    name,
+                    window_id,
+                    status,
+                } => ScratchpadCommand::Create {
+                    name,
+                    window_id,
+                    status,
+                },
                 ScratchpadAction::Delete { window_id } => ScratchpadCommand::Delete { window_id },
             };
             IpcCommand::Scratchpad(cmd)

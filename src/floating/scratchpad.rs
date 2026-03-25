@@ -1,5 +1,6 @@
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
+use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
 use crate::types::{SCRATCHPAD_MASK, WindowId};
 use bincode::{Decode, Encode};
@@ -36,7 +37,12 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     false
 }
 
-pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>) {
+pub fn scratchpad_make(
+    ctx: &mut WmCtx,
+    name: &str,
+    window_id: Option<WindowId>,
+    status: ScratchpadInitialStatus,
+) {
     if name.is_empty() {
         return;
     }
@@ -68,14 +74,18 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>)
         client.scratchpad_restore_tags = old_tags;
     }
 
+    let monitor_id = client.monitor_id;
     client.tags = SCRATCHPAD_MASK;
-    client.issticky = false;
+    client.issticky = matches!(status, ScratchpadInitialStatus::Shown);
 
     if !client.is_floating {
         client.is_floating = true;
     }
 
-    crate::client::hide(ctx, selected_window);
+    match status {
+        ScratchpadInitialStatus::Hidden => crate::client::hide(ctx, selected_window),
+        ScratchpadInitialStatus::Shown => arrange(ctx, Some(monitor_id)),
+    }
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {

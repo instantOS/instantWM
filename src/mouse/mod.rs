@@ -62,7 +62,6 @@ pub use drag::{
     title_drag_finish, title_drag_motion, window_title_mouse_handler,
 };
 
-
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{

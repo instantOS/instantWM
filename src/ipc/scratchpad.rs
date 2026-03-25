@@ -41,8 +41,12 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             }
             Response::ScratchpadList(scratchpads)
         }
-        ScratchpadCommand::Create { name, window_id } => {
-            scratchpad_make(&mut wm.ctx(), &name, window_id.map(WindowId::from));
+        ScratchpadCommand::Create {
+            name,
+            window_id,
+            status,
+        } => {
+            scratchpad_make(&mut wm.ctx(), &name, window_id.map(WindowId::from), status);
             Response::ok()
         }
         ScratchpadCommand::Delete { window_id } => {

@@ -191,10 +191,28 @@ pub enum ScratchpadCommand {
     Create {
         name: String,
         window_id: Option<u32>,
+        status: ScratchpadInitialStatus,
     },
     Delete {
         window_id: Option<u32>,
     },
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Encode,
+    Decode,
+    serde::Serialize,
+    serde::Deserialize,
+    clap::ValueEnum,
+)]
+pub enum ScratchpadInitialStatus {
+    Hidden,
+    Shown,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
