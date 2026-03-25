@@ -124,7 +124,7 @@ pub fn run() -> ! {
         .run(None, &mut state, move |state| {
             // ── 1. Process buffered winit resize/close ──────────────────
             if let Some((w, h)) = state.pending_winit_resize.take() {
-                crate::wayland::input::handle_resize(&mut wm, &output, w, h);
+                crate::wayland::input::handle_resize(&mut wm, state, &output, w, h);
             }
             if state.winit_close_requested {
                 loop_signal.stop();
