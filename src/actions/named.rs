@@ -1,5 +1,4 @@
 use crate::actions::ActionMeta;
-use crate::animation;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
@@ -122,8 +121,8 @@ define_named_actions!(
     LastView => { name: "last_view", arg_example: None, doc: "view previously viewed tags", run: |ctx, _args| { last_view(ctx); } },
     FollowView => { name: "follow_view", arg_example: None, doc: "follow client to its tags", run: |ctx, _args| { follow_view(ctx); } },
     WinView => { name: "win_view", arg_example: None, doc: "view tags of focused client", run: |ctx, _args| { win_view(ctx); } },
-    ScrollLeft => { name: "scroll_left", arg_example: None, doc: "scroll tags left", run: |ctx, _args| { animation::scroll_view_animated(ctx, Direction::Left); } },
-    ScrollRight => { name: "scroll_right", arg_example: None, doc: "scroll tags right", run: |ctx, _args| { animation::scroll_view_animated(ctx, Direction::Right); } },
+    ScrollLeft => { name: "scroll_left", arg_example: None, doc: "scroll tags left", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, Direction::Left); } },
+    ScrollRight => { name: "scroll_right", arg_example: None, doc: "scroll tags right", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, Direction::Right); } },
     MoveClientLeft => { name: "move_client_left", arg_example: None, doc: "move client to tag on left", run: |ctx, _args| { move_client(ctx, Direction::Left); } },
     MoveClientRight => { name: "move_client_right", arg_example: None, doc: "move client to tag on right", run: |ctx, _args| { move_client(ctx, Direction::Right); } },
     ShiftTagLeft => { name: "shift_tag_left", arg_example: None, doc: "shift client to tag on left", run: |ctx, _args| { shift_tag(ctx, Direction::Left, 1); } },

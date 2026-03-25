@@ -242,8 +242,9 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    let tag = m.current_tag;
-    if tag > 0 && tag <= m.tags.len() {
+    if let Some(tag) = m.current_tag
+        && tag <= m.tags.len()
+    {
         m.tags[tag - 1].layouts.set_layout(layout);
     }
     finish_layout_change(ctx);
@@ -251,8 +252,9 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    let tag = m.current_tag;
-    if tag > 0 && tag <= m.tags.len() {
+    if let Some(tag) = m.current_tag
+        && tag <= m.tags.len()
+    {
         m.tags[tag - 1].layouts.toggle_slot();
     }
     finish_layout_change(ctx);
@@ -316,8 +318,9 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     } else {
         let new_nmaster = max(m.nmaster + delta, 0);
         m.nmaster = new_nmaster;
-        let tag = m.current_tag;
-        if tag > 0 && tag <= m.tags.len() {
+        if let Some(tag) = m.current_tag
+            && tag <= m.tags.len()
+        {
             m.tags[tag - 1].nmaster = new_nmaster;
         }
     }
@@ -362,8 +365,9 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
 
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
     m.mfact = new_mfact;
-    let tag = m.current_tag;
-    if tag > 0 && tag <= m.tags.len() {
+    if let Some(tag) = m.current_tag
+        && tag <= m.tags.len()
+    {
         m.tags[tag - 1].mfact = new_mfact;
     }
 

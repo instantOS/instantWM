@@ -66,7 +66,11 @@ pub fn scratchpad_make(
     };
 
     let was_scratchpad = client.is_scratchpad();
-    let old_tags = if was_scratchpad { 0 } else { client.tags };
+    let old_tags = if was_scratchpad {
+        crate::types::TagMask::EMPTY
+    } else {
+        client.tags
+    };
 
     client.scratchpad_name = name.to_string();
 
@@ -98,8 +102,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
         .core_mut()
         .globals_mut()
         .selected_monitor()
-        .selected_tags()
-        .bits();
+        .selected_tags();
 
     let Some(client) = ctx.client(selected_window) else {
         return;
@@ -113,11 +116,11 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let mut was_hidden = false;
     if let Some(client) = ctx.client_mut(selected_window) {
         was_hidden = client.is_hidden;
-        client.set_tag_mask(crate::types::TagMask::from_bits(if restore_tags != 0 {
+        client.set_tag_mask(if !restore_tags.is_empty() {
             restore_tags
         } else {
             monitor_tags
-        }));
+        });
     }
 
     if was_hidden {

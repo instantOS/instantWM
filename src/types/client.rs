@@ -37,8 +37,8 @@ pub struct Client {
     pub border_width: i32,
     /// Previous border width.
     pub old_border_width: i32,
-    /// Tags this client belongs to (bitmask).
-    pub tags: u32,
+    /// Tags this client belongs to.
+    pub tags: TagMask,
     /// Whether the window has fixed size.
     pub is_fixed_size: bool,
     /// Whether the window is floating.
@@ -64,7 +64,7 @@ pub struct Client {
     /// Scratchpad name (empty if not a scratchpad).
     pub scratchpad_name: String,
     /// Tags to restore when unhiding from scratchpad.
-    pub scratchpad_restore_tags: u32,
+    pub scratchpad_restore_tags: TagMask,
     /// Monitor this client is on.
     pub monitor_id: MonitorId,
     /// Window ID.
@@ -91,22 +91,20 @@ impl Client {
     /// Check if this client is a scratchpad window.
     pub fn is_scratchpad(&self) -> bool {
         self.has_scratchpad_identity()
-            && (TagMask::from_bits(self.tags).is_scratchpad_only()
-                || self.is_hidden
-                || self.issticky)
+            && (self.tags.is_scratchpad_only() || self.is_hidden || self.issticky)
     }
 
     /// Clear scratchpad-only metadata after the window has been moved to normal tags.
     pub fn clear_scratchpad_state(&mut self) {
         self.scratchpad_name.clear();
-        self.scratchpad_restore_tags = 0;
+        self.scratchpad_restore_tags = TagMask::EMPTY;
         self.issticky = false;
     }
 
     /// Keep scratchpad metadata consistent with the current tag assignment.
     pub fn sync_scratchpad_state(&mut self) {
         if self.has_scratchpad_identity()
-            && !TagMask::from_bits(self.tags).is_scratchpad_only()
+            && !self.tags.is_scratchpad_only()
             && !self.is_hidden
             && !self.issticky
         {
@@ -116,20 +114,20 @@ impl Client {
 
     /// Assign a new tag bitmask and normalize any dependent client state.
     pub fn set_tag_mask(&mut self, tags: TagMask) {
-        self.tags = tags.bits();
+        self.tags = tags;
         self.sync_scratchpad_state();
     }
 
     /// Transform the tag bitmask in place and normalize dependent client state.
     pub fn update_tag_mask(&mut self, f: impl FnOnce(TagMask) -> TagMask) {
-        self.tags = f(TagMask::from_bits(self.tags)).bits();
+        self.tags = f(self.tags);
         self.sync_scratchpad_state();
     }
 
     /// Check if the client is on the selected tags, ignoring hidden state.
     #[inline]
     pub fn is_on_selected_tags(&self, selected_tags: TagMask) -> bool {
-        self.issticky || TagMask::from_bits(self.tags).intersects(selected_tags)
+        self.issticky || self.tags.intersects(selected_tags)
     }
 
     /// Check if the client is actually visible for the given tag-set.
@@ -233,7 +231,7 @@ impl Client {
             return;
         }
 
-        if TagMask::from_bits(self.tags).is_scratchpad_only() {
+        if self.tags.is_scratchpad_only() {
             self.issticky = false;
         }
 
@@ -264,7 +262,7 @@ mod tests {
     fn scratchpad_requires_scratchpad_tag() {
         let client = Client {
             scratchpad_name: "term".to_string(),
-            tags: TagMask::single(1).unwrap().bits(),
+            tags: TagMask::single(1).unwrap(),
             ..Client::default()
         };
 
@@ -275,15 +273,15 @@ mod tests {
     fn sync_clears_stale_scratchpad_metadata() {
         let mut client = Client {
             scratchpad_name: "term".to_string(),
-            scratchpad_restore_tags: TagMask::single(2).unwrap().bits(),
-            tags: TagMask::single(1).unwrap().bits(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap(),
+            tags: TagMask::single(1).unwrap(),
             ..Client::default()
         };
 
         client.sync_scratchpad_state();
 
         assert!(client.scratchpad_name.is_empty());
-        assert_eq!(client.scratchpad_restore_tags, 0);
+        assert_eq!(client.scratchpad_restore_tags, TagMask::EMPTY);
         assert!(!client.issticky);
     }
 
@@ -291,19 +289,16 @@ mod tests {
     fn sync_keeps_valid_scratchpad_metadata() {
         let mut client = Client {
             scratchpad_name: "term".to_string(),
-            scratchpad_restore_tags: TagMask::single(2).unwrap().bits(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap(),
             issticky: true,
-            tags: SCRATCHPAD_MASK,
+            tags: TagMask::from_bits(SCRATCHPAD_MASK),
             ..Client::default()
         };
 
         client.sync_scratchpad_state();
 
         assert_eq!(client.scratchpad_name, "term");
-        assert_eq!(
-            client.scratchpad_restore_tags,
-            TagMask::single(2).unwrap().bits()
-        );
+        assert_eq!(client.scratchpad_restore_tags, TagMask::single(2).unwrap());
         assert!(client.issticky);
         assert!(client.is_scratchpad());
     }
@@ -312,9 +307,9 @@ mod tests {
     fn sync_keeps_hidden_scratchpad_metadata_off_scratchpad_tag() {
         let mut client = Client {
             scratchpad_name: "term".to_string(),
-            scratchpad_restore_tags: TagMask::single(2).unwrap().bits(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap(),
             is_hidden: true,
-            tags: TagMask::single(1).unwrap().bits(),
+            tags: TagMask::single(1).unwrap(),
             ..Client::default()
         };
 
@@ -328,9 +323,9 @@ mod tests {
     fn sync_keeps_sticky_scratchpad_metadata_off_scratchpad_tag() {
         let mut client = Client {
             scratchpad_name: "term".to_string(),
-            scratchpad_restore_tags: TagMask::single(2).unwrap().bits(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap(),
             issticky: true,
-            tags: TagMask::single(1).unwrap().bits(),
+            tags: TagMask::single(1).unwrap(),
             ..Client::default()
         };
 

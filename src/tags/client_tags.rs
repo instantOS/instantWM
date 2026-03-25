@@ -13,7 +13,7 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     }
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        if TagMask::from_bits(client.tags).is_scratchpad_only() {
+        if client.tags.is_scratchpad_only() {
             client.issticky = false;
         }
         client.set_tag_mask(effective_mask);
@@ -37,21 +37,21 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
     }
 
     let current_tag = ctx.core().globals().selected_monitor().current_tag;
-    if current_tag == 0 {
+    let Some(current_tag) = current_tag else {
         return;
-    }
+    };
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
 
     let m = ctx.core().globals().selected_monitor();
     let clients_on_tag: Vec<_> = m
         .iter_clients(ctx.core().globals().clients.map())
-        .filter(|(_, c)| TagMask::from_bits(c.tags).intersects(current_tag_mask))
+        .filter(|(_, c)| c.tags.intersects(current_tag_mask))
         .map(|(win, _)| win)
         .collect();
 
     for win in clients_on_tag {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            if TagMask::from_bits(client.tags).is_scratchpad_only() {
+            if client.tags.is_scratchpad_only() {
                 client.issticky = false;
             }
             client.set_tag_mask(effective_mask);
@@ -74,7 +74,7 @@ pub fn toggle_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         .globals()
         .clients
         .get(&win)
-        .map_or(TagMask::EMPTY, |c| TagMask::from_bits(c.tags));
+        .map_or(TagMask::EMPTY, |c| c.tags);
     if current_tags.is_scratchpad_only() {
         set_client_tag_ctx(ctx, win, mask);
         return;

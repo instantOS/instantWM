@@ -80,7 +80,7 @@ fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) 
         id: c.win.0 as u64,
         title: c.name.clone(),
         monitor: c.monitor_id,
-        tags: tags_from_mask(c.tags, valid_tag_mask),
+        tags: tags_from_mask(c.tags.bits(), valid_tag_mask),
         geometry: GeometryInfo {
             x: c.geo.x,
             y: c.geo.y,

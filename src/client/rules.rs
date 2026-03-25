@@ -206,7 +206,7 @@ fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: TagMask) {
     let (client_mon_id, client_tags) = g
         .clients
         .get(&win)
-        .map(|c| (c.monitor_id, TagMask::from_bits(c.tags)))
+        .map(|c| (c.monitor_id, c.tags))
         .unwrap_or((0, TagMask::EMPTY));
 
     let Some(mon) = g.monitor(client_mon_id) else {

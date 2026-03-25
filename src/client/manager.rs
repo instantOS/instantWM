@@ -79,11 +79,11 @@ impl ClientManager {
     }
 
     pub fn tag_mask(&self, win: WindowId) -> Option<TagMask> {
-        self.clients.get(&win).map(|c| TagMask::from_bits(c.tags))
+        self.clients.get(&win).map(|c| c.tags)
     }
 
     pub fn tags_bits(&self, win: WindowId) -> Option<u32> {
-        self.clients.get(&win).map(|c| c.tags)
+        self.clients.get(&win).map(|c| c.tags.bits())
     }
 
     pub fn effective_float_geo(&self, win: WindowId) -> Option<crate::types::Rect> {

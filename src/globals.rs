@@ -646,7 +646,7 @@ impl Globals {
                 .and_then(|selected_window| {
                     self.clients
                         .get(&selected_window)
-                        .map(|c| TagMask::from_bits(c.tags).contains(tag_num))
+                        .map(|c| c.tags.contains(tag_num))
                 })
                 .unwrap_or(false);
 

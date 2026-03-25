@@ -33,7 +33,6 @@ use crate::backend::x11::X11BackendRef;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
-use crate::client::resize;
 use crate::client::state::set_client_state;
 use crate::client::state::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
@@ -132,7 +131,7 @@ fn assign_initial_monitor_and_tags(
         && let Some(tc) = g.clients.get(&tc_win)
     {
         c.monitor_id = tc.monitor_id;
-        c.set_tag_mask(crate::types::TagMask::from_bits(tc.tags));
+        c.set_tag_mask(tc.tags);
         return;
     }
     c.monitor_id = g.selected_monitor_id();
@@ -386,7 +385,7 @@ fn run_manage_animation(
         return;
     }
 
-    resize(
+    crate::animation::place_client_for_animation(
         ctx,
         w,
         &Rect {
@@ -397,7 +396,6 @@ fn run_manage_animation(
         },
         true,
     );
-    ctx.backend().flush();
 
     // Use backend-agnostic animation
     crate::animation::animate_client(

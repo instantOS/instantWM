@@ -83,7 +83,7 @@ pub fn set_client_tag_prop(
         .unwrap_or(0);
 
     let mut data = [0u8; 8];
-    data[..4].copy_from_slice(&c.tags.to_ne_bytes());
+    data[..4].copy_from_slice(&c.tags.bits().to_ne_bytes());
     data[4..].copy_from_slice(&mon_num.to_ne_bytes());
     let _ = conn.change_property(
         PropMode::REPLACE,

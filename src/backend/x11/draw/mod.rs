@@ -52,4 +52,4 @@ pub use color::{Color, Cursor};
 pub use draw::Drw;
 
 // Raw FFI symbols used externally.
-pub use ffi::{XEventsQueued, XFlush};
+pub use ffi::XFlush;

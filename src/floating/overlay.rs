@@ -34,13 +34,13 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 
 /// Raise a window to the top of the stack (backend-agnostic).
 /// Calculate the y offset based on showbar and fullscreen clients.
-fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: u32) -> i32 {
+fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: TagMask) -> i32 {
     let bar_height = ctx.core().globals().cfg.bar_height;
     let base_offset = if mon.showbar { bar_height } else { 0 };
 
     // Check if any visible client is fullscreen
     for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-        if (c.tags & (1 << (current_tag - 1))) != 0 && c.is_true_fullscreen() {
+        if c.tags.intersects(current_tag) && c.is_true_fullscreen() {
             return 0;
         }
     }
@@ -276,13 +276,13 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
 }
 
 /// Update overlay client properties for showing.
-fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: u32) {
+fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: TagMask) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         if !client.is_floating {
             client.is_floating = true;
         }
         client.border_width = 0;
-        client.set_tag_mask(crate::types::TagMask::from_bits(tags));
+        client.set_tag_mask(tags);
     }
 }
 
@@ -303,7 +303,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         None => return,
     };
 
-    let current_tag = mon.current_tag as u32;
+    let current_tag = mon.selected_tags();
     let yoffset = calculate_yoffset(ctx, mon, current_tag);
 
     // Mark overlay as shown on all monitors
@@ -352,8 +352,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         .core_mut()
         .globals_mut()
         .selected_monitor()
-        .selected_tags()
-        .bits();
+        .selected_tags();
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {

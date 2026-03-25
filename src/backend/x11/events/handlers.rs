@@ -709,7 +709,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         old_border_width: border_width,
         border_width: 0,
         is_floating: true,
-        tags: 1,
+        tags: crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY),
         monitor_id: selmon_id,
         ..Default::default()
     };
