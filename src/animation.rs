@@ -7,14 +7,12 @@ use std::time::{Duration, Instant};
 /// Backend-agnostic animation entry point.
 ///
 /// On X11: enqueues a non-blocking animation that is ticked by the calloop timer.
-/// On Wayland: immediately sets the geometry (Wayland handles transitions differently).
+/// On Wayland: updates the window target geometry; the compositor backend
+/// animates the motion when animations are enabled.
 pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
     match ctx {
         WmCtx::X11(ctx_x11) => animate_client_x11(ctx_x11, win, rect, frames, reset_pos),
-        WmCtx::Wayland(_ctx_wayland) => {
-            // Wayland: no smooth animation, just resize immediately
-            ctx.resize_client(win, *rect);
-        }
+        WmCtx::Wayland(_ctx_wayland) => ctx.resize_client(win, *rect),
     }
 }
 
@@ -23,7 +21,6 @@ pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, r
     match ctx {
         WmCtx::X11(ctx_x11) => check_animate_x11(ctx_x11, win, rect, frames, reset_pos),
         WmCtx::Wayland(_ctx_wayland) => {
-            // Check if geometry actually changed
             let should_animate = ctx
                 .core()
                 .globals()
@@ -50,11 +47,11 @@ pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 + t * t * t
 }
 
-fn get_start_rect(core: &CoreCtx, win: WindowId, reset_pos: i32) -> Option<Rect> {
+fn current_client_rect(core: &CoreCtx, win: WindowId) -> Option<Rect> {
     core.globals()
         .clients
         .get(&win)
-        .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
+        .map(|c| if c.geo.is_valid() { c.geo } else { c.old_geo })
 }
 
 pub(crate) fn interpolated_rect(animation: &X11WindowAnimation, now: Instant) -> Rect {
@@ -90,7 +87,8 @@ fn get_x11_animation_start_rect(ctx: &WmCtxX11<'_>, win: WindowId, reset_pos: i3
         });
     }
 
-    get_start_rect(&ctx.core, win, reset_pos)
+    let _ = reset_pos;
+    current_client_rect(&ctx.core, win)
 }
 
 fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
@@ -122,6 +120,17 @@ fn try_resize_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
     if rect.is_valid() {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         wm_ctx.resize_client(win, *rect);
+    }
+}
+
+pub fn place_client_for_animation(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
+    let animated = ctx.core().globals().behavior.animated;
+    if animated {
+        ctx.core_mut().globals_mut().behavior.animated = false;
+    }
+    crate::client::geometry::resize(ctx, win, rect, interact);
+    if animated {
+        ctx.core_mut().globals_mut().behavior.animated = true;
     }
 }
 
@@ -170,9 +179,9 @@ pub fn animate_client_x11(
             )
         };
         if queued_events > QUEUE_SKIP_THRESHOLD {
-            0
+            (frames / 2).max(2)
         } else if queued_events > QUEUE_REDUCE_THRESHOLD {
-            (frames / 2).max(1)
+            (frames - 2).max(3)
         } else {
             frames
         }
@@ -276,4 +285,45 @@ pub fn check_animate_x11(
             animate_client_x11(ctx, win, rect, frames, reset_pos);
         }
     }
+}
+
+pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
+    let current_tag = ctx.core().globals().selected_monitor().current_tag;
+    crate::tags::view::scroll_view(ctx, dir);
+
+    let monitor = ctx.core().globals().selected_monitor();
+    if monitor.current_tag == current_tag {
+        return;
+    }
+
+    let Some(win) = monitor.sel else {
+        return;
+    };
+
+    let Some(client) = ctx.core().globals().clients.get(&win).cloned() else {
+        return;
+    };
+
+    if !client.is_visible(monitor.selected_tags()) || client.is_true_fullscreen() {
+        return;
+    }
+
+    let target = client.geo;
+    let start_x = match dir {
+        Direction::Left | Direction::Up => {
+            monitor.monitor_rect.x - target.w - client.border_width * 2
+        }
+        Direction::Right | Direction::Down => {
+            monitor.monitor_rect.x + monitor.monitor_rect.w + client.border_width * 2
+        }
+    };
+    let start = Rect {
+        x: start_x,
+        y: target.y,
+        w: target.w,
+        h: target.h,
+    };
+
+    place_client_for_animation(ctx, win, &start, false);
+    animate_client(ctx, win, &target, DEFAULT_FRAME_COUNT, 0);
 }
