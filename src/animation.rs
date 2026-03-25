@@ -1,7 +1,6 @@
 use crate::backend::x11::X11WindowAnimation;
 use crate::constants::animation::*;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::tags::view::scroll_view;
 use crate::types::*;
 use std::time::{Duration, Instant};
 
@@ -276,48 +275,5 @@ pub fn check_animate_x11(
         if should_animate {
             animate_client_x11(ctx, win, rect, frames, reset_pos);
         }
-    }
-}
-
-pub fn scroll_view_animated(ctx: &mut WmCtx, dir: Direction) {
-    let sel_mon = ctx.core().globals().selected_monitor_id();
-
-    let (current_tag, current_tag_mask) = {
-        let mon = ctx.core().globals().selected_monitor();
-        let current_tag = mon.current_tag;
-        let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
-        (current_tag, current_tag_mask)
-    };
-
-    if current_tag == 0 || current_tag_mask.is_empty() {
-        return;
-    }
-
-    scroll_view(ctx, dir);
-
-    // Wayland uses compositor-managed placement; replaying the X11-style
-    // "animate outgoing clients after the tag switch" step only touches
-    // hidden clients and can leak backend behavior into visibility changes.
-    if matches!(ctx, WmCtx::Wayland(_)) {
-        return;
-    }
-
-    if ctx.core().globals().selected_monitor().current_tag == current_tag {
-        return;
-    }
-
-    let clients_to_animate: Vec<(WindowId, Rect)> = ctx
-        .core()
-        .globals()
-        .clients
-        .iter()
-        .filter(|(_, client)| {
-            client.monitor_id == sel_mon
-                && TagMask::from_bits(client.tags).intersects(current_tag_mask)
-        })
-        .map(|(id, client)| (*id, client.geo))
-        .collect();
-    for (id, rect) in clients_to_animate {
-        animate_client(ctx, id, &rect, 10, 0);
     }
 }
