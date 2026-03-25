@@ -1,6 +1,6 @@
 //! Structured data and low-level logic for clients.
 
-use crate::types::{Client, ClientId, WindowId};
+use crate::types::{Client, ClientId, TagMask, WindowId};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -78,7 +78,11 @@ impl ClientManager {
         self.clients.get(&win).map(|c| c.geo)
     }
 
-    pub fn tags(&self, win: WindowId) -> Option<u32> {
+    pub fn tag_mask(&self, win: WindowId) -> Option<TagMask> {
+        self.clients.get(&win).map(|c| TagMask::from_bits(c.tags))
+    }
+
+    pub fn tags_bits(&self, win: WindowId) -> Option<u32> {
         self.clients.get(&win).map(|c| c.tags)
     }
 

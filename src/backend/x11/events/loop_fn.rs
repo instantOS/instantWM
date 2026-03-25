@@ -67,12 +67,12 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             let has_animations = wm
                 .backend
                 .x11_data()
-                .map_or(false, |d| !d.x11_runtime.window_animations.is_empty());
+                .is_some_and(|d| !d.x11_runtime.window_animations.is_empty());
             anim_guard.ensure_armed(has_animations, &loop_handle_for_timer, |wm| {
                 tick_x11_animations(wm);
                 wm.backend
                     .x11_data()
-                    .map_or(false, |d| !d.x11_runtime.window_animations.is_empty())
+                    .is_some_and(|d| !d.x11_runtime.window_animations.is_empty())
             });
 
             // ── 4. Flush X11 connection ─────────────────────────────────
@@ -168,10 +168,8 @@ fn tick_x11_animations(wm: &mut Wm) {
         }
     }
 
-    if needs_flush {
-        if let Some(data) = wm.backend.x11_data() {
-            let _ = data.conn.flush();
-        }
+    if needs_flush && let Some(data) = wm.backend.x11_data() {
+        let _ = data.conn.flush();
     }
 }
 

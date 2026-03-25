@@ -1,7 +1,7 @@
 //! Window rule application and matching logic.
 
 use crate::globals::Globals;
-use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, WindowId};
+use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, TagMask, WindowId};
 
 /// Properties used for rule matching.
 #[derive(Debug, Clone, Default)]
@@ -27,7 +27,7 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = g.clients.get_mut(&win) {
         c.is_floating = false;
-        c.tags = 0;
+        c.set_tag_mask(crate::types::TagMask::EMPTY);
         // Also update the client name from properties if it's not empty
         if !props.title.is_empty() {
             c.name = props.title.clone();
@@ -36,7 +36,7 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
 
     let special_next = g.behavior.specialnext;
     let rules = g.cfg.rules.clone();
-    let tag_mask = g.tags.mask();
+    let tag_mask = TagMask::from_bits(g.tags.mask());
     let bar_height = g.cfg.bar_height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
@@ -69,7 +69,7 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
 
             if let Some(c) = g.clients.get_mut(&win) {
                 apply_float_rule(c, &rule.isfloating, mon_geo, bar_height);
-                c.tags |= rule.tags;
+                c.update_tag_mask(|tags| tags | rule.tags);
             }
 
             apply_monitor_rule(g, win, rule);
@@ -171,23 +171,23 @@ fn apply_monitor_rule(g: &mut Globals, win: WindowId, rule: &crate::types::Rule)
 
 /// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
 /// tags when no rule-assigned tag is currently visible.
-fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: u32) {
+fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: TagMask) {
     let (client_mon_id, client_tags) = g
         .clients
         .get(&win)
-        .map(|c| (c.monitor_id, c.tags))
-        .unwrap_or((0, 0));
+        .map(|c| (c.monitor_id, TagMask::from_bits(c.tags)))
+        .unwrap_or((0, TagMask::EMPTY));
 
     let Some(mon) = g.monitor(client_mon_id) else {
         return;
     };
 
     let mut final_tags = client_tags & tag_mask;
-    if final_tags == 0 {
+    if final_tags.is_empty() {
         final_tags = mon.selected_tags();
     }
 
     if let Some(c) = g.clients.get_mut(&win) {
-        c.set_tag_mask(crate::types::TagMask::from_bits(final_tags));
+        c.set_tag_mask(final_tags);
     }
 }

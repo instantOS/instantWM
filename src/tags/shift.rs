@@ -23,7 +23,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             win,
             mon.current_tag as u32,
             mon.overlay,
-            mon.selected_tags(),
+            mon.selected_tags().bits(),
             ctx.core().globals().tags.mask(),
             ctx.core().globals().behavior.animated,
         )

@@ -135,7 +135,7 @@ impl WaylandState {
         c.border_width = g.cfg.border_width_px;
         c.old_border_width = g.cfg.border_width_px;
         c.monitor_id = monitor_id;
-        c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
+        c.set_tag_mask(crate::client::initial_tags_for_monitor(g, c.monitor_id));
 
         g.clients.insert(window, c);
         crate::client::apply_rules(g, window, &props);

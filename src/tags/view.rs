@@ -17,7 +17,7 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
     {
         let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
         mon.sel_tags ^= 1;
-        mon.set_selected_tags(effective_mask.bits());
+        mon.set_selected_tags(effective_mask);
 
         let prev = mon.current_tag;
         if mask == TagMask::ALL_BITS {
@@ -41,15 +41,14 @@ pub fn view(ctx: &mut WmCtx, mask: TagMask) {
 pub fn toggle_view_ctx(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
-    let new_mask = TagMask::from_bits(ctx.core().globals().selected_monitor().selected_tags())
-        ^ (mask & tagmask);
+    let new_mask = ctx.core().globals().selected_monitor().selected_tags() ^ (mask & tagmask);
     if new_mask.is_empty() {
         return;
     }
 
     {
         let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        mon.set_selected_tags(new_mask.bits());
+        mon.set_selected_tags(new_mask);
         if new_mask == TagMask::ALL_BITS {
             mon.prev_tag = mon.current_tag;
             mon.current_tag = 0;
@@ -92,7 +91,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
         return;
     }
 
-    let current = TagMask::from_bits(ctx.core().globals().selected_monitor().selected_tags());
+    let current = ctx.core().globals().selected_monitor().selected_tags();
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -106,10 +105,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 
 pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     let mon = ctx.core().globals().selected_monitor();
-    let (tagset, numtags) = (
-        TagMask::from_bits(mon.selected_tags()),
-        ctx.core().globals().tags.count(),
-    );
+    let (tagset, numtags) = (mon.selected_tags(), ctx.core().globals().tags.count());
 
     let mut next_mask = tagset;
     let mut found = false;
@@ -165,8 +161,12 @@ pub fn win_view(ctx: &mut WmCtx) {
         return;
     };
 
-    let tags = ctx.core().globals().clients.tags(win).unwrap_or(1);
-    let tag_mask = TagMask::from_bits(tags);
+    let tag_mask = ctx
+        .core()
+        .globals()
+        .clients
+        .tag_mask(win)
+        .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY));
 
     if tag_mask.is_scratchpad_only() {
         let current_tag = ctx.core().globals().selected_monitor().current_tag;
@@ -185,7 +185,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
     let newtag = mask & tagmask;
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, current_tagset) = (mon.current_tag, TagMask::from_bits(mon.selected_tags()));
+    let (current_tag, current_tagset) = (mon.current_tag, mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
     }
@@ -213,7 +213,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
         }
     }
     let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-    mon.set_selected_tags(newtag.bits());
+    mon.set_selected_tags(newtag);
     if mon.prev_tag == target_idx {
         mon.prev_tag = current_tag;
     }
@@ -304,7 +304,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     let core = ctx.core_mut();
     let selmon_id = core.globals().selected_monitor_id();
     let mon = core.globals().selected_monitor();
-    let (current_tag, tagset) = (mon.current_tag, TagMask::from_bits(mon.selected_tags()));
+    let (current_tag, tagset) = (mon.current_tag, mon.selected_tags());
 
     if dir == Direction::Left && current_tag <= 1 {
         return;
@@ -354,7 +354,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     {
         let mon = core.globals_mut().selected_monitor_mut();
         mon.sel_tags ^= 1;
-        mon.set_selected_tags(new_mask.bits());
+        mon.set_selected_tags(new_mask);
         mon.prev_tag = mon.current_tag;
         mon.current_tag = new_mask.first_tag().unwrap_or(0);
     }

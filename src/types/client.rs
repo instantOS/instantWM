@@ -118,8 +118,8 @@ impl Client {
     /// This is intentionally pure: callers provide the currently selected
     /// tag-mask for the monitor the client is on.
     #[inline]
-    pub fn is_visible_on_tags(&self, selected_tags: u32) -> bool {
-        self.issticky || (self.tags & selected_tags) != 0
+    pub fn is_visible_on_tags(&self, selected_tags: TagMask) -> bool {
+        self.issticky || TagMask::from_bits(self.tags).intersects(selected_tags)
     }
 
     /// Check if this client should be included in tiling calculations.
@@ -130,7 +130,7 @@ impl Client {
     /// - Visible on the selected tags
     /// - Not hidden
     #[inline]
-    pub fn is_tiled(&self, selected_tags: u32) -> bool {
+    pub fn is_tiled(&self, selected_tags: TagMask) -> bool {
         !self.is_floating
             && !self.is_true_fullscreen()
             && self.is_visible_on_tags(selected_tags)

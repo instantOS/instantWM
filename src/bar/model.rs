@@ -7,7 +7,7 @@ use crate::types::*;
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientBarStats {
     pub occupied_tags: TagMask,
-    pub urgent_tags: u32,
+    pub urgent_tags: TagMask,
     pub visible_clients: i32,
 }
 
@@ -33,7 +33,7 @@ impl ClientBarStats {
             }
             occupied |= client.tags;
             if client.is_urgent {
-                stats.urgent_tags |= client.tags;
+                stats.urgent_tags = stats.urgent_tags | TagMask::from_bits(client.tags);
             }
         }
         stats.occupied_tags = TagMask::from_bits(occupied).without_scratchpad();

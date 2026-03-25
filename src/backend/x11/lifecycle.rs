@@ -142,10 +142,7 @@ fn assign_initial_monitor_and_tags(
         return;
     }
     c.monitor_id = g.selected_monitor_id();
-    c.set_tag_mask(crate::types::TagMask::from_bits(initial_tags_for_monitor(
-        g,
-        c.monitor_id,
-    )));
+    c.set_tag_mask(crate::client::initial_tags_for_monitor(g, c.monitor_id));
 }
 
 fn insert_client_and_apply_rules(
@@ -443,7 +440,7 @@ fn run_manage_animation(
 /// visible on its target monitor.
 pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
     g.monitor(monitor_id)
-        .map(|m| m.selected_tags())
+        .map(|m| m.selected_tags_bits())
         .filter(|tags| *tags != 0)
         .unwrap_or(1)
 }

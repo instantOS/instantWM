@@ -215,9 +215,9 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
                 .monitors
                 .get(target_mon)
                 .map(|m| m.selected_tags())
-                .unwrap_or(1)
+                .unwrap_or(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY))
         } else {
-            0
+            crate::types::TagMask::EMPTY
         };
         (is_scratchpad, tags)
     };
@@ -232,7 +232,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.monitor_id = target_mon;
         if !is_scratchpad {
-            client.set_tag_mask(TagMask::from_bits(target_tags));
+            client.set_tag_mask(target_tags);
         }
     }
 

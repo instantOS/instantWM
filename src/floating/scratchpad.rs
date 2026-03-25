@@ -98,7 +98,8 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
         .core_mut()
         .globals_mut()
         .selected_monitor()
-        .selected_tags();
+        .selected_tags()
+        .bits();
 
     let Some(client) = ctx.client(selected_window) else {
         return;

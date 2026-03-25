@@ -51,7 +51,7 @@ pub(crate) fn draw_tag_indicators(
     m: &Monitor,
     mut x: i32,
     occupied_tags: TagMask,
-    urg: u32,
+    urg: TagMask,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
@@ -94,7 +94,7 @@ pub(crate) fn draw_tag_indicators(
             bar_height,
             lpad as i32,
             t.label,
-            urg & (1 << t.tag_index) != 0,
+            urg.contains(t.tag_index + 1),
             detail_height,
         );
 

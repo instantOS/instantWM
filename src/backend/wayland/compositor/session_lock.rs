@@ -20,11 +20,11 @@ impl SessionLockHandler for WaylandState {
     fn lock(&mut self, confirmation: SessionLocker) {
         log::info!("session lock requested");
 
-        if let SessionLockState::Locked(ref lock) = self.lock_state {
-            if lock.is_alive() {
-                log::info!("refusing lock: already locked with an active client");
-                return;
-            }
+        if let SessionLockState::Locked(ref lock) = self.lock_state
+            && lock.is_alive()
+        {
+            log::info!("refusing lock: already locked with an active client");
+            return;
         }
 
         let lock = confirmation.ext_session_lock().clone();

@@ -160,20 +160,32 @@ impl Monitor {
 
     /// Get the currently selected tags for this monitor.
     #[inline]
-    pub fn selected_tags(&self) -> u32 {
-        self.tag_set[self.sel_tags as usize]
+    pub fn selected_tags(&self) -> TagMask {
+        TagMask::from_bits(self.tag_set[self.sel_tags as usize])
     }
 
     /// Set the currently selected tags for this monitor.
     #[inline]
-    pub fn set_selected_tags(&mut self, mask: u32) {
+    pub fn set_selected_tags(&mut self, mask: TagMask) {
+        self.tag_set[self.sel_tags as usize] = mask.bits();
+    }
+
+    /// Get the currently selected tags for this monitor as raw bits.
+    #[inline]
+    pub fn selected_tags_bits(&self) -> u32 {
+        self.tag_set[self.sel_tags as usize]
+    }
+
+    /// Set the currently selected tags for this monitor from raw bits.
+    #[inline]
+    pub fn set_selected_tags_bits(&mut self, mask: u32) {
         self.tag_set[self.sel_tags as usize] = mask;
     }
 
     /// Get the currently selected tags as a type-safe mask.
     #[inline]
     pub fn selected_tag_mask(&self) -> TagMask {
-        TagMask::from_bits(self.selected_tags())
+        self.selected_tags()
     }
 
     /// Iterate the monitor's client list (focus order).
@@ -427,7 +439,7 @@ impl Monitor {
             return false;
         }
         let tag_num = tag_index + 1;
-        !occupied.contains(tag_num) && !TagMask::from_bits(self.selected_tags()).contains(tag_num)
+        !occupied.contains(tag_num) && !self.selected_tags().contains(tag_num)
     }
 
     /// Map a bar slot (0..8) to the actual tag index.

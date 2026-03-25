@@ -2,6 +2,7 @@
 //!
 //! Types for defining and matching window rules.
 
+use crate::types::TagMask;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -47,7 +48,7 @@ pub struct Rule {
     pub title: Option<Cow<'static, str>>,
     /// Tags to assign to matched windows.
     #[serde(default)]
-    pub tags: u32,
+    pub tags: TagMask,
     /// Floating behavior for matched windows.
     #[serde(default)]
     pub isfloating: RuleFloat,
