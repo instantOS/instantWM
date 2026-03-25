@@ -185,6 +185,23 @@ pub struct WaylandState {
     /// available without going through `Rc<RefCell<Wm>>`.
     pub pending_libinput_events:
         Vec<smithay::backend::input::InputEvent<smithay::backend::libinput::LibinputInputBackend>>,
+
+    /// Cached winit window size for the nested backend.
+    ///
+    /// Updated by the winit calloop source callback on `Resized` events;
+    /// read by input handlers that need the window dimensions to transform
+    /// absolute pointer coordinates.
+    pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
+
+    /// Pending resize from the winit calloop source.
+    ///
+    /// The source callback cannot call `handle_resize` directly because it
+    /// needs `&Output` which lives in the runtime function.  Instead we
+    /// buffer the new size here and the `run` closure applies it.
+    pub pending_winit_resize: Option<(i32, i32)>,
+
+    /// Set by the winit calloop source when a close is requested.
+    pub winit_close_requested: bool,
 }
 
 /// Tracks the current session lock state.
@@ -309,6 +326,9 @@ impl WaylandState {
             led_state_tx: None,
             dnd_icon: None,
             pending_libinput_events: Vec::new(),
+            winit_window_size: smithay::utils::Size::from((0, 0)),
+            pending_winit_resize: None,
+            winit_close_requested: false,
         }
     }
 
