@@ -7,6 +7,7 @@ use instantwm::ipc_types::IpcCommand;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctl::commands::ScratchpadAction;
     use clap::Parser;
     use instantwm::ipc_types::ScratchpadInitialStatus;
 
@@ -30,7 +31,7 @@ mod tests {
         assert!(matches!(
             cli.command,
             ctl::CommandKind::Scratchpad {
-                action: ctl::ScratchpadAction::Create {
+                action: ScratchpadAction::Create {
                     name,
                     window_id: None,
                     status: ScratchpadInitialStatus::Shown,
@@ -46,7 +47,7 @@ mod tests {
         assert!(matches!(
             cli.command,
             ctl::CommandKind::Scratchpad {
-                action: ctl::ScratchpadAction::Create {
+                action: ScratchpadAction::Create {
                     name,
                     window_id: None,
                     status: ScratchpadInitialStatus::Hidden,

@@ -67,6 +67,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             }
             _ => return,
         }
+        client.sync_scratchpad_state();
     }
 
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();

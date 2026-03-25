@@ -210,6 +210,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
             } else {
                 new_tags.bits()
             };
+            client.sync_scratchpad_state();
         }
     }
     let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
@@ -237,6 +238,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.tags = target_mask.bits();
+        client.sync_scratchpad_state();
     }
 
     view(ctx, target_mask);

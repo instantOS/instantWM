@@ -84,7 +84,21 @@ impl Client {
 
     /// Check if this client is a scratchpad window.
     pub fn is_scratchpad(&self) -> bool {
-        !self.scratchpad_name.is_empty()
+        !self.scratchpad_name.is_empty() && TagMask::from_bits(self.tags).is_scratchpad_only()
+    }
+
+    /// Clear scratchpad-only metadata after the window has been moved to normal tags.
+    pub fn clear_scratchpad_state(&mut self) {
+        self.scratchpad_name.clear();
+        self.scratchpad_restore_tags = 0;
+        self.issticky = false;
+    }
+
+    /// Keep scratchpad metadata consistent with the current tag assignment.
+    pub fn sync_scratchpad_state(&mut self) {
+        if !self.scratchpad_name.is_empty() && !TagMask::from_bits(self.tags).is_scratchpad_only() {
+            self.clear_scratchpad_state();
+        }
     }
 
     /// Check if the client should be visible for a given tag-set.
@@ -199,6 +213,7 @@ impl Client {
         }
 
         self.tags = effective_mask.bits();
+        self.sync_scratchpad_state();
 
         crate::client::set_client_tag_prop(core, x11, x11_runtime, self.win);
         crate::focus::focus_soft_x11(core, x11, x11_runtime, None);
@@ -213,6 +228,61 @@ impl Client {
             }),
             Some(selmon_id),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Client;
+    use crate::types::{SCRATCHPAD_MASK, TagMask};
+
+    #[test]
+    fn scratchpad_requires_scratchpad_tag() {
+        let client = Client {
+            scratchpad_name: "term".to_string(),
+            tags: TagMask::single(1).unwrap().bits(),
+            ..Client::default()
+        };
+
+        assert!(!client.is_scratchpad());
+    }
+
+    #[test]
+    fn sync_clears_stale_scratchpad_metadata() {
+        let mut client = Client {
+            scratchpad_name: "term".to_string(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap().bits(),
+            issticky: true,
+            tags: TagMask::single(1).unwrap().bits(),
+            ..Client::default()
+        };
+
+        client.sync_scratchpad_state();
+
+        assert!(client.scratchpad_name.is_empty());
+        assert_eq!(client.scratchpad_restore_tags, 0);
+        assert!(!client.issticky);
+    }
+
+    #[test]
+    fn sync_keeps_valid_scratchpad_metadata() {
+        let mut client = Client {
+            scratchpad_name: "term".to_string(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap().bits(),
+            issticky: true,
+            tags: SCRATCHPAD_MASK,
+            ..Client::default()
+        };
+
+        client.sync_scratchpad_state();
+
+        assert_eq!(client.scratchpad_name, "term");
+        assert_eq!(
+            client.scratchpad_restore_tags,
+            TagMask::single(2).unwrap().bits()
+        );
+        assert!(client.issticky);
+        assert!(client.is_scratchpad());
     }
 }
 

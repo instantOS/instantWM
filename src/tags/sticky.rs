@@ -31,5 +31,6 @@ pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
         if let Some(tags) = target_tags {
             client.tags = tags;
         }
+        client.sync_scratchpad_state();
     }
 }

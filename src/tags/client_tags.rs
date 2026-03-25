@@ -17,6 +17,7 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
             client.issticky = false;
         }
         client.tags = effective_mask.bits();
+        client.sync_scratchpad_state();
     } else {
         return;
     }
@@ -55,6 +56,7 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
                 client.issticky = false;
             }
             client.tags = effective_mask.bits();
+            client.sync_scratchpad_state();
         }
     }
 
