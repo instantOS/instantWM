@@ -74,17 +74,17 @@ pub fn scratchpad_make(
         client.scratchpad_restore_tags = old_tags;
     }
 
-    let monitor_id = client.monitor_id;
     client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
-    client.issticky = matches!(status, ScratchpadInitialStatus::Shown);
+    client.issticky = false;
 
     if !client.is_floating {
         client.is_floating = true;
     }
 
-    match status {
-        ScratchpadInitialStatus::Hidden => crate::client::hide(ctx, selected_window),
-        ScratchpadInitialStatus::Shown => arrange(ctx, Some(monitor_id)),
+    crate::client::hide(ctx, selected_window);
+
+    if matches!(status, ScratchpadInitialStatus::Shown) {
+        let _ = scratchpad_show_name(ctx, name);
     }
 }
 
@@ -198,10 +198,10 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
     let scratchpad_names: Vec<String> = ctx
         .core()
         .globals()
-        .monitors_iter_all()
-        .flat_map(|mon| mon.iter_clients(ctx.core().globals().clients.map()))
-        .filter(|(_, c)| c.is_scratchpad() && !c.issticky)
-        .map(|(_, c)| c.scratchpad_name.clone())
+        .clients
+        .values()
+        .filter(|c| c.is_scratchpad() && !c.issticky)
+        .map(|c| c.scratchpad_name.clone())
         .collect();
 
     let mut shown_count = 0;
@@ -277,22 +277,20 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
     let mut scratchpads = Vec::new();
 
-    for mon in g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(g.clients.map()) {
-            if c.is_scratchpad() {
-                scratchpads.push(ScratchpadInfo {
-                    name: c.scratchpad_name.clone(),
-                    visible: c.issticky,
-                    window_id: Some(c_win.0),
-                    monitor: Some(c.monitor_id),
-                    x: Some(c.geo.x),
-                    y: Some(c.geo.y),
-                    width: Some(c.geo.w),
-                    height: Some(c.geo.h),
-                    floating: c.is_floating,
-                    fullscreen: c.is_fullscreen,
-                });
-            }
+    for c in g.clients.values() {
+        if c.is_scratchpad() {
+            scratchpads.push(ScratchpadInfo {
+                name: c.scratchpad_name.clone(),
+                visible: c.issticky,
+                window_id: Some(c.win.0),
+                monitor: Some(c.monitor_id),
+                x: Some(c.geo.x),
+                y: Some(c.geo.y),
+                width: Some(c.geo.w),
+                height: Some(c.geo.h),
+                floating: c.is_floating,
+                fullscreen: c.is_fullscreen,
+            });
         }
     }
 
@@ -371,11 +369,9 @@ fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
         return None;
     }
 
-    for mon in g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(g.clients.map()) {
-            if c.is_scratchpad() && c.scratchpad_name == name {
-                return Some(c_win);
-            }
+    for c in g.clients.values() {
+        if c.is_scratchpad() && c.scratchpad_name == name {
+            return Some(c.win);
         }
     }
     None

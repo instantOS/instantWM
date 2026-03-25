@@ -14,7 +14,7 @@ use crate::types::WindowId;
 // ── visibility walk ───────────────────────────────────────────────────────────
 
 /// Walk the client list starting at `start_win` and return the first
-/// client that passes [`Client::is_visible_on_tags`].
+/// client that passes [`Client::is_visible`].
 pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
     let selected = g.selected_monitor().selected_tags();
 
@@ -25,7 +25,7 @@ pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<W
     for i in iter_start..m.clients.len() {
         let win = m.clients[i];
         if let Some(c) = g.clients.get(&win)
-            && c.is_visible_on_tags(selected)
+            && c.is_visible(selected)
         {
             return Some(win);
         }

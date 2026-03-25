@@ -61,7 +61,7 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         .into_iter()
         .filter(|&win| {
             ctx.client(win)
-                .is_some_and(|c| c.is_true_fullscreen() && c.is_visible_on_tags(selected_tags))
+                .is_some_and(|c| c.is_true_fullscreen() && c.is_visible(selected_tags))
         })
         .collect();
 
@@ -87,7 +87,7 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         .iter()
         .filter_map(|&win| {
             let info = ctx.client(win)?;
-            let is_visible = info.is_visible_on_tags(selected_tags) && !info.is_hidden;
+            let is_visible = info.is_visible(selected_tags);
             if !is_visible {
                 return None;
             }
@@ -188,7 +188,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     if let Some(m) = ctx.core().globals().monitor(monitor_id) {
         for &win in &m.stack {
             if let Some(c) = ctx.client(win)
-                && c.is_visible_on_tags(selected_tags)
+                && c.is_visible(selected_tags)
             {
                 if c.is_true_fullscreen() {
                     fullscreen_stack.push(win);

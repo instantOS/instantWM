@@ -472,7 +472,7 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 
         let visible = if let Some(c) = ctx.client(overlay_win) {
             let selected = mon.selected_tags();
-            c.is_visible_on_tags(selected)
+            c.is_visible(selected)
         } else {
             false
         };

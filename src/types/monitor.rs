@@ -227,7 +227,7 @@ impl Monitor {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
-            if c.is_visible_on_tags(selected) {
+            if c.is_visible(selected) {
                 count += 1;
             }
         }
@@ -239,7 +239,7 @@ impl Monitor {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
-            if c.is_visible_on_tags(selected) && !c.is_floating && !c.is_hidden {
+            if c.is_visible(selected) && !c.is_floating {
                 count += 1;
             }
         }
@@ -277,12 +277,9 @@ impl Monitor {
     /// client on the currently selected tags.
     pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
         let tags = self.selected_tags();
-        self.stack.iter().find_map(|&w| {
-            clients
-                .get(&w)
-                .filter(|c| c.is_visible_on_tags(tags) && !c.is_hidden)
-                .map(|_| w)
-        })
+        self.stack
+            .iter()
+            .find_map(|&w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
     }
 
     /// Check if this monitor has a selected client.
@@ -314,8 +311,7 @@ impl Monitor {
         for &win in self.clients.iter().skip(iter_start) {
             if let Some(c) = clients.get(&win)
                 && !c.is_floating
-                && c.is_visible_on_tags(selected)
-                && !c.is_hidden
+                && c.is_visible(selected)
             {
                 return Some(win);
             }

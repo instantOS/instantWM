@@ -26,12 +26,20 @@ pub struct WindowProperties {
 pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = g.clients.get_mut(&win) {
-        c.is_floating = false;
-        c.set_tag_mask(crate::types::TagMask::EMPTY);
-        // Also update the client name from properties if it's not empty
         if !props.title.is_empty() {
             c.name = props.title.clone();
         }
+
+        // Scratchpad state is a runtime role assigned after manage. On Wayland
+        // we may see later title/app_id updates that re-run this function; do
+        // not let those rule refreshes retag an existing scratchpad back into
+        // a normal window.
+        if c.has_scratchpad_identity() {
+            return;
+        }
+
+        c.is_floating = false;
+        c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
     let special_next = g.behavior.specialnext;
@@ -78,6 +86,29 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
 
     // --- Clamp tags to the valid tag mask ------------------------------------
     clamp_client_tags(g, win, tag_mask);
+}
+
+/// Refresh rule-derived metadata after a backend property update.
+///
+/// Backend callbacks such as Wayland `title_changed` / `app_id_changed`
+/// should use this instead of blindly re-running full window classification.
+/// Once a client has been promoted to a scratchpad, later protocol metadata
+/// churn must not retag it back into a normal window.
+pub fn refresh_rules_for_property_change(g: &mut Globals, win: WindowId, props: &WindowProperties) {
+    if let Some(c) = g.clients.get_mut(&win)
+        && !props.title.is_empty()
+    {
+        c.name = props.title.clone();
+    }
+
+    if g.clients
+        .get(&win)
+        .is_some_and(|c| c.has_scratchpad_identity())
+    {
+        return;
+    }
+
+    apply_rules(g, win, props);
 }
 
 /// Return `true` when `rule` matches all provided window identifiers.

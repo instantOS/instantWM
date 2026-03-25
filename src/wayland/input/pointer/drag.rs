@@ -80,7 +80,7 @@ fn wayland_selected_resize_target_at(
     }
     let selected_tags = mon.selected_tags();
     let c = ctx.core.globals().clients.get(&win)?;
-    if c.is_hidden || !c.is_visible_on_tags(selected_tags) {
+    if !c.is_visible(selected_tags) {
         return None;
     }
     let has_tiling = mon.is_tiling_layout();

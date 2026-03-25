@@ -38,7 +38,7 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
         core.globals()
             .clients
             .get(w)
-            .map(|c| c.is_visible_on_tags(selected) && !c.is_hidden)
+            .map(|c| c.is_visible(selected))
             .unwrap_or(false)
     });
 
@@ -49,7 +49,7 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
                 .globals()
                 .clients
                 .get(&hist_win)
-                .is_some_and(|c| c.is_visible_on_tags(selected) && !c.is_hidden)
+                .is_some_and(|c| c.is_visible(selected))
         {
             target = Some(hist_win);
         }
@@ -543,7 +543,7 @@ fn get_directional_candidates(
     let mut min_score: i32 = 0;
 
     for (c_win, c) in crate::types::ClientListIter::new(clients, globals_map) {
-        if !c.is_visible_on_tags(selected_tags) {
+        if !c.is_visible(selected_tags) {
             continue;
         }
 
@@ -712,7 +712,7 @@ fn get_visible_stack(
     let selected = mon.selected_tag_mask();
 
     for (c_win, c) in mon.iter_stack(clients) {
-        if c.is_visible_on_tags(selected) {
+        if c.is_visible(selected) {
             stack.push(c_win);
         }
     }

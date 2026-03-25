@@ -84,7 +84,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
 
     let selected = mon.selected_tags();
     for (w, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-        if !c.is_visible_on_tags(selected) {
+        if !c.is_visible(selected) {
             continue;
         }
         if !c.is_floating && has_tiling {
@@ -132,7 +132,7 @@ pub fn selected_hover_resize_target_at(
     }
     let selected_tags = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
-    if c.is_hidden || !c.is_visible_on_tags(selected_tags) {
+    if !c.is_visible(selected_tags) {
         return None;
     }
     if !c.is_floating && has_tiling {
@@ -170,7 +170,7 @@ fn find_tiled_win_at_point(
         if Some(w) == skip_win {
             continue;
         }
-        if !c.is_visible_on_tags(selected) || c.is_hidden || c.is_floating {
+        if !c.is_visible(selected) || c.is_floating {
             continue;
         }
         // Check if the cursor is within the window's geometry (including border).
@@ -214,7 +214,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     let selected = mon.selected_tags();
 
     for (_w, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-        if c.is_visible_on_tags(selected) && !c.is_floating && has_tiling {
+        if c.is_visible(selected) && !c.is_floating && has_tiling {
             return true;
         }
     }

@@ -73,7 +73,7 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
 
         let is_visible = g
             .monitor(c.monitor_id)
-            .map(|m| c.is_visible_on_tags(m.selected_tags()))
+            .map(|m| c.is_visible(m.selected_tags()))
             .unwrap_or(false);
 
         let is_tiling_layout = g

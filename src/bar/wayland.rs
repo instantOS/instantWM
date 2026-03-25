@@ -614,7 +614,7 @@ fn bar_render_key(
 
         let selected = m.selected_tags();
         for (win, c) in m.iter_clients(core.globals().clients.map()) {
-            if !c.is_visible_on_tags(selected) {
+            if !c.is_visible(selected) {
                 continue;
             }
             win.hash(&mut hasher);

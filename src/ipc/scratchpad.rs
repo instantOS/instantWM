@@ -59,22 +59,20 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
 fn collect_scratchpad_info(g: &crate::globals::Globals) -> Vec<ScratchpadInfo> {
     let mut scratchpads = Vec::new();
 
-    for mon in g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(g.clients.map()) {
-            if c.is_scratchpad() {
-                scratchpads.push(ScratchpadInfo {
-                    name: c.scratchpad_name.clone(),
-                    visible: c.issticky,
-                    window_id: Some(c_win.0),
-                    monitor: Some(c.monitor_id),
-                    x: Some(c.geo.x),
-                    y: Some(c.geo.y),
-                    width: Some(c.geo.w),
-                    height: Some(c.geo.h),
-                    floating: c.is_floating,
-                    fullscreen: c.is_fullscreen,
-                });
-            }
+    for c in g.clients.values() {
+        if c.is_scratchpad() {
+            scratchpads.push(ScratchpadInfo {
+                name: c.scratchpad_name.clone(),
+                visible: c.issticky,
+                window_id: Some(c.win.0),
+                monitor: Some(c.monitor_id),
+                x: Some(c.geo.x),
+                y: Some(c.geo.y),
+                width: Some(c.geo.w),
+                height: Some(c.geo.h),
+                floating: c.is_floating,
+                fullscreen: c.is_fullscreen,
+            });
         }
     }
 
