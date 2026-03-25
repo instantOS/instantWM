@@ -138,11 +138,11 @@ fn assign_initial_monitor_and_tags(
         && let Some(tc) = g.clients.get(&tc_win)
     {
         c.monitor_id = tc.monitor_id;
-        c.tags = tc.tags;
+        c.set_tag_mask(tc.tags);
         return;
     }
     c.monitor_id = g.selected_monitor_id();
-    c.tags = initial_tags_for_monitor(g, c.monitor_id);
+    c.set_tag_mask(initial_tags_for_monitor(g, c.monitor_id));
 }
 
 fn insert_client_and_apply_rules(
@@ -594,7 +594,7 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
         .map(|(i, _)| i);
 
     if let Some(client) = g.clients.get_mut(&w) {
-        client.tags = tags;
+        client.set_tag_mask(tags);
         if let Some(mid) = target_mon {
             client.monitor_id = mid;
         }

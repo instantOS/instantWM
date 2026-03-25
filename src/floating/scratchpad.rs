@@ -75,7 +75,7 @@ pub fn scratchpad_make(
     }
 
     let monitor_id = client.monitor_id;
-    client.tags = SCRATCHPAD_MASK;
+    client.set_tag_mask(SCRATCHPAD_MASK);
     client.issticky = matches!(status, ScratchpadInitialStatus::Shown);
 
     if !client.is_floating {
@@ -112,14 +112,11 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let mut was_hidden = false;
     if let Some(client) = ctx.client_mut(selected_window) {
         was_hidden = client.is_hidden;
-        client.scratchpad_name.clear();
-        client.issticky = false;
-        client.tags = if restore_tags != 0 {
+        client.set_tag_mask(if restore_tags != 0 {
             restore_tags
         } else {
             monitor_tags
-        };
-        client.scratchpad_restore_tags = 0;
+        });
     }
 
     if was_hidden {
@@ -238,7 +235,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     }
 
     client.issticky = false;
-    client.tags = SCRATCHPAD_MASK;
+    client.set_tag_mask(SCRATCHPAD_MASK);
 
     crate::client::hide(ctx, found);
 }

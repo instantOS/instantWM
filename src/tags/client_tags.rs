@@ -16,8 +16,7 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         if TagMask::from_bits(client.tags).is_scratchpad_only() {
             client.issticky = false;
         }
-        client.tags = effective_mask.bits();
-        client.sync_scratchpad_state();
+        client.set_tag_mask(effective_mask.bits());
     } else {
         return;
     }
@@ -55,8 +54,7 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
             if TagMask::from_bits(client.tags).is_scratchpad_only() {
                 client.issticky = false;
             }
-            client.tags = effective_mask.bits();
-            client.sync_scratchpad_state();
+            client.set_tag_mask(effective_mask.bits());
         }
     }
 

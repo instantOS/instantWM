@@ -249,17 +249,21 @@ pub fn check_animate_x11(
 pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     let sel_mon = ctx.core().globals().selected_monitor_id();
 
-    let (has_tiling, current_tag) = {
+    let (current_tag, current_tag_mask) = {
         let mon = ctx.core().globals().selected_monitor();
-        let has_tiling = mon.is_tiling_layout();
-        let current_tag = mon.current_tag as u32;
-        (has_tiling, current_tag)
+        let current_tag = mon.current_tag;
+        let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
+        (current_tag, current_tag_mask)
     };
 
-    if has_tiling {
-        crate::focus::direction_focus(ctx, dir);
-    } else {
-        scroll_view(ctx, dir);
+    if current_tag == 0 || current_tag_mask.is_empty() {
+        return;
+    }
+
+    scroll_view(ctx, dir);
+
+    if ctx.core().globals().selected_monitor().current_tag == current_tag {
+        return;
     }
 
     let clients_to_animate: Vec<(WindowId, Rect)> = ctx
@@ -267,7 +271,10 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
         .globals()
         .clients
         .iter()
-        .filter(|(_, client)| client.monitor_id == sel_mon && client.tags == current_tag)
+        .filter(|(_, client)| {
+            client.monitor_id == sel_mon
+                && TagMask::from_bits(client.tags).intersects(current_tag_mask)
+        })
         .map(|(id, client)| (*id, client.geo))
         .collect();
     for (id, rect) in clients_to_animate {

@@ -101,6 +101,18 @@ impl Client {
         }
     }
 
+    /// Assign a new tag bitmask and normalize any dependent client state.
+    pub fn set_tag_mask(&mut self, tags: u32) {
+        self.tags = tags;
+        self.sync_scratchpad_state();
+    }
+
+    /// Transform the tag bitmask in place and normalize dependent client state.
+    pub fn update_tag_mask(&mut self, f: impl FnOnce(u32) -> u32) {
+        self.tags = f(self.tags);
+        self.sync_scratchpad_state();
+    }
+
     /// Check if the client should be visible for a given tag-set.
     ///
     /// This is intentionally pure: callers provide the currently selected
@@ -212,8 +224,7 @@ impl Client {
             self.issticky = false;
         }
 
-        self.tags = effective_mask.bits();
-        self.sync_scratchpad_state();
+        self.set_tag_mask(effective_mask.bits());
 
         crate::client::set_client_tag_prop(core, x11, x11_runtime, self.win);
         crate::focus::focus_soft_x11(core, x11, x11_runtime, None);

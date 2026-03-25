@@ -60,14 +60,13 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         match dir {
             Direction::Left if tagset > 1 => {
-                client.tags >>= offset;
+                client.update_tag_mask(|tags| tags >> offset);
             }
             Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
-                client.tags <<= offset;
+                client.update_tag_mask(|tags| tags << offset);
             }
             _ => return,
         }
-        client.sync_scratchpad_state();
     }
 
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();

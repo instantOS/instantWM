@@ -232,7 +232,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.monitor_id = target_mon;
         if !is_scratchpad {
-            client.tags = target_tags;
+            client.set_tag_mask(target_tags);
         }
     }
 

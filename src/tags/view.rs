@@ -205,12 +205,11 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             let ctags = TagMask::from_bits(client.tags);
             let new_tags = ctags ^ current_tagset ^ newtag;
-            client.tags = if new_tags.is_empty() {
+            client.set_tag_mask(if new_tags.is_empty() {
                 newtag.bits()
             } else {
                 new_tags.bits()
-            };
-            client.sync_scratchpad_state();
+            });
         }
     }
     let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
@@ -237,8 +236,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
     let target_mask = TagMask::single(prev_tag).unwrap_or(TagMask::EMPTY);
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        client.tags = target_mask.bits();
-        client.sync_scratchpad_state();
+        client.set_tag_mask(target_mask.bits());
     }
 
     view(ctx, target_mask);
