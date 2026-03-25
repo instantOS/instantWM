@@ -4,6 +4,31 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
+    /// Re-map an already-mapped element without changing its relative z-order.
+    ///
+    /// Smithay's `map_element` updates the location but also raises the element.
+    /// Layout code uses remaps for geometry changes, so preserve the previous
+    /// stacking order here to keep overlap semantics controlled by WM restacks.
+    pub(crate) fn remap_element_preserving_z_order(
+        &mut self,
+        element: &smithay::desktop::Window,
+        location: Point<i32, smithay::utils::Logical>,
+        activate: bool,
+    ) {
+        let previous_order: Vec<_> = self.space.elements().cloned().collect();
+        let was_mapped = previous_order.iter().any(|mapped| mapped == element);
+
+        self.space.map_element(element.clone(), location, activate);
+
+        if !was_mapped {
+            return;
+        }
+
+        for mapped in previous_order {
+            self.space.raise_element(&mapped, false);
+        }
+    }
+
     /// Resize a window to the given rectangle.
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
         if let Some(element) = self.find_window(window).cloned() {

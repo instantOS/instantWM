@@ -58,7 +58,7 @@ impl WaylandState {
         if !self.animations_enabled() || remap || current == target {
             self.window_animations.remove(&window_id);
             // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
-            self.space.map_element(element, target, false);
+            self.remap_element_preserving_z_order(&element, target, false);
             return;
         }
 
@@ -100,7 +100,7 @@ impl WaylandState {
         let mut finished: Vec<WindowId> = Vec::new();
         for (win, loc, done) in updates {
             if let Some(element) = self.find_window(win).cloned() {
-                self.space.map_element(element, loc, false);
+                self.remap_element_preserving_z_order(&element, loc, false);
             } else {
                 finished.push(win);
                 continue;

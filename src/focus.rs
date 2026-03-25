@@ -7,7 +7,6 @@ use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::client::{clear_urgency_hint_x11, set_focus_x11, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
-use crate::globals::Globals;
 use crate::types::*;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -88,31 +87,6 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<
     }
 
     (target, selection_state_changed)
-}
-
-/// Persist the focused window as the top-most element in the monitor stack.
-///
-/// The backend restack path already raises the focused client visually, but
-/// later layout transitions rebuild Z-order from `mon.stack`. Keeping the
-/// stack in sync with focus avoids backend-specific drift when entering
-/// overlapping layouts like monocle.
-fn sync_focus_to_monitor_stack(
-    globals: &mut Globals,
-    monitor_id: MonitorId,
-    target: Option<WindowId>,
-) {
-    let Some(target) = target else {
-        return;
-    };
-
-    let Some(mon) = globals.monitor_mut(monitor_id) else {
-        return;
-    };
-
-    if mon.stack.contains(&target) {
-        mon.stack.retain(|&w| w != target);
-        mon.stack.push(target);
-    }
 }
 
 /// Backend-specific focus operations trait.
@@ -254,10 +228,6 @@ fn focus_generic(
         backend.unfocus_current(core, cur_win);
     }
 
-    if current_sel != target {
-        sync_focus_to_monitor_stack(core.globals_mut(), sel_mon_id, target);
-    }
-
     if selection_state_changed {
         backend.on_selection_changed(core);
     }
@@ -279,51 +249,6 @@ fn focus_generic(
         changed: focus_changed,
         monitor_id: sel_mon_id,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::sync_focus_to_monitor_stack;
-    use crate::globals::Globals;
-    use crate::types::{Monitor, WindowId};
-
-    #[test]
-    fn sync_focus_moves_target_to_top_of_stack() {
-        let mut globals = Globals::default();
-        let mut mon = Monitor::default();
-        mon.stack = vec![
-            WindowId::from(1_u32),
-            WindowId::from(2_u32),
-            WindowId::from(3_u32),
-        ];
-        globals.monitors.push(mon);
-
-        sync_focus_to_monitor_stack(&mut globals, 0, Some(WindowId::from(2_u32)));
-
-        assert_eq!(
-            globals.monitor(0).unwrap().stack,
-            vec![
-                WindowId::from(1_u32),
-                WindowId::from(3_u32),
-                WindowId::from(2_u32)
-            ]
-        );
-    }
-
-    #[test]
-    fn sync_focus_ignores_windows_outside_stack() {
-        let mut globals = Globals::default();
-        let mut mon = Monitor::default();
-        mon.stack = vec![WindowId::from(1_u32), WindowId::from(2_u32)];
-        globals.monitors.push(mon);
-
-        sync_focus_to_monitor_stack(&mut globals, 0, Some(WindowId::from(9_u32)));
-
-        assert_eq!(
-            globals.monitor(0).unwrap().stack,
-            vec![WindowId::from(1_u32), WindowId::from(2_u32)]
-        );
-    }
 }
 
 /// Set focus to a window, or to the root if None.
