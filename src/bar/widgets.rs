@@ -51,7 +51,7 @@ pub(crate) fn draw_tag_indicators(
     m: &Monitor,
     mut x: i32,
     occupied_tags: TagMask,
-    urg: u32,
+    urg: TagMask,
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
@@ -94,7 +94,7 @@ pub(crate) fn draw_tag_indicators(
             bar_height,
             lpad as i32,
             t.label,
-            urg & (1 << t.tag_index) != 0,
+            urg.contains(t.tag_index + 1),
             detail_height,
         );
 
@@ -314,14 +314,14 @@ pub(crate) fn draw_window_titles(
         // draw their own clients, not the selected monitor's clients.
         let wins: Vec<WindowId> = m
             .iter_clients(ctx.globals().clients.map())
-            .filter_map(|(c_win, c)| c.is_visible_on_tags(selected).then_some(c_win))
+            .filter_map(|(c_win, c)| c.is_visible(selected).then_some(c_win))
             .collect();
 
         for c_win in wins {
             let Some(c) = ctx.globals().clients.get(&c_win) else {
                 continue;
             };
-            if !c.is_visible_on_tags(selected) {
+            if !c.is_visible(selected) {
                 continue;
             }
 

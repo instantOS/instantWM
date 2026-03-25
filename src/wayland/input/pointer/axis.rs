@@ -8,6 +8,7 @@ use smithay::utils::Point;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::ToggleSetting;
 use crate::wayland::common::modifiers_to_x11_mask;
+use crate::wm::Wm;
 
 use crate::wayland::input::bar::{dispatch_wayland_bar_scroll, update_wayland_bar_hit_state};
 
@@ -47,14 +48,15 @@ fn resolve_natural_scroll(
 
 /// Handle pointer axis (scroll) events.
 pub fn handle_pointer_axis<B: InputBackend>(
+    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    let scroll_factor = resolve_scroll_factor(&state.wm.g.cfg.input);
-    let natural_scroll = resolve_natural_scroll(&state.wm.g.cfg.input);
+    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let natural_scroll = resolve_natural_scroll(&wm.g.cfg.input);
 
     // Negate scroll factor when natural scroll is enabled to flip the direction
     let direction_modifier = if natural_scroll { -1.0 } else { 1.0 };
@@ -86,12 +88,12 @@ pub fn handle_pointer_axis<B: InputBackend>(
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0) {
         let root_x = pointer_location.x.round() as i32;
         let root_y = pointer_location.y.round() as i32;
-        if let Some(pos) = update_wayland_bar_hit_state(&mut state.wm, root_x, root_y, true) {
+        if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
-            dispatch_wayland_bar_scroll(&mut state.wm, pos, delta, root_x, root_y, clean_state);
+            dispatch_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);
         }
     }
 

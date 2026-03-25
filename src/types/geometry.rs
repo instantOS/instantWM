@@ -234,21 +234,21 @@ impl Rect {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SizeHints {
     /// Base width for size calculations.
-    pub base_width: i32,
+    pub basew: i32,
     /// Base height for size calculations.
-    pub base_height: i32,
+    pub baseh: i32,
     /// Width increment for sizing steps.
     pub incw: i32,
     /// Height increment for sizing steps.
     pub inch: i32,
     /// Maximum allowed width.
-    pub max_width: i32,
+    pub maxw: i32,
     /// Maximum allowed height.
-    pub max_height: i32,
+    pub maxh: i32,
     /// Minimum allowed width.
-    pub min_weight: i32,
+    pub minw: i32,
     /// Minimum allowed height.
-    pub min_height: i32,
+    pub minh: i32,
     /// Minimum aspect ratio numerator.
     pub min_aspect_num: i32,
     /// Minimum aspect ratio denominator.
@@ -263,7 +263,7 @@ impl SizeHints {
     /// Check if base size equals min size.
     #[inline]
     pub fn base_is_min(&self) -> bool {
-        self.base_width == self.min_weight && self.base_height == self.min_height
+        self.basew == self.minw && self.baseh == self.minh
     }
 
     /// Apply size constraints to the given dimensions.
@@ -284,8 +284,8 @@ impl SizeHints {
 
         // Step 1: subtract base size before aspect / increment checks.
         if !base_is_min {
-            w -= self.base_width;
-            h -= self.base_height;
+            w -= self.basew;
+            h -= self.baseh;
         }
 
         // Step 2: enforce aspect ratio.
@@ -300,8 +300,8 @@ impl SizeHints {
 
         // Step 3: when base == min, subtract base *after* the aspect check.
         if base_is_min {
-            w -= self.base_width;
-            h -= self.base_height;
+            w -= self.basew;
+            h -= self.baseh;
         }
 
         // Step 4: snap to resize increments.
@@ -313,14 +313,14 @@ impl SizeHints {
         }
 
         // Step 5: re-add base and clamp to [min, max].
-        w = (w + self.base_width).max(self.min_weight);
-        h = (h + self.base_height).max(self.min_height);
+        w = (w + self.basew).max(self.minw);
+        h = (h + self.baseh).max(self.minh);
 
-        if self.max_width != 0 {
-            w = w.min(self.max_width);
+        if self.maxw != 0 {
+            w = w.min(self.maxw);
         }
-        if self.max_height != 0 {
-            h = h.min(self.max_height);
+        if self.maxh != 0 {
+            h = h.min(self.maxh);
         }
 
         (w, h)
@@ -329,10 +329,7 @@ impl SizeHints {
     /// Check if this represents a fixed-size window (max == min != 0).
     #[inline]
     pub fn is_fixed(&self) -> bool {
-        self.max_width != 0
-            && self.max_height != 0
-            && self.max_width == self.min_weight
-            && self.max_height == self.min_height
+        self.maxw != 0 && self.maxh != 0 && self.maxw == self.minw && self.maxh == self.minh
     }
 }
 

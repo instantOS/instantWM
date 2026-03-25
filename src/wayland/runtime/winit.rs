@@ -4,13 +4,12 @@
 //! Wayland or X11 session.
 
 use std::process::exit;
-use std::time::Duration;
 
 use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::reexports::calloop::EventLoop;
+use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
 use crate::backend::Backend as WmBackend;
@@ -28,131 +27,6 @@ use crate::wayland::input::{
 };
 use crate::wayland::render::winit::render_frame;
 use crate::wm::Wm;
-use smithay::backend::winit::WinitGraphicsBackend;
-use smithay::input::keyboard::KeyboardHandle;
-use smithay::input::pointer::PointerHandle;
-use smithay::output::Output;
-use std::time::Instant;
-
-/// Handle winit events (input, resize, close).
-fn handle_winit_event(
-    event: WinitEvent,
-    state: &mut WaylandState,
-    output: &Output,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    pointer_handle: &PointerHandle<WaylandState>,
-    loop_signal: &smithay::reexports::calloop::LoopSignal,
-) {
-    match event {
-        WinitEvent::Resized { size, .. } => {
-            crate::wayland::input::handle_resize(&mut state.wm, output, size.w, size.h);
-        }
-        WinitEvent::Input(event) => match event {
-            InputEvent::Keyboard { event } => {
-                handle_keyboard(state, keyboard_handle, event);
-            }
-            InputEvent::PointerMotionAbsolute { event } => {
-                let size = (state.wm.g.cfg.screen_width, state.wm.g.cfg.screen_height);
-                let motion_event = motion_event_from_winit(event, size.into());
-                handle_pointer_motion(state, pointer_handle, keyboard_handle, motion_event);
-            }
-            InputEvent::PointerButton { event } => {
-                let pointer_location = state.pointer_location;
-                handle_pointer_button(
-                    state,
-                    pointer_handle,
-                    keyboard_handle,
-                    event,
-                    pointer_location,
-                );
-            }
-            InputEvent::PointerAxis { event } => {
-                let pointer_location = state.pointer_location;
-                handle_pointer_axis(
-                    state,
-                    pointer_handle,
-                    keyboard_handle,
-                    event,
-                    pointer_location,
-                );
-            }
-            _ => {}
-        },
-        WinitEvent::CloseRequested => {
-            loop_signal.stop();
-        }
-        _ => {}
-    }
-}
-
-/// Run one iteration of the main event loop.
-fn event_loop_tick(
-    state: &mut WaylandState,
-    backend: &mut WinitGraphicsBackend<GlesRenderer>,
-    output: &Output,
-    damage_tracker: &mut smithay::backend::renderer::damage::OutputDamageTracker,
-    pointer_handle: &PointerHandle<WaylandState>,
-    display_handle: &mut smithay::reexports::wayland_server::DisplayHandle,
-    loop_signal: &smithay::reexports::calloop::LoopSignal,
-    start_time: Instant,
-) {
-    let mut needs_render = false;
-
-    if state.wm.g.dirty.layout {
-        needs_render = true;
-    }
-    let mut ctx = state.wm.ctx();
-    crate::runtime::arrange_layout_if_dirty(&mut ctx);
-    crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
-
-    // Winit has no libinput devices to reconfigure, but clear the
-    // flag so it doesn't stay dirty forever (scroll_factor is
-    // already applied at the compositor level in handle_pointer_axis).
-    state.wm.g.dirty.input_config = false;
-
-    state.popups.cleanup();
-    state.refresh_popup_grab();
-
-    // Drain and execute commands BEFORE sync/render so that
-    // map/unmap from show_hide_wayland takes effect in the Space
-    // before we build render elements.
-    super::common::drain_and_execute_ops(state);
-
-    if super::common::sync_space_if_dirty(state) {
-        needs_render = true;
-    }
-
-    if apply_pending_warp(state, pointer_handle) {
-        needs_render = true;
-    }
-
-    if state.has_active_window_animations() {
-        needs_render = true;
-    }
-
-    // Surface commits from client windows set content_dirty_pending.
-    if state.content_dirty_pending {
-        state.content_dirty_pending = false;
-        needs_render = true;
-    }
-
-    if needs_render {
-        render_frame(state, backend, output, damage_tracker, start_time);
-    }
-
-    // Second drain pass for any commands queued during execute_command
-    // or render (e.g. surface lifecycle callbacks).
-    super::common::drain_and_execute_ops(state);
-
-    // Sync caches
-    if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
-        data.backend.sync_cache(state);
-    }
-
-    if display_handle.flush_clients().is_err() {
-        loop_signal.stop();
-    }
-}
 
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
@@ -166,34 +40,38 @@ pub fn run() -> ! {
     let loop_handle = event_loop.handle();
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
-    let mut display_handle = display.handle();
+    let mut state = WaylandState::new(display, &loop_handle);
+    state.attach_wm(&mut wm);
+    if let WmBackend::Wayland(data) = &mut wm.backend {
+        data.backend.attach_state(&mut state);
+    }
+
+    crate::runtime::init_keyboard_layout(&mut wm);
 
     let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
-    let dmabuf_formats: Vec<_> = backend.renderer().dmabuf_formats().into_iter().collect();
-    let egl_display = backend.renderer().egl_context().display().clone();
-    let mut state = WaylandState::new(display, &loop_handle, *wm, None);
-
-    let mut ctx = state.wm.ctx();
-    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-
-    state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
-    state.bind_egl_to_display(backend.renderer());
+    state.attach_renderer(backend.renderer());
+    state.init_dmabuf_global(
+        backend.renderer().dmabuf_formats().into_iter().collect(),
+        Some(backend.renderer().egl_context().display()),
+    );
     state.init_screencopy_manager();
 
     let output_size = backend.window_size();
     let (initial_w, initial_h) =
         crate::wayland::common::sanitize_wayland_size(output_size.w, output_size.h);
-    state.wm.g.cfg.screen_width = initial_w;
-    state.wm.g.cfg.screen_height = initial_h;
-    update_geom(&mut state.wm.ctx());
+    wm.g.cfg.screen_width = initial_w;
+    wm.g.cfg.screen_height = initial_h;
+    update_geom(&mut wm.ctx());
+
+    // Store initial window size for the calloop source callback.
+    state.winit_window_size = output_size;
 
     let output = state.create_output("winit", initial_w, initial_h);
     let mut damage_tracker =
         smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
 
-    // Clone handles to avoid borrow conflicts when passing to handlers
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
@@ -201,70 +79,124 @@ pub fn run() -> ! {
     spawn_xwayland(&state, &loop_handle);
 
     // Initialize Wayland systray runtime - only applicable for Wayland backend
-    if let WmBackend::Wayland(data) = &mut state.wm.backend {
+    if let WmBackend::Wayland(data) = &mut wm.backend {
         data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
     }
 
     run_autostart();
     spawn_wayland_smoke_window();
-    let ipc_server = crate::ipc::IpcServer::bind().ok();
+    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
-    // Setup IPC as event-driven calloop source
-    if let Some(ipc) = ipc_server {
-        super::calloop_helpers::setup_ipc_source(loop_handle.clone(), ipc, move |ipc, state| {
-            if ipc.process_pending(&mut state.wm) {
-                state.wm.g.dirty.layout = true;
-                let mut ctx = state.wm.ctx();
-                crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
-                state.wm.g.dirty.space = true;
-            }
-        });
-    }
+    crate::runtime::register_ipc_source(&loop_handle, &ipc_server);
 
-    // Setup animation timer
-    super::calloop_helpers::setup_animation_timer(
-        loop_handle.clone(),
-        |state| state.tick_window_animations(),
-        |state| state.has_active_window_animations(),
-    );
-
-    // Register winit as a proper calloop event source
-    let loop_signal = event_loop.get_signal();
-    let loop_signal_for_winit = loop_signal.clone();
-    let output_for_winit = output.clone();
-    let keyboard_handle_for_winit = keyboard_handle.clone();
-    let pointer_handle_for_winit = pointer_handle.clone();
+    // ── Winit event source ──────────────────────────────────────────────
+    // Insert the winit event loop as a calloop source so host window
+    // events (input, resize, close) wake the event loop immediately
+    // instead of requiring periodic polling.
+    let kb = keyboard_handle.clone();
+    let ptr = pointer_handle.clone();
     loop_handle
-        .insert_source(winit_loop, move |event, (), state| {
-            handle_winit_event(
-                event,
-                state,
-                &output_for_winit,
-                &keyboard_handle_for_winit,
-                &pointer_handle_for_winit,
-                &loop_signal_for_winit,
-            );
+        .insert_source(winit_loop, move |event, _, state| match event {
+            WinitEvent::Resized { size, .. } => {
+                state.winit_window_size = size;
+                state.pending_winit_resize = Some((size.w, size.h));
+            }
+            WinitEvent::Input(event) => {
+                dispatch_winit_input(state, &kb, &ptr, event);
+            }
+            WinitEvent::CloseRequested => {
+                state.winit_close_requested = true;
+            }
+            WinitEvent::Redraw | WinitEvent::Focus(_) => {}
         })
-        .expect("failed to insert winit event source");
+        .expect("failed to insert winit source");
 
-    let start_time = Instant::now();
-    let ctx = state.wm.ctx();
-    let core = ctx.core();
-    crate::runtime::spawn_status_bar(core);
+    let start_time = std::time::Instant::now();
 
+    crate::runtime::spawn_status_bar(&wm);
+
+    // ── Animation timer (on-demand) ─────────────────────────────────────
+    let anim_guard = crate::runtime::AnimationTimerGuard::new();
+    let loop_handle_for_timer = event_loop.handle();
+
+    let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
-        .run(Duration::from_millis(16), &mut state, move |state| {
-            event_loop_tick(
+        .run(None, &mut state, move |state| {
+            // ── 1. Process buffered winit resize/close ──────────────────
+            if let Some((w, h)) = state.pending_winit_resize.take() {
+                crate::wayland::input::handle_resize(&mut wm, state, &output, w, h);
+            }
+            if state.winit_close_requested {
+                loop_signal.stop();
+                return;
+            }
+
+            // ── 2. Shared tick: layout, IPC, monitor config ─────────────
+            super::common::event_loop_tick(&mut wm, state, &mut ipc_server);
+
+            // Winit has no libinput devices to reconfigure, but clear the
+            // flag so it doesn't stay dirty forever (scroll_factor is
+            // already applied at the compositor level in handle_pointer_axis).
+            wm.g.dirty.input_config = false;
+
+            super::common::sync_space_if_dirty(&mut wm, state);
+
+            // ── 3. Arm animation timer if needed ────────────────────────
+            anim_guard.ensure_armed(
+                state.has_active_window_animations(),
+                &loop_handle_for_timer,
+                |_state| {
+                    // Timer wakes the loop; animation ticking + render
+                    // happen in the main body on the next iteration.
+                    _state.has_active_window_animations()
+                },
+            );
+
+            // Apply any compositor-side cursor warp requested during this tick
+            // (e.g. from a warp-to-focus keybinding or IPC command).
+            apply_pending_warp(state, &pointer_handle);
+
+            render_frame(
+                &mut wm,
                 state,
                 &mut backend,
                 &output,
                 &mut damage_tracker,
-                &pointer_handle,
-                &mut display_handle,
-                &loop_signal,
                 start_time,
             );
+
+            if state.display_handle.flush_clients().is_err() {
+                loop_signal.stop();
+            }
         })
         .expect("wayland event loop run");
     exit(0);
+}
+
+/// Dispatch a winit input event using the WM back-reference in WaylandState.
+fn dispatch_winit_input(
+    state: &mut WaylandState,
+    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
+    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+    event: InputEvent<smithay::backend::winit::WinitInput>,
+) {
+    state.with_wm_mut_unified(|wm, state| match event {
+        InputEvent::Keyboard { event } => {
+            handle_keyboard(wm, state, keyboard_handle, event);
+        }
+        InputEvent::PointerMotionAbsolute { event: motion } => {
+            let size = state.winit_window_size;
+            let motion_event = motion_event_from_winit(motion, size);
+            handle_pointer_motion(wm, state, pointer_handle, keyboard_handle, motion_event);
+        }
+        InputEvent::PointerButton { event: btn } => {
+            let loc = state.pointer_location;
+            handle_pointer_button(wm, state, pointer_handle, keyboard_handle, btn, loc);
+        }
+        InputEvent::PointerAxis { event: axis } => {
+            let loc = state.pointer_location;
+            handle_pointer_axis(wm, state, pointer_handle, keyboard_handle, axis, loc);
+        }
+        _ => {}
+    });
 }

@@ -4,7 +4,7 @@
 //! the new `TagMask` and `TagSelection` types.
 
 use crate::contexts::WmCtx;
-use crate::types::{TagMask, TagSelection};
+use crate::types::TagSelection;
 
 /// View tags using a type-safe selection.
 ///
@@ -12,7 +12,7 @@ use crate::types::{TagMask, TagSelection};
 /// semantic meaning and type safety.
 pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
     let num_tags = ctx.core().globals().tags.count();
-    let current_mask = TagMask::from_bits(ctx.core().globals().selected_monitor().selected_tags());
+    let current_mask = ctx.core().globals().selected_monitor().selected_tags();
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);

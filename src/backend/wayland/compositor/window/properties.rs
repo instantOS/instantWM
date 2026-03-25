@@ -59,7 +59,7 @@ impl WaylandState {
         let app_id = self.window_app_id(window).unwrap_or_default();
         let handle = self
             .foreign_toplevel_list_state
-            .new_toplevel::<WaylandState>(title, app_id);
+            .new_toplevel::<Self>(title, app_id);
         self.foreign_toplevel_handles.insert(window, handle);
     }
 
@@ -95,13 +95,18 @@ impl WaylandState {
 
     /// Ensure a client exists for the given window.
     pub(crate) fn ensure_client_for_window(&mut self, window: WindowId) {
-        if self.wm.g.clients.contains_key(&window) {
+        if self
+            .globals()
+            .is_some_and(|g| g.clients.contains_key(&window))
+        {
             return;
         }
 
         let props = self.window_properties(window);
 
-        let g = &mut self.wm.g;
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
         let monitor_id = g.selected_monitor_id();
         let (base_w, base_h) = g
             .monitor(monitor_id)
@@ -130,7 +135,7 @@ impl WaylandState {
         c.border_width = g.cfg.border_width_px;
         c.old_border_width = g.cfg.border_width_px;
         c.monitor_id = monitor_id;
-        c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
+        c.set_tag_mask(crate::client::initial_tags_for_monitor(g, c.monitor_id));
 
         g.clients.insert(window, c);
         crate::client::apply_rules(g, window, &props);
@@ -157,30 +162,6 @@ impl WaylandState {
             .values()
             .find(|w| w.x11_surface().is_some_and(|x11| x11 == surface))
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
-    }
-
-    /// Get the window for a surface, including unmanaged windows in the space.
-    /// This is needed for X11 override-redirect windows (like dmenu) that are
-    /// mapped to the space but not added to window_index.
-    pub(crate) fn window_for_surface(
-        &self,
-        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) -> Option<smithay::desktop::Window> {
-        self.space
-            .elements()
-            .find(|w| {
-                if w.wl_surface().as_deref() == Some(surface) {
-                    return true;
-                }
-                let mut found = false;
-                w.with_surfaces(|surf, _| {
-                    if surf == surface {
-                        found = true;
-                    }
-                });
-                found
-            })
-            .cloned()
     }
 
     /// Get the window ID for a surface.

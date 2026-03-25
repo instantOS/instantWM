@@ -61,7 +61,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let snap_targets: Vec<WindowId> = m
         .iter_clients(ctx.core_mut().globals_mut().clients.map())
         .filter_map(|(win, c)| {
-            (c.is_visible_on_tags(selected) && c.snap_status != SnapPosition::None).then_some(win)
+            (c.is_visible(selected) && c.snap_status != SnapPosition::None).then_some(win)
         })
         .collect();
 

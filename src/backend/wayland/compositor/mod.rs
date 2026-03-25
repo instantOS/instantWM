@@ -38,14 +38,14 @@ mod xdg_shell;
 mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
-pub use state::{SurfaceFrameThrottle, WaylandClientState, WaylandState, WindowIdMarker};
+pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
     delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_idle_inhibit,
-    delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output,
-    delegate_pointer_gestures, delegate_relative_pointer, delegate_seat, delegate_session_lock,
-    delegate_shm, delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration,
-    delegate_xdg_shell, delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
+    delegate_layer_shell, delegate_output, delegate_pointer_gestures, delegate_relative_pointer,
+    delegate_seat, delegate_session_lock, delegate_shm, delegate_viewporter,
+    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------
@@ -67,6 +67,5 @@ delegate_xdg_activation!(WaylandState);
 delegate_xdg_decoration!(WaylandState);
 delegate_xdg_shell!(WaylandState);
 delegate_session_lock!(WaylandState);
-delegate_keyboard_shortcuts_inhibit!(WaylandState);
 delegate_xwayland_keyboard_grab!(WaylandState);
 delegate_xwayland_shell!(WaylandState);

@@ -29,10 +29,6 @@ pub struct OutputSurfaceEntry {
     pub x_offset: i32,
     pub width: i32,
     pub height: i32,
-    pub frame_clock: crate::frame_clock::FrameClock,
-    pub last_render_duration: std::time::Duration,
-    /// Whether VRR (Variable Refresh Rate) is active on this output.
-    pub vrr_active: bool,
 }
 
 pub struct SharedDrmState {
@@ -43,15 +39,6 @@ pub struct SharedDrmState {
     pub completed_crtcs: Vec<crtc::Handle>,
     pub pending_crtcs: HashSet<crtc::Handle>,
     pub output_hit_regions: Vec<OutputHitRegion>,
-    /// Presentation times from VBlank events, keyed by CRTC
-    pub presentation_times: HashMap<crtc::Handle, std::time::Duration>,
-    /// CRTCs that have VRR enabled — these should not be re-marked dirty
-    /// on VBlank since they only present when a new frame is submitted.
-    pub vrr_crtcs: HashSet<crtc::Handle>,
-    /// Set when visual content has changed (input, layout, surface commits,
-    /// animations, etc.).  Non-VRR outputs only re-render on VBlank when
-    /// this is true, skipping idle frames entirely.
-    pub content_dirty: bool,
 }
 
 impl SharedDrmState {
@@ -64,9 +51,6 @@ impl SharedDrmState {
             completed_crtcs: Vec::new(),
             pending_crtcs: HashSet::new(),
             output_hit_regions: Vec::new(),
-            presentation_times: HashMap::new(),
-            vrr_crtcs: HashSet::new(),
-            content_dirty: true,
         }
     }
 
@@ -74,7 +58,6 @@ impl SharedDrmState {
         for flag in self.render_flags.values_mut() {
             *flag = true;
         }
-        self.content_dirty = true;
     }
 
     pub fn mark_dirty(&mut self, crtc: crtc::Handle) {
@@ -83,23 +66,7 @@ impl SharedDrmState {
         }
     }
 
-    /// Mark content as changed.  Non-VRR outputs will re-render on the next
-    /// VBlank.  If already dirty, this is a no-op (avoids redundant work).
-    pub fn mark_content_dirty(&mut self) {
-        self.content_dirty = true;
-        // For VRR, we want to render immediately when content is dirty.
-        // For non-VRR, we should also trigger an immediate render if no
-        // page flip is currently in flight, to "kick" the render loop out
-        // of idle.  If a flip is in flight, the VBlank handler will handle it.
-        for (crtc, flag) in self.render_flags.iter_mut() {
-            if self.vrr_crtcs.contains(crtc) || !self.pending_crtcs.contains(crtc) {
-                *flag = true;
-            }
-        }
-    }
-
     pub fn mark_pointer_output_dirty(&mut self, px: i32) {
-        self.content_dirty = true;
         for entry in &self.output_hit_regions {
             if px >= entry.x_offset && px < entry.x_offset + entry.width {
                 self.mark_dirty(entry.crtc);
@@ -107,13 +74,6 @@ impl SharedDrmState {
             }
         }
         self.mark_all_dirty();
-    }
-
-    /// Clear the content-dirty flag after a successful render cycle.
-    /// Non-VRR outputs will skip re-rendering on subsequent VBlanks
-    /// until something sets this flag again.
-    pub fn clear_content_dirty(&mut self) {
-        self.content_dirty = false;
     }
 }
 

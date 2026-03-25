@@ -7,7 +7,7 @@ use crate::types::*;
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientBarStats {
     pub occupied_tags: TagMask,
-    pub urgent_tags: u32,
+    pub urgent_tags: TagMask,
     pub visible_clients: i32,
 }
 
@@ -19,7 +19,7 @@ impl ClientBarStats {
 
         // ── Pass 1: visible_clients via the linked list ───────────────────
         for (_win, client) in monitor.iter_clients(globals.clients.map()) {
-            if client.is_visible_on_tags(selected) {
+            if client.is_visible(selected) {
                 stats.visible_clients += 1;
             }
         }
@@ -33,7 +33,7 @@ impl ClientBarStats {
             }
             occupied |= client.tags;
             if client.is_urgent {
-                stats.urgent_tags |= client.tags;
+                stats.urgent_tags = stats.urgent_tags | TagMask::from_bits(client.tags);
             }
         }
         stats.occupied_tags = TagMask::from_bits(occupied).without_scratchpad();
@@ -160,7 +160,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let selected = mon.selected_tags();
     let visible_clients: Vec<WindowId> = mon
         .iter_clients(core.globals().clients.map())
-        .filter_map(|(win, c)| c.is_visible_on_tags(selected).then_some(win))
+        .filter_map(|(win, c)| c.is_visible(selected).then_some(win))
         .collect();
 
     let mut title_ranges: Vec<TitleHitRange> = Vec::new();

@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::ptr::NonNull;
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -9,7 +10,7 @@ use smithay::{
     backend::drm::DrmNode,
     backend::egl::{EGLDevice, EGLDisplay},
     backend::renderer::gles::GlesRenderer,
-    desktop::{PopupGrab, PopupManager, Space, Window},
+    desktop::{PopupManager, Space, Window},
     input::{
         Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
@@ -25,7 +26,6 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         idle_inhibit::IdleInhibitManagerState,
-        keyboard_shortcuts_inhibit::KeyboardShortcutsInhibitState,
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
         relative_pointer::RelativePointerManagerState,
@@ -45,21 +45,12 @@ use smithay::{
 };
 
 use crate::config::config_toml::CursorConfig;
+use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
-
-pub struct SurfaceFrameThrottle {
-    pub last_sent: Option<(smithay::output::Output, u32)>,
-}
-
-impl Default for SurfaceFrameThrottle {
-    fn default() -> Self {
-        Self { last_sent: None }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Per-client state
@@ -102,7 +93,6 @@ pub struct WaylandState {
     // -- Desktop abstractions --
     pub space: Space<Window>,
     pub popups: PopupManager,
-    pub popup_grab: Option<PopupGrab<WaylandState>>,
 
     // -- Protocol states --
     pub compositor_state: CompositorState,
@@ -124,11 +114,15 @@ pub struct WaylandState {
     pub viewporter_state: ViewporterState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub session_lock_manager_state: SessionLockManagerState,
+    /// Current session lock state.
     pub lock_state: SessionLockState,
+    /// Lock surfaces per output (keyed by output name).
     pub lock_surfaces: HashMap<String, LockSurface>,
-    pub keyboard_shortcuts_inhibit_state: KeyboardShortcutsInhibitState,
+    /// Surfaces that have active idle inhibitors.
     pub idle_inhibiting_surfaces: HashSet<WlSurface>,
+    /// DRM node used for rendering, needed to tag imported dmabufs.
     pub(super) render_node: Option<DrmNode>,
+    renderer: Option<NonNull<GlesRenderer>>,
 
     // -- Input --
     pub seat: Seat<WaylandState>,
@@ -142,40 +136,64 @@ pub struct WaylandState {
     pub xwm: Option<X11Wm>,
     pub xdisplay: Option<u32>,
 
-    // -- WM state (owned) --
-    pub wm: Wm,
-
-    // -- Renderer --
-    pub renderer: Option<GlesRenderer>,
-
-    // -- Pending dmabuf imports (used by winit path where renderer is not stored) --
-    pub pending_dmabuf_imports: Vec<(
-        smithay::backend::allocator::dmabuf::Dmabuf,
-        smithay::wayland::dmabuf::ImportNotifier,
-    )>,
-
     // -- Internal state --
     pub(super) next_window_id: u32,
+    /// Back-reference to the main WM state.
+    ///
+    /// This is a raw pointer because `Wm` owns the `Backend`, which in turn
+    /// wants to reference `WaylandState`. Since `WaylandState` is owned by
+    /// the event loop, a standard `Rc/RefCell` cycle would be difficult
+    /// to manage and performantly access from Smithay's handlers.
+    wm: Option<NonNull<Wm>>,
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     pub(super) window_animations: HashMap<WindowId, WaylandWindowAnimation>,
+    /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
+
+    /// Pending screencopy frames waiting to be fulfilled during the next render.
     pub pending_screencopies: Vec<PendingScreencopy>,
+
+    /// Toplevel surfaces that have not yet committed a buffer.
+    ///
+    /// Some clients (e.g. clipboard tools like `wl-copy`) create an XDG
+    /// toplevel surface but never render anything into it.  Deferring
+    /// window creation until the first buffer commit avoids a spurious
+    /// layout rearrange that the user would see as a brief window shift.
     pub(super) pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
+
+    /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
+    /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
+
+    /// Current pointer location in logical coordinates.
+    /// Stored centrally to ensure consistent state across backends.
     pub pointer_location: Point<f64, Logical>,
+
+    /// Channel to notify the DRM backend loop of keyboard LED state changes.
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
+
+    /// Current drag-and-drop icon surface.
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-    /// Set to true when a client surface commits new content.  The DRM event
-    /// loop checks and clears this, calling `mark_content_dirty` to ensure
-    /// the next VBlank schedules a render.
-    pub content_dirty_pending: bool,
-    /// Monotonic sequence number for frame callback throttle.
-    /// Incremented after each render cycle completes.
-    pub frame_callback_sequence: u32,
-    /// Per-surface frame callback throttle state.
-    pub surface_frame_throttle: HashMap<WlSurface, SurfaceFrameThrottle>,
+
+    /// Cached winit window size for the nested backend.
+    ///
+    /// Updated by the winit calloop source callback on `Resized` events;
+    /// read by input handlers that need the window dimensions to transform
+    /// absolute pointer coordinates.
+    pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
+
+    /// Pending resize from the winit calloop source.
+    ///
+    /// The source callback cannot call `handle_resize` directly because it
+    /// needs `&Output` which lives in the runtime function.  Instead we
+    /// buffer the new size here and the `run` closure applies it.
+    pub pending_winit_resize: Option<(i32, i32)>,
+
+    /// Set by the winit calloop source when a close is requested.
+    pub winit_close_requested: bool,
 }
 
 /// Tracks the current session lock state.
@@ -195,18 +213,15 @@ pub struct WindowIdMarker {
 
 impl WaylandState {
     /// Create a new `WaylandState` and register all Wayland globals.
-    pub fn new(
-        display: Display<WaylandState>,
-        handle: &LoopHandle<'static, WaylandState>,
-        wm: Wm,
-        renderer: Option<GlesRenderer>,
-    ) -> Self {
+    pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
         let dh = display.handle();
 
+        // Insert the Wayland display as a calloop source so that protocol
+        // messages from connected clients are dispatched on each loop tick.
         handle
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
-                |_, display, data: &mut WaylandState| {
+                |_, display, data| {
                     let dispatch_result = catch_unwind(AssertUnwindSafe(|| unsafe {
                         display.get_mut().dispatch_clients(data)
                     }));
@@ -227,16 +242,16 @@ impl WaylandState {
             .expect("Failed to insert Wayland display source");
 
         // -- Protocol globals --
-        let compositor_state = CompositorState::new::<WaylandState>(&dh);
-        let shm_state = ShmState::new::<WaylandState>(&dh, vec![]);
-        let xdg_shell_state = XdgShellState::new::<WaylandState>(&dh);
-        let xdg_decoration_state = XdgDecorationState::new::<WaylandState>(&dh);
-        let xdg_activation_state = XdgActivationState::new::<WaylandState>(&dh);
-        let output_manager_state = OutputManagerState::new_with_xdg_output::<WaylandState>(&dh);
-        let data_device_state = DataDeviceState::new::<WaylandState>(&dh);
-        let xwayland_shell_state = XWaylandShellState::new::<WaylandState>(&dh);
-        let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<WaylandState>(&dh);
-        let wlr_layer_shell_state = WlrLayerShellState::new::<WaylandState>(&dh);
+        let compositor_state = CompositorState::new::<Self>(&dh);
+        let shm_state = ShmState::new::<Self>(&dh, vec![]);
+        let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
+        let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
+        let data_device_state = DataDeviceState::new::<Self>(&dh);
+        let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
+        let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
+        let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
@@ -244,10 +259,8 @@ impl WaylandState {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
-        let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
 
         // -- Seat (input devices) --
-        let cursor_config = wm.g.cfg.cursor.clone();
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat-0");
         let keyboard = seat
@@ -259,7 +272,6 @@ impl WaylandState {
             display_handle: dh,
             space: Space::default(),
             popups: PopupManager::default(),
-            popup_grab: None,
             compositor_state,
             shm_state,
             xdg_shell_state,
@@ -279,22 +291,21 @@ impl WaylandState {
             viewporter_state,
             idle_inhibit_manager_state,
             session_lock_manager_state,
-            keyboard_shortcuts_inhibit_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
             render_node: None,
+            renderer: None,
             seat,
             keyboard,
             pointer,
-            cursor_config,
+            cursor_config: CursorConfig::default(),
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             cursor_icon_override: None,
             xwm: None,
             xdisplay: None,
-            wm,
-            renderer,
             next_window_id: 1,
+            wm: None,
             tracked_devices: Vec::new(),
             last_configured_size: HashMap::new(),
             window_index: HashMap::new(),
@@ -306,44 +317,31 @@ impl WaylandState {
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
-            pending_dmabuf_imports: Vec::new(),
-            content_dirty_pending: false,
-            frame_callback_sequence: 0,
-            surface_frame_throttle: HashMap::new(),
+            winit_window_size: smithay::utils::Size::from((0, 0)),
+            pending_winit_resize: None,
+            winit_close_requested: false,
         }
     }
 
-    /// Temporarily extracts the renderer, calls `f` with both `&mut self` and
-    /// `&mut GlesRenderer`, then puts the renderer back. Restores the renderer
-    /// even if `f` panics, so we never leave `self.renderer` as `None`.
-    pub fn with_renderer<R>(
-        &mut self,
-        f: impl FnOnce(&mut WaylandState, &mut GlesRenderer) -> R,
-    ) -> R {
-        let mut renderer = self.renderer.take().expect("renderer missing (not DRM?)");
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self, &mut renderer)));
-        self.renderer = Some(renderer);
-        match result {
-            Ok(v) => v,
-            Err(p) => std::panic::resume_unwind(p),
-        }
-    }
-
-    pub fn bind_egl_to_display<R>(&self, renderer: &mut R)
-    where
-        R: smithay::backend::renderer::ImportEgl,
-    {
-        if let Err(err) = renderer.bind_wl_display(&self.display_handle) {
-            log::warn!("failed to bind egl to wayland display: {}", err);
-        }
-    }
-
+    /// Attach the GLES renderer.
+    ///
+    /// When `egl_display` is provided and a render DRM node can be resolved
+    /// from it, we advertise `zwp_linux_dmabuf_feedback_v1` **v4** which
+    /// includes the device node identifier.  GPU-accelerated clients (kitty,
+    /// wlroots apps, etc.) use this to discover which DRM device to open for
+    /// dmabuf allocation and to choose zero-copy import paths — without it
+    /// Mesa/EGL falls back to software rendering and emits warnings like
+    /// "failed to get driver name" / "failed to retrieve device information".
+    ///
+    /// Falls back to the plain v3 global (formats only, no device) when no
+    /// EGL display is given or the node cannot be resolved.
     pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
         if self.dmabuf_global.is_some() {
             return;
         }
 
+        // Attempt to get the render DrmNode from the EGL display so we can
+        // advertise zwp_linux_dmabuf_feedback_v1 v4 with a proper device id.
         let render_node: Option<DrmNode> = egl_display.and_then(|display| {
             EGLDevice::device_for_display(display)
                 .map_err(|err| {
@@ -360,6 +358,7 @@ impl WaylandState {
                 })
         });
 
+        // Store the render node so we can tag imported dmabufs with it.
         self.render_node = render_node;
 
         self.dmabuf_global = Some(if let Some(node) = self.render_node {
@@ -368,17 +367,73 @@ impl WaylandState {
                 .build()
                 .expect("DmabufFeedbackBuilder::build");
             self.dmabuf_state
-                .create_global_with_default_feedback::<WaylandState>(
-                    &self.display_handle,
-                    &feedback,
-                )
+                .create_global_with_default_feedback::<Self>(&self.display_handle, &feedback)
         } else {
             log::info!("dmabuf: no render node available, falling back to zwp_linux_dmabuf_v1 v3");
             self.dmabuf_state
-                .create_global::<WaylandState>(&self.display_handle, formats)
+                .create_global::<Self>(&self.display_handle, formats)
         });
     }
 
+    /// Attach the GLES renderer.
+    #[allow(unexpected_cfgs)]
+    pub fn attach_renderer(&mut self, renderer: &mut GlesRenderer) {
+        self.renderer = Some(NonNull::from(renderer));
+        // Bind the compositor's Wayland display to the EGL display.  This
+        // enables the legacy EGL_WL_bind_wayland_display / wl_drm path that
+        // Mesa falls back to when zwp_linux_dmabuf_feedback_v1 v4 is
+        // unavailable.  Together with the v4 dmabuf feedback we advertise in
+        // init_dmabuf_global this ensures GPU clients like kitty never need
+        // to resort to software rendering.
+        #[cfg(feature = "use_system_lib")]
+        {
+            use smithay::backend::renderer::ImportEgl;
+            match renderer.bind_wl_display(&self.display_handle) {
+                Ok(()) => log::info!("EGL wl_drm hardware-acceleration enabled"),
+                Err(err) => log::debug!(
+                    "EGL wl_drm not available ({}); dmabuf v4 will be used instead",
+                    err
+                ),
+            }
+        }
+    }
+
+    /// Get mutable reference to the renderer.
+    pub(super) fn renderer_mut(&mut self) -> Option<&mut GlesRenderer> {
+        self.renderer.map(|mut p| unsafe { p.as_mut() })
+    }
+
+    /// Attach the WM to this state.
+    pub fn attach_wm(&mut self, wm: &mut Wm) {
+        self.cursor_config = wm.g.cfg.cursor.clone();
+        self.wm = Some(NonNull::from(wm));
+    }
+
+    #[inline]
+    pub(super) fn globals(&self) -> Option<&Globals> {
+        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
+    }
+
+    #[inline]
+    pub(super) fn globals_mut(&mut self) -> Option<&mut Globals> {
+        self.wm
+            .map(|mut p: NonNull<Wm>| unsafe { &mut p.as_mut().g })
+    }
+
+    /// Execute a closure with a mutable reference to the WM and WaylandState.
+    /// This is a specialized helper to avoid double-borrowing when we need
+    /// to pass `&mut WaylandState` to a function that also needs `&mut Wm`.
+    pub fn with_wm_mut_unified<T>(
+        &mut self,
+        f: impl FnOnce(&mut Wm, &mut WaylandState) -> T,
+    ) -> Option<T> {
+        self.wm.map(|mut p| {
+            let wm = unsafe { p.as_mut() };
+            f(wm, self)
+        })
+    }
+
+    /// Sync the Smithay space from the Globals state.
     pub fn sync_space_from_globals(&mut self) {
         let dead_windows: Vec<WindowId> = self
             .window_index
@@ -387,15 +442,23 @@ impl WaylandState {
             .collect();
 
         for win in dead_windows {
+            // Use the method from window.rs
             self.remove_window_tracking(win);
-            self.wm.g.detach(win);
-            self.wm.g.detach_stack(win);
-            self.wm.g.clients.remove(&win);
+            if let Some(g) = self.globals_mut() {
+                g.detach(win);
+                g.detach_stack(win);
+                g.clients.remove(&win);
+            }
         }
 
+        // Recover mon.sel if it was cleared by detach_stack, then
+        // re-apply seat focus so the Smithay seat doesn't point at a
+        // dead surface.
         self.restore_focus_after_overlay();
 
-        let g = &self.wm.g;
+        let Some(g) = self.globals() else {
+            return;
+        };
         let updates: Vec<(WindowId, Window, Rect, i32)> = self
             .space
             .elements()
@@ -406,6 +469,7 @@ impl WaylandState {
             })
             .collect();
         for (window_id, window, geo, bw) in updates {
+            // Use the method from window.rs
             let target_point = Point::from((geo.x + bw, geo.y + bw));
             self.set_window_target_location(window_id, window.clone(), target_point, false);
             let key = window
@@ -417,10 +481,11 @@ impl WaylandState {
             let unchanged = self
                 .last_configured_size
                 .get(&key)
-                .is_some_and(|s| *s == target);
+                .is_some_and(|&s| s == target);
             if !unchanged {
                 let size =
                     smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
+                // Use the method from window.rs
                 self.send_toplevel_configure(&window, Some(size));
                 self.last_configured_size.insert(key, target);
             }
@@ -428,6 +493,7 @@ impl WaylandState {
         self.raise_unmanaged_x11_windows();
     }
 
+    /// Set the keyboard layout.
     pub fn set_keyboard_layout(
         &mut self,
         layout: &str,
@@ -449,70 +515,14 @@ impl WaylandState {
         }
     }
 
+    /// Returns `true` if the session is currently locked.
     pub fn is_locked(&self) -> bool {
         matches!(self.lock_state, SessionLockState::Locked(_))
     }
 
+    /// Flush pending data to clients.
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
-    }
-
-    /// Convert a `KeyboardFocusTarget` to a `WindowId`.
-    ///
-    /// Returns the window ID if the focus target corresponds to a tracked window,
-    /// or `None` otherwise (e.g., focus on a raw surface or popup not in index).
-    pub(crate) fn keyboard_focus_to_window_id(
-        &self,
-        focus: &super::focus::KeyboardFocusTarget,
-    ) -> Option<crate::types::WindowId> {
-        use super::focus::KeyboardFocusTarget;
-        match focus {
-            KeyboardFocusTarget::Window(w) => w.user_data().get::<WindowIdMarker>().map(|m| m.id),
-            KeyboardFocusTarget::WlSurface(s) => self.window_id_for_surface(s),
-            KeyboardFocusTarget::Popup(p) => self.window_id_for_surface(p.wl_surface()),
-        }
-    }
-
-    /// Execute a command from the WM command queue.
-    pub fn execute_command(&mut self, cmd: crate::backend::wayland::WmCommand) {
-        use crate::backend::wayland::WmCommand;
-        match cmd {
-            WmCommand::ResizeWindow(id, rect) => self.resize_window(id, rect),
-            WmCommand::RaiseWindow(id) => self.raise_window(id),
-            WmCommand::Restack(ids) => self.restack(&ids),
-            WmCommand::SetFocus(id) => self.set_focus(id),
-            WmCommand::MapWindow(id) => self.map_window(id),
-            WmCommand::UnmapWindow(id) => self.unmap_window(id),
-            WmCommand::Flush => self.flush(),
-            WmCommand::WarpPointer(x, y) => self.request_warp(x, y),
-            WmCommand::CloseWindow(id) => {
-                self.close_window(id);
-            }
-            WmCommand::ClearKeyboardFocus => self.clear_seat_focus(),
-            WmCommand::SetCursorIconOverride(icon) => self.cursor_icon_override = icon,
-            WmCommand::SetKeyboardLayout {
-                layout,
-                variant,
-                options,
-                model,
-            } => {
-                self.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref());
-            }
-            WmCommand::SetMonitorConfig { name, config } => {
-                self.set_output_config(&name, &config);
-            }
-        }
-    }
-
-    pub fn refresh_popup_grab(&mut self) {
-        if let Some(ref mut grab) = self.popup_grab
-            && grab.has_ended()
-        {
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.unset_grab(self);
-            }
-            self.popup_grab = None;
-        }
     }
 }

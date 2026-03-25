@@ -1,9 +1,11 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
-    MonitorCommand, MonitorDirection, ScratchpadCommand, SpecialNext, TagCommand, ToggleCommand,
-    Transform, WindowCommand,
+    MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus, SpecialNext,
+    TagCommand, ToggleCommand, Transform, WindowCommand,
 };
+
+const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 
 #[derive(Debug, Clone)]
 pub struct KeyboardLayoutArg {
@@ -111,16 +113,21 @@ pub enum ScratchpadAction {
         all: bool,
     },
     Hide {
-        name: String,
+        name: Option<String>,
+        #[arg(short, long)]
+        all: bool,
     },
     Toggle {
         name: Option<String>,
     },
     #[command(alias = "make")]
     Create {
+        #[arg(default_value = "instantwm_scratchpad")]
         name: String,
         #[arg(long, short = 'w')]
         window_id: Option<u32>,
+        #[arg(long, default_value = "hidden")]
+        status: ScratchpadInitialStatus,
     },
     Delete {
         #[arg(long, short = 'w')]
@@ -398,14 +405,30 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     if all {
                         ScratchpadCommand::ShowAll
                     } else {
-                        ScratchpadCommand::Show(name)
+                        ScratchpadCommand::Show(Some(
+                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                        ))
                     }
                 }
-                ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
-                ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
-                ScratchpadAction::Create { name, window_id } => {
-                    ScratchpadCommand::Create { name, window_id }
+                ScratchpadAction::Hide { name, all } => {
+                    if all {
+                        ScratchpadCommand::HideAll
+                    } else {
+                        ScratchpadCommand::Hide(Some(
+                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                        ))
+                    }
                 }
+                ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
+                ScratchpadAction::Create {
+                    name,
+                    window_id,
+                    status,
+                } => ScratchpadCommand::Create {
+                    name,
+                    window_id,
+                    status,
+                },
                 ScratchpadAction::Delete { window_id } => ScratchpadCommand::Delete { window_id },
             };
             IpcCommand::Scratchpad(cmd)

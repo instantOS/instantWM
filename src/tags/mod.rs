@@ -19,8 +19,6 @@ pub use bar::get_tag_width;
 
 pub use naming::{name_tag, reset_name_tag};
 
-pub use client_tags::{follow_tag_ctx, set_client_tag_ctx, toggle_tag_ctx};
-
 pub use view::{
     follow_view, last_view, shift_view, toggle_fullscreen_overview, toggle_overview, win_view,
 };

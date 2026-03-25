@@ -2,7 +2,7 @@
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface, VrrSupport};
+use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface};
 use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -23,6 +23,7 @@ use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
 };
+use crate::wm::Wm;
 
 mod cursor;
 
@@ -110,20 +111,6 @@ pub fn build_output_surfaces(
         )
         .expect("GbmBufferedSurface::new");
 
-        // Enable VRR if the output supports it
-        let vrr_active = match gbm_surface.vrr_supported(conn_handle) {
-            Ok(VrrSupport::Supported | VrrSupport::RequiresModeset) => {
-                match gbm_surface.use_vrr(true) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        log::warn!("Failed to enable VRR: {e}");
-                        false
-                    }
-                }
-            }
-            _ => false,
-        };
-
         let (mode_w, mode_h) = mode.size();
         let (mode_w, mode_h) = (mode_w as i32, mode_h as i32);
         let output_name = format!(
@@ -132,14 +119,9 @@ pub fn build_output_surfaces(
             conn_info.interface_id()
         );
         log::info!(
-            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?} (VRR: {})",
+            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?}",
             mode.vrefresh(),
-            picked_crtc,
-            if vrr_active {
-                "enabled"
-            } else {
-                "not supported"
-            }
+            picked_crtc
         );
 
         let output = Output::new(
@@ -169,16 +151,6 @@ pub fn build_output_surfaces(
 
         let damage_tracker = OutputDamageTracker::from_output(&output);
 
-        // Calculate refresh interval for frame clock
-        let vrefresh = mode.vrefresh();
-        let refresh_interval = if vrefresh > 0 {
-            Some(std::time::Duration::from_micros(
-                1_000_000 / vrefresh as u64,
-            ))
-        } else {
-            None
-        };
-
         output_surfaces.push(OutputSurfaceEntry {
             crtc: picked_crtc,
             surface: gbm_surface,
@@ -187,9 +159,6 @@ pub fn build_output_surfaces(
             x_offset: output_x_offset,
             width: mode_w,
             height: mode_h,
-            frame_clock: crate::frame_clock::FrameClock::new(refresh_interval),
-            last_render_duration: std::time::Duration::from_micros(1000), // Initial estimate: 1ms
-            vrr_active,
         });
         output_x_offset += mode_w;
     }
@@ -217,6 +186,7 @@ fn connector_type_name(interface: connector::Interface) -> &'static str {
 }
 
 pub fn render_drm_output(
+    wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     entry: &mut OutputSurfaceEntry,
@@ -286,7 +256,7 @@ pub fn render_drm_output(
             }
         }
     } else {
-        let scene = build_common_scene_elements(state, renderer, entry.x_offset);
+        let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
         let space_render_elements = smithay::desktop::space::space_render_elements(
             renderer,
             [&state.space],
@@ -349,7 +319,6 @@ pub fn render_drm_output(
     }
 
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
-    state.frame_callback_sequence = state.frame_callback_sequence.wrapping_add(1);
     true
 }
 

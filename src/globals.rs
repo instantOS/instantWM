@@ -268,28 +268,6 @@ impl Default for WmBehavior {
     }
 }
 
-impl WmBehavior {
-    pub fn toggle_animated(&mut self, action: ToggleAction) {
-        action.apply(&mut self.animated);
-    }
-
-    pub fn set_special_next(&mut self, value: SpecialNext) {
-        self.specialnext = value;
-    }
-
-    pub fn toggle_focus_follows_mouse(&mut self, action: ToggleAction) {
-        action.apply(&mut self.focus_follows_mouse);
-    }
-
-    pub fn toggle_focus_follows_float_mouse(&mut self, action: ToggleAction) {
-        action.apply(&mut self.focus_follows_float_mouse);
-    }
-
-    pub fn toggle_double_draw(&mut self) {
-        self.double_draw = !self.double_draw;
-    }
-}
-
 /// Flags that signal pending work for the event loop.
 #[derive(Debug, Clone, Default)]
 pub struct DirtyFlags {
@@ -653,14 +631,13 @@ impl Globals {
         m: &Monitor,
         tag_index: u32,
         occupied_tags: TagMask,
-        urgent_tags: u32,
+        urgent_tags: TagMask,
         is_hover: bool,
     ) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeHover, SchemeTag};
-        use crate::types::TagMask;
 
         let tag_num = tag_index as usize + 1;
-        let scheme_idx = if TagMask::from_bits(urgent_tags).contains(tag_num) {
+        let scheme_idx = if urgent_tags.contains(tag_num) {
             SchemeTag::Urgent
         } else if occupied_tags.contains(tag_num) {
             let selmon = self.selected_monitor();
@@ -677,14 +654,14 @@ impl Globals {
 
             if is_selected && sel_has_tag {
                 SchemeTag::Focus
-            } else if TagMask::from_bits(m.selected_tags()).contains(tag_num) {
+            } else if m.selected_tags().contains(tag_num) {
                 SchemeTag::NoFocus
             } else if m.showtags == 0 {
                 SchemeTag::Filled
             } else {
                 SchemeTag::Inactive
             }
-        } else if m.selected_tags() & (1 << tag_index) != 0 {
+        } else if m.selected_tags().contains(tag_num) {
             SchemeTag::Empty
         } else {
             SchemeTag::Inactive

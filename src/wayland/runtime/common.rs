@@ -11,17 +11,47 @@
 //! behaviour (animation guards, dirty-space propagation, etc.).
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::wm::Wm;
 
 /// Arrange client layout when the dirty flag is set and no window
 /// animations are in progress.
 ///
 /// Delegates to the shared [`crate::runtime::arrange_layout_if_dirty`]
 /// but additionally checks for active Wayland window animations.
-pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
-    if state.wm.g.dirty.layout {
-        let mut ctx = state.wm.ctx();
-        crate::runtime::arrange_layout_if_dirty(&mut ctx);
+pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
+    if wm.g.dirty.layout && !state.has_active_window_animations() {
+        crate::runtime::arrange_layout_if_dirty(wm);
     }
+}
+
+/// Process pending IPC commands (Wayland wrapper).
+///
+/// Delegates to the shared [`crate::runtime::process_ipc_commands`] and
+/// additionally marks the layout dirty so the Wayland event loop re-arranges.
+///
+/// Returns `true` when at least one command was handled, so that
+/// backend-specific code can react (e.g. DRM marks all outputs dirty).
+pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: &mut Wm) -> bool {
+    let handled = crate::runtime::process_ipc_commands(ipc_server, wm);
+    if handled {
+        wm.g.dirty.layout = true;
+    }
+    handled
+}
+
+/// Run the shared Wayland per-tick housekeeping.
+///
+/// Returns `true` when at least one IPC command was handled so the caller can
+/// perform backend-specific invalidation.
+pub fn event_loop_tick(
+    wm: &mut Wm,
+    state: &WaylandState,
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+) -> bool {
+    arrange_layout_if_dirty(wm, state);
+    let handled = process_ipc_commands(ipc_server, wm);
+    crate::runtime::apply_monitor_config_if_dirty(wm);
+    handled
 }
 
 /// Synchronise the Smithay compositor space from WM globals when the
@@ -29,33 +59,12 @@ pub fn arrange_layout_if_dirty(state: &mut WaylandState) {
 ///
 /// Returns `true` when the space was dirty and got synchronised, so that
 /// backend-specific code can react (e.g. DRM marks all outputs dirty).
-///
-/// After syncing, any newly-started window animations are ticked
-/// immediately so the first frame reflects the correct positions even
-/// when the animation calloop timer is dormant (sleeping for 86400s).
-pub fn sync_space_if_dirty(state: &mut WaylandState) -> bool {
-    if state.wm.g.dirty.space {
-        state.wm.g.dirty.space = false;
+pub fn sync_space_if_dirty(wm: &mut Wm, state: &mut WaylandState) -> bool {
+    if wm.g.dirty.space {
+        wm.g.dirty.space = false;
         state.sync_space_from_globals();
-        state.tick_window_animations();
         true
     } else {
         false
-    }
-}
-
-/// Drain the WM command queue and execute each command on WaylandState.
-///
-/// Commands are queued by WM logic (e.g. `show_hide_wayland` pushes
-/// MapWindow/UnmapWindow).  They must be executed before building render
-/// elements so the Space reflects the correct visibility state.
-pub fn drain_and_execute_ops(state: &mut WaylandState) {
-    let ops = if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
-        data.backend.drain_ops()
-    } else {
-        Vec::new()
-    };
-    for op in ops {
-        state.execute_command(op);
     }
 }

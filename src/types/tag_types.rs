@@ -14,7 +14,10 @@ use crate::types::{MAX_TAGS, core::SCRATCHPAD_MASK};
 /// for common operations and prevents mixing with arbitrary `u32` values.
 ///
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
 pub struct TagMask(u32);
 
 impl TagMask {

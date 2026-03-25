@@ -3,16 +3,10 @@ use instantwm::ipc_types::{
     TagInfo, WindowGeometryInfo, WindowInfo, WmStatusInfo,
 };
 
-pub fn format_response(response: &Response, json: bool, socket_path: Option<&str>) {
+pub fn format_response(response: &Response, json: bool) {
     match response {
         Response::Ok => {}
         Response::Err(msg) => {
-            if let Some(socket) = socket_path
-                && let Some(version_msg) = super::ipc::IpcClient::check_version(socket)
-            {
-                eprintln!("ERR {}", version_msg);
-                std::process::exit(1);
-            }
             eprintln!("ERR {}", msg);
             std::process::exit(1);
         }

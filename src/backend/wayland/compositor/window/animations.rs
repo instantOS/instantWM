@@ -16,11 +16,13 @@ pub struct WaylandWindowAnimation {
 
 impl WaylandState {
     pub(crate) fn animations_enabled(&self) -> bool {
-        self.wm.g.behavior.animated
+        self.globals().map(|g| g.behavior.animated).unwrap_or(false)
     }
 
     pub(crate) fn interactive_motion_active(&self) -> bool {
-        self.wm.g.drag.interactive.active && self.wm.g.drag.interactive.dragging
+        self.globals()
+            .map(|g| g.drag.interactive.active && g.drag.interactive.dragging)
+            .unwrap_or(false)
     }
 
     pub(crate) fn set_window_target_location(
@@ -30,9 +32,16 @@ impl WaylandState {
         target: Point<i32, Logical>,
         remap: bool,
     ) {
-        // Use the client's stored geometry as the authoritative current position
-        // to avoid animating from stale locations after map/unmap cycles.
         let actual_loc = self.space.element_location(&element);
+
+        // Geometry updates for hidden/unmapped windows must not remap them as a
+        // side effect. The behavioral layer owns visibility; the backend should
+        // only move windows that are already mapped (or are being interactively
+        // remapped on purpose).
+        if actual_loc.is_none() && !remap {
+            self.window_animations.remove(&window_id);
+            return;
+        }
 
         // Do not update the location if it is visually already at the target
         // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
@@ -45,18 +54,18 @@ impl WaylandState {
         // to avoid animating from stale locations after map/unmap cycles.
         let current = actual_loc
             .or_else(|| {
-                self.wm
-                    .g
-                    .clients
-                    .get(&window_id)
-                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+                self.globals().and_then(|g| {
+                    g.clients
+                        .get(&window_id)
+                        .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
+                })
             })
             .unwrap_or(target);
 
         if !self.animations_enabled() || remap || current == target {
             self.window_animations.remove(&window_id);
             // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
-            self.space.map_element(element, target, false);
+            self.remap_element_preserving_z_order(&element, target, false);
             return;
         }
 
@@ -98,7 +107,7 @@ impl WaylandState {
         let mut finished: Vec<WindowId> = Vec::new();
         for (win, loc, done) in updates {
             if let Some(element) = self.find_window(win).cloned() {
-                self.space.map_element(element, loc, false);
+                self.remap_element_preserving_z_order(&element, loc, false);
             } else {
                 finished.push(win);
                 continue;

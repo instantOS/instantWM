@@ -138,11 +138,11 @@ fn assign_initial_monitor_and_tags(
         && let Some(tc) = g.clients.get(&tc_win)
     {
         c.monitor_id = tc.monitor_id;
-        c.tags = tc.tags;
+        c.set_tag_mask(crate::types::TagMask::from_bits(tc.tags));
         return;
     }
     c.monitor_id = g.selected_monitor_id();
-    c.tags = initial_tags_for_monitor(g, c.monitor_id);
+    c.set_tag_mask(crate::client::initial_tags_for_monitor(g, c.monitor_id));
 }
 
 fn insert_client_and_apply_rules(
@@ -440,7 +440,7 @@ fn run_manage_animation(
 /// visible on its target monitor.
 pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
     g.monitor(monitor_id)
-        .map(|m| m.selected_tags())
+        .map(|m| m.selected_tags_bits())
         .filter(|tags| *tags != 0)
         .unwrap_or(1)
 }
@@ -594,7 +594,7 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
         .map(|(i, _)| i);
 
     if let Some(client) = g.clients.get_mut(&w) {
-        client.tags = tags;
+        client.set_tag_mask(crate::types::TagMask::from_bits(tags));
         if let Some(mid) = target_mon {
             client.monitor_id = mid;
         }

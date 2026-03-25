@@ -38,23 +38,23 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
         core.globals()
             .clients
             .get(w)
-            .map(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
+            .map(|c| c.is_visible(selected))
             .unwrap_or(false)
     });
 
     if target.is_none() {
-        // Try focus history first
+        // Try focus history first.
         if let Some(&hist_win) = mon.tag_focus_history.get(&selected.bits())
             && core
                 .globals()
                 .clients
                 .get(&hist_win)
-                .is_some_and(|c| c.is_visible_on_tags(selected.bits()) && !c.is_hidden)
+                .is_some_and(|c| c.is_visible(selected))
         {
             target = Some(hist_win);
         }
 
-        // Fallback to top of stack
+        // Fallback to top of stack.
         if target.is_none() {
             target = mon.first_visible_client(core.globals().clients.map());
         }
@@ -81,7 +81,7 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<
     if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
         if let Some(t) = target {
-            mon.tag_focus_history.insert(mon.selected_tags(), t);
+            mon.tag_focus_history.insert(mon.selected_tags().bits(), t);
         }
     }
 
@@ -148,7 +148,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_selection_changed(&self, core: &mut CoreCtx) {
-        crate::backend::x11::grab::grab_keys_x11(core, self.x11, &*self.x11_runtime);
+        crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 }
 
@@ -543,7 +543,7 @@ fn get_directional_candidates(
     let mut min_score: i32 = 0;
 
     for (c_win, c) in crate::types::ClientListIter::new(clients, globals_map) {
-        if !c.is_visible_on_tags(selected_tags.bits()) {
+        if !c.is_visible(selected_tags) {
             continue;
         }
 
@@ -663,7 +663,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
         return;
     }
 
-    let tags = last_client.tags;
+    let tags = crate::types::TagMask::from_bits(last_client.tags);
     let last_mon_id = last_client.monitor_id;
 
     let sel_mon_id = ctx.core().globals().selected_monitor_id();
@@ -681,7 +681,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
         ctx.core_mut().focus.last_client = cur;
     }
 
-    crate::tags::view::view(ctx, TagMask::from_bits(tags));
+    crate::tags::view::view(ctx, tags);
     focus_soft(ctx, Some(last_win));
 
     let monitor_id = ctx.core().globals().selected_monitor_id();
@@ -712,7 +712,7 @@ fn get_visible_stack(
     let selected = mon.selected_tag_mask();
 
     for (c_win, c) in mon.iter_stack(clients) {
-        if c.is_visible_on_tags(selected.bits()) {
+        if c.is_visible(selected) {
             stack.push(c_win);
         }
     }

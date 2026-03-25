@@ -4,7 +4,7 @@
 //! matching rule wins.  A `None` field is a wildcard that matches anything.
 
 use super::commands::SCRATCHPAD_CLASS;
-use crate::types::{MonitorRule, Rule, RuleFloat};
+use crate::types::{MonitorRule, Rule, RuleFloat, TagMask};
 
 use std::borrow::Cow;
 
@@ -34,7 +34,7 @@ pub fn get_rules() -> Vec<Rule> {
             class: Some(Cow::Borrowed("instantfloat")),
             instance: None,
             title: None,
-            tags: 0,
+            tags: TagMask::EMPTY,
             isfloating: RuleFloat::FloatCenter,
             monitor: MonitorRule::Any,
         },
@@ -43,7 +43,7 @@ pub fn get_rules() -> Vec<Rule> {
             class: Some(Cow::Borrowed(SCRATCHPAD_CLASS)),
             instance: None,
             title: None,
-            tags: 0,
+            tags: TagMask::EMPTY,
             isfloating: RuleFloat::Scratchpad,
             monitor: MonitorRule::Any,
         },
@@ -66,7 +66,7 @@ fn float(class: &'static str) -> Rule {
         class: Some(Cow::Borrowed(class)),
         instance: None,
         title: None,
-        tags: 0,
+        tags: TagMask::EMPTY,
         isfloating: RuleFloat::Float,
         monitor: MonitorRule::Any,
     }
@@ -78,7 +78,7 @@ fn fullscreen_float(class: &'static str) -> Rule {
         class: Some(Cow::Borrowed(class)),
         instance: None,
         title: None,
-        tags: 0,
+        tags: TagMask::EMPTY,
         isfloating: RuleFloat::FloatFullscreen,
         monitor: MonitorRule::Any,
     }

@@ -45,7 +45,8 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         .core_mut()
         .globals_mut()
         .selected_monitor()
-        .selected_tags();
+        .selected_tags()
+        .bits();
     let is_current_tag = (initial_tag & ctx.core_mut().globals_mut().tags.mask()) == current_tagset;
     let has_sel = ctx
         .core_mut()

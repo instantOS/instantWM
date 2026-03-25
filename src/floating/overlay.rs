@@ -282,7 +282,7 @@ fn update_overlay_client_for_show(ctx: &mut WmCtx, overlay_win: WindowId, tags: 
             client.is_floating = true;
         }
         client.border_width = 0;
-        client.tags = tags;
+        client.set_tag_mask(crate::types::TagMask::from_bits(tags));
     }
 }
 
@@ -352,7 +352,8 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         .core_mut()
         .globals_mut()
         .selected_monitor()
-        .selected_tags();
+        .selected_tags()
+        .bits();
     update_overlay_client_for_show(ctx, overlay_win, tags);
 
     if is_locked {
@@ -385,7 +386,7 @@ fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: WindowId, mon: &Monitor) -> 
 fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         client.issticky = false;
-        client.tags = 0;
+        client.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 }
 
@@ -471,12 +472,12 @@ pub fn set_overlay(ctx: &mut WmCtx) {
 
         let visible = if let Some(c) = ctx.client(overlay_win) {
             let selected = mon.selected_tags();
-            c.is_visible_on_tags(selected)
+            c.is_visible(selected)
         } else {
             false
         };
 
-        (mon.overlaystatus, visible, mon.selected_tags())
+        (mon.overlaystatus, visible, mon.selected_tags().bits())
     };
 
     if overlaystatus == 0 {

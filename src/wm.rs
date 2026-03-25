@@ -62,12 +62,4 @@ impl Wm {
             }
         }
     }
-
-    /// Check if there are active animations (X11 backend).
-    pub fn has_active_animations(&self) -> bool {
-        match &self.backend {
-            Backend::X11(data) => !data.x11_runtime.window_animations.is_empty(),
-            Backend::Wayland(_) => false, // Wayland animations are checked separately
-        }
-    }
 }

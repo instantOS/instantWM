@@ -154,7 +154,7 @@ fn collect_distribute_targets(
         return empty;
     };
 
-    let tag_set = mon.selected_tags();
+    let tag_set = mon.selected_tags().bits();
     // work_rect already accounts for bar height and position (top or bottom),
     // so it is the correct region to fill with the grid.
     let work_rect = mon.work_rect;

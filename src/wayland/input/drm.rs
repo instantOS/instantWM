@@ -1,7 +1,7 @@
 //! DRM/libinput-specific input handling.
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::libinput::LibinputInputBackend;
+use smithay::backend::libinput::{LibinputInputBackend, PointerScrollAxis};
 use smithay::input::pointer::{
     GestureHoldBeginEvent, GestureHoldEndEvent, GesturePinchBeginEvent, GesturePinchEndEvent,
     GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
@@ -9,6 +9,7 @@ use smithay::input::pointer::{
 use smithay::reexports::input::event::gesture::{
     GestureEndEvent, GestureEventCoordinates, GestureEventTrait, GesturePinchEventTrait,
 };
+use smithay::reexports::input::{Event as LibinputRawEvent, event, event::EventTrait};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -16,8 +17,67 @@ use crate::wayland::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
 };
+use crate::wm::Wm;
 
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
+
+pub fn raw_event_to_input_event(
+    event: LibinputRawEvent,
+) -> Option<InputEvent<LibinputInputBackend>> {
+    use event::{DeviceEvent, GestureEvent, keyboard::KeyboardEvent, pointer::PointerEvent};
+    Some(match event {
+        LibinputRawEvent::Keyboard(KeyboardEvent::Key(e)) => InputEvent::Keyboard { event: e },
+        LibinputRawEvent::Pointer(PointerEvent::Motion(e)) => {
+            InputEvent::PointerMotion { event: e }
+        }
+        LibinputRawEvent::Pointer(PointerEvent::MotionAbsolute(e)) => {
+            InputEvent::PointerMotionAbsolute { event: e }
+        }
+        LibinputRawEvent::Pointer(PointerEvent::Button(e)) => {
+            InputEvent::PointerButton { event: e }
+        }
+        LibinputRawEvent::Pointer(PointerEvent::ScrollWheel(e)) => InputEvent::PointerAxis {
+            event: PointerScrollAxis::Wheel(e),
+        },
+        LibinputRawEvent::Pointer(PointerEvent::ScrollFinger(e)) => InputEvent::PointerAxis {
+            event: PointerScrollAxis::Finger(e),
+        },
+        LibinputRawEvent::Pointer(PointerEvent::ScrollContinuous(e)) => InputEvent::PointerAxis {
+            event: PointerScrollAxis::Continuous(e),
+        },
+        LibinputRawEvent::Gesture(GestureEvent::Pinch(
+            event::gesture::GesturePinchEvent::Begin(e),
+        )) => InputEvent::GesturePinchBegin { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Pinch(
+            event::gesture::GesturePinchEvent::Update(e),
+        )) => InputEvent::GesturePinchUpdate { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Pinch(event::gesture::GesturePinchEvent::End(
+            e,
+        ))) => InputEvent::GesturePinchEnd { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Swipe(
+            event::gesture::GestureSwipeEvent::Begin(e),
+        )) => InputEvent::GestureSwipeBegin { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Swipe(
+            event::gesture::GestureSwipeEvent::Update(e),
+        )) => InputEvent::GestureSwipeUpdate { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Swipe(event::gesture::GestureSwipeEvent::End(
+            e,
+        ))) => InputEvent::GestureSwipeEnd { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Hold(event::gesture::GestureHoldEvent::Begin(
+            e,
+        ))) => InputEvent::GestureHoldBegin { event: e },
+        LibinputRawEvent::Gesture(GestureEvent::Hold(event::gesture::GestureHoldEvent::End(e))) => {
+            InputEvent::GestureHoldEnd { event: e }
+        }
+        LibinputRawEvent::Device(DeviceEvent::Added(e)) => InputEvent::DeviceAdded {
+            device: EventTrait::device(&e),
+        },
+        LibinputRawEvent::Device(DeviceEvent::Removed(e)) => InputEvent::DeviceRemoved {
+            device: EventTrait::device(&e),
+        },
+        _ => return None,
+    })
+}
 
 pub fn configure_device(
     device: &mut smithay::reexports::input::Device,
@@ -79,16 +139,16 @@ pub fn reconfigure_all_devices(
 pub fn dispatch_libinput_event(
     event: InputEvent<LibinputInputBackend>,
     state: &mut WaylandState,
+    wm: &mut Wm,
     total_w: i32,
     total_h: i32,
 ) -> bool {
-    let _span = tracy_client::span!("dispatch_libinput_event");
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
-            configure_device(&mut device, &state.wm.g.cfg.input);
+            configure_device(&mut device, &wm.g.cfg.input);
             state.tracked_devices.push(device);
             false
         }
@@ -97,21 +157,22 @@ pub fn dispatch_libinput_event(
             false
         }
         InputEvent::Keyboard { event } => {
-            handle_keyboard::<LibinputInputBackend>(state, &keyboard_handle, event);
+            handle_keyboard::<LibinputInputBackend>(wm, state, &keyboard_handle, event);
             true
         }
         InputEvent::PointerMotion { event } => {
             let motion_event = motion_event_from_libinput_relative(event);
-            handle_pointer_motion(state, &pointer_handle, &keyboard_handle, motion_event);
+            handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, motion_event);
             true
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let motion_event = motion_event_from_libinput_absolute(event, total_w, total_h);
-            handle_pointer_motion(state, &pointer_handle, &keyboard_handle, motion_event);
+            handle_pointer_motion(wm, state, &pointer_handle, &keyboard_handle, motion_event);
             true
         }
         InputEvent::PointerButton { event } => {
             handle_pointer_button::<LibinputInputBackend>(
+                wm,
                 state,
                 &pointer_handle,
                 &keyboard_handle,
@@ -122,6 +183,7 @@ pub fn dispatch_libinput_event(
         }
         InputEvent::PointerAxis { event } => {
             handle_pointer_axis::<LibinputInputBackend>(
+                wm,
                 state,
                 &pointer_handle,
                 &keyboard_handle,

@@ -20,7 +20,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     }
 
     let mon = ctx.core().globals().selected_monitor();
-    let (numtags, tagset) = (mon.tags.len(), mon.selected_tags());
+    let (numtags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
 
     if tagset == 0 {
         return;
