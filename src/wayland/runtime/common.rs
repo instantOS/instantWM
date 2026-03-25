@@ -39,6 +39,21 @@ pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: 
     handled
 }
 
+/// Run the shared Wayland per-tick housekeeping.
+///
+/// Returns `true` when at least one IPC command was handled so the caller can
+/// perform backend-specific invalidation.
+pub fn event_loop_tick(
+    wm: &mut Wm,
+    state: &WaylandState,
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+) -> bool {
+    arrange_layout_if_dirty(wm, state);
+    let handled = process_ipc_commands(ipc_server, wm);
+    crate::runtime::apply_monitor_config_if_dirty(wm);
+    handled
+}
+
 /// Synchronise the Smithay compositor space from WM globals when the
 /// dirty flag is set.
 ///

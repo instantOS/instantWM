@@ -178,14 +178,6 @@ pub struct WaylandState {
     /// Current drag-and-drop icon surface.
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
 
-    /// Pending libinput events queued during calloop source dispatch.
-    ///
-    /// The DRM backend's libinput calloop source pushes events here; the
-    /// main event-loop body drains and processes them where `&mut Wm` is
-    /// available without going through `Rc<RefCell<Wm>>`.
-    pub pending_libinput_events:
-        Vec<smithay::backend::input::InputEvent<smithay::backend::libinput::LibinputInputBackend>>,
-
     /// Cached winit window size for the nested backend.
     ///
     /// Updated by the winit calloop source callback on `Resized` events;
@@ -325,7 +317,6 @@ impl WaylandState {
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
-            pending_libinput_events: Vec::new(),
             winit_window_size: smithay::utils::Size::from((0, 0)),
             pending_winit_resize: None,
             winit_close_requested: false,

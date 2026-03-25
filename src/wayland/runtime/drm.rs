@@ -335,15 +335,8 @@ fn run_event_loop(
 
     event_loop
         .run(None, state, move |state| {
-            process_completed_crtcs(state, shared, output_surfaces);
-
-            // Kept for compatibility; libinput is dispatched directly in the
-            // calloop callback now for lower input latency.
-            process_pending_libinput_events(wm, state, shared);
-
-            super::common::arrange_layout_if_dirty(wm, state);
-
-            process_ipc(ipc_server, wm, shared);
+            process_completed_crtcs(shared, output_surfaces);
+            process_common_tick(ipc_server, wm, state, shared);
 
             if wm.g.dirty.input_config {
                 wm.g.dirty.input_config = false;
@@ -405,43 +398,8 @@ fn run_event_loop(
         .expect("event loop run");
 }
 
-/// Drain and dispatch queued libinput events.
-///
-/// Events are pushed into `WaylandState::pending_libinput_events` by the
-/// calloop source callback (which doesn't have access to `Wm`).  We process
-/// them here in the main event-loop body where `&mut Wm` is available.
-fn process_pending_libinput_events(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
-) {
-    let events: Vec<_> = std::mem::take(&mut state.pending_libinput_events);
-    if events.is_empty() {
-        return;
-    }
-
-    let (total_w, total_h) = {
-        let s = shared.lock().unwrap();
-        (s.total_width, s.total_height)
-    };
-
-    let mut any_input = false;
-    for event in events {
-        any_input |=
-            crate::wayland::input::drm::dispatch_libinput_event(event, state, wm, total_w, total_h);
-    }
-
-    if any_input {
-        shared
-            .lock()
-            .unwrap()
-            .mark_pointer_output_dirty(state.pointer_location.x as i32);
-    }
-}
-
 /// Process frame submissions for completed CRTCs.
 fn process_completed_crtcs(
-    _state: &mut WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
     output_surfaces: &mut [OutputSurfaceEntry],
 ) {
@@ -466,14 +424,14 @@ fn process_completed_crtcs(
     }
 }
 
-/// Process IPC commands with DRM-specific output invalidation.
-fn process_ipc(
+/// Run the shared Wayland tick, then apply DRM-specific invalidation.
+fn process_common_tick(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     wm: &mut Wm,
+    state: &WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
-    let handled = super::common::process_ipc_commands(ipc_server, wm);
-    crate::runtime::apply_monitor_config_if_dirty(wm);
+    let handled = super::common::event_loop_tick(wm, state, ipc_server);
     if handled {
         // DRM-specific: also mark space and all outputs dirty
         wm.g.dirty.space = true;

@@ -132,9 +132,7 @@ pub fn run() -> ! {
             }
 
             // ── 2. Shared tick: layout, IPC, monitor config ─────────────
-            super::common::arrange_layout_if_dirty(&mut wm, state);
-            super::common::process_ipc_commands(&mut ipc_server, &mut wm);
-            crate::runtime::apply_monitor_config_if_dirty(&mut wm);
+            super::common::event_loop_tick(&mut wm, state, &mut ipc_server);
 
             // Winit has no libinput devices to reconfigure, but clear the
             // flag so it doesn't stay dirty forever (scroll_factor is
