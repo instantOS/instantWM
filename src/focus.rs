@@ -663,7 +663,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
         return;
     }
 
-    let tags = crate::types::TagMask::from_bits(last_client.tags);
+    let tags = last_client.tags;
     let last_mon_id = last_client.monitor_id;
 
     let sel_mon_id = ctx.core().globals().selected_monitor_id();

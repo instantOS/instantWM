@@ -257,14 +257,19 @@ impl TagSelection {
     /// * `current_mask` - The current tag mask for context
     /// * `prev_tag` - The previous tag index for Previous variant
     /// * `num_tags` - Total number of available tags
-    pub fn to_mask(&self, current_mask: TagMask, prev_tag: usize, num_tags: usize) -> TagMask {
+    pub fn to_mask(
+        &self,
+        current_mask: TagMask,
+        prev_tag: Option<usize>,
+        num_tags: usize,
+    ) -> TagMask {
         match *self {
             Self::None => TagMask::EMPTY,
             Self::Single(idx) => TagMask::single(idx).unwrap_or(TagMask::EMPTY),
             Self::Multi(mask) => mask,
             Self::All => TagMask::all(num_tags),
             Self::Toggle(mask) => current_mask ^ mask,
-            Self::Previous => TagMask::single(prev_tag).unwrap_or(current_mask),
+            Self::Previous => prev_tag.and_then(TagMask::single).unwrap_or(current_mask),
         }
     }
 
@@ -417,11 +422,14 @@ mod tests {
     fn test_tag_selection_to_mask() {
         let current = TagMask::from_bits(0b0001);
 
-        assert_eq!(TagSelection::None.to_mask(current, 2, 9).bits(), 0);
+        assert_eq!(TagSelection::None.to_mask(current, Some(2), 9).bits(), 0);
         assert_eq!(
-            TagSelection::Single(3).to_mask(current, 2, 9).bits(),
+            TagSelection::Single(3).to_mask(current, Some(2), 9).bits(),
             0b0100
         );
-        assert_eq!(TagSelection::All.to_mask(current, 2, 4).bits(), 0b1111);
+        assert_eq!(
+            TagSelection::All.to_mask(current, Some(2), 4).bits(),
+            0b1111
+        );
     }
 }

@@ -131,7 +131,7 @@ fn assign_initial_monitor_and_tags(
         && let Some(tc) = g.clients.get(&tc_win)
     {
         c.monitor_id = tc.monitor_id;
-        c.set_tag_mask(crate::types::TagMask::from_bits(tc.tags));
+        c.set_tag_mask(tc.tags);
         return;
     }
     c.monitor_id = g.selected_monitor_id();

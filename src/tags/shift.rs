@@ -19,12 +19,15 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         let Some(win) = mon.sel else {
             return;
         };
+        let Some(current_tag) = mon.current_tag else {
+            return;
+        };
         (
             win,
-            mon.current_tag as u32,
+            current_tag,
             mon.overlay,
-            mon.selected_tags().bits(),
-            ctx.core().globals().tags.mask(),
+            mon.selected_tags(),
+            TagMask::from_bits(ctx.core().globals().tags.mask()),
             ctx.core().globals().behavior.animated,
         )
     };
@@ -47,7 +50,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    if (tagset & tagmask).count_ones() != 1 {
+    if !(tagset & tagmask).is_single() {
         return;
     }
 
@@ -59,10 +62,13 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         match dir {
-            Direction::Left if tagset > 1 => {
+            Direction::Left if current_tag > 1 => {
                 client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() >> offset));
             }
-            Direction::Right if (tagset & (tagmask >> 1)) != 0 => {
+            Direction::Right
+                if current_tag < 20
+                    && tagset.intersects(TagMask::from_bits(tagmask.bits() >> 1)) =>
+            {
                 client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() << offset));
             }
             _ => return,

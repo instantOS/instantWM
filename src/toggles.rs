@@ -150,8 +150,9 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     let selmon = ctx.core_mut().globals_mut().selected_monitor_mut();
     selmon.showbar = !selmon.showbar;
 
-    let current_tag = selmon.current_tag;
-    if current_tag > 0 && current_tag <= selmon.tags.len() {
+    if let Some(current_tag) = selmon.current_tag
+        && current_tag <= selmon.tags.len()
+    {
         selmon.tags[current_tag - 1].showbar = selmon.showbar;
     }
 

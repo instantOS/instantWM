@@ -18,11 +18,7 @@ use crate::types::{TagMask, WindowId};
 pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
     // Extract data first to avoid borrow issues
     let mon = core.globals().selected_monitor();
-    let target_tags = if mon.current_tag > 0 {
-        TagMask::single(mon.current_tag)
-    } else {
-        None
-    };
+    let target_tags = mon.current_tag.and_then(TagMask::single);
 
     if let Some(client) = core.globals_mut().clients.get_mut(&win)
         && client.issticky

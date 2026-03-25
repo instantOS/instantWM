@@ -96,9 +96,12 @@ pub fn sync_monitors_from_outputs_vec(g: &mut Globals, surfaces: &[super::Output
         mon.num = i as i32;
         mon.monitor_rect = Rect { x, y, w, h };
         mon.work_rect = Rect { x, y, w, h };
-        mon.current_tag = 1;
-        mon.prev_tag = 1;
-        mon.tag_set = [1, 1];
+        mon.current_tag = Some(1);
+        mon.prev_tag = Some(1);
+        mon.tag_set = [
+            crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY),
+            crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY),
+        ];
         mon.init_tags(&tag_template);
         mon.update_bar_position(g.cfg.bar_height);
         g.monitors.push(mon);

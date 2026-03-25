@@ -26,17 +26,17 @@ impl ClientBarStats {
 
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
         let monitor_id = monitor.id();
-        let mut occupied: u32 = 0;
+        let mut occupied = TagMask::EMPTY;
         for client in globals.clients.values() {
             if client.monitor_id != monitor_id {
                 continue;
             }
-            occupied |= client.tags;
+            occupied = occupied | client.tags;
             if client.is_urgent {
-                stats.urgent_tags = stats.urgent_tags | TagMask::from_bits(client.tags);
+                stats.urgent_tags = stats.urgent_tags | client.tags;
             }
         }
-        stats.occupied_tags = TagMask::from_bits(occupied).without_scratchpad();
+        stats.occupied_tags = occupied.without_scratchpad();
 
         stats
     }

@@ -26,12 +26,13 @@ fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<usize> {
         mon.set_selected_tags(new_mask);
 
         let current_tag = mon.current_tag;
-        if new_mask == TagMask::ALL_BITS {
+        let all_tags = TagMask::all(mon.tags.len());
+        if new_mask == all_tags {
             mon.prev_tag = current_tag;
-            mon.current_tag = 0;
+            mon.current_tag = None;
         } else {
-            let new_tag = new_mask.first_tag().unwrap_or(0);
-            if current_tag == 0 || !new_mask.contains(current_tag) {
+            let new_tag = new_mask.first_tag();
+            if current_tag.is_none_or(|tag| !new_mask.contains(tag)) {
                 mon.prev_tag = current_tag;
                 mon.current_tag = new_tag;
             }
@@ -123,7 +124,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
 
         for &win in &clients {
             if let Some(c) = ctx.client(win)
-                && TagMask::from_bits(c.tags).intersects(next_mask)
+                && c.tags.intersects(next_mask)
             {
                 found = true;
                 break;
@@ -154,7 +155,7 @@ pub fn last_view(ctx: &mut WmCtx) {
         return;
     }
 
-    if let Some(mask) = TagMask::single(prev_tag) {
+    if let Some(mask) = prev_tag.and_then(TagMask::single) {
         view(ctx, mask);
     }
 }
@@ -173,7 +174,7 @@ pub fn win_view(ctx: &mut WmCtx) {
 
     if tag_mask.is_scratchpad_only() {
         let current_tag = ctx.core().globals().selected_monitor().current_tag;
-        if let Some(mask) = TagMask::single(current_tag) {
+        if let Some(mask) = current_tag.and_then(TagMask::single) {
             view(ctx, mask);
         }
     } else {
@@ -183,8 +184,11 @@ pub fn win_view(ctx: &mut WmCtx) {
     crate::focus::focus_soft(ctx, Some(win));
 }
 
-fn overview_shortcut_targets_focused_window(current_tag: usize, layout: LayoutKind) -> bool {
-    current_tag == 0 || layout.is_overview()
+fn overview_shortcut_targets_focused_window(
+    current_tag: Option<usize>,
+    layout: LayoutKind,
+) -> bool {
+    current_tag.is_none() || layout.is_overview()
 }
 
 pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
@@ -201,7 +205,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
         let mut result = Vec::new();
         let m = ctx.core().globals().selected_monitor();
         for (win, c) in m.iter_clients(ctx.core().globals().clients.map()) {
-            let ctags = TagMask::from_bits(c.tags);
+            let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
                 result.push(win);
             }
@@ -210,21 +214,21 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     };
     for win in clients_to_swap {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            let ctags = TagMask::from_bits(client.tags);
+            let ctags = client.tags;
             let new_tags = ctags ^ current_tagset ^ newtag;
-            client.set_tag_mask(TagMask::from_bits(if new_tags.is_empty() {
-                newtag.bits()
+            client.set_tag_mask(if new_tags.is_empty() {
+                newtag
             } else {
-                new_tags.bits()
-            }));
+                new_tags
+            });
         }
     }
     let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
     mon.set_selected_tags(newtag);
-    if mon.prev_tag == target_idx {
+    if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
     }
-    mon.current_tag = target_idx;
+    mon.current_tag = Some(target_idx);
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
@@ -236,11 +240,11 @@ pub fn follow_view(ctx: &mut WmCtx) {
 
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;
 
-    if prev_tag == 0 {
+    if prev_tag.is_none() {
         return;
     }
 
-    let target_mask = TagMask::single(prev_tag).unwrap_or(TagMask::EMPTY);
+    let target_mask = prev_tag.and_then(TagMask::single).unwrap_or(TagMask::EMPTY);
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.set_tag_mask(target_mask);
@@ -291,7 +295,7 @@ mod tests {
     #[test]
     fn overview_shortcut_targets_focused_window_for_tag_zero() {
         assert!(overview_shortcut_targets_focused_window(
-            0,
+            None,
             LayoutKind::Tile
         ));
     }
@@ -299,7 +303,7 @@ mod tests {
     #[test]
     fn overview_shortcut_targets_focused_window_for_overview_layout() {
         assert!(overview_shortcut_targets_focused_window(
-            3,
+            Some(3),
             LayoutKind::Overview
         ));
     }
@@ -307,7 +311,7 @@ mod tests {
     #[test]
     fn overview_shortcut_enters_overview_from_normal_tag_layouts() {
         assert!(!overview_shortcut_targets_focused_window(
-            3,
+            Some(3),
             LayoutKind::Grid
         ));
     }
@@ -317,8 +321,8 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
     let current_tag = ctx.core().globals().selected_monitor().current_tag;
 
     match current_tag {
-        0 => win_view(ctx),
-        _ => {
+        None => win_view(ctx),
+        Some(_) => {
             let num_tags = ctx.core().globals().tags.count();
             view(ctx, TagMask::all(num_tags))
         }
@@ -328,8 +332,10 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
 pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
     let (nmaster, mfact) = {
         let mon = core.globals().selected_monitor();
-        let current_tag = mon.current_tag;
-        if current_tag == 0 || current_tag > mon.tags.len() {
+        let Some(current_tag) = mon.current_tag else {
+            return;
+        };
+        if current_tag > mon.tags.len() {
             return;
         }
         let tag = &mon.tags[current_tag - 1];
@@ -343,7 +349,9 @@ pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, tagset) = (mon.current_tag, mon.selected_tags());
+    let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
+        return;
+    };
 
     if dir == Direction::Left && current_tag <= 1 {
         return;

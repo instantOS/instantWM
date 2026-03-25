@@ -43,7 +43,7 @@ pub struct Monitor {
     /// Currently selected tag set index.
     pub sel_tags: u32,
     /// Tag sets (two sets for switching).
-    pub tag_set: [u32; 2],
+    pub tag_set: [TagMask; 2],
     /// Active offset for bar display.
     pub activeoffset: u32,
     /// Title offset for bar display.
@@ -64,10 +64,10 @@ pub struct Monitor {
     pub bar_win: WindowId,
     /// Which tags to show.
     pub showtags: u32,
-    /// Current tag index (1-based).
-    pub current_tag: usize,
-    /// Previous tag index (1-based).
-    pub prev_tag: usize,
+    /// Current tag index when the selected view is a single tag.
+    pub current_tag: Option<usize>,
+    /// Previously selected single tag index.
+    pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
     pub tags: Vec<Tag>,
     /// Client list (focus order).
@@ -98,7 +98,7 @@ impl Default for Monitor {
             monitor_rect: Rect::default(),
             work_rect: Rect::default(),
             sel_tags: 0,
-            tag_set: [0; 2],
+            tag_set: [TagMask::EMPTY; 2],
             activeoffset: 0,
             titleoffset: 0,
             clientcount: 0,
@@ -109,8 +109,8 @@ impl Default for Monitor {
             gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: 0,
-            current_tag: 0,
-            prev_tag: 0,
+            current_tag: None,
+            prev_tag: None,
             tags: Vec::new(),
             clients: Vec::new(),
             sel: None,
@@ -133,11 +133,11 @@ impl Monitor {
             nmaster,
             showbar,
             topbar,
-            tag_set: [1, 1],
+            tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             clientcount: 0,
             overlaymode: OverlayMode::Top,
-            current_tag: 1,
-            prev_tag: 1,
+            current_tag: Some(1),
+            prev_tag: Some(1),
             tags: Vec::new(),
             monitor_id: 0,
             ..Default::default()
@@ -161,31 +161,46 @@ impl Monitor {
     /// Get the currently selected tags for this monitor.
     #[inline]
     pub fn selected_tags(&self) -> TagMask {
-        TagMask::from_bits(self.tag_set[self.sel_tags as usize])
+        self.tag_set[self.sel_tags as usize]
     }
 
     /// Set the currently selected tags for this monitor.
     #[inline]
     pub fn set_selected_tags(&mut self, mask: TagMask) {
-        self.tag_set[self.sel_tags as usize] = mask.bits();
+        self.tag_set[self.sel_tags as usize] = mask;
     }
 
     /// Get the currently selected tags for this monitor as raw bits.
     #[inline]
     pub fn selected_tags_bits(&self) -> u32 {
-        self.tag_set[self.sel_tags as usize]
+        self.tag_set[self.sel_tags as usize].bits()
     }
 
     /// Set the currently selected tags for this monitor from raw bits.
     #[inline]
     pub fn set_selected_tags_bits(&mut self, mask: u32) {
-        self.tag_set[self.sel_tags as usize] = mask;
+        self.tag_set[self.sel_tags as usize] = TagMask::from_bits(mask);
     }
 
     /// Get the currently selected tags as a type-safe mask.
     #[inline]
     pub fn selected_tag_mask(&self) -> TagMask {
         self.selected_tags()
+    }
+
+    #[inline]
+    pub fn current_tag_index(&self) -> Option<usize> {
+        self.current_tag
+    }
+
+    #[inline]
+    pub fn previous_tag_index(&self) -> Option<usize> {
+        self.prev_tag
+    }
+
+    #[inline]
+    pub fn is_all_tags_view(&self) -> bool {
+        self.current_tag.is_none()
     }
 
     /// Iterate the monitor's client list (focus order).
@@ -329,16 +344,14 @@ impl Monitor {
 
     /// Get the current tag for this monitor.
     pub fn current_tag(&self) -> Option<&Tag> {
-        if self.current_tag > 0 && self.current_tag <= self.tags.len() {
-            Some(&self.tags[self.current_tag - 1])
-        } else {
-            None
-        }
+        self.current_tag
+            .filter(|&idx| idx > 0 && idx <= self.tags.len())
+            .map(|idx| &self.tags[idx - 1])
     }
 
     /// Get a mutable reference to the current tag.
     pub fn current_tag_mut(&mut self) -> Option<&mut Tag> {
-        let idx = self.current_tag;
+        let idx = self.current_tag?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&mut self.tags[idx - 1])
         } else {
@@ -444,8 +457,11 @@ impl Monitor {
     /// tags active (the "overflow" slot).
     pub fn tag_index_for_slot(&self, slot: usize) -> usize {
         const MAX_BAR_SLOTS: usize = 9;
-        if slot == MAX_BAR_SLOTS - 1 && self.current_tag > MAX_BAR_SLOTS {
-            self.current_tag - 1
+        if slot == MAX_BAR_SLOTS - 1
+            && let Some(current_tag) = self.current_tag
+            && current_tag > MAX_BAR_SLOTS
+        {
+            current_tag - 1
         } else {
             slot
         }
@@ -455,11 +471,11 @@ impl Monitor {
     ///
     /// Excludes the scratchpad tag from the result.
     pub fn occupied_tags(&self, clients: &HashMap<WindowId, Client>) -> TagMask {
-        let mut occupied: u32 = 0;
+        let mut occupied = TagMask::EMPTY;
         for (_win, c) in self.iter_clients(clients) {
-            occupied |= c.tags;
+            occupied = occupied | c.tags;
         }
-        TagMask::from_bits(occupied).without_scratchpad()
+        occupied.without_scratchpad()
     }
 
     /// Compute which logical bar region the cursor's **monitor-local** x coordinate
