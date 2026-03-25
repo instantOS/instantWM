@@ -32,9 +32,16 @@ impl WaylandState {
         target: Point<i32, Logical>,
         remap: bool,
     ) {
-        // Use the client's stored geometry as the authoritative current position
-        // to avoid animating from stale locations after map/unmap cycles.
         let actual_loc = self.space.element_location(&element);
+
+        // Geometry updates for hidden/unmapped windows must not remap them as a
+        // side effect. The behavioral layer owns visibility; the backend should
+        // only move windows that are already mapped (or are being interactively
+        // remapped on purpose).
+        if actual_loc.is_none() && !remap {
+            self.window_animations.remove(&window_id);
+            return;
+        }
 
         // Do not update the location if it is visually already at the target
         // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.

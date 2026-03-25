@@ -246,7 +246,7 @@ pub fn check_animate_x11(
     }
 }
 
-pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
+pub fn scroll_view_animated(ctx: &mut WmCtx, dir: Direction) {
     let sel_mon = ctx.core().globals().selected_monitor_id();
 
     let (current_tag, current_tag_mask) = {
@@ -261,6 +261,13 @@ pub fn anim_scroll(ctx: &mut WmCtx, dir: Direction) {
     }
 
     scroll_view(ctx, dir);
+
+    // Wayland uses compositor-managed placement; replaying the X11-style
+    // "animate outgoing clients after the tag switch" step only touches
+    // hidden clients and can leak backend behavior into visibility changes.
+    if matches!(ctx, WmCtx::Wayland(_)) {
+        return;
+    }
 
     if ctx.core().globals().selected_monitor().current_tag == current_tag {
         return;
