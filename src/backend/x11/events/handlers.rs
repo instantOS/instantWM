@@ -1,3 +1,4 @@
+use crate::actions::execute_button_action_x11;
 use crate::backend::BackendOps;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
@@ -170,9 +171,8 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
             rx: e.root_x as i32,
             ry: e.root_y as i32,
         };
-        // Convert WmCtxX11 to WmCtx for button action
-        let tmp = ctx.reborrow();
-        (button.action)(&mut WmCtx::X11(tmp), arg);
+        let mut tmp = ctx.reborrow();
+        execute_button_action_x11(&mut tmp, &button.action, arg);
     }
 }
 

@@ -1,7 +1,7 @@
-use std::rc::Rc;
-
+use crate::actions::{KeyAction, execute_key_action};
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
+use crate::config::ModeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{
     SnapDir, change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating,
@@ -29,7 +29,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
 
-    let current_mode = ctx.core().globals().behavior.current_mode.clone();
+    let current_mode = ctx.current_mode().to_string();
 
     // Super + Escape always resets to default mode
     if !current_mode.is_empty()
@@ -38,91 +38,93 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         && cleaned
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
-        ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
+        ctx.reset_mode();
         ctx.request_bar_update(None);
         return true;
     }
 
-    let mut transient = false;
-
-    let action = if !current_mode.is_empty() && current_mode != "default" {
-        // Look FIRST in mode-specific keybindings
-        let mode_cfg = ctx.core().globals().cfg.modes.get(&current_mode);
-        transient = mode_cfg.map(|m| m.transient).unwrap_or(false);
-
-        mode_cfg
-            .and_then(|mode| {
-                mode.keybinds.iter().find(|key| {
-                    keysym == key.keysym
-                        && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
-                })
-            })
-            .map(|key| Rc::clone(&key.action))
-            .or_else(|| {
-                // Fallback to global/desktop bindings
-                ctx.core()
-                    .globals()
-                    .cfg
-                    .keys
-                    .iter()
-                    .find(|key| {
-                        keysym == key.keysym
-                            && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
-                    })
-                    .or_else(|| {
-                        ctx.core()
-                            .globals()
-                            .cfg
-                            .desktop_keybinds
-                            .iter()
-                            .find(|key| {
-                                keysym == key.keysym
-                                    && crate::util::clean_mask(key.mod_mask, numlockmask) as u16
-                                        == cleaned
-                            })
-                    })
-                    .map(|key| Rc::clone(&key.action))
-            })
-    } else {
-        // Normal mode
-        ctx.core()
-            .globals()
-            .cfg
-            .keys
-            .iter()
-            .find(|key| {
-                keysym == key.keysym
-                    && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
-            })
-            .or_else(|| {
-                if ctx.selected_client().is_none() {
-                    ctx.core()
-                        .globals()
-                        .cfg
-                        .desktop_keybinds
-                        .iter()
-                        .find(|key| {
-                            keysym == key.keysym
-                                && crate::util::clean_mask(key.mod_mask, numlockmask) as u16
-                                    == cleaned
-                        })
-                } else {
-                    None
-                }
-            })
-            .map(|key| Rc::clone(&key.action))
-    };
+    let (action, transient) = resolve_key_action(
+        ctx.core().globals().cfg.keys.as_slice(),
+        ctx.core().globals().cfg.desktop_keybinds.as_slice(),
+        &ctx.core().globals().cfg.modes,
+        ctx.selected_client(),
+        &current_mode,
+        keysym,
+        cleaned,
+        numlockmask,
+    )
+    .map(|resolution| (Some(resolution.action), resolution.transient))
+    .unwrap_or((None, false));
 
     if let Some(action) = action {
-        action(ctx);
+        execute_key_action(ctx, &action);
         if transient {
-            ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
+            ctx.reset_mode();
             ctx.request_bar_update(None);
         }
         true
     } else {
         false
     }
+}
+
+#[derive(Clone)]
+struct KeyResolution {
+    action: KeyAction,
+    transient: bool,
+}
+
+fn find_matching_action(
+    keys: &[Key],
+    keysym: u32,
+    cleaned: u16,
+    numlockmask: u32,
+) -> Option<KeyAction> {
+    keys.iter()
+        .find(|key| {
+            keysym == key.keysym
+                && crate::util::clean_mask(key.mod_mask, numlockmask) as u16 == cleaned
+        })
+        .map(|key| key.action.clone())
+}
+
+fn resolve_key_action(
+    keys: &[Key],
+    desktop_keybinds: &[Key],
+    modes: &std::collections::HashMap<String, ModeConfig>,
+    selected_client: Option<WindowId>,
+    current_mode: &str,
+    keysym: u32,
+    cleaned: u16,
+    numlockmask: u32,
+) -> Option<KeyResolution> {
+    if !current_mode.is_empty() && current_mode != "default" {
+        let mode_cfg = modes.get(current_mode);
+        let transient = mode_cfg.is_some_and(|m| m.transient);
+        if let Some(action) = mode_cfg
+            .and_then(|mode| {
+                find_matching_action(mode.keybinds.as_slice(), keysym, cleaned, numlockmask)
+            })
+            .or_else(|| find_matching_action(keys, keysym, cleaned, numlockmask))
+            .or_else(|| find_matching_action(desktop_keybinds, keysym, cleaned, numlockmask))
+        {
+            return Some(KeyResolution { action, transient });
+        }
+        return None;
+    }
+
+    find_matching_action(keys, keysym, cleaned, numlockmask)
+        .or_else(|| {
+            if selected_client.is_none() {
+                find_matching_action(desktop_keybinds, keysym, cleaned, numlockmask)
+            } else {
+                None
+            }
+        })
+        .map(|action| KeyResolution {
+            action,
+            transient: false,
+        })
 }
 
 pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
@@ -431,5 +433,92 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         }
     } else {
         toggle_floating(ctx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::actions::NamedAction;
+
+    fn named(action: NamedAction) -> KeyAction {
+        KeyAction::Named {
+            action,
+            args: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn resolve_key_action_prefers_mode_binding_and_marks_transient() {
+        let mode_key = Key {
+            mod_mask: 1,
+            keysym: 42,
+            action: named(NamedAction::FocusNext),
+        };
+        let global_key = Key {
+            mod_mask: 1,
+            keysym: 42,
+            action: named(NamedAction::FocusPrev),
+        };
+        let mut modes = std::collections::HashMap::new();
+        modes.insert(
+            "resize".to_string(),
+            ModeConfig {
+                description: None,
+                transient: true,
+                keybinds: vec![mode_key],
+            },
+        );
+
+        let resolved = resolve_key_action(&[global_key], &[], &modes, None, "resize", 42, 1, 0)
+            .expect("expected action");
+
+        match resolved.action {
+            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::FocusNext),
+            _ => panic!("unexpected action kind"),
+        }
+        assert!(resolved.transient);
+    }
+
+    #[test]
+    fn resolve_key_action_uses_desktop_bindings_only_without_selected_client() {
+        let desktop_key = Key {
+            mod_mask: 0,
+            keysym: 9,
+            action: named(NamedAction::ToggleLayout),
+        };
+
+        let resolved = resolve_key_action(
+            &[],
+            &[desktop_key],
+            &std::collections::HashMap::new(),
+            None,
+            "default",
+            9,
+            0,
+            0,
+        )
+        .expect("expected desktop action");
+
+        match resolved.action {
+            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::ToggleLayout),
+            _ => panic!("unexpected action kind"),
+        }
+
+        let blocked = resolve_key_action(
+            &[],
+            &[Key {
+                mod_mask: 0,
+                keysym: 9,
+                action: named(NamedAction::ToggleLayout),
+            }],
+            &std::collections::HashMap::new(),
+            Some(WindowId(1)),
+            "default",
+            9,
+            0,
+            0,
+        );
+        assert!(blocked.is_none());
     }
 }
