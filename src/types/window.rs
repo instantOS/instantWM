@@ -34,6 +34,7 @@ impl std::borrow::Borrow<u32> for WindowId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ButtonArg {
     pub pos: BarPosition,
+    pub window: Option<WindowId>,
     pub btn: MouseButton,
     pub rx: i32,
     pub ry: i32,

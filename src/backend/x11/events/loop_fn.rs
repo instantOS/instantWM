@@ -13,7 +13,6 @@ use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::ipc::IpcServer;
 use crate::runtime::AnimationTimerGuard;
-use crate::types::WindowId;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -114,30 +113,12 @@ fn tick_x11_animations(wm: &mut Wm) {
 
     let now = std::time::Instant::now();
 
-    // Collect finished animation targets and windows that need geometry updates.
-    let mut finished: Vec<(WindowId, crate::types::Rect)> = Vec::new();
+    // Collect finished windows and windows that need geometry updates.
+    let mut finished = Vec::new();
     let mut needs_flush = false;
 
     for (win, anim) in data.x11_runtime.window_animations.iter() {
-        let elapsed = now.duration_since(anim.started_at);
-        let progress = if anim.duration.is_zero() {
-            1.0
-        } else {
-            (elapsed.as_secs_f64() / anim.duration.as_secs_f64()).min(1.0)
-        };
-        let eased = crate::animation::ease_out_cubic(progress);
-
-        let x = anim.from.x as f64 + (anim.to.x - anim.from.x) as f64 * eased;
-        let y = anim.from.y as f64 + (anim.to.y - anim.from.y) as f64 * eased;
-        let w = anim.from.w as f64 + (anim.to.w - anim.from.w) as f64 * eased;
-        let h = anim.from.h as f64 + (anim.to.h - anim.from.h) as f64 * eased;
-
-        let rect = crate::types::Rect {
-            x: x.round() as i32,
-            y: y.round() as i32,
-            w: w.round() as i32,
-            h: h.round() as i32,
-        };
+        let rect = crate::animation::interpolated_rect(anim, now);
 
         if rect.is_valid() {
             let x11_win: x11rb::protocol::xproto::Window = (*win).into();
@@ -154,18 +135,15 @@ fn tick_x11_animations(wm: &mut Wm) {
             needs_flush = true;
         }
 
-        if progress >= 1.0 {
-            finished.push((*win, anim.to));
+        if now.duration_since(anim.started_at) >= anim.duration {
+            finished.push(*win);
         }
     }
 
-    // Remove completed animations and update client geometry.
-    for (win, to) in &finished {
+    // Remove completed animations. The behavioral layer already tracks the
+    // target geometry; the animation queue only owns the transient render state.
+    for win in &finished {
         data.x11_runtime.window_animations.remove(win);
-        if let Some(client) = wm.g.clients.get_mut(win) {
-            client.old_geo = client.geo;
-            client.geo = *to;
-        }
     }
 
     if needs_flush && let Some(data) = wm.backend.x11_data() {

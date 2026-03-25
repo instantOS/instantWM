@@ -202,6 +202,7 @@ fn dispatch_wayland_bar_button(
             &b.action,
             ButtonArg {
                 pos,
+                window: None,
                 btn: b.button,
                 rx: root_x,
                 ry: root_y,

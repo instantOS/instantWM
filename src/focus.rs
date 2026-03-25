@@ -68,15 +68,10 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
 }
 
 /// Update monitor state after focus target resolution.
-/// Returns true if the selection state changed (focused <-> unfocused).
-fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<WindowId>, bool) {
+fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<WindowId> {
     let FocusTargetResult {
-        target,
-        sel_mon_id,
-        current_sel,
+        target, sel_mon_id, ..
     } = result;
-
-    let selection_state_changed = current_sel.is_none() != target.is_none();
 
     if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
@@ -84,8 +79,7 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> (Option<
             mon.tag_focus_history.insert(mon.selected_tags().bits(), t);
         }
     }
-
-    (target, selection_state_changed)
+    target
 }
 
 /// Backend-specific focus operations trait.
@@ -98,8 +92,8 @@ trait FocusBackendOps {
     fn focus_window(&self, core: &mut CoreCtx, win: WindowId);
     /// Handle the case where no window should be focused (focus root/nothing).
     fn focus_none(&self, core: &mut CoreCtx);
-    /// Called when selection state changes (focused <-> unfocused).
-    fn on_selection_changed(&self, core: &mut CoreCtx);
+    /// Called when the shared desktop-binding eligibility changes.
+    fn on_desktop_binding_state_changed(&self, core: &mut CoreCtx);
     /// Return `true` when the backend's seat focus is out of sync with the
     /// requested target and needs to be re-applied even though the WM-level
     /// selection (`mon.sel`) did not change.
@@ -147,7 +141,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         let _ = self.x11.conn.flush();
     }
 
-    fn on_selection_changed(&self, core: &mut CoreCtx) {
+    fn on_desktop_binding_state_changed(&self, core: &mut CoreCtx) {
         crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 }
@@ -178,7 +172,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         self.wayland.backend.clear_keyboard_focus();
     }
 
-    fn on_selection_changed(&self, _core: &mut CoreCtx) {
+    fn on_desktop_binding_state_changed(&self, _core: &mut CoreCtx) {
         // Wayland: key grabs not applicable; desktop bindings kept in core
     }
 
@@ -216,7 +210,13 @@ fn focus_generic(
 
     let current_sel = result.current_sel;
     let sel_mon_id = result.sel_mon_id;
-    let (target, selection_state_changed) = update_focus_state(core, result);
+    let desktop_bindings_before = crate::keyboard::desktop_bindings_enabled(
+        current_sel,
+        &core.globals().behavior.current_mode,
+    );
+    let target = update_focus_state(core, result);
+    let desktop_bindings_after =
+        crate::keyboard::desktop_bindings_enabled(target, &core.globals().behavior.current_mode);
 
     // Track the previously focused window for focus-last-client.
     // This is done in the shared path so both backends behave identically.
@@ -227,8 +227,8 @@ fn focus_generic(
         backend.unfocus_current(core, cur_win);
     }
 
-    if selection_state_changed {
-        backend.on_selection_changed(core);
+    if desktop_bindings_before != desktop_bindings_after {
+        backend.on_desktop_binding_state_changed(core);
     }
 
     let focus_changed = current_sel != target;

@@ -90,7 +90,8 @@ pub fn handle_pointer_button<B: InputBackend>(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
-            consumed = dispatch_wayland_client_button(wm, btn, root_x, root_y, clean_state);
+            consumed =
+                dispatch_wayland_client_button(wm, clicked_win, btn, root_x, root_y, clean_state);
         }
 
         if !consumed {
@@ -224,6 +225,7 @@ fn find_hovered_window_for_surface(
 /// Dispatch client button event.
 fn dispatch_wayland_client_button(
     wm: &mut Wm,
+    clicked_win: Option<crate::types::WindowId>,
     btn: MouseButton,
     root_x: i32,
     root_y: i32,
@@ -243,6 +245,7 @@ fn dispatch_wayland_client_button(
             &b.action,
             crate::types::ButtonArg {
                 pos: crate::types::BarPosition::ClientWin,
+                window: clicked_win,
                 btn: b.button,
                 rx: root_x,
                 ry: root_y,

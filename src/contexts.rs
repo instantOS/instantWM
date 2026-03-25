@@ -376,8 +376,21 @@ impl<'a> WmCtx<'a> {
     pub fn request_bar_update(&mut self, monitor_id: Option<usize>) {
         match self {
             WmCtx::X11(ctx_x11) => {
-                let _ = monitor_id;
                 ctx_x11.core.bar.mark_dirty();
+                if let Some(monitor_id) = monitor_id {
+                    crate::bar::x11::draw_bar(
+                        &mut ctx_x11.core,
+                        ctx_x11.x11_runtime,
+                        ctx_x11.systray.as_deref(),
+                        monitor_id,
+                    );
+                } else {
+                    crate::bar::x11::draw_bars_x11(
+                        &mut ctx_x11.core,
+                        ctx_x11.x11_runtime,
+                        ctx_x11.systray.as_deref(),
+                    );
+                }
             }
             WmCtx::Wayland(ctx_wayland) => {
                 let _ = monitor_id;

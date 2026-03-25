@@ -92,6 +92,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | MOD1, XK_COMMA => named(NamedAction::FollowMonPrev)),
         key!(MODKEY | MOD1, XK_PERIOD => named(NamedAction::FollowMonNext)),
         key!(MODKEY | SHIFT, XK_RETURN => named(NamedAction::Zoom)),
+        key!(MODKEY | SHIFT, XK_SPACE => named(NamedAction::ToggleFloating)),
         key!(MODKEY | CONTROL, XK_D => named(NamedAction::DistributeClients)),
         key!(MODKEY | SHIFT, XK_D => named(NamedAction::DrawWindow)),
         key!(MODKEY | MOD1, XK_W => named(NamedAction::CenterWindow)),

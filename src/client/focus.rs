@@ -17,6 +17,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
+use crate::types::BarPosition;
 use crate::types::WindowId;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -256,10 +257,11 @@ pub fn unfocus_win_x11(
 /// grab buttons 1 and 3 in all modifier combinations so the WM can intercept
 /// clicks and raise/focus the window before passing the event through.
 ///
-/// When `focused` is `true`, all button grabs are released so the client
-/// receives button events directly.
+/// When `focused` is `true`, plain clicks are released so the client receives
+/// them directly, but WM-specific modified `ClientWin` bindings remain grabbed
+/// so actions like Super+drag keep working on X11.
 pub fn grab_buttons_x11(
-    _core: &mut CoreCtx,
+    core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -269,19 +271,36 @@ pub fn grab_buttons_x11(
     let x11_win: Window = win.into();
 
     // Always start clean.
-    let _ = ungrab_button(conn, ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+    let _ = ungrab_button(conn, ButtonIndex::from(0u8), x11_win, ModMask::ANY);
+
+    let numlockmask = x11_runtime.numlockmask;
+    let lock_mask = ModMask::LOCK.bits() as u32;
+    let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
+    let mut grabs: Vec<(u8, u32)> = Vec::new();
 
     if !focused {
-        let numlockmask = x11_runtime.numlockmask;
-        let lock_mask = ModMask::LOCK.bits() as u32;
-        let button_mask: u32 = EventMask::BUTTON_PRESS.bits() | EventMask::BUTTON_RELEASE.bits();
+        grabs.extend([(1, 0), (3, 0)]);
+    }
 
-        // Grab with every combination of NumLock and CapsLock modifiers so the
-        // grabs fire regardless of the lock-key state.
-        for &modifiers in &[0u32, numlockmask, lock_mask, numlockmask | lock_mask] {
-            let mods = ModMask::from(modifiers as u16);
+    for button in &core.globals().cfg.buttons {
+        if !button.matches(BarPosition::ClientWin) {
+            continue;
+        }
+        if focused && button.mask == 0 {
+            continue;
+        }
 
-            // Button 1 (left click) – raise/focus the window.
+        let grab = (button.button.as_u8(), button.mask);
+        if !grabs.contains(&grab) {
+            grabs.push(grab);
+        }
+    }
+
+    // Grab with every combination of NumLock and CapsLock modifiers so the
+    // grabs fire regardless of the lock-key state.
+    for (button, base_mask) in grabs {
+        for &lock_variation in &[0u32, numlockmask, lock_mask, numlockmask | lock_mask] {
+            let mods = ModMask::from((base_mask | lock_variation) as u16);
             let _ = conn.grab_button(
                 false,
                 x11_win,
@@ -290,20 +309,7 @@ pub fn grab_buttons_x11(
                 GrabMode::SYNC,
                 0u32,
                 0u32,
-                1u8.into(),
-                mods,
-            );
-
-            // Button 3 (right click) – raise/focus the window.
-            let _ = conn.grab_button(
-                false,
-                x11_win,
-                button_mask.into(),
-                GrabMode::SYNC,
-                GrabMode::SYNC,
-                0u32,
-                0u32,
-                3u8.into(),
+                button.into(),
                 mods,
             );
         }
