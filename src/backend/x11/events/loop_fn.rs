@@ -4,18 +4,15 @@
 //! event loop, bringing the X11 backend closer to the Wayland backend's
 //! architecture and making animations non-blocking.
 
-use std::cell::Cell;
 use std::os::unix::io::AsRawFd;
-use std::rc::Rc;
-use std::time::Duration;
 
 use calloop::generic::Generic;
-use calloop::timer::{TimeoutAction, Timer};
 use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::ipc::IpcServer;
+use crate::runtime::AnimationTimerGuard;
 use crate::types::WindowId;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
@@ -50,22 +47,10 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
         .expect("failed to insert X11 fd source");
 
     // ── IPC listener fd source ──────────────────────────────────────────
-    if let Some(server) = ipc_server.as_ref() {
-        let ipc_fd = server.as_raw_fd();
-        let ipc_source = Generic::new(
-            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
-            Interest::READ,
-            Mode::Level,
-        );
-        loop_handle
-            .insert_source(ipc_source, |_, _, _wm| Ok(PostAction::Continue))
-            .expect("failed to insert IPC fd source");
-    }
+    crate::runtime::register_ipc_source(&loop_handle, ipc_server);
 
     // ── Animation timer (on-demand, not persistent) ─────────────────────
-    // Instead of a persistent 16ms timer, we arm a one-shot timer only
-    // when animations are active. This lets the loop sleep when idle.
-    let animation_timer_active = Rc::new(Cell::new(false));
+    let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
@@ -83,26 +68,12 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
                 .backend
                 .x11_data()
                 .map_or(false, |d| !d.x11_runtime.window_animations.is_empty());
-            if has_animations && !animation_timer_active.get() {
-                animation_timer_active.set(true);
-                let active_flag = Rc::clone(&animation_timer_active);
-                let _ = loop_handle_for_timer.insert_source(
-                    Timer::from_duration(Duration::from_millis(16)),
-                    move |_, _, wm| {
-                        tick_x11_animations(wm);
-                        let still_animating = wm
-                            .backend
-                            .x11_data()
-                            .map_or(false, |d| !d.x11_runtime.window_animations.is_empty());
-                        if still_animating {
-                            TimeoutAction::ToDuration(Duration::from_millis(16))
-                        } else {
-                            active_flag.set(false);
-                            TimeoutAction::Drop
-                        }
-                    },
-                );
-            }
+            anim_guard.ensure_armed(has_animations, &loop_handle_for_timer, |wm| {
+                tick_x11_animations(wm);
+                wm.backend
+                    .x11_data()
+                    .map_or(false, |d| !d.x11_runtime.window_animations.is_empty())
+            });
 
             // ── 4. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();

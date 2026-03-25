@@ -2,6 +2,14 @@
 //!
 //! These functions operate purely on [`Wm`] and are backend-agnostic.
 
+use std::cell::Cell;
+use std::rc::Rc;
+use std::time::Duration;
+
+use calloop::generic::Generic;
+use calloop::timer::{TimeoutAction, Timer};
+use calloop::{Interest, Mode, PostAction};
+
 use crate::wm::Wm;
 
 // ── Event-loop tick helpers ─────────────────────────────────────────────
@@ -79,4 +87,78 @@ pub fn late_init(wm: &Wm) -> Option<crate::ipc::IpcServer> {
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     spawn_status_bar(wm);
     ipc_server
+}
+
+// ── Calloop source helpers ──────────────────────────────────────────────
+
+/// Register an IPC listener fd as a calloop source.
+///
+/// The source simply wakes the event loop when a new connection arrives;
+/// actual command processing is done by the caller via
+/// [`process_ipc_commands`].
+pub fn register_ipc_source<'loop_handle, T: 'static>(
+    handle: &calloop::LoopHandle<'loop_handle, T>,
+    ipc_server: &Option<crate::ipc::IpcServer>,
+) {
+    use std::os::unix::io::AsRawFd;
+    if let Some(ref server) = *ipc_server {
+        let ipc_fd = server.as_raw_fd();
+        let ipc_source = Generic::new(
+            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
+            Interest::READ,
+            Mode::Level,
+        );
+        handle
+            .insert_source(ipc_source, |_, _, _| Ok(PostAction::Continue))
+            .expect("failed to insert IPC fd source");
+    }
+}
+
+/// On-demand animation timer guard shared by all backends.
+///
+/// Tracks whether a 16 ms animation timer is currently armed.  When the
+/// timer fires and no animations remain it auto-drops; this flag is then
+/// cleared so a new timer can be armed on the next animation start.
+#[derive(Clone)]
+pub struct AnimationTimerGuard {
+    active: Rc<Cell<bool>>,
+}
+
+impl AnimationTimerGuard {
+    pub fn new() -> Self {
+        Self {
+            active: Rc::new(Cell::new(false)),
+        }
+    }
+
+    /// Arm the timer if animations are active and no timer is running.
+    ///
+    /// `has_animations` should reflect whether the backend currently has
+    /// active window animations.  `on_tick` is called each time the timer
+    /// fires (before the active-check) to let the backend mark outputs
+    /// dirty, etc.
+    pub fn ensure_armed<'loop_handle, T: 'static>(
+        &self,
+        has_animations: bool,
+        handle: &calloop::LoopHandle<'loop_handle, T>,
+        on_tick: impl Fn(&mut T) -> bool + 'static,
+    ) {
+        if !has_animations || self.active.get() {
+            return;
+        }
+        self.active.set(true);
+        let flag = Rc::clone(&self.active);
+        let _ = handle.insert_source(
+            Timer::from_duration(Duration::from_millis(16)),
+            move |_, _, data| {
+                let still_active = on_tick(data);
+                if still_active {
+                    TimeoutAction::ToDuration(Duration::from_millis(16))
+                } else {
+                    flag.set(false);
+                    TimeoutAction::Drop
+                }
+            },
+        );
+    }
 }

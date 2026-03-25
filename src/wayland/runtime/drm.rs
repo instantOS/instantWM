@@ -1,16 +1,5 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-use std::cell::Cell;
-use std::collections::HashMap;
-use std::os::unix::io::AsRawFd;
-use std::process::exit;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
-use calloop::generic::Generic;
-use calloop::timer::{TimeoutAction, Timer};
-use calloop::{Interest, Mode, PostAction};
 use smithay::backend::drm::{DrmDevice, DrmEvent};
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
@@ -23,6 +12,9 @@ use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
+use std::collections::HashMap;
+use std::process::exit;
+use std::sync::{Arc, Mutex};
 
 use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::WaylandBackend;
@@ -160,18 +152,7 @@ pub fn run() -> ! {
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
     // Register IPC listener fd so the event loop wakes on incoming commands.
-    if let Some(ref server) = ipc_server {
-        let ipc_fd = server.as_raw_fd();
-        let ipc_source = Generic::new(
-            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
-            Interest::READ,
-            Mode::Level,
-        );
-        event_loop
-            .handle()
-            .insert_source(ipc_source, |_, _, _| Ok(PostAction::Continue))
-            .expect("failed to insert IPC fd source");
-    }
+    crate::runtime::register_ipc_source(&event_loop.handle(), &ipc_server);
 
     // Ping source for initial frame kick and render-failure retries.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
@@ -350,7 +331,7 @@ fn run_event_loop(
     let loop_signal: LoopSignal = event_loop.get_signal();
     let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
-    let anim_timer_active = Rc::new(Cell::new(false));
+    let anim_guard = crate::runtime::AnimationTimerGuard::new();
 
     event_loop
         .run(None, state, move |state| {
@@ -385,23 +366,15 @@ fn run_event_loop(
             process_animations(wm, state, shared);
 
             // Arm an on-demand animation timer when animations are active.
-            if state.has_active_window_animations() && !anim_timer_active.get() {
-                anim_timer_active.set(true);
-                let active_flag = Rc::clone(&anim_timer_active);
-                let shared_anim = Arc::clone(shared);
-                let _ = loop_handle.insert_source(
-                    Timer::from_duration(Duration::from_millis(16)),
-                    move |_, _, state| {
-                        shared_anim.lock().unwrap().mark_all_dirty();
-                        if state.has_active_window_animations() {
-                            TimeoutAction::ToDuration(Duration::from_millis(16))
-                        } else {
-                            active_flag.set(false);
-                            TimeoutAction::Drop
-                        }
-                    },
-                );
-            }
+            let shared_anim = Arc::clone(shared);
+            anim_guard.ensure_armed(
+                state.has_active_window_animations(),
+                &loop_handle,
+                move |state| {
+                    shared_anim.lock().unwrap().mark_all_dirty();
+                    state.has_active_window_animations()
+                },
+            );
 
             process_cursor_warp(state, &pointer_handle, shared);
 

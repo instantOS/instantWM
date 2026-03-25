@@ -3,19 +3,13 @@
 //! The winit backend runs as a nested compositor inside an existing
 //! Wayland or X11 session.
 
-use std::cell::Cell;
-use std::os::unix::io::AsRawFd;
 use std::process::exit;
-use std::rc::Rc;
-use std::time::Duration;
 
-use calloop::timer::{TimeoutAction, Timer};
 use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
+use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
 use crate::backend::Backend as WmBackend;
@@ -93,18 +87,7 @@ pub fn run() -> ! {
     spawn_wayland_smoke_window();
     let mut ipc_server = crate::ipc::IpcServer::bind().ok();
 
-    // ── IPC listener fd source ──────────────────────────────────────────
-    if let Some(ref server) = ipc_server {
-        let ipc_fd = server.as_raw_fd();
-        let ipc_source = Generic::new(
-            unsafe { std::os::unix::io::BorrowedFd::borrow_raw(ipc_fd) },
-            Interest::READ,
-            Mode::Level,
-        );
-        loop_handle
-            .insert_source(ipc_source, |_, _, _| Ok(PostAction::Continue))
-            .expect("failed to insert IPC fd source");
-    }
+    crate::runtime::register_ipc_source(&loop_handle, &ipc_server);
 
     // ── Winit event source ──────────────────────────────────────────────
     // Insert the winit event loop as a calloop source so host window
@@ -113,20 +96,18 @@ pub fn run() -> ! {
     let kb = keyboard_handle.clone();
     let ptr = pointer_handle.clone();
     loop_handle
-        .insert_source(winit_loop, move |event, _, state| {
-            match event {
-                WinitEvent::Resized { size, .. } => {
-                    state.winit_window_size = size;
-                    state.pending_winit_resize = Some((size.w, size.h));
-                }
-                WinitEvent::Input(event) => {
-                    dispatch_winit_input(state, &kb, &ptr, event);
-                }
-                WinitEvent::CloseRequested => {
-                    state.winit_close_requested = true;
-                }
-                WinitEvent::Redraw | WinitEvent::Focus(_) => {}
+        .insert_source(winit_loop, move |event, _, state| match event {
+            WinitEvent::Resized { size, .. } => {
+                state.winit_window_size = size;
+                state.pending_winit_resize = Some((size.w, size.h));
             }
+            WinitEvent::Input(event) => {
+                dispatch_winit_input(state, &kb, &ptr, event);
+            }
+            WinitEvent::CloseRequested => {
+                state.winit_close_requested = true;
+            }
+            WinitEvent::Redraw | WinitEvent::Focus(_) => {}
         })
         .expect("failed to insert winit source");
 
@@ -135,7 +116,7 @@ pub fn run() -> ! {
     crate::runtime::spawn_status_bar(&wm);
 
     // ── Animation timer (on-demand) ─────────────────────────────────────
-    let anim_timer_active = Rc::new(Cell::new(false));
+    let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
@@ -163,23 +144,15 @@ pub fn run() -> ! {
             super::common::sync_space_if_dirty(&mut wm, state);
 
             // ── 3. Arm animation timer if needed ────────────────────────
-            if state.has_active_window_animations() && !anim_timer_active.get() {
-                anim_timer_active.set(true);
-                let active_flag = Rc::clone(&anim_timer_active);
-                let _ = loop_handle_for_timer.insert_source(
-                    Timer::from_duration(Duration::from_millis(16)),
-                    move |_, _, _state| {
-                        // Timer wakes the loop; animation ticking + render
-                        // happen in the main body on the next iteration.
-                        if _state.has_active_window_animations() {
-                            TimeoutAction::ToDuration(Duration::from_millis(16))
-                        } else {
-                            active_flag.set(false);
-                            TimeoutAction::Drop
-                        }
-                    },
-                );
-            }
+            anim_guard.ensure_armed(
+                state.has_active_window_animations(),
+                &loop_handle_for_timer,
+                |_state| {
+                    // Timer wakes the loop; animation ticking + render
+                    // happen in the main body on the next iteration.
+                    _state.has_active_window_animations()
+                },
+            );
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
