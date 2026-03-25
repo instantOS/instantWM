@@ -58,6 +58,38 @@ fn get_start_rect(core: &CoreCtx, win: WindowId, reset_pos: i32) -> Option<Rect>
         .map(|c| if reset_pos != 0 { c.geo } else { c.old_geo })
 }
 
+pub(crate) fn interpolated_rect(animation: &X11WindowAnimation, now: Instant) -> Rect {
+    let elapsed = now.saturating_duration_since(animation.started_at);
+    let progress = if animation.duration.is_zero() {
+        1.0
+    } else {
+        (elapsed.as_secs_f64() / animation.duration.as_secs_f64()).min(1.0)
+    };
+    let eased = ease_out_cubic(progress);
+
+    let x = animation.from.x as f64 + (animation.to.x - animation.from.x) as f64 * eased;
+    let y = animation.from.y as f64 + (animation.to.y - animation.from.y) as f64 * eased;
+    let w = animation.from.w as f64 + (animation.to.w - animation.from.w) as f64 * eased;
+    let h = animation.from.h as f64 + (animation.to.h - animation.from.h) as f64 * eased;
+
+    Rect {
+        x: x.round() as i32,
+        y: y.round() as i32,
+        w: w.round() as i32,
+        h: h.round() as i32,
+    }
+}
+
+fn get_x11_animation_start_rect(ctx: &WmCtxX11<'_>, win: WindowId, reset_pos: i32) -> Option<Rect> {
+    if let Some(animation) = ctx.x11_runtime.window_animations.get(&win) {
+        let now = Instant::now();
+        let current = interpolated_rect(animation, now);
+        return Some(if reset_pos != 0 { animation.to } else { current });
+    }
+
+    get_start_rect(&ctx.core, win, reset_pos)
+}
+
 fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
     core.globals()
         .clients
@@ -113,7 +145,7 @@ pub fn animate_client_x11(
     frames: i32,
     reset_pos: i32,
 ) {
-    let start_rect = match get_start_rect(&ctx.core, win, reset_pos) {
+    let start_rect = match get_x11_animation_start_rect(ctx, win, reset_pos) {
         Some(r) => r,
         None => return,
     };
@@ -157,6 +189,14 @@ pub fn animate_client_x11(
     };
 
     let final_rect = final_rect(rect, &start_rect, actual_w, actual_h, reset_pos);
+
+    if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+        client.old_geo = start_rect;
+        client.geo = final_rect;
+        if client.is_floating {
+            client.float_geo = final_rect;
+        }
+    }
 
     if effective_frames == 0 {
         try_resize_x11(ctx, win, &final_rect);
