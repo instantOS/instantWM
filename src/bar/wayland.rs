@@ -232,13 +232,36 @@ impl WaylandBarPainter {
         }
     }
 
-    fn text_width_cached(&self, text: &str) -> i32 {
+    fn is_powerline_text(text: &str) -> bool {
+        let mut saw_glyph = false;
+        for ch in text.chars() {
+            if ch.is_whitespace() {
+                continue;
+            }
+            if !('\u{e0b0}'..='\u{e0d4}').contains(&ch) {
+                return false;
+            }
+            saw_glyph = true;
+        }
+        saw_glyph
+    }
+
+    fn effective_font_size(&self, text: &str, box_height: i32) -> f32 {
+        if box_height > 0 && Self::is_powerline_text(text) {
+            self.font_size.max((box_height - 1).max(1) as f32)
+        } else {
+            self.font_size
+        }
+    }
+
+    fn text_width_cached(&self, text: &str, box_height: i32) -> i32 {
         if text.is_empty() {
             return 0;
         }
+        let font_size = self.effective_font_size(text, box_height);
         let key = TextMeasureKey {
             text: text.to_string(),
-            font_size_bits: self.font_size.to_bits(),
+            font_size_bits: font_size.to_bits(),
         };
 
         if let Some(cached) = self.text_measure_cache.borrow().get(&key) {
@@ -247,7 +270,7 @@ impl WaylandBarPainter {
 
         let cached = {
             let mut fs = self.font_system.borrow_mut();
-            let metrics = Metrics::new(self.font_size, self.font_size);
+            let metrics = Metrics::new(font_size, font_size);
             let mut buffer = Buffer::new(&mut fs, metrics);
             buffer.set_size(&mut fs, None, None);
             buffer.set_wrap(&mut fs, Wrap::None);
@@ -283,6 +306,7 @@ impl WaylandBarPainter {
             return;
         }
 
+        let font_size = self.effective_font_size(text, h);
         let cosmic_color = CosmicColor::rgba(
             (color[0] * 255.0) as u8,
             (color[1] * 255.0) as u8,
@@ -293,14 +317,14 @@ impl WaylandBarPainter {
             text: text.to_string(),
             width: w,
             height: h,
-            font_size_bits: self.font_size.to_bits(),
+            font_size_bits: font_size.to_bits(),
         };
 
         {
             let mut cache = self.text_render_cache.borrow_mut();
             if !cache.contains_key(&key) {
                 let mut fs = self.font_system.borrow_mut();
-                let metrics = Metrics::new(self.font_size, h as f32);
+                let metrics = Metrics::new(font_size, h as f32);
                 let mut buffer = Buffer::new(&mut fs, metrics);
                 buffer.set_size(&mut fs, Some(w as f32), Some(h as f32));
                 buffer.set_wrap(&mut fs, Wrap::None);
@@ -342,7 +366,7 @@ impl WaylandBarPainter {
 
     /// Measure text width without requiring `&mut self` — used for hit-testing.
     pub fn measure_text_width(&self, text: &str) -> i32 {
-        self.text_width_cached(text)
+        self.text_width_cached(text, 0)
     }
 
     pub fn begin(
@@ -440,7 +464,7 @@ impl WaylandBarPainter {
 
 impl BarPainter for WaylandBarPainter {
     fn text_width(&mut self, text: &str) -> i32 {
-        self.text_width_cached(text)
+        self.text_width_cached(text, self.canvas_h)
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {
@@ -509,8 +533,10 @@ impl BarPainter for WaylandBarPainter {
             );
         }
         if !text.is_empty() {
-            let text_x = x + lpad;
-            let text_w = (w - lpad).max(0);
+            let powerline = Self::is_powerline_text(text);
+            let bleed = if powerline { 1 } else { 0 };
+            let text_x = x + lpad - bleed;
+            let text_w = (w - lpad + bleed * 2).max(0);
             if text_w > 0 {
                 self.rasterize_text_cached(text_x, y, text_w, h, text, fg);
             }
