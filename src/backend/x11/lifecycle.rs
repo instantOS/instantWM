@@ -20,7 +20,7 @@
 //!
 //! A new window inherits its monitor from its transient-for parent when one
 //! exists; otherwise it goes to the currently selected monitor.  After
-//! [`crate::client::state::apply_rules`] runs, the assignment may be overridden
+//! [`crate::backend::x11::properties::apply_rules`] runs, the assignment may be overridden
 //! again by a matching rule.
 //!
 //! # Animation
@@ -33,8 +33,8 @@ use crate::backend::x11::X11BackendRef;
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
-use crate::client::state::set_client_state;
-use crate::client::state::{
+use crate::backend::x11::properties::set_client_state;
+use crate::backend::x11::properties::{
     apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
     update_wm_hints,
 };

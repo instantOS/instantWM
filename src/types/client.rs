@@ -237,7 +237,7 @@ impl Client {
 
         self.set_tag_mask(effective_mask);
 
-        crate::client::set_client_tag_prop(core, x11, x11_runtime, self.win);
+        crate::backend::x11::properties::set_client_tag_prop(core, x11, x11_runtime, self.win);
         crate::focus::focus_soft_x11(core, x11, x11_runtime, None);
         let selmon_id = core.globals().selected_monitor_id();
         crate::layouts::arrange(

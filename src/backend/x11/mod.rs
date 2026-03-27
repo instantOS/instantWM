@@ -91,6 +91,7 @@ pub mod floating;
 pub mod grab;
 pub mod lifecycle;
 pub mod mouse;
+pub mod properties;
 pub mod randr;
 
 pub use client::update_size_hints_x11;

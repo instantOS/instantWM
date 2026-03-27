@@ -4,7 +4,7 @@
 //! for monitor-related operations.
 
 use crate::backend::BackendOps;
-use crate::client::set_client_tag_prop;
+use crate::backend::x11::properties::set_client_tag_prop;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus_soft, unfocus_win};
 use crate::layouts::arrange;
