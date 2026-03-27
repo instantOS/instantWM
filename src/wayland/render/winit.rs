@@ -10,7 +10,8 @@ use smithay::output::Output;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    get_render_element_counts, poll_wayland_systray, resolve_cursor_presentation,
+    send_frame_callbacks,
 };
 use crate::wm::Wm;
 
@@ -69,6 +70,7 @@ pub fn render_frame(
             }
         }
     } else {
+        poll_wayland_systray(wm);
         // Shared: build scene elements
         let scene = build_common_scene_elements(wm, state, renderer, 0);
 

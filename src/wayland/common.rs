@@ -18,7 +18,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+use smithay::backend::renderer::element::memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -377,32 +377,17 @@ pub fn spawn_wayland_smoke_window() {
 /// The caller is responsible for adding the returned elements to its own
 /// custom-element list under the appropriate backend-specific wrapper variant
 /// (e.g. `DrmExtras::Memory` or `WaylandExtras::Memory`).
-pub fn build_bar_elements(
-    wm: &mut Wm,
-    renderer: &mut GlesRenderer,
-) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
+pub fn build_bar_buffers(wm: &mut Wm) -> Vec<(MemoryRenderBuffer, i32, i32)> {
     if !wm.g.cfg.show_bar {
         return Vec::new();
     }
 
     let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
 
-    let bar_buffers = {
+    {
         let Backend::Wayland(data) = &mut wm.backend else {
             return Vec::new();
         };
-
-        // Poll systray events
-        if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
-            let dirty = runtime.poll_events(
-                &mut core,
-                &mut data.wayland_systray,
-                &mut data.wayland_systray_menu,
-            );
-            if dirty {
-                core.bar.mark_dirty();
-            }
-        }
 
         crate::bar::wayland::render_bar_buffers(
             &mut core,
@@ -411,7 +396,14 @@ pub fn build_bar_elements(
             &data.wayland_systray,
             data.wayland_systray_menu.as_ref(),
         )
-    };
+    }
+}
+
+pub fn build_bar_elements(
+    wm: &mut Wm,
+    renderer: &mut GlesRenderer,
+) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
+    let bar_buffers = build_bar_buffers(wm);
     let mut elements = Vec::new();
     for (buffer, x, y) in bar_buffers {
         match MemoryRenderBufferRenderElement::from_buffer(
@@ -430,6 +422,44 @@ pub fn build_bar_elements(
     elements
 }
 
+/// Poll Wayland systray events once and mark the bar dirty when icons changed.
+pub fn poll_wayland_systray(wm: &mut Wm) {
+    let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let Backend::Wayland(data) = &mut wm.backend else {
+        return;
+    };
+
+    if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
+        let dirty = runtime.poll_events(
+            &mut core,
+            &mut data.wayland_systray,
+            &mut data.wayland_systray_menu,
+        );
+        if dirty {
+            core.bar.mark_dirty();
+        }
+    }
+}
+
+/// Shared render elements that are not output-local and can be reused across
+/// multiple output renders in the same frame.
+#[derive(Clone)]
+pub struct FixedSceneElements {
+    pub bar_buffers: Vec<(MemoryRenderBuffer, i32, i32)>,
+    pub borders: Vec<SolidColorRenderElement>,
+}
+
+/// Build the shared scene pieces that do not depend on the target output.
+pub fn build_fixed_scene_elements(
+    wm: &mut Wm,
+    state: &WaylandState,
+) -> FixedSceneElements {
+    FixedSceneElements {
+        bar_buffers: build_bar_buffers(wm),
+        borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),
+    }
+}
+
 /// Backend-agnostic render element buckets used by both Wayland startup paths.
 pub struct CommonSceneElements {
     pub overlays: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
@@ -443,6 +473,17 @@ pub fn build_common_scene_elements(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
     output_x_offset: i32,
+) -> CommonSceneElements {
+    let fixed = build_fixed_scene_elements(wm, state);
+    build_common_scene_elements_from_fixed(state, renderer, output_x_offset, fixed)
+}
+
+/// Build the full scene for one output from reusable shared pieces.
+pub fn build_common_scene_elements_from_fixed(
+    state: &WaylandState,
+    renderer: &mut GlesRenderer,
+    output_x_offset: i32,
+    fixed: FixedSceneElements,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
@@ -459,13 +500,26 @@ pub fn build_common_scene_elements(
         overlays.extend(elems);
     }
 
-    let bar = build_bar_elements(wm, renderer);
-    let borders = crate::wayland::render::borders::render_border_elements(&wm.g, state);
+    let mut bar = Vec::new();
+    for (buffer, x, y) in fixed.bar_buffers {
+        match MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            (x as f64, y as f64),
+            &buffer,
+            None,
+            None,
+            None,
+            Kind::Unspecified,
+        ) {
+            Ok(elem) => bar.push(elem),
+            Err(e) => log::warn!("bar buffer upload failed: {:?}", e),
+        }
+    }
 
     CommonSceneElements {
         overlays,
         bar,
-        borders,
+        borders: fixed.borders,
     }
 }
 

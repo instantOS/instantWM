@@ -20,10 +20,10 @@ use smithay::utils::{Physical, Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
-    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    CursorPresentation, FixedSceneElements, build_common_scene_elements_from_fixed,
+    count_upper_layer_render_elements, get_render_element_counts, resolve_cursor_presentation,
+    send_frame_callbacks,
 };
-use crate::wm::Wm;
 
 mod cursor;
 
@@ -186,13 +186,13 @@ fn connector_type_name(interface: connector::Interface) -> &'static str {
 }
 
 pub fn render_drm_output(
-    wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     entry: &mut OutputSurfaceEntry,
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: std::time::Instant,
+    fixed_scene: Option<FixedSceneElements>,
 ) -> bool {
     let (dmabuf, age) = match entry.surface.next_buffer() {
         Ok(buf) => buf,
@@ -256,7 +256,12 @@ pub fn render_drm_output(
             }
         }
     } else {
-        let scene = build_common_scene_elements(wm, state, renderer, entry.x_offset);
+        let scene = build_common_scene_elements_from_fixed(
+            state,
+            renderer,
+            entry.x_offset,
+            fixed_scene.expect("fixed scene elements"),
+        );
         let space_render_elements = smithay::desktop::space::space_render_elements(
             renderer,
             [&state.space],

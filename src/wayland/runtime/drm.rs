@@ -31,6 +31,7 @@ use crate::wayland::render::drm::{
     CursorManager, OutputSurfaceEntry, SharedDrmState, build_output_surfaces, render_drm_output,
 };
 use crate::wm::Wm;
+use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
 // great care and patience for random ass segfaults. Yes, this is awful, leave it.
@@ -487,6 +488,16 @@ fn render_outputs(
     let pointer_location = state.pointer_location;
 
     if session_active {
+        let needs_any_render = output_surfaces
+            .iter()
+            .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
+        let fixed_scene = if needs_any_render && !state.is_locked() {
+            poll_wayland_systray(wm);
+            Some(build_fixed_scene_elements(wm, state))
+        } else {
+            None
+        };
+
         for entry in output_surfaces.iter_mut() {
             let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
             if !needs_render {
@@ -500,13 +511,13 @@ fn render_outputs(
                 continue;
             }
             let rendered = render_drm_output(
-                wm,
                 state,
                 renderer,
                 entry,
                 cursor_manager,
                 pointer_location,
                 start_time,
+                fixed_scene.clone(),
             );
 
             if rendered {
