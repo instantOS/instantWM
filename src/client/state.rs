@@ -267,17 +267,17 @@ fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> 
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx_x11.x11.conn;
     let x11_win: Window = win.into();
-    let state = get_atom_prop(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_state);
-    let wtype = get_atom_prop(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_window_type);
+    let state = get_atom_props(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_state);
+    let wtype = get_atom_props(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_window_type);
 
     let atom_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
     let atom_dialog = ctx_x11.x11_runtime.netatom.wm_window_type_dialog;
 
-    if state == Some(atom_fullscreen) {
+    if state.contains(&atom_fullscreen) {
         set_fullscreen_x11(ctx_x11, win, true);
     }
 
-    if wtype == Some(atom_dialog)
+    if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
     {
         client.is_floating = true;
@@ -485,4 +485,16 @@ pub fn get_atom_prop(
         .ok()
         .and_then(|cookie| cookie.reply().ok())
         .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
+}
+
+pub fn get_atom_props(
+    conn: &x11rb::rust_connection::RustConnection,
+    win: Window,
+    atom: u32,
+) -> Vec<u32> {
+    conn.get_property(false, win, atom, AtomEnum::ATOM, 0, u32::MAX)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .and_then(|reply| reply.value32().map(|it| it.collect()))
+        .unwrap_or_default()
 }
