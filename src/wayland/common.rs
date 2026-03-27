@@ -18,7 +18,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::element::memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement};
+use smithay::backend::renderer::element::memory::{
+    MemoryRenderBuffer, MemoryRenderBufferRenderElement,
+};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
@@ -450,10 +452,7 @@ pub struct FixedSceneElements {
 }
 
 /// Build the shared scene pieces that do not depend on the target output.
-pub fn build_fixed_scene_elements(
-    wm: &mut Wm,
-    state: &WaylandState,
-) -> FixedSceneElements {
+pub fn build_fixed_scene_elements(wm: &mut Wm, state: &WaylandState) -> FixedSceneElements {
     FixedSceneElements {
         bar_buffers: build_bar_buffers(wm),
         borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),

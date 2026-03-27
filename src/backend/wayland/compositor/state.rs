@@ -451,10 +451,17 @@ impl WaylandState {
             }
         }
 
-        // Recover mon.sel if it was cleared by detach_stack, then
-        // re-apply seat focus so the Smithay seat doesn't point at a
-        // dead surface.
-        self.restore_focus_after_overlay();
+        // Only recover focus when the seat focus is actually missing or dead.
+        // A plain space sync must not steal focus away from a live overlay
+        // surface such as fuzzel/rofi, or from any other valid keyboard target.
+        let seat_focus_needs_recovery = self
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_none_or(|focus| !focus.alive());
+        if seat_focus_needs_recovery {
+            self.restore_focus_after_overlay();
+        }
 
         let Some(g) = self.globals() else {
             return;

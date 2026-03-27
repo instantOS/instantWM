@@ -316,24 +316,28 @@ impl WaylandBarPainter {
         let mut fs = self.font_system.borrow_mut();
         let mut sc = self.swash_cache.borrow_mut();
         let cache = self.text_render_cache.borrow();
-        let Some(cached) = cache.get(&key) else { return };
+        let Some(cached) = cache.get(&key) else {
+            return;
+        };
 
-        cached.buffer.draw(&mut fs, &mut sc, cosmic_color, |gx, gy, _, _, color| {
-            if gx < 0 || gy < 0 || gx >= w || gy >= h {
-                return;
-            }
-            pixel_fill(
-                &mut self.pixels,
-                self.canvas_w,
-                self.canvas_h,
-                x + gx,
-                y + gy,
-                color.r(),
-                color.g(),
-                color.b(),
-                color.a(),
-            );
-        });
+        cached
+            .buffer
+            .draw(&mut fs, &mut sc, cosmic_color, |gx, gy, _, _, color| {
+                if gx < 0 || gy < 0 || gx >= w || gy >= h {
+                    return;
+                }
+                pixel_fill(
+                    &mut self.pixels,
+                    self.canvas_w,
+                    self.canvas_h,
+                    x + gx,
+                    y + gy,
+                    color.r(),
+                    color.g(),
+                    color.b(),
+                    color.a(),
+                );
+            });
     }
 
     /// Measure text width without requiring `&mut self` — used for hit-testing.
@@ -555,7 +559,11 @@ pub fn render_bar_buffers(
         if let Some(cached) = painter.cached_monitors.get(&monitor_id)
             && cached.key == key
         {
-            rendered.push((cached.buffer.buffer.clone(), cached.buffer.x, cached.buffer.y));
+            rendered.push((
+                cached.buffer.buffer.clone(),
+                cached.buffer.x,
+                cached.buffer.y,
+            ));
             continue;
         }
 

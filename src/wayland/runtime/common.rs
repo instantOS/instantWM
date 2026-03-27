@@ -24,21 +24,6 @@ pub fn arrange_layout_if_dirty(wm: &mut Wm, state: &WaylandState) {
     }
 }
 
-/// Process pending IPC commands (Wayland wrapper).
-///
-/// Delegates to the shared [`crate::runtime::process_ipc_commands`] and
-/// additionally marks the layout dirty so the Wayland event loop re-arranges.
-///
-/// Returns `true` when at least one command was handled, so that
-/// backend-specific code can react (e.g. DRM marks all outputs dirty).
-pub fn process_ipc_commands(ipc_server: &mut Option<crate::ipc::IpcServer>, wm: &mut Wm) -> bool {
-    let handled = crate::runtime::process_ipc_commands(ipc_server, wm);
-    if handled {
-        wm.g.dirty.layout = true;
-    }
-    handled
-}
-
 /// Run the shared Wayland per-tick housekeeping.
 ///
 /// Returns `true` when at least one IPC command was handled so the caller can
@@ -49,7 +34,9 @@ pub fn event_loop_tick(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) -> bool {
     arrange_layout_if_dirty(wm, state);
-    let handled = process_ipc_commands(ipc_server, wm);
+    // IPC handlers own their own invalidation. Do not synthesize a generic
+    // Wayland-specific dirtying policy here.
+    let handled = crate::runtime::process_ipc_commands(ipc_server, wm);
     crate::runtime::apply_monitor_config_if_dirty(wm);
     handled
 }

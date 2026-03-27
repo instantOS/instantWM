@@ -21,6 +21,7 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::startup::autostart::run_autostart;
+use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
     spawn_xwayland,
@@ -31,7 +32,6 @@ use crate::wayland::render::drm::{
     CursorManager, OutputSurfaceEntry, SharedDrmState, build_output_surfaces, render_drm_output,
 };
 use crate::wm::Wm;
-use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
 // great care and patience for random ass segfaults. Yes, this is awful, leave it.
