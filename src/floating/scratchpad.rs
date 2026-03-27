@@ -403,7 +403,7 @@ pub fn scratchpad_list(g: &Globals) -> String {
     out
 }
 
-fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
+pub fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
     if name.is_empty() {
         return None;
     }

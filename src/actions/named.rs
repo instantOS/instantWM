@@ -2,8 +2,8 @@ use crate::actions::ActionMeta;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
-    center_window, create_overlay, distribute_clients, key_resize, scratchpad_toggle, set_overlay,
-    toggle_floating, toggle_maximized,
+    center_window, create_overlay, distribute_clients, key_resize, scratchpad_find, scratchpad_make,
+    scratchpad_toggle, set_overlay, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::keyboard::{down_key, up_key};
@@ -24,6 +24,7 @@ use crate::toggles::{
 };
 use crate::types::{Direction, MonitorDirection, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
+use crate::ipc_types::ScratchpadInitialStatus;
 
 fn parse_layout_kind_name(name: &str) -> Option<LayoutKind> {
     Some(match name.to_ascii_lowercase().as_str() {
@@ -139,7 +140,19 @@ define_named_actions!(
     FollowMonNext => { name: "follow_mon_next", arg_example: None, doc: "move client to next monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::NEXT); } },
     SetOverlay => { name: "set_overlay", arg_example: None, doc: "set overlay", run: |ctx, _args| { set_overlay(ctx); } },
     CreateOverlay => { name: "create_overlay", arg_example: None, doc: "create overlay from focused client", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { create_overlay(ctx, win); } } },
-    ScratchpadToggle => { name: "scratchpad_toggle", arg_example: None, doc: "toggle scratchpad", run: |ctx, _args| { scratchpad_toggle(ctx, None); } },
+    ScratchpadToggle => {
+        name: "scratchpad_toggle",
+        arg_example: None,
+        doc: "toggle scratchpad, creating it from current window if it doesn't exist",
+        run: |ctx, _args| {
+            const DEFAULT_NAME: &str = "instantwm_scratchpad";
+            if scratchpad_find(ctx.core().globals(), DEFAULT_NAME).is_some() {
+                scratchpad_toggle(ctx, Some(DEFAULT_NAME));
+            } else {
+                scratchpad_make(ctx, DEFAULT_NAME, None, ScratchpadInitialStatus::Shown);
+            }
+        }
+    },
     ToggleBar => { name: "toggle_bar", arg_example: None, doc: "toggle status bar", run: |ctx, _args| { toggle_bar(ctx); } },
     ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { toggle_sticky(ctx, win); } } },
