@@ -96,23 +96,6 @@ fn pixel_fill_rect(
     }
 }
 
-fn measure_width(fs: &mut FontSystem, text: &str, font_size: f32) -> i32 {
-    if text.is_empty() {
-        return 0;
-    }
-    let metrics = Metrics::new(font_size, font_size);
-    let mut buffer = Buffer::new(fs, metrics);
-    buffer.set_size(fs, None, None);
-    buffer.set_wrap(fs, Wrap::None);
-    buffer.set_text(fs, text, Attrs::new(), Shaping::Advanced);
-    buffer.shape_until_scroll(fs, false);
-    buffer
-        .layout_runs()
-        .map(|run| run.line_w)
-        .fold(0.0_f32, f32::max)
-        .ceil() as i32
-}
-
 fn rasterize_text(
     pixels: &mut [u8],
     canvas_w: i32,
@@ -130,95 +113,64 @@ fn rasterize_text(
     if text.is_empty() || w <= 0 || h <= 0 {
         return;
     }
-    let metrics = Metrics::new(font_size, h as f32);
-    let mut buffer = Buffer::new(fs, metrics);
-    buffer.set_size(fs, Some(w as f32), Some(h as f32));
-    buffer.set_wrap(fs, Wrap::None);
     let cosmic_color = CosmicColor::rgba(
         (color[0] * 255.0) as u8,
         (color[1] * 255.0) as u8,
         (color[2] * 255.0) as u8,
         (color[3] * 255.0) as u8,
     );
-    let attrs = Attrs::new().color(cosmic_color);
-    buffer.set_text(fs, text, attrs, Shaping::Advanced);
+    let metrics = Metrics::new(font_size, h as f32);
+    let mut buffer = Buffer::new(fs, metrics);
+    buffer.set_size(fs, Some(w as f32), Some(h as f32));
+    buffer.set_wrap(fs, Wrap::None);
+    buffer.set_text(fs, text, Attrs::new(), Shaping::Advanced);
     buffer.shape_until_scroll(fs, false);
-
-    for run in buffer.layout_runs() {
-        for glyph in run.glyphs.iter() {
-            let physical = glyph.physical((0.0, 0.0), 1.0);
-            let glyph_color = glyph.color_opt.unwrap_or(cosmic_color);
-            let image = sc.get_image(fs, physical.cache_key);
-            let Some(image) = image else { continue };
-
-            let gx = x + physical.x + image.placement.left;
-            let gy = y + run.line_y as i32 + physical.y - image.placement.top;
-
-            match image.content {
-                cosmic_text::SwashContent::Mask => {
-                    let pw = image.placement.width as i32;
-                    for row in 0..image.placement.height as i32 {
-                        for col in 0..pw {
-                            if gx + col >= x + w || gy + row >= y + h {
-                                continue;
-                            }
-                            let mask_idx = (row * pw + col) as usize;
-                            if mask_idx >= image.data.len() {
-                                continue;
-                            }
-                            let alpha = image.data[mask_idx];
-                            if alpha == 0 {
-                                continue;
-                            }
-                            let a = (alpha as u32 * glyph_color.a() as u32) / 255;
-                            pixel_fill(
-                                pixels,
-                                canvas_w,
-                                canvas_h,
-                                gx + col,
-                                gy + row,
-                                glyph_color.r(),
-                                glyph_color.g(),
-                                glyph_color.b(),
-                                a as u8,
-                            );
-                        }
-                    }
-                }
-                cosmic_text::SwashContent::Color => {
-                    let pw = image.placement.width as i32;
-                    for row in 0..image.placement.height as i32 {
-                        for col in 0..pw {
-                            if gx + col >= x + w || gy + row >= y + h {
-                                continue;
-                            }
-                            let si = ((row * pw + col) * 4) as usize;
-                            if si + 3 < image.data.len() {
-                                pixel_fill(
-                                    pixels,
-                                    canvas_w,
-                                    canvas_h,
-                                    gx + col,
-                                    gy + row,
-                                    image.data[si],
-                                    image.data[si + 1],
-                                    image.data[si + 2],
-                                    image.data[si + 3],
-                                );
-                            }
-                        }
-                    }
-                }
-                cosmic_text::SwashContent::SubpixelMask => {}
-            }
+    buffer.draw(fs, sc, cosmic_color, |gx, gy, _, _, color| {
+        if gx < 0 || gy < 0 || gx >= w || gy >= h {
+            return;
         }
-    }
+        pixel_fill(
+            pixels,
+            canvas_w,
+            canvas_h,
+            x + gx,
+            y + gy,
+            color.r(),
+            color.g(),
+            color.b(),
+            color.a(),
+        );
+    });
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct TextMeasureKey {
+    text: String,
+    font_size_bits: u32,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct TextRenderKey {
+    text: String,
+    width: i32,
+    height: i32,
+    font_size_bits: u32,
+}
+
+struct CachedMeasuredText {
+    buffer: Buffer,
+    width: i32,
+}
+
+struct CachedRenderedText {
+    buffer: Buffer,
 }
 
 pub struct WaylandBarPainter {
     font_system: RefCell<FontSystem>,
     swash_cache: RefCell<SwashCache>,
-    text_width_cache: RefCell<HashMap<String, i32>>,
+    text_measure_cache: RefCell<HashMap<TextMeasureKey, CachedMeasuredText>>,
+    text_render_cache: RefCell<HashMap<TextRenderKey, CachedRenderedText>>,
     scheme: Option<BarScheme>,
     pixels: Vec<u8>,
     canvas_w: i32,
@@ -227,15 +179,18 @@ pub struct WaylandBarPainter {
     origin_y: i32,
     font_size: f32,
     buffers: Vec<BarBuffer>,
-    cached_buffers: Vec<BarBuffer>,
-    cached_key: u64,
-    has_cached_buffers: bool,
+    cached_monitors: HashMap<usize, CachedMonitorBar>,
 }
 
 pub struct BarBuffer {
     pub buffer: MemoryRenderBuffer,
     pub x: i32,
     pub y: i32,
+}
+
+struct CachedMonitorBar {
+    key: u64,
+    buffer: BarBuffer,
 }
 
 impl Clone for BarBuffer {
@@ -253,7 +208,8 @@ impl Default for WaylandBarPainter {
         Self {
             font_system: RefCell::new(FontSystem::new()),
             swash_cache: RefCell::new(SwashCache::new()),
-            text_width_cache: RefCell::new(HashMap::new()),
+            text_measure_cache: RefCell::new(HashMap::new()),
+            text_render_cache: RefCell::new(HashMap::new()),
             scheme: None,
             pixels: Vec::new(),
             canvas_w: 0,
@@ -262,9 +218,7 @@ impl Default for WaylandBarPainter {
             origin_y: 0,
             font_size: DEFAULT_FONT_SIZE,
             buffers: Vec::new(),
-            cached_buffers: Vec::new(),
-            cached_key: 0,
-            has_cached_buffers: false,
+            cached_monitors: HashMap::new(),
         }
     }
 }
@@ -273,7 +227,8 @@ impl WaylandBarPainter {
     pub fn set_font_size(&mut self, font_size: f32) {
         if font_size.is_finite() && font_size > 0.0 {
             self.font_size = font_size;
-            self.text_width_cache.borrow_mut().clear();
+            self.text_measure_cache.borrow_mut().clear();
+            self.text_render_cache.borrow_mut().clear();
         }
     }
 
@@ -281,21 +236,104 @@ impl WaylandBarPainter {
         if text.is_empty() {
             return 0;
         }
-        if let Some(width) = self.text_width_cache.borrow().get(text).copied() {
-            return width;
-        }
-
-        let width = {
-            let mut fs = self.font_system.borrow_mut();
-            measure_width(&mut fs, text, self.font_size)
+        let key = TextMeasureKey {
+            text: text.to_string(),
+            font_size_bits: self.font_size.to_bits(),
         };
 
-        let mut cache = self.text_width_cache.borrow_mut();
+        if let Some(cached) = self.text_measure_cache.borrow().get(&key) {
+            return cached.width;
+        }
+
+        let cached = {
+            let mut fs = self.font_system.borrow_mut();
+            let metrics = Metrics::new(self.font_size, self.font_size);
+            let mut buffer = Buffer::new(&mut fs, metrics);
+            buffer.set_size(&mut fs, None, None);
+            buffer.set_wrap(&mut fs, Wrap::None);
+            buffer.set_text(&mut fs, text, Attrs::new(), Shaping::Advanced);
+            buffer.shape_until_scroll(&mut fs, false);
+            let width = buffer
+                .layout_runs()
+                .map(|run| run.line_w)
+                .fold(0.0_f32, f32::max)
+                .ceil() as i32;
+            CachedMeasuredText { buffer, width }
+        };
+
+        let width = cached.width;
+        let mut cache = self.text_measure_cache.borrow_mut();
         if cache.len() > 2048 {
             cache.clear();
         }
-        cache.insert(text.to_string(), width);
+        cache.insert(key, cached);
         width
+    }
+
+    fn rasterize_text_cached(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        text: &str,
+        color: [f32; 4],
+    ) {
+        if text.is_empty() || w <= 0 || h <= 0 {
+            return;
+        }
+
+        let cosmic_color = CosmicColor::rgba(
+            (color[0] * 255.0) as u8,
+            (color[1] * 255.0) as u8,
+            (color[2] * 255.0) as u8,
+            (color[3] * 255.0) as u8,
+        );
+        let key = TextRenderKey {
+            text: text.to_string(),
+            width: w,
+            height: h,
+            font_size_bits: self.font_size.to_bits(),
+        };
+
+        {
+            let mut cache = self.text_render_cache.borrow_mut();
+            if !cache.contains_key(&key) {
+                let mut fs = self.font_system.borrow_mut();
+                let metrics = Metrics::new(self.font_size, h as f32);
+                let mut buffer = Buffer::new(&mut fs, metrics);
+                buffer.set_size(&mut fs, Some(w as f32), Some(h as f32));
+                buffer.set_wrap(&mut fs, Wrap::None);
+                buffer.set_text(&mut fs, text, Attrs::new(), Shaping::Advanced);
+                buffer.shape_until_scroll(&mut fs, false);
+                if cache.len() > 2048 {
+                    cache.clear();
+                }
+                cache.insert(key.clone(), CachedRenderedText { buffer });
+            }
+        }
+
+        let mut fs = self.font_system.borrow_mut();
+        let mut sc = self.swash_cache.borrow_mut();
+        let cache = self.text_render_cache.borrow();
+        let Some(cached) = cache.get(&key) else { return };
+
+        cached.buffer.draw(&mut fs, &mut sc, cosmic_color, |gx, gy, _, _, color| {
+            if gx < 0 || gy < 0 || gx >= w || gy >= h {
+                return;
+            }
+            pixel_fill(
+                &mut self.pixels,
+                self.canvas_w,
+                self.canvas_h,
+                x + gx,
+                y + gy,
+                color.r(),
+                color.g(),
+                color.b(),
+                color.a(),
+            );
+        });
     }
 
     /// Measure text width without requiring `&mut self` — used for hit-testing.
@@ -470,22 +508,7 @@ impl BarPainter for WaylandBarPainter {
             let text_x = x + lpad;
             let text_w = (w - lpad).max(0);
             if text_w > 0 {
-                let mut fs = self.font_system.borrow_mut();
-                let mut sc = self.swash_cache.borrow_mut();
-                rasterize_text(
-                    &mut self.pixels,
-                    self.canvas_w,
-                    self.canvas_h,
-                    &mut fs,
-                    &mut sc,
-                    text_x,
-                    y,
-                    text_w,
-                    h,
-                    text,
-                    fg,
-                    self.font_size,
-                );
+                self.rasterize_text_cached(text_x, y, text_w, h, text, fg);
             }
         }
         x + w
@@ -499,20 +522,11 @@ pub fn render_bar_buffers(
     wayland_systray: &crate::types::WaylandSystray,
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    let key = bar_render_key(core, wayland_systray);
-    if painter.has_cached_buffers && painter.cached_key == key {
-        return painter
-            .cached_buffers
-            .iter()
-            .map(|b| (b.buffer.clone(), b.x, b.y))
-            .collect();
-    }
-
     // Cache the systray width so status bar layout can account for it.
     core.globals_mut().bar_runtime.systray_width =
         crate::systray::wayland::get_wayland_systray_width_with_state(core, wayland_systray);
 
-    let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
+    let mon_indices: Vec<(usize, i32, i32, i32, i32, usize)> = core
         .globals()
         .monitors_iter()
         .filter_map(|(i, m)| {
@@ -525,11 +539,26 @@ pub fn render_bar_buffers(
                 m.bar_y,
                 m.work_rect.w,
                 core.globals().cfg.bar_height,
+                m.id(),
             ))
         })
         .collect();
 
-    for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
+    painter
+        .cached_monitors
+        .retain(|monitor_id, _| mon_indices.iter().any(|entry| entry.5 == *monitor_id));
+
+    let mut rendered = Vec::with_capacity(mon_indices.len());
+
+    for (mon_idx, origin_x, origin_y, width, height, monitor_id) in mon_indices {
+        let key = monitor_render_key(core, mon_idx, monitor_id, wayland_systray);
+        if let Some(cached) = painter.cached_monitors.get(&monitor_id)
+            && cached.key == key
+        {
+            rendered.push((cached.buffer.buffer.clone(), cached.buffer.x, cached.buffer.y));
+            continue;
+        }
+
         painter.begin(scale, origin_x, origin_y, width, height);
         crate::bar::renderer::draw_bar(core, mon_idx, painter);
         if core.globals().cfg.show_systray
@@ -544,19 +573,23 @@ pub fn render_bar_buffers(
             );
         }
         painter.finish();
-    }
 
-    let rendered = painter.take_buffers();
-    painter.cached_buffers = rendered
-        .iter()
-        .map(|(buffer, x, y)| BarBuffer {
-            buffer: buffer.clone(),
-            x: *x,
-            y: *y,
-        })
-        .collect();
-    painter.cached_key = key;
-    painter.has_cached_buffers = true;
+        let mut fresh = painter.take_buffers();
+        if let Some((buffer, x, y)) = fresh.pop() {
+            painter.cached_monitors.insert(
+                monitor_id,
+                CachedMonitorBar {
+                    key,
+                    buffer: BarBuffer {
+                        buffer: buffer.clone(),
+                        x,
+                        y,
+                    },
+                },
+            );
+            rendered.push((buffer, x, y));
+        }
+    }
 
     rendered
 }
@@ -578,9 +611,10 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
     }
 }
 
-//TODO: document what this does
-fn bar_render_key(
+fn monitor_render_key(
     core: &crate::contexts::CoreCtx,
+    mon_idx: usize,
+    monitor_id: usize,
     wayland_systray: &crate::types::WaylandSystray,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -590,44 +624,50 @@ fn bar_render_key(
     core.globals().cfg.horizontal_padding.hash(&mut hasher);
     core.globals().cfg.startmenusize.hash(&mut hasher);
     core.globals().drag.bar_active.hash(&mut hasher);
-    core.globals().bar_runtime.status_text.hash(&mut hasher);
     core.globals().selected_monitor_id().hash(&mut hasher);
 
-    for m in core.globals().monitors_iter_all() {
-        m.num.hash(&mut hasher);
-        m.work_rect.x.hash(&mut hasher);
-        m.work_rect.y.hash(&mut hasher);
-        m.work_rect.w.hash(&mut hasher);
-        m.work_rect.h.hash(&mut hasher);
-        m.bar_y.hash(&mut hasher);
-        m.showbar.hash(&mut hasher);
-        m.current_tag.hash(&mut hasher);
-        m.selected_tags().hash(&mut hasher);
-        m.sel.hash(&mut hasher);
-        hash_gesture(&mut hasher, m.gesture);
-        if let Some(tag) = m.current_tag() {
-            tag.showbar.hash(&mut hasher);
-            tag.name.hash(&mut hasher);
-            tag.alt_name.hash(&mut hasher);
-            tag.layouts.symbol().hash(&mut hasher);
-        }
+    let Some(m) = core.globals().monitor(mon_idx) else {
+        return hasher.finish();
+    };
 
-        let selected = m.selected_tags();
-        for (win, c) in m.iter_clients(core.globals().clients.map()) {
-            if !c.is_visible(selected) {
-                continue;
-            }
-            win.hash(&mut hasher);
-            c.name.hash(&mut hasher);
-            c.tags.hash(&mut hasher);
-            c.is_urgent.hash(&mut hasher);
-            c.is_locked.hash(&mut hasher);
-            c.is_fullscreen.hash(&mut hasher);
-            c.is_hidden.hash(&mut hasher);
-        }
+    monitor_id.hash(&mut hasher);
+    m.num.hash(&mut hasher);
+    m.work_rect.x.hash(&mut hasher);
+    m.work_rect.y.hash(&mut hasher);
+    m.work_rect.w.hash(&mut hasher);
+    m.work_rect.h.hash(&mut hasher);
+    m.bar_y.hash(&mut hasher);
+    m.showbar.hash(&mut hasher);
+    m.current_tag.hash(&mut hasher);
+    m.selected_tags().hash(&mut hasher);
+    m.sel.hash(&mut hasher);
+    hash_gesture(&mut hasher, m.gesture);
+    if let Some(tag) = m.current_tag() {
+        tag.showbar.hash(&mut hasher);
+        tag.name.hash(&mut hasher);
+        tag.alt_name.hash(&mut hasher);
+        tag.layouts.symbol().hash(&mut hasher);
     }
 
-    if core.globals().cfg.show_systray {
+    let selected = m.selected_tags();
+    for (win, c) in m.iter_clients(core.globals().clients.map()) {
+        if !c.is_visible(selected) {
+            continue;
+        }
+        win.hash(&mut hasher);
+        c.name.hash(&mut hasher);
+        c.tags.hash(&mut hasher);
+        c.is_urgent.hash(&mut hasher);
+        c.is_locked.hash(&mut hasher);
+        c.is_fullscreen.hash(&mut hasher);
+        c.is_hidden.hash(&mut hasher);
+    }
+
+    if core.globals().selected_monitor_id() == monitor_id {
+        core.globals().bar_runtime.status_text.hash(&mut hasher);
+    }
+
+    if core.globals().cfg.show_systray && core.globals().selected_monitor_id() == monitor_id {
         for item in &wayland_systray.items {
             item.service.hash(&mut hasher);
             item.path.hash(&mut hasher);
