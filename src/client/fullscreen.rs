@@ -122,10 +122,10 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                 animate_client_x11(ctx_x11, win, &mon_rect, 10, 0);
             }
 
-            let _ = ctx_x11.x11.conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().border_width(0),
-            );
+            let _ = ctx_x11
+                .x11
+                .conn
+                .configure_window(x11_win, &ConfigureWindowAux::new().border_width(0));
             // Position and raise the window.
             let _ = ctx_x11.x11.conn.configure_window(
                 x11_win,

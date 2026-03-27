@@ -12,7 +12,6 @@ use crate::client::constants::{
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize;
 use crate::client::rules::WindowProperties;
-use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -103,7 +102,7 @@ pub fn update_title_x11(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let name = read_window_title(x11, x11_runtime, win);
+    let name = window_properties_x11(x11, x11_runtime, win).title;
     if let Some(client) = core.globals_mut().clients.get_mut(&win) {
         client.name = name;
     }
@@ -143,26 +142,23 @@ fn read_window_title(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, win: W
     BROKEN.to_string()
 }
 
-/// Apply the configured window rules to `win`.
-pub fn apply_rules(
-    core: &mut CoreCtx,
+/// Read X11 window metadata used by the backend-agnostic rule engine.
+pub fn window_properties_x11(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
-) {
+) -> WindowProperties {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
     let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
     let title = read_window_title(x11, x11_runtime, win);
 
-    let props = WindowProperties {
+    WindowProperties {
         class: String::from_utf8_lossy(&class_bytes).into_owned(),
         instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
         title,
-    };
-
-    apply_rules_generic(core.globals_mut(), win, &props);
+    }
 }
 
 fn read_wm_class(conn: &x11rb::rust_connection::RustConnection, win: Window) -> (Vec<u8>, Vec<u8>) {

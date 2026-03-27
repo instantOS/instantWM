@@ -22,7 +22,12 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     }
 
     if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::properties::set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
+        crate::backend::x11::properties::set_client_tag_prop(
+            &x11.core,
+            &x11.x11,
+            x11.x11_runtime,
+            win,
+        );
     }
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));

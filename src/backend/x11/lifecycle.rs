@@ -30,14 +30,14 @@
 
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::properties::set_client_state;
+use crate::backend::x11::properties::{
+    set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
+    update_wm_hints, window_properties_x11,
+};
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
-use crate::backend::x11::properties::set_client_state;
-use crate::backend::x11::properties::{
-    apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
-    update_wm_hints,
-};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
 use crate::backend::x11::X11RuntimeConfig;
@@ -148,7 +148,8 @@ fn insert_client_and_apply_rules(
     c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
         == crate::client::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
-    apply_rules(core, x11, x11_cfg, w);
+    let props = window_properties_x11(x11, x11_cfg, w);
+    crate::client::apply_rules(core.globals_mut(), w, &props);
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
