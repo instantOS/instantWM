@@ -1,6 +1,6 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-use smithay::backend::drm::{DrmDevice, DrmEvent};
+use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::ImportDma;
@@ -30,7 +30,8 @@ use crate::wayland::common::{
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
-    CursorManager, OutputSurfaceEntry, SharedDrmState, build_output_surfaces, render_drm_output,
+    CursorManager, ManagedDrmOutputManager, OutputSurfaceEntry, RenderOutcome, SharedDrmState,
+    build_output_surfaces, create_output_manager, render_drm_output,
 };
 use crate::wm::Wm;
 
@@ -63,7 +64,7 @@ pub fn run() -> ! {
 
     let (
         primary_gpu_path,
-        mut drm_device,
+        drm_device,
         drm_notifier,
         _drm_fd,
         gbm_device,
@@ -81,9 +82,16 @@ pub fn run() -> ! {
     state.attach_wm(&mut wm);
 
     let cursor_manager = init_cursor_manager(&state.cursor_config);
+    let output_manager = Arc::new(Mutex::new(create_output_manager(
+        drm_device,
+        &renderer,
+        &gbm_device,
+    )));
 
-    let mut output_surfaces =
-        build_output_surfaces(&mut drm_device, &mut renderer, &mut state, &gbm_device);
+    let mut output_surfaces = {
+        let mut manager = output_manager.lock().unwrap();
+        build_output_surfaces(&mut manager, &mut renderer, &mut state)
+    };
     for entry in &output_surfaces {
         state.space.map_output(&entry.output, (entry.x_offset, 0));
     }
@@ -144,7 +152,7 @@ pub fn run() -> ! {
         notifier,
         &shared,
         &mut libinput_context,
-        drm_device,
+        Arc::clone(&output_manager),
     );
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, &shared);
@@ -253,18 +261,18 @@ fn setup_session_handlers(
     notifier: smithay::backend::session::libseat::LibSeatSessionNotifier,
     shared: &Arc<Mutex<SharedDrmState>>,
     libinput_context: &mut Libinput,
-    drm_device: DrmDevice,
+    output_manager: Arc<Mutex<ManagedDrmOutputManager>>,
 ) {
     let shared_session = Arc::clone(shared);
     let mut session_libinput = libinput_context.clone();
-    let mut session_drm_device = drm_device;
+    let session_output_manager = Arc::clone(&output_manager);
 
     loop_handle
         .insert_source(notifier, move |event, _, _data| match event {
             SessionEvent::PauseSession => {
                 log::info!("Session paused (VT switch away) - suspending rendering");
                 session_libinput.suspend();
-                session_drm_device.pause();
+                session_output_manager.lock().unwrap().pause();
                 shared_session.lock().unwrap().session_active = false;
             }
             SessionEvent::ActivateSession => {
@@ -272,7 +280,7 @@ fn setup_session_handlers(
                 if let Err(err) = session_libinput.resume() {
                     log::error!("failed to resume libinput context: {:?}", err);
                 }
-                if let Err(err) = session_drm_device.activate(false) {
+                if let Err(err) = session_output_manager.lock().unwrap().activate(false) {
                     log::error!("failed to reactivate DRM device: {err}");
                 }
                 let mut s = shared_session.lock().unwrap();
@@ -468,7 +476,6 @@ fn process_cursor_warp(
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
     if apply_pending_warp(state, pointer_handle) {
-        state.note_cursor_activity();
         let mut s = shared.lock().unwrap();
         s.mark_all_dirty();
     }
@@ -540,7 +547,6 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
         BackendVrrSupport::Supported => {
             let hard_blocked = state.is_locked()
                 || state.has_active_window_animations()
-                || state.cursor_recently_active()
                 || has_pending_screencopy_for_output(state, &output_name)
                 || !state.overlay_windows_for_render(entry.x_offset).is_empty()
                 || !matches!(
@@ -570,7 +576,10 @@ fn apply_output_vrr_policy(wm: &Wm, state: &mut WaylandState, entry: &mut Output
         return;
     }
 
-    match entry.surface.use_vrr(target) {
+    match entry
+        .surface
+        .with_compositor(|compositor| compositor.use_vrr(target))
+    {
         Ok(()) => {
             entry.vrr_enabled = target;
             state.set_output_vrr_enabled(&entry.output.name(), target);
@@ -641,29 +650,35 @@ fn render_outputs(
                 start_time,
             );
 
-            if rendered {
-                shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
-                if let Some(failed_frames) = render_failures.remove(&entry.crtc)
-                    && failed_frames >= 3
-                {
-                    log::info!(
-                        "DRM render recovered on {:?} after {failed_frames} failed frames",
-                        entry.crtc
-                    );
+            match rendered {
+                RenderOutcome::Submitted => {
+                    shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
+                    if let Some(failed_frames) = render_failures.remove(&entry.crtc)
+                        && failed_frames >= 3
+                    {
+                        log::info!(
+                            "DRM render recovered on {:?} after {failed_frames} failed frames",
+                            entry.crtc
+                        );
+                    }
                 }
-            } else {
-                let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
-                *failed_frames += 1;
-
-                if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
-                    log::warn!(
-                        "DRM render failed on {:?} (consecutive failures: {})",
-                        entry.crtc,
-                        *failed_frames
-                    );
+                RenderOutcome::Skipped => {
+                    render_failures.remove(&entry.crtc);
                 }
+                RenderOutcome::Failed => {
+                    let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
+                    *failed_frames += 1;
 
-                shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                    if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
+                        log::warn!(
+                            "DRM render failed on {:?} (consecutive failures: {})",
+                            entry.crtc,
+                            *failed_frames
+                        );
+                    }
+
+                    shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                }
             }
         }
     }

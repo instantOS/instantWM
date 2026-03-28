@@ -1,11 +1,14 @@
 //! DRM/KMS rendering and GPU output management.
 
 use smithay::backend::allocator::Fourcc;
+use smithay::backend::allocator::dmabuf::AsDmabuf;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface, VrrSupport};
+use smithay::backend::drm::compositor::{FrameError, FrameFlags, PrimaryPlaneElement};
+use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
+use smithay::backend::drm::output::DrmOutputRenderElements;
+use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
 use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
@@ -16,7 +19,7 @@ use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Sub
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
-use smithay::utils::{Physical, Point, Rectangle};
+use smithay::utils::{Physical, Point};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::BackendVrrSupport;
@@ -32,11 +35,18 @@ mod cursor;
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
-    SharedDrmState, sync_monitors_from_outputs_vec,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutputManager, OutputHitRegion,
+    OutputSurfaceEntry, SharedDrmState, sync_monitors_from_outputs_vec,
 };
 
 pub mod state;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderOutcome {
+    Submitted,
+    Skipped,
+    Failed,
+}
 
 render_elements! {
     pub DrmExtras<=GlesRenderer>;
@@ -48,26 +58,22 @@ render_elements! {
 }
 
 pub fn build_output_surfaces(
-    drm_device: &mut DrmDevice,
+    output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
     state: &mut WaylandState,
-    gbm_device: &GbmDevice<DrmDeviceFd>,
 ) -> Vec<OutputSurfaceEntry> {
-    let gbm_allocator = GbmAllocator::new(
-        gbm_device.clone(),
-        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
-    );
-    let color_formats: &[Fourcc] = &[Fourcc::Argb8888, Fourcc::Xrgb8888];
-    let renderer_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
-
     let mut output_surfaces: Vec<OutputSurfaceEntry> = Vec::new();
     let mut output_x_offset: i32 = 0;
 
-    let res = drm_device.resource_handles().expect("drm resource_handles");
+    let res = output_manager
+        .device()
+        .resource_handles()
+        .expect("drm resource_handles");
     let mut used_crtcs: Vec<crtc::Handle> = Vec::new();
+    let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmExtras>::default();
 
     for &conn_handle in res.connectors() {
-        let Ok(conn_info) = drm_device.get_connector(conn_handle, false) else {
+        let Ok(conn_info) = output_manager.device().get_connector(conn_handle, false) else {
             continue;
         };
         if conn_info.state() != connector::State::Connected
@@ -93,7 +99,7 @@ pub fn build_output_surfaces(
         let encoder_crtcs: Vec<crtc::Handle> = conn_info
             .encoders()
             .iter()
-            .filter_map(|&enc_h| drm_device.get_encoder(enc_h).ok())
+            .filter_map(|&enc_h| output_manager.device().get_encoder(enc_h).ok())
             .flat_map(|enc| res.filter_crtcs(enc.possible_crtcs()))
             .collect();
 
@@ -101,17 +107,6 @@ pub fn build_output_surfaces(
             continue;
         };
         used_crtcs.push(picked_crtc);
-
-        let drm_surface = drm_device
-            .create_surface(picked_crtc, mode, &[conn_handle])
-            .expect("create_surface");
-        let gbm_surface = GbmBufferedSurface::new(
-            drm_surface,
-            gbm_allocator.clone(),
-            color_formats,
-            renderer_formats.iter().cloned(),
-        )
-        .expect("GbmBufferedSurface::new");
 
         let (mode_w, mode_h) = mode.size();
         let (mode_w, mode_h) = (mode_w as i32, mode_h as i32);
@@ -151,8 +146,19 @@ pub fn build_output_surfaces(
         output.set_preferred(out_mode);
         let _global = output.create_global::<WaylandState>(&state.display_handle);
 
-        let damage_tracker = OutputDamageTracker::from_output(&output);
-        let vrr_support = match gbm_surface.vrr_supported(conn_handle) {
+        let surface = output_manager
+            .initialize_output(
+                picked_crtc,
+                mode,
+                &[conn_handle],
+                &output,
+                None,
+                renderer,
+                &init_render_elements,
+            )
+            .expect("initialize_output");
+        let vrr_support = match surface.with_compositor(|compositor| compositor.vrr_supported(conn_handle))
+        {
             Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
             Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
             Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
@@ -169,9 +175,8 @@ pub fn build_output_surfaces(
         output_surfaces.push(OutputSurfaceEntry {
             crtc: picked_crtc,
             connector: conn_handle,
-            surface: gbm_surface,
+            surface,
             output: output.clone(),
-            damage_tracker,
             x_offset: output_x_offset,
             width: mode_w,
             height: mode_h,
@@ -183,6 +188,29 @@ pub fn build_output_surfaces(
     }
 
     output_surfaces
+}
+
+pub fn create_output_manager(
+    drm_device: DrmDevice,
+    renderer: &GlesRenderer,
+    gbm_device: &GbmDevice<DrmDeviceFd>,
+) -> ManagedDrmOutputManager {
+    let allocator = GbmAllocator::new(
+        gbm_device.clone(),
+        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
+    );
+    let exporter = GbmFramebufferExporter::new(gbm_device.clone(), None);
+    let color_formats: [Fourcc; 2] = [Fourcc::Argb8888, Fourcc::Xrgb8888];
+    let renderer_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+
+    ManagedDrmOutputManager::new(
+        drm_device,
+        allocator,
+        exporter,
+        Some(gbm_device.clone()),
+        color_formats,
+        renderer_formats,
+    )
 }
 
 fn connector_type_name(interface: connector::Interface) -> &'static str {
@@ -212,21 +240,7 @@ pub fn render_drm_output(
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: std::time::Instant,
-) -> bool {
-    let (dmabuf, age) = match entry.surface.next_buffer() {
-        Ok(buf) => buf,
-        Err(e) => {
-            log::trace!("next_buffer: {e}");
-            return false;
-        }
-    };
-
-    let mut dmabuf_clone = dmabuf.clone();
-    let Ok(mut target) = renderer.bind(&mut dmabuf_clone) else {
-        log::warn!("renderer bind failed");
-        return false;
-    };
-
+) -> RenderOutcome {
     let local_pointer = Point::from((
         pointer_location.x - entry.x_offset as f64,
         pointer_location.y,
@@ -306,39 +320,66 @@ pub fn render_drm_output(
         );
     }
 
-    let render_result = entry.damage_tracker.render_output(
-        renderer,
-        &mut target,
-        age as usize,
-        &render_elements,
-        [0.05, 0.05, 0.07, 1.0],
-    );
+    let has_pending_screencopy = state
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output == entry.output);
+    let mut frame_flags = FrameFlags::DEFAULT;
+    if entry.vrr_enabled {
+        frame_flags |= FrameFlags::SKIP_CURSOR_ONLY_UPDATES;
+    }
+    if has_pending_screencopy {
+        frame_flags = FrameFlags::empty();
+    }
 
-    crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
-        &mut state.pending_screencopies,
-        renderer,
-        &target,
-        &entry.output,
-        start_time,
-    );
-    drop(target);
-
-    match render_result {
-        Ok(result) => {
-            let damage: Option<Vec<Rectangle<i32, Physical>>> = result.damage.cloned();
-            if let Err(e) = entry.surface.queue_buffer(None, damage, ()) {
-                log::warn!("queue_buffer: {e}");
-                return false;
-            }
+    let frame_result = match entry
+        .surface
+        .render_frame(renderer, &render_elements, [0.05, 0.05, 0.07, 1.0], frame_flags)
+    {
+        Ok(result) => result,
+        Err(err) => {
+            log::warn!("render_frame: {:?}", err);
+            return RenderOutcome::Failed;
         }
-        Err(e) => {
-            log::warn!("render_output: {:?}", e);
-            return false;
+    };
+
+    if has_pending_screencopy
+        && let PrimaryPlaneElement::Swapchain(primary_swapchain) = &frame_result.primary_element
+    {
+        match primary_swapchain.buffer().export() {
+            Ok(mut dmabuf) => match renderer.bind(&mut dmabuf) {
+                Ok(target) => {
+                    crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+                        &mut state.pending_screencopies,
+                        renderer,
+                        &target,
+                        &entry.output,
+                        start_time,
+                    );
+                }
+                Err(err) => log::warn!("screencopy bind failed: {:?}", err),
+            },
+            Err(err) => log::warn!("screencopy dmabuf export failed: {:?}", err),
+        }
+    }
+
+    if frame_result.needs_sync()
+        && let PrimaryPlaneElement::Swapchain(primary_swapchain) = &frame_result.primary_element
+    {
+        let _ = primary_swapchain.sync.wait();
+    }
+
+    match entry.surface.queue_frame(()) {
+        Ok(()) => {}
+        Err(FrameError::EmptyFrame) => return RenderOutcome::Skipped,
+        Err(err) => {
+            log::warn!("queue_frame: {:?}", err);
+            return RenderOutcome::Failed;
         }
     }
 
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
-    true
+    RenderOutcome::Submitted
 }
 
 fn build_cursor_elements(

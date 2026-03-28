@@ -3,8 +3,9 @@
 use std::collections::{HashMap, HashSet};
 
 use smithay::backend::allocator::gbm::GbmAllocator;
-use smithay::backend::drm::{DrmDeviceFd, GbmBufferedSurface};
-use smithay::backend::renderer::damage::OutputDamageTracker;
+use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
+use smithay::backend::drm::output::{DrmOutput, DrmOutputManager};
+use smithay::backend::drm::DrmDeviceFd;
 use smithay::output::Output;
 use smithay::reexports::drm::control::{connector, crtc};
 
@@ -17,6 +18,12 @@ pub const DEFAULT_SCREEN_WIDTH: i32 = 1280;
 pub const DEFAULT_SCREEN_HEIGHT: i32 = 800;
 pub const CURSOR_SIZE: u32 = 24;
 
+pub type DrmAllocator = GbmAllocator<DrmDeviceFd>;
+pub type DrmFramebufferExporter = GbmFramebufferExporter<DrmDeviceFd>;
+pub type ManagedDrmOutput = DrmOutput<DrmAllocator, DrmFramebufferExporter, (), DrmDeviceFd>;
+pub type ManagedDrmOutputManager =
+    DrmOutputManager<DrmAllocator, DrmFramebufferExporter, (), DrmDeviceFd>;
+
 pub struct OutputHitRegion {
     pub crtc: crtc::Handle,
     pub x_offset: i32,
@@ -26,9 +33,8 @@ pub struct OutputHitRegion {
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
     pub connector: connector::Handle,
-    pub surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
+    pub surface: ManagedDrmOutput,
     pub output: Output,
-    pub damage_tracker: OutputDamageTracker,
     pub x_offset: i32,
     pub width: i32,
     pub height: i32,

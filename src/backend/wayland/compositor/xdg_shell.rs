@@ -45,7 +45,6 @@ impl SeatHandler for WaylandState {
         image: smithay::input::pointer::CursorImageStatus,
     ) {
         self.cursor_image_status = image;
-        self.note_cursor_activity();
         self.request_render();
     }
 

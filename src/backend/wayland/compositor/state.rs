@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
-use std::time::{Duration, Instant};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -188,11 +187,6 @@ pub struct WaylandState {
     /// Current drag-and-drop icon surface.
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
 
-    /// Temporarily suppress VRR after pointer/cursor activity because the DRM
-    /// backend currently composites the cursor into the primary plane instead
-    /// of using a hardware cursor plane.
-    pub cursor_vrr_block_until: Option<Instant>,
-
     /// Cached winit window size for the nested backend.
     ///
     /// Updated by the winit calloop source callback on `Resized` events;
@@ -341,7 +335,6 @@ impl WaylandState {
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
-            cursor_vrr_block_until: None,
             winit_window_size: smithay::utils::Size::from((0, 0)),
             pending_winit_resize: None,
             winit_close_requested: false,
@@ -570,15 +563,6 @@ impl WaylandState {
 
     pub fn output_vrr_metadata(&self, output_name: &str) -> Option<&WaylandOutputMetadata> {
         self.output_metadata.get(output_name)
-    }
-
-    pub fn note_cursor_activity(&mut self) {
-        self.cursor_vrr_block_until = Some(Instant::now() + Duration::from_millis(150));
-    }
-
-    pub fn cursor_recently_active(&self) -> bool {
-        self.cursor_vrr_block_until
-            .is_some_and(|deadline| Instant::now() < deadline)
     }
 
     /// Set the keyboard layout.

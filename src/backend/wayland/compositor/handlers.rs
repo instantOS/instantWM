@@ -156,7 +156,6 @@ impl ClientDndGrabHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
     ) {
         self.dnd_icon = icon;
-        self.note_cursor_activity();
         self.request_render();
     }
 
@@ -167,7 +166,6 @@ impl ClientDndGrabHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
     ) {
         self.dnd_icon = None;
-        self.note_cursor_activity();
         self.request_render();
     }
 }
