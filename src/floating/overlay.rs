@@ -1,4 +1,3 @@
-use crate::animation::animate_client;
 use crate::backend::BackendOps;
 use crate::client::{resize, save_border_width};
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
@@ -359,12 +358,12 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         ctx.backend().raise_window(overlay_win);
 
         let target_rect = get_target_overlay_rect(&pos_info);
-        animate_client(
+        crate::animation::move_resize_client(
             ctx,
             overlay_win,
-            &target_rect.with_size(0, 0), // animate_client uses size from client, only x/y matter
+            &target_rect,
+            crate::animation::MoveResizeMode::Normal,
             OVERLAY_ANIMATION_FRAMES,
-            0,
         );
 
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
@@ -448,7 +447,13 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
 
     if is_locked {
         let hide_rect = get_hide_animation_rect(&hide_info);
-        animate_client(ctx, overlay_win, &hide_rect, OVERLAY_ANIMATION_FRAMES, 0);
+        crate::animation::move_resize_client(
+            ctx,
+            overlay_win,
+            &hide_rect,
+            crate::animation::MoveResizeMode::Normal,
+            OVERLAY_ANIMATION_FRAMES,
+        );
     }
 
     reset_all_overlay_status(ctx);

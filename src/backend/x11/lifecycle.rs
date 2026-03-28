@@ -460,30 +460,17 @@ fn run_manage_animation(
         return;
     }
 
-    crate::animation::place_client_for_animation(
+    crate::animation::move_resize_client(
         ctx,
         w,
-        &Rect {
+        &c.geo,
+        crate::animation::MoveResizeMode::AnimateFrom(Rect {
             x: c.geo.x,
             y: c.geo.y - 70,
             w: c.geo.w,
             h: c.geo.h,
-        },
-        true,
-    );
-
-    // Use backend-agnostic animation
-    crate::animation::animate_client(
-        ctx,
-        w,
-        &Rect {
-            x: c.geo.x,
-            y: c.geo.y,
-            w: 0,
-            h: 0,
-        },
+        }),
         7,
-        0,
     );
 
     let is_tiling = ctx

@@ -104,52 +104,64 @@ fn drain_x11_events(wm: &mut Wm) {
 
 /// Tick active X11 window animations, interpolating geometry each frame.
 fn tick_x11_animations(wm: &mut Wm) {
-    let data = match wm.backend.x11_data_mut() {
-        Some(d) => d,
-        None => return,
+    let finished_targets = {
+        let data = match wm.backend.x11_data_mut() {
+            Some(d) => d,
+            None => return,
+        };
+
+        if data.x11_runtime.window_animations.is_empty() {
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let mut finished = Vec::new();
+        let mut needs_flush = false;
+
+        for (win, anim) in data.x11_runtime.window_animations.iter() {
+            let rect = crate::animation::interpolated_rect(anim, now);
+
+            if rect.is_valid() {
+                let x11_win: x11rb::protocol::xproto::Window = (*win).into();
+                let width = rect.w.max(1) as u32;
+                let height = rect.h.max(1) as u32;
+                let _ = data.conn.configure_window(
+                    x11_win,
+                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                        .x(rect.x)
+                        .y(rect.y)
+                        .width(width)
+                        .height(height),
+                );
+                needs_flush = true;
+            }
+
+            if now.duration_since(anim.started_at) >= anim.duration {
+                finished.push((*win, anim.to));
+            }
+        }
+
+        for (win, _) in &finished {
+            data.x11_runtime.window_animations.remove(win);
+        }
+
+        if needs_flush {
+            let _ = data.conn.flush();
+        }
+
+        finished
     };
 
-    if data.x11_runtime.window_animations.is_empty() {
+    if finished_targets.is_empty() {
         return;
     }
 
-    let now = std::time::Instant::now();
-
-    // Collect finished windows and windows that need geometry updates.
-    let mut finished = Vec::new();
-    let mut needs_flush = false;
-
-    for (win, anim) in data.x11_runtime.window_animations.iter() {
-        let rect = crate::animation::interpolated_rect(anim, now);
-
-        if rect.is_valid() {
-            let x11_win: x11rb::protocol::xproto::Window = (*win).into();
-            let width = rect.w.max(1) as u32;
-            let height = rect.h.max(1) as u32;
-            let _ = data.conn.configure_window(
-                x11_win,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .x(rect.x)
-                    .y(rect.y)
-                    .width(width)
-                    .height(height),
-            );
-            needs_flush = true;
-        }
-
-        if now.duration_since(anim.started_at) >= anim.duration {
-            finished.push(*win);
-        }
-    }
-
-    // Remove completed animations. The behavioral layer already tracks the
-    // target geometry; the animation queue only owns the transient render state.
-    for win in &finished {
-        data.x11_runtime.window_animations.remove(win);
-    }
-
-    if needs_flush && let Some(data) = wm.backend.x11_data() {
-        let _ = data.conn.flush();
+    let ctx = wm.ctx();
+    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+        return;
+    };
+    for (win, rect) in finished_targets {
+        crate::contexts::WmCtx::X11(ctx.reborrow()).resize_client(win, rect);
     }
 }
 

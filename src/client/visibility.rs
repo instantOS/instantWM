@@ -1,6 +1,6 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
-use crate::animation::animate_client_x11;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::properties::set_client_state;
@@ -255,21 +255,19 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, win, WM_STATE_NORMAL);
 
-    // Start the window slightly above its target position so the animation
-    // slides it down into place.
-    {
-        let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
-        resize(&mut tmp_ctx, win, &Rect { x, y: -50, w, h }, false);
-    }
-
     let _ = ctx.x11.conn.configure_window(
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
     let _ = ctx.x11.conn.flush();
 
-    // Animate: slide down to (x, y) from (x, -50).
-    animate_client_x11(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    move_resize_client(
+        &mut WmCtx::X11(ctx.reborrow()),
+        win,
+        &Rect { x, y, w, h },
+        MoveResizeMode::AnimateFrom(Rect { x, y: -50, w, h }),
+        14,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -292,17 +290,17 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
-        animate_client_x11(
-            ctx,
+        move_resize_client(
+            &mut WmCtx::X11(ctx.reborrow()),
             win,
             &Rect {
                 x,
                 y: bar_height - h + 40,
-                w: 0,
-                h: 0,
+                w,
+                h,
             },
+            MoveResizeMode::Normal,
             10,
-            0,
         );
     }
 

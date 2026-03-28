@@ -477,36 +477,21 @@ impl WaylandState {
         let Some(g) = self.globals() else {
             return;
         };
-        let updates: Vec<(WindowId, Window, Rect, i32)> = self
+        let updates: Vec<(WindowId, Rect)> = self
             .space
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
                 let client = g.clients.get(&marker.id)?;
-                Some((marker.id, window.clone(), client.geo, client.border_width))
+                Some((marker.id, client.geo))
             })
             .collect();
-        for (window_id, window, geo, bw) in updates {
-            // Use the method from window.rs
-            let target_point = Point::from((geo.x + bw, geo.y + bw));
-            self.set_window_target_location(window_id, window.clone(), target_point, false);
-            let key = window
-                .user_data()
-                .get::<WindowIdMarker>()
-                .map(|m| m.id)
-                .unwrap_or_default();
-            let target = (geo.w.max(1), geo.h.max(1));
-            let unchanged = self
-                .last_configured_size
-                .get(&key)
-                .is_some_and(|&s| s == target);
-            if !unchanged {
-                let size =
-                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
-                // Use the method from window.rs
-                self.send_toplevel_configure(&window, Some(size));
-                self.last_configured_size.insert(key, target);
-            }
+        for (window_id, geo) in updates {
+            self.set_window_target_rect(
+                window_id,
+                geo,
+                super::window::animations::WindowMoveMode::Normal,
+            );
         }
         self.raise_unmanaged_x11_windows();
     }

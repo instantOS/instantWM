@@ -56,11 +56,9 @@ pub fn handle_pointer_axis<B: InputBackend>(
                 if let Some(steps) = event.amount_v120(axis) {
                     frame = frame.v120(axis, (steps * scroll_factor) as i32);
                 }
-            } else if matches!(
-                event.source(),
-                smithay::backend::input::AxisSource::Finger
-                    | smithay::backend::input::AxisSource::Continuous
-            ) {
+            } else if matches!(event.source(), smithay::backend::input::AxisSource::Finger) {
+                // smithay expects the compositor to emit axis_stop for touchpad-style
+                // finger scrolling when libinput ends the zero-terminated sequence.
                 frame = frame.stop(axis);
                 has_axis_content = true;
             }

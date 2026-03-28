@@ -1,6 +1,7 @@
 use smithay::utils::Point;
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::compositor::window::animations::WindowMoveMode;
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -31,26 +32,12 @@ impl WaylandState {
 
     /// Resize a window to the given rectangle.
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
-        if let Some(element) = self.find_window(window).cloned() {
-            let border_width = self
-                .globals()
-                .and_then(|g| g.clients.get(&window).map(|c| c.border_width))
-                .unwrap_or(0);
-            let remap_immediately = self.interactive_motion_active();
-            self.set_window_target_location(
-                window,
-                element.clone(),
-                Point::from((rect.x + border_width, rect.y + border_width)),
-                remap_immediately,
-            );
-            if element.toplevel().is_some() {
-                let target = (rect.w.max(1), rect.h.max(1));
-                let size =
-                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
-                self.send_toplevel_configure(&element, Some(size));
-                self.last_configured_size.insert(window, target);
-            }
-        }
+        let mode = if self.interactive_motion_active() {
+            WindowMoveMode::RemapImmediate
+        } else {
+            WindowMoveMode::Normal
+        };
+        self.set_window_target_rect(window, rect, mode);
     }
 
     /// Raise a window to the top of the stack.

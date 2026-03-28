@@ -7,7 +7,6 @@
 
 use libc::c_void;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
@@ -25,14 +24,7 @@ pub struct XlibDisplay(pub *mut c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
-/// A single in-flight window animation (non-blocking).
-#[derive(Clone, Debug)]
-pub struct X11WindowAnimation {
-    pub from: Rect,
-    pub to: Rect,
-    pub started_at: Instant,
-    pub duration: Duration,
-}
+pub type X11WindowAnimation = crate::animation::WindowAnimation;
 
 /// X11-specific runtime configuration.
 /// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.

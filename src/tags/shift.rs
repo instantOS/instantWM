@@ -99,16 +99,21 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
             Direction::Down => 1,
         };
 
-    crate::animation::animate_client(
+    crate::animation::move_resize_client(
         ctx,
         win,
         &Rect {
+            x: client_x,
+            y: client_y,
+            w: ctx.client(win).map(|c| c.geo.w).unwrap_or(1),
+            h: ctx.client(win).map(|c| c.geo.h).unwrap_or(1),
+        },
+        crate::animation::MoveResizeMode::AnimateFrom(Rect {
             x: client_x + anim_dx,
             y: client_y,
-            w: 0,
-            h: 0,
-        },
-        0,
+            w: ctx.client(win).map(|c| c.geo.w).unwrap_or(1),
+            h: ctx.client(win).map(|c| c.geo.h).unwrap_or(1),
+        }),
         7,
     );
 }

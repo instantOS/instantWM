@@ -17,7 +17,7 @@
 //! - The right column holds all remaining clients in the same fashion.
 //! - When there is only one client it expands to fill the entire work area.
 
-use crate::animation::animate_client;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
@@ -67,7 +67,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
             let frames = if n == 2 { 0 } else { framecount };
 
-            animate_client(
+            move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
@@ -76,8 +76,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: mw - BORDER_MULTIPLIER * client.border_width,
                     h: h - BORDER_MULTIPLIER * client.border_width,
                 },
+                MoveResizeMode::Normal,
                 frames,
-                0,
             );
 
             if m.nmaster == 1
@@ -95,7 +95,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         } else {
             let h = (m.work_rect.h - stack_y_offset as i32) / (n - i as u32) as i32;
 
-            animate_client(
+            move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
@@ -104,8 +104,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: m.work_rect.w - mw - BORDER_MULTIPLIER * client.border_width,
                     h: h - BORDER_MULTIPLIER * client.border_width,
                 },
+                MoveResizeMode::Normal,
                 framecount,
-                0,
             );
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win)
