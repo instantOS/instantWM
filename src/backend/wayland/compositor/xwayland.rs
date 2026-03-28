@@ -113,15 +113,20 @@ impl XwmHandler for WaylandState {
         self.space.map_element(element.clone(), geo.loc, false);
         self.window_index.insert(win, element);
         self.ensure_client_for_window(win);
-        if let Some(g) = self.globals_mut()
-            && let Some(c) = g.clients.get_mut(&win)
-        {
-            c.geo.x = geo.loc.x;
-            c.geo.y = geo.loc.y;
-            c.geo.w = geo.size.w.max(1);
-            c.geo.h = geo.size.h.max(1);
-            c.float_geo = c.geo;
-            c.name = window.title();
+        if let Some(g) = self.globals_mut() {
+            crate::client::sync_client_geometry(
+                g,
+                win,
+                crate::types::Rect {
+                    x: geo.loc.x,
+                    y: geo.loc.y,
+                    w: geo.size.w.max(1),
+                    h: geo.size.h.max(1),
+                },
+            );
+            if let Some(c) = g.clients.get_mut(&win) {
+                c.name = window.title();
+            }
         }
         let _ = window.configure(Some(geo));
         if let Some(g) = self.globals_mut() {
@@ -276,16 +281,17 @@ impl XwmHandler for WaylandState {
             }
             return;
         };
-        if let Some(g) = self.globals_mut()
-            && let Some(c) = g.clients.get_mut(&win)
-        {
-            c.geo.x = geometry.loc.x;
-            c.geo.y = geometry.loc.y;
-            c.geo.w = geometry.size.w.max(1);
-            c.geo.h = geometry.size.h.max(1);
-            if c.is_floating {
-                c.float_geo = c.geo;
-            }
+        if let Some(g) = self.globals_mut() {
+            crate::client::sync_client_geometry(
+                g,
+                win,
+                crate::types::Rect {
+                    x: geometry.loc.x,
+                    y: geometry.loc.y,
+                    w: geometry.size.w.max(1),
+                    h: geometry.size.h.max(1),
+                },
+            );
         }
         self.resize_window(
             win,

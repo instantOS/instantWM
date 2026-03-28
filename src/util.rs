@@ -1,7 +1,7 @@
 use crate::client::{current_launch_context, new_startup_id, record_pending_launch};
 use crate::contexts::WmCtx;
-use smithay::wayland::xdg_activation::XdgActivationTokenData;
 use smithay::wayland::seat::WaylandFocus;
+use smithay::wayland::xdg_activation::XdgActivationTokenData;
 
 pub(crate) struct SpawnLaunchMetadata {
     pub(crate) context: crate::client::LaunchContext,
@@ -77,7 +77,9 @@ pub(crate) fn configure_spawn_command(
             let _ = token_data
                 .user_data
                 .insert_if_missing_threadsafe(|| context);
-            let (token, _) = state.xdg_activation_state.create_external_token(Some(token_data));
+            let (token, _) = state
+                .xdg_activation_state
+                .create_external_token(Some(token_data));
             token.as_str().to_owned()
         }) {
             command.env("XDG_ACTIVATION_TOKEN", token);

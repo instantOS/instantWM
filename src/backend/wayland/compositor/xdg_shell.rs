@@ -472,12 +472,12 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             && let Some(g) = self.globals()
             && let Some(client) = g.clients.get(&source_win)
         {
-            let _ = token_data
-                .user_data
-                .insert_if_missing_threadsafe(|| crate::client::LaunchContext {
+            let _ = token_data.user_data.insert_if_missing_threadsafe(|| {
+                crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
-                });
+                }
+            });
         }
         true
     }
@@ -489,7 +489,10 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         if let Some(win) = self.window_id_for_surface(&surface) {
-            let launch_context = token_data.user_data.get::<crate::client::LaunchContext>().copied();
+            let launch_context = token_data
+                .user_data
+                .get::<crate::client::LaunchContext>()
+                .copied();
             let activated = self.with_wm_mut_unified(|wm, _state| {
                 let g = &mut wm.g;
                 if let Some(context) = launch_context

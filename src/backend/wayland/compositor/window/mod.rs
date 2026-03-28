@@ -57,21 +57,17 @@ impl WaylandState {
         let Some(g) = self.globals_mut() else {
             return;
         };
-        let Some(client) = g.clients.get_mut(&window) else {
+        let Some(border_width) = g.clients.get(&window).map(|client| client.border_width) else {
             return;
         };
 
         let rect = crate::types::Rect {
-            x: loc.x - client.border_width,
-            y: loc.y - client.border_width,
+            x: loc.x - border_width,
+            y: loc.y - border_width,
             w: geo.size.w.max(1),
             h: geo.size.h.max(1),
         };
-        client.old_geo = client.geo;
-        client.geo = rect;
-        if client.is_floating {
-            client.float_geo = rect;
-        }
+        crate::client::sync_client_geometry(g, window, rect);
     }
 
     /// Request the compositor to warp the pointer to `(x, y)` in logical

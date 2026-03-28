@@ -15,7 +15,25 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
+use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
+
+/// Record the resolved geometry of a managed client.
+///
+/// Backends may request a resize optimistically, but this helper is called only
+/// once the WM knows the geometry that actually applies to the window right
+/// now. Shared state lives here so backend callbacks do not each reinvent the
+/// `geo` / `old_geo` / `float_geo` update contract.
+pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
+    let Some(client) = globals.clients.get_mut(&win) else {
+        return;
+    };
+    client.old_geo = client.geo;
+    client.geo = rect;
+    if client.is_floating {
+        client.float_geo = rect;
+    }
+}
 
 // ---------------------------------------------------------------------------
 // High-level resize (validates size hints)

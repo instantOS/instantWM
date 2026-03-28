@@ -31,8 +31,8 @@
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::{
-    X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list, update_motif_hints,
-    update_window_type, update_wm_hints,
+    X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
+    update_motif_hints, update_window_type, update_wm_hints,
 };
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};

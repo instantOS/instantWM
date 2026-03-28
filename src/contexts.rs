@@ -279,24 +279,12 @@ impl<'a> WmCtx<'a> {
                     query_x11_window_rect(&x11.x11, win).unwrap_or(rect)
                 };
 
-                if let Some(c) = x11.core.globals_mut().clients.get_mut(&win) {
-                    c.old_geo = c.geo;
-                    c.geo = actual_rect;
-                    if c.is_floating {
-                        c.float_geo = actual_rect;
-                    }
-                }
+                crate::client::sync_client_geometry(x11.core.globals_mut(), win, actual_rect);
 
                 crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
-                if let Some(c) = self.core_mut().globals_mut().clients.get_mut(&win) {
-                    c.old_geo = c.geo;
-                    c.geo = rect;
-                    if c.is_floating {
-                        c.float_geo = rect;
-                    }
-                }
+                crate::client::sync_client_geometry(self.core_mut().globals_mut(), win, rect);
 
                 self.backend().resize_window(win, rect);
             }
