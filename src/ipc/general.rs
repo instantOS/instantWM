@@ -99,16 +99,7 @@ pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
 }
 
 pub fn update_status(wm: &mut Wm, text: String) -> Response {
-    if !text.starts_with("instantwm-") {
-        crate::bar::status::CUSTOM_STATUS_RECEIVED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    wm.g.bar_runtime.status_text = text;
-    wm.bar
-        .request_async_status_parse(&wm.g.bar_runtime.status_text);
-    wm.bar.mark_dirty();
-
+    crate::bar::status::apply_status_update(wm, text);
     Response::ok()
 }
 

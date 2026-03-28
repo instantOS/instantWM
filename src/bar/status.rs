@@ -588,6 +588,17 @@ pub(crate) fn enqueue_internal_status(text: String) {
     }
 }
 
+pub(crate) fn apply_status_update(wm: &mut crate::wm::Wm, text: String) {
+    if !text.starts_with("instantwm-") {
+        CUSTOM_STATUS_RECEIVED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    wm.g.bar_runtime.status_text = text;
+    wm.bar
+        .request_async_status_parse(&wm.g.bar_runtime.status_text);
+    wm.bar.mark_dirty();
+}
+
 pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
     let runtime = internal_status_runtime();
     let Ok(receiver) = runtime.receiver.lock() else {
@@ -606,11 +617,7 @@ pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
         return false;
     };
 
-    if !text.starts_with("instantwm-") {
-        CUSTOM_STATUS_RECEIVED.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-    wm.g.bar_runtime.status_text = text;
-    wm.bar.mark_dirty();
+    apply_status_update(wm, text);
     true
 }
 
