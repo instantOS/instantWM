@@ -49,14 +49,27 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if wm.ctx().is_wayland()
-        && let crate::backend::BackendRef::Wayland(wayland) = wm.ctx().backend()
-        && let Some(display) = wayland.xdisplay()
-    {
-        cmd.env("DISPLAY", format!(":{display}"));
-    }
+    let metadata = {
+        let ctx = wm.ctx();
+        let metadata = crate::util::configure_spawn_command(&ctx, &mut cmd);
+        if ctx.is_wayland()
+            && let crate::backend::BackendRef::Wayland(wayland) = ctx.backend()
+            && let Some(display) = wayland.xdisplay()
+        {
+            cmd.env("DISPLAY", format!(":{display}"));
+        }
+        metadata
+    };
     match cmd.spawn() {
-        Ok(child) => Response::Message(format!("pid={}", child.id())),
+        Ok(child) => {
+            crate::client::record_pending_launch(
+                &mut wm.g,
+                Some(child.id()),
+                Some(metadata.startup_id),
+                metadata.context,
+            );
+            Response::Message(format!("pid={}", child.id()))
+        }
         Err(err) => Response::err(format!("spawn failed: {}", err)),
     }
 }

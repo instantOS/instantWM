@@ -3,6 +3,7 @@ use crate::config::ModeConfig;
 use crate::config::commands::ExternalCommands;
 use crate::monitor::MonitorManager;
 use crate::types::*;
+use std::collections::VecDeque;
 
 /// Runtime configuration - values loaded from config
 /// These are set during initialization and updated on reload
@@ -308,6 +309,8 @@ pub struct Globals {
 
     /// XKB keyboard layout state.
     pub keyboard_layout: KeyboardLayoutState,
+    /// Recently spawned processes awaiting their first managed window.
+    pub pending_launches: VecDeque<crate::client::PendingLaunch>,
 }
 
 impl Globals {
@@ -473,6 +476,7 @@ impl Default for Globals {
                 ..Default::default()
             },
             keyboard_layout: KeyboardLayoutState::default(),
+            pending_launches: VecDeque::new(),
         }
     }
 }

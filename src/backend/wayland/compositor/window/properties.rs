@@ -103,11 +103,21 @@ impl WaylandState {
         }
 
         let props = self.window_properties(window);
+        let x11_launch_ids = self
+            .find_window(window)
+            .and_then(|element| element.x11_surface())
+            .map(|x11| (x11.pid(), x11.startup_id()));
+        let launch_context = x11_launch_ids.and_then(|(pid, startup_id)| {
+            self.globals_mut()
+                .and_then(|g| crate::client::take_pending_launch(g, pid, startup_id.as_deref()))
+        });
 
         let Some(g) = self.globals_mut() else {
             return;
         };
-        let monitor_id = g.selected_monitor_id();
+        let monitor_id = launch_context
+            .map(|ctx| ctx.monitor_id)
+            .unwrap_or_else(|| g.selected_monitor_id());
         let (base_w, base_h) = g
             .monitor(monitor_id)
             .map(|m| {
@@ -135,10 +145,14 @@ impl WaylandState {
         c.border_width = g.cfg.border_width_px;
         c.old_border_width = g.cfg.border_width_px;
         c.monitor_id = monitor_id;
-        c.set_tag_mask(crate::client::initial_tags_for_monitor(g, c.monitor_id));
+        c.set_tag_mask(
+            launch_context
+                .map(|ctx| ctx.tags)
+                .unwrap_or_else(|| crate::client::initial_tags_for_monitor(g, c.monitor_id)),
+        );
 
         g.clients.insert(window, c);
-        crate::client::apply_rules(g, window, &props);
+        crate::client::apply_rules(g, window, &props, launch_context);
 
         g.attach(window);
         g.attach_stack(window);

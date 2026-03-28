@@ -72,7 +72,10 @@ pub fn restore_border_width(client: &mut crate::types::Client) {
 pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
-pub use lifecycle::{initial_tags_for_monitor, select_client};
+pub use lifecycle::{
+    LaunchContext, PendingLaunch, current_launch_context, initial_tags_for_monitor,
+    new_startup_id, record_pending_launch, select_client, take_pending_launch,
+};
 
 // -- Layout operations -------------------------------------------------------
 pub use layout_ops::zoom;

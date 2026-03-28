@@ -1,5 +1,6 @@
 //! Window rule application and matching logic.
 
+use crate::client::LaunchContext;
 use crate::globals::Globals;
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, TagMask, WindowId};
 
@@ -23,7 +24,12 @@ pub struct WindowProperties {
 /// After rule matching, the final tag mask is clamped to the current tag set.
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
-pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
+pub fn apply_rules(
+    g: &mut Globals,
+    win: WindowId,
+    props: &WindowProperties,
+    launch_context: Option<LaunchContext>,
+) {
     let before = rule_state_snapshot(g, win);
 
     // --- Initialise fields we are about to set -------------------------------
@@ -88,7 +94,7 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
-    clamp_client_tags(g, win, tag_mask);
+    clamp_client_tags(g, win, tag_mask, launch_context);
 
     if before != rule_state_snapshot(g, win) {
         g.dirty.layout = true;
@@ -118,7 +124,7 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
         return;
     }
 
-    apply_rules(g, win, props);
+    apply_rules(g, win, props, None);
 }
 
 /// Return `true` when `rule` matches all provided window identifiers.
@@ -232,7 +238,12 @@ fn rule_state_snapshot(g: &Globals, win: WindowId) -> Option<RuleStateSnapshot> 
 
 /// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
 /// tags when no rule-assigned tag is currently visible.
-fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: TagMask) {
+fn clamp_client_tags(
+    g: &mut Globals,
+    win: WindowId,
+    tag_mask: TagMask,
+    launch_context: Option<LaunchContext>,
+) {
     let (client_mon_id, client_tags) = g
         .clients
         .get(&win)
@@ -245,7 +256,10 @@ fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: TagMask) {
 
     let mut final_tags = client_tags & tag_mask;
     if final_tags.is_empty() {
-        final_tags = mon.selected_tags();
+        final_tags = launch_context
+            .map(|ctx| ctx.tags & tag_mask)
+            .filter(|tags| !tags.is_empty())
+            .unwrap_or_else(|| mon.selected_tags());
     }
 
     if let Some(c) = g.clients.get_mut(&win) {

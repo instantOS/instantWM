@@ -462,6 +462,26 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         &mut self.xdg_activation_state
     }
 
+    fn token_created(
+        &mut self,
+        _token: smithay::wayland::xdg_activation::XdgActivationToken,
+        token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
+    ) -> bool {
+        if let Some(surface) = token_data.surface.as_ref()
+            && let Some(source_win) = self.window_id_for_surface(surface)
+            && let Some(g) = self.globals()
+            && let Some(client) = g.clients.get(&source_win)
+        {
+            let _ = token_data
+                .user_data
+                .insert_if_missing_threadsafe(|| crate::client::LaunchContext {
+                    monitor_id: client.monitor_id,
+                    tags: client.tags,
+                });
+        }
+        true
+    }
+
     fn request_activation(
         &mut self,
         _token: smithay::wayland::xdg_activation::XdgActivationToken,
@@ -469,7 +489,29 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         if let Some(win) = self.window_id_for_surface(&surface) {
+            let launch_context = token_data.user_data.get::<crate::client::LaunchContext>().copied();
             let activated = self.with_wm_mut_unified(|wm, _state| {
+                let g = &mut wm.g;
+                if let Some(context) = launch_context
+                    && let Some(client) = g.clients.get_mut(&win)
+                {
+                    client.set_tag_mask(context.tags);
+                    g.dirty.layout = true;
+                    g.dirty.space = true;
+                }
+
+                let should_focus = g
+                    .clients
+                    .get(&win)
+                    .and_then(|client| {
+                        g.monitor(client.monitor_id)
+                            .map(|mon| client.is_visible(mon.selected_tags()))
+                    })
+                    .unwrap_or(false);
+                if !should_focus {
+                    return false;
+                }
+
                 let mut ctx = wm.ctx();
                 crate::focus::activate_client(&mut ctx, win)
             });

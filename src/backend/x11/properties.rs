@@ -129,7 +129,7 @@ pub fn apply_rules_x11(
     win: WindowId,
 ) {
     let props = window_properties_x11(x11, x11_runtime, win);
-    apply_rules_generic(core.globals_mut(), win, &props);
+    apply_rules_generic(core.globals_mut(), win, &props, None);
 }
 
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
