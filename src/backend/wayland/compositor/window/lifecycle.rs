@@ -37,6 +37,9 @@ impl WaylandState {
         }
 
         self.ensure_client_for_window(window_id);
+        if let Some(toplevel) = window.toplevel() {
+            self.apply_xdg_toplevel_floating_policy(&toplevel);
+        }
 
         if let Some(title) = self.window_title(window_id)
             && let Some(g) = self.globals_mut()

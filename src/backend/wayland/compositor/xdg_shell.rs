@@ -6,6 +6,7 @@ use smithay::{
     input::{SeatHandler, pointer::Focus},
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
+        compositor,
         seat::WaylandFocus,
         selection::{
             SelectionHandler,
@@ -20,13 +21,50 @@ use smithay::{
             },
         },
         shell::xdg::{
-            PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
+            PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
             decoration::XdgDecorationHandler,
         },
     },
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
+
+impl WaylandState {
+    fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
+        if surface.parent().is_some() {
+            return true;
+        }
+
+        compositor::with_states(surface.wl_surface(), |states| {
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let current = *guard.current();
+            let min = current.min_size;
+            let max = current.max_size;
+
+            min.w > 0 && min.h > 0 && (min.w == max.w || min.h == max.h)
+        })
+    }
+
+    pub(crate) fn apply_xdg_toplevel_floating_policy(&mut self, surface: &ToplevelSurface) {
+        let wants_floating = self.xdg_toplevel_wants_floating(surface);
+        let Some(win) = self.window_id_for_toplevel(surface) else {
+            return;
+        };
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
+        let Some(client) = g.clients.get_mut(&win) else {
+            return;
+        };
+
+        if wants_floating && !client.is_floating {
+            client.float_geo = client.geo;
+            client.is_floating = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
+        }
+    }
+}
 
 impl SeatHandler for WaylandState {
     type KeyboardFocus = KeyboardFocusTarget;
@@ -117,6 +155,7 @@ impl XdgShellHandler for WaylandState {
         if let Some(g) = self.globals_mut() {
             crate::client::handle_property_change(g, win, &props);
         }
+        self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
     }
 
@@ -128,7 +167,12 @@ impl XdgShellHandler for WaylandState {
         if let Some(g) = self.globals_mut() {
             crate::client::handle_property_change(g, win, &props);
         }
+        self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+    }
+
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        self.apply_xdg_toplevel_floating_policy(&surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
