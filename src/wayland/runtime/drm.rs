@@ -247,6 +247,13 @@ pub fn run() -> ! {
     // Register IPC listener fd so the event loop wakes on incoming commands.
     crate::runtime::register_ipc_source(&event_loop.handle(), &ipc_server);
 
+    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
+    crate::bar::status::set_internal_status_ping(status_ping);
+    event_loop
+        .handle()
+        .insert_source(status_ping_source, |_, _, _| {})
+        .expect("status ping source");
+
     // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
     event_loop
