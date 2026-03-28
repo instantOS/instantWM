@@ -1014,7 +1014,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_i3bar_header, parse_i3bar_json, parse_status, I3Align, StatusItem};
+    use super::{I3Align, StatusItem, parse_i3bar_header, parse_i3bar_json, parse_status};
 
     #[test]
     fn parses_i3bar_frame_with_leading_comma() {

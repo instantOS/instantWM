@@ -109,7 +109,11 @@ pub(crate) fn build_monitor_snapshots(
             Some(status_text)
         }
     };
-    let monitor_ids: Vec<usize> = core.globals().monitors_iter_all().map(Monitor::id).collect();
+    let monitor_ids: Vec<usize> = core
+        .globals()
+        .monitors_iter_all()
+        .map(Monitor::id)
+        .collect();
     let mut monitor_stats: HashMap<usize, crate::bar::model::ClientBarStats> = HashMap::new();
     for client in core.globals().clients.values() {
         let entry = monitor_stats.entry(client.monitor_id).or_default();
@@ -173,7 +177,7 @@ pub(crate) fn build_monitor_snapshots(
             };
             stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
-            let scheme = core.globals().window_scheme(&c, is_hover);
+            let scheme = core.globals().window_scheme(c, is_hover);
             let close_scheme = if is_selected_monitor && mon.sel == Some(c.win) {
                 let is_fullscreen = mon.sel == Some(c.win) && c.is_fullscreen;
                 Some(core.globals().close_button_scheme(

@@ -193,7 +193,7 @@ pub fn resolve_cursor_presentation(
 /// the Wayland compositor is fully initialized, so monitor geometry is not
 /// available yet - that will be done via update_geom later.
 pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
-    let cfg = init_config();
+    let cfg = init_config(crate::backend::BackendKind::Wayland);
     g.cfg.screen_width = 1280;
     g.cfg.screen_height = 800;
     crate::globals::apply_config(g, &cfg);

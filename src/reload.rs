@@ -4,7 +4,7 @@ use crate::contexts::WmCtx;
 use crate::wm::Wm;
 
 pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
-    let cfg = config::init_config();
+    let cfg = config::init_config(wm.backend.kind());
 
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);

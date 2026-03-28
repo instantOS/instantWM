@@ -32,6 +32,12 @@ pub struct BackendOutputInfo {
     pub vrr_enabled: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendKind {
+    X11,
+    Wayland,
+}
+
 /// Core backend operations required by the WM.
 pub trait BackendOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
@@ -192,6 +198,13 @@ impl Backend {
         match self {
             Self::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
             Self::Wayland(data) => data.backend.get_outputs(),
+        }
+    }
+
+    pub fn kind(&self) -> BackendKind {
+        match self {
+            Self::X11(_) => BackendKind::X11,
+            Self::Wayland(_) => BackendKind::Wayland,
         }
     }
 }

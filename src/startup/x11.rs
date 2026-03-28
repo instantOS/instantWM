@@ -5,6 +5,7 @@ use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
 use crate::backend::Backend as WmBackend;
+use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
 use crate::backend::x11::draw::Drw;
@@ -99,7 +100,7 @@ fn init_globals(
     root: Window,
     screen: &x11rb::protocol::xproto::Screen,
 ) {
-    let cfg = init_config();
+    let cfg = init_config(BackendKind::X11);
 
     // X11-specific runtime initialization
     if let Some(data) = wm.backend.x11_data_mut() {
