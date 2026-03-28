@@ -50,6 +50,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub titles: Vec<TitleCellSnapshot>,
     pub monitor_rect_x: i32,
     pub status_text: Option<String>,
+    pub status_items: Vec<crate::bar::status::StatusItem>,
     pub systray: Option<SystraySnapshot>,
 }
 
@@ -178,6 +179,10 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             None
         };
+        let status_items = status_text
+            .as_deref()
+            .map(|text| core.bar.status_items_for_text(text).to_vec())
+            .unwrap_or_default();
 
         let systray = if show_systray && is_selected_monitor {
             wayland_systray.map(|(items, menu)| SystraySnapshot {
@@ -207,6 +212,7 @@ pub(crate) fn build_monitor_snapshots(
             titles,
             monitor_rect_x: mon.monitor_rect.x,
             status_text,
+            status_items,
             systray,
         });
     }
@@ -397,20 +403,17 @@ fn render_monitor_snapshot_base(
     let mut temp_mon = Monitor::default();
     temp_mon.work_rect.w = snapshot.width;
 
-    let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor {
-        if let Some(status_text) = &snapshot.status_text {
-            let parsed = crate::bar::status::parse_status(status_text.as_bytes());
-            crate::bar::status::draw_status_items(
-                systray_width,
-                &temp_mon,
-                bar_height,
-                parsed.items.as_slice(),
-                snapshot.status_scheme.clone(),
-                painter,
-            )
-        } else {
-            (0, 0, Vec::new())
-        }
+    let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor
+        && !snapshot.status_items.is_empty()
+    {
+        crate::bar::status::draw_status_items(
+            systray_width,
+            &temp_mon,
+            bar_height,
+            snapshot.status_items.as_slice(),
+            snapshot.status_scheme.clone(),
+            painter,
+        )
     } else {
         (0, 0, Vec::new())
     };

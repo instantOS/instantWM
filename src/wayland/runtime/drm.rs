@@ -251,7 +251,9 @@ pub fn run() -> ! {
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
     event_loop
         .handle()
-        .insert_source(retry_ping_source, |_, _, _| {})
+        .insert_source(retry_ping_source, |_, _, state| {
+            state.runtime.render_dirty = true;
+        })
         .expect("ping source");
     state.runtime.render_ping = Some(retry_ping.clone());
     retry_ping.ping(); // Wake loop once to render the initial frame

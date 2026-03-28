@@ -360,8 +360,8 @@ impl WaylandBarPainter {
 
     fn effective_font_size(&self, text: &str, box_height: i32) -> f32 {
         if box_height > 0 && Self::is_powerline_text(text) {
-            let max_size = (box_height - 4).max(1) as f32;
-            (self.font_size + 1.0).min(max_size)
+            let max_size = (box_height - 3).max(1) as f32;
+            (self.font_size + 2.0).min(max_size)
         } else {
             self.font_size
         }
@@ -661,7 +661,7 @@ impl BarPainter for WaylandBarPainter {
         }
         if !text.is_empty() {
             let powerline = Self::is_powerline_text(text);
-            let bleed = if powerline { 1 } else { 0 };
+            let bleed = if powerline { 2 } else { 0 };
             let text_x = x + lpad - bleed;
             let text_w = (w - lpad + bleed * 2).max(0);
             if text_w > 0 {
