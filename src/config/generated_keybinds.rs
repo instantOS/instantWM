@@ -113,6 +113,7 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actions::{KeyAction, NamedAction};
 
     fn spawn_args_for(keys: &[Key], mod_mask: u32, keysym: u32) -> Option<&[String]> {
         keys.iter().find_map(|key| {

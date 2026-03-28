@@ -24,6 +24,8 @@ pub struct WindowProperties {
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
 pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
+    let before = rule_state_snapshot(g, win);
+
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = g.clients.get_mut(&win) {
         if !props.title.is_empty() {
@@ -81,11 +83,17 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
             }
 
             apply_monitor_rule(g, win, rule);
+            break;
         }
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
     clamp_client_tags(g, win, tag_mask);
+
+    if before != rule_state_snapshot(g, win) {
+        g.dirty.layout = true;
+        g.dirty.space = true;
+    }
 }
 
 /// Refresh rule-derived metadata after a backend property update.
@@ -200,6 +208,26 @@ fn apply_monitor_rule(g: &mut Globals, win: WindowId, rule: &crate::types::Rule)
     {
         c.monitor_id = mid;
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RuleStateSnapshot {
+    is_floating: bool,
+    is_sticky: bool,
+    monitor_id: usize,
+    tags: TagMask,
+    geo: Rect,
+}
+
+fn rule_state_snapshot(g: &Globals, win: WindowId) -> Option<RuleStateSnapshot> {
+    let c = g.clients.get(&win)?;
+    Some(RuleStateSnapshot {
+        is_floating: c.is_floating,
+        is_sticky: c.issticky,
+        monitor_id: c.monitor_id,
+        tags: c.tags,
+        geo: c.geo,
+    })
 }
 
 /// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
