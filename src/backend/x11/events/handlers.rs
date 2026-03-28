@@ -499,7 +499,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
-                crate::client::update_wm_hints(ctx, event_win);
+                crate::backend::x11::update_wm_hints(ctx, event_win);
                 ctx.core.bar.mark_dirty();
             }
             _ => {}
@@ -510,8 +510,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             || e.atom == net_wm_name
             || e.atom == u32::from(AtomEnum::WM_CLASS)
         {
-            let props =
-                crate::client::state::window_properties_x11(&ctx.core, &ctx.x11, ctx.x11_runtime, event_win);
+            let props = crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
             crate::client::handle_property_change(ctx.core.globals_mut(), event_win, &props);
         }
     };
@@ -535,7 +534,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if ctx.core.globals().clients.contains_key(&event_win) {
         if e.response_type & 0x80 != 0 {
-            crate::client::set_client_state(
+            crate::backend::x11::set_client_state(
                 &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
@@ -699,7 +698,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         ctx.x11_runtime,
         ctx.systray.as_deref_mut(),
     );
-    crate::client::set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
+    crate::backend::x11::set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
 }
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {

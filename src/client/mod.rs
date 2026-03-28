@@ -14,7 +14,6 @@
 //! | `visibility`    | Show / hide / show_hide, WM_STATE queries                   |
 //! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
 //! | `fullscreen`    | Real and fake fullscreen transitions                        |
-//! | `state`         | X11 property read/write (titles, rules, hints, lists)       |
 //! | `kill`          | Graceful and forceful window termination                    |
 //! | `lifecycle`     | internal X11 lifecycle implementation details                  |
 //! | `layout_ops`    | zoom (promote to master)                                    |
@@ -32,7 +31,6 @@ pub mod layout_ops;
 pub mod lifecycle;
 pub mod manager;
 pub mod rules;
-pub mod state;
 pub mod visibility;
 
 // ---------------------------------------------------------------------------
@@ -71,9 +69,6 @@ pub fn save_border_width(client: &mut crate::types::Client) {
 pub fn restore_border_width(client: &mut crate::types::Client) {
     client.restore_border_width();
 }
-
-// -- X11 state / properties --------------------------------------------------
-pub use state::{set_client_state, set_client_tag_prop, update_wm_hints};
 
 // -- Kill --------------------------------------------------------------------
 pub use kill::{close_win, kill_client, shut_kill};

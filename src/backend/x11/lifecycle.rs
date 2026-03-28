@@ -19,9 +19,9 @@
 //! # Monitor assignment
 //!
 //! A new window inherits its monitor from its transient-for parent when one
-//! exists; otherwise it goes to the currently selected monitor.  After
-//! [`crate::client::state::apply_rules`] runs, the assignment may be overridden
-//! again by a matching rule.
+//! exists; otherwise it goes to the currently selected monitor. After
+//! [`crate::backend::x11::apply_rules_x11`] runs, the assignment may be
+//! overridden again by a matching rule.
 //!
 //! # Animation
 //!
@@ -30,17 +30,15 @@
 
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::{
+    X11RuntimeConfig, apply_rules_x11, set_client_state, set_client_tag_prop,
+    update_client_list, update_motif_hints, update_window_type, update_wm_hints,
+};
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
-use crate::client::state::set_client_state;
-use crate::client::state::{
-    apply_rules, set_client_tag_prop, update_client_list, update_motif_hints, update_window_type,
-    update_wm_hints,
-};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 // focus() is used via focus_soft() in this module
-use crate::backend::x11::X11RuntimeConfig;
 use crate::focus::focus_soft;
 use crate::globals::Globals;
 use crate::layouts::arrange;
@@ -149,7 +147,7 @@ fn insert_client_and_apply_rules(
     c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
         == crate::client::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
-    apply_rules(core, x11, x11_cfg, w);
+    apply_rules_x11(core, x11, x11_cfg, w);
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {

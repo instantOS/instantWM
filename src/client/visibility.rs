@@ -5,7 +5,7 @@ use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize;
-use crate::client::state::set_client_state;
+use crate::backend::x11::set_client_state;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
