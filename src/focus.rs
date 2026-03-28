@@ -357,33 +357,27 @@ pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
     entering_root: bool,
+    pointer_pos: Option<(i32, i32)>,
 ) {
-    use crate::contexts::{WmCtx::*, WmCtxX11};
+    if !ctx.core().globals().behavior.focus_follows_mouse {
+        return;
+    }
 
-    match ctx {
-        X11(WmCtxX11 {
-            core,
-            x11,
-            x11_runtime,
-            ..
-        }) => {
-            // X11 has extra pointer-query logic for monitor switching when
-            // hovered_win is None, so it keeps its own path.
-            hover_focus_target_x11(core, x11, x11_runtime, hovered_win, entering_root);
-        }
-        Wayland(_) => {
-            if !should_hover_focus(ctx.core(), hovered_win, entering_root) {
-                return;
-            }
-            // Switch monitor if the hovered window lives on a different one.
-            if let Some(win) = hovered_win
-                && let Some(mid) = ctx.core().globals().clients.monitor_id(win)
-                && mid != ctx.core().globals().selected_monitor_id()
-            {
-                ctx.core_mut().globals_mut().set_selected_monitor(mid);
-            }
-            focus_soft(ctx, hovered_win);
-        }
+    if let Some(win) = hovered_win
+        && let Some(mid) = ctx.core().globals().clients.monitor_id(win)
+        && select_monitor(ctx, mid)
+    {
+        // After switching monitors, continue with the hovered window so both
+        // backends share the same "focus what's under the pointer" behavior.
+    } else if hovered_win.is_none()
+        && let Some((x, y)) = pointer_pos
+        && select_monitor_at_pointer(ctx, (x, y))
+    {
+        return;
+    }
+
+    if should_hover_focus(ctx.core(), hovered_win, entering_root) {
+        focus_soft(ctx, hovered_win);
     }
 }
 
@@ -437,55 +431,57 @@ pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
     }
 }
 
-/// X11 hover-focus implementation matching the enter-notify focus path.
+pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
+    if ctx.core().globals().monitors.is_empty() {
+        return false;
+    }
+    if monitor_id == ctx.core().globals().selected_monitor_id() {
+        return false;
+    }
+
+    ctx.core_mut().globals_mut().set_selected_monitor(monitor_id);
+    focus_soft(ctx, None);
+    true
+}
+
+pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
+    let Some(monitor_id) = ctx.core().globals().clients.monitor_id(win) else {
+        return false;
+    };
+    select_monitor(ctx, monitor_id)
+}
+
+pub fn select_monitor_at_pointer(
+    ctx: &mut crate::contexts::WmCtx,
+    pointer_pos: (i32, i32),
+) -> bool {
+    let Some(new_mon_id) = ctx
+        .core()
+        .globals()
+        .monitors
+        .find_monitor_at_pointer(pointer_pos)
+    else {
+        return false;
+    };
+    select_monitor(ctx, new_mon_id)
+}
+
 pub fn hover_focus_target_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     hovered_win: Option<WindowId>,
     entering_root: bool,
+    pointer_pos: Option<(i32, i32)>,
 ) {
-    if !core.globals().behavior.focus_follows_mouse {
-        return;
-    }
-
-    if let Some(win) = hovered_win {
-        if let Some(mid) = core.globals().clients.monitor_id(win)
-            && mid != core.globals().selected_monitor_id()
-        {
-            core.globals_mut().set_selected_monitor(mid);
-            let _ = focus_x11(core, x11, x11_runtime, None);
-            return;
-        }
-
-        let hovered_is_floating = core
-            .globals()
-            .clients
-            .get(&win)
-            .map(|c| c.is_floating)
-            .unwrap_or(false);
-        let has_tiling = core.globals().selected_monitor().is_tiling_layout();
-        if !core.globals().behavior.focus_follows_float_mouse
-            && hovered_is_floating
-            && has_tiling
-            && !entering_root
-        {
-            return;
-        }
-    } else if let Ok(cookie) = x11rb::protocol::xproto::query_pointer(x11.conn, x11_runtime.root)
-        && let Ok(reply) = cookie.reply()
-    {
-        let ptr = (reply.root_x as i32, reply.root_y as i32);
-        if let Some(new_mon_id) = core.globals().monitors.find_monitor_at_pointer(ptr)
-            && new_mon_id != core.globals().selected_monitor_id()
-        {
-            core.globals_mut().set_selected_monitor(new_mon_id);
-            let _ = focus_x11(core, x11, x11_runtime, None);
-            return;
-        }
-    }
-
-    let _ = focus_x11(core, x11, x11_runtime, hovered_win);
+    let mut ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
+        core: core.reborrow(),
+        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
+        x11: crate::backend::x11::X11BackendRef::new(x11.conn, x11.screen_num),
+        x11_runtime,
+        systray: None,
+    });
+    hover_focus_target(&mut ctx, hovered_win, entering_root, pointer_pos);
 }
 
 /// Focus a client in the given direction.

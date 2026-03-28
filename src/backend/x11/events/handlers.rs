@@ -1,5 +1,4 @@
 use crate::actions::execute_button_action_x11;
-use crate::backend::BackendOps;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
 use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
@@ -59,9 +58,8 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         && selmon_id != clicked_mon
         && (focusfollowsmouse || e.detail <= 3)
     {
-        ctx.core.globals_mut().set_selected_monitor(clicked_mon);
         selmon_id = clicked_mon;
-        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
+        crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), clicked_mon);
     };
 
     // Determine the full bar position — this carries the exact target
@@ -76,7 +74,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
+            crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
             if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(event_win) {
                 crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
@@ -301,7 +299,6 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    let focusfollowsmouse = ctx.core.globals().behavior.focus_follows_mouse;
     let focusfollowsfloatmouse = ctx.core.globals().behavior.focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
@@ -312,7 +309,6 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 2. Snapshot selection state before any changes
-    let selmon_id = ctx.core.globals().selected_monitor_id();
     let selected_monitor = ctx.core.globals().selected_monitor();
     let selected_window = selected_monitor.sel;
     let is_floating_sel = {
@@ -367,41 +363,19 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         }
     }
 
-    // 4. Handle Monitor Switch
-    if focusfollowsmouse {
-        let target_mon = if event_win == WindowId::from(ctx.x11_runtime.root) {
-            ctx.backend
-                .pointer_location()
-                .and_then(|ptr| ctx.core.globals().monitors.find_monitor_at_pointer(ptr))
-        } else {
-            ctx.core
-                .globals()
-                .monitors
-                .find_monitor_for(event_win, ctx.core.globals().clients.map())
-        };
-        if let Some(new_mon_id) = target_mon
-            && new_mon_id != selmon_id
-        {
-            ctx.core.globals_mut().set_selected_monitor(new_mon_id);
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-            return;
-        }
-    }
-
-    // 5. Determine what's actually under the cursor
+    // 4. Determine what's actually under the cursor
     let topmost_win_under_cursor = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
         &ctx.core,
         ctx.x11.conn,
         ctx.x11_runtime.root,
     );
 
-    // 6. Handle focus switching based on configuration
-    crate::focus::hover_focus_target_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
+    // 5. Handle focus switching based on shared policy.
+    crate::focus::hover_focus_target(
+        &mut WmCtx::X11(ctx.reborrow()),
         topmost_win_under_cursor,
         entering_root,
+        Some((e.root_x as i32, e.root_y as i32)),
     );
 }
 
@@ -483,29 +457,15 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         return;
     }
 
-    let selmon_id = ctx.core.globals().selected_monitor_id();
-
     let root_x = e.root_x as i32;
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.globals().behavior.focus_follows_mouse {
-        let rect = Rect {
-            x: root_x,
-            y: root_y,
-            w: 1,
-            h: 1,
-        };
-        if let Some(new_mon) =
-            crate::types::find_monitor_by_rect(ctx.core.globals().monitors.monitors(), &rect)
-                .or(Some(ctx.core.globals().selected_monitor_id()))
-            && new_mon != selmon_id
-        {
-            ctx.core.globals_mut().set_selected_monitor(new_mon);
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-            return;
-        }
-    };
+    if ctx.core.globals().behavior.focus_follows_mouse
+        && crate::focus::select_monitor_at_pointer(&mut WmCtx::X11(ctx.reborrow()), (root_x, root_y))
+    {
+        return;
+    }
 
     // Early-out: cursor is below the bar area.
     let (monitor_y, bar_height, current_gesture) = {
@@ -808,7 +768,8 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     if let Some(c) = ctx.core.client(win) {
         let monitor_id = c.monitor_id;
-        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
+        crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
+        crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(win));
         crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     };
 }

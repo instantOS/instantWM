@@ -185,7 +185,14 @@ pub fn dispatch_pointer_motion(
     );
 
     // Phase 6: Update pointer focus based on drag state
-    update_pointer_focus(wm, active_drag_window, hovered_win, suppress_hover_focus);
+    update_pointer_focus(
+        wm,
+        active_drag_window,
+        hovered_win,
+        suppress_hover_focus,
+        root_x,
+        root_y,
+    );
 
     let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
 
@@ -432,6 +439,8 @@ fn update_pointer_focus(
     active_drag_window: Option<crate::types::WindowId>,
     hovered_win: Option<crate::types::WindowId>,
     suppress_hover_focus: bool,
+    root_x: i32,
+    root_y: i32,
 ) {
     if let Some(lock_win) = active_drag_window {
         let ctx = wm.ctx();
@@ -447,7 +456,7 @@ fn update_pointer_focus(
             return;
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
-        crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false);
+        crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false, Some((root_x, root_y)));
     }
 }
 

@@ -78,6 +78,7 @@ pub fn handle_pointer_button<B: InputBackend>(
             pointer_handle.frame(state);
         } else if let Some(win) = clicked_win {
             let mut ctx = wm.ctx();
+            crate::focus::select_monitor_for_client(&mut ctx, win);
             crate::focus::focus_soft(&mut ctx, Some(win));
         } else {
             let mut ctx = wm.ctx();
