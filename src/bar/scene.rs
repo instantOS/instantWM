@@ -3,6 +3,7 @@ use crate::contexts::CoreCtx;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, Monitor, WindowId,
 };
+use std::collections::HashMap;
 
 const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
@@ -108,13 +109,32 @@ pub(crate) fn build_monitor_snapshots(
             Some(status_text)
         }
     };
-    let monitors_all: Vec<Monitor> = core.globals().monitors_iter_all().cloned().collect();
+    let monitor_ids: Vec<usize> = core.globals().monitors_iter_all().map(Monitor::id).collect();
+    let mut monitor_stats: HashMap<usize, crate::bar::model::ClientBarStats> = HashMap::new();
+    for client in core.globals().clients.values() {
+        let entry = monitor_stats.entry(client.monitor_id).or_default();
+        entry.occupied_tags = entry.occupied_tags | client.tags;
+        if client.is_urgent {
+            entry.urgent_tags = entry.urgent_tags | client.tags;
+        }
+    }
 
     let mut monitors = Vec::new();
-    for mon in monitors_all {
-        if !mon.shows_bar() {
+    for monitor_id in monitor_ids {
+        let Some(mon_ref) = core
+            .globals()
+            .monitors_iter_all()
+            .find(|monitor| monitor.id() == monitor_id)
+        else {
+            continue;
+        };
+        if !mon_ref.shows_bar() {
             continue;
         }
+        let mon = mon_ref.clone();
+
+        let mut stats = monitor_stats.get(&mon.id()).copied().unwrap_or_default();
+        stats.occupied_tags = stats.occupied_tags.without_scratchpad();
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = if is_selected_monitor {
@@ -122,8 +142,6 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             Gesture::None
         };
-
-        let stats = crate::bar::model::ClientBarStats::collect(&mon, core.globals());
         let mut tags = Vec::new();
         for tag in crate::tags::bar::visible_tags_ctx(core, &mon, stats.occupied_tags) {
             let is_hover = gesture == Gesture::Tag(tag.slot);
@@ -153,7 +171,7 @@ pub(crate) fn build_monitor_snapshots(
             let Some(c) = core.globals().clients.get(&c_win) else {
                 continue;
             };
-            let c = c.clone();
+            stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
             let scheme = core.globals().window_scheme(&c, is_hover);
             let close_scheme = if is_selected_monitor && mon.sel == Some(c.win) {
@@ -168,7 +186,7 @@ pub(crate) fn build_monitor_snapshots(
             };
             titles.push(TitleCellSnapshot {
                 win: c.win,
-                name: c.name,
+                name: c.name.clone(),
                 scheme,
                 close_scheme,
             });

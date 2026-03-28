@@ -6,8 +6,6 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -874,7 +872,7 @@ pub fn render_bar_buffers(
         crate::systray::wayland::get_wayland_systray_width_with_state(core, wayland_systray);
     let _ = scale;
 
-    let key = bar_render_key(core, wayland_systray);
+    let key = bar_render_key(core, painter, wayland_systray_menu);
     poll_async_render_result(core, painter);
 
     if painter.cached_key != key {
@@ -892,81 +890,17 @@ pub fn render_bar_buffers(
         .collect()
 }
 
-fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
-    match gesture {
-        crate::types::Gesture::None => 0u8.hash(hasher),
-        crate::types::Gesture::WinTitle(win) => {
-            1u8.hash(hasher);
-            win.hash(hasher);
-        }
-        crate::types::Gesture::Tag(tag) => {
-            2u8.hash(hasher);
-            tag.hash(hasher);
-        }
-        crate::types::Gesture::Overlay => 3u8.hash(hasher),
-        crate::types::Gesture::CloseButton => 4u8.hash(hasher),
-        crate::types::Gesture::StartMenu => 5u8.hash(hasher),
-    }
-}
-
-//TODO: document what this does
 fn bar_render_key(
     core: &crate::contexts::CoreCtx,
-    wayland_systray: &crate::types::WaylandSystray,
+    painter: &WaylandBarPainter,
+    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    core.bar.update_seq().hash(&mut hasher);
-    core.globals().cfg.show_bar.hash(&mut hasher);
-    core.globals().cfg.bar_height.hash(&mut hasher);
-    core.globals().cfg.horizontal_padding.hash(&mut hasher);
-    core.globals().cfg.startmenusize.hash(&mut hasher);
-    core.globals().drag.bar_active.hash(&mut hasher);
-    core.globals().bar_runtime.status_text.hash(&mut hasher);
-    core.globals().selected_monitor_id().hash(&mut hasher);
-
-    for m in core.globals().monitors_iter_all() {
-        m.num.hash(&mut hasher);
-        m.work_rect.x.hash(&mut hasher);
-        m.work_rect.y.hash(&mut hasher);
-        m.work_rect.w.hash(&mut hasher);
-        m.work_rect.h.hash(&mut hasher);
-        m.bar_y.hash(&mut hasher);
-        m.showbar.hash(&mut hasher);
-        m.current_tag.hash(&mut hasher);
-        m.selected_tags().hash(&mut hasher);
-        m.sel.hash(&mut hasher);
-        hash_gesture(&mut hasher, m.gesture);
-        if let Some(tag) = m.current_tag() {
-            tag.showbar.hash(&mut hasher);
-            tag.name.hash(&mut hasher);
-            tag.alt_name.hash(&mut hasher);
-            tag.layouts.symbol().hash(&mut hasher);
-        }
-
-        let selected = m.selected_tags();
-        for (win, c) in m.iter_clients(core.globals().clients.map()) {
-            if !c.is_visible(selected) {
-                continue;
-            }
-            win.hash(&mut hasher);
-            c.name.hash(&mut hasher);
-            c.tags.hash(&mut hasher);
-            c.is_urgent.hash(&mut hasher);
-            c.is_locked.hash(&mut hasher);
-            c.is_fullscreen.hash(&mut hasher);
-            c.is_hidden.hash(&mut hasher);
-        }
-    }
-
-    if core.globals().cfg.show_systray {
-        for item in &wayland_systray.items {
-            item.service.hash(&mut hasher);
-            item.path.hash(&mut hasher);
-            item.icon_w.hash(&mut hasher);
-            item.icon_h.hash(&mut hasher);
-            item.icon_rgba.hash(&mut hasher);
-        }
-    }
-
-    hasher.finish()
+    let mut key = core.bar.update_seq();
+    key = key.rotate_left(7) ^ (core.globals().cfg.show_bar as u64);
+    key = key.rotate_left(7) ^ (core.globals().cfg.show_systray as u64);
+    key = key.rotate_left(7) ^ (core.globals().cfg.bar_height as u64);
+    key = key.rotate_left(7) ^ (core.globals().cfg.horizontal_padding as u64);
+    key = key.rotate_left(7) ^ (core.globals().cfg.startmenusize as u64);
+    key = key.rotate_left(7) ^ u64::from(wayland_systray_menu.is_some());
+    key.rotate_left(7) ^ (painter.font_size.to_bits() as u64)
 }
