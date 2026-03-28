@@ -65,13 +65,13 @@ pub(crate) struct MonitorRenderOutputWithId {
 }
 
 #[derive(Clone)]
-struct WorkerTrayLayout {
-    tray_total_w: i32,
-    tray_start_x: i32,
-    tray_slots: Vec<crate::bar::SystrayHitSlot>,
-    menu_total_w: i32,
-    menu_start_x: i32,
-    menu_slots: Vec<crate::bar::SystrayHitSlot>,
+pub(crate) struct WorkerTrayLayout {
+    pub tray_total_w: i32,
+    pub tray_start_x: i32,
+    pub tray_slots: Vec<crate::bar::SystrayHitSlot>,
+    pub menu_total_w: i32,
+    pub menu_start_x: i32,
+    pub menu_slots: Vec<crate::bar::SystrayHitSlot>,
 }
 
 pub(crate) fn build_monitor_snapshots(
@@ -318,7 +318,7 @@ fn draw_close_button_snapshot(
     );
 }
 
-fn worker_systray_layout(
+pub(crate) fn worker_systray_layout(
     snapshot: &SystraySnapshot,
     monitor_width: i32,
     icon_h: i32,
@@ -378,63 +378,7 @@ fn worker_systray_layout(
     }
 }
 
-fn draw_systray_snapshot(
-    painter: &mut dyn BarPainter,
-    snapshot: &SystraySnapshot,
-    layout: &WorkerTrayLayout,
-    bar_height: i32,
-) {
-    painter.set_scheme(snapshot.base_scheme.clone());
-    if layout.tray_total_w > 0 {
-        painter.rect(layout.tray_start_x, 0, layout.tray_total_w, bar_height, true, true);
-    }
-    if layout.menu_total_w > 0 {
-        painter.rect(layout.menu_start_x, 0, layout.menu_total_w, bar_height, true, true);
-    }
-
-    let icon_h = bar_height.max(1);
-    for slot in &layout.tray_slots {
-        let Some(item) = snapshot.items.items.get(slot.idx) else {
-            continue;
-        };
-        painter.blit_rgba_bgra(
-            slot.start,
-            0,
-            slot.end - slot.start,
-            icon_h,
-            item.icon_w,
-            item.icon_h,
-            &item.icon_rgba,
-        );
-    }
-
-    if let Some(menu) = &snapshot.menu {
-        let mut scheme = snapshot.base_scheme.clone();
-        painter.set_scheme(scheme.clone());
-        for (row, item) in menu.items.iter().enumerate() {
-            let Some(slot) = layout.menu_slots.get(row) else {
-                continue;
-            };
-            let x = slot.start;
-            let w = slot.end - slot.start;
-            if item.separator {
-                painter.rect(x + 3, bar_height / 2, w - 6, 1, true, false);
-                continue;
-            }
-            if !item.enabled {
-                scheme.fg[3] = 0.6;
-                painter.set_scheme(scheme.clone());
-            }
-            painter.text(x, 0, w, bar_height, 8, &item.label, false, 0);
-            if !item.enabled {
-                scheme.fg[3] = 1.0;
-                painter.set_scheme(scheme.clone());
-            }
-        }
-    }
-}
-
-pub(crate) fn render_monitor_snapshot(
+fn render_monitor_snapshot_base(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
@@ -569,10 +513,9 @@ pub(crate) fn render_monitor_snapshot(
         painter.rect(x, 0, title_width, bar_height, true, true);
     }
 
-    if let (Some(systray), Some(layout)) = (&snapshot.systray, &tray_layout) {
+    if let (Some(_systray), Some(layout)) = (&snapshot.systray, &tray_layout) {
         hit.systray_slots = layout.tray_slots.clone();
         hit.systray_menu_slots = layout.menu_slots.clone();
-        draw_systray_snapshot(painter, systray, layout, bar_height);
     }
 
     MonitorRenderOutput {
@@ -580,4 +523,11 @@ pub(crate) fn render_monitor_snapshot(
         bar_clients_width: title_width,
         activeoffset,
     }
+}
+
+pub(crate) fn render_monitor_snapshot(
+    snapshot: &MonitorBarSnapshot,
+    painter: &mut dyn BarPainter,
+) -> MonitorRenderOutput {
+    render_monitor_snapshot_base(snapshot, painter)
 }
