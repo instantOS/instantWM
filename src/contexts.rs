@@ -12,6 +12,8 @@ use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::globals::Globals;
 use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 
 pub struct CoreCtx<'a> {
     g: &'a mut Globals,
@@ -269,21 +271,35 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
-        if let Some(c) = self.core_mut().globals_mut().clients.get_mut(&win) {
-            c.old_geo = c.geo;
-            c.geo = rect;
-            if c.is_floating {
-                c.float_geo = rect;
-            }
-        }
-
-        self.backend().resize_window(win, rect);
-
         match self {
             WmCtx::X11(x11) => {
+                let actual_rect = {
+                    x11.backend.resize_window(win, rect);
+                    let _ = x11.x11.conn.flush();
+                    query_x11_window_rect(&x11.x11, win).unwrap_or(rect)
+                };
+
+                if let Some(c) = x11.core.globals_mut().clients.get_mut(&win) {
+                    c.old_geo = c.geo;
+                    c.geo = actual_rect;
+                    if c.is_floating {
+                        c.float_geo = actual_rect;
+                    }
+                }
+
                 crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);
             }
-            WmCtx::Wayland(_) => {}
+            WmCtx::Wayland(_) => {
+                if let Some(c) = self.core_mut().globals_mut().clients.get_mut(&win) {
+                    c.old_geo = c.geo;
+                    c.geo = rect;
+                    if c.is_floating {
+                        c.float_geo = rect;
+                    }
+                }
+
+                self.backend().resize_window(win, rect);
+            }
         }
     }
 
@@ -407,4 +423,14 @@ impl<'a> WmCtx<'a> {
 
     // For backend-specific operations, use match on the enum directly
     // instead of accessor methods that return Option.
+}
+
+fn query_x11_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
+    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
+    Some(Rect {
+        x: reply.x as i32,
+        y: reply.y as i32,
+        w: reply.width as i32,
+        h: reply.height as i32,
+    })
 }

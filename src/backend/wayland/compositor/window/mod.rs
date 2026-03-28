@@ -40,6 +40,40 @@ impl WaylandState {
         self.window_index.get(&window)
     }
 
+    /// Sync client geometry from the compositor's current mapped window state.
+    ///
+    /// Wayland resizes are configure-driven, so the client may commit a size
+    /// smaller than the compositor requested. Keep WM geometry aligned with the
+    /// actual mapped element so hover hit-testing and floating restore logic use
+    /// the real window bounds.
+    pub(crate) fn sync_client_geometry_from_window(&mut self, window: WindowId) {
+        let Some(element) = self.find_window(window).cloned() else {
+            return;
+        };
+        let Some(loc) = self.space.element_location(&element) else {
+            return;
+        };
+        let geo = element.geometry();
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
+        let Some(client) = g.clients.get_mut(&window) else {
+            return;
+        };
+
+        let rect = crate::types::Rect {
+            x: loc.x - client.border_width,
+            y: loc.y - client.border_width,
+            w: geo.size.w.max(1),
+            h: geo.size.h.max(1),
+        };
+        client.old_geo = client.geo;
+        client.geo = rect;
+        if client.is_floating {
+            client.float_geo = rect;
+        }
+    }
+
     /// Request the compositor to warp the pointer to `(x, y)` in logical
     /// screen coordinates.  The warp is deferred until the next event-loop
     /// tick so that the pointer handle and the caller's `pointer_location`

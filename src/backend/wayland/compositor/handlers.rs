@@ -93,13 +93,20 @@ impl CompositorHandler for WaylandState {
             return;
         }
 
-        if let Some(window) = self
+        let committed_window = self
             .space
             .elements()
             .find(|w| w.wl_surface().as_deref() == Some(&root))
-            .cloned()
-        {
+            .cloned();
+        if let Some(window) = committed_window {
             window.on_commit();
+            if let Some(id) = window
+                .user_data()
+                .get::<super::state::WindowIdMarker>()
+                .map(|marker| marker.id)
+            {
+                self.sync_client_geometry_from_window(id);
+            }
         }
 
         super::layer_shell::handle_layer_commit(self, surface);

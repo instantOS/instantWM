@@ -283,6 +283,9 @@ impl XwmHandler for WaylandState {
             c.geo.y = geometry.loc.y;
             c.geo.w = geometry.size.w.max(1);
             c.geo.h = geometry.size.h.max(1);
+            if c.is_floating {
+                c.float_geo = c.geo;
+            }
         }
         self.resize_window(
             win,
