@@ -382,6 +382,7 @@ pub fn spawn_wayland_smoke_window() {
 /// (e.g. `DrmExtras::Memory` or `WaylandExtras::Memory`).
 pub fn build_bar_elements(
     wm: &mut Wm,
+    state: &mut WaylandState,
     renderer: &mut GlesRenderer,
 ) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
     if !wm.g.cfg.show_bar {
@@ -406,6 +407,9 @@ pub fn build_bar_elements(
                 core.bar.mark_dirty();
             }
         }
+
+        data.bar_painter
+            .set_render_ping(state.runtime.render_ping.clone());
 
         crate::bar::wayland::render_bar_buffers(
             &mut core,
@@ -443,7 +447,7 @@ pub struct CommonSceneElements {
 /// Build the shared set of scene extras used by both startup renderers.
 pub fn build_common_scene_elements(
     wm: &mut Wm,
-    state: &WaylandState,
+    state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     output_x_offset: i32,
 ) -> CommonSceneElements {
@@ -462,7 +466,7 @@ pub fn build_common_scene_elements(
         overlays.extend(elems);
     }
 
-    let bar = build_bar_elements(wm, renderer);
+    let bar = build_bar_elements(wm, state, renderer);
     let borders = crate::wayland::render::borders::render_border_elements(&wm.g, state);
 
     CommonSceneElements {

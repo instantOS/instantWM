@@ -425,6 +425,10 @@ fn run_event_loop(
             process_common_tick(ipc_server, wm, state, loop_state);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
 
+            if wm.bar.needs_redraw() {
+                loop_state.mark_all_dirty();
+            }
+
             if wm.g.dirty.input_config {
                 wm.g.dirty.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(

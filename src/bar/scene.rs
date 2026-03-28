@@ -49,7 +49,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub show_shutdown: bool,
     pub titles: Vec<TitleCellSnapshot>,
     pub monitor_rect_x: i32,
-    pub parsed_status: Option<crate::bar::status::ParsedStatus>,
+    pub status_text: Option<String>,
     pub systray: Option<SystraySnapshot>,
 }
 
@@ -89,7 +89,7 @@ pub(crate) fn build_monitor_snapshots(
     let systray_spacing = core.globals().cfg.systray_spacing;
     let drag_bar_active = core.globals().drag.bar_active;
     let current_mode = core.globals().behavior.current_mode.clone();
-    let status_snapshot = if !current_mode.is_empty() && current_mode != "default" {
+    let status_text = if !current_mode.is_empty() && current_mode != "default" {
         let mode_display = core
             .globals()
             .cfg
@@ -98,14 +98,13 @@ pub(crate) fn build_monitor_snapshots(
             .and_then(|m| m.description.as_ref())
             .cloned()
             .unwrap_or_else(|| current_mode.clone());
-        let mode_text = format!("mode: {}", mode_display);
-        Some(crate::bar::status::parse_status_fallback(&mode_text))
+        Some(format!("mode: {}", mode_display))
     } else {
         let status_text = core.globals().bar_runtime.status_text.clone();
         if status_text.is_empty() {
             None
         } else {
-            Some(core.bar.parsed_status_for_text(&status_text).clone())
+            Some(status_text)
         }
     };
     let monitors_all: Vec<Monitor> = core.globals().monitors_iter_all().cloned().collect();
@@ -174,8 +173,8 @@ pub(crate) fn build_monitor_snapshots(
             });
         }
 
-        let parsed_status = if is_selected_monitor {
-            status_snapshot.clone()
+        let status_text = if is_selected_monitor {
+            status_text.clone()
         } else {
             None
         };
@@ -207,7 +206,7 @@ pub(crate) fn build_monitor_snapshots(
             show_shutdown: mon.sel.is_none(),
             titles,
             monitor_rect_x: mon.monitor_rect.x,
-            parsed_status,
+            status_text,
             systray,
         });
     }
@@ -399,7 +398,8 @@ fn render_monitor_snapshot_base(
     temp_mon.work_rect.w = snapshot.width;
 
     let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor {
-        if let Some(parsed) = &snapshot.parsed_status {
+        if let Some(status_text) = &snapshot.status_text {
+            let parsed = crate::bar::status::parse_status(status_text.as_bytes());
             crate::bar::status::draw_status_items(
                 systray_width,
                 &temp_mon,

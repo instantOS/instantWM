@@ -269,6 +269,7 @@ struct AsyncBarRenderShared {
     pending: Mutex<Option<AsyncBarRenderRequest>>,
     wake: Condvar,
     results_tx: Sender<AsyncBarRenderResult>,
+    render_ping: Mutex<Option<smithay::reexports::calloop::ping::Ping>>,
 }
 
 struct AsyncBarRenderRuntime {
@@ -294,6 +295,7 @@ impl Default for WaylandBarPainter {
             pending: Mutex::new(None),
             wake: Condvar::new(),
             results_tx,
+            render_ping: Mutex::new(None),
         });
 
         let worker_shared = Arc::clone(&shared);
@@ -314,6 +316,11 @@ impl Default for WaylandBarPainter {
 
                     let result = render_async_snapshot(&mut painter, request);
                     let _ = worker_shared.results_tx.send(result);
+                    if let Ok(guard) = worker_shared.render_ping.lock()
+                        && let Some(ping) = guard.as_ref()
+                    {
+                        ping.ping();
+                    }
                 }
             })
             .expect("failed to spawn Wayland bar worker");
@@ -367,6 +374,18 @@ impl WaylandBarPainter {
         if font_size.is_finite() && font_size > 0.0 {
             self.font_size = font_size;
             self.text_width_cache.borrow_mut().clear();
+        }
+    }
+
+    pub fn set_render_ping(
+        &mut self,
+        render_ping: Option<smithay::reexports::calloop::ping::Ping>,
+    ) {
+        let Some(runtime) = self.async_runtime.as_mut() else {
+            return;
+        };
+        if let Ok(mut guard) = runtime.shared.render_ping.lock() {
+            *guard = render_ping;
         }
     }
 
@@ -806,6 +825,10 @@ pub fn render_bar_buffers(
 
     if painter.cached_key != key {
         request_async_render(painter, key, core, wayland_systray, wayland_systray_menu);
+    }
+
+    if painter.cached_key == key {
+        core.bar.mark_drawn();
     }
 
     painter
