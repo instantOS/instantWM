@@ -403,20 +403,19 @@ fn render_monitor_snapshot_base(
     let mut temp_mon = Monitor::default();
     temp_mon.work_rect.w = snapshot.width;
 
-    let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor
-        && !snapshot.status_items.is_empty()
-    {
-        crate::bar::status::draw_status_items(
-            systray_width,
-            &temp_mon,
-            bar_height,
-            snapshot.status_items.as_slice(),
-            snapshot.status_scheme.clone(),
-            painter,
-        )
-    } else {
-        (0, 0, Vec::new())
-    };
+    let (status_start_x, status_width, status_click_targets) =
+        if snapshot.is_selected_monitor && !snapshot.status_items.is_empty() {
+            crate::bar::status::draw_status_items(
+                systray_width,
+                &temp_mon,
+                bar_height,
+                snapshot.status_items.as_slice(),
+                snapshot.status_scheme.clone(),
+                painter,
+            )
+        } else {
+            (0, 0, Vec::new())
+        };
     hit.status_click_targets = status_click_targets;
 
     draw_startmenu_icon_snapshot(
