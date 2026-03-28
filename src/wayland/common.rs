@@ -483,6 +483,10 @@ pub fn build_common_scene_elements(
 /// busy loop (an approach borrowed from niri's per-output frame throttling).
 pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
     let output_geo = state.space.output_geometry(output);
+    let throttle = output.current_mode().and_then(|mode| {
+        let refresh = u64::try_from(mode.refresh).ok()?;
+        (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
+    });
 
     for window in state.space.elements() {
         // Only notify windows that are actually visible on this output.
@@ -501,7 +505,7 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
                 &wl_surface,
                 output,
                 elapsed,
-                Some(Duration::from_millis(16)),
+                throttle,
                 surface_primary_scanout_output,
             );
             if let Some(toplevel) = window.toplevel() {
@@ -510,7 +514,7 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
                         popup.wl_surface(),
                         output,
                         elapsed,
-                        Some(Duration::from_millis(16)),
+                        throttle,
                         surface_primary_scanout_output,
                     );
                 }
@@ -524,7 +528,7 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         layer_surface.send_frame(
             output,
             elapsed,
-            Some(Duration::from_millis(16)),
+            throttle,
             surface_primary_scanout_output,
         );
     }

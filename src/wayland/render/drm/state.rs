@@ -18,9 +18,10 @@ pub const CURSOR_SIZE: u32 = 24;
 
 pub type DrmAllocator = GbmAllocator<DrmDeviceFd>;
 pub type DrmFramebufferExporter = GbmFramebufferExporter<DrmDeviceFd>;
-pub type ManagedDrmOutput = DrmOutput<DrmAllocator, DrmFramebufferExporter, (), DrmDeviceFd>;
+pub type ManagedDrmOutput =
+    DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>;
 pub type ManagedDrmOutputManager =
-    DrmOutputManager<DrmAllocator, DrmFramebufferExporter, (), DrmDeviceFd>;
+    DrmOutputManager<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct OutputHitRegion {
@@ -32,7 +33,7 @@ pub struct OutputHitRegion {
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
     pub connector: connector::Handle,
-    pub surface: ManagedDrmOutput,
+    pub surface: DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>,
     pub output: Output,
     pub x_offset: i32,
     pub width: i32,

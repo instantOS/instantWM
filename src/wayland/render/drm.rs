@@ -1,13 +1,13 @@
 //! DRM/KMS rendering and GPU output management.
 
 use smithay::backend::allocator::Fourcc;
-use smithay::backend::allocator::dmabuf::AsDmabuf;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::compositor::{FrameError, FrameFlags, PrimaryPlaneElement};
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::DrmOutputRenderElements;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
-use smithay::backend::renderer::Bind;
+use smithay::backend::renderer::element::RenderElementStates;
+use smithay::backend::renderer::{Bind, Offscreen, Renderer};
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -15,11 +15,15 @@ use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+use smithay::desktop::utils::{
+    OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
+    surface_primary_scanout_output, take_presentation_feedback_surface_tree,
+};
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
-use smithay::utils::{Physical, Point};
+use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
@@ -40,6 +44,11 @@ pub use state::{
 };
 
 pub mod state;
+
+#[derive(Debug)]
+pub struct DrmFrameMetadata {
+    pub presentation_feedback: OutputPresentationFeedback,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderOutcome {
@@ -328,9 +337,6 @@ pub fn render_drm_output(
     if entry.vrr_enabled {
         frame_flags |= FrameFlags::SKIP_CURSOR_ONLY_UPDATES;
     }
-    if has_pending_screencopy {
-        frame_flags = FrameFlags::empty();
-    }
 
     let frame_result = match entry.surface.render_frame(
         renderer,
@@ -345,23 +351,50 @@ pub fn render_drm_output(
         }
     };
 
-    if has_pending_screencopy
-        && let PrimaryPlaneElement::Swapchain(primary_swapchain) = &frame_result.primary_element
-    {
-        match primary_swapchain.buffer().export() {
-            Ok(mut dmabuf) => match renderer.bind(&mut dmabuf) {
-                Ok(target) => {
-                    crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
-                        &mut state.pending_screencopies,
-                        renderer,
-                        &target,
-                        &entry.output,
-                        start_time,
-                    );
+    if has_pending_screencopy {
+        let output_scale = entry.output.current_scale().fractional_scale();
+        let output_transform = entry.output.current_transform().invert();
+        let mode_size = entry
+            .output
+            .current_mode()
+            .map(|mode| mode.size)
+            .unwrap_or_else(|| (entry.width, entry.height).into());
+        let target_size = output_transform.transform_size(mode_size);
+        let target_size_buffer: smithay::utils::Size<i32, BufferCoords> =
+            (target_size.w, target_size.h).into();
+        let mut capture: GlesTexture =
+            match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+            Ok(buffer) => buffer,
+            Err(err) => {
+                log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                return RenderOutcome::Failed;
+            }
+        };
+        match renderer.bind(&mut capture) {
+            Ok(mut target) => {
+                match frame_result.blit_frame_result(
+                    target_size,
+                    output_transform,
+                    output_scale,
+                    renderer,
+                    &mut target,
+                    [Rectangle::from_size(target_size)],
+                    std::iter::empty::<smithay::backend::renderer::element::Id>(),
+                ) {
+                    Ok(sync) => {
+                        let _ = renderer.wait(&sync);
+                        crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+                            &mut state.pending_screencopies,
+                            renderer,
+                            &target,
+                            &entry.output,
+                            start_time,
+                        );
+                    }
+                    Err(err) => log::warn!("screencopy blit_frame_result failed: {:?}", err),
                 }
-                Err(err) => log::warn!("screencopy bind failed: {:?}", err),
-            },
-            Err(err) => log::warn!("screencopy dmabuf export failed: {:?}", err),
+            }
+            Err(err) => log::warn!("screencopy offscreen bind failed: {:?}", err),
         }
     }
 
@@ -371,7 +404,11 @@ pub fn render_drm_output(
         let _ = primary_swapchain.sync.wait();
     }
 
-    match entry.surface.queue_frame(()) {
+    let frame_metadata = DrmFrameMetadata {
+        presentation_feedback: collect_presentation_feedback(state, entry, &frame_result.states),
+    };
+
+    match entry.surface.queue_frame(frame_metadata) {
         Ok(()) => {}
         Err(FrameError::EmptyFrame) => return RenderOutcome::Skipped,
         Err(err) => {
@@ -382,6 +419,61 @@ pub fn render_drm_output(
 
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
     RenderOutcome::Submitted
+}
+
+fn collect_presentation_feedback(
+    state: &WaylandState,
+    entry: &OutputSurfaceEntry,
+    render_states: &RenderElementStates,
+) -> OutputPresentationFeedback {
+    let mut output_feedback = OutputPresentationFeedback::new(&entry.output);
+    let output_geo = state.space.output_geometry(&entry.output);
+    let surface_flags =
+        |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+         _: &smithay::wayland::compositor::SurfaceData| {
+        surface_presentation_feedback_flags_from_states(surface, render_states)
+    };
+
+    if state.is_locked() {
+        let output_name = entry.output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            take_presentation_feedback_surface_tree(
+                lock_surface.wl_surface(),
+                &mut output_feedback,
+                surface_primary_scanout_output,
+                surface_flags,
+            );
+        }
+        return output_feedback;
+    }
+
+    for window in state.space.elements() {
+        if let Some(out_geo) = output_geo
+            && let Some(win_loc) = state.space.element_location(window)
+        {
+            let win_rect = Rectangle::new(win_loc, window.geometry().size);
+            if !out_geo.overlaps(win_rect) {
+                continue;
+            }
+        }
+
+        window.take_presentation_feedback(
+            &mut output_feedback,
+            surface_primary_scanout_output,
+            surface_flags,
+        );
+    }
+
+    let layer_map = smithay::desktop::layer_map_for_output(&entry.output);
+    for layer_surface in layer_map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut output_feedback,
+            surface_primary_scanout_output,
+            surface_flags,
+        );
+    }
+
+    output_feedback
 }
 
 fn build_cursor_elements(

@@ -28,6 +28,7 @@ use smithay::{
         idle_inhibit::IdleInhibitManagerState,
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
+        presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         selection::data_device::DataDeviceState,
         session_lock::{LockSurface, SessionLockManagerState},
@@ -103,6 +104,7 @@ pub struct WaylandState {
     pub xdg_activation_state: XdgActivationState,
     pub seat_state: SeatState<WaylandState>,
     pub output_manager_state: OutputManagerState,
+    pub presentation_state: PresentationState,
     pub data_device_state: DataDeviceState,
     pub xwayland_shell_state: XWaylandShellState,
     pub xwayland_keyboard_grab_state: XWaylandKeyboardGrabState,
@@ -264,6 +266,7 @@ impl WaylandState {
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
+        let presentation_state = PresentationState::new::<Self>(&dh, libc::CLOCK_MONOTONIC as u32);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
         let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
@@ -295,6 +298,7 @@ impl WaylandState {
             xdg_activation_state,
             seat_state,
             output_manager_state,
+            presentation_state,
             data_device_state,
             xwayland_shell_state,
             xwayland_keyboard_grab_state,

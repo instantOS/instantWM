@@ -12,6 +12,9 @@ use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_server::Display;
+use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+use smithay::utils::{Clock, Monotonic};
+use smithay::wayland::presentation::Refresh;
 use std::collections::{HashMap, HashSet};
 use std::process::exit;
 use std::sync::{Arc, Mutex, mpsc};
@@ -47,6 +50,7 @@ struct DrmLoopState {
     session_active: bool,
     render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
+    presentation_seq: HashMap<crtc::Handle, u64>,
 }
 
 impl DrmLoopState {
@@ -59,6 +63,7 @@ impl DrmLoopState {
             session_active: true,
             render_flags,
             pending_crtcs: HashSet::new(),
+            presentation_seq: output_surfaces.iter().map(|entry| (entry.crtc, 0)).collect(),
         }
     }
 
@@ -402,6 +407,7 @@ fn run_event_loop(
     let pointer_handle = state.pointer.clone();
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let shared_layout = Arc::clone(layout_state);
+    let monotonic_clock = Clock::<Monotonic>::new();
 
     event_loop
         .run(None, state, move |state| {
@@ -410,6 +416,7 @@ fn run_event_loop(
                 loop_state,
                 &shared_layout,
                 output_surfaces,
+                &monotonic_clock,
             );
             process_commit_redraws(state, loop_state);
             process_common_tick(ipc_server, wm, state, loop_state);
@@ -473,6 +480,7 @@ fn process_runtime_events(
     loop_state: &mut DrmLoopState,
     layout_state: &DrmLayoutState,
     output_surfaces: &mut [OutputSurfaceEntry],
+    monotonic_clock: &Clock<Monotonic>,
 ) {
     while let Ok(event) = runtime_event_rx.try_recv() {
         match event {
@@ -484,10 +492,23 @@ fn process_runtime_events(
                 loop_state.mark_all_dirty();
             }
             DrmRuntimeEvent::VBlank(crtc) => {
-                if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc)
-                    && let Err(err) = entry.surface.frame_submitted()
-                {
-                    log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+                if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
+                    match entry.surface.frame_submitted() {
+                        Ok(Some(mut metadata)) => {
+                            let seq = loop_state.presentation_seq.entry(crtc).or_insert(0);
+                            *seq += 1;
+                            metadata.presentation_feedback.presented(
+                                monotonic_clock.now(),
+                                output_refresh(entry),
+                                *seq,
+                                wp_presentation_feedback::Kind::Vsync,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+                        }
+                    }
                 }
                 loop_state.pending_crtcs.remove(&crtc);
             }
@@ -495,6 +516,19 @@ fn process_runtime_events(
                 loop_state.mark_pointer_output_dirty(px, layout_state);
             }
         }
+    }
+}
+
+fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
+    let period = entry.output.current_mode().and_then(|mode| {
+        let refresh = u64::try_from(mode.refresh).ok()?;
+        (refresh > 0).then(|| std::time::Duration::from_nanos(1_000_000_000_000u64 / refresh))
+    });
+
+    match (entry.vrr_enabled, period) {
+        (true, Some(period)) => Refresh::variable(period),
+        (false, Some(period)) => Refresh::fixed(period),
+        (_, None) => Refresh::Unknown,
     }
 }
 
