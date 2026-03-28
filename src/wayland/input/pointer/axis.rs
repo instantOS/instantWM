@@ -6,7 +6,6 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::Point;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::config::config_toml::ToggleSetting;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
@@ -29,23 +28,6 @@ fn resolve_scroll_factor(
     1.0
 }
 
-/// Resolve the effective natural scroll setting from input configuration.
-///
-/// Checks `type:pointer`, `type:touchpad`, then `*` (wildcard) entries,
-/// returning whether natural scroll is enabled, or `false` if none is set.
-fn resolve_natural_scroll(
-    input_config: &std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
-) -> bool {
-    for key in &["type:pointer", "type:touchpad", "*"] {
-        if let Some(cfg) = input_config.get(*key)
-            && let Some(natural_scroll) = cfg.natural_scroll
-        {
-            return natural_scroll == ToggleSetting::Enabled;
-        }
-    }
-    false
-}
-
 /// Handle pointer axis (scroll) events.
 pub fn handle_pointer_axis<B: InputBackend>(
     wm: &mut Wm,
@@ -56,14 +38,10 @@ pub fn handle_pointer_axis<B: InputBackend>(
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
-    let natural_scroll = resolve_natural_scroll(&wm.g.cfg.input);
-
-    // Negate scroll factor when natural scroll is enabled to flip the direction
-    let direction_modifier = if natural_scroll { -1.0 } else { 1.0 };
-    let effective_factor = scroll_factor * direction_modifier;
 
     let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());
+    let mut has_axis_content = false;
 
     for axis in [
         smithay::backend::input::Axis::Horizontal,
@@ -71,13 +49,20 @@ pub fn handle_pointer_axis<B: InputBackend>(
     ] {
         if let Some(amount) = event.amount(axis) {
             if amount.abs() >= f64::EPSILON {
+                let scaled_amount = amount * scroll_factor;
                 frame = frame.relative_direction(axis, event.relative_direction(axis));
-                frame = frame.value(axis, amount * effective_factor);
+                frame = frame.value(axis, scaled_amount);
+                has_axis_content = true;
                 if let Some(steps) = event.amount_v120(axis) {
-                    frame = frame.v120(axis, (steps * effective_factor) as i32);
+                    frame = frame.v120(axis, (steps * scroll_factor) as i32);
                 }
-            } else if event.source() == smithay::backend::input::AxisSource::Finger {
+            } else if matches!(
+                event.source(),
+                smithay::backend::input::AxisSource::Finger
+                    | smithay::backend::input::AxisSource::Continuous
+            ) {
                 frame = frame.stop(axis);
+                has_axis_content = true;
             }
         }
     }
@@ -97,6 +82,8 @@ pub fn handle_pointer_axis<B: InputBackend>(
         }
     }
 
-    pointer_handle.axis(state, frame);
-    pointer_handle.frame(state);
+    if has_axis_content {
+        pointer_handle.axis(state, frame);
+        pointer_handle.frame(state);
+    }
 }
