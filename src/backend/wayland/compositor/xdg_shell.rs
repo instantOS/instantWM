@@ -94,7 +94,7 @@ impl XdgShellHandler for WaylandState {
         };
         let props = self.window_properties(win);
         if let Some(g) = self.globals_mut() {
-            crate::client::rules::refresh_rules_for_property_change(g, win, &props);
+            crate::client::handle_property_change(g, win, &props);
         }
         self.update_foreign_toplevel(win);
     }
@@ -105,7 +105,7 @@ impl XdgShellHandler for WaylandState {
         };
         let props = self.window_properties(win);
         if let Some(g) = self.globals_mut() {
-            crate::client::rules::refresh_rules_for_property_change(g, win, &props);
+            crate::client::handle_property_change(g, win, &props);
         }
         self.update_foreign_toplevel(win);
     }
@@ -403,12 +403,8 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         if let Some(win) = self.window_id_for_surface(&surface) {
-            let monitor_id = self.globals().and_then(|g| g.clients.monitor_id(win));
-            if let Some(g) = self.globals_mut()
-                && let Some(mon_id) = monitor_id
-                && let Some(mon) = g.monitor_mut(mon_id)
-            {
-                mon.sel = Some(win);
+            if let Some(g) = self.globals_mut() {
+                crate::client::select_client(g, win);
             }
             self.set_focus(win);
             log::debug!(

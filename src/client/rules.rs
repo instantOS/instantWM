@@ -91,10 +91,12 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
 /// Refresh rule-derived metadata after a backend property update.
 ///
 /// Backend callbacks such as Wayland `title_changed` / `app_id_changed`
-/// should use this instead of blindly re-running full window classification.
+/// and X11 `PropertyNotify` handlers should route through this shared WM
+/// entry point instead of mutating client metadata directly.
+///
 /// Once a client has been promoted to a scratchpad, later protocol metadata
 /// churn must not retag it back into a normal window.
-pub fn refresh_rules_for_property_change(g: &mut Globals, win: WindowId, props: &WindowProperties) {
+pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProperties) {
     if let Some(c) = g.clients.get_mut(&win)
         && !props.title.is_empty()
     {

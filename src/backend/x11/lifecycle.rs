@@ -93,6 +93,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
     let initially_hidden = prepare_visibility_and_unfocus(&mut WmCtx::X11(ctx.reborrow()), w);
+    crate::client::select_client(ctx.core.globals_mut(), w);
     let animated = ctx.core.globals().behavior.animated;
     let c = arrange_map_focus_and_snapshot(&mut WmCtx::X11(ctx.reborrow()), w, initially_hidden);
 

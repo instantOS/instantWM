@@ -44,7 +44,7 @@ pub mod visibility;
 // ---------------------------------------------------------------------------
 
 // -- Rules ------------------------------------------------------------------
-pub use rules::{WindowProperties, apply_rules};
+pub use rules::{WindowProperties, apply_rules, handle_property_change};
 
 // -- Constants ---------------------------------------------------------------
 pub use constants::WM_STATE_WITHDRAWN;
@@ -73,13 +73,13 @@ pub fn restore_border_width(client: &mut crate::types::Client) {
 }
 
 // -- X11 state / properties --------------------------------------------------
-pub use state::{set_client_state, set_client_tag_prop, update_title_x11, update_wm_hints};
+pub use state::{set_client_state, set_client_tag_prop, update_wm_hints};
 
 // -- Kill --------------------------------------------------------------------
 pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
-pub use lifecycle::initial_tags_for_monitor;
+pub use lifecycle::{initial_tags_for_monitor, select_client};
 
 // -- Layout operations -------------------------------------------------------
 pub use layout_ops::zoom;

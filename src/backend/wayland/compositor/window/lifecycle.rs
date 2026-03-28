@@ -41,13 +41,6 @@ impl WaylandState {
             self.last_configured_size.insert(window_id, target);
         }
         if let Some(g) = self.globals_mut() {
-            // Set mon.sel for the newly created window so the WM layer knows
-            // to focus it when it runs the next arrange/focus pass.
-            if let Some(monitor_id) = g.clients.monitor_id(window_id)
-                && let Some(mon) = g.monitor_mut(monitor_id)
-            {
-                mon.sel = Some(window_id);
-            }
             g.dirty.layout = true;
             g.dirty.space = true;
         }

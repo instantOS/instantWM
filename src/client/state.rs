@@ -149,6 +149,25 @@ pub fn update_title_x11(
     }
 }
 
+/// Read the X11 properties used for WM rule matching.
+pub fn window_properties_x11(
+    core: &CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) -> WindowProperties {
+    let conn = x11.conn;
+    let x11_win: Window = win.into();
+    let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
+    let title = read_window_title(core, x11, x11_runtime, win);
+
+    WindowProperties {
+        class: String::from_utf8_lossy(&class_bytes).into_owned(),
+        instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
+        title,
+    }
+}
+
 /// Read the window title directly from the X server.
 ///
 /// Returns the first non-empty value found among `_NET_WM_NAME` and `WM_NAME`,
@@ -215,18 +234,7 @@ pub fn apply_rules(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let conn = x11.conn;
-    let x11_win: Window = win.into();
-
-    let (class_bytes, instance_bytes) = read_wm_class(conn, x11_win);
-    let title = read_window_title(core, x11, x11_runtime, win);
-
-    let props = WindowProperties {
-        class: String::from_utf8_lossy(&class_bytes).into_owned(),
-        instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
-        title,
-    };
-
+    let props = window_properties_x11(core, x11, x11_runtime, win);
     apply_rules_generic(core.globals_mut(), win, &props);
 }
 
