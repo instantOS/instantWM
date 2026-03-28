@@ -8,6 +8,7 @@ use smithay::utils::Transform;
 
 use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::VrrMode;
+use crate::types::{MonitorPosition, Rect};
 
 use super::state::WaylandState;
 
@@ -102,6 +103,17 @@ impl WaylandState {
         config: &crate::config::config_toml::MonitorConfig,
     ) {
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
+        let known_outputs: Vec<_> = outputs
+            .iter()
+            .map(|output| {
+                let geom = self.space.output_geometry(output).unwrap_or_default();
+                (
+                    output.name(),
+                    Rect::new(geom.loc.x, geom.loc.y, geom.size.w, geom.size.h),
+                )
+            })
+            .collect();
+
         for output in outputs {
             if display != "*" && output.name() != display {
                 continue;
@@ -110,11 +122,8 @@ impl WaylandState {
             let mut current_mode = output.current_mode();
             let mut current_scale = output.current_scale();
             let current_transform = output.current_transform();
-            let mut current_location = self
-                .space
-                .output_geometry(&output)
-                .map(|g| g.loc)
-                .unwrap_or_default();
+            let current_geometry = self.space.output_geometry(&output).unwrap_or_default();
+            let mut current_location = current_geometry.loc;
 
             if let Some(ref res) = config.resolution
                 && let Some((w_str, h_str)) = res.split_once('x')
@@ -142,8 +151,18 @@ impl WaylandState {
             let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));
 
             if let Some(ref pos) = config.position
-                && let Some((x_str, y_str)) = pos.split_once(',')
-                && let (Ok(x), Ok(y)) = (x_str.parse::<i32>(), y_str.parse::<i32>())
+                && let Some((x, y)) = MonitorPosition::parse(pos).and_then(|p| {
+                    let size = current_mode
+                        .as_ref()
+                        .map(|mode| (mode.size.w, mode.size.h))
+                        .unwrap_or((current_geometry.size.w, current_geometry.size.h));
+                    p.resolve(
+                        size,
+                        known_outputs
+                            .iter()
+                            .map(|(name, rect)| (name.as_str(), *rect)),
+                    )
+                })
             {
                 current_location = (x, y).into();
             }

@@ -2,6 +2,87 @@
 //!
 //! Provides types for rectangles, size hints, and geometric calculations.
 
+/// Parsed monitor position configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MonitorPosition {
+    Absolute {
+        x: i32,
+        y: i32,
+    },
+    Relative {
+        relation: RelativePosition,
+        output: String,
+    },
+}
+
+/// Relative placement of one monitor against another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RelativePosition {
+    LeftOf,
+    RightOf,
+    Above,
+    Below,
+}
+
+impl MonitorPosition {
+    /// Parse monitor placement syntax.
+    ///
+    /// Supported formats:
+    /// - `"X,Y"`
+    /// - `"left-of:DP-1"`
+    /// - `"right-of:DP-1"`
+    /// - `"above:DP-1"`
+    /// - `"below:DP-1"`
+    pub fn parse(value: &str) -> Option<Self> {
+        if let Some((x_str, y_str)) = value.split_once(',') {
+            let x = x_str.trim().parse().ok()?;
+            let y = y_str.trim().parse().ok()?;
+            return Some(Self::Absolute { x, y });
+        }
+
+        let (relation, output) = value.split_once(':')?;
+        let relation = match relation.trim().to_ascii_lowercase().as_str() {
+            "left-of" => RelativePosition::LeftOf,
+            "right-of" => RelativePosition::RightOf,
+            "above" => RelativePosition::Above,
+            "below" => RelativePosition::Below,
+            _ => return None,
+        };
+        let output = output.trim();
+        if output.is_empty() {
+            return None;
+        }
+
+        Some(Self::Relative {
+            relation,
+            output: output.to_string(),
+        })
+    }
+
+    /// Resolve the configured position against known output geometries.
+    pub fn resolve<'a>(
+        &self,
+        current_size: (i32, i32),
+        outputs: impl IntoIterator<Item = (&'a str, Rect)>,
+    ) -> Option<(i32, i32)> {
+        match self {
+            Self::Absolute { x, y } => Some((*x, *y)),
+            Self::Relative { relation, output } => {
+                let reference = outputs
+                    .into_iter()
+                    .find_map(|(name, rect)| (name == output).then_some(rect))?;
+
+                Some(match relation {
+                    RelativePosition::LeftOf => (reference.x - current_size.0, reference.y),
+                    RelativePosition::RightOf => (reference.x + reference.w, reference.y),
+                    RelativePosition::Above => (reference.x, reference.y - current_size.1),
+                    RelativePosition::Below => (reference.x, reference.y + reference.h),
+                })
+            }
+        }
+    }
+}
+
 /// A rectangle representing window geometry or screen areas.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rect {
@@ -227,6 +308,43 @@ impl Rect {
     #[inline]
     pub fn differs_from(&self, other: &Rect) -> bool {
         self.x != other.x || self.y != other.y || self.w != other.w || self.h != other.h
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MonitorPosition, Rect, RelativePosition};
+
+    #[test]
+    fn parses_absolute_monitor_position() {
+        assert_eq!(
+            MonitorPosition::parse("1920,0"),
+            Some(MonitorPosition::Absolute { x: 1920, y: 0 })
+        );
+    }
+
+    #[test]
+    fn parses_relative_monitor_position() {
+        assert_eq!(
+            MonitorPosition::parse("left-of:DP-1"),
+            Some(MonitorPosition::Relative {
+                relation: RelativePosition::LeftOf,
+                output: "DP-1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn resolves_relative_monitor_position() {
+        let pos = MonitorPosition::parse("below:DP-1").unwrap();
+        let outputs = [("DP-1", Rect::new(1920, 0, 2560, 1440))];
+
+        assert_eq!(pos.resolve((1920, 1080), outputs), Some((1920, 1440)));
+    }
+
+    #[test]
+    fn rejects_unknown_monitor_position_syntax() {
+        assert_eq!(MonitorPosition::parse("diagonal-of:DP-1"), None);
     }
 }
 
