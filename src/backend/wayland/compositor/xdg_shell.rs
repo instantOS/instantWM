@@ -469,14 +469,23 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
         if let Some(win) = self.window_id_for_surface(&surface) {
-            if let Some(g) = self.globals_mut() {
-                crate::client::select_client(g, win);
+            let activated = self.with_wm_mut_unified(|wm, _state| {
+                let mut ctx = wm.ctx();
+                crate::focus::activate_client(&mut ctx, win)
+            });
+            if activated == Some(true) {
+                log::debug!(
+                    "xdg_activation: activated window {:?} (app_id: {:?})",
+                    win,
+                    token_data.app_id
+                );
+            } else {
+                log::warn!(
+                    "xdg_activation: failed to activate window {:?} (app_id: {:?})",
+                    win,
+                    token_data.app_id
+                );
             }
-            self.set_focus(win);
-            log::debug!(
-                "xdg_activation: activated window (app_id: {:?})",
-                token_data.app_id
-            );
         } else {
             log::warn!(
                 "xdg_activation: could not find window for surface (app_id: {:?})",
