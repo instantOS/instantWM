@@ -147,7 +147,7 @@ pub(crate) fn build_monitor_snapshots(
         let mut titles = Vec::new();
         for c_win in mon
             .iter_clients(core.globals().clients.map())
-            .filter_map(|(c_win, c)| c.is_visible(selected_tags).then_some(c_win))
+            .filter_map(|(c_win, c)| c.shows_in_bar(selected_tags).then_some(c_win))
         {
             let Some(c) = core.globals().clients.get(&c_win) else {
                 continue;

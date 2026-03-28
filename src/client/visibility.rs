@@ -183,6 +183,22 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     arrange(ctx, Some(monitor_id));
 }
 
+pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
+    let scratchpad_name = ctx.core().globals().clients.get(&win).and_then(|c| {
+        if c.is_scratchpad() {
+            Some(c.scratchpad_name.clone())
+        } else {
+            None
+        }
+    });
+
+    if let Some(name) = scratchpad_name {
+        crate::floating::scratchpad_hide_name(ctx, &name);
+    } else {
+        hide(ctx, win);
+    }
+}
+
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         if c.is_hidden {

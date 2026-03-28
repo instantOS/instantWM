@@ -49,5 +49,6 @@ pub use overlay::{create_overlay, hide_overlay, set_overlay, set_overlay_mode, s
 
 /// Make a window a scratchpad.
 pub use scratchpad::{
-    scratchpad_find, scratchpad_make, scratchpad_show_name, scratchpad_toggle, unhide_one,
+    scratchpad_find, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    scratchpad_toggle, unhide_one,
 };

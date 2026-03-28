@@ -17,9 +17,9 @@ impl ClientBarStats {
         let mut stats = Self::default();
         let selected = monitor.selected_tags();
 
-        // ── Pass 1: visible_clients via the linked list ───────────────────
+        // ── Pass 1: clients with title entries in the bar ─────────────────
         for (_win, client) in monitor.iter_clients(globals.clients.map()) {
-            if client.is_visible(selected) {
+            if client.shows_in_bar(selected) {
                 stats.visible_clients += 1;
             }
         }
@@ -158,24 +158,24 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
-    let visible_clients: Vec<WindowId> = mon
+    let title_clients: Vec<WindowId> = mon
         .iter_clients(core.globals().clients.map())
-        .filter_map(|(win, c)| c.is_visible(selected).then_some(win))
+        .filter_map(|(win, c)| c.shows_in_bar(selected).then_some(win))
         .collect();
 
     let mut title_ranges: Vec<TitleHitRange> = Vec::new();
-    if !visible_clients.is_empty() {
+    if !title_clients.is_empty() {
         let title_area_start = layout_end;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
             (mon.work_rect.w - title_area_start).max(0)
         };
-        let n = visible_clients.len() as i32;
+        let n = title_clients.len() as i32;
         let each_width = total_width / n;
         let mut remainder = total_width % n;
         let mut cell_start = title_area_start;
-        for win in visible_clients {
+        for win in title_clients {
             let this_width = if remainder > 0 {
                 remainder -= 1;
                 each_width + 1

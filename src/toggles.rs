@@ -123,7 +123,15 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
     let clients: Vec<WindowId> = ctx.core().globals().clients.keys().copied().collect();
 
     for win in clients {
-        crate::client::show(ctx, win);
+        let should_unhide = ctx
+            .core()
+            .globals()
+            .clients
+            .get(&win)
+            .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
+        if should_unhide {
+            crate::client::show(ctx, win);
+        }
     }
 }
 

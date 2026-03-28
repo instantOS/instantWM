@@ -29,7 +29,13 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
         .collect();
 
     for win in clients {
-        if ctx.core_mut().globals_mut().clients.is_hidden(win) {
+        let should_unhide = ctx
+            .core()
+            .globals()
+            .clients
+            .get(&win)
+            .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
+        if should_unhide {
             crate::client::show(ctx, win);
             return true;
         }

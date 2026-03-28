@@ -49,7 +49,7 @@ pub use constants::WM_STATE_WITHDRAWN;
 pub use geometry::resize;
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{hide, show, show_hide};
+pub use visibility::{hide, hide_for_user, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{

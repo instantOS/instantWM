@@ -13,6 +13,7 @@ use smithay::reexports::input::{Event as LibinputRawEvent, event, event::EventTr
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::config::config_toml::InputConfig;
 use crate::wayland::input::{
     handle_keyboard, handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
     motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
@@ -96,34 +97,36 @@ pub fn configure_device(
         "type:keyboard"
     };
 
-    if let Some(config) = input_config
+    let default_config = InputConfig::default();
+    let config = input_config
         .get(config_key)
         .or_else(|| input_config.get("*"))
-    {
-        if let Some(tap) = config.tap {
-            let _ = device.config_tap_set_enabled(tap == ToggleSetting::Enabled);
-        }
+        .unwrap_or(&default_config);
 
-        if let Some(natural_scroll) = config.natural_scroll {
-            let _ = device
-                .config_scroll_set_natural_scroll_enabled(natural_scroll == ToggleSetting::Enabled);
-        }
-
-        if let Some(accel_profile) = config.accel_profile {
-            let profile = match accel_profile {
-                AccelProfile::Flat => smithay::reexports::input::AccelProfile::Flat,
-                AccelProfile::Adaptive => smithay::reexports::input::AccelProfile::Adaptive,
-            };
-            let _ = device.config_accel_set_profile(profile);
-        }
-
-        if let Some(pointer_accel) = config.pointer_accel {
-            let _ = device.config_accel_set_speed(pointer_accel.clamp(-1.0, 1.0));
-        }
-
-        // scroll_factor is applied at the compositor level in the axis handler,
-        // not via libinput. Nothing to do here for it.
+    // Only apply settings that were explicitly configured (not using defaults)
+    if let Some(tap) = config.tap {
+        let _ = device.config_tap_set_enabled(tap == ToggleSetting::Enabled);
     }
+
+    if let Some(natural_scroll) = config.natural_scroll {
+        let _ = device
+            .config_scroll_set_natural_scroll_enabled(natural_scroll == ToggleSetting::Enabled);
+    }
+
+    if let Some(accel_profile) = config.accel_profile {
+        let profile = match accel_profile {
+            AccelProfile::Flat => smithay::reexports::input::AccelProfile::Flat,
+            AccelProfile::Adaptive => smithay::reexports::input::AccelProfile::Adaptive,
+        };
+        let _ = device.config_accel_set_profile(profile);
+    }
+
+    if let Some(pointer_accel) = config.pointer_accel {
+        let _ = device.config_accel_set_speed(pointer_accel.clamp(-1.0, 1.0));
+    }
+
+    // scroll_factor is applied at the compositor level in the axis handler,
+    // not via libinput. Nothing to do here for it.
 }
 
 /// Re-apply input configuration to all tracked devices.

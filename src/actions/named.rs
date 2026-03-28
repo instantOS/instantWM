@@ -163,7 +163,7 @@ define_named_actions!(
     ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { if let Some(name) = args.first() { toggle_mode(ctx, name); } } },
     TogglePrefix => { name: "toggle_prefix", arg_example: None, doc: "toggle prefix mode (legacy alias for mode_toggle prefix)", run: |ctx, _args| { toggle_mode(ctx, "prefix"); } },
     UnhideAll => { name: "unhide_all", arg_example: None, doc: "show all hidden windows", run: |ctx, _args| { unhide_all(ctx); } },
-    Hide => { name: "hide", arg_example: None, doc: "hide focused window", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { crate::client::hide(ctx, win); } } },
+    Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { crate::client::hide_for_user(ctx, win); } } },
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen (X11)", run: |ctx, _args| { if let WmCtx::X11(ctx_x11) = ctx { toggle_fake_fullscreen_x11(ctx_x11); } } },
     DrawWindow => { name: "draw_window", arg_example: None, doc: "start dragging/resizing window", run: |ctx, _args| { draw_window(ctx); } },
     BeginKeyboardMove => { name: "begin_keyboard_move", arg_example: None, doc: "move window with keyboard", run: |ctx, _args| { begin_keyboard_move(ctx); } },

@@ -312,7 +312,7 @@ pub fn up_press(ctx: &mut WmCtx) {
     }
 
     if let Some(win) = selected_window {
-        crate::client::hide(ctx, win);
+        crate::client::hide_for_user(ctx, win);
     }
 }
 

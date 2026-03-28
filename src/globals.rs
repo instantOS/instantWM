@@ -702,7 +702,7 @@ impl Globals {
             SchemeWin::Overlay
         } else if c.issticky {
             SchemeWin::Sticky
-        } else if c.is_hidden {
+        } else if c.is_minimized() {
             SchemeWin::Minimized
         } else if c.is_urgent {
             SchemeWin::Urgent

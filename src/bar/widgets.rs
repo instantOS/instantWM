@@ -314,14 +314,14 @@ pub(crate) fn draw_window_titles(
         // draw their own clients, not the selected monitor's clients.
         let wins: Vec<WindowId> = m
             .iter_clients(ctx.globals().clients.map())
-            .filter_map(|(c_win, c)| c.is_visible(selected).then_some(c_win))
+            .filter_map(|(c_win, c)| c.shows_in_bar(selected).then_some(c_win))
             .collect();
 
         for c_win in wins {
             let Some(c) = ctx.globals().clients.get(&c_win) else {
                 continue;
             };
-            if !c.is_visible(selected) {
+            if !c.shows_in_bar(selected) {
                 continue;
             }
 

@@ -94,6 +94,12 @@ impl Client {
             && (self.tags.is_scratchpad_only() || self.is_hidden || self.issticky)
     }
 
+    /// Check if this client is a normal minimized window rather than a hidden scratchpad.
+    #[inline]
+    pub fn is_minimized(&self) -> bool {
+        self.is_hidden && !self.is_scratchpad()
+    }
+
     /// Clear scratchpad-only metadata after the window has been moved to normal tags.
     pub fn clear_scratchpad_state(&mut self) {
         self.scratchpad_name.clear();
@@ -134,6 +140,16 @@ impl Client {
     #[inline]
     pub fn is_visible(&self, selected_tags: TagMask) -> bool {
         self.is_on_selected_tags(selected_tags) && !self.is_hidden
+    }
+
+    /// Check if the client should keep a title entry in the bar.
+    #[inline]
+    pub fn shows_in_bar(&self, selected_tags: TagMask) -> bool {
+        if self.is_scratchpad() {
+            self.issticky && !self.is_hidden
+        } else {
+            self.is_on_selected_tags(selected_tags)
+        }
     }
 
     /// Check if this client should be included in tiling calculations.
@@ -333,6 +349,33 @@ mod tests {
 
         assert_eq!(client.scratchpad_name, "term");
         assert!(client.is_scratchpad());
+    }
+
+    #[test]
+    fn minimized_normal_window_stays_in_bar() {
+        let client = Client {
+            is_hidden: true,
+            tags: TagMask::single(1).unwrap(),
+            ..Client::default()
+        };
+
+        assert!(client.is_minimized());
+        assert!(client.shows_in_bar(TagMask::single(1).unwrap()));
+    }
+
+    #[test]
+    fn hidden_scratchpad_does_not_stay_in_bar() {
+        let client = Client {
+            scratchpad_name: "term".to_string(),
+            scratchpad_restore_tags: TagMask::single(2).unwrap(),
+            is_hidden: true,
+            tags: TagMask::SCRATCHPAD,
+            ..Client::default()
+        };
+
+        assert!(client.is_scratchpad());
+        assert!(!client.is_minimized());
+        assert!(!client.shows_in_bar(TagMask::single(1).unwrap()));
     }
 }
 
