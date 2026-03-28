@@ -1,5 +1,5 @@
-pub use crate::layouts::LayoutKind;
 pub use crate::config::config_toml::VrrMode;
+pub use crate::layouts::LayoutKind;
 pub use crate::types::{MonitorDirection, SpecialNext};
 use bincode::{Decode, Encode};
 

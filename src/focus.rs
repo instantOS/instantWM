@@ -439,7 +439,9 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
         return false;
     }
 
-    ctx.core_mut().globals_mut().set_selected_monitor(monitor_id);
+    ctx.core_mut()
+        .globals_mut()
+        .set_selected_monitor(monitor_id);
     focus_soft(ctx, None);
     true
 }

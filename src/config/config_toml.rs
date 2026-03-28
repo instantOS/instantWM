@@ -3,11 +3,11 @@ use crate::config::appearance::{
     get_window_colors,
 };
 use crate::config::keybind_config::KeybindSpec;
-use bincode::{Decode, Encode};
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, Rule, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
 };
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;

@@ -2,10 +2,11 @@ use crate::actions::ActionMeta;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
-    center_window, create_overlay, distribute_clients, key_resize, scratchpad_find, scratchpad_make,
-    scratchpad_toggle, set_overlay, toggle_floating, toggle_maximized,
+    center_window, create_overlay, distribute_clients, key_resize, scratchpad_find,
+    scratchpad_make, scratchpad_toggle, set_overlay, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
+use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
     LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
@@ -24,7 +25,6 @@ use crate::toggles::{
 };
 use crate::types::{Direction, MonitorDirection, StackDirection, TagMask, ToggleAction};
 use crate::util::spawn;
-use crate::ipc_types::ScratchpadInitialStatus;
 
 fn parse_layout_kind_name(name: &str) -> Option<LayoutKind> {
     Some(match name.to_ascii_lowercase().as_str() {

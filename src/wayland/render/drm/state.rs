@@ -1,11 +1,9 @@
-//! Shared state for the DRM backend.
-
-use std::collections::{HashMap, HashSet};
+//! Shared DRM render state types.
 
 use smithay::backend::allocator::gbm::GbmAllocator;
+use smithay::backend::drm::DrmDeviceFd;
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::{DrmOutput, DrmOutputManager};
-use smithay::backend::drm::DrmDeviceFd;
 use smithay::output::Output;
 use smithay::reexports::drm::control::{connector, crtc};
 
@@ -24,6 +22,7 @@ pub type ManagedDrmOutput = DrmOutput<DrmAllocator, DrmFramebufferExporter, (), 
 pub type ManagedDrmOutputManager =
     DrmOutputManager<DrmAllocator, DrmFramebufferExporter, (), DrmDeviceFd>;
 
+#[derive(Debug, Clone, Copy)]
 pub struct OutputHitRegion {
     pub crtc: crtc::Handle,
     pub x_offset: i32,
@@ -41,52 +40,6 @@ pub struct OutputSurfaceEntry {
     pub vrr_support: BackendVrrSupport,
     pub configured_vrr_mode: VrrMode,
     pub vrr_enabled: bool,
-}
-
-pub struct SharedDrmState {
-    pub session_active: bool,
-    pub render_flags: HashMap<crtc::Handle, bool>,
-    pub total_width: i32,
-    pub total_height: i32,
-    pub completed_crtcs: Vec<crtc::Handle>,
-    pub pending_crtcs: HashSet<crtc::Handle>,
-    pub output_hit_regions: Vec<OutputHitRegion>,
-}
-
-impl SharedDrmState {
-    pub fn new(total_width: i32, total_height: i32) -> Self {
-        Self {
-            session_active: true,
-            render_flags: HashMap::new(),
-            total_width,
-            total_height,
-            completed_crtcs: Vec::new(),
-            pending_crtcs: HashSet::new(),
-            output_hit_regions: Vec::new(),
-        }
-    }
-
-    pub fn mark_all_dirty(&mut self) {
-        for flag in self.render_flags.values_mut() {
-            *flag = true;
-        }
-    }
-
-    pub fn mark_dirty(&mut self, crtc: crtc::Handle) {
-        if let Some(flag) = self.render_flags.get_mut(&crtc) {
-            *flag = true;
-        }
-    }
-
-    pub fn mark_pointer_output_dirty(&mut self, px: i32) {
-        for entry in &self.output_hit_regions {
-            if px >= entry.x_offset && px < entry.x_offset + entry.width {
-                self.mark_dirty(entry.crtc);
-                return;
-            }
-        }
-        self.mark_all_dirty();
-    }
 }
 
 pub fn sync_monitors_from_outputs_vec(g: &mut Globals, surfaces: &[super::OutputSurfaceEntry]) {

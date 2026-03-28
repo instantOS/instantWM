@@ -1,7 +1,7 @@
 mod dispatch;
 mod named;
 
-pub use dispatch::{execute_button_action, execute_button_action_x11, execute_key_action};
+pub use dispatch::{execute_button_action, execute_key_action};
 pub use named::{NamedAction, get_action_metadata, parse_named_action};
 
 #[derive(Debug, Clone, Copy)]

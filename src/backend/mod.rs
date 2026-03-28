@@ -15,15 +15,7 @@ use crate::types::{Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 use bincode::{Decode, Encode};
 
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    serde::Serialize,
-    serde::Deserialize,
-    Encode,
-    Decode,
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Encode, Decode,
 )]
 pub enum BackendVrrSupport {
     Unsupported,

@@ -5,9 +5,7 @@ use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
 use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{
-    AltCursor, BarPosition, Client, Gesture, MouseButton, Rect, WindowId,
-};
+use crate::types::{AltCursor, BarPosition, Client, Gesture, MouseButton, Rect, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -149,7 +147,12 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     };
 
     if let Some(btn) = MouseButton::from_u8(e.detail) {
-        let target_window = ctx.core.globals().clients.contains_key(&event_win).then_some(event_win);
+        let target_window = ctx
+            .core
+            .globals()
+            .clients
+            .contains_key(&event_win)
+            .then_some(event_win);
         crate::bar::dispatch_configured_button(
             &mut WmCtx::X11(ctx.reborrow()),
             bar_pos,
@@ -429,7 +432,10 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     // Handle focus-follows-mouse monitor switching
     if ctx.core.globals().behavior.focus_follows_mouse
-        && crate::focus::select_monitor_at_pointer(&mut WmCtx::X11(ctx.reborrow()), (root_x, root_y))
+        && crate::focus::select_monitor_at_pointer(
+            &mut WmCtx::X11(ctx.reborrow()),
+            (root_x, root_y),
+        )
     {
         return;
     }
@@ -469,9 +475,17 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     // Cache tag-strip width only when we are actually in the bar hot path.
     ctx.core.globals_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
 
-    let pos = crate::bar::update_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y, false, false);
-    if matches!(pos, Some(BarPosition::StatusText | BarPosition::Root) | None)
-        && current_gesture != Gesture::None
+    let pos = crate::bar::update_hover(
+        &mut WmCtx::X11(ctx.reborrow()),
+        root_x,
+        root_y,
+        false,
+        false,
+    );
+    if matches!(
+        pos,
+        Some(BarPosition::StatusText | BarPosition::Root) | None
+    ) && current_gesture != Gesture::None
     {
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
     }
@@ -510,7 +524,8 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             || e.atom == net_wm_name
             || e.atom == u32::from(AtomEnum::WM_CLASS)
         {
-            let props = crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
+            let props =
+                crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
             crate::client::handle_property_change(ctx.core.globals_mut(), event_win, &props);
         }
     };

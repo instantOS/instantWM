@@ -287,7 +287,6 @@ impl Clone for BarBuffer {
     }
 }
 
-
 impl Default for WaylandBarPainter {
     fn default() -> Self {
         let (results_tx, results_rx) = mpsc::channel();
@@ -608,10 +607,24 @@ fn draw_wayland_systray_snapshot(
 ) {
     painter.set_scheme(snapshot.base_scheme.clone());
     if layout.tray_total_w > 0 {
-        painter.rect(layout.tray_start_x, 0, layout.tray_total_w, bar_height, true, true);
+        painter.rect(
+            layout.tray_start_x,
+            0,
+            layout.tray_total_w,
+            bar_height,
+            true,
+            true,
+        );
     }
     if layout.menu_total_w > 0 {
-        painter.rect(layout.menu_start_x, 0, layout.menu_total_w, bar_height, true, true);
+        painter.rect(
+            layout.menu_start_x,
+            0,
+            layout.menu_total_w,
+            bar_height,
+            true,
+            true,
+        );
     }
 
     let icon_h = bar_height.max(1);
@@ -681,7 +694,13 @@ fn render_async_snapshot(
     painter.set_font_size(request.font_size);
 
     for mon in request.monitors {
-        painter.begin(Scale::from(1.0), mon.origin_x, mon.origin_y, mon.width, mon.height);
+        painter.begin(
+            Scale::from(1.0),
+            mon.origin_x,
+            mon.origin_y,
+            mon.width,
+            mon.height,
+        );
         let output = scene::render_monitor_snapshot(&mon, painter);
         let bar_height = mon.height;
         let tray_layout = mon
@@ -721,10 +740,8 @@ fn request_async_render(
     if runtime.pending_key == key {
         return;
     }
-    let monitors = scene::build_monitor_snapshots(
-        core,
-        Some((wayland_systray, wayland_systray_menu)),
-    );
+    let monitors =
+        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)));
 
     let mut pending = runtime.shared.pending.lock().unwrap();
     *pending = Some(AsyncBarRenderRequest {

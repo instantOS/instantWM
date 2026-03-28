@@ -38,7 +38,8 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
 
     core.bar.clear_cached_widths();
     let output = crate::bar::scene::render_monitor_snapshot(&snapshot, painter);
-    core.bar.replace_hit_cache(snapshot.monitor_id, output.hit_cache);
+    core.bar
+        .replace_hit_cache(snapshot.monitor_id, output.hit_cache);
 
     if let Some(mon) = core.globals_mut().monitor_mut(mon_idx) {
         mon.bar_clients_width = output.bar_clients_width;

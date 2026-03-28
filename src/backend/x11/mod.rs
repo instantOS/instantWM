@@ -94,11 +94,11 @@ pub mod mouse;
 pub mod properties;
 pub mod randr;
 
-pub use properties::{
-    apply_rules_x11, set_client_state, set_client_tag_prop, update_client_list,
-    update_motif_hints, update_window_type, update_wm_hints, window_properties_x11,
-};
 pub use client::update_size_hints_x11;
+pub use properties::{
+    apply_rules_x11, set_client_state, set_client_tag_prop, update_client_list, update_motif_hints,
+    update_window_type, update_wm_hints, window_properties_x11,
+};
 
 pub struct X11Backend {
     pub conn: RustConnection,

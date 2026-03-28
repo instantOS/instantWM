@@ -21,8 +21,8 @@ use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
 use smithay::utils::{Physical, Point};
 
-use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::BackendVrrSupport;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
@@ -36,7 +36,7 @@ mod cursor;
 pub use cursor::CursorManager;
 pub use state::{
     DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutputManager, OutputHitRegion,
-    OutputSurfaceEntry, SharedDrmState, sync_monitors_from_outputs_vec,
+    OutputSurfaceEntry, sync_monitors_from_outputs_vec,
 };
 
 pub mod state;
@@ -157,12 +157,12 @@ pub fn build_output_surfaces(
                 &init_render_elements,
             )
             .expect("initialize_output");
-        let vrr_support = match surface.with_compositor(|compositor| compositor.vrr_supported(conn_handle))
-        {
-            Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
-            Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
-            Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
-        };
+        let vrr_support =
+            match surface.with_compositor(|compositor| compositor.vrr_supported(conn_handle)) {
+                Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
+                Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
+                Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
+            };
         state.set_output_vrr_support(&output_name, vrr_support);
         let configured_vrr_mode = state
             .output_vrr_metadata(&output_name)
@@ -332,10 +332,12 @@ pub fn render_drm_output(
         frame_flags = FrameFlags::empty();
     }
 
-    let frame_result = match entry
-        .surface
-        .render_frame(renderer, &render_elements, [0.05, 0.05, 0.07, 1.0], frame_flags)
-    {
+    let frame_result = match entry.surface.render_frame(
+        renderer,
+        &render_elements,
+        [0.05, 0.05, 0.07, 1.0],
+        frame_flags,
+    ) {
         Ok(result) => result,
         Err(err) => {
             log::warn!("render_frame: {:?}", err);

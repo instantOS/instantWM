@@ -328,8 +328,9 @@ pub(crate) fn worker_systray_layout(
     if !snapshot.items.items.is_empty() {
         tray_total_w = spacing;
         for item in &snapshot.items.items {
-            tray_total_w += crate::systray::wayland::scale_icon_width(item.icon_w, item.icon_h, icon_h)
-                + spacing;
+            tray_total_w +=
+                crate::systray::wayland::scale_icon_width(item.icon_w, item.icon_h, icon_h)
+                    + spacing;
         }
     }
     let tray_start_x = monitor_width - tray_total_w;
@@ -434,7 +435,16 @@ fn render_monitor_snapshot_base(
             TAG_DETAIL_BAR_HEIGHT_NORMAL
         };
         let lpad = (snapshot.horizontal_padding / 2).max(0);
-        x = painter.text(x, 0, width, bar_height, lpad, &tag.label, false, detail_height);
+        x = painter.text(
+            x,
+            0,
+            width,
+            bar_height,
+            lpad,
+            &tag.label,
+            false,
+            detail_height,
+        );
         hit.tag_ranges.push(crate::bar::TagHitRange {
             start: x - width,
             end: x,
@@ -447,7 +457,16 @@ fn render_monitor_snapshot_base(
     let lpad = ((layout_w - text_w) / 2).max(0);
     painter.set_scheme(snapshot.status_scheme.clone());
     let layout_start = x;
-    x = painter.text(x, 0, layout_w, bar_height, lpad, &snapshot.layout_symbol, false, 0);
+    x = painter.text(
+        x,
+        0,
+        layout_w,
+        bar_height,
+        lpad,
+        &snapshot.layout_symbol,
+        false,
+        0,
+    );
     hit.layout_start = layout_start;
     hit.layout_end = x;
 
@@ -488,7 +507,16 @@ fn render_monitor_snapshot_base(
             } else {
                 snapshot.horizontal_padding / 2 + if this_width >= 32 { 20 } else { 0 }
             };
-            painter.text(title_x, 0, this_width, bar_height, lpad, &title.name, false, 4);
+            painter.text(
+                title_x,
+                0,
+                this_width,
+                bar_height,
+                lpad,
+                &title.name,
+                false,
+                4,
+            );
             if let Some(close_scheme) = &title.close_scheme {
                 if this_width >= 32 {
                     draw_close_button_snapshot(

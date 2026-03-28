@@ -79,13 +79,7 @@ pub fn dispatch_wayland_bar_click(
 
     if pos == BarPosition::StatusText {
         let mut ctx = wm.ctx();
-        crate::bar::handle_status_text_click(
-            &mut ctx,
-            root_x,
-            root_y,
-            button_code,
-            clean_state,
-        );
+        crate::bar::handle_status_text_click(&mut ctx, root_x, root_y, button_code, clean_state);
         return;
     }
 
