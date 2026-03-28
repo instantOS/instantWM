@@ -100,23 +100,6 @@ fn pixel_fill_rect(
     }
 }
 
-fn measure_width(fs: &mut FontSystem, text: &str, font_size: f32) -> i32 {
-    if text.is_empty() {
-        return 0;
-    }
-    let metrics = Metrics::new(font_size, font_size);
-    let mut buffer = Buffer::new(fs, metrics);
-    buffer.set_size(fs, None, None);
-    buffer.set_wrap(fs, Wrap::None);
-    buffer.set_text(fs, text, Attrs::new(), Shaping::Advanced);
-    buffer.shape_until_scroll(fs, false);
-    buffer
-        .layout_runs()
-        .map(|run| run.line_w)
-        .fold(0.0_f32, f32::max)
-        .ceil() as i32
-}
-
 fn rasterize_text(
     pixels: &mut [u8],
     canvas_w: i32,
@@ -134,95 +117,64 @@ fn rasterize_text(
     if text.is_empty() || w <= 0 || h <= 0 {
         return;
     }
-    let metrics = Metrics::new(font_size, h as f32);
-    let mut buffer = Buffer::new(fs, metrics);
-    buffer.set_size(fs, Some(w as f32), Some(h as f32));
-    buffer.set_wrap(fs, Wrap::None);
     let cosmic_color = CosmicColor::rgba(
         (color[0] * 255.0) as u8,
         (color[1] * 255.0) as u8,
         (color[2] * 255.0) as u8,
         (color[3] * 255.0) as u8,
     );
-    let attrs = Attrs::new().color(cosmic_color);
-    buffer.set_text(fs, text, attrs, Shaping::Advanced);
+    let metrics = Metrics::new(font_size, h as f32);
+    let mut buffer = Buffer::new(fs, metrics);
+    buffer.set_size(fs, Some(w as f32), Some(h as f32));
+    buffer.set_wrap(fs, Wrap::None);
+    buffer.set_text(fs, text, Attrs::new(), Shaping::Advanced);
     buffer.shape_until_scroll(fs, false);
-
-    for run in buffer.layout_runs() {
-        for glyph in run.glyphs.iter() {
-            let physical = glyph.physical((0.0, 0.0), 1.0);
-            let glyph_color = glyph.color_opt.unwrap_or(cosmic_color);
-            let image = sc.get_image(fs, physical.cache_key);
-            let Some(image) = image else { continue };
-
-            let gx = x + physical.x + image.placement.left;
-            let gy = y + run.line_y as i32 + physical.y - image.placement.top;
-
-            match image.content {
-                cosmic_text::SwashContent::Mask => {
-                    let pw = image.placement.width as i32;
-                    for row in 0..image.placement.height as i32 {
-                        for col in 0..pw {
-                            if gx + col >= x + w || gy + row >= y + h {
-                                continue;
-                            }
-                            let mask_idx = (row * pw + col) as usize;
-                            if mask_idx >= image.data.len() {
-                                continue;
-                            }
-                            let alpha = image.data[mask_idx];
-                            if alpha == 0 {
-                                continue;
-                            }
-                            let a = (alpha as u32 * glyph_color.a() as u32) / 255;
-                            pixel_fill(
-                                pixels,
-                                canvas_w,
-                                canvas_h,
-                                gx + col,
-                                gy + row,
-                                glyph_color.r(),
-                                glyph_color.g(),
-                                glyph_color.b(),
-                                a as u8,
-                            );
-                        }
-                    }
-                }
-                cosmic_text::SwashContent::Color => {
-                    let pw = image.placement.width as i32;
-                    for row in 0..image.placement.height as i32 {
-                        for col in 0..pw {
-                            if gx + col >= x + w || gy + row >= y + h {
-                                continue;
-                            }
-                            let si = ((row * pw + col) * 4) as usize;
-                            if si + 3 < image.data.len() {
-                                pixel_fill(
-                                    pixels,
-                                    canvas_w,
-                                    canvas_h,
-                                    gx + col,
-                                    gy + row,
-                                    image.data[si],
-                                    image.data[si + 1],
-                                    image.data[si + 2],
-                                    image.data[si + 3],
-                                );
-                            }
-                        }
-                    }
-                }
-                cosmic_text::SwashContent::SubpixelMask => {}
-            }
+    buffer.draw(fs, sc, cosmic_color, |gx, gy, _, _, color| {
+        if gx < 0 || gy < 0 || gx >= w || gy >= h {
+            return;
         }
-    }
+        pixel_fill(
+            pixels,
+            canvas_w,
+            canvas_h,
+            x + gx,
+            y + gy,
+            color.r(),
+            color.g(),
+            color.b(),
+            color.a(),
+        );
+    });
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct TextMeasureKey {
+    text: String,
+    font_size_bits: u32,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct TextRenderKey {
+    text: String,
+    width: i32,
+    height: i32,
+    font_size_bits: u32,
+}
+
+struct CachedMeasuredText {
+    buffer: Buffer,
+    width: i32,
+}
+
+struct CachedRenderedText {
+    buffer: Buffer,
 }
 
 pub struct WaylandBarPainter {
     font_system: RefCell<FontSystem>,
     swash_cache: RefCell<SwashCache>,
-    text_width_cache: RefCell<HashMap<String, i32>>,
+    text_measure_cache: RefCell<HashMap<TextMeasureKey, CachedMeasuredText>>,
+    text_render_cache: RefCell<HashMap<TextRenderKey, CachedRenderedText>>,
     scheme: Option<BarScheme>,
     pixels: Vec<u8>,
     canvas_w: i32,
@@ -328,7 +280,8 @@ impl Default for WaylandBarPainter {
         Self {
             font_system: RefCell::new(FontSystem::new()),
             swash_cache: RefCell::new(SwashCache::new()),
-            text_width_cache: RefCell::new(HashMap::new()),
+            text_measure_cache: RefCell::new(HashMap::new()),
+            text_render_cache: RefCell::new(HashMap::new()),
             scheme: None,
             pixels: Vec::new(),
             canvas_w: 0,
@@ -354,7 +307,8 @@ impl WaylandBarPainter {
         Self {
             font_system: RefCell::new(FontSystem::new()),
             swash_cache: RefCell::new(SwashCache::new()),
-            text_width_cache: RefCell::new(HashMap::new()),
+            text_measure_cache: RefCell::new(HashMap::new()),
+            text_render_cache: RefCell::new(HashMap::new()),
             scheme: None,
             pixels: Vec::new(),
             canvas_w: 0,
@@ -373,7 +327,8 @@ impl WaylandBarPainter {
     pub fn set_font_size(&mut self, font_size: f32) {
         if font_size.is_finite() && font_size > 0.0 {
             self.font_size = font_size;
-            self.text_width_cache.borrow_mut().clear();
+            self.text_measure_cache.borrow_mut().clear();
+            self.text_render_cache.borrow_mut().clear();
         }
     }
 
@@ -389,30 +344,141 @@ impl WaylandBarPainter {
         }
     }
 
-    fn text_width_cached(&self, text: &str) -> i32 {
+    fn is_powerline_text(text: &str) -> bool {
+        let mut saw_glyph = false;
+        for ch in text.chars() {
+            if ch.is_whitespace() {
+                continue;
+            }
+            if !('\u{e0b0}'..='\u{e0d4}').contains(&ch) {
+                return false;
+            }
+            saw_glyph = true;
+        }
+        saw_glyph
+    }
+
+    fn effective_font_size(&self, text: &str, box_height: i32) -> f32 {
+        if box_height > 0 && Self::is_powerline_text(text) {
+            self.font_size.max((box_height - 1).max(1) as f32)
+        } else {
+            self.font_size
+        }
+    }
+
+    fn text_width_cached(&self, text: &str, box_height: i32) -> i32 {
         if text.is_empty() {
             return 0;
         }
-        if let Some(width) = self.text_width_cache.borrow().get(text).copied() {
-            return width;
-        }
-
-        let width = {
-            let mut fs = self.font_system.borrow_mut();
-            measure_width(&mut fs, text, self.font_size)
+        let font_size = self.effective_font_size(text, box_height);
+        let key = TextMeasureKey {
+            text: text.to_string(),
+            font_size_bits: font_size.to_bits(),
         };
 
-        let mut cache = self.text_width_cache.borrow_mut();
+        if let Some(cached) = self.text_measure_cache.borrow().get(&key) {
+            return cached.width;
+        }
+
+        let cached = {
+            let mut fs = self.font_system.borrow_mut();
+            let metrics = Metrics::new(font_size, font_size);
+            let mut buffer = Buffer::new(&mut fs, metrics);
+            buffer.set_size(&mut fs, None, None);
+            buffer.set_wrap(&mut fs, Wrap::None);
+            buffer.set_text(&mut fs, text, Attrs::new(), Shaping::Advanced);
+            buffer.shape_until_scroll(&mut fs, false);
+            let width = buffer
+                .layout_runs()
+                .map(|run| run.line_w)
+                .fold(0.0_f32, f32::max)
+                .ceil() as i32;
+            CachedMeasuredText { buffer, width }
+        };
+
+        let width = cached.width;
+        let mut cache = self.text_measure_cache.borrow_mut();
         if cache.len() > 2048 {
             cache.clear();
         }
-        cache.insert(text.to_string(), width);
+        cache.insert(key, cached);
         width
+    }
+
+    fn rasterize_text_cached(
+        &mut self,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        text: &str,
+        color: [f32; 4],
+    ) {
+        if text.is_empty() || w <= 0 || h <= 0 {
+            return;
+        }
+
+        let font_size = self.effective_font_size(text, h);
+        let cosmic_color = CosmicColor::rgba(
+            (color[0] * 255.0) as u8,
+            (color[1] * 255.0) as u8,
+            (color[2] * 255.0) as u8,
+            (color[3] * 255.0) as u8,
+        );
+        let key = TextRenderKey {
+            text: text.to_string(),
+            width: w,
+            height: h,
+            font_size_bits: font_size.to_bits(),
+        };
+
+        {
+            let mut cache = self.text_render_cache.borrow_mut();
+            if !cache.contains_key(&key) {
+                let mut fs = self.font_system.borrow_mut();
+                let metrics = Metrics::new(font_size, h as f32);
+                let mut buffer = Buffer::new(&mut fs, metrics);
+                buffer.set_size(&mut fs, Some(w as f32), Some(h as f32));
+                buffer.set_wrap(&mut fs, Wrap::None);
+                buffer.set_text(&mut fs, text, Attrs::new(), Shaping::Advanced);
+                buffer.shape_until_scroll(&mut fs, false);
+                if cache.len() > 2048 {
+                    cache.clear();
+                }
+                cache.insert(key.clone(), CachedRenderedText { buffer });
+            }
+        }
+
+        let mut fs = self.font_system.borrow_mut();
+        let mut sc = self.swash_cache.borrow_mut();
+        let cache = self.text_render_cache.borrow();
+        let Some(cached) = cache.get(&key) else {
+            return;
+        };
+
+        cached
+            .buffer
+            .draw(&mut fs, &mut sc, cosmic_color, |gx, gy, _, _, color| {
+                if gx < 0 || gy < 0 || gx >= w || gy >= h {
+                    return;
+                }
+                pixel_fill(
+                    &mut self.pixels,
+                    self.canvas_w,
+                    self.canvas_h,
+                    x + gx,
+                    y + gy,
+                    color.r(),
+                    color.g(),
+                    color.b(),
+                    color.a(),
+                );
+            });
     }
 
     /// Measure text width without requiring `&mut self` — used for hit-testing.
     pub fn measure_text_width(&self, text: &str) -> i32 {
-        self.text_width_cached(text)
+        self.text_width_cached(text, 0)
     }
 
     pub fn begin(
@@ -524,7 +590,7 @@ impl WaylandBarPainter {
 
 impl BarPainter for WaylandBarPainter {
     fn text_width(&mut self, text: &str) -> i32 {
-        self.text_width_cached(text)
+        self.text_width_cached(text, self.canvas_h)
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {
@@ -593,25 +659,12 @@ impl BarPainter for WaylandBarPainter {
             );
         }
         if !text.is_empty() {
-            let text_x = x + lpad;
-            let text_w = (w - lpad).max(0);
+            let powerline = Self::is_powerline_text(text);
+            let bleed = if powerline { 1 } else { 0 };
+            let text_x = x + lpad - bleed;
+            let text_w = (w - lpad + bleed * 2).max(0);
             if text_w > 0 {
-                let mut fs = self.font_system.borrow_mut();
-                let mut sc = self.swash_cache.borrow_mut();
-                rasterize_text(
-                    &mut self.pixels,
-                    self.canvas_w,
-                    self.canvas_h,
-                    &mut fs,
-                    &mut sc,
-                    text_x,
-                    y,
-                    text_w,
-                    h,
-                    text,
-                    fg,
-                    self.font_size,
-                );
+                self.rasterize_text_cached(text_x, y, text_w, h, text, fg);
             }
         }
         x + w

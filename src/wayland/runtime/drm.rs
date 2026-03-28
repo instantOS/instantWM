@@ -26,6 +26,7 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::startup::autostart::run_autostart;
+use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
     spawn_xwayland,
@@ -727,6 +728,16 @@ fn render_outputs(
     let pointer_location = state.runtime.pointer_location;
 
     if session_active {
+        let needs_any_render = output_surfaces
+            .iter()
+            .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
+        let fixed_scene = if needs_any_render && !state.is_locked() {
+            poll_wayland_systray(wm);
+            Some(build_fixed_scene_elements(wm, state))
+        } else {
+            None
+        };
+
         for entry in output_surfaces.iter_mut() {
             let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
             if !needs_render {
@@ -741,13 +752,13 @@ fn render_outputs(
             }
             apply_output_vrr_policy(wm, state, entry);
             let rendered = render_drm_output(
-                wm,
                 state,
                 renderer,
                 entry,
                 cursor_manager,
                 pointer_location,
                 start_time,
+                fixed_scene.clone(),
             );
 
             match rendered {
