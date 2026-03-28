@@ -256,16 +256,31 @@ fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
             _ => None,
         };
 
+        let border = raw.border.filter(|c| c.starts_with('#'));
+        let has_border = border.is_some();
+
         let block = I3Block {
             full_text: raw.full_text,
             short_text: raw.short_text,
             color: raw.color.filter(|c| c.starts_with('#')),
             background: raw.background.filter(|c| c.starts_with('#')),
-            border: raw.border.filter(|c| c.starts_with('#')),
-            border_top: raw.border_top.unwrap_or(1).max(0),
-            border_right: raw.border_right.unwrap_or(1).max(0),
-            border_bottom: raw.border_bottom.unwrap_or(1).max(0),
-            border_left: raw.border_left.unwrap_or(1).max(0),
+            border,
+            border_top: raw
+                .border_top
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
+            border_right: raw
+                .border_right
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
+            border_bottom: raw
+                .border_bottom
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
+            border_left: raw
+                .border_left
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
             min_width,
             align,
             urgent: raw.urgent,
