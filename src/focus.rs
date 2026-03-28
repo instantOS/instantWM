@@ -466,24 +466,6 @@ pub fn select_monitor_at_pointer(
     select_monitor(ctx, new_mon_id)
 }
 
-pub fn hover_focus_target_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
-    hovered_win: Option<WindowId>,
-    entering_root: bool,
-    pointer_pos: Option<(i32, i32)>,
-) {
-    let mut ctx = crate::contexts::WmCtx::X11(crate::contexts::WmCtxX11 {
-        core: core.reborrow(),
-        backend: crate::backend::BackendRef::from_x11(x11.conn, x11.screen_num),
-        x11: crate::backend::x11::X11BackendRef::new(x11.conn, x11.screen_num),
-        x11_runtime,
-        systray: None,
-    });
-    hover_focus_target(&mut ctx, hovered_win, entering_root, pointer_pos);
-}
-
 /// Focus a client in the given direction.
 ///
 /// This function uses dependency injection by accepting explicit parameters

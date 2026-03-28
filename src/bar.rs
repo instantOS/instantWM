@@ -13,7 +13,7 @@ pub use model::bar_position_to_gesture;
 pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 
-use crate::contexts::CoreCtx;
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
 
 #[derive(Default)]
@@ -180,4 +180,143 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
     width + core.globals().cfg.horizontal_padding
+}
+
+pub fn clear_hover(ctx: &mut WmCtx) {
+    if ctx.core().globals().selected_monitor().gesture != Gesture::None {
+        reset_bar_common(ctx.core_mut());
+        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+    }
+}
+
+pub fn resolve_bar_position_at_root(
+    core: &mut CoreCtx,
+    root_x: i32,
+    root_y: i32,
+    sync_selected_monitor: bool,
+) -> Option<(MonitorId, BarPosition)> {
+    let rect = Rect {
+        x: root_x,
+        y: root_y,
+        w: 1,
+        h: 1,
+    };
+    let monitor_id = crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &rect)?;
+    if sync_selected_monitor && monitor_id != core.globals().selected_monitor_id() {
+        core.globals_mut().set_selected_monitor(monitor_id);
+    }
+
+    let mon = core.globals().monitor(monitor_id)?;
+    let bar_h = core.globals().cfg.bar_height.max(1);
+    let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
+    if !in_bar {
+        return None;
+    }
+
+    let local_x = root_x - mon.work_rect.x;
+    Some((monitor_id, mon.bar_position_at_x(core, local_x)))
+}
+
+pub fn update_hover(
+    ctx: &mut WmCtx,
+    root_x: i32,
+    root_y: i32,
+    reset_start_menu: bool,
+    sync_selected_monitor: bool,
+) -> Option<BarPosition> {
+    let Some((monitor_id, pos)) =
+        resolve_bar_position_at_root(ctx.core_mut(), root_x, root_y, sync_selected_monitor)
+    else {
+        clear_hover(ctx);
+        return None;
+    };
+
+    if reset_start_menu && pos == BarPosition::StartMenu {
+        reset_bar_common(ctx.core_mut());
+        ctx.request_bar_update(Some(monitor_id));
+    }
+
+    let old_gesture = ctx.core().globals().selected_monitor().gesture;
+    let gesture = if pos == BarPosition::StatusText {
+        old_gesture
+    } else {
+        bar_position_to_gesture(pos)
+    };
+    if old_gesture != gesture {
+        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
+        ctx.request_bar_update(Some(monitor_id));
+    }
+
+    Some(pos)
+}
+
+pub fn handle_status_text_click(
+    ctx: &mut WmCtx,
+    root_x: i32,
+    root_y: i32,
+    button_code: u8,
+    clean_state: u32,
+) {
+    let mode = ctx.current_mode();
+    if !mode.is_empty() && mode != "default" {
+        ctx.reset_mode();
+        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+        return;
+    }
+
+    let selmon = ctx.core().globals().selected_monitor().clone();
+    let local_x = root_x - selmon.work_rect.x;
+    let status_text = ctx.core().globals().bar_runtime.status_text.clone();
+    let parsed = ctx
+        .core_mut()
+        .bar
+        .parsed_status_for_text(&status_text)
+        .clone();
+    let click_targets = ctx
+        .core()
+        .bar
+        .monitor_hit_cache(selmon.id())
+        .map(|h| h.status_click_targets.as_slice())
+        .unwrap_or(&[]);
+    status::emit_i3bar_status_click(
+        &parsed,
+        click_targets,
+        local_x,
+        root_y - selmon.bar_y,
+        button_code,
+        ctx.core().globals().cfg.bar_height,
+        clean_state,
+    );
+}
+
+pub fn dispatch_configured_button(
+    ctx: &mut WmCtx,
+    pos: BarPosition,
+    window: Option<WindowId>,
+    btn: MouseButton,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+    numlockmask: u32,
+) {
+    let buttons = ctx.core().globals().cfg.buttons.clone();
+    for b in &buttons {
+        if !b.matches(pos) || b.button != btn {
+            continue;
+        }
+        if crate::util::clean_mask(b.mask, numlockmask) != clean_state {
+            continue;
+        }
+        crate::actions::execute_button_action(
+            ctx,
+            &b.action,
+            ButtonArg {
+                pos,
+                window,
+                btn: b.button,
+                rx: root_x,
+                ry: root_y,
+            },
+        );
+    }
 }

@@ -1,7 +1,4 @@
-use crate::actions::execute_button_action;
 use crate::backend::Backend;
-use crate::bar::bar_position_to_gesture;
-use crate::bar::status::emit_i3bar_status_click;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
@@ -12,48 +9,8 @@ pub fn update_wayland_bar_hit_state(
     root_y: i32,
     reset_start_menu: bool,
 ) -> Option<BarPosition> {
-    let rect = Rect {
-        x: root_x,
-        y: root_y,
-        w: 1,
-        h: 1,
-    };
-    let mid = crate::types::find_monitor_by_rect(wm.g.monitors.monitors(), &rect)?;
     let mut ctx = wm.ctx();
-    if mid != ctx.core().globals().selected_monitor_id() {
-        ctx.core_mut().globals_mut().monitors.set_sel_idx(mid);
-    }
-
-    let bar_h = ctx.core().globals().cfg.bar_height.max(1);
-    let mon = ctx.core().globals().selected_monitor();
-    let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
-    if !in_bar {
-        let had_hover = mon.gesture != crate::types::Gesture::None;
-        if had_hover {
-            crate::bar::reset_bar_common(ctx.core_mut());
-        }
-        return None;
-    }
-
-    let mon = ctx.core().globals().selected_monitor();
-    let local_x = root_x - mon.work_rect.x;
-    let pos = mon.bar_position_at_x(ctx.core(), local_x);
-    if reset_start_menu && pos == BarPosition::StartMenu {
-        crate::bar::reset_bar_common(ctx.core_mut());
-    }
-
-    let old_gesture = ctx.core().globals().selected_monitor().gesture;
-    let gesture = if pos == BarPosition::StatusText {
-        old_gesture
-    } else {
-        bar_position_to_gesture(pos)
-    };
-    if old_gesture != gesture {
-        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
-        ctx.request_bar_update(Some(mid));
-    }
-
-    Some(pos)
+    crate::bar::update_hover(&mut ctx, root_x, root_y, reset_start_menu, true)
 }
 
 pub fn dispatch_wayland_bar_click(
@@ -121,33 +78,15 @@ pub fn dispatch_wayland_bar_click(
     }
 
     if pos == BarPosition::StatusText {
-        let mode = &wm.g.behavior.current_mode;
-        if !mode.is_empty() && mode != "default" {
-            wm.g.behavior.current_mode = "default".to_string();
-            wm.bar.mark_dirty();
-            return;
-        } else {
-            let selmon = wm.g.selected_monitor().clone();
-            let local_x = root_x - selmon.work_rect.x;
-            let parsed = wm
-                .bar
-                .parsed_status_for_text(&wm.g.bar_runtime.status_text)
-                .clone();
-            let click_targets = wm
-                .bar
-                .monitor_hit_cache(selmon.id())
-                .map(|h| h.status_click_targets.as_slice())
-                .unwrap_or(&[]);
-            emit_i3bar_status_click(
-                &parsed,
-                click_targets,
-                local_x,
-                root_y - selmon.bar_y,
-                button_code,
-                wm.g.cfg.bar_height,
-                clean_state,
-            );
-        }
+        let mut ctx = wm.ctx();
+        crate::bar::handle_status_text_click(
+            &mut ctx,
+            root_x,
+            root_y,
+            button_code,
+            clean_state,
+        );
+        return;
     }
 
     let mut ctx = wm.ctx();
@@ -185,30 +124,17 @@ fn dispatch_wayland_bar_button(
     root_y: i32,
     clean_state: u32,
 ) {
-    // numlockmask is X11-specific; on Wayland modifier state comes pre-cleaned
-    // by the compositor, so we treat it as 0.
-    const NUMLOCKMASK: u32 = 0;
-    let buttons = ctx.core.globals().cfg.buttons.clone();
-    for b in &buttons {
-        if !b.matches(pos) || b.button != btn {
-            continue;
-        }
-        if crate::util::clean_mask(b.mask, NUMLOCKMASK) != clean_state {
-            continue;
-        }
-        let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-        execute_button_action(
-            &mut wm_ctx,
-            &b.action,
-            ButtonArg {
-                pos,
-                window: None,
-                btn: b.button,
-                rx: root_x,
-                ry: root_y,
-            },
-        );
-    }
+    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+    crate::bar::dispatch_configured_button(
+        &mut wm_ctx,
+        pos,
+        None,
+        btn,
+        root_x,
+        root_y,
+        clean_state,
+        0,
+    );
 }
 
 /// Linux evdev button codes (from `<linux/input-event-codes.h>`).

@@ -1,4 +1,3 @@
-use crate::actions::execute_button_action_x11;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
 use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
@@ -7,7 +6,7 @@ use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
-    AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
+    AltCursor, BarPosition, Client, Gesture, MouseButton, Rect, WindowId,
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -83,40 +82,17 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if event_win == mon.bar_win {
             let local_x = e.event_x as i32;
             let position = mon.bar_position_at_x(&ctx.core, local_x);
-            let monitor_id = mon.id();
-            if position == BarPosition::StartMenu {
-                crate::bar::x11::reset_bar_x11(
-                    &mut ctx.core,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
-            }
 
             if position == BarPosition::StatusText {
-                let mode = &ctx.core.globals().behavior.current_mode;
-                if !mode.is_empty() && mode != "default" {
-                    ctx.core.globals_mut().behavior.current_mode = "default".to_string();
-                    ctx.core.bar.mark_dirty();
-                    return;
-                } else {
-                    let status_text = ctx.core.globals().bar_runtime.status_text.clone();
-                    let parsed = ctx.core.bar.parsed_status_for_text(&status_text).clone();
-                    let click_targets = ctx
-                        .core
-                        .bar
-                        .monitor_hit_cache(monitor_id)
-                        .map(|h| h.status_click_targets.as_slice())
-                        .unwrap_or(&[]);
-                    crate::bar::status::emit_i3bar_status_click(
-                        &parsed,
-                        click_targets,
-                        local_x,
-                        e.event_y as i32,
-                        e.detail,
-                        ctx.core.globals().cfg.bar_height,
-                        crate::util::clean_mask(e.state.into(), numlockmask),
-                    );
-                }
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                crate::bar::handle_status_text_click(
+                    &mut wm_ctx,
+                    e.root_x as i32,
+                    e.root_y as i32,
+                    e.detail,
+                    crate::util::clean_mask(e.state.into(), numlockmask),
+                );
+                return;
             }
 
             bar_pos = position;
@@ -172,27 +148,18 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    for button in &buttons_clone {
-        if !button.matches(bar_pos) || button.button.as_u8() != e.detail {
-            continue;
-        }
-        if crate::util::clean_mask(button.mask, numlockmask) != clean_state {
-            continue;
-        }
-        let arg = ButtonArg {
-            pos: bar_pos,
-            window: ctx
-                .core
-                .globals()
-                .clients
-                .contains_key(&event_win)
-                .then_some(event_win),
-            btn: button.button,
-            rx: e.root_x as i32,
-            ry: e.root_y as i32,
-        };
-        let mut tmp = ctx.reborrow();
-        execute_button_action_x11(&mut tmp, &button.action, arg);
+    if let Some(btn) = MouseButton::from_u8(e.detail) {
+        let target_window = ctx.core.globals().clients.contains_key(&event_win).then_some(event_win);
+        crate::bar::dispatch_configured_button(
+            &mut WmCtx::X11(ctx.reborrow()),
+            bar_pos,
+            target_window,
+            btn,
+            e.root_x as i32,
+            e.root_y as i32,
+            clean_state,
+            numlockmask,
+        );
     }
 }
 
@@ -452,7 +419,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             && root_y >= selmon.bar_y
             && root_y < selmon.bar_y + ctx.core.globals().cfg.bar_height;
         if !in_bar && selmon.gesture != Gesture::None {
-            crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+            crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         }
         return;
     }
@@ -489,7 +456,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         if crate::mouse::handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
             return;
         }
-        crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         if matches!(
             ctx.core.globals().behavior.cursor_icon,
             AltCursor::Resize(crate::types::ResizeDirection::Left)
@@ -502,31 +469,12 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     // Cache tag-strip width only when we are actually in the bar hot path.
     ctx.core.globals_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
 
-    // Compute the bar position from the cursor's monitor-local x coordinate,
-    // then convert to a gesture for hover highlighting.
-    let new_gesture = {
-        let mon = ctx.core.globals().selected_monitor();
-        let local_x = root_x - mon.work_rect.x;
-        let position = mon.bar_position_at_x(&ctx.core, local_x);
-        match position {
-            // The status-text and root areas don't produce a hover gesture —
-            // reset the bar and bail out so we don't light up anything.
-            BarPosition::StatusText | BarPosition::Root => {
-                crate::bar::x11::reset_bar_x11(
-                    &mut ctx.core,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
-                return;
-            }
-            other => crate::bar::bar_position_to_gesture(other),
-        }
-    };
-
-    if new_gesture != current_gesture {
-        ctx.core.globals_mut().selected_monitor_mut().gesture = new_gesture;
-        ctx.core.bar.mark_dirty();
-    };
+    let pos = crate::bar::update_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y, false, false);
+    if matches!(pos, Some(BarPosition::StatusText | BarPosition::Root) | None)
+        && current_gesture != Gesture::None
+    {
+        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
+    }
 }
 
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
@@ -607,7 +555,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
-    crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+    crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
