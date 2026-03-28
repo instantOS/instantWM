@@ -6,6 +6,9 @@
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::utils::Transform;
 
+use crate::backend::BackendVrrSupport;
+use crate::config::config_toml::VrrMode;
+
 use super::state::WaylandState;
 
 fn parse_transform(transform_str: &str) -> Option<Transform> {
@@ -52,6 +55,9 @@ impl WaylandState {
 
         let _global = output.create_global::<WaylandState>(&self.display_handle);
         self.space.map_output(&output, (0, 0));
+        self.set_output_vrr_support(name, BackendVrrSupport::Unsupported);
+        self.set_output_vrr_mode(name, VrrMode::Off);
+        self.set_output_vrr_enabled(name, false);
 
         output
     }
@@ -127,6 +133,10 @@ impl WaylandState {
 
             if let Some(scale) = config.scale {
                 current_scale = Scale::Fractional(scale as f64);
+            }
+
+            if let Some(vrr) = config.vrr {
+                self.set_output_vrr_mode(&output.name(), vrr);
             }
 
             let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));

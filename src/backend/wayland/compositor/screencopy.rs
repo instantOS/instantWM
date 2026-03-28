@@ -305,6 +305,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             buffer,
             with_damage,
         });
+        state.request_render();
     }
 }
 

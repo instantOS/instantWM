@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
     MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus, SpecialNext,
-    TagCommand, ToggleCommand, Transform, WindowCommand,
+    TagCommand, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
 
 const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
@@ -67,6 +67,8 @@ pub enum MonitorAction {
         scale: Option<f32>,
         #[arg(long, short = 't')]
         transform: Option<Transform>,
+        #[arg(long)]
+        vrr: Option<VrrMode>,
         #[arg(long, conflicts_with = "disable")]
         enable: bool,
         #[arg(long, conflicts_with = "enable")]
@@ -306,6 +308,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     pos,
                     scale,
                     transform,
+                    vrr,
                     enable,
                     disable,
                 } => {
@@ -324,6 +327,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                         scale,
                         transform,
                         enable: enable_val,
+                        vrr,
                     }
                 }
                 MonitorAction::Modes { identifier } => MonitorCommand::Modes {

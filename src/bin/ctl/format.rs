@@ -112,9 +112,23 @@ fn format_monitor_list(monitors: &[MonitorInfo], json: bool) {
     } else {
         for m in monitors {
             let marker = if m.is_primary { "*" } else { " " };
+            let vrr_mode = m
+                .vrr_mode
+                .map(|mode| format!("{mode:?}").to_lowercase())
+                .unwrap_or_else(|| "-".to_string());
+            let vrr_enabled = if m.vrr_enabled { "on" } else { "off" };
             println!(
-                "{}{}: {}x{}+{}+{}",
-                marker, m.index, m.width, m.height, m.x, m.y
+                "{}{} {}: {}x{}+{}+{} vrr[support={:?} mode={} enabled={}]",
+                marker,
+                m.index,
+                m.name,
+                m.width,
+                m.height,
+                m.x,
+                m.y,
+                m.vrr_support,
+                vrr_mode,
+                vrr_enabled
             );
         }
     }

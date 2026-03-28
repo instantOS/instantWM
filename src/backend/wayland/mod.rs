@@ -249,6 +249,14 @@ impl BackendOps for WaylandBackend {
                             h: geom.size.h,
                         }
                     },
+                    vrr_support: state
+                        .output_vrr_metadata(&o.name())
+                        .map(|m| m.vrr_support)
+                        .unwrap_or(crate::backend::BackendVrrSupport::Unsupported),
+                    vrr_mode: state.output_vrr_metadata(&o.name()).map(|m| m.vrr_mode),
+                    vrr_enabled: state
+                        .output_vrr_metadata(&o.name())
+                        .is_some_and(|m| m.vrr_enabled),
                 })
                 .collect()
         })

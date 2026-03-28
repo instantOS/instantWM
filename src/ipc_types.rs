@@ -1,4 +1,5 @@
 pub use crate::layouts::LayoutKind;
+pub use crate::config::config_toml::VrrMode;
 pub use crate::types::{MonitorDirection, SpecialNext};
 use bincode::{Decode, Encode};
 
@@ -167,6 +168,7 @@ pub enum MonitorCommand {
         scale: Option<f32>,
         transform: Option<Transform>,
         enable: Option<bool>,
+        vrr: Option<VrrMode>,
     },
     Modes {
         identifier: Option<String>,
@@ -372,11 +374,15 @@ pub struct WindowGeometryInfo {
 pub struct MonitorInfo {
     pub id: usize,
     pub index: i32,
+    pub name: String,
     pub width: i32,
     pub height: i32,
     pub x: i32,
     pub y: i32,
     pub is_primary: bool,
+    pub vrr_support: crate::backend::BackendVrrSupport,
+    pub vrr_mode: Option<VrrMode>,
+    pub vrr_enabled: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

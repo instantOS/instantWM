@@ -1,6 +1,7 @@
 //! X11 XRandR support for display configuration.
 
 use crate::backend::BackendOutputInfo;
+use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::MonitorConfig;
 use crate::types::Rect;
 use x11rb::protocol::randr::{self, ConnectionExt as RandrExt};
@@ -83,7 +84,13 @@ fn get_screen_resources_current(
             }
         };
 
-        outputs.push(BackendOutputInfo { name, rect });
+        outputs.push(BackendOutputInfo {
+            name,
+            rect,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        });
     }
 
     Some(outputs)
@@ -144,7 +151,13 @@ fn get_screen_resources(conn: &RustConnection, root: Window) -> Option<Vec<Backe
             }
         };
 
-        outputs.push(BackendOutputInfo { name, rect });
+        outputs.push(BackendOutputInfo {
+            name,
+            rect,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        });
     }
 
     Some(outputs)

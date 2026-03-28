@@ -6,8 +6,10 @@ use smithay::backend::allocator::gbm::GbmAllocator;
 use smithay::backend::drm::{DrmDeviceFd, GbmBufferedSurface};
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::output::Output;
-use smithay::reexports::drm::control::crtc;
+use smithay::reexports::drm::control::{connector, crtc};
 
+use crate::backend::BackendVrrSupport;
+use crate::config::config_toml::VrrMode;
 use crate::globals::Globals;
 use crate::types::Rect;
 
@@ -23,12 +25,16 @@ pub struct OutputHitRegion {
 
 pub struct OutputSurfaceEntry {
     pub crtc: crtc::Handle,
+    pub connector: connector::Handle,
     pub surface: GbmBufferedSurface<GbmAllocator<DrmDeviceFd>, ()>,
     pub output: Output,
     pub damage_tracker: OutputDamageTracker,
     pub x_offset: i32,
     pub width: i32,
     pub height: i32,
+    pub vrr_support: BackendVrrSupport,
+    pub configured_vrr_mode: VrrMode,
+    pub vrr_enabled: bool,
 }
 
 pub struct SharedDrmState {

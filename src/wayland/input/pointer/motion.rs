@@ -114,6 +114,7 @@ pub fn handle_pointer_motion(
     // Compute and update pointer location
     state.pointer_location =
         event.compute_location(state.pointer_location, output_width, output_height);
+    state.note_cursor_activity();
 
     // Dispatch to focus/drag handling logic
     dispatch_pointer_motion(

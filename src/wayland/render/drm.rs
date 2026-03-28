@@ -2,7 +2,7 @@
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface};
+use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface, VrrSupport};
 use smithay::backend::renderer::Bind;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
@@ -19,6 +19,8 @@ use smithay::reexports::drm::control::crtc;
 use smithay::utils::{Physical, Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::BackendVrrSupport;
+use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
@@ -48,7 +50,7 @@ render_elements! {
 pub fn build_output_surfaces(
     drm_device: &mut DrmDevice,
     renderer: &mut GlesRenderer,
-    state: &WaylandState,
+    state: &mut WaylandState,
     gbm_device: &GbmDevice<DrmDeviceFd>,
 ) -> Vec<OutputSurfaceEntry> {
     let gbm_allocator = GbmAllocator::new(
@@ -125,7 +127,7 @@ pub fn build_output_surfaces(
         );
 
         let output = Output::new(
-            output_name,
+            output_name.clone(),
             PhysicalProperties {
                 size: {
                     let (mm_w, mm_h) = conn_info.size().unwrap_or((0, 0));
@@ -150,15 +152,32 @@ pub fn build_output_surfaces(
         let _global = output.create_global::<WaylandState>(&state.display_handle);
 
         let damage_tracker = OutputDamageTracker::from_output(&output);
+        let vrr_support = match gbm_surface.vrr_supported(conn_handle) {
+            Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
+            Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
+            Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
+        };
+        state.set_output_vrr_support(&output_name, vrr_support);
+        let configured_vrr_mode = state
+            .output_vrr_metadata(&output_name)
+            .map(|m| m.vrr_mode)
+            .unwrap_or(VrrMode::Auto);
+        state.set_output_vrr_mode(&output_name, configured_vrr_mode);
+        state.set_output_vrr_enabled(&output_name, false);
+        log::info!("Output {output_name}: VRR support = {:?}", vrr_support);
 
         output_surfaces.push(OutputSurfaceEntry {
             crtc: picked_crtc,
+            connector: conn_handle,
             surface: gbm_surface,
             output: output.clone(),
             damage_tracker,
             x_offset: output_x_offset,
             width: mode_w,
             height: mode_h,
+            vrr_support,
+            configured_vrr_mode,
+            vrr_enabled: false,
         });
         output_x_offset += mode_w;
     }

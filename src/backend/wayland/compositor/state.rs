@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
+use std::time::{Duration, Instant};
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -45,6 +46,7 @@ use smithay::{
 };
 
 use crate::config::config_toml::CursorConfig;
+use crate::config::config_toml::VrrMode;
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
@@ -160,6 +162,10 @@ pub struct WaylandState {
     /// loop iteration should schedule a redraw.
     pub render_dirty: bool,
 
+    /// Per-output runtime metadata shared between the DRM render loop and
+    /// higher-level control surfaces such as `monitor list`.
+    pub output_metadata: HashMap<String, WaylandOutputMetadata>,
+
     /// Toplevel surfaces that have not yet committed a buffer.
     ///
     /// Some clients (e.g. clipboard tools like `wl-copy`) create an XDG
@@ -181,6 +187,11 @@ pub struct WaylandState {
 
     /// Current drag-and-drop icon surface.
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+
+    /// Temporarily suppress VRR after pointer/cursor activity because the DRM
+    /// backend currently composites the cursor into the primary plane instead
+    /// of using a hardware cursor plane.
+    pub cursor_vrr_block_until: Option<Instant>,
 
     /// Cached winit window size for the nested backend.
     ///
@@ -213,6 +224,13 @@ pub struct WindowIdMarker {
     pub id: WindowId,
     /// Cached: true when this is an unmanaged X11 overlay (dmenu, popup, etc.).
     pub is_overlay: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WaylandOutputMetadata {
+    pub vrr_support: crate::backend::BackendVrrSupport,
+    pub vrr_mode: VrrMode,
+    pub vrr_enabled: bool,
 }
 
 impl WaylandState {
@@ -317,11 +335,13 @@ impl WaylandState {
             foreign_toplevel_handles: HashMap::new(),
             pending_screencopies: Vec::new(),
             render_dirty: false,
+            output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
             pending_warp: None,
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
+            cursor_vrr_block_until: None,
             winit_window_size: smithay::utils::Size::from((0, 0)),
             pending_winit_resize: None,
             winit_close_requested: false,
@@ -506,6 +526,59 @@ impl WaylandState {
     #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
         std::mem::take(&mut self.render_dirty)
+    }
+
+    pub fn set_output_vrr_support(
+        &mut self,
+        output_name: &str,
+        support: crate::backend::BackendVrrSupport,
+    ) {
+        let entry = self
+            .output_metadata
+            .entry(output_name.to_string())
+            .or_insert(WaylandOutputMetadata {
+                vrr_support: support,
+                vrr_mode: VrrMode::Auto,
+                vrr_enabled: false,
+            });
+        entry.vrr_support = support;
+    }
+
+    pub fn set_output_vrr_mode(&mut self, output_name: &str, mode: VrrMode) {
+        let entry = self
+            .output_metadata
+            .entry(output_name.to_string())
+            .or_insert(WaylandOutputMetadata {
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: mode,
+                vrr_enabled: false,
+            });
+        entry.vrr_mode = mode;
+    }
+
+    pub fn set_output_vrr_enabled(&mut self, output_name: &str, enabled: bool) {
+        let entry = self
+            .output_metadata
+            .entry(output_name.to_string())
+            .or_insert(WaylandOutputMetadata {
+                vrr_support: crate::backend::BackendVrrSupport::Unsupported,
+                vrr_mode: VrrMode::Auto,
+                vrr_enabled: enabled,
+            });
+        entry.vrr_enabled = enabled;
+    }
+
+    pub fn output_vrr_metadata(&self, output_name: &str) -> Option<&WaylandOutputMetadata> {
+        self.output_metadata.get(output_name)
+    }
+
+    pub fn note_cursor_activity(&mut self) {
+        self.cursor_vrr_block_until = Some(Instant::now() + Duration::from_millis(150));
+    }
+
+    pub fn cursor_recently_active(&self) -> bool {
+        self.cursor_vrr_block_until
+            .is_some_and(|deadline| Instant::now() < deadline)
     }
 
     /// Set the keyboard layout.

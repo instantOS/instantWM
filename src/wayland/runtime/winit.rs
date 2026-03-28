@@ -69,6 +69,7 @@ pub fn run() -> ! {
     state.winit_window_size = output_size;
 
     let output = state.create_output("winit", initial_w, initial_h);
+    crate::monitor::apply_monitor_config(&mut wm.ctx());
     let mut damage_tracker =
         smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
 

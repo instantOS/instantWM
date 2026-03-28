@@ -17,9 +17,11 @@ use std::process::exit;
 use std::sync::{Arc, Mutex};
 
 use crate::backend::Backend as WmBackend;
+use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
+use crate::config::config_toml::VrrMode;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
@@ -81,7 +83,7 @@ pub fn run() -> ! {
     let cursor_manager = init_cursor_manager(&state.cursor_config);
 
     let mut output_surfaces =
-        build_output_surfaces(&mut drm_device, &mut renderer, &state, &gbm_device);
+        build_output_surfaces(&mut drm_device, &mut renderer, &mut state, &gbm_device);
     for entry in &output_surfaces {
         state.space.map_output(&entry.output, (entry.x_offset, 0));
     }
@@ -93,6 +95,7 @@ pub fn run() -> ! {
         use crate::monitor::update_geom;
         update_geom(&mut wm.ctx());
     }
+    crate::monitor::apply_monitor_config(&mut wm.ctx());
 
     let shared = init_shared_state(&output_surfaces, total_width, total_height);
 
@@ -335,6 +338,7 @@ fn run_event_loop(
             process_completed_crtcs(shared, output_surfaces);
             process_commit_redraws(state, shared);
             process_common_tick(ipc_server, wm, state, shared);
+            sync_output_vrr_modes_from_state(state, output_surfaces, shared);
 
             if wm.g.dirty.input_config {
                 wm.g.dirty.input_config = false;
@@ -436,8 +440,9 @@ fn process_common_tick(
     state: &WaylandState,
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
+    let monitor_config_dirty = wm.g.dirty.monitor_config;
     let handled = super::common::event_loop_tick(wm, state, ipc_server);
-    if handled {
+    if handled || monitor_config_dirty {
         // DRM-specific: also mark space and all outputs dirty
         wm.g.dirty.space = true;
         shared.lock().unwrap().mark_all_dirty();
@@ -463,8 +468,129 @@ fn process_cursor_warp(
     shared: &Arc<Mutex<SharedDrmState>>,
 ) {
     if apply_pending_warp(state, pointer_handle) {
+        state.note_cursor_activity();
         let mut s = shared.lock().unwrap();
         s.mark_all_dirty();
+    }
+}
+
+fn sync_output_vrr_modes_from_state(
+    state: &mut WaylandState,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    shared: &Arc<Mutex<SharedDrmState>>,
+) {
+    let mut changed = false;
+    for entry in output_surfaces.iter_mut() {
+        let output_name = entry.output.name();
+        if let Some(metadata) = state.output_vrr_metadata(&output_name)
+            && entry.configured_vrr_mode != metadata.vrr_mode
+        {
+            entry.configured_vrr_mode = metadata.vrr_mode;
+            log::info!(
+                "Output {}: VRR mode set to {:?} (support: {:?})",
+                output_name,
+                entry.configured_vrr_mode,
+                entry.vrr_support
+            );
+            changed = true;
+        }
+    }
+    if changed {
+        shared.lock().unwrap().mark_all_dirty();
+    }
+}
+
+fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {
+    state
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output.name() == output_name)
+}
+
+fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
+    let Some(mon) = wm.g.monitors_iter_all().find(|m| m.name == output_name) else {
+        return false;
+    };
+    if mon.current_layout().is_overview() {
+        return false;
+    }
+
+    let selected = mon.selected_tags();
+    let mut visible_clients = mon
+        .iter_clients(wm.g.clients.map())
+        .filter(|(_, client)| client.is_visible(selected))
+        .filter(|(_, client)| !client.is_scratchpad())
+        .collect::<Vec<_>>();
+
+    if visible_clients.len() != 1 {
+        return false;
+    }
+
+    visible_clients
+        .pop()
+        .is_some_and(|(_, client)| client.is_true_fullscreen())
+}
+
+fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {
+    let output_name = entry.output.name();
+
+    match entry.vrr_support {
+        BackendVrrSupport::Unsupported => false,
+        BackendVrrSupport::RequiresModeset => matches!(entry.configured_vrr_mode, VrrMode::On),
+        BackendVrrSupport::Supported => {
+            let hard_blocked = state.is_locked()
+                || state.has_active_window_animations()
+                || state.cursor_recently_active()
+                || has_pending_screencopy_for_output(state, &output_name)
+                || !state.overlay_windows_for_render(entry.x_offset).is_empty()
+                || !matches!(
+                    state.cursor_image_status,
+                    smithay::input::pointer::CursorImageStatus::Named(_)
+                        | smithay::input::pointer::CursorImageStatus::Hidden
+                )
+                || state.dnd_icon.is_some();
+
+            if hard_blocked {
+                return false;
+            }
+
+            match entry.configured_vrr_mode {
+                VrrMode::Off => false,
+                VrrMode::On => true,
+                VrrMode::Auto => auto_vrr_content_is_suitable(wm, &output_name),
+            }
+        }
+    }
+}
+
+fn apply_output_vrr_policy(wm: &Wm, state: &mut WaylandState, entry: &mut OutputSurfaceEntry) {
+    let target = compute_output_vrr_target(wm, state, entry);
+    if entry.vrr_enabled == target {
+        state.set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
+        return;
+    }
+
+    match entry.surface.use_vrr(target) {
+        Ok(()) => {
+            entry.vrr_enabled = target;
+            state.set_output_vrr_enabled(&entry.output.name(), target);
+            log::info!(
+                "Output {}: VRR {} (mode: {:?}, support: {:?})",
+                entry.output.name(),
+                if target { "enabled" } else { "disabled" },
+                entry.configured_vrr_mode,
+                entry.vrr_support
+            );
+        }
+        Err(err) => {
+            state.set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
+            log::warn!(
+                "Output {}: failed to set VRR {}: {:?}",
+                entry.output.name(),
+                if target { "on" } else { "off" },
+                err
+            );
+        }
     }
 }
 
@@ -504,6 +630,7 @@ fn render_outputs(
                 shared.lock().unwrap().render_flags.insert(entry.crtc, true);
                 continue;
             }
+            apply_output_vrr_policy(wm, state, entry);
             let rendered = render_drm_output(
                 wm,
                 state,
