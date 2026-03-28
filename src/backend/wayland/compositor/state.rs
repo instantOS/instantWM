@@ -156,6 +156,10 @@ pub struct WaylandState {
     /// Pending screencopy frames waiting to be fulfilled during the next render.
     pub pending_screencopies: Vec<PendingScreencopy>,
 
+    /// Set when some compositor-visible state changed and the next backend
+    /// loop iteration should schedule a redraw.
+    pub render_dirty: bool,
+
     /// Toplevel surfaces that have not yet committed a buffer.
     ///
     /// Some clients (e.g. clipboard tools like `wl-copy`) create an XDG
@@ -312,6 +316,7 @@ impl WaylandState {
             window_animations: HashMap::new(),
             foreign_toplevel_handles: HashMap::new(),
             pending_screencopies: Vec::new(),
+            render_dirty: false,
             pending_toplevels: Vec::new(),
             pending_warp: None,
             pointer_location: Point::from((0.0, 0.0)),
@@ -491,6 +496,16 @@ impl WaylandState {
             }
         }
         self.raise_unmanaged_x11_windows();
+    }
+
+    #[inline]
+    pub fn request_render(&mut self) {
+        self.render_dirty = true;
+    }
+
+    #[inline]
+    pub fn take_render_dirty(&mut self) -> bool {
+        std::mem::take(&mut self.render_dirty)
     }
 
     /// Set the keyboard layout.

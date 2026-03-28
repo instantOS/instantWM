@@ -44,6 +44,10 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
+        // Surface commits must drive redraws in the DRM backend; otherwise
+        // removing the vblank self-redraw loop stalls client updates until
+        // some unrelated input/layout path dirties the outputs.
+        self.request_render();
         on_commit_buffer_handler::<Self>(surface);
 
         // Check if this commit is from a pending toplevel that has finally
@@ -152,6 +156,7 @@ impl ClientDndGrabHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
     ) {
         self.dnd_icon = icon;
+        self.request_render();
     }
 
     fn dropped(
@@ -161,6 +166,7 @@ impl ClientDndGrabHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
     ) {
         self.dnd_icon = None;
+        self.request_render();
     }
 }
 

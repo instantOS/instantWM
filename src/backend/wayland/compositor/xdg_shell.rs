@@ -45,6 +45,7 @@ impl SeatHandler for WaylandState {
         image: smithay::input::pointer::CursorImageStatus,
     ) {
         self.cursor_image_status = image;
+        self.request_render();
     }
 
     fn led_state_changed(

@@ -291,9 +291,6 @@ fn setup_drm_vblank_handler(
         .insert_source(drm_notifier, move |event, _metadata, _data| match event {
             DrmEvent::VBlank(crtc) => {
                 let mut s = shared_vblank.lock().unwrap();
-                if let Some(flag) = s.render_flags.get_mut(&crtc) {
-                    *flag = true;
-                }
                 s.completed_crtcs.push(crtc);
             }
             DrmEvent::Error(err) => {
@@ -336,6 +333,7 @@ fn run_event_loop(
     event_loop
         .run(None, state, move |state| {
             process_completed_crtcs(shared, output_surfaces);
+            process_commit_redraws(state, shared);
             process_common_tick(ipc_server, wm, state, shared);
 
             if wm.g.dirty.input_config {
@@ -396,6 +394,13 @@ fn run_event_loop(
             }
         })
         .expect("event loop run");
+}
+
+/// Promote compositor-side redraw requests into DRM output dirties.
+fn process_commit_redraws(state: &mut WaylandState, shared: &Arc<Mutex<SharedDrmState>>) {
+    if state.take_render_dirty() {
+        shared.lock().unwrap().mark_all_dirty();
+    }
 }
 
 /// Process frame submissions for completed CRTCs.

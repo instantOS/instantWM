@@ -73,6 +73,7 @@ pub(super) fn handle_layer_commit(
     if let Some(surface) = layer_surface {
         focus_layer_if_requested(state, &surface);
     }
+    state.request_render();
 }
 
 impl WlrLayerShellHandler for WaylandState {
@@ -98,6 +99,7 @@ impl WlrLayerShellHandler for WaylandState {
         let mut map = layer_map_for_output(&target_output);
         let _ = map.map_layer(&layer_surface);
         map.arrange();
+        self.request_render();
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -136,5 +138,6 @@ impl WlrLayerShellHandler for WaylandState {
 
         // Restore seat focus to mon.sel (the WM's selected window).
         self.restore_focus_after_overlay();
+        self.request_render();
     }
 }
