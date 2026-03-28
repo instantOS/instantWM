@@ -1,9 +1,7 @@
 //! Client window management.
 //!
-//! This module is the public surface for everything related to managing X11
-//! client windows.  The implementation is split across focused sub-modules;
-//! this file re-exports the public API so that callers can write
-//! `crate::backend::x11::lifecycle::manage(...)` for X11 lifecycle details.
+//! This module is the public surface for generic client/window management.
+//! X11-specific property plumbing lives under `crate::backend::x11`.
 //!
 //! # Sub-module map
 //!

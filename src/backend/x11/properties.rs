@@ -1,8 +1,7 @@
-//! X11 property management for client windows.
+//! X11 client property management.
 //!
-//! This module owns reading and writing the X11 properties that describe a
-//! managed client's state. It is the bridge between the WM's internal
-//! bookkeeping and the X server's property store.
+//! This module owns the X11-specific property reads and writes that describe a
+//! managed client's state on the X server.
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
@@ -21,7 +20,6 @@ use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
-/// Write the `WM_STATE` property for `win` to the X server.
 pub fn set_client_state(
     _core: &CoreCtx,
     x11: &X11BackendRef,
@@ -42,7 +40,6 @@ pub fn set_client_state(
     let _ = conn.flush();
 }
 
-/// Write the `_NET_CLIENT_INFO` property for `win`.
 pub fn set_client_tag_prop(
     core: &CoreCtx,
     x11: &X11BackendRef,
@@ -76,7 +73,6 @@ pub fn set_client_tag_prop(
     let _ = conn.flush();
 }
 
-/// Rebuild `_NET_CLIENT_LIST` on the root window from scratch.
 pub fn update_client_list(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
     let conn = x11.conn;
     let _ = conn.delete_property(x11_runtime.root, x11_runtime.netatom.client_list);
@@ -97,20 +93,18 @@ pub fn update_client_list(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11
     let _ = conn.flush();
 }
 
-/// Read the window title and store it in `Client::name`.
 pub fn update_title_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let name = read_window_title(x11, x11_runtime, win);
+    let name = window_properties_x11(x11, x11_runtime, win).title;
     if let Some(client) = core.globals_mut().clients.get_mut(&win) {
         client.name = name;
     }
 }
 
-/// Read the X11 properties used for WM rule matching.
 pub fn window_properties_x11(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
@@ -128,7 +122,6 @@ pub fn window_properties_x11(
     }
 }
 
-/// Apply the configured X11 window rules to `win`.
 pub fn apply_rules_x11(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
@@ -139,28 +132,26 @@ pub fn apply_rules_x11(
     apply_rules_generic(core.globals_mut(), win, &props);
 }
 
-/// Handle `_NET_WM_WINDOW_TYPE` and `_NET_WM_STATE` for a newly managed window.
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx_x11.x11.conn;
     let x11_win: Window = win.into();
-    let state = get_atom_prop(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_state);
-    let wtype = get_atom_prop(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_window_type);
+    let state = get_atom_props(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_state);
+    let wtype = get_atom_props(conn, x11_win, ctx_x11.x11_runtime.netatom.wm_window_type);
 
     let atom_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
     let atom_dialog = ctx_x11.x11_runtime.netatom.wm_window_type_dialog;
 
-    if state == Some(atom_fullscreen) {
+    if state.contains(&atom_fullscreen) {
         set_fullscreen_x11(ctx_x11, win, true);
     }
 
-    if wtype == Some(atom_dialog)
+    if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
     {
         client.is_floating = true;
     }
 }
 
-/// Parse `WM_HINTS` for `win` and update `Client::isurgent` / `Client::neverfocus`.
 pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
@@ -194,7 +185,6 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 }
 
-/// Set or clear the urgency state on `win`, updating both internal state and `WM_HINTS`.
 pub fn set_urgent_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: bool) {
     let conn = x11.conn;
 
@@ -243,7 +233,6 @@ pub fn set_urgent_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, ur
     let _ = conn.flush();
 }
 
-/// Parse `_MOTIF_WM_HINTS` decoration flags and adjust the client's border.
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if ctx.core.globals().cfg.decorhints == 0 {
         return;
@@ -313,7 +302,6 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     );
 }
 
-/// Read a single-atom property from `win` and return its value.
 pub fn get_atom_prop(
     conn: &x11rb::rust_connection::RustConnection,
     win: Window,
@@ -325,11 +313,19 @@ pub fn get_atom_prop(
         .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
 }
 
-fn read_window_title(
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) -> String {
+pub fn get_atom_props(
+    conn: &x11rb::rust_connection::RustConnection,
+    win: Window,
+    atom: u32,
+) -> Vec<u32> {
+    conn.get_property(false, win, atom, AtomEnum::ATOM, 0, u32::MAX)
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .and_then(|reply| reply.value32().map(|it| it.collect()))
+        .unwrap_or_default()
+}
+
+fn read_window_title(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, win: WindowId) -> String {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let net_wm_name = x11_runtime.netatom.wm_name;

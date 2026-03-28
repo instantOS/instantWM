@@ -703,13 +703,28 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
     let data = e.data.as_data32();
-    let fullscreen_action = data[0];
+    let fullscreen_atom = ctx.x11_runtime.netatom.wm_fullscreen;
+    let action = data[0];
+    let touches_fullscreen = data[1] == fullscreen_atom || data[2] == fullscreen_atom;
 
-    if fullscreen_action == 1 {
-        crate::client::set_fullscreen_x11(ctx, win, true);
-    } else if fullscreen_action == 0 {
-        crate::client::set_fullscreen_x11(ctx, win, false);
-    };
+    if !touches_fullscreen {
+        return;
+    }
+
+    let is_fullscreen = ctx
+        .core
+        .globals()
+        .clients
+        .get(&win)
+        .map(|c| c.is_fullscreen)
+        .unwrap_or(false);
+
+    match action {
+        0 => crate::client::set_fullscreen_x11(ctx, win, false),
+        1 => crate::client::set_fullscreen_x11(ctx, win, true),
+        2 => crate::client::set_fullscreen_x11(ctx, win, !is_fullscreen),
+        _ => {}
+    }
 }
 
 fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
