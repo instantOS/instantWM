@@ -20,6 +20,10 @@ use crate::wm::Wm;
 /// Backend-specific work (rendering, space sync, event draining, flushing)
 /// should be done by the caller before/after this function.
 pub fn event_loop_tick(wm: &mut Wm, ipc_server: &mut Option<crate::ipc::IpcServer>) -> bool {
+    if wm.bar.poll_async_status(&wm.g.bar_runtime.status_text) {
+        wm.bar.mark_dirty();
+    }
+
     let handled = process_ipc_commands(ipc_server, wm);
     apply_monitor_config_if_dirty(wm);
     arrange_layout_if_dirty(wm);

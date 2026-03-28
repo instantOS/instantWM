@@ -7,7 +7,6 @@ use std::thread;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::{OwnedValue, Value};
 
-use crate::bar::paint::BarPainter;
 use crate::contexts::CoreCtx;
 use crate::types::{
     Monitor, MouseButton, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
@@ -315,7 +314,7 @@ pub fn draw_wayland_systray(
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &crate::types::Monitor,
-    painter: &mut crate::bar::wayland::WaylandBarPainter,
+    painter: &mut dyn crate::bar::paint::BarPainter,
 ) {
     let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
 
@@ -391,7 +390,7 @@ pub fn draw_wayland_systray(
     }
 }
 
-fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
+pub(crate) fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
     if src_w <= 0 || src_h <= 0 || dst_h <= 0 {
         return 0;
     }
@@ -747,7 +746,7 @@ fn systray_layout(
 
 fn draw_menu_overlay(
     core: &CoreCtx,
-    painter: &mut crate::bar::wayland::WaylandBarPainter,
+    painter: &mut dyn crate::bar::paint::BarPainter,
     menu: &WaylandSystrayMenu,
     layout: &SystrayLayout,
 ) {

@@ -2,6 +2,7 @@ pub mod color;
 pub(crate) mod model;
 pub mod paint;
 mod renderer;
+pub(crate) mod scene;
 pub mod status;
 pub(crate) mod theme;
 pub mod wayland;
@@ -33,6 +34,10 @@ pub struct BarState {
     /// Cached parsed status commands for unchanged status text.
     status_cache_text: String,
     status_cache: status::ParsedStatus,
+    status_cache_complete: bool,
+    status_cache_seq: u64,
+    status_requested_text: String,
+    status_requested_seq: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -151,21 +156,89 @@ impl BarState {
         self.hit_cache.get(monitor_id)
     }
 
+    pub fn replace_hit_cache(&mut self, monitor_id: usize, hit: MonitorHitCache) {
+        if self.hit_cache.len() <= monitor_id {
+            self.hit_cache
+                .resize_with(monitor_id + 1, MonitorHitCache::default);
+        }
+        self.hit_cache[monitor_id] = hit;
+    }
+
+    fn request_status_parse_if_needed(&mut self, text: &str) {
+        if text.is_empty()
+            || self.status_requested_text.as_str() == text
+            || (self.status_cache_text.as_str() == text && self.status_cache_complete)
+        {
+            return;
+        }
+
+        self.status_requested_text.clear();
+        self.status_requested_text.push_str(text);
+        self.status_requested_seq = status::request_status_parse(text);
+    }
+
+    pub fn request_async_status_parse(&mut self, text: &str) {
+        self.request_status_parse_if_needed(text);
+    }
+
+    pub fn prepare_status_for_render(&mut self, text: &str) {
+        self.status_cache_text.clear();
+        self.status_cache_text.push_str(text);
+        self.status_cache = status::parse_status(text.as_bytes());
+        self.status_cache_complete = true;
+        self.status_requested_text.clear();
+        self.status_requested_text.push_str(text);
+        self.status_requested_seq = 0;
+        self.status_cache_seq = 0;
+    }
+
+    pub fn poll_async_status(&mut self, current_text: &str) -> bool {
+        let mut changed = false;
+
+        while let Some(result) = status::try_recv_status_parse_result() {
+            if result.text.as_str() != current_text || result.seq < self.status_requested_seq {
+                continue;
+            }
+
+            self.status_cache_text = result.text;
+            self.status_cache = result.parsed;
+            self.status_cache_complete = true;
+            self.status_cache_seq = result.seq;
+            changed = true;
+        }
+
+        changed
+    }
+
     pub(crate) fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
+        self.poll_async_status(text);
+
         if self.status_cache_text.as_str() != text {
             self.status_cache_text.clear();
             self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status(text.as_bytes());
+            self.status_cache = status::parse_status_fallback(text);
+            self.status_cache_complete = false;
+            self.request_status_parse_if_needed(text);
+        } else if !self.status_cache_complete {
+            self.request_status_parse_if_needed(text);
         }
+
         self.status_cache.items.as_slice()
     }
 
     pub(crate) fn parsed_status_for_text(&mut self, text: &str) -> &status::ParsedStatus {
+        self.poll_async_status(text);
+
         if self.status_cache_text.as_str() != text {
             self.status_cache_text.clear();
             self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status(text.as_bytes());
+            self.status_cache = status::parse_status_fallback(text);
+            self.status_cache_complete = false;
+            self.request_status_parse_if_needed(text);
+        } else if !self.status_cache_complete {
+            self.request_status_parse_if_needed(text);
         }
+
         &self.status_cache
     }
 }

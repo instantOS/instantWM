@@ -8,6 +8,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::{Arc, Condvar, Mutex};
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
@@ -18,6 +20,8 @@ use cosmic_text::{
 };
 
 use crate::bar::paint::{BarPainter, BarScheme};
+use crate::bar::scene;
+use crate::contexts::CoreCtx;
 
 const DEFAULT_FONT_SIZE: f32 = 14.0;
 
@@ -230,12 +234,47 @@ pub struct WaylandBarPainter {
     cached_buffers: Vec<BarBuffer>,
     cached_key: u64,
     has_cached_buffers: bool,
+    async_runtime: Option<AsyncBarRenderRuntime>,
 }
 
 pub struct BarBuffer {
     pub buffer: MemoryRenderBuffer,
     pub x: i32,
     pub y: i32,
+}
+
+#[derive(Clone)]
+struct RawBarBuffer {
+    pixels: Vec<u8>,
+    width: i32,
+    height: i32,
+    x: i32,
+    y: i32,
+}
+
+#[derive(Clone)]
+struct AsyncBarRenderRequest {
+    key: u64,
+    font_size: f32,
+    monitors: Vec<scene::MonitorBarSnapshot>,
+}
+
+struct AsyncBarRenderResult {
+    key: u64,
+    buffers: Vec<RawBarBuffer>,
+    monitor_updates: Vec<scene::MonitorRenderOutputWithId>,
+}
+
+struct AsyncBarRenderShared {
+    pending: Mutex<Option<AsyncBarRenderRequest>>,
+    wake: Condvar,
+    results_tx: Sender<AsyncBarRenderResult>,
+}
+
+struct AsyncBarRenderRuntime {
+    shared: Arc<AsyncBarRenderShared>,
+    results_rx: Receiver<AsyncBarRenderResult>,
+    pending_key: u64,
 }
 
 impl Clone for BarBuffer {
@@ -248,8 +287,38 @@ impl Clone for BarBuffer {
     }
 }
 
+
 impl Default for WaylandBarPainter {
     fn default() -> Self {
+        let (results_tx, results_rx) = mpsc::channel();
+        let shared = Arc::new(AsyncBarRenderShared {
+            pending: Mutex::new(None),
+            wake: Condvar::new(),
+            results_tx,
+        });
+
+        let worker_shared = Arc::clone(&shared);
+        std::thread::Builder::new()
+            .name("instantwm-wayland-bar".to_string())
+            .spawn(move || {
+                let mut painter = WaylandBarPainter::new_worker_painter();
+                loop {
+                    let request = {
+                        let mut guard = worker_shared.pending.lock().unwrap();
+                        loop {
+                            if let Some(request) = guard.take() {
+                                break request;
+                            }
+                            guard = worker_shared.wake.wait(guard).unwrap();
+                        }
+                    };
+
+                    let result = render_async_snapshot(&mut painter, request);
+                    let _ = worker_shared.results_tx.send(result);
+                }
+            })
+            .expect("failed to spawn Wayland bar worker");
+
         Self {
             font_system: RefCell::new(FontSystem::new()),
             swash_cache: RefCell::new(SwashCache::new()),
@@ -265,11 +334,36 @@ impl Default for WaylandBarPainter {
             cached_buffers: Vec::new(),
             cached_key: 0,
             has_cached_buffers: false,
+            async_runtime: Some(AsyncBarRenderRuntime {
+                shared,
+                results_rx,
+                pending_key: 0,
+            }),
         }
     }
 }
 
 impl WaylandBarPainter {
+    fn new_worker_painter() -> Self {
+        Self {
+            font_system: RefCell::new(FontSystem::new()),
+            swash_cache: RefCell::new(SwashCache::new()),
+            text_width_cache: RefCell::new(HashMap::new()),
+            scheme: None,
+            pixels: Vec::new(),
+            canvas_w: 0,
+            canvas_h: 0,
+            origin_x: 0,
+            origin_y: 0,
+            font_size: DEFAULT_FONT_SIZE,
+            buffers: Vec::new(),
+            cached_buffers: Vec::new(),
+            cached_key: 0,
+            has_cached_buffers: false,
+            async_runtime: None,
+        }
+    }
+
     pub fn set_font_size(&mut self, font_size: f32) {
         if font_size.is_finite() && font_size > 0.0 {
             self.font_size = font_size;
@@ -338,6 +432,20 @@ impl WaylandBarPainter {
             x: self.origin_x,
             y: self.origin_y,
         });
+    }
+
+    fn finish_raw(&mut self) -> Option<RawBarBuffer> {
+        if self.canvas_w <= 0 || self.canvas_h <= 0 {
+            return None;
+        }
+
+        Some(RawBarBuffer {
+            pixels: std::mem::take(&mut self.pixels),
+            width: self.canvas_w,
+            height: self.canvas_h,
+            x: self.origin_x,
+            y: self.origin_y,
+        })
     }
 
     pub fn take_buffers(&mut self) -> Vec<(MemoryRenderBuffer, i32, i32)> {
@@ -490,6 +598,127 @@ impl BarPainter for WaylandBarPainter {
         }
         x + w
     }
+
+    fn blit_rgba_bgra(
+        &mut self,
+        dst_x: i32,
+        dst_y: i32,
+        dst_w: i32,
+        dst_h: i32,
+        src_w: i32,
+        src_h: i32,
+        src_rgba: &[u8],
+    ) {
+        Self::blit_rgba_bgra(self, dst_x, dst_y, dst_w, dst_h, src_w, src_h, src_rgba);
+    }
+}
+
+fn raw_to_bar_buffer(raw: &RawBarBuffer) -> BarBuffer {
+    let buffer = MemoryRenderBuffer::from_slice(
+        &raw.pixels,
+        Fourcc::Argb8888,
+        (raw.width, raw.height),
+        1,
+        Transform::Normal,
+        None,
+    );
+    BarBuffer {
+        buffer,
+        x: raw.x,
+        y: raw.y,
+    }
+}
+
+fn render_async_snapshot(
+    painter: &mut WaylandBarPainter,
+    request: AsyncBarRenderRequest,
+) -> AsyncBarRenderResult {
+    let mut buffers = Vec::new();
+    let mut monitor_updates = Vec::new();
+    painter.set_font_size(request.font_size);
+
+    for mon in request.monitors {
+        painter.begin(Scale::from(1.0), mon.origin_x, mon.origin_y, mon.width, mon.height);
+        let output = scene::render_monitor_snapshot(&mon, painter);
+
+        if let Some(raw) = painter.finish_raw() {
+            buffers.push(raw);
+        }
+        monitor_updates.push(scene::MonitorRenderOutputWithId {
+            monitor_id: mon.monitor_id,
+            output,
+        });
+    }
+
+    AsyncBarRenderResult {
+        key: request.key,
+        buffers,
+        monitor_updates,
+    }
+}
+
+fn request_async_render(
+    painter: &mut WaylandBarPainter,
+    key: u64,
+    core: &mut CoreCtx,
+    wayland_systray: &crate::types::WaylandSystray,
+    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
+) {
+    let Some(runtime) = painter.async_runtime.as_mut() else {
+        return;
+    };
+    if runtime.pending_key == key {
+        return;
+    }
+    let monitors = scene::build_monitor_snapshots(
+        core,
+        Some((wayland_systray, wayland_systray_menu)),
+    );
+
+    let mut pending = runtime.shared.pending.lock().unwrap();
+    *pending = Some(AsyncBarRenderRequest {
+        key,
+        font_size: painter.font_size,
+        monitors,
+    });
+    runtime.pending_key = key;
+    runtime.shared.wake.notify_one();
+}
+
+fn poll_async_render_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
+    let Some(runtime) = painter.async_runtime.as_mut() else {
+        return;
+    };
+
+    let mut latest = None;
+    loop {
+        match runtime.results_rx.try_recv() {
+            Ok(result) => {
+                if result.key < runtime.pending_key {
+                    continue;
+                }
+                latest = Some(result);
+            }
+            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+        }
+    }
+
+    let Some(result) = latest else {
+        return;
+    };
+
+    painter.cached_buffers = result.buffers.iter().map(raw_to_bar_buffer).collect();
+    painter.cached_key = result.key;
+    painter.has_cached_buffers = true;
+
+    for update in result.monitor_updates {
+        core.bar
+            .replace_hit_cache(update.monitor_id, update.output.hit_cache);
+        if let Some(mon) = core.globals_mut().monitor_mut(update.monitor_id) {
+            mon.bar_clients_width = update.output.bar_clients_width;
+            mon.activeoffset = update.output.activeoffset;
+        }
+    }
 }
 
 pub fn render_bar_buffers(
@@ -499,66 +728,23 @@ pub fn render_bar_buffers(
     wayland_systray: &crate::types::WaylandSystray,
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    let key = bar_render_key(core, wayland_systray);
-    if painter.has_cached_buffers && painter.cached_key == key {
-        return painter
-            .cached_buffers
-            .iter()
-            .map(|b| (b.buffer.clone(), b.x, b.y))
-            .collect();
-    }
-
     // Cache the systray width so status bar layout can account for it.
     core.globals_mut().bar_runtime.systray_width =
         crate::systray::wayland::get_wayland_systray_width_with_state(core, wayland_systray);
+    let _ = scale;
 
-    let mon_indices: Vec<(usize, i32, i32, i32, i32)> = core
-        .globals()
-        .monitors_iter()
-        .filter_map(|(i, m)| {
-            if !m.shows_bar() {
-                return None;
-            }
-            Some((
-                i,
-                m.work_rect.x,
-                m.bar_y,
-                m.work_rect.w,
-                core.globals().cfg.bar_height,
-            ))
-        })
-        .collect();
+    let key = bar_render_key(core, wayland_systray);
+    poll_async_render_result(core, painter);
 
-    for (mon_idx, origin_x, origin_y, width, height) in mon_indices {
-        painter.begin(scale, origin_x, origin_y, width, height);
-        crate::bar::renderer::draw_bar(core, mon_idx, painter);
-        if core.globals().cfg.show_systray
-            && let Some(mon) = core.globals().monitor(mon_idx).cloned()
-        {
-            crate::systray::wayland::draw_wayland_systray(
-                core,
-                wayland_systray,
-                wayland_systray_menu,
-                &mon,
-                painter,
-            );
-        }
-        painter.finish();
+    if painter.cached_key != key {
+        request_async_render(painter, key, core, wayland_systray, wayland_systray_menu);
     }
 
-    let rendered = painter.take_buffers();
-    painter.cached_buffers = rendered
+    painter
+        .cached_buffers
         .iter()
-        .map(|(buffer, x, y)| BarBuffer {
-            buffer: buffer.clone(),
-            x: *x,
-            y: *y,
-        })
-        .collect();
-    painter.cached_key = key;
-    painter.has_cached_buffers = true;
-
-    rendered
+        .map(|b| (b.buffer.clone(), b.x, b.y))
+        .collect()
 }
 
 fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {

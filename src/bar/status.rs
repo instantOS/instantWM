@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 pub(crate) const TEXT_PADDING: i32 = 6;
 const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
@@ -81,6 +82,19 @@ pub(crate) struct ParsedStatus {
     pub i3bar: Option<I3StatusLine>,
 }
 
+#[derive(Debug, Clone)]
+struct PendingStatusParse {
+    seq: u64,
+    text: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StatusParseResult {
+    pub seq: u64,
+    pub text: String,
+    pub parsed: ParsedStatus,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub(crate) struct I3ClickEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,7 +124,22 @@ struct I3ClickRuntime {
     receiver: Mutex<Receiver<I3ClickEvent>>,
 }
 
+#[derive(Debug)]
+struct StatusParseShared {
+    pending: Mutex<Option<PendingStatusParse>>,
+    wake: Condvar,
+    results_tx: Sender<StatusParseResult>,
+}
+
+#[derive(Debug)]
+struct StatusParseRuntime {
+    shared: Arc<StatusParseShared>,
+    results_rx: Mutex<Receiver<StatusParseResult>>,
+    next_seq: AtomicU64,
+}
+
 static I3BAR_CLICK_RUNTIME: OnceLock<I3ClickRuntime> = OnceLock::new();
+static STATUS_PARSE_RUNTIME: OnceLock<StatusParseRuntime> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawI3Block {
@@ -189,19 +218,14 @@ pub(crate) fn draw_status_bar(
     }
 
     let items = ctx.bar.status_items_for_text(stext).to_vec();
-    let layout = measure_layout(systray_width, m, items.as_slice(), painter);
-
-    let mut click_targets = Vec::new();
-    draw_items(
-        painter,
+    draw_status_items(
+        systray_width,
+        m,
         bar_height,
         items.as_slice(),
-        layout,
-        ctx.globals(),
-        &mut click_targets,
-    );
-
-    (layout.draw_start_x, layout.total_width, click_targets)
+        ctx.globals().status_scheme(),
+        painter,
+    )
 }
 
 fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
@@ -272,13 +296,16 @@ pub(crate) fn parse_status(bytes: &[u8]) -> ParsedStatus {
     }
 
     // Fall back to plain text
-    let text = std::str::from_utf8(bytes).unwrap_or("").to_string();
+    parse_status_fallback(std::str::from_utf8(bytes).unwrap_or(""))
+}
+
+pub(crate) fn parse_status_fallback(text: &str) -> ParsedStatus {
     if text.is_empty() {
         return ParsedStatus::default();
     }
 
     ParsedStatus {
-        items: vec![StatusItem::Text(text)],
+        items: vec![StatusItem::Text(text.to_string())],
         i3bar: None,
     }
 }
@@ -426,6 +453,68 @@ fn i3bar_click_runtime() -> &'static I3ClickRuntime {
     })
 }
 
+fn status_parse_runtime() -> &'static StatusParseRuntime {
+    STATUS_PARSE_RUNTIME.get_or_init(|| {
+        let (results_tx, results_rx) = mpsc::channel();
+        let shared = Arc::new(StatusParseShared {
+            pending: Mutex::new(None),
+            wake: Condvar::new(),
+            results_tx,
+        });
+
+        let worker_shared = Arc::clone(&shared);
+        std::thread::Builder::new()
+            .name("instantwm-status-parse".to_string())
+            .spawn(move || {
+                loop {
+                    let pending = {
+                        let mut guard = worker_shared.pending.lock().unwrap();
+                        loop {
+                            if let Some(pending) = guard.take() {
+                                break pending;
+                            }
+                            guard = worker_shared.wake.wait(guard).unwrap();
+                        }
+                    };
+
+                    let parsed = parse_status(pending.text.as_bytes());
+                    let _ = worker_shared.results_tx.send(StatusParseResult {
+                        seq: pending.seq,
+                        text: pending.text,
+                        parsed,
+                    });
+                }
+            })
+            .expect("failed to spawn status parser thread");
+
+        StatusParseRuntime {
+            shared,
+            results_rx: Mutex::new(results_rx),
+            next_seq: AtomicU64::new(1),
+        }
+    })
+}
+
+pub(crate) fn request_status_parse(text: &str) -> u64 {
+    let runtime = status_parse_runtime();
+    let seq = runtime.next_seq.fetch_add(1, Ordering::Relaxed);
+    let mut pending = runtime.shared.pending.lock().unwrap();
+    *pending = Some(PendingStatusParse {
+        seq,
+        text: text.to_string(),
+    });
+    runtime.shared.wake.notify_one();
+    seq
+}
+
+pub(crate) fn try_recv_status_parse_result() -> Option<StatusParseResult> {
+    let receiver = status_parse_runtime().results_rx.lock().ok()?;
+    match receiver.try_recv() {
+        Ok(result) => Some(result),
+        Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+    }
+}
+
 pub(crate) fn enqueue_i3bar_click_event(event: I3ClickEvent) {
     let _ = i3bar_click_runtime().sender.send(event);
 }
@@ -501,16 +590,36 @@ fn measure_i3_block_width(block: &I3Block, painter: &mut dyn crate::bar::paint::
     (block_width + separator_width).max(0)
 }
 
+pub(crate) fn draw_status_items(
+    systray_width: i32,
+    m: &Monitor,
+    bar_height: i32,
+    items: &[StatusItem],
+    base_scheme: crate::bar::paint::BarScheme,
+    painter: &mut dyn crate::bar::paint::BarPainter,
+) -> (i32, i32, Vec<StatusClickTarget>) {
+    let layout = measure_layout(systray_width, m, items, painter);
+    let mut click_targets = Vec::new();
+    draw_items(
+        painter,
+        bar_height,
+        items,
+        layout,
+        &base_scheme,
+        &mut click_targets,
+    );
+    (layout.draw_start_x, layout.total_width, click_targets)
+}
+
 fn draw_items(
     painter: &mut dyn crate::bar::paint::BarPainter,
     bar_height: i32,
     items: &[StatusItem],
     layout: StatusLayout,
-    g: &crate::globals::Globals,
+    base_scheme: &crate::bar::paint::BarScheme,
     click_targets: &mut Vec<StatusClickTarget>,
 ) {
-    let scheme = g.status_scheme();
-    painter.set_scheme(scheme);
+    painter.set_scheme(base_scheme.clone());
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
@@ -532,7 +641,7 @@ fn draw_items(
                 x += seg_w;
             }
             StatusItem::I3Block(block) => {
-                let total_w = draw_i3_block(painter, x, bar_height, block, g);
+                let total_w = draw_i3_block(painter, x, bar_height, block, base_scheme);
                 if total_w > 0 {
                     click_targets.push(StatusClickTarget {
                         start_x: x,
@@ -552,9 +661,8 @@ fn draw_i3_block(
     x: i32,
     bar_height: i32,
     block: &I3Block,
-    g: &crate::globals::Globals,
+    base_scheme: &crate::bar::paint::BarScheme,
 ) -> i32 {
-    let base_scheme = g.status_scheme();
     let mut fg = block
         .color
         .as_deref()

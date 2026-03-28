@@ -1,10 +1,8 @@
-use crate::bar::model::ClientBarStats;
 use crate::bar::paint::BarPainter;
-use crate::bar::{status, widgets};
 use crate::contexts::CoreCtx;
 use crate::types::Gesture;
 
-/// Core bar drawing implementation shared between X11 and Wayland.
+/// Core bar drawing implementation shared between backends.
 ///
 /// Systray width must be cached in `core.globals().bar_runtime.systray_width` by the caller
 /// before invoking this function.
@@ -13,122 +11,38 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         return;
     }
 
-    let (monitor_num, work_rect_w, monitor_id) = match core.globals().monitor(mon_idx) {
-        Some(m) => {
-            if !m.shows_bar() || core.bar.pausedraw() {
-                core.bar.recursion_exit();
-                return;
-            }
-            (m.num, m.work_rect.w, m.id())
-        }
+    let monitor = match core.globals().monitor(mon_idx).cloned() {
+        Some(m) => m,
         None => {
             core.bar.recursion_exit();
             return;
         }
     };
 
-    let bar_height = core.globals().cfg.bar_height;
-    if work_rect_w <= 0 || bar_height <= 0 {
+    if !monitor.shows_bar() || core.bar.pausedraw() {
         core.bar.recursion_exit();
         return;
     }
 
-    let is_selmon = core.globals().selected_monitor().num == monitor_num;
+    let bar_height = core.globals().cfg.bar_height;
+    if monitor.work_rect.w <= 0 || bar_height <= 0 {
+        core.bar.recursion_exit();
+        return;
+    }
 
-    let systray_width = if core.globals().cfg.show_systray && is_selmon {
-        core.globals().bar_runtime.systray_width
-    } else {
-        0
-    };
-
-    let (status_start_x, status_width, status_click_targets) = if is_selmon {
-        let m = core.globals().monitor(mon_idx).cloned().unwrap();
-        status::draw_status_bar(core, systray_width, &m, bar_height, painter)
-    } else {
-        (0, 0, Vec::new())
+    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
+    let Some(snapshot) = snapshots.into_iter().find(|s| s.monitor_id == monitor.id()) else {
+        core.bar.recursion_exit();
+        return;
     };
 
     core.bar.clear_cached_widths();
-    core.bar.begin_monitor_hit_cache(monitor_id);
-    if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
-        hit.status_click_targets = status_click_targets;
-    }
+    let output = crate::bar::scene::render_monitor_snapshot(&snapshot, painter);
+    core.bar.replace_hit_cache(snapshot.monitor_id, output.hit_cache);
 
-    widgets::draw_startmenu_icon(core, bar_height, painter);
-
-    let (occupied_tags, urgent_tags, visible_clients) = {
-        let m = core.globals().monitor(mon_idx).unwrap();
-        let stats = ClientBarStats::collect(m, core.globals());
-        (
-            stats.occupied_tags,
-            stats.urgent_tags,
-            stats.visible_clients,
-        )
-    };
-
-    let mut x = core.globals().cfg.startmenusize;
-
-    let mon_has_sel = core
-        .globals()
-        .monitor(mon_idx)
-        .is_some_and(|m| m.sel.is_some());
-
-    {
-        let m = core.globals().monitor(mon_idx).cloned().unwrap();
-        x = widgets::draw_tag_indicators(
-            core,
-            &m,
-            x,
-            occupied_tags,
-            urgent_tags,
-            bar_height,
-            painter,
-        );
-        x = widgets::draw_layout_indicator(core, &m, x, bar_height, painter);
-    }
-
-    if !mon_has_sel {
-        x = widgets::draw_shutdown_button(core, x, bar_height, painter);
-    }
-
-    if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
-        hit.shutdown_end = x;
-    }
-
-    let title_end_x = if is_selmon && status_width > 0 {
-        status_start_x
-    } else {
-        work_rect_w - systray_width
-    };
-    let title_width = (title_end_x - x).max(0);
-
-    if let Some(hit) = core.bar.monitor_hit_cache_mut(monitor_id) {
-        hit.status_hit_x = if is_selmon && status_width > 0 {
-            status_start_x
-        } else {
-            work_rect_w - systray_width
-        };
-    }
-
-    let mut new_activeoffset = None;
-    if title_width > 0 {
-        let m = core.globals().monitor(mon_idx).cloned().unwrap();
-        new_activeoffset = widgets::draw_window_titles(
-            core,
-            &m,
-            x,
-            title_width,
-            visible_clients,
-            bar_height,
-            painter,
-        );
-    }
-
-    if let Some(m) = core.globals_mut().monitor_mut(mon_idx) {
-        m.bar_clients_width = title_width;
-        if let Some(offset) = new_activeoffset {
-            m.activeoffset = offset;
-        }
+    if let Some(mon) = core.globals_mut().monitor_mut(mon_idx) {
+        mon.bar_clients_width = output.bar_clients_width;
+        mon.activeoffset = output.activeoffset;
     }
 
     core.bar.recursion_exit();

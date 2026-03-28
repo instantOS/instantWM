@@ -49,6 +49,18 @@ pub trait BarPainter {
         detail_height: i32,
     ) -> i32;
 
+    fn blit_rgba_bgra(
+        &mut self,
+        _dst_x: i32,
+        _dst_y: i32,
+        _dst_w: i32,
+        _dst_h: i32,
+        _src_w: i32,
+        _src_h: i32,
+        _src_rgba: &[u8],
+    ) {
+    }
+
     fn fill_rect(&mut self, x: i32, y: i32, w: i32, h: i32) {
         self.rect(x, y, w, h, true, false);
     }

@@ -105,6 +105,7 @@ pub fn update_status(wm: &mut Wm, text: String) -> Response {
     }
 
     wm.g.bar_runtime.status_text = text;
+    wm.bar.request_async_status_parse(&wm.g.bar_runtime.status_text);
     wm.bar.mark_dirty();
 
     Response::ok()
