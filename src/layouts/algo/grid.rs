@@ -56,7 +56,8 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── count tiled clients ───────────────────────────────────────────────
     let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as i32;
 
-    if n == 0 {
+    // A single tiled client fills the whole work area — nothing to grid.
+    if n <= 1 {
         return;
     }
 
