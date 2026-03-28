@@ -90,6 +90,12 @@ pub fn run() -> ! {
 
     crate::runtime::register_ipc_source(&loop_handle, &ipc_server);
 
+    let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
+    loop_handle
+        .insert_source(render_ping_source, |_, _, _| {})
+        .expect("render ping source");
+    state.runtime.render_ping = Some(render_ping);
+
     // ── Winit event source ──────────────────────────────────────────────
     // Insert the winit event loop as a calloop source so host window
     // events (input, resize, close) wake the event loop immediately

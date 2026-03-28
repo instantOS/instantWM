@@ -11,6 +11,7 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    update_primary_scanout_output,
 };
 use crate::wm::Wm;
 
@@ -112,6 +113,8 @@ pub fn render_frame(
             [0.05, 0.05, 0.07, 1.0],
         )
         .expect("render output");
+
+    update_primary_scanout_output(state, output, &render_result.states);
 
     // Shared: submit pending screencopies
     crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(

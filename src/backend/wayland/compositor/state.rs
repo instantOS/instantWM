@@ -188,6 +188,7 @@ pub struct WaylandRuntimeState {
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub pending_screencopies: Vec<PendingScreencopy>,
     pub render_dirty: bool,
+    pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
     pub pointer_location: Point<f64, Logical>,
@@ -204,6 +205,7 @@ impl Default for WaylandRuntimeState {
             tracked_devices: Vec::new(),
             pending_screencopies: Vec::new(),
             render_dirty: false,
+            render_ping: None,
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
             pointer_location: Point::from((0.0, 0.0)),
@@ -495,6 +497,9 @@ impl WaylandState {
     #[inline]
     pub fn request_render(&mut self) {
         self.runtime.render_dirty = true;
+        if let Some(render_ping) = &self.runtime.render_ping {
+            render_ping.ping();
+        }
     }
 
     #[inline]

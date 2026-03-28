@@ -31,6 +31,7 @@ use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    update_primary_scanout_output,
 };
 use crate::wm::Wm;
 
@@ -404,6 +405,8 @@ pub fn render_drm_output(
     {
         let _ = primary_swapchain.sync.wait();
     }
+
+    update_primary_scanout_output(state, &entry.output, &frame_result.states);
 
     let frame_metadata = DrmFrameMetadata {
         presentation_feedback: collect_presentation_feedback(state, entry, &frame_result.states),

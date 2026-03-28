@@ -17,13 +17,16 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use smithay::backend::renderer::element::Kind;
+use smithay::backend::renderer::element::{Kind, RenderElementStates, default_primary_scanout_output_compare};
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::PopupManager;
-use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
+use smithay::desktop::utils::{
+    send_frames_surface_tree, surface_primary_scanout_output, update_surface_primary_scanout_output,
+    with_surfaces_surface_tree,
+};
 use smithay::input::keyboard::ModifiersState;
 use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus};
 use smithay::output::Output;
@@ -526,6 +529,70 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
         layer_surface.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
+    }
+}
+
+/// Update Smithay's primary-scanout bookkeeping for all surfaces visible on `output`.
+///
+/// `send_frames_surface_tree` and presentation feedback use this state to decide
+/// which output should drive a surface's callbacks. If we never update it,
+/// frame callbacks are throttled as if every surface were off-screen, which can
+/// stall clients that rely on `wl_surface.frame`.
+pub fn update_primary_scanout_output(
+    state: &WaylandState,
+    output: &Output,
+    render_states: &RenderElementStates,
+) {
+    let output_geo = state.space.output_geometry(output);
+
+    if state.is_locked() {
+        let output_name = output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            with_surfaces_surface_tree(lock_surface.wl_surface(), |surface, data| {
+                let _ = update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    data,
+                    render_states,
+                    default_primary_scanout_output_compare,
+                );
+            });
+        }
+        return;
+    }
+
+    for window in state.space.elements() {
+        if let Some(out_geo) = output_geo
+            && let Some(win_loc) = state.space.element_location(window)
+        {
+            let win_rect = smithay::utils::Rectangle::new(win_loc, window.geometry().size);
+            if !out_geo.overlaps(win_rect) {
+                continue;
+            }
+        }
+
+        window.with_surfaces(|surface, data| {
+            let _ = update_surface_primary_scanout_output(
+                surface,
+                output,
+                data,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
+    }
+
+    let map = smithay::desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.with_surfaces(|surface, data| {
+            let _ = update_surface_primary_scanout_output(
+                surface,
+                output,
+                data,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
     }
 }
 

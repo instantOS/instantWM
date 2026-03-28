@@ -404,6 +404,28 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
         changed = true;
     }
 
+    let layout_width = outputs
+        .iter()
+        .map(|output| output.rect.x.saturating_add(output.rect.w))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let layout_height = outputs
+        .iter()
+        .map(|output| output.rect.y.saturating_add(output.rect.h))
+        .max()
+        .unwrap_or(1)
+        .max(1);
+
+    {
+        let cfg = &mut ctx.core_mut().globals_mut().cfg;
+        if cfg.screen_width != layout_width || cfg.screen_height != layout_height {
+            cfg.screen_width = layout_width;
+            cfg.screen_height = layout_height;
+            changed = true;
+        }
+    }
+
     let mut new_monitors = Vec::new();
     for (i, output) in outputs.into_iter().enumerate() {
         let mut m = Monitor::new_with_values(
