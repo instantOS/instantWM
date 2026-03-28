@@ -149,11 +149,11 @@ pub fn dispatch_libinput_event(
     match event {
         InputEvent::DeviceAdded { mut device } => {
             configure_device(&mut device, &wm.g.cfg.input);
-            state.tracked_devices.push(device);
+            state.runtime.tracked_devices.push(device);
             false
         }
         InputEvent::DeviceRemoved { device } => {
-            state.tracked_devices.retain(|d| d != &device);
+            state.runtime.tracked_devices.retain(|d| d != &device);
             false
         }
         InputEvent::Keyboard { event } => {
@@ -177,7 +177,7 @@ pub fn dispatch_libinput_event(
                 &pointer_handle,
                 &keyboard_handle,
                 event,
-                state.pointer_location,
+                state.runtime.pointer_location,
             );
             true
         }
@@ -188,7 +188,7 @@ pub fn dispatch_libinput_event(
                 &pointer_handle,
                 &keyboard_handle,
                 event,
-                state.pointer_location,
+                state.runtime.pointer_location,
             );
             true
         }

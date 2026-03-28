@@ -52,10 +52,10 @@ impl CompositorHandler for WaylandState {
 
         // Check if this commit is from a pending toplevel that has finally
         // produced a buffer.  If so, promote it to a managed window.
-        if let Some(pos) = self
-            .pending_toplevels
-            .iter()
-            .position(|t| t.wl_surface() == surface)
+        if let Some(pos) =
+            self.runtime.pending_toplevels.iter().position(
+                |t: &smithay::wayland::shell::xdg::ToplevelSurface| t.wl_surface() == surface,
+            )
         {
             let has_buffer =
                 smithay::backend::renderer::utils::with_renderer_surface_state(surface, |state| {
@@ -63,7 +63,7 @@ impl CompositorHandler for WaylandState {
                 })
                 .unwrap_or(false);
             if has_buffer {
-                let toplevel = self.pending_toplevels.swap_remove(pos);
+                let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
                 let _ = self.map_new_toplevel(toplevel);
             }
         }
@@ -155,7 +155,7 @@ impl ClientDndGrabHandler for WaylandState {
         icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
         _seat: smithay::input::Seat<Self>,
     ) {
-        self.dnd_icon = icon;
+        self.runtime.dnd_icon = icon;
         self.request_render();
     }
 
@@ -165,7 +165,7 @@ impl ClientDndGrabHandler for WaylandState {
         _accepted: bool,
         _seat: smithay::input::Seat<Self>,
     ) {
-        self.dnd_icon = None;
+        self.runtime.dnd_icon = None;
         self.request_render();
     }
 }

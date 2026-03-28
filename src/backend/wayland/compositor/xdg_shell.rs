@@ -53,7 +53,7 @@ impl SeatHandler for WaylandState {
         _seat: &smithay::input::Seat<Self>,
         led_state: smithay::input::keyboard::LedState,
     ) {
-        if let Some(tx) = &self.led_state_tx {
+        if let Some(tx) = &self.runtime.led_state_tx {
             let _ = tx.send(led_state);
         }
     }
@@ -86,7 +86,7 @@ impl XdgShellHandler for WaylandState {
         if !surface.is_initial_configure_sent() {
             let _ = surface.send_configure();
         }
-        self.pending_toplevels.push(surface);
+        self.runtime.pending_toplevels.push(surface);
     }
 
     fn title_changed(&mut self, surface: ToplevelSurface) {
@@ -120,11 +120,12 @@ impl XdgShellHandler for WaylandState {
         // If the surface was still pending (never committed a buffer),
         // just remove it — no window management state was ever created.
         if let Some(pos) = self
+            .runtime
             .pending_toplevels
             .iter()
-            .position(|t| t.wl_surface() == surface.wl_surface())
+            .position(|t: &ToplevelSurface| t.wl_surface() == surface.wl_surface())
         {
-            self.pending_toplevels.swap_remove(pos);
+            self.runtime.pending_toplevels.swap_remove(pos);
             return;
         }
 

@@ -112,8 +112,8 @@ pub fn handle_pointer_motion(
     let output_height = wm.g.cfg.screen_height;
 
     // Compute and update pointer location
-    state.pointer_location =
-        event.compute_location(state.pointer_location, output_width, output_height);
+    state.runtime.pointer_location =
+        event.compute_location(state.runtime.pointer_location, output_width, output_height);
     // Dispatch to focus/drag handling logic
     dispatch_pointer_motion(
         wm,
@@ -132,7 +132,7 @@ pub fn dispatch_pointer_motion(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     time_msec: u32,
 ) {
-    let pointer_location = state.pointer_location;
+    let pointer_location = state.runtime.pointer_location;
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
 
@@ -263,7 +263,7 @@ fn resolve_pointer_focus(
     )>,
     Option<crate::types::WindowId>,
 ) {
-    let pointer_location = state.pointer_location;
+    let pointer_location = state.runtime.pointer_location;
     let mut pointer_focus = if in_bar_band || in_bar_guard_band {
         state.layer_surface_under_pointer(pointer_location)
     } else {
@@ -306,7 +306,7 @@ fn handle_resize_drag_motion(
     )>,
     time_msec: u32,
 ) -> bool {
-    let pointer_location = state.pointer_location;
+    let pointer_location = state.runtime.pointer_location;
     if !wayland_hover_resize_drag_motion(
         ctx,
         pointer_location.x.round() as i32,
@@ -343,7 +343,7 @@ fn handle_bar_motion(
     bar_pos: Option<BarPosition>,
     time_msec: u32,
 ) -> bool {
-    let pointer_location = state.pointer_location;
+    let pointer_location = state.runtime.pointer_location;
     let is_drag = wm.g.drag.interactive.active || wm.g.drag.tag.active;
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.ctx();

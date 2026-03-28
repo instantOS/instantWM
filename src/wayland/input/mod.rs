@@ -58,7 +58,7 @@ pub fn apply_pending_warp(
         return false;
     };
 
-    state.pointer_location = target;
+    state.runtime.pointer_location = target;
 
     let focus = state
         .layer_surface_under_pointer(target)

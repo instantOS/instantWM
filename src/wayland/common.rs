@@ -525,12 +525,7 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
     // Layer surfaces for this output only.
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
-        layer_surface.send_frame(
-            output,
-            elapsed,
-            throttle,
-            surface_primary_scanout_output,
-        );
+        layer_surface.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
     }
 }
 

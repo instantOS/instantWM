@@ -11,8 +11,8 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
-use smithay::reexports::wayland_server::Display;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
+use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
 use std::collections::{HashMap, HashSet};
@@ -63,7 +63,10 @@ impl DrmLoopState {
             session_active: true,
             render_flags,
             pending_crtcs: HashSet::new(),
-            presentation_seq: output_surfaces.iter().map(|entry| (entry.crtc, 0)).collect(),
+            presentation_seq: output_surfaces
+                .iter()
+                .map(|entry| (entry.crtc, 0))
+                .collect(),
         }
     }
 
@@ -173,7 +176,6 @@ pub fn run() -> ! {
 
     let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
-    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut wm.g, &output_surfaces);
     {
         use crate::monitor::update_geom;
         update_geom(&mut wm.ctx());
@@ -220,7 +222,7 @@ pub fn run() -> ! {
 
             if any_input {
                 let _ = runtime_event_tx_input.send(DrmRuntimeEvent::PointerActivity(
-                    state.pointer_location.x as i32,
+                    state.runtime.pointer_location.x as i32,
                 ));
             }
         })
@@ -258,7 +260,7 @@ pub fn run() -> ! {
     crate::runtime::spawn_status_bar(&wm);
 
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
-    state.led_state_tx = Some(led_state_tx);
+    state.runtime.led_state_tx = Some(led_state_tx);
 
     run_event_loop(
         event_loop,
@@ -425,14 +427,14 @@ fn run_event_loop(
             if wm.g.dirty.input_config {
                 wm.g.dirty.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.tracked_devices,
+                    &mut state.runtime.tracked_devices,
                     &wm.g.cfg.input,
                 );
             }
 
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
-                for device in state.tracked_devices.iter_mut() {
+                for device in state.runtime.tracked_devices.iter_mut() {
                     use smithay::reexports::input::DeviceCapability;
                     if device.has_capability(DeviceCapability::Keyboard) {
                         device.led_update(leds);
@@ -606,6 +608,7 @@ fn sync_output_vrr_modes_from_state(
 
 fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {
     state
+        .runtime
         .pending_screencopies
         .iter()
         .any(|copy| copy.output.name() == output_name)
@@ -651,7 +654,7 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
                     smithay::input::pointer::CursorImageStatus::Named(_)
                         | smithay::input::pointer::CursorImageStatus::Hidden
                 )
-                || state.dnd_icon.is_some();
+                || state.runtime.dnd_icon.is_some();
 
             if hard_blocked {
                 return false;
@@ -716,7 +719,7 @@ fn render_outputs(
     let session_active = loop_state.session_active;
     let pending_crtcs = loop_state.pending_crtcs.clone();
 
-    let pointer_location = state.pointer_location;
+    let pointer_location = state.runtime.pointer_location;
 
     if session_active {
         for entry in output_surfaces.iter_mut() {

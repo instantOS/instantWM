@@ -66,7 +66,7 @@ pub fn run() -> ! {
     update_geom(&mut wm.ctx());
 
     // Store initial window size for the calloop source callback.
-    state.winit_window_size = output_size;
+    state.runtime.winit_window_size = output_size;
 
     let output = state.create_output("winit", initial_w, initial_h);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
@@ -99,14 +99,14 @@ pub fn run() -> ! {
     loop_handle
         .insert_source(winit_loop, move |event, _, state| match event {
             WinitEvent::Resized { size, .. } => {
-                state.winit_window_size = size;
-                state.pending_winit_resize = Some((size.w, size.h));
+                state.runtime.winit_window_size = size;
+                state.runtime.pending_winit_resize = Some((size.w, size.h));
             }
             WinitEvent::Input(event) => {
                 dispatch_winit_input(state, &kb, &ptr, event);
             }
             WinitEvent::CloseRequested => {
-                state.winit_close_requested = true;
+                state.runtime.winit_close_requested = true;
             }
             WinitEvent::Redraw | WinitEvent::Focus(_) => {}
         })
@@ -124,10 +124,10 @@ pub fn run() -> ! {
     event_loop
         .run(None, &mut state, move |state| {
             // ── 1. Process buffered winit resize/close ──────────────────
-            if let Some((w, h)) = state.pending_winit_resize.take() {
+            if let Some((w, h)) = state.runtime.pending_winit_resize.take() {
                 crate::wayland::input::handle_resize(&mut wm, state, &output, w, h);
             }
-            if state.winit_close_requested {
+            if state.runtime.winit_close_requested {
                 loop_signal.stop();
                 return;
             }
@@ -186,16 +186,16 @@ fn dispatch_winit_input(
             handle_keyboard(wm, state, keyboard_handle, event);
         }
         InputEvent::PointerMotionAbsolute { event: motion } => {
-            let size = state.winit_window_size;
+            let size = state.runtime.winit_window_size;
             let motion_event = motion_event_from_winit(motion, size);
             handle_pointer_motion(wm, state, pointer_handle, keyboard_handle, motion_event);
         }
         InputEvent::PointerButton { event: btn } => {
-            let loc = state.pointer_location;
+            let loc = state.runtime.pointer_location;
             handle_pointer_button(wm, state, pointer_handle, keyboard_handle, btn, loc);
         }
         InputEvent::PointerAxis { event: axis } => {
-            let loc = state.pointer_location;
+            let loc = state.runtime.pointer_location;
             handle_pointer_axis(wm, state, pointer_handle, keyboard_handle, axis, loc);
         }
         _ => {}

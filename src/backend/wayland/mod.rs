@@ -266,6 +266,7 @@ impl BackendOps for WaylandBackend {
     fn get_input_devices(&self) -> Vec<String> {
         self.with_state(|state: &mut WaylandState| {
             state
+                .runtime
                 .tracked_devices
                 .iter()
                 .map(|d| {

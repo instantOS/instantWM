@@ -6,15 +6,15 @@ use smithay::backend::drm::compositor::{FrameError, FrameFlags, PrimaryPlaneElem
 use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::DrmOutputRenderElements;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
-use smithay::backend::renderer::element::RenderElementStates;
-use smithay::backend::renderer::{Bind, Offscreen, Renderer};
 use smithay::backend::renderer::ImportDma;
+use smithay::backend::renderer::element::RenderElementStates;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+use smithay::backend::renderer::{Bind, Offscreen, Renderer};
 use smithay::desktop::utils::{
     OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
     surface_primary_scanout_output, take_presentation_feedback_surface_tree,
@@ -40,7 +40,7 @@ mod cursor;
 pub use cursor::CursorManager;
 pub use state::{
     DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutputManager, OutputHitRegion,
-    OutputSurfaceEntry, sync_monitors_from_outputs_vec,
+    OutputSurfaceEntry,
 };
 
 pub mod state;
@@ -257,7 +257,7 @@ pub fn render_drm_output(
     let cursor_presentation = resolve_cursor_presentation(
         &state.cursor_image_status,
         state.cursor_icon_override,
-        state.dnd_icon.as_ref(),
+        state.runtime.dnd_icon.as_ref(),
     );
 
     let cursor_scale = entry.output.current_scale().integer_scale();
@@ -330,6 +330,7 @@ pub fn render_drm_output(
     }
 
     let has_pending_screencopy = state
+        .runtime
         .pending_screencopies
         .iter()
         .any(|copy| copy.output == entry.output);
@@ -364,12 +365,12 @@ pub fn render_drm_output(
             (target_size.w, target_size.h).into();
         let mut capture: GlesTexture =
             match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
-            Ok(buffer) => buffer,
-            Err(err) => {
-                log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
-                return RenderOutcome::Failed;
-            }
-        };
+                Ok(buffer) => buffer,
+                Err(err) => {
+                    log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                    return RenderOutcome::Failed;
+                }
+            };
         match renderer.bind(&mut capture) {
             Ok(mut target) => {
                 match frame_result.blit_frame_result(
@@ -384,7 +385,7 @@ pub fn render_drm_output(
                     Ok(sync) => {
                         let _ = renderer.wait(&sync);
                         crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
-                            &mut state.pending_screencopies,
+                            &mut state.runtime.pending_screencopies,
                             renderer,
                             &target,
                             &entry.output,
@@ -431,8 +432,8 @@ fn collect_presentation_feedback(
     let surface_flags =
         |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
          _: &smithay::wayland::compositor::SurfaceData| {
-        surface_presentation_feedback_flags_from_states(surface, render_states)
-    };
+            surface_presentation_feedback_flags_from_states(surface, render_states)
+        };
 
     if state.is_locked() {
         let output_name = entry.output.name();

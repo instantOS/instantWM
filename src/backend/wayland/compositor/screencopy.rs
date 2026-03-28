@@ -297,7 +297,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             return;
         }
 
-        state.pending_screencopies.push(PendingScreencopy {
+        state.runtime.pending_screencopies.push(PendingScreencopy {
             output: output.clone(),
             physical_region: *physical_region,
             overlay_cursor: *overlay_cursor,

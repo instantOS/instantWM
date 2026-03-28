@@ -148,7 +148,6 @@ pub struct WaylandState {
     /// the event loop, a standard `Rc/RefCell` cycle would be difficult
     /// to manage and performantly access from Smithay's handlers.
     wm: Option<NonNull<Wm>>,
-    pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
@@ -156,55 +155,11 @@ pub struct WaylandState {
     /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
 
-    /// Pending screencopy frames waiting to be fulfilled during the next render.
-    pub pending_screencopies: Vec<PendingScreencopy>,
-
-    /// Set when some compositor-visible state changed and the next backend
-    /// loop iteration should schedule a redraw.
-    pub render_dirty: bool,
-
-    /// Per-output runtime metadata shared between the DRM render loop and
-    /// higher-level control surfaces such as `monitor list`.
-    pub output_metadata: HashMap<String, WaylandOutputMetadata>,
-
-    /// Toplevel surfaces that have not yet committed a buffer.
-    ///
-    /// Some clients (e.g. clipboard tools like `wl-copy`) create an XDG
-    /// toplevel surface but never render anything into it.  Deferring
-    /// window creation until the first buffer commit avoids a spurious
-    /// layout rearrange that the user would see as a brief window shift.
-    pub(super) pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
-
     /// Pending cursor warp requested by the WM (e.g. warp-to-focus keybinding).
     /// The event loop consumes this each tick and synthesises a pointer motion.
     pub pending_warp: Option<Point<f64, Logical>>,
-
-    /// Current pointer location in logical coordinates.
-    /// Stored centrally to ensure consistent state across backends.
-    pub pointer_location: Point<f64, Logical>,
-
-    /// Channel to notify the DRM backend loop of keyboard LED state changes.
-    pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
-
-    /// Current drag-and-drop icon surface.
-    pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-
-    /// Cached winit window size for the nested backend.
-    ///
-    /// Updated by the winit calloop source callback on `Resized` events;
-    /// read by input handlers that need the window dimensions to transform
-    /// absolute pointer coordinates.
-    pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
-
-    /// Pending resize from the winit calloop source.
-    ///
-    /// The source callback cannot call `handle_resize` directly because it
-    /// needs `&Output` which lives in the runtime function.  Instead we
-    /// buffer the new size here and the `run` closure applies it.
-    pub pending_winit_resize: Option<(i32, i32)>,
-
-    /// Set by the winit calloop source when a close is requested.
-    pub winit_close_requested: bool,
+    /// Backend-local runtime state that is not part of protocol or desktop state.
+    pub runtime: WaylandRuntimeState,
 }
 
 /// Tracks the current session lock state.
@@ -227,6 +182,38 @@ pub struct WaylandOutputMetadata {
     pub vrr_support: crate::backend::BackendVrrSupport,
     pub vrr_mode: VrrMode,
     pub vrr_enabled: bool,
+}
+
+pub struct WaylandRuntimeState {
+    pub tracked_devices: Vec<smithay::reexports::input::Device>,
+    pub pending_screencopies: Vec<PendingScreencopy>,
+    pub render_dirty: bool,
+    pub output_metadata: HashMap<String, WaylandOutputMetadata>,
+    pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
+    pub pointer_location: Point<f64, Logical>,
+    pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
+    pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+    pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
+    pub pending_winit_resize: Option<(i32, i32)>,
+    pub winit_close_requested: bool,
+}
+
+impl Default for WaylandRuntimeState {
+    fn default() -> Self {
+        Self {
+            tracked_devices: Vec::new(),
+            pending_screencopies: Vec::new(),
+            render_dirty: false,
+            output_metadata: HashMap::new(),
+            pending_toplevels: Vec::new(),
+            pointer_location: Point::from((0.0, 0.0)),
+            led_state_tx: None,
+            dnd_icon: None,
+            winit_window_size: smithay::utils::Size::from((0, 0)),
+            pending_winit_resize: None,
+            winit_close_requested: false,
+        }
+    }
 }
 
 impl WaylandState {
@@ -326,22 +313,12 @@ impl WaylandState {
             xdisplay: None,
             next_window_id: 1,
             wm: None,
-            tracked_devices: Vec::new(),
             last_configured_size: HashMap::new(),
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             foreign_toplevel_handles: HashMap::new(),
-            pending_screencopies: Vec::new(),
-            render_dirty: false,
-            output_metadata: HashMap::new(),
-            pending_toplevels: Vec::new(),
             pending_warp: None,
-            pointer_location: Point::from((0.0, 0.0)),
-            led_state_tx: None,
-            dnd_icon: None,
-            winit_window_size: smithay::utils::Size::from((0, 0)),
-            pending_winit_resize: None,
-            winit_close_requested: false,
+            runtime: WaylandRuntimeState::default(),
         }
     }
 
@@ -517,12 +494,12 @@ impl WaylandState {
 
     #[inline]
     pub fn request_render(&mut self) {
-        self.render_dirty = true;
+        self.runtime.render_dirty = true;
     }
 
     #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.render_dirty)
+        std::mem::take(&mut self.runtime.render_dirty)
     }
 
     pub fn set_output_vrr_support(
@@ -531,6 +508,7 @@ impl WaylandState {
         support: crate::backend::BackendVrrSupport,
     ) {
         let entry = self
+            .runtime
             .output_metadata
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
@@ -543,6 +521,7 @@ impl WaylandState {
 
     pub fn set_output_vrr_mode(&mut self, output_name: &str, mode: VrrMode) {
         let entry = self
+            .runtime
             .output_metadata
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
@@ -555,6 +534,7 @@ impl WaylandState {
 
     pub fn set_output_vrr_enabled(&mut self, output_name: &str, enabled: bool) {
         let entry = self
+            .runtime
             .output_metadata
             .entry(output_name.to_string())
             .or_insert(WaylandOutputMetadata {
@@ -566,7 +546,7 @@ impl WaylandState {
     }
 
     pub fn output_vrr_metadata(&self, output_name: &str) -> Option<&WaylandOutputMetadata> {
-        self.output_metadata.get(output_name)
+        self.runtime.output_metadata.get(output_name)
     }
 
     /// Set the keyboard layout.
