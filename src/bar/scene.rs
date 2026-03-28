@@ -40,6 +40,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub origin_y: i32,
     pub width: i32,
     pub height: i32,
+    pub font_size: f32,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
     pub startmenu_size: i32,
@@ -84,11 +85,10 @@ pub(crate) fn build_monitor_snapshots(
     )>,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.globals().selected_monitor().num;
-    let bar_height = core.globals().cfg.bar_height;
-    let horizontal_padding = core.globals().cfg.horizontal_padding;
-    let startmenu_size = core.globals().cfg.startmenusize;
     let show_systray = core.globals().cfg.show_systray;
     let systray_spacing = core.globals().cfg.systray_spacing;
+    let base_font_size =
+        crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts);
     let drag_bar_active = core.globals().drag.bar_active;
     let current_mode = core.globals().behavior.current_mode.clone();
     let status_text = if !current_mode.is_empty() && current_mode != "default" {
@@ -136,6 +136,7 @@ pub(crate) fn build_monitor_snapshots(
             continue;
         }
         let mon = mon_ref.clone();
+        let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
 
         let mut stats = monitor_stats.get(&mon.id()).copied().unwrap_or_default();
         stats.occupied_tags = stats.occupied_tags.without_scratchpad();
@@ -222,11 +223,12 @@ pub(crate) fn build_monitor_snapshots(
             origin_x: mon.work_rect.x,
             origin_y: mon.bar_y,
             width: mon.work_rect.w,
-            height: bar_height,
+            height: mon.bar_height,
+            font_size,
             is_selected_monitor,
             status_scheme: core.globals().status_scheme(),
-            startmenu_size,
-            horizontal_padding,
+            startmenu_size: mon.startmenu_size,
+            horizontal_padding: mon.horizontal_padding,
             gesture,
             layout_symbol: mon.layout_symbol(),
             tags,

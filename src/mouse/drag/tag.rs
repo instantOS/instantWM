@@ -94,9 +94,10 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let selmon_id = ctx.core_mut().globals_mut().drag.tag.monitor_id;
     let mon_mx = ctx.core_mut().globals_mut().drag.tag.mon_mx;
 
-    let bar_bottom = ctx.core_mut().globals_mut().selected_monitor().bar_y
-        + ctx.core_mut().globals_mut().cfg.bar_height
-        + 1;
+    let bar_bottom = {
+        let mon = ctx.core_mut().globals_mut().selected_monitor();
+        mon.bar_y + mon.bar_height + 1
+    };
 
     if root_y > bar_bottom {
         ctx.core_mut().globals_mut().drag.tag.cursor_on_bar = false;

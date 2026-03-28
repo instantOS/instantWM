@@ -24,7 +24,7 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         return;
     }
 
-    let bar_height = core.globals().cfg.bar_height;
+    let bar_height = monitor.bar_height;
     if monitor.work_rect.w <= 0 || bar_height <= 0 {
         core.bar.recursion_exit();
         return;

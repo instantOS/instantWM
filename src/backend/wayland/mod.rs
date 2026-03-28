@@ -249,6 +249,7 @@ impl BackendOps for WaylandBackend {
                             h: geom.size.h,
                         }
                     },
+                    scale: o.current_scale().fractional_scale(),
                     vrr_support: state
                         .output_vrr_metadata(&o.name())
                         .map(|m| m.vrr_support)

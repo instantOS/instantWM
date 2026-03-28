@@ -87,6 +87,7 @@ fn get_screen_resources_current(
         outputs.push(BackendOutputInfo {
             name,
             rect,
+            scale: 1.0,
             vrr_support: BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,
@@ -154,6 +155,7 @@ fn get_screen_resources(conn: &RustConnection, root: Window) -> Option<Vec<Backe
         outputs.push(BackendOutputInfo {
             name,
             rect,
+            scale: 1.0,
             vrr_support: BackendVrrSupport::Unsupported,
             vrr_mode: None,
             vrr_enabled: false,

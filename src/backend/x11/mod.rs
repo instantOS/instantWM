@@ -256,6 +256,7 @@ impl BackendOps for X11BackendRef<'_> {
                     w: screen.width_in_pixels as i32,
                     h: screen.height_in_pixels as i32,
                 },
+                scale: 1.0,
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,

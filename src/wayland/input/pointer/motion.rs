@@ -234,7 +234,7 @@ fn compute_bar_hit(
     )
     .and_then(|mid| wm.g.monitor(mid))
     .map(|mon| {
-        let bar_h = wm.g.cfg.bar_height.max(1);
+        let bar_h = mon.bar_height.max(1);
         // 4-pixel guard band below the bar: pointer must move this many pixels
         // past the bar bottom before a window drag is allowed to start.
         let guard_h = 4;

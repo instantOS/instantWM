@@ -27,6 +27,7 @@ pub enum BackendVrrSupport {
 pub struct BackendOutputInfo {
     pub name: String,
     pub rect: Rect,
+    pub scale: f64,
     pub vrr_support: BackendVrrSupport,
     pub vrr_mode: Option<VrrMode>,
     pub vrr_enabled: bool,

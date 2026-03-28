@@ -275,6 +275,7 @@ impl WaylandSystrayRuntime {
 pub fn get_wayland_systray_width_with_state(
     core: &CoreCtx,
     wayland_systray: &WaylandSystray,
+    bar_height: i32,
 ) -> i32 {
     if !core.globals().cfg.show_systray {
         return 0;
@@ -283,7 +284,7 @@ pub fn get_wayland_systray_width_with_state(
     if items.is_empty() {
         return 0;
     }
-    let icon_h = core.globals().cfg.bar_height.max(1);
+    let icon_h = bar_height.max(1);
     let spacing = core.globals().cfg.systray_spacing.max(0);
     let mut width = spacing;
     for item in items {
@@ -608,7 +609,7 @@ fn systray_layout(
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &Monitor,
 ) -> SystrayLayout {
-    let icon_h = core.globals().cfg.bar_height.max(1);
+    let icon_h = mon.bar_height.max(1);
     let spacing = core.globals().cfg.systray_spacing.max(0);
     let mut tray_total_w = 0;
     if !wayland_systray.items.is_empty() {
@@ -674,7 +675,7 @@ fn draw_menu_overlay(
     }
     let mut scheme = core.globals().status_scheme();
     painter.set_scheme(scheme.clone());
-    let item_h = core.globals().cfg.bar_height.max(1);
+    let item_h = core.globals().selected_monitor().bar_height.max(1);
     for (row, item) in menu.items.iter().enumerate() {
         let Some(slot) = layout.menu_slots.get(row) else {
             continue;

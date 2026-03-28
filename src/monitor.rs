@@ -438,8 +438,11 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
         m.monitor_rect = output.rect;
         m.work_rect = output.rect;
         m.name = output.name;
+        let (bar_height, horizontal_padding, startmenu_size) =
+            scaled_monitor_ui_metrics(ctx.core().globals(), output.scale);
+        m.set_ui_metrics(output.scale, bar_height, horizontal_padding, startmenu_size);
         m.init_tags(&ctx.core().globals().cfg.tag_template);
-        m.update_bar_position(ctx.core().globals().cfg.bar_height);
+        m.update_bar_position(m.bar_height);
         new_monitors.push(m);
     }
 
@@ -455,6 +458,10 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
                 || old_m.monitor_rect.h != new_m.monitor_rect.h
                 || old_m.monitor_rect.x != new_m.monitor_rect.x
                 || old_m.monitor_rect.y != new_m.monitor_rect.y
+                || old_m.bar_height != new_m.bar_height
+                || old_m.horizontal_padding != new_m.horizontal_padding
+                || old_m.startmenu_size != new_m.startmenu_size
+                || (old_m.ui_scale - new_m.ui_scale).abs() > f64::EPSILON
             {
                 changed = true;
             }
@@ -473,6 +480,26 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
     }
 
     changed
+}
+
+fn scaled_i32(value: i32, scale: f64) -> i32 {
+    if value <= 0 {
+        return 0;
+    }
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    ((value as f64) * scale).round() as i32
+}
+
+fn scaled_monitor_ui_metrics(globals: &crate::globals::Globals, scale: f64) -> (i32, i32, i32) {
+    (
+        scaled_i32(globals.cfg.bar_height, scale).max(1),
+        scaled_i32(globals.cfg.horizontal_padding, scale).max(1),
+        scaled_i32(globals.cfg.startmenusize, scale).max(1),
+    )
 }
 
 // -----------------------------------------------------------------------------
@@ -533,7 +560,8 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     );
     mon.init_tags(&template);
     ctx.core_mut().globals_mut().monitors.push(mon);
-    let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
+    let (bar_height, horizontal_padding, startmenu_size) =
+        scaled_monitor_ui_metrics(ctx.core().globals(), 1.0);
     if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(0) {
         m.num = 0;
         m.monitor_rect = Rect {
@@ -548,6 +576,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
             w: sw,
             h,
         };
+        m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.update_bar_position(bar_height);
     }
     ctx.core_mut().globals_mut().monitors.set_sel_idx(0);
@@ -555,23 +584,31 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
 }
 
 fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
+    let (bar_height, horizontal_padding, startmenu_size) =
+        scaled_monitor_ui_metrics(ctx.core().globals(), 1.0);
     let needs_update = ctx
         .core()
         .globals()
         .monitors
         .get(0)
-        .map(|m| m.monitor_rect.w != sw || m.monitor_rect.h != sh)
+        .map(|m| {
+            m.monitor_rect.w != sw
+                || m.monitor_rect.h != sh
+                || m.bar_height != bar_height
+                || m.horizontal_padding != horizontal_padding
+                || m.startmenu_size != startmenu_size
+        })
         .unwrap_or(false);
     if !needs_update {
         return false;
     }
 
-    let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
     if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(0) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
         m.work_rect.h = sh;
+        m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.update_bar_position(bar_height);
     }
     true
@@ -605,9 +642,21 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     let new_count = unique.len();
 
     // Borrow g in a limited scope for monitor updates
-    let (old_count, _template, _mfact, _nmaster, _showbar, _topbar, _bar_height) = {
+    let (
+        old_count,
+        _template,
+        _mfact,
+        _nmaster,
+        _showbar,
+        _topbar,
+        _bar_height,
+        _horizontal_padding,
+        _startmenu_size,
+        any_changed,
+    ) = {
         let g = x11.core.globals_mut();
         let old_count = g.monitors.count();
+        let mut any_changed = false;
 
         // Ensure count
         let template = g.cfg.tag_template.clone();
@@ -620,26 +669,44 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         }
 
         let bar_height = g.cfg.bar_height;
+        let horizontal_padding = g.cfg.horizontal_padding;
+        let startmenu_size = g.cfg.startmenusize;
 
         for (i, info) in unique.iter().enumerate() {
-            if let Some(m) = g.monitors.get_mut(i)
-                && (m.monitor_rect.x != info.x
+            if let Some(m) = g.monitors.get_mut(i) {
+                let geometry_changed = m.monitor_rect.x != info.x
                     || m.monitor_rect.y != info.y
                     || m.monitor_rect.w != info.w
-                    || m.monitor_rect.h != info.h)
-            {
-                m.num = i as i32;
-                m.monitor_rect = *info;
-                m.work_rect = *info;
-                m.update_bar_position(bar_height);
+                    || m.monitor_rect.h != info.h;
+                let metrics_changed = m.bar_height != bar_height
+                    || m.horizontal_padding != horizontal_padding
+                    || m.startmenu_size != startmenu_size
+                    || (m.ui_scale - 1.0).abs() > f64::EPSILON;
+                if geometry_changed || metrics_changed {
+                    any_changed = true;
+                    m.num = i as i32;
+                    m.monitor_rect = *info;
+                    m.work_rect = *info;
+                    m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
+                    m.update_bar_position(bar_height);
+                }
             }
         }
         (
-            old_count, template, mfact, nmaster, showbar, topbar, bar_height,
+            old_count,
+            template,
+            mfact,
+            nmaster,
+            showbar,
+            topbar,
+            bar_height,
+            horizontal_padding,
+            startmenu_size,
+            any_changed,
         )
     };
 
-    let mut dirty = new_count > old_count;
+    let mut dirty = new_count > old_count || any_changed;
 
     if new_count < old_count {
         // Get clients while not holding mutable borrow

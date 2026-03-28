@@ -75,7 +75,7 @@ fn wayland_selected_resize_target_at(
 ) -> Option<(WindowId, ResizeDirection, Rect)> {
     let win = ctx.core.selected_client()?;
     let mon = ctx.core.globals().selected_monitor();
-    if mon.showbar && root_y < mon.monitor_rect.y + ctx.core.globals().cfg.bar_height {
+    if mon.showbar && root_y < mon.monitor_rect.y + mon.bar_height {
         return None;
     }
     let selected_tags = mon.selected_tags();
@@ -166,7 +166,7 @@ pub fn wayland_hover_resize_drag_motion(
                 let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
                 if crate::mouse::drag::move_drop::point_is_on_bar(&wm_ctx, root_x, root_y) {
                     let mon = wm_ctx.core().globals().selected_monitor();
-                    new_y = mon.bar_y + wm_ctx.core().globals().cfg.bar_height;
+                    new_y = mon.bar_y + mon.bar_height;
                 }
             }
 
