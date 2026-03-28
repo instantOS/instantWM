@@ -846,7 +846,7 @@ fn fetch_item_icon_on_conn(
     conn: &Connection,
     service: &str,
     path: &str,
-) -> Option<(Vec<u8>, i32, i32)> {
+) -> Option<(Arc<[u8]>, i32, i32)> {
     let proxy = Proxy::new(conn, service, path, ITEM_IFACE).ok()?;
 
     let pixmaps: Vec<(i32, i32, Vec<u8>)> = proxy.get_property("IconPixmap").ok()?;
@@ -867,7 +867,7 @@ fn fetch_item_icon_on_conn(
     }
     let (w, h, bytes, _) = best?;
     let rgba = dbus_icon_bytes_to_rgba(&bytes, w, h)?;
-    Some((rgba, w, h))
+    Some((Arc::from(rgba), w, h))
 }
 
 fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {

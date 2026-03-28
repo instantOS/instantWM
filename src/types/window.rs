@@ -6,6 +6,7 @@ use crate::actions::{ButtonAction, KeyAction};
 use crate::types::input::BarPosition;
 use crate::types::input::MouseButton;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 /// Backend-agnostic window identifier.
 #[repr(transparent)]
@@ -117,7 +118,7 @@ pub struct Systray {
 pub struct WaylandSystrayItem {
     pub service: String,
     pub path: String,
-    pub icon_rgba: Vec<u8>,
+    pub icon_rgba: Arc<[u8]>,
     pub icon_w: i32,
     pub icon_h: i32,
 }
