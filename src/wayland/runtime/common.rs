@@ -34,11 +34,12 @@ pub fn event_loop_tick(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) -> bool {
     arrange_layout_if_dirty(wm, state);
+    let internal_status_handled = crate::bar::status::drain_internal_status_updates(wm);
     // IPC handlers own their own invalidation. Do not synthesize a generic
     // Wayland-specific dirtying policy here.
     let handled = crate::runtime::process_ipc_commands(ipc_server, wm);
     crate::runtime::apply_monitor_config_if_dirty(wm);
-    handled
+    handled || internal_status_handled
 }
 
 /// Synchronise the Smithay compositor space from WM globals when the

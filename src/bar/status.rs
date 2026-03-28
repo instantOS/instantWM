@@ -110,7 +110,15 @@ struct I3ClickRuntime {
     receiver: Mutex<Receiver<I3ClickEvent>>,
 }
 
+#[derive(Debug)]
+struct InternalStatusRuntime {
+    sender: Sender<String>,
+    receiver: Mutex<Receiver<String>>,
+    ping: Mutex<Option<calloop::ping::Ping>>,
+}
+
 static I3BAR_CLICK_RUNTIME: OnceLock<I3ClickRuntime> = OnceLock::new();
+static INTERNAL_STATUS_RUNTIME: OnceLock<InternalStatusRuntime> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawI3Block {
@@ -426,6 +434,17 @@ fn i3bar_click_runtime() -> &'static I3ClickRuntime {
     })
 }
 
+fn internal_status_runtime() -> &'static InternalStatusRuntime {
+    INTERNAL_STATUS_RUNTIME.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel();
+        InternalStatusRuntime {
+            sender,
+            receiver: Mutex::new(receiver),
+            ping: Mutex::new(None),
+        }
+    })
+}
+
 pub(crate) fn enqueue_i3bar_click_event(event: I3ClickEvent) {
     let _ = i3bar_click_runtime().sender.send(event);
 }
@@ -446,6 +465,49 @@ pub(crate) fn flush_i3bar_click_events<W: Write>(
         write_i3bar_click_event(&mut *writer, &event, first_event)?;
     }
     writer.flush()
+}
+
+pub(crate) fn set_internal_status_ping(ping: calloop::ping::Ping) {
+    let runtime = internal_status_runtime();
+    if let Ok(mut slot) = runtime.ping.lock() {
+        *slot = Some(ping);
+    }
+}
+
+pub(crate) fn enqueue_internal_status(text: String) {
+    let runtime = internal_status_runtime();
+    let _ = runtime.sender.send(text);
+    if let Ok(guard) = runtime.ping.lock()
+        && let Some(ping) = guard.as_ref()
+    {
+        ping.ping();
+    }
+}
+
+pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
+    let runtime = internal_status_runtime();
+    let Ok(receiver) = runtime.receiver.lock() else {
+        return false;
+    };
+
+    let mut latest = None;
+    loop {
+        match receiver.try_recv() {
+            Ok(text) => latest = Some(text),
+            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+        }
+    }
+
+    let Some(text) = latest else {
+        return false;
+    };
+
+    if !text.starts_with("instantwm-") {
+        CUSTOM_STATUS_RECEIVED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    wm.g.bar_runtime.status_text = text;
+    wm.bar.mark_dirty();
+    true
 }
 
 fn measure_layout(
@@ -704,6 +766,15 @@ fn send_status_ipc(text: &str) {
     }
 }
 
+fn send_status_update(text: &str) {
+    let has_internal_runtime = INTERNAL_STATUS_RUNTIME.get().is_some();
+    if has_internal_runtime {
+        enqueue_internal_status(text.to_string());
+    } else {
+        send_status_ipc(text);
+    }
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn default_status_text() -> String {
@@ -738,7 +809,7 @@ pub(crate) fn spawn_default_status() {
             if CUSTOM_STATUS_RECEIVED.load(Ordering::Relaxed) {
                 break;
             }
-            send_status_ipc(&default_status_text());
+            send_status_update(&default_status_text());
             thread::sleep(Duration::from_secs(30));
         }
     });
@@ -767,7 +838,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
             }
         };
 
-        let mut i3bar_header_seen = false;
+        let mut i3bar_mode = false;
 
         if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
@@ -781,8 +852,8 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     continue;
                 }
 
-                if !i3bar_header_seen && let Some(header) = parse_i3bar_header(text) {
-                    i3bar_header_seen = true;
+                if !i3bar_mode && let Some(header) = parse_i3bar_header(text) {
+                    i3bar_mode = true;
                     if header.click_events
                         && let Some(mut stdin) = child.stdin.take()
                     {
@@ -798,7 +869,15 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     continue;
                 }
 
-                send_status_ipc(text);
+                if i3bar_mode {
+                    if parse_i3bar_json(text.as_bytes()).is_some() {
+                        send_status_update(text);
+                    } else {
+                        log::debug!("dropping malformed i3bar status frame: {text}");
+                    }
+                } else {
+                    send_status_update(text);
+                }
             }
         }
     });
