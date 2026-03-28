@@ -10,6 +10,14 @@ use smithay::{
         selection::{
             SelectionHandler,
             data_device::{DataDeviceHandler, DataDeviceState, set_data_device_focus},
+            ext_data_control::{
+                DataControlHandler as ExtDataControlHandler,
+                DataControlState as ExtDataControlState,
+            },
+            wlr_data_control::{
+                DataControlHandler as WlrDataControlHandler,
+                DataControlState as WlrDataControlState,
+            },
         },
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
@@ -66,6 +74,18 @@ impl SelectionHandler for WaylandState {
 impl DataDeviceHandler for WaylandState {
     fn data_device_state(&self) -> &DataDeviceState {
         &self.data_device_state
+    }
+}
+
+impl ExtDataControlHandler for WaylandState {
+    fn data_control_state(&self) -> &ExtDataControlState {
+        &self.ext_data_control_state
+    }
+}
+
+impl WlrDataControlHandler for WaylandState {
+    fn data_control_state(&self) -> &WlrDataControlState {
+        &self.wlr_data_control_state
     }
 }
 

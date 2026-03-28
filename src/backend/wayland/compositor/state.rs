@@ -30,7 +30,11 @@ use smithay::{
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
-        selection::data_device::DataDeviceState,
+        selection::{
+            data_device::DataDeviceState,
+            ext_data_control::DataControlState as ExtDataControlState,
+            wlr_data_control::DataControlState as WlrDataControlState,
+        },
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
@@ -106,6 +110,8 @@ pub struct WaylandState {
     pub output_manager_state: OutputManagerState,
     pub presentation_state: PresentationState,
     pub data_device_state: DataDeviceState,
+    pub ext_data_control_state: ExtDataControlState,
+    pub wlr_data_control_state: WlrDataControlState,
     pub xwayland_shell_state: XWaylandShellState,
     pub xwayland_keyboard_grab_state: XWaylandKeyboardGrabState,
     pub wlr_layer_shell_state: WlrLayerShellState,
@@ -257,6 +263,8 @@ impl WaylandState {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let presentation_state = PresentationState::new::<Self>(&dh, libc::CLOCK_MONOTONIC as u32);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
+        let ext_data_control_state = ExtDataControlState::new::<Self, _>(&dh, None, |_| true);
+        let wlr_data_control_state = WlrDataControlState::new::<Self, _>(&dh, None, |_| true);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
         let xwayland_keyboard_grab_state = XWaylandKeyboardGrabState::new::<Self>(&dh);
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
@@ -289,6 +297,8 @@ impl WaylandState {
             output_manager_state,
             presentation_state,
             data_device_state,
+            ext_data_control_state,
+            wlr_data_control_state,
             xwayland_shell_state,
             xwayland_keyboard_grab_state,
             wlr_layer_shell_state,
