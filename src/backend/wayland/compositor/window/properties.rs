@@ -32,19 +32,6 @@ impl WaylandState {
         })
     }
 
-    pub(crate) fn toplevel_title(surface: &ToplevelSurface) -> Option<String> {
-        let wl_surface = surface.wl_surface();
-        smithay::wayland::compositor::with_states(&wl_surface, |states| {
-            states
-                .data_map
-                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()?
-                .lock()
-                .ok()?
-                .title
-                .clone()
-        })
-    }
-
     /// Get the app_id (desktop file ID) of a window.
     pub fn window_app_id(&self, window: WindowId) -> Option<String> {
         let element = self.window_index.get(&window)?;
@@ -64,30 +51,6 @@ impl WaylandState {
                 .app_id
                 .clone()
         })
-    }
-
-    pub(crate) fn toplevel_app_id(surface: &ToplevelSurface) -> Option<String> {
-        let wl_surface = surface.wl_surface();
-        smithay::wayland::compositor::with_states(&wl_surface, |states| {
-            states
-                .data_map
-                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()?
-                .lock()
-                .ok()?
-                .app_id
-                .clone()
-        })
-    }
-
-    /// Detect helper toplevels that should stay outside WM client management.
-    ///
-    /// `wl-clipboard` creates a 1x1 fully transparent `xdg_toplevel` as a
-    /// focus-acquisition hack when data-control is unavailable. Managing that
-    /// surface like a normal client causes pointless layout churn.
-    pub(crate) fn is_unmanaged_wayland_overlay(surface: &ToplevelSurface) -> bool {
-        let app_id = Self::toplevel_app_id(surface).unwrap_or_default();
-        let title = Self::toplevel_title(surface).unwrap_or_default();
-        app_id == "io.github.bugaevc.wl-clipboard" || title == "wl-clipboard"
     }
 
     /// Create a foreign toplevel handle for a window.

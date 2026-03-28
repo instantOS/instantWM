@@ -1,41 +1,25 @@
 use smithay::desktop::Window;
-use smithay::utils::SERIAL_COUNTER;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
 
 impl WaylandState {
     /// Map a new toplevel surface (from XDG shell).
     pub fn map_new_toplevel(&mut self, surface: ToplevelSurface) -> WindowId {
-        let is_overlay = Self::is_unmanaged_wayland_overlay(&surface);
         let window = Window::new_wayland_window(surface);
         let window_id = self.alloc_window_id();
         let _ = window
             .user_data()
             .get_or_insert_threadsafe(|| WindowIdMarker {
                 id: window_id,
-                is_overlay,
+                is_overlay: false,
             });
 
         self.space.map_element(window.clone(), (0, 0), false);
         self.window_index.insert(window_id, window.clone());
-
-        if is_overlay {
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                let serial = SERIAL_COUNTER.next_serial();
-                keyboard.set_focus(
-                    self,
-                    Some(KeyboardFocusTarget::Window(window.clone())),
-                    serial,
-                );
-            }
-            return window_id;
-        }
-
         self.ensure_client_for_window(window_id);
 
         if let Some(title) = self.window_title(window_id)
