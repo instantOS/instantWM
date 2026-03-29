@@ -236,6 +236,9 @@ pub fn apply_wayland_session_env(socket_name: &str) {
     unsafe {
         std::env::set_var("WAYLAND_DISPLAY", socket_name);
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
+        std::env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
+        std::env::set_var("XDG_SESSION_DESKTOP", "instantwm");
+        std::env::set_var("DESKTOP_SESSION", "instantwm");
         std::env::remove_var("DISPLAY");
         std::env::set_var("GDK_BACKEND", "wayland");
         std::env::set_var("QT_QPA_PLATFORM", "wayland");
@@ -270,6 +273,54 @@ pub fn ensure_dbus_session() {
     }
 }
 
+/// Import the Wayland session environment into the D-Bus activation environment.
+///
+/// Portals and other D-Bus-activated services need these variables to discover
+/// the compositor socket and desktop identity. This mirrors the environment
+/// import step commonly done by compositor session wrappers.
+pub fn import_wayland_env_into_dbus_activation() {
+    let mut attempted = false;
+
+    if let Ok(status) = Command::new("dbus-update-activation-environment")
+        .arg("--systemd")
+        .arg("WAYLAND_DISPLAY")
+        .arg("XDG_CURRENT_DESKTOP")
+        .arg("XDG_SESSION_DESKTOP")
+        .arg("DESKTOP_SESSION")
+        .status()
+    {
+        attempted = true;
+        if !status.success() {
+            log::debug!(
+                "dbus-update-activation-environment exited with status {}",
+                status
+            );
+        }
+    }
+
+    // Fall back to the non-systemd import path when systemd integration is
+    // unavailable.
+    if !attempted {
+        match Command::new("dbus-update-activation-environment")
+            .arg("WAYLAND_DISPLAY")
+            .arg("XDG_CURRENT_DESKTOP")
+            .arg("XDG_SESSION_DESKTOP")
+            .arg("DESKTOP_SESSION")
+            .status()
+        {
+            Ok(status) if !status.success() => log::debug!(
+                "dbus-update-activation-environment exited with status {}",
+                status
+            ),
+            Ok(_) => {}
+            Err(err) => log::debug!(
+                "dbus-update-activation-environment unavailable: {}",
+                err
+            ),
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Wayland socket
 // ─────────────────────────────────────────────────────────────────────────────
@@ -291,6 +342,7 @@ pub fn setup_wayland_socket(
         .into_owned();
 
     apply_wayland_session_env(&socket_name);
+    import_wayland_env_into_dbus_activation();
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {

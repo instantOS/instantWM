@@ -48,6 +48,7 @@ rm -rf "${PKG_DIR}"
 mkdir -p "${PKG_DIR}/DEBIAN" \
 	"${PKG_DIR}/usr/bin" \
 	"${PKG_DIR}/usr/share/doc/instantwm" \
+	"${PKG_DIR}/usr/share/xdg-desktop-portal" \
 	"${PKG_DIR}/usr/share/xsessions" \
 	"${PKG_DIR}/usr/share/wayland-sessions"
 
@@ -60,6 +61,7 @@ install -Dm644 "README.md" "${PKG_DIR}/usr/share/doc/instantwm/README.md"
 # Install session files
 install -Dm644 "utils/instantwm-x11.desktop" "${PKG_DIR}/usr/share/xsessions/instantwm.desktop"
 install -Dm644 "utils/instantwm-wayland.desktop" "${PKG_DIR}/usr/share/wayland-sessions/instantwm-wayland.desktop"
+install -Dm644 "resources/instantwm-portals.conf" "${PKG_DIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
 
 # Install man page if it exists
 if [[ -f instantwm.1 ]]; then
