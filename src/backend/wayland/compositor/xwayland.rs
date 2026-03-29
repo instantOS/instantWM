@@ -46,7 +46,11 @@ pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
     }
 }
 
-fn sync_xwayland_surface_metadata(state: &mut WaylandState, win: crate::types::WindowId, surface: &X11Surface) {
+fn sync_xwayland_surface_metadata(
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    surface: &X11Surface,
+) {
     let props = crate::client::x11_policy::window_properties_from_x11_surface(surface);
     if let Some(g) = state.globals_mut() {
         crate::client::handle_property_change(g, win, &props);
@@ -54,14 +58,23 @@ fn sync_xwayland_surface_metadata(state: &mut WaylandState, win: crate::types::W
     state.update_foreign_toplevel(win);
 }
 
-fn apply_xwayland_surface_policy(state: &mut WaylandState, win: crate::types::WindowId, surface: &X11Surface) {
+fn apply_xwayland_surface_policy(
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    surface: &X11Surface,
+) {
     let transient_parent = crate::client::x11_policy::transient_for_window_id(surface)
         .and_then(|parent_x11| state.window_id_for_x11_window(parent_x11.into()));
     let should_float_for_type =
         crate::client::x11_policy::should_float_for_x11_type(surface.window_type());
     let preferred_border = state
         .globals()
-        .map(|g| crate::client::x11_policy::preferred_border_width(g.cfg.border_width_px, surface.is_decorated()))
+        .map(|g| {
+            crate::client::x11_policy::preferred_border_width(
+                g.cfg.border_width_px,
+                surface.is_decorated(),
+            )
+        })
         .unwrap_or(0);
     let transient_parent_state = state.globals().and_then(|g| {
         transient_parent.and_then(|parent| {
@@ -123,9 +136,7 @@ fn apply_xwayland_surface_policy(state: &mut WaylandState, win: crate::types::Wi
         });
     }
 
-    if changed_layout
-        && let Some(g) = state.globals_mut()
-    {
+    if changed_layout && let Some(g) = state.globals_mut() {
         g.dirty.layout = true;
         g.dirty.space = true;
     }
@@ -428,8 +439,10 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::Pid
             | WmWindowProperty::Protocols => {
                 apply_xwayland_surface_policy(self, win, &window);
-                if matches!(property, WmWindowProperty::TransientFor | WmWindowProperty::WindowType)
-                    && let Some(g) = self.globals_mut()
+                if matches!(
+                    property,
+                    WmWindowProperty::TransientFor | WmWindowProperty::WindowType
+                ) && let Some(g) = self.globals_mut()
                 {
                     g.dirty.layout = true;
                     g.dirty.space = true;
@@ -517,10 +530,18 @@ impl XwmHandler for WaylandState {
         };
         let _ = window.set_fullscreen(true);
         if let Some(g) = self.globals_mut() {
+            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = true;
             }
-            if let Some(mon) = g.selected_monitor_mut_opt() {
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
+            }
+            if let Some(monitor_id) = monitor_id
+                && let Some(mon) = g.monitor_mut(monitor_id)
+            {
                 mon.fullscreen = Some(win);
             }
             g.dirty.layout = true;
@@ -541,10 +562,10 @@ impl XwmHandler for WaylandState {
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = false;
             }
-            if let Some(mon) = g.selected_monitor_mut_opt()
-                && mon.fullscreen == Some(win)
-            {
-                mon.fullscreen = None;
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
             }
             g.dirty.layout = true;
             g.dirty.space = true;

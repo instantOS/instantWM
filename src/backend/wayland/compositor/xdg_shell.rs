@@ -346,12 +346,20 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
+            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = true;
             }
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
+            }
             g.dirty.space = true;
             g.dirty.layout = true;
-            if let Some(mon) = g.selected_monitor_mut_opt() {
+            if let Some(monitor_id) = monitor_id
+                && let Some(mon) = g.monitor_mut(monitor_id)
+            {
                 mon.fullscreen = Some(win);
             }
         }
@@ -370,10 +378,10 @@ impl XdgShellHandler for WaylandState {
             }
             g.dirty.space = true;
             g.dirty.layout = true;
-            if let Some(mon) = g.selected_monitor_mut_opt()
-                && mon.fullscreen == Some(win)
-            {
-                mon.fullscreen = None;
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
             }
         }
         surface.with_pending_state(|state| {

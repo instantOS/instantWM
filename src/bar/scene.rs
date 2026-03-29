@@ -77,6 +77,14 @@ pub(crate) struct WorkerTrayLayout {
     pub menu_slots: Vec<crate::bar::SystrayHitSlot>,
 }
 
+fn monitor_has_real_fullscreen(core: &CoreCtx, monitor: &Monitor) -> bool {
+    let selected_tags = monitor.selected_tags();
+    monitor
+        .fullscreen
+        .and_then(|win| core.globals().clients.get(&win))
+        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+}
+
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
     wayland_systray: Option<(
@@ -132,7 +140,7 @@ pub(crate) fn build_monitor_snapshots(
         else {
             continue;
         };
-        if !mon_ref.shows_bar() {
+        if !mon_ref.shows_bar() || monitor_has_real_fullscreen(core, mon_ref) {
             continue;
         }
         let mon = mon_ref.clone();

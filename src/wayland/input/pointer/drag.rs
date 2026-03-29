@@ -6,6 +6,17 @@ use crate::mouse::set_cursor_style;
 use crate::types::{AltCursor, MouseButton, Rect, ResizeDirection, WindowId, get_resize_direction};
 use crate::wm::Wm;
 
+fn wayland_monitor_bar_visible(ctx: &crate::contexts::WmCtxWayland<'_>) -> bool {
+    let mon = ctx.core.globals().selected_monitor();
+    if !mon.shows_bar() {
+        return false;
+    }
+    let selected_tags = mon.selected_tags();
+    !mon.fullscreen
+        .and_then(|win| ctx.core.globals().clients.get(&win))
+        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+}
+
 /// Get the active drag window (if any).
 pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
     if wm.g.drag.interactive.active {
@@ -80,7 +91,7 @@ fn wayland_selected_resize_target_at(
 ) -> Option<(WindowId, ResizeDirection, Rect)> {
     let win = ctx.core.selected_client()?;
     let mon = ctx.core.globals().selected_monitor();
-    if mon.showbar && root_y < mon.monitor_rect.y + mon.bar_height {
+    if wayland_monitor_bar_visible(ctx) && root_y < mon.monitor_rect.y + mon.bar_height {
         return None;
     }
     let selected_tags = mon.selected_tags();

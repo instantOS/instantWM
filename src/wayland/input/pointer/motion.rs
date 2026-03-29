@@ -21,6 +21,16 @@ use crate::wayland::input::pointer::drag::{
 };
 use crate::wm::Wm;
 
+fn wayland_monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
+    if !mon.shows_bar() {
+        return false;
+    }
+    let selected_tags = mon.selected_tags();
+    !mon.fullscreen
+        .and_then(|win| wm.g.clients.get(&win))
+        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+}
+
 /// Unified pointer motion event that abstracts over input source.
 #[derive(Debug, Clone, Copy)]
 pub enum MotionEvent {
@@ -235,13 +245,14 @@ fn compute_bar_hit(
     .and_then(|mid| wm.g.monitor(mid))
     .map(|mon| {
         let bar_h = mon.bar_height.max(1);
+        let bar_visible = wayland_monitor_bar_visible(wm, mon);
         // 4-pixel guard band below the bar: pointer must move this many pixels
         // past the bar bottom before a window drag is allowed to start.
         let guard_h = 4;
         let drag_active =
             active_drag_window.is_some() || wm.g.drag.interactive.active || wm.g.drag.tag.active;
-        let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
-        let in_guard = mon.showbar
+        let in_bar = bar_visible && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
+        let in_guard = bar_visible
             && !drag_active
             && root_y >= mon.bar_y + bar_h
             && root_y < mon.bar_y + bar_h + guard_h;
