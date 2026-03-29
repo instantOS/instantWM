@@ -7,7 +7,7 @@ use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::DrmOutputRenderElements;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::element::RenderElementStates;
+use smithay::backend::renderer::element::{Element, Id, RenderElementStates};
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
@@ -270,6 +270,10 @@ pub fn render_drm_output(
         cursor_scale,
         millis,
     );
+    let cursor_element_ids: Vec<Id> = cursor_elements
+        .iter()
+        .map(|element| element.id().clone())
+        .collect();
 
     let mut render_elements: Vec<DrmExtras>;
 
@@ -339,6 +343,16 @@ pub fn render_drm_output(
         .pending_screencopies
         .iter()
         .any(|copy| copy.output == entry.output);
+    let has_cursor_screencopy = state
+        .runtime
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output == entry.output && copy.overlay_cursor);
+    let has_cursorless_screencopy = state
+        .runtime
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output == entry.output && !copy.overlay_cursor);
     let mut frame_flags = FrameFlags::DEFAULT;
     if entry.vrr_enabled {
         frame_flags |= FrameFlags::SKIP_CURSOR_ONLY_UPDATES;
@@ -368,24 +382,23 @@ pub fn render_drm_output(
         let target_size = output_transform.transform_size(mode_size);
         let target_size_buffer: smithay::utils::Size<i32, BufferCoords> =
             (target_size.w, target_size.h).into();
-        let mut capture: GlesTexture =
-            match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+        if has_cursorless_screencopy {
+            let mut capture: GlesTexture = match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
                 Ok(buffer) => buffer,
                 Err(err) => {
                     log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
                     return RenderOutcome::Failed;
                 }
             };
-        match renderer.bind(&mut capture) {
-            Ok(mut target) => {
-                match frame_result.blit_frame_result(
+            match renderer.bind(&mut capture) {
+                Ok(mut target) => match frame_result.blit_frame_result(
                     target_size,
                     output_transform,
                     output_scale,
                     renderer,
                     &mut target,
                     [Rectangle::from_size(target_size)],
-                    std::iter::empty::<smithay::backend::renderer::element::Id>(),
+                    cursor_element_ids.iter().cloned(),
                 ) {
                     Ok(sync) => {
                         let _ = renderer.wait(&sync);
@@ -394,13 +407,59 @@ pub fn render_drm_output(
                             renderer,
                             &target,
                             &entry.output,
-                            start_time,
+                            false,
                         );
                     }
-                    Err(err) => log::warn!("screencopy blit_frame_result failed: {:?}", err),
+                    Err(err) => {
+                        log::warn!("screencopy blit_frame_result failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                },
+                Err(err) => {
+                    log::warn!("screencopy offscreen bind failed: {:?}", err);
+                    return RenderOutcome::Failed;
                 }
             }
-            Err(err) => log::warn!("screencopy offscreen bind failed: {:?}", err),
+        }
+
+        if has_cursor_screencopy {
+            let mut capture: GlesTexture = match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+                Ok(buffer) => buffer,
+                Err(err) => {
+                    log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                    return RenderOutcome::Failed;
+                }
+            };
+            match renderer.bind(&mut capture) {
+                Ok(mut target) => match frame_result.blit_frame_result(
+                    target_size,
+                    output_transform,
+                    output_scale,
+                    renderer,
+                    &mut target,
+                    [Rectangle::from_size(target_size)],
+                    std::iter::empty::<Id>(),
+                ) {
+                    Ok(sync) => {
+                        let _ = renderer.wait(&sync);
+                        crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+                            &mut state.runtime.pending_screencopies,
+                            renderer,
+                            &target,
+                            &entry.output,
+                            true,
+                        );
+                    }
+                    Err(err) => {
+                        log::warn!("screencopy blit_frame_result failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                },
+                Err(err) => {
+                    log::warn!("screencopy offscreen bind failed: {:?}", err);
+                    return RenderOutcome::Failed;
+                }
+            }
         }
     }
 

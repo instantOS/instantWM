@@ -123,7 +123,7 @@ pub fn render_frame(
         renderer,
         &framebuffer,
         output,
-        start_time,
+        true,
     );
 
     // Get damage before framebuffer is dropped
