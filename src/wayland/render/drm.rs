@@ -7,12 +7,12 @@ use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
 use smithay::backend::drm::output::DrmOutputRenderElements;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::element::{Element, Id, RenderElementStates};
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
+use smithay::backend::renderer::element::{Element, Id, RenderElementStates};
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
 use smithay::backend::renderer::{Bind, Offscreen, Renderer};
 use smithay::desktop::utils::{
@@ -383,13 +383,14 @@ pub fn render_drm_output(
         let target_size_buffer: smithay::utils::Size<i32, BufferCoords> =
             (target_size.w, target_size.h).into();
         if has_cursorless_screencopy {
-            let mut capture: GlesTexture = match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
-                Ok(buffer) => buffer,
-                Err(err) => {
-                    log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
-                    return RenderOutcome::Failed;
-                }
-            };
+            let mut capture: GlesTexture =
+                match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+                    Ok(buffer) => buffer,
+                    Err(err) => {
+                        log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                };
             match renderer.bind(&mut capture) {
                 Ok(mut target) => match frame_result.blit_frame_result(
                     target_size,
@@ -423,13 +424,14 @@ pub fn render_drm_output(
         }
 
         if has_cursor_screencopy {
-            let mut capture: GlesTexture = match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
-                Ok(buffer) => buffer,
-                Err(err) => {
-                    log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
-                    return RenderOutcome::Failed;
-                }
-            };
+            let mut capture: GlesTexture =
+                match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+                    Ok(buffer) => buffer,
+                    Err(err) => {
+                        log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                };
             match renderer.bind(&mut capture) {
                 Ok(mut target) => match frame_result.blit_frame_result(
                     target_size,

@@ -9,7 +9,7 @@ mod tests {
     use super::*;
     use crate::ctl::commands::ScratchpadAction;
     use clap::Parser;
-    use instantwm::ipc_types::ScratchpadInitialStatus;
+    use instantwm::ipc_types::{ScratchpadInitialStatus, WindowCommand};
 
     #[test]
     fn parses_reload_command() {
@@ -106,6 +106,83 @@ mod tests {
             cmd,
             IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Hide(Some(name)))
                 if name == "instantwm_scratchpad"
+        ));
+    }
+
+    #[test]
+    fn parses_window_info_command() {
+        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "window", "info", "42"]).command);
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Window(WindowCommand::Info(Some(42)))
+        ));
+    }
+
+    #[test]
+    fn parses_window_resize_command() {
+        let cmd = command_to_ipc(
+            Cli::parse_from([
+                "instantwmctl",
+                "window",
+                "resize",
+                "42",
+                "--monitor",
+                "1",
+                "--x",
+                "10",
+                "--y",
+                "20",
+                "--width",
+                "800",
+                "--height",
+                "600",
+            ])
+            .command,
+        );
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Window(WindowCommand::Resize {
+                window_id: Some(42),
+                monitor: Some(monitor),
+                x: 10,
+                y: 20,
+                width: 800,
+                height: 600,
+            }) if monitor == "1"
+        ));
+    }
+
+    #[test]
+    fn parses_window_resize_without_monitor() {
+        let cmd = command_to_ipc(
+            Cli::parse_from([
+                "instantwmctl",
+                "window",
+                "resize",
+                "--x",
+                "10",
+                "--y",
+                "20",
+                "--width",
+                "800",
+                "--height",
+                "600",
+            ])
+            .command,
+        );
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Window(WindowCommand::Resize {
+                window_id: None,
+                monitor: None,
+                x: 10,
+                y: 20,
+                width: 800,
+                height: 600,
+            })
         ));
     }
 }

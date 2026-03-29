@@ -139,9 +139,28 @@ pub enum ScratchpadAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum WindowAction {
-    List { window_id: Option<u32> },
-    Geom { window_id: Option<u32> },
-    Close { window_id: Option<u32> },
+    List {
+        window_id: Option<u32>,
+    },
+    Info {
+        window_id: Option<u32>,
+    },
+    Resize {
+        window_id: Option<u32>,
+        #[arg(long)]
+        monitor: Option<String>,
+        #[arg(long)]
+        x: i32,
+        #[arg(long)]
+        y: i32,
+        #[arg(long)]
+        width: i32,
+        #[arg(long)]
+        height: i32,
+    },
+    Close {
+        window_id: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -339,7 +358,22 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         CommandKind::Window { action } => {
             let cmd = match action {
                 WindowAction::List { window_id } => WindowCommand::List(window_id),
-                WindowAction::Geom { window_id } => WindowCommand::Geom(window_id),
+                WindowAction::Info { window_id } => WindowCommand::Info(window_id),
+                WindowAction::Resize {
+                    window_id,
+                    monitor,
+                    x,
+                    y,
+                    width,
+                    height,
+                } => WindowCommand::Resize {
+                    window_id,
+                    monitor,
+                    x,
+                    y,
+                    width,
+                    height,
+                },
                 WindowAction::Close { window_id } => WindowCommand::Close(window_id),
             };
             IpcCommand::Window(cmd)

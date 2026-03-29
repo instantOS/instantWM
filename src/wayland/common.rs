@@ -313,10 +313,7 @@ pub fn import_wayland_env_into_dbus_activation() {
                 status
             ),
             Ok(_) => {}
-            Err(err) => log::debug!(
-                "dbus-update-activation-environment unavailable: {}",
-                err
-            ),
+            Err(err) => log::debug!("dbus-update-activation-environment unavailable: {}", err),
         }
     }
 }
