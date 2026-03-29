@@ -479,7 +479,15 @@ pub fn render_drm_output(
 
     match entry.surface.queue_frame(frame_metadata) {
         Ok(()) => {}
-        Err(FrameError::EmptyFrame) => return RenderOutcome::Skipped,
+        Err(FrameError::EmptyFrame) => {
+            // Even when KMS can skip submitting an unchanged frame, visible
+            // Wayland clients still need their frame callbacks to keep driving
+            // content updates. Without this, callback-paced clients such as
+            // Firefox can appear frozen until unrelated input dirties the
+            // output and forces a real page flip.
+            send_frame_callbacks(state, &entry.output, start_time.elapsed());
+            return RenderOutcome::Skipped;
+        }
         Err(err) => {
             log::warn!("queue_frame: {:?}", err);
             return RenderOutcome::Failed;

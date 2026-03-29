@@ -316,10 +316,10 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             with_damage,
         });
 
-        // `copy_with_damage` is supposed to wait until the next real damage.
-        if !with_damage {
-            state.request_render();
-        }
+        // Always schedule one render so live screencasts can deliver an initial
+        // frame even when the output is otherwise idle. `copy_with_damage`
+        // clients will still wait for real damage after that first frame.
+        state.request_render();
     }
 }
 
