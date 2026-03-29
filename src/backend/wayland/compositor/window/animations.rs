@@ -157,6 +157,14 @@ impl WaylandState {
             return;
         }
 
+        if let Some(from) = from_rect {
+            // For decorative slide-ins the WM should already treat the client
+            // as living at `target`, but the compositor still needs the mapped
+            // element to start from the off-screen location so the first
+            // rendered frame is visible and the animation direction is correct.
+            self.remap_element_preserving_z_order(&element, Point::from((from.x, from.y)), false);
+        }
+
         self.insert_window_animation(
             window_id,
             current,
