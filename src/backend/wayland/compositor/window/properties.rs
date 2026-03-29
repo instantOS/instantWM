@@ -180,6 +180,13 @@ impl WaylandState {
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
+    pub(crate) fn window_id_for_x11_window(&self, window: u32) -> Option<WindowId> {
+        self.window_index
+            .values()
+            .find(|w| w.x11_surface().is_some_and(|x11| x11.window_id() == window))
+            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
+    }
+
     /// Get the window ID for a surface.
     pub(crate) fn window_id_for_surface(
         &self,

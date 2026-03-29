@@ -30,6 +30,7 @@ pub mod lifecycle;
 pub mod manager;
 pub mod rules;
 pub mod visibility;
+pub mod x11_policy;
 
 // ---------------------------------------------------------------------------
 // Flat re-exports
