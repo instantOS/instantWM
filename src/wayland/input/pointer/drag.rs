@@ -48,6 +48,11 @@ pub fn wayland_hover_resize_drag_begin(
         last_root_y: root_y,
         ..Default::default()
     };
+    if matches!(drag_type, crate::globals::DragType::Resize(_)) {
+        let _ = ctx.wayland.backend.with_state(|state| {
+            state.begin_interactive_resize(win);
+        });
+    }
     match drag_type {
         crate::globals::DragType::Move => {
             set_cursor_style(
@@ -248,6 +253,11 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
     }
     let drag = ctx.core.globals().drag.interactive.clone();
     ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    if matches!(drag.drag_type, crate::globals::DragType::Resize(_)) {
+        let _ = ctx.wayland.backend.with_state(|state| {
+            state.end_interactive_resize(drag.win);
+        });
+    }
     set_cursor_style(
         &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
         AltCursor::Default,

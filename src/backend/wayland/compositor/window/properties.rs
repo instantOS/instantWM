@@ -1,4 +1,5 @@
 use smithay::desktop::Window;
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
@@ -211,11 +212,20 @@ impl WaylandState {
         size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
     ) {
         if let Some(toplevel) = window.toplevel() {
-            if let Some(size) = size {
-                toplevel.with_pending_state(|state| {
+            let is_resizing = window
+                .user_data()
+                .get::<WindowIdMarker>()
+                .is_some_and(|marker| self.active_resizes.contains(&marker.id));
+            toplevel.with_pending_state(|state| {
+                if let Some(size) = size {
                     state.size = Some(size);
-                });
-            }
+                }
+                if is_resizing {
+                    state.states.set(ToplevelState::Resizing);
+                } else {
+                    state.states.unset(ToplevelState::Resizing);
+                }
+            });
             toplevel.send_pending_configure();
         }
     }

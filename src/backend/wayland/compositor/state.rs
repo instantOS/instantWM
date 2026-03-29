@@ -155,6 +155,7 @@ pub struct WaylandState {
     /// to manage and performantly access from Smithay's handlers.
     wm: Option<NonNull<Wm>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    pub(super) active_resizes: HashSet<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     pub(super) window_animations: HashMap<WindowId, WaylandWindowAnimation>,
@@ -326,6 +327,7 @@ impl WaylandState {
             next_window_id: 1,
             wm: None,
             last_configured_size: HashMap::new(),
+            active_resizes: HashSet::new(),
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             foreign_toplevel_handles: HashMap::new(),

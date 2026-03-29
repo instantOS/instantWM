@@ -25,8 +25,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use smithay::backend::allocator::{Buffer, Fourcc};
 use smithay::backend::allocator::dmabuf::Dmabuf;
+use smithay::backend::allocator::{Buffer, Fourcc};
 use smithay::backend::renderer::{Bind, Blit, BufferType, ExportMem, TextureFilter, buffer_type};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
@@ -169,7 +169,8 @@ impl Dispatch<ZwlrScreencopyManagerV1, ()> for WaylandState {
                     .map(|geo| geo.size)
                     .unwrap_or_else(|| (mode.size.w, mode.size.h).into());
                 let output_rect = Rectangle::from_size(logical_size);
-                let request_rect = Rectangle::<i32, Logical>::new((x, y).into(), (width, height).into());
+                let request_rect =
+                    Rectangle::<i32, Logical>::new((x, y).into(), (width, height).into());
                 let Some(clamped) = request_rect.intersection(output_rect) else {
                     let frame = data_init.init(frame, ScreencopyFrameState::Failed);
                     frame.failed();
@@ -279,16 +280,15 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
         }
 
         let buffer_ok = match buffer_type(&buffer) {
-            Some(BufferType::Shm) => smithay::wayland::shm::with_buffer_contents(
-                &buffer,
-                |_ptr, _len, bd| {
+            Some(BufferType::Shm) => {
+                smithay::wayland::shm::with_buffer_contents(&buffer, |_ptr, _len, bd| {
                     bd.format == wl_shm::Format::Xrgb8888
                         && bd.width == buffer_region.size.w
                         && bd.height == buffer_region.size.h
                         && bd.stride == buffer_region.size.w * 4
-                },
-            )
-            .unwrap_or(false),
+                })
+                .unwrap_or(false)
+            }
             Some(BufferType::Dma) => get_dmabuf(&buffer)
                 .map(|dmabuf| {
                     dmabuf.size().w == buffer_region.size.w
@@ -353,8 +353,12 @@ pub fn submit_pending_screencopies(
         let region = screencopy.buffer_region;
 
         let copy_result = match buffer_type(&screencopy.buffer) {
-            Some(BufferType::Shm) => copy_into_shm(renderer, framebuffer, region, &screencopy.buffer),
-            Some(BufferType::Dma) => copy_into_dmabuf(renderer, framebuffer, region, &screencopy.buffer),
+            Some(BufferType::Shm) => {
+                copy_into_shm(renderer, framebuffer, region, &screencopy.buffer)
+            }
+            Some(BufferType::Dma) => {
+                copy_into_dmabuf(renderer, framebuffer, region, &screencopy.buffer)
+            }
             _ => {
                 log::warn!("screencopy: unsupported client buffer type");
                 Err(())

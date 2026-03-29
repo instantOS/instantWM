@@ -78,6 +78,17 @@ impl WaylandState {
         self.pending_warp = Some(Point::from((x, y)));
     }
 
+    pub(crate) fn begin_interactive_resize(&mut self, window: WindowId) {
+        self.active_resizes.insert(window);
+    }
+
+    pub(crate) fn end_interactive_resize(&mut self, window: WindowId) {
+        self.active_resizes.remove(&window);
+        if let Some(element) = self.find_window(window).cloned() {
+            self.send_toplevel_configure(&element, None);
+        }
+    }
+
     /// Consume and return the pending warp target, if any.
     pub fn take_pending_warp(&mut self) -> Option<Point<f64, Logical>> {
         self.pending_warp.take()

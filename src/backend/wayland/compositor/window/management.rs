@@ -1,4 +1,4 @@
-use smithay::utils::Point;
+use smithay::utils::{Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::window::animations::WindowMoveMode;
@@ -32,6 +32,15 @@ impl WaylandState {
 
     /// Resize a window to the given rectangle.
     pub fn resize_window(&mut self, window: WindowId, rect: Rect) {
+        if let Some(element) = self.find_window(window).cloned()
+            && let Some(surface) = element.x11_surface()
+        {
+            let geometry = Rectangle::new(
+                (rect.x, rect.y).into(),
+                (rect.w.max(1), rect.h.max(1)).into(),
+            );
+            let _ = surface.configure(Some(geometry));
+        }
         let mode = if self.interactive_motion_active() {
             WindowMoveMode::RemapImmediate
         } else {
