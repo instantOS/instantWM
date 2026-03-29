@@ -56,6 +56,7 @@ fn sync_xwayland_surface_metadata(
         crate::client::handle_property_change(g, win, &props);
     }
     state.update_foreign_toplevel(win);
+    state.request_bar_redraw();
 }
 
 fn apply_xwayland_surface_policy(

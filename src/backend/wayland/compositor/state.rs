@@ -507,6 +507,14 @@ impl WaylandState {
     }
 
     #[inline]
+    pub fn request_bar_redraw(&mut self) {
+        let _ = self.with_wm_mut_unified(|wm, _state| {
+            wm.bar.mark_dirty();
+        });
+        self.request_render();
+    }
+
+    #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
         std::mem::take(&mut self.runtime.render_dirty)
     }

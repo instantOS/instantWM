@@ -157,6 +157,7 @@ impl XdgShellHandler for WaylandState {
         }
         self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
     }
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
@@ -169,6 +170,7 @@ impl XdgShellHandler for WaylandState {
         }
         self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
     }
 
     fn parent_changed(&mut self, surface: ToplevelSurface) {

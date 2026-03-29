@@ -385,7 +385,9 @@ impl<'a> WmCtx<'a> {
             }
             WmCtx::Wayland(ctx_wayland) => {
                 let _ = monitor_id;
-                ctx_wayland.core.bar.mark_dirty();
+                if !ctx_wayland.wayland.backend.request_bar_redraw() {
+                    ctx_wayland.core.bar.mark_dirty();
+                }
             }
         }
     }

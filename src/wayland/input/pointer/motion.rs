@@ -203,8 +203,6 @@ pub fn dispatch_pointer_motion(
         root_y,
     );
 
-    let _ = update_wayland_bar_hit_state(wm, root_x, root_y, false);
-
     // Phase 7: Handle tag/title drag motion
     handle_wm_drag_motion(wm, keyboard_handle, root_x, root_y);
 

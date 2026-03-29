@@ -125,6 +125,11 @@ impl WaylandBackend {
         });
     }
 
+    pub fn request_bar_redraw(&self) -> bool {
+        self.with_state(|state: &mut WaylandState| state.request_bar_redraw())
+            .is_some()
+    }
+
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
             .unwrap_or(false)

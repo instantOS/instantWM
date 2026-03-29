@@ -52,6 +52,7 @@ struct DrmLoopState {
     render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
     presentation_seq: HashMap<crtc::Handle, u64>,
+    last_bar_update_seq: u64,
 }
 
 impl DrmLoopState {
@@ -68,6 +69,7 @@ impl DrmLoopState {
                 .iter()
                 .map(|entry| (entry.crtc, 0))
                 .collect(),
+            last_bar_update_seq: 0,
         }
     }
 
@@ -435,7 +437,9 @@ fn run_event_loop(
             process_common_tick(ipc_server, wm, state, loop_state);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
 
-            if wm.bar.needs_redraw() {
+            let bar_update_seq = wm.bar.update_seq();
+            if loop_state.last_bar_update_seq != bar_update_seq {
+                loop_state.last_bar_update_seq = bar_update_seq;
                 loop_state.mark_all_dirty();
             }
 

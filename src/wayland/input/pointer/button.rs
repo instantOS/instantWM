@@ -139,7 +139,7 @@ pub fn handle_pointer_button<B: InputBackend>(
             if let Backend::Wayland(data) = &mut wm.backend {
                 data.wayland_systray_menu = None;
             }
-            wm.bar.mark_dirty();
+            state.request_bar_redraw();
         }
     } else if event.state() == smithay::backend::input::ButtonState::Released {
         if let Some(btn) = wm_button {
