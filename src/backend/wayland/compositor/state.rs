@@ -336,25 +336,11 @@ impl WaylandState {
         }
     }
 
-    /// Attach the GLES renderer.
-    ///
-    /// When `egl_display` is provided and a render DRM node can be resolved
-    /// from it, we advertise `zwp_linux_dmabuf_feedback_v1` **v4** which
-    /// includes the device node identifier.  GPU-accelerated clients (kitty,
-    /// wlroots apps, etc.) use this to discover which DRM device to open for
-    /// dmabuf allocation and to choose zero-copy import paths — without it
-    /// Mesa/EGL falls back to software rendering and emits warnings like
-    /// "failed to get driver name" / "failed to retrieve device information".
-    ///
-    /// Falls back to the plain v3 global (formats only, no device) when no
-    /// EGL display is given or the node cannot be resolved.
     pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
         if self.dmabuf_global.is_some() {
             return;
         }
 
-        // Attempt to get the render DrmNode from the EGL display so we can
-        // advertise zwp_linux_dmabuf_feedback_v1 v4 with a proper device id.
         let render_node: Option<DrmNode> = egl_display.and_then(|display| {
             EGLDevice::device_for_display(display)
                 .map_err(|err| {
@@ -371,7 +357,6 @@ impl WaylandState {
                 })
         });
 
-        // Store the render node so we can tag imported dmabufs with it.
         self.render_node = render_node;
 
         self.dmabuf_global = Some(if let Some(node) = self.render_node {

@@ -25,6 +25,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use super::WaylandState;
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::allocator::{Buffer, Fourcc};
 use smithay::backend::renderer::{Bind, Blit, BufferType, ExportMem, TextureFilter, buffer_type};
@@ -39,8 +40,6 @@ use smithay::reexports::wayland_server::{
 };
 use smithay::utils::{Buffer as BufferCoords, Logical, Rectangle, Size};
 use smithay::wayland::dmabuf::get_dmabuf;
-
-use super::WaylandState;
 
 /// Protocol version we advertise.
 ///
@@ -82,6 +81,20 @@ impl WaylandState {
         self.renderer_mut()
             .and_then(|renderer| Bind::<Dmabuf>::supported_formats(renderer))
             .is_some_and(|formats| formats.iter().any(|format| format.code == Fourcc::Xrgb8888))
+    }
+
+    fn screencopy_dmabuf_compatible(
+        &mut self,
+        dmabuf: &Dmabuf,
+        buffer_region: Rectangle<i32, BufferCoords>,
+    ) -> bool {
+        dmabuf.size().w == buffer_region.size.w
+            && dmabuf.size().h == buffer_region.size.h
+            && dmabuf.format().code == Fourcc::Xrgb8888
+            && self
+                .renderer_mut()
+                .and_then(|renderer| Bind::<Dmabuf>::supported_formats(renderer))
+                .is_some_and(|formats| formats.contains(&dmabuf.format()))
     }
 }
 
@@ -290,11 +303,7 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
                 .unwrap_or(false)
             }
             Some(BufferType::Dma) => get_dmabuf(&buffer)
-                .map(|dmabuf| {
-                    dmabuf.size().w == buffer_region.size.w
-                        && dmabuf.size().h == buffer_region.size.h
-                        && dmabuf.format().code == Fourcc::Xrgb8888
-                })
+                .map(|dmabuf| state.screencopy_dmabuf_compatible(dmabuf, *buffer_region))
                 .unwrap_or(false),
             _ => false,
         };
@@ -444,7 +453,7 @@ fn copy_into_dmabuf(
         log::warn!("screencopy: failed to bind client dmabuf: {:?}", err);
     })?;
 
-    let sync = renderer
+    renderer
         .blit(
             framebuffer,
             &mut target,
@@ -461,7 +470,6 @@ fn copy_into_dmabuf(
             log::warn!("screencopy: dmabuf blit failed: {:?}", err);
         })?;
 
-    let _ = sync;
     Ok(())
 }
 

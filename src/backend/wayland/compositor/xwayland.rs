@@ -141,15 +141,14 @@ fn apply_xwayland_surface_policy(
         g.dirty.layout = true;
         g.dirty.space = true;
     }
-    if let Some(g) = state.globals_mut() {
-        if let Some(mid) = g.clients.monitor_id(win)
-            && let Some(mon) = g.monitor_mut(mid)
-        {
-            if surface.is_fullscreen() {
-                mon.fullscreen = Some(win);
-            } else if mon.fullscreen == Some(win) {
-                mon.fullscreen = None;
-            }
+    if let Some(g) = state.globals_mut()
+        && let Some(mid) = g.clients.monitor_id(win)
+        && let Some(mon) = g.monitor_mut(mid)
+    {
+        if surface.is_fullscreen() {
+            mon.fullscreen = Some(win);
+        } else if mon.fullscreen == Some(win) {
+            mon.fullscreen = None;
         }
     }
 }

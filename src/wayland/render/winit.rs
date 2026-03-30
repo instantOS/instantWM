@@ -125,7 +125,6 @@ pub fn render_frame(
         output,
         true,
     );
-
     // Get damage before framebuffer is dropped
     let damage = render_result.damage.cloned();
 
