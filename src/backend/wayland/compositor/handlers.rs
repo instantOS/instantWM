@@ -9,7 +9,6 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
-        selection::data_device::{ClientDndGrabHandler, ServerDndGrabHandler},
         shm::ShmHandler,
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
         xwayland_shell::XWaylandShellHandler,
@@ -152,38 +151,6 @@ impl DmabufHandler for WaylandState {
         } else {
             notifier.failed();
         }
-    }
-}
-
-impl ClientDndGrabHandler for WaylandState {
-    fn started(
-        &mut self,
-        _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
-        icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-        _seat: smithay::input::Seat<Self>,
-    ) {
-        self.runtime.dnd_icon = icon;
-        self.request_render();
-    }
-
-    fn dropped(
-        &mut self,
-        _icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-        _accepted: bool,
-        _seat: smithay::input::Seat<Self>,
-    ) {
-        self.runtime.dnd_icon = None;
-        self.request_render();
-    }
-}
-
-impl ServerDndGrabHandler for WaylandState {
-    fn send(
-        &mut self,
-        _mime_type: String,
-        _fd: std::os::unix::io::OwnedFd,
-        _seat: smithay::input::Seat<Self>,
-    ) {
     }
 }
 

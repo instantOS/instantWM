@@ -8,13 +8,7 @@ use crate::wm::Wm;
 
 fn wayland_monitor_bar_visible(ctx: &crate::contexts::WmCtxWayland<'_>) -> bool {
     let mon = ctx.core.globals().selected_monitor();
-    if !mon.shows_bar() {
-        return false;
-    }
-    let selected_tags = mon.selected_tags();
-    !mon.fullscreen
-        .and_then(|win| ctx.core.globals().clients.get(&win))
-        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+    crate::bar::monitor_bar_visible(ctx.core.globals(), mon)
 }
 
 /// Get the active drag window (if any).

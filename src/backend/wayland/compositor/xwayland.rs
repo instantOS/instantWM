@@ -107,7 +107,7 @@ fn apply_xwayland_surface_policy(
         }
 
         client.is_fullscreen = surface.is_fullscreen();
-        client.is_hidden = surface.is_minimized();
+        client.is_hidden = surface.is_hidden();
 
         if preferred_border != client.border_width {
             let total_w = client.total_width();
@@ -446,7 +446,8 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::MotifHints
             | WmWindowProperty::StartupId
             | WmWindowProperty::Pid
-            | WmWindowProperty::Protocols => {
+            | WmWindowProperty::Protocols
+            | WmWindowProperty::Opacity => {
                 apply_xwayland_surface_policy(self, win, &window);
                 if matches!(
                     property,
@@ -589,7 +590,7 @@ impl XwmHandler for WaylandState {
         let Some(win) = self.window_id_for_x11_surface(&window) else {
             return;
         };
-        let _ = window.set_suspended(true);
+        let _ = window.set_hidden(true);
         self.with_wm_mut_unified(|wm, _state| {
             let mut ctx = wm.ctx();
             crate::client::hide(&mut ctx, win);
@@ -604,7 +605,7 @@ impl XwmHandler for WaylandState {
         let Some(win) = self.window_id_for_x11_surface(&window) else {
             return;
         };
-        let _ = window.set_suspended(false);
+        let _ = window.set_hidden(false);
         self.with_wm_mut_unified(|wm, _state| {
             let mut ctx = wm.ctx();
             crate::client::show(&mut ctx, win);

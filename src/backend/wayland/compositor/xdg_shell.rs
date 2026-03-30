@@ -3,14 +3,20 @@ use smithay::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
         find_popup_root_surface,
     },
-    input::{SeatHandler, pointer::Focus},
+    input::{
+        SeatHandler,
+        dnd::{GrabType, Source},
+        pointer::Focus,
+    },
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
         compositor,
         seat::WaylandFocus,
         selection::{
             SelectionHandler,
-            data_device::{DataDeviceHandler, DataDeviceState, set_data_device_focus},
+            data_device::{
+                DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
+            },
             ext_data_control::{
                 DataControlHandler as ExtDataControlHandler,
                 DataControlState as ExtDataControlState,
@@ -110,20 +116,47 @@ impl SelectionHandler for WaylandState {
 }
 
 impl DataDeviceHandler for WaylandState {
-    fn data_device_state(&self) -> &DataDeviceState {
-        &self.data_device_state
+    fn data_device_state(&mut self) -> &mut DataDeviceState {
+        &mut self.data_device_state
     }
 }
 
 impl ExtDataControlHandler for WaylandState {
-    fn data_control_state(&self) -> &ExtDataControlState {
-        &self.ext_data_control_state
+    fn data_control_state(&mut self) -> &mut ExtDataControlState {
+        &mut self.ext_data_control_state
     }
 }
 
 impl WlrDataControlHandler for WaylandState {
-    fn data_control_state(&self) -> &WlrDataControlState {
-        &self.wlr_data_control_state
+    fn data_control_state(&mut self) -> &mut WlrDataControlState {
+        &mut self.wlr_data_control_state
+    }
+}
+
+impl WaylandDndGrabHandler for WaylandState {
+    fn dnd_requested<S: Source>(
+        &mut self,
+        _source: S,
+        icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+        _seat: smithay::input::Seat<Self>,
+        _serial: smithay::utils::Serial,
+        _type_: GrabType,
+    ) {
+        self.runtime.dnd_icon = icon;
+        self.request_render();
+    }
+}
+
+impl smithay::input::dnd::DndGrabHandler for WaylandState {
+    fn dropped(
+        &mut self,
+        _target: Option<smithay::input::dnd::DndTarget<'_, Self>>,
+        _validated: bool,
+        _seat: smithay::input::Seat<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
+        self.runtime.dnd_icon = None;
+        self.request_render();
     }
 }
 

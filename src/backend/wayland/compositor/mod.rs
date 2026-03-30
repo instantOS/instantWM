@@ -28,6 +28,7 @@
 
 mod focus;
 mod handlers;
+pub(crate) mod image_capture;
 mod layer_shell;
 pub mod output;
 pub mod screencopy;
@@ -42,11 +43,12 @@ pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
-    delegate_ext_data_control, delegate_idle_inhibit, delegate_layer_shell, delegate_output,
-    delegate_pointer_gestures, delegate_presentation, delegate_relative_pointer, delegate_seat,
-    delegate_session_lock, delegate_shm, delegate_viewporter, delegate_xdg_activation,
-    delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_keyboard_grab,
-    delegate_xwayland_shell,
+    delegate_ext_data_control, delegate_idle_inhibit, delegate_image_capture_source,
+    delegate_image_copy_capture, delegate_layer_shell, delegate_output,
+    delegate_output_capture_source, delegate_pointer_gestures, delegate_presentation,
+    delegate_relative_pointer, delegate_seat, delegate_session_lock, delegate_shm,
+    delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------
@@ -59,6 +61,9 @@ delegate_data_device!(WaylandState);
 delegate_dmabuf!(WaylandState);
 delegate_ext_data_control!(WaylandState);
 delegate_idle_inhibit!(WaylandState);
+delegate_image_capture_source!(WaylandState);
+delegate_output_capture_source!(WaylandState);
+delegate_image_copy_capture!(WaylandState);
 delegate_layer_shell!(WaylandState);
 delegate_output!(WaylandState);
 delegate_pointer_gestures!(WaylandState);

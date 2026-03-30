@@ -22,13 +22,7 @@ use crate::wayland::input::pointer::drag::{
 use crate::wm::Wm;
 
 fn wayland_monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
-    if !mon.shows_bar() {
-        return false;
-    }
-    let selected_tags = mon.selected_tags();
-    !mon.fullscreen
-        .and_then(|win| wm.g.clients.get(&win))
-        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+    crate::bar::monitor_bar_visible(&wm.g, mon)
 }
 
 /// Unified pointer motion event that abstracts over input source.

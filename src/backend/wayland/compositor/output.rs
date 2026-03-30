@@ -38,6 +38,7 @@ impl WaylandState {
                 subpixel: Subpixel::Unknown,
                 make: "instantOS".into(),
                 model: "instantWM".into(),
+                serial_number: "Unknown".into(),
             },
         );
 

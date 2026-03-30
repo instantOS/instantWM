@@ -387,7 +387,12 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                 } => {
                     data.xdisplay = Some(display_number);
                     unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
-                    match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone()) {
+                    match X11Wm::start_wm(
+                        handle_for_wm.clone(),
+                        &data.display_handle,
+                        x11_socket,
+                        client.clone(),
+                    ) {
                         Ok(wm) => data.xwm = Some(wm),
                         Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
                     }

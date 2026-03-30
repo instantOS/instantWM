@@ -26,6 +26,8 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         idle_inhibit::IdleInhibitManagerState,
+        image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
+        image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
@@ -55,6 +57,7 @@ use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
+use super::image_capture::PendingImageCapture;
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
 
@@ -118,6 +121,9 @@ pub struct WaylandState {
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
+    pub image_capture_source_state: ImageCaptureSourceState,
+    pub output_capture_source_state: OutputCaptureSourceState,
+    pub image_copy_capture_state: ImageCopyCaptureState,
     pub pointer_gestures_state: PointerGesturesState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
@@ -194,6 +200,8 @@ pub struct WaylandOutputMetadata {
 pub struct WaylandRuntimeState {
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub pending_screencopies: Vec<PendingScreencopy>,
+    pub pending_image_captures: Vec<PendingImageCapture>,
+    pub image_copy_sessions: Vec<ImageCopySession>,
     pub render_dirty: bool,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
@@ -211,6 +219,8 @@ impl Default for WaylandRuntimeState {
         Self {
             tracked_devices: Vec::new(),
             pending_screencopies: Vec::new(),
+            pending_image_captures: Vec::new(),
+            image_copy_sessions: Vec::new(),
             render_dirty: false,
             render_ping: None,
             output_metadata: HashMap::new(),
@@ -271,6 +281,9 @@ impl WaylandState {
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
+        let image_capture_source_state = ImageCaptureSourceState::new();
+        let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
+        let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
@@ -306,6 +319,9 @@ impl WaylandState {
             dmabuf_state,
             dmabuf_global: None,
             foreign_toplevel_list_state,
+            image_capture_source_state,
+            output_capture_source_state,
+            image_copy_capture_state,
             pointer_gestures_state,
             relative_pointer_manager_state,
             viewporter_state,

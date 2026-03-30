@@ -363,7 +363,12 @@ fn setup_session_handlers(
                 if let Err(err) = session_libinput.resume() {
                     log::error!("failed to resume libinput context: {:?}", err);
                 }
-                if let Err(err) = session_output_manager.lock().unwrap().activate(false) {
+                if let Err(err) = session_output_manager
+                    .lock()
+                    .unwrap()
+                    .lock()
+                    .activate(false)
+                {
                     log::error!("failed to reactivate DRM device: {err}");
                 }
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionActivated);

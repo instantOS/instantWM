@@ -453,7 +453,7 @@ fn copy_into_dmabuf(
         log::warn!("screencopy: failed to bind client dmabuf: {:?}", err);
     })?;
 
-    renderer
+    let _ = renderer
         .blit(
             framebuffer,
             &mut target,

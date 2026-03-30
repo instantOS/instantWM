@@ -3,7 +3,7 @@
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
 use smithay::backend::drm::compositor::{FrameError, FrameFlags, PrimaryPlaneElement};
-use smithay::backend::drm::exporter::gbm::GbmFramebufferExporter;
+use smithay::backend::drm::exporter::gbm::{GbmFramebufferExporter, NodeFilter};
 use smithay::backend::drm::output::DrmOutputRenderElements;
 use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
 use smithay::backend::renderer::ImportDma;
@@ -14,7 +14,7 @@ use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
 use smithay::backend::renderer::element::{Element, Id, RenderElementStates};
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
-use smithay::backend::renderer::{Bind, Offscreen, Renderer};
+use smithay::backend::renderer::{Bind, BufferType, Offscreen, Renderer, buffer_type};
 use smithay::desktop::utils::{
     OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
     surface_primary_scanout_output, take_presentation_feedback_surface_tree,
@@ -140,6 +140,7 @@ pub fn build_output_surfaces(
                 subpixel: Subpixel::Unknown,
                 make: "instantOS".into(),
                 model: "instantWM".into(),
+                serial_number: "Unknown".into(),
             },
         );
         let out_mode = OutputMode {
@@ -156,6 +157,7 @@ pub fn build_output_surfaces(
         let _global = output.create_global::<WaylandState>(&state.display_handle);
 
         let surface = output_manager
+            .lock()
             .initialize_output(
                 picked_crtc,
                 mode,
@@ -208,7 +210,7 @@ pub fn create_output_manager(
         gbm_device.clone(),
         GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
     );
-    let exporter = GbmFramebufferExporter::new(gbm_device.clone(), None);
+    let exporter = GbmFramebufferExporter::new(gbm_device.clone(), NodeFilter::None);
     let color_formats: [Fourcc; 2] = [Fourcc::Argb8888, Fourcc::Xrgb8888];
     let renderer_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
 
@@ -353,6 +355,20 @@ pub fn render_drm_output(
         .pending_screencopies
         .iter()
         .any(|copy| copy.output == entry.output && !copy.overlay_cursor);
+    let mut cursorless_image_captures =
+        crate::backend::wayland::compositor::image_capture::drain_pending_image_captures(
+            &mut state.runtime.pending_image_captures,
+            &entry.output,
+            false,
+        );
+    let mut cursor_image_captures =
+        crate::backend::wayland::compositor::image_capture::drain_pending_image_captures(
+            &mut state.runtime.pending_image_captures,
+            &entry.output,
+            true,
+        );
+    let has_pending_image_capture =
+        !cursorless_image_captures.is_empty() || !cursor_image_captures.is_empty();
     let mut frame_flags = FrameFlags::DEFAULT;
     if entry.vrr_enabled {
         frame_flags |= FrameFlags::SKIP_CURSOR_ONLY_UPDATES;
@@ -371,7 +387,7 @@ pub fn render_drm_output(
         }
     };
 
-    if has_pending_screencopy {
+    if has_pending_screencopy || has_pending_image_capture {
         let output_scale = entry.output.current_scale().fractional_scale();
         let output_transform = entry.output.current_transform().invert();
         let mode_size = entry
@@ -382,7 +398,126 @@ pub fn render_drm_output(
         let target_size = output_transform.transform_size(mode_size);
         let target_size_buffer: smithay::utils::Size<i32, BufferCoords> =
             (target_size.w, target_size.h).into();
-        if has_cursorless_screencopy {
+
+        let mut cursorless_dmabuf_captures = Vec::new();
+        let mut cursorless_target_captures = Vec::new();
+        for capture in cursorless_image_captures.drain(..) {
+            if matches!(buffer_type(&capture.frame.buffer()), Some(BufferType::Dma)) {
+                cursorless_dmabuf_captures.push(capture);
+            } else {
+                cursorless_target_captures.push(capture);
+            }
+        }
+        cursorless_image_captures = cursorless_target_captures;
+
+        let mut cursor_dmabuf_captures = Vec::new();
+        let mut cursor_target_captures = Vec::new();
+        for capture in cursor_image_captures.drain(..) {
+            if matches!(buffer_type(&capture.frame.buffer()), Some(BufferType::Dma)) {
+                cursor_dmabuf_captures.push(capture);
+            } else {
+                cursor_target_captures.push(capture);
+            }
+        }
+        cursor_image_captures = cursor_target_captures;
+
+        for capture in cursorless_dmabuf_captures {
+            let buffer = capture.frame.buffer();
+            let mut dmabuf = match smithay::wayland::dmabuf::get_dmabuf(&buffer) {
+                Ok(dmabuf) => dmabuf.clone(),
+                Err(err) => {
+                    log::warn!("image-capture: failed to access dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            let mut target = match renderer.bind(&mut dmabuf) {
+                Ok(target) => target,
+                Err(err) => {
+                    log::warn!("image-capture: failed to bind dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            match frame_result.blit_frame_result(
+                target_size,
+                output_transform,
+                output_scale,
+                renderer,
+                &mut target,
+                [Rectangle::from_size(target_size)],
+                cursor_element_ids.iter().cloned(),
+            ) {
+                Ok(sync) => {
+                    let _ = renderer.wait(&sync);
+                    capture.frame.success(
+                        capture.transform,
+                        None::<Vec<Rectangle<i32, BufferCoords>>>,
+                        crate::backend::wayland::compositor::image_capture::monotonic_timestamp(),
+                    );
+                }
+                Err(err) => {
+                    log::warn!("image-capture direct dmabuf blit failed: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                }
+            }
+        }
+
+        for capture in cursor_dmabuf_captures {
+            let buffer = capture.frame.buffer();
+            let mut dmabuf = match smithay::wayland::dmabuf::get_dmabuf(&buffer) {
+                Ok(dmabuf) => dmabuf.clone(),
+                Err(err) => {
+                    log::warn!("image-capture: failed to access dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            let mut target = match renderer.bind(&mut dmabuf) {
+                Ok(target) => target,
+                Err(err) => {
+                    log::warn!("image-capture: failed to bind dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            match frame_result.blit_frame_result(
+                target_size,
+                output_transform,
+                output_scale,
+                renderer,
+                &mut target,
+                [Rectangle::from_size(target_size)],
+                std::iter::empty::<Id>(),
+            ) {
+                Ok(sync) => {
+                    let _ = renderer.wait(&sync);
+                    capture.frame.success(
+                        capture.transform,
+                        None::<Vec<Rectangle<i32, BufferCoords>>>,
+                        crate::backend::wayland::compositor::image_capture::monotonic_timestamp(),
+                    );
+                }
+                Err(err) => {
+                    log::warn!("image-capture direct dmabuf blit failed: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                }
+            }
+        }
+
+        if has_cursorless_screencopy || !cursorless_image_captures.is_empty() {
             let mut capture: GlesTexture =
                 match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
                     Ok(buffer) => buffer,
@@ -402,7 +537,6 @@ pub fn render_drm_output(
                     cursor_element_ids.iter().cloned(),
                 ) {
                     Ok(sync) => {
-                        let _ = renderer.wait(&sync);
                         crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
                             &mut state.runtime.pending_screencopies,
                             renderer,
@@ -410,6 +544,12 @@ pub fn render_drm_output(
                             &entry.output,
                             false,
                         );
+                        crate::backend::wayland::compositor::image_capture::submit_image_captures(
+                            cursorless_image_captures,
+                            renderer,
+                            &target,
+                        );
+                        let _ = sync;
                     }
                     Err(err) => {
                         log::warn!("screencopy blit_frame_result failed: {:?}", err);
@@ -423,7 +563,7 @@ pub fn render_drm_output(
             }
         }
 
-        if has_cursor_screencopy {
+        if has_cursor_screencopy || !cursor_image_captures.is_empty() {
             let mut capture: GlesTexture =
                 match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
                     Ok(buffer) => buffer,
@@ -443,7 +583,6 @@ pub fn render_drm_output(
                     std::iter::empty::<Id>(),
                 ) {
                     Ok(sync) => {
-                        let _ = renderer.wait(&sync);
                         crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
                             &mut state.runtime.pending_screencopies,
                             renderer,
@@ -451,6 +590,12 @@ pub fn render_drm_output(
                             &entry.output,
                             true,
                         );
+                        crate::backend::wayland::compositor::image_capture::submit_image_captures(
+                            cursor_image_captures,
+                            renderer,
+                            &target,
+                        );
+                        let _ = sync;
                     }
                     Err(err) => {
                         log::warn!("screencopy blit_frame_result failed: {:?}", err);
