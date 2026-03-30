@@ -239,7 +239,27 @@ impl XwmHandler for WaylandState {
                 },
             );
         }
-        let _ = window.configure(Some(geo));
+        let final_rect = if let Some(rect) = self
+            .globals()
+            .and_then(|g| crate::client::sane_floating_spawn_rect(g, win))
+        {
+            if let Some(g) = self.globals_mut() {
+                crate::client::sync_client_geometry(g, win, rect);
+            }
+            self.resize_window(win, rect);
+            rect
+        } else {
+            crate::types::Rect {
+                x: geo.loc.x,
+                y: geo.loc.y,
+                w: geo.size.w.max(1),
+                h: geo.size.h.max(1),
+            }
+        };
+        let _ = window.configure(Some(smithay::utils::Rectangle::new(
+            (final_rect.x, final_rect.y).into(),
+            (final_rect.w.max(1), final_rect.h.max(1)).into(),
+        )));
         if let Some(g) = self.globals_mut() {
             g.dirty.layout = true;
             g.dirty.space = true;

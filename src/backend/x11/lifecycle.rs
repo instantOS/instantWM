@@ -88,6 +88,9 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.globals_mut(), w, trans.is_some()) {
+        if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w) {
+            crate::client::sync_client_geometry(ctx.core.globals_mut(), w, rect);
+        }
         ctx.backend.raise_window(w);
         ctx.backend.flush();
     }

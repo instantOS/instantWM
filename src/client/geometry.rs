@@ -35,6 +35,57 @@ pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
     }
 }
 
+/// Compute a saner initial position for a newly managed floating client.
+///
+/// The goal is to preserve application-provided placement when it is already
+/// reasonable, while preventing new floats from spawning under the bar or
+/// mostly off-screen. The returned rect keeps the original size and only
+/// adjusts position.
+pub fn sane_floating_spawn_rect(globals: &Globals, win: WindowId) -> Option<Rect> {
+    let client = globals.clients.get(&win)?;
+    if !client.is_floating {
+        return None;
+    }
+
+    let work_rect = globals.monitor(client.monitor_id)?.work_rect;
+    if !work_rect.is_valid() {
+        return None;
+    }
+
+    let total_w = client.total_width();
+    let total_h = client.total_height();
+    let mut rect = client.geo;
+
+    let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.x + work_rect.w;
+    let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
+
+    rect.x = normalize_spawn_axis(rect.x, total_w, work_rect.x, work_rect.w, fully_outside_x);
+    rect.y = normalize_spawn_axis(rect.y, total_h, work_rect.y, work_rect.h, fully_outside_y);
+
+    rect.differs_from(&client.geo).then_some(rect)
+}
+
+fn normalize_spawn_axis(
+    pos: i32,
+    total_len: i32,
+    bounds_pos: i32,
+    bounds_len: i32,
+    fully_outside: bool,
+) -> i32 {
+    if total_len >= bounds_len {
+        return bounds_pos;
+    }
+
+    let min_pos = bounds_pos;
+    let max_pos = bounds_pos + bounds_len - total_len;
+
+    if fully_outside {
+        bounds_pos + (bounds_len - total_len) / 2
+    } else {
+        pos.clamp(min_pos, max_pos)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // High-level resize (validates size hints)
 // ---------------------------------------------------------------------------
@@ -197,6 +248,74 @@ fn calculate_scaled_geometry(
         y: new_y,
         w: new_w,
         h: new_h,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sane_floating_spawn_rect;
+    use crate::globals::Globals;
+    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
+
+    fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> Globals {
+        let mut globals = Globals::default();
+
+        let mut monitor = Monitor::new_with_values(0.55, 1, true, true);
+        monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
+        monitor.work_rect = work_rect;
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        globals.monitors.push(monitor);
+
+        let mut client = Client::default();
+        client.win = WindowId::from(1_u32);
+        client.monitor_id = 0;
+        client.set_tag_mask(TagMask::single(1).unwrap());
+        client.is_floating = true;
+        client.border_width = border_width;
+        client.geo = rect;
+        client.float_geo = rect;
+        client.old_geo = rect;
+        globals.clients.insert(client.win, client);
+
+        globals
+    }
+
+    #[test]
+    fn sane_floating_spawn_rect_clamps_under_bar() {
+        let globals = globals_with_floating_client(
+            Rect::new(100, 0, 500, 300),
+            2,
+            Rect::new(0, 32, 1920, 1048),
+        );
+
+        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
+        assert_eq!(rect.y, 32);
+    }
+
+    #[test]
+    fn sane_floating_spawn_rect_centers_when_completely_offscreen() {
+        let globals = globals_with_floating_client(
+            Rect::new(-4000, -3000, 500, 300),
+            2,
+            Rect::new(0, 32, 1920, 1048),
+        );
+
+        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
+        assert_eq!(rect.x, 708);
+        assert_eq!(rect.y, 404);
+    }
+
+    #[test]
+    fn sane_floating_spawn_rect_anchors_large_windows_to_work_area() {
+        let globals = globals_with_floating_client(
+            Rect::new(200, 200, 1900, 1100),
+            2,
+            Rect::new(0, 32, 1920, 1048),
+        );
+
+        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
+        assert_eq!(rect.x, 16);
+        assert_eq!(rect.y, 32);
     }
 }
 

@@ -24,6 +24,15 @@ impl WaylandState {
         if let Some(toplevel) = window.toplevel() {
             self.apply_xdg_toplevel_floating_policy(toplevel);
         }
+        if let Some(rect) = self
+            .globals()
+            .and_then(|g| crate::client::sane_floating_spawn_rect(g, window_id))
+        {
+            if let Some(g) = self.globals_mut() {
+                crate::client::sync_client_geometry(g, window_id, rect);
+            }
+            self.set_window_target_rect(window_id, rect, super::animations::WindowMoveMode::Normal);
+        }
 
         if let Some(title) = self.window_title(window_id)
             && let Some(g) = self.globals_mut()
