@@ -300,12 +300,18 @@ impl Monitor {
         self.sel
     }
 
-    /// Walk the stacking list and return the first visible, non-hidden
+    /// Walk the stacking list and return the topmost visible, non-hidden
     /// client on the currently selected tags.
+    ///
+    /// The end of `self.stack` is the top of the z-order: interactive raises
+    /// append there, and `layouts::restack` keeps the focused overlap target
+    /// last. Focus recovery should therefore walk the stack in reverse so
+    /// closing an overlapping window selects the window immediately below it.
     pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
         let tags = self.selected_tags();
         self.stack
             .iter()
+            .rev()
             .find_map(|&w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
     }
 
@@ -579,4 +585,28 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<usize> 
     }
 
     Some(best_idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_visible_client_prefers_topmost_visible_stack_entry() {
+        let mut monitor = Monitor::default();
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+
+        let mut clients = HashMap::new();
+        for id in [WindowId(1), WindowId(2), WindowId(3)] {
+            let mut client = Client {
+                win: id,
+                ..Client::default()
+            };
+            client.set_tag_mask(TagMask::single(1).unwrap());
+            clients.insert(id, client);
+        }
+
+        assert_eq!(monitor.first_visible_client(&clients), Some(WindowId(3)));
+    }
 }
