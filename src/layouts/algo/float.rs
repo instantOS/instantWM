@@ -26,16 +26,10 @@
 //!                   ↑ Maximized fills the whole work area
 //! ```
 //!
-//! ## `save_floating`
-//!
-//! A small helper that copies `client.geo` into `client.float_geo`.  It is
-//! used here to checkpoint a floating client's position before the overview
-//! layout moves it, so the original position can be restored later.
-
 use crate::backend::BackendOps;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::types::{Client, Monitor, Rect, SnapPosition, WindowId};
+use crate::types::{Monitor, Rect, SnapPosition, WindowId};
 
 // ── float_left ─────────────────────────────────────────────────────────────────
 
@@ -131,13 +125,3 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
     resize(ctx, win, &Rect { x, y, w, h }, false);
 }
 
-// ── save_floating ─────────────────────────────────────────────────────────────
-
-/// Persist the current geometry of `win` as its floating geometry.
-///
-/// Called before any operation that will move a floating client (such as the
-/// overview layout), so the original position can be restored afterwards via
-/// `restore_floating_win`.
-pub fn save_floating(client: &mut Client) {
-    client.float_geo = client.geo;
-}

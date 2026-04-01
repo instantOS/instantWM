@@ -27,15 +27,8 @@
 use crate::backend::BackendOps;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::types::{Client, Monitor, Rect};
-
-/// Save the current geometry as the client's floating geometry.
-///
-/// Called before repositioning a floating client so that its position can be
-/// restored when leaving overview mode.
-fn save_floating(client: &mut Client) {
-    client.float_geo = client.geo;
-}
+use crate::floating::save_floating_geometry;
+use crate::types::{Monitor, Rect};
 
 pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let n = ctx.core_mut().globals_mut().clients.len();
@@ -97,7 +90,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         // Persist float geometry so restore works after leaving overview.
         if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            save_floating(client);
+            save_floating_geometry(client);
         }
 
         resize(

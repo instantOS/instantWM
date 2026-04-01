@@ -4,7 +4,7 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::state::{PendingLaunchContextMarker, WindowIdMarker};
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -108,10 +108,23 @@ impl WaylandState {
             .find_window(window)
             .and_then(|element| element.x11_surface())
             .map(|x11| (x11.pid(), x11.startup_id()));
-        let launch_context = x11_launch_ids.and_then(|(pid, startup_id)| {
-            self.globals_mut()
-                .and_then(|g| crate::client::take_pending_launch(g, pid, startup_id.as_deref()))
-        });
+        let launch_context = x11_launch_ids
+            .and_then(|(pid, startup_id)| {
+                self.globals_mut()
+                    .and_then(|g| crate::client::take_pending_launch(g, pid, startup_id.as_deref()))
+            })
+            .or_else(|| {
+                self.find_window(window)
+                    .and_then(|element| element.wl_surface())
+                    .and_then(|wl_surface| {
+                        smithay::wayland::compositor::with_states(&wl_surface, |states| {
+                            states
+                                .data_map
+                                .get::<PendingLaunchContextMarker>()
+                                .map(|marker| marker.context)
+                        })
+                    })
+            });
 
         let Some(g) = self.globals_mut() else {
             return;

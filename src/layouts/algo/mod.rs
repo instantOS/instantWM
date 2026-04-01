@@ -46,4 +46,4 @@ pub use tcl::three_column;
 pub use overview::overviewlayout;
 
 // ── floating / snap ──────────────────────────────────────────────────────────
-pub use float::{apply_snap_for_window, float_left, save_floating};
+pub use float::{apply_snap_for_window, float_left};

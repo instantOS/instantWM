@@ -191,6 +191,11 @@ pub struct WindowIdMarker {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PendingLaunchContextMarker {
+    pub context: crate::client::LaunchContext,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WaylandOutputMetadata {
     pub vrr_support: crate::backend::BackendVrrSupport,
     pub vrr_mode: VrrMode,

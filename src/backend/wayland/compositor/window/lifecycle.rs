@@ -59,8 +59,18 @@ impl WaylandState {
             g.dirty.layout = true;
             g.dirty.space = true;
         }
-        // Apply seat focus immediately so the new window can receive input.
-        self.set_focus(window_id);
+        let should_focus = self
+            .globals()
+            .and_then(|g| {
+                g.clients.get(&window_id).and_then(|client| {
+                    g.monitor(client.monitor_id)
+                        .map(|mon| client.is_visible(mon.selected_tags()))
+                })
+            })
+            .unwrap_or(false);
+        if should_focus {
+            self.set_focus(window_id);
+        }
         self.create_foreign_toplevel(window_id);
         window_id
     }

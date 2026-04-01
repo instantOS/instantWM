@@ -531,21 +531,13 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
+        let launch_context = token_data
+            .user_data
+            .get::<crate::client::LaunchContext>()
+            .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
-            let launch_context = token_data
-                .user_data
-                .get::<crate::client::LaunchContext>()
-                .copied();
             let activated = self.with_wm_mut_unified(|wm, _state| {
                 let g = &mut wm.g;
-                if let Some(context) = launch_context
-                    && let Some(client) = g.clients.get_mut(&win)
-                {
-                    client.set_tag_mask(context.tags);
-                    g.dirty.layout = true;
-                    g.dirty.space = true;
-                }
-
                 let should_focus = g
                     .clients
                     .get(&win)
@@ -574,9 +566,26 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                     token_data.app_id
                 );
             }
+            return;
+        }
+
+        if let Some(context) = launch_context {
+            smithay::wayland::compositor::with_states(&surface, |states| {
+                let _ = states
+                    .data_map
+                    .insert_if_missing_threadsafe(|| {
+                        crate::backend::wayland::compositor::state::PendingLaunchContextMarker {
+                            context,
+                        }
+                    });
+            });
+            log::debug!(
+                "xdg_activation: stored launch context for pending surface (app_id: {:?})",
+                token_data.app_id
+            );
         } else {
             log::warn!(
-                "xdg_activation: could not find window for surface (app_id: {:?})",
+                "xdg_activation: missing launch context for pending surface (app_id: {:?})",
                 token_data.app_id
             );
         }
