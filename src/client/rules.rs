@@ -124,7 +124,12 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
         return;
     }
 
-    apply_rules(g, win, props, None);
+    let existing_context = g.clients.get(&win).map(|c| LaunchContext {
+        monitor_id: c.monitor_id,
+        tags: c.tags,
+    });
+
+    apply_rules(g, win, props, existing_context);
 }
 
 /// Return `true` when `rule` matches all provided window identifiers.
@@ -264,5 +269,44 @@ fn clamp_client_tags(
 
     if let Some(c) = g.clients.get_mut(&win) {
         c.set_tag_mask(final_tags);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WindowProperties, handle_property_change};
+    use crate::globals::Globals;
+    use crate::types::{Client, Monitor, TagMask, WindowId};
+
+    #[test]
+    fn property_change_preserves_existing_tags_without_matching_rule() {
+        let mut g = Globals::default();
+        g.tags.num_tags = 9;
+
+        let mut mon = Monitor::new_with_values(0.55, 1, true, true);
+        mon.set_selected_tags(TagMask::single(1).unwrap());
+        g.monitors.push(mon);
+
+        let win = WindowId(42);
+        let client = Client {
+            win,
+            monitor_id: 0,
+            tags: TagMask::single(2).unwrap(),
+            ..Default::default()
+        };
+        g.clients.insert(win, client);
+
+        handle_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                title: "updated".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let client = g.clients.get(&win).expect("client should still exist");
+        assert_eq!(client.tags, TagMask::single(2).unwrap());
+        assert_eq!(client.name, "updated");
     }
 }
