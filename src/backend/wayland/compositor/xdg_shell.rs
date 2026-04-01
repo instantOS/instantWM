@@ -510,17 +510,20 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         _token: smithay::wayland::xdg_activation::XdgActivationToken,
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
     ) -> bool {
-        if let Some(surface) = token_data.surface.as_ref()
-            && let Some(source_win) = self.window_id_for_surface(surface)
-            && let Some(g) = self.globals()
-            && let Some(client) = g.clients.get(&source_win)
-        {
-            let _ = token_data.user_data.insert_if_missing_threadsafe(|| {
-                crate::client::LaunchContext {
+        if let Some(g) = self.globals() {
+            let context = token_data
+                .surface
+                .as_ref()
+                .and_then(|surface| self.window_id_for_surface(surface))
+                .and_then(|source_win| g.clients.get(&source_win))
+                .map(|client| crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
-                }
-            });
+                })
+                .unwrap_or_else(|| crate::client::current_launch_context(g));
+            let _ = token_data
+                .user_data
+                .insert_if_missing_threadsafe(|| context);
         }
         true
     }
