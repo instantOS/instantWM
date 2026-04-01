@@ -189,6 +189,16 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         ctx.core_mut().globals_mut().monitors.selected_monitor_idx -= 1;
     }
 
+    // Fix up client monitor references
+    let target = ctx.core_mut().globals_mut().monitors.selected_monitor_idx;
+    for client in ctx.core_mut().globals_mut().clients.values_mut() {
+        if client.monitor_id == monitor_id {
+            client.monitor_id = target;
+        } else if client.monitor_id > monitor_id {
+            client.monitor_id -= 1;
+        }
+    }
+
     if bar_win != WindowId::default()
         && let WmCtx::X11(x11) = ctx
     {

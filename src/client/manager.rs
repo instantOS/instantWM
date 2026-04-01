@@ -42,6 +42,10 @@ impl ClientManager {
         self.clients.values()
     }
 
+    pub fn values_mut(&mut self) -> std::collections::hash_map::ValuesMut<'_, WindowId, Client> {
+        self.clients.values_mut()
+    }
+
     pub fn keys(&self) -> std::collections::hash_map::Keys<'_, WindowId, Client> {
         self.clients.keys()
     }
