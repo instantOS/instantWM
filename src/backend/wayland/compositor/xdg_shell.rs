@@ -540,19 +540,6 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
             let activated = self.with_wm_mut_unified(|wm, _state| {
-                let g = &mut wm.g;
-                let should_focus = g
-                    .clients
-                    .get(&win)
-                    .and_then(|client| {
-                        g.monitor(client.monitor_id)
-                            .map(|mon| client.is_visible(mon.selected_tags()))
-                    })
-                    .unwrap_or(false);
-                if !should_focus {
-                    return false;
-                }
-
                 let mut ctx = wm.ctx();
                 crate::focus::activate_client(&mut ctx, win)
             });
