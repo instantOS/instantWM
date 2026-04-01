@@ -1,4 +1,5 @@
 use crate::bar::paint::BarPainter;
+use crate::bar::scene::MonitorBarSnapshot;
 use crate::contexts::CoreCtx;
 use crate::types::Gesture;
 
@@ -7,17 +8,29 @@ use crate::types::Gesture;
 /// Systray width must be cached in `core.globals().bar_runtime.systray_width` by the caller
 /// before invoking this function.
 pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
+    let monitor = match core.globals().monitor(mon_idx).cloned() {
+        Some(m) => m,
+        None => return,
+    };
+
+    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
+    let Some(snapshot) = snapshots.iter().find(|s| s.monitor_id == monitor.id()) else {
+        return;
+    };
+
+    draw_bar_snapshot(core, mon_idx, &monitor, snapshot, painter);
+}
+
+pub(crate) fn draw_bar_snapshot(
+    core: &mut CoreCtx,
+    mon_idx: usize,
+    monitor: &crate::types::Monitor,
+    snapshot: &MonitorBarSnapshot,
+    painter: &mut dyn BarPainter,
+) {
     if !core.bar.try_recursion_enter() {
         return;
     }
-
-    let monitor = match core.globals().monitor(mon_idx).cloned() {
-        Some(m) => m,
-        None => {
-            core.bar.recursion_exit();
-            return;
-        }
-    };
 
     if !monitor.shows_bar() || core.bar.pausedraw() {
         core.bar.recursion_exit();
@@ -30,14 +43,8 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
         return;
     }
 
-    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
-    let Some(snapshot) = snapshots.into_iter().find(|s| s.monitor_id == monitor.id()) else {
-        core.bar.recursion_exit();
-        return;
-    };
-
     core.bar.clear_cached_widths();
-    let output = crate::bar::scene::render_monitor_snapshot(&snapshot, painter);
+    let output = crate::bar::scene::render_monitor_snapshot(snapshot, painter);
     core.bar
         .replace_hit_cache(snapshot.monitor_id, output.hit_cache);
 

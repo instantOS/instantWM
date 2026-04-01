@@ -109,11 +109,7 @@ pub(crate) fn build_monitor_snapshots(
             Some(status_text)
         }
     };
-    let monitor_ids: Vec<usize> = core
-        .globals()
-        .monitors_iter_all()
-        .map(Monitor::id)
-        .collect();
+    let monitors: Vec<Monitor> = core.globals().monitors_iter_all().cloned().collect();
     let mut monitor_stats: HashMap<usize, crate::bar::model::ClientBarStats> = HashMap::new();
     for client in core.globals().clients.values() {
         let entry = monitor_stats.entry(client.monitor_id).or_default();
@@ -123,19 +119,11 @@ pub(crate) fn build_monitor_snapshots(
         }
     }
 
-    let mut monitors = Vec::new();
-    for monitor_id in monitor_ids {
-        let Some(mon_ref) = core
-            .globals()
-            .monitors_iter_all()
-            .find(|monitor| monitor.id() == monitor_id)
-        else {
-            continue;
-        };
-        if !crate::bar::monitor_bar_visible(core.globals(), mon_ref) {
+    let mut snapshots = Vec::new();
+    for mon in monitors {
+        if !crate::bar::monitor_bar_visible(core.globals(), &mon) {
             continue;
         }
-        let mon = mon_ref.clone();
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
 
         let mut stats = monitor_stats.get(&mon.id()).copied().unwrap_or_default();
@@ -169,13 +157,10 @@ pub(crate) fn build_monitor_snapshots(
 
         let selected_tags = mon.selected_tags();
         let mut titles = Vec::new();
-        for c_win in mon
+        for (_c_win, c) in mon
             .iter_clients(core.globals().clients.map())
-            .filter_map(|(c_win, c)| c.shows_in_bar(selected_tags).then_some(c_win))
+            .filter(|(_, c)| c.shows_in_bar(selected_tags))
         {
-            let Some(c) = core.globals().clients.get(&c_win) else {
-                continue;
-            };
             stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
             let scheme = core.globals().window_scheme(c, is_hover);
@@ -218,7 +203,7 @@ pub(crate) fn build_monitor_snapshots(
             None
         };
 
-        monitors.push(MonitorBarSnapshot {
+        snapshots.push(MonitorBarSnapshot {
             monitor_id: mon.id(),
             origin_x: mon.work_rect.x,
             origin_y: mon.bar_y,
@@ -241,7 +226,7 @@ pub(crate) fn build_monitor_snapshots(
         });
     }
 
-    monitors
+    snapshots
 }
 
 fn draw_startmenu_icon_snapshot(

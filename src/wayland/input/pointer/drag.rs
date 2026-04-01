@@ -141,9 +141,9 @@ fn update_wayland_move_bar_hover(
     ctx: &mut crate::contexts::WmCtxWayland<'_>,
     root_x: i32,
     root_y: i32,
-) {
+) -> bool {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root_x, root_y);
+    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root_x, root_y)
 }
 
 /// Handle interactive drag motion (move or resize) on Wayland.
@@ -166,18 +166,16 @@ pub fn wayland_hover_resize_drag_motion(
 
     match drag.drag_type {
         crate::globals::DragType::Move => {
-            update_wayland_move_bar_hover(ctx, root_x, root_y);
+            let on_bar = update_wayland_move_bar_hover(ctx, root_x, root_y);
 
             let mut new_x = drag.win_start_geo.x + (root_x - drag.start_x);
             let mut new_y = drag.win_start_geo.y + (root_y - drag.start_y);
 
             // While hovering over the bar, keep the window just below it.
-            {
+            if on_bar {
                 let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-                if crate::mouse::drag::move_drop::point_is_on_bar(&wm_ctx, root_x, root_y) {
-                    let mon = wm_ctx.core().globals().selected_monitor();
-                    new_y = mon.bar_y + mon.bar_height;
-                }
+                let mon = wm_ctx.core().globals().selected_monitor();
+                new_y = mon.bar_y + mon.bar_height;
             }
 
             {

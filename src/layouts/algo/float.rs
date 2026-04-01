@@ -124,4 +124,3 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
 
     resize(ctx, win, &Rect { x, y, w, h }, false);
 }
-

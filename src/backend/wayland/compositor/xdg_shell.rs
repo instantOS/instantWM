@@ -571,13 +571,11 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
 
         if let Some(context) = launch_context {
             smithay::wayland::compositor::with_states(&surface, |states| {
-                let _ = states
-                    .data_map
-                    .insert_if_missing_threadsafe(|| {
-                        crate::backend::wayland::compositor::state::PendingLaunchContextMarker {
-                            context,
-                        }
-                    });
+                let _ = states.data_map.insert_if_missing_threadsafe(|| {
+                    crate::backend::wayland::compositor::state::PendingLaunchContextMarker {
+                        context,
+                    }
+                });
             });
             log::debug!(
                 "xdg_activation: stored launch context for pending surface (app_id: {:?})",
