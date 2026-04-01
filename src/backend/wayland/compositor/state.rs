@@ -470,6 +470,11 @@ impl WaylandState {
             }
         }
 
+        // Purge surfaces whose underlying resource is gone, so the HashSet
+        // does not grow unbounded when clients crash or destroy surfaces
+        // without sending an explicit uninhibit request.
+        self.idle_inhibiting_surfaces.retain(|s| s.alive());
+
         // Only recover focus when the seat focus is actually missing or dead.
         // A plain space sync must not steal focus away from a live overlay
         // surface such as fuzzel/rofi, or from any other valid keyboard target.
