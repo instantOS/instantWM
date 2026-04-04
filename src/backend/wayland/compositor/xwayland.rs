@@ -477,6 +477,11 @@ impl XwmHandler for WaylandState {
                     g.dirty.layout = true;
                     g.dirty.space = true;
                 }
+                // WM_HINTS carries the urgency bit.  After applying it to the
+                // client, redraw the bar so the tag indicator updates at once.
+                if matches!(property, WmWindowProperty::Hints) {
+                    self.request_bar_redraw();
+                }
             }
         }
     }

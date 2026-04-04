@@ -1,7 +1,7 @@
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
-use crate::actions::{KeyAction, NamedAction, argv};
-use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
+use crate::actions::{argv, KeyAction, NamedAction};
+use crate::config::commands_common::{defaults, media, menu, scrot, ROFI_WINDOW_SWITCH};
 use crate::types::Key;
 
 use super::keysyms::*;
@@ -127,6 +127,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_R => named_args(NamedAction::Spawn, defaults::TERM_FILEMANAGER)),
         key!(MODKEY, XK_Y => named_args(NamedAction::Spawn, defaults::APPMENU)),
         key!(MODKEY, XK_X => named_args(NamedAction::Spawn, &["iswitch"])),
+        key!(MODKEY, XK_A => named_args(NamedAction::Spawn, &["ins", "assist"])),
         key!(MOD1, XK_TAB => named_args(NamedAction::Spawn, &["iswitch"])),
         key!(MODKEY, XK_DEAD_CIRCUMFLEX => named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
         key!(MODKEY | CONTROL, XK_L => named_args(NamedAction::Spawn, defaults::LOCKSCREEN)),
