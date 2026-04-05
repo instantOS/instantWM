@@ -1,4 +1,3 @@
-use crate::backend::BackendOps;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
 use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
 use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
@@ -6,9 +5,7 @@ use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
 use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{
-    AltCursor, BarPosition, ButtonArg, Client, Gesture, MouseButton, Rect, WindowId,
-};
+use crate::types::{AltCursor, BarPosition, Client, Gesture, MouseButton, Rect, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -44,11 +41,6 @@ fn send_xembed_event(
 
 pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
-    // Client button grabs use GrabMode::SYNC; replay pointer events like dwm.
-    let conn = ctx.x11.conn;
-    let _ = conn.allow_events(Allow::REPLAY_POINTER, CURRENT_TIME);
-    let _ = conn.flush();
-
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.globals().cfg.buttons.clone();
     let altcursor = ctx.core.globals().behavior.cursor_icon;
@@ -63,9 +55,8 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         && selmon_id != clicked_mon
         && (focusfollowsmouse || e.detail <= 3)
     {
-        ctx.core.globals_mut().set_selected_monitor(clicked_mon);
         selmon_id = clicked_mon;
-        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
+        crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), clicked_mon);
     };
 
     // Determine the full bar position — this carries the exact target
@@ -80,7 +71,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(event_win));
+            crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
             if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(event_win) {
                 crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
@@ -89,40 +80,17 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if event_win == mon.bar_win {
             let local_x = e.event_x as i32;
             let position = mon.bar_position_at_x(&ctx.core, local_x);
-            let monitor_id = mon.id();
-            if position == BarPosition::StartMenu {
-                crate::bar::x11::reset_bar_x11(
-                    &mut ctx.core,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
-            }
 
             if position == BarPosition::StatusText {
-                let mode = &ctx.core.globals().behavior.current_mode;
-                if !mode.is_empty() && mode != "default" {
-                    ctx.core.globals_mut().behavior.current_mode = "default".to_string();
-                    ctx.core.bar.mark_dirty();
-                    return;
-                } else {
-                    let status_text = ctx.core.globals().bar_runtime.status_text.clone();
-                    let parsed = ctx.core.bar.parsed_status_for_text(&status_text).clone();
-                    let click_targets = ctx
-                        .core
-                        .bar
-                        .monitor_hit_cache(monitor_id)
-                        .map(|h| h.status_click_targets.as_slice())
-                        .unwrap_or(&[]);
-                    crate::bar::status::emit_i3bar_status_click(
-                        &parsed,
-                        click_targets,
-                        local_x,
-                        e.event_y as i32,
-                        e.detail,
-                        ctx.core.globals().cfg.bar_height,
-                        crate::util::clean_mask(e.state.into(), numlockmask),
-                    );
-                }
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                crate::bar::handle_status_text_click(
+                    &mut wm_ctx,
+                    e.root_x as i32,
+                    e.root_y as i32,
+                    e.detail,
+                    crate::util::clean_mask(e.state.into(), numlockmask),
+                );
+                return;
             }
 
             bar_pos = position;
@@ -134,6 +102,29 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     } else {
         bar_pos = BarPosition::Root;
     };
+
+    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
+    let client_binding_matched = bar_pos == BarPosition::ClientWin
+        && buttons_clone.iter().any(|button| {
+            button.matches(bar_pos)
+                && button.button.as_u8() == e.detail
+                && crate::util::clean_mask(button.mask, numlockmask) == clean_state
+        });
+
+    // Client button grabs use GrabMode::SYNC. Plain clicks should be replayed to
+    // the client after WM processing, but WM-owned modified clicks (e.g. Super+drag)
+    // must stay consumed by the WM so the initial press is not handed back to the
+    // client before the drag grab begins.
+    let conn = ctx.x11.conn;
+    let _ = conn.allow_events(
+        if client_binding_matched {
+            Allow::ASYNC_POINTER
+        } else {
+            Allow::REPLAY_POINTER
+        },
+        CURRENT_TIME,
+    );
+    let _ = conn.flush();
 
     if bar_pos == BarPosition::Root
         && let Some(mon) = ctx.core.globals().monitor(selmon_id)
@@ -155,24 +146,23 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
-
-    for button in &buttons_clone {
-        if !button.matches(bar_pos) || button.button.as_u8() != e.detail {
-            continue;
-        }
-        if crate::util::clean_mask(button.mask, numlockmask) != clean_state {
-            continue;
-        }
-        let arg = ButtonArg {
-            pos: bar_pos,
-            btn: button.button,
-            rx: e.root_x as i32,
-            ry: e.root_y as i32,
-        };
-        // Convert WmCtxX11 to WmCtx for button action
-        let tmp = ctx.reborrow();
-        (button.action)(&mut WmCtx::X11(tmp), arg);
+    if let Some(btn) = MouseButton::from_u8(e.detail) {
+        let target_window = ctx
+            .core
+            .globals()
+            .clients
+            .contains_key(&event_win)
+            .then_some(event_win);
+        crate::bar::dispatch_configured_button(
+            &mut WmCtx::X11(ctx.reborrow()),
+            bar_pos,
+            target_window,
+            btn,
+            e.root_x as i32,
+            e.root_y as i32,
+            clean_state,
+            numlockmask,
+        );
     }
 }
 
@@ -279,7 +269,6 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    let focusfollowsmouse = ctx.core.globals().behavior.focus_follows_mouse;
     let focusfollowsfloatmouse = ctx.core.globals().behavior.focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
@@ -290,7 +279,6 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 2. Snapshot selection state before any changes
-    let selmon_id = ctx.core.globals().selected_monitor_id();
     let selected_monitor = ctx.core.globals().selected_monitor();
     let selected_window = selected_monitor.sel;
     let is_floating_sel = {
@@ -345,41 +333,19 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         }
     }
 
-    // 4. Handle Monitor Switch
-    if focusfollowsmouse {
-        let target_mon = if event_win == WindowId::from(ctx.x11_runtime.root) {
-            ctx.backend
-                .pointer_location()
-                .and_then(|ptr| ctx.core.globals().monitors.find_monitor_at_pointer(ptr))
-        } else {
-            ctx.core
-                .globals()
-                .monitors
-                .find_monitor_for(event_win, ctx.core.globals().clients.map())
-        };
-        if let Some(new_mon_id) = target_mon
-            && new_mon_id != selmon_id
-        {
-            ctx.core.globals_mut().set_selected_monitor(new_mon_id);
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-            return;
-        }
-    }
-
-    // 5. Determine what's actually under the cursor
+    // 4. Determine what's actually under the cursor
     let topmost_win_under_cursor = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
         &ctx.core,
         ctx.x11.conn,
         ctx.x11_runtime.root,
     );
 
-    // 6. Handle focus switching based on configuration
-    crate::focus::hover_focus_target_x11(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
+    // 5. Handle focus switching based on shared policy.
+    crate::focus::hover_focus_target(
+        &mut WmCtx::X11(ctx.reborrow()),
         topmost_win_under_cursor,
         entering_root,
+        Some((e.root_x as i32, e.root_y as i32)),
     );
 }
 
@@ -419,7 +385,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::backend::x11::grab::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+    crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
@@ -456,34 +422,23 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             && root_y >= selmon.bar_y
             && root_y < selmon.bar_y + ctx.core.globals().cfg.bar_height;
         if !in_bar && selmon.gesture != Gesture::None {
-            crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+            crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         }
         return;
     }
-
-    let selmon_id = ctx.core.globals().selected_monitor_id();
 
     let root_x = e.root_x as i32;
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.globals().behavior.focus_follows_mouse {
-        let rect = Rect {
-            x: root_x,
-            y: root_y,
-            w: 1,
-            h: 1,
-        };
-        if let Some(new_mon) =
-            crate::types::find_monitor_by_rect(ctx.core.globals().monitors.monitors(), &rect)
-                .or(Some(ctx.core.globals().selected_monitor_id()))
-            && new_mon != selmon_id
-        {
-            ctx.core.globals_mut().set_selected_monitor(new_mon);
-            crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-            return;
-        }
-    };
+    if ctx.core.globals().behavior.focus_follows_mouse
+        && crate::focus::select_monitor_at_pointer(
+            &mut WmCtx::X11(ctx.reborrow()),
+            (root_x, root_y),
+        )
+    {
+        return;
+    }
 
     // Early-out: cursor is below the bar area.
     let (monitor_y, bar_height, current_gesture) = {
@@ -507,7 +462,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         if crate::mouse::handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
             return;
         }
-        crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         if matches!(
             ctx.core.globals().behavior.cursor_icon,
             AltCursor::Resize(crate::types::ResizeDirection::Left)
@@ -520,36 +475,20 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     // Cache tag-strip width only when we are actually in the bar hot path.
     ctx.core.globals_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
 
-    // Compute the bar position from the cursor's monitor-local x coordinate,
-    // then convert to a gesture for hover highlighting.
-    let new_gesture = {
-        let mon = ctx.core.globals().selected_monitor();
-        let local_x = root_x - mon.work_rect.x;
-        let position = mon.bar_position_at_x(&ctx.core, local_x);
-        match position {
-            // The status-text and root areas don't produce a hover gesture —
-            // reset the bar and bail out so we don't light up anything.
-            BarPosition::StatusText | BarPosition::Root => {
-                crate::bar::x11::reset_bar_x11(
-                    &mut ctx.core,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
-                return;
-            }
-            other => crate::bar::bar_position_to_gesture(other),
-        }
-    };
-
-    if new_gesture != current_gesture {
-        ctx.core.globals_mut().selected_monitor_mut().gesture = new_gesture;
-        crate::bar::x11::draw_bar(
-            &mut ctx.core,
-            ctx.x11_runtime,
-            ctx.systray.as_deref(),
-            selmon_id,
-        );
-    };
+    let pos = crate::bar::update_hover(
+        &mut WmCtx::X11(ctx.reborrow()),
+        root_x,
+        root_y,
+        false,
+        false,
+    );
+    if matches!(
+        pos,
+        Some(BarPosition::StatusText | BarPosition::Root) | None
+    ) && current_gesture != Gesture::None
+    {
+        crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
+    }
 }
 
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
@@ -574,19 +513,20 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {
-                crate::client::update_wm_hints(ctx, event_win);
-                crate::bar::x11::draw_bars_x11(
-                    &mut ctx.core,
-                    ctx.x11_runtime,
-                    ctx.systray.as_deref(),
-                );
+                crate::backend::x11::update_wm_hints(ctx, event_win);
+                ctx.core.bar.mark_dirty();
             }
             _ => {}
         }
 
         let net_wm_name = ctx.x11_runtime.netatom.wm_name;
-        if e.atom == u32::from(AtomEnum::WM_NAME) || e.atom == net_wm_name {
-            crate::client::update_title_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, event_win);
+        if e.atom == u32::from(AtomEnum::WM_NAME)
+            || e.atom == net_wm_name
+            || e.atom == u32::from(AtomEnum::WM_CLASS)
+        {
+            let props =
+                crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
+            crate::client::handle_property_change(ctx.core.globals_mut(), event_win, &props);
         }
     };
 }
@@ -609,7 +549,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if ctx.core.globals().clients.contains_key(&event_win) {
         if e.response_type & 0x80 != 0 {
-            crate::client::set_client_state(
+            crate::backend::x11::set_client_state(
                 &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
@@ -634,7 +574,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
 }
 
 pub fn leave_notify(ctx: &mut WmCtxX11<'_>, _e: &LeaveNotifyEvent) {
-    crate::bar::x11::reset_bar_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+    crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
 }
 
 fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
@@ -687,7 +627,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         old_border_width: border_width,
         border_width: 0,
         is_floating: true,
-        tags: 1,
+        tags: crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY),
         monitor_id: selmon_id,
         ..Default::default()
     };
@@ -773,18 +713,33 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         ctx.x11_runtime,
         ctx.systray.as_deref_mut(),
     );
-    crate::client::set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
+    crate::backend::x11::set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
 }
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
     let data = e.data.as_data32();
-    let fullscreen_action = data[0];
+    let fullscreen_atom = ctx.x11_runtime.netatom.wm_fullscreen;
+    let action = data[0];
+    let touches_fullscreen = data[1] == fullscreen_atom || data[2] == fullscreen_atom;
 
-    if fullscreen_action == 1 {
-        crate::client::set_fullscreen_x11(ctx, win, true);
-    } else if fullscreen_action == 0 {
-        crate::client::set_fullscreen_x11(ctx, win, false);
-    };
+    if !touches_fullscreen {
+        return;
+    }
+
+    let is_fullscreen = ctx
+        .core
+        .globals()
+        .clients
+        .get(&win)
+        .map(|c| c.is_fullscreen)
+        .unwrap_or(false);
+
+    match action {
+        0 => crate::client::set_fullscreen_x11(ctx, win, false),
+        1 => crate::client::set_fullscreen_x11(ctx, win, true),
+        2 => crate::client::set_fullscreen_x11(ctx, win, !is_fullscreen),
+        _ => {}
+    }
 }
 
 fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
@@ -795,7 +750,8 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     if let Some(c) = ctx.core.client(win) {
         let monitor_id = c.monitor_id;
-        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, Some(win));
+        crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
+        crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(win));
         crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     };
 }

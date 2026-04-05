@@ -2,6 +2,7 @@ pub mod color;
 pub(crate) mod model;
 pub mod paint;
 mod renderer;
+pub(crate) mod scene;
 pub mod status;
 pub(crate) mod theme;
 pub mod wayland;
@@ -13,7 +14,8 @@ pub use model::bar_position_to_gesture;
 pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 
-use crate::contexts::CoreCtx;
+use crate::contexts::{CoreCtx, WmCtx};
+use crate::globals::Globals;
 use crate::types::*;
 
 #[derive(Default)]
@@ -21,6 +23,7 @@ pub struct BarState {
     pausedraw: bool,
     draw_bar_recursion: usize,
     bar_update_seq: u64,
+    last_drawn_seq: u64,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
     pub tag_widths: Vec<i32>,
     /// Total width of the tag strip (including start menu)
@@ -32,6 +35,10 @@ pub struct BarState {
     /// Cached parsed status commands for unchanged status text.
     status_cache_text: String,
     status_cache: status::ParsedStatus,
+    status_cache_complete: bool,
+    status_cache_seq: u64,
+    status_requested_text: String,
+    status_requested_seq: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -79,15 +86,21 @@ impl BarState {
         self.pausedraw = paused;
     }
 
-    pub(crate) fn recursion_enter(&mut self) {
-        self.draw_bar_recursion += 1;
-        if self.draw_bar_recursion > 50 {
-            std::process::abort();
+    pub(crate) fn try_recursion_enter(&mut self) -> bool {
+        if self.draw_bar_recursion > 0 {
+            self.mark_dirty();
+            return false;
         }
+        self.draw_bar_recursion = 1;
+        true
     }
 
     pub(crate) fn recursion_exit(&mut self) {
         self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
+    }
+
+    pub fn is_drawing(&self) -> bool {
+        self.draw_bar_recursion > 0
     }
 
     /// Bump the backend-agnostic bar invalidation sequence.
@@ -98,6 +111,14 @@ impl BarState {
     /// Current bar invalidation sequence.
     pub fn update_seq(&self) -> u64 {
         self.bar_update_seq
+    }
+
+    pub fn needs_redraw(&self) -> bool {
+        self.bar_update_seq != self.last_drawn_seq
+    }
+
+    pub fn mark_drawn(&mut self) {
+        self.last_drawn_seq = self.bar_update_seq;
     }
 
     /// Clear cached widths. Called at the start of each bar render.
@@ -136,21 +157,89 @@ impl BarState {
         self.hit_cache.get(monitor_id)
     }
 
+    pub fn replace_hit_cache(&mut self, monitor_id: usize, hit: MonitorHitCache) {
+        if self.hit_cache.len() <= monitor_id {
+            self.hit_cache
+                .resize_with(monitor_id + 1, MonitorHitCache::default);
+        }
+        self.hit_cache[monitor_id] = hit;
+    }
+
+    fn request_status_parse_if_needed(&mut self, text: &str) {
+        if text.is_empty()
+            || self.status_requested_text.as_str() == text
+            || (self.status_cache_text.as_str() == text && self.status_cache_complete)
+        {
+            return;
+        }
+
+        self.status_requested_text.clear();
+        self.status_requested_text.push_str(text);
+        self.status_requested_seq = status::request_status_parse(text);
+    }
+
+    pub fn request_async_status_parse(&mut self, text: &str) {
+        self.request_status_parse_if_needed(text);
+    }
+
+    pub fn prepare_status_for_render(&mut self, text: &str) {
+        self.status_cache_text.clear();
+        self.status_cache_text.push_str(text);
+        self.status_cache = status::parse_status(text.as_bytes());
+        self.status_cache_complete = true;
+        self.status_requested_text.clear();
+        self.status_requested_text.push_str(text);
+        self.status_requested_seq = 0;
+        self.status_cache_seq = 0;
+    }
+
+    pub fn poll_async_status(&mut self, current_text: &str) -> bool {
+        let mut changed = false;
+
+        while let Some(result) = status::try_recv_status_parse_result() {
+            if result.text.as_str() != current_text || result.seq < self.status_requested_seq {
+                continue;
+            }
+
+            self.status_cache_text = result.text;
+            self.status_cache = result.parsed;
+            self.status_cache_complete = true;
+            self.status_cache_seq = result.seq;
+            changed = true;
+        }
+
+        changed
+    }
+
     pub(crate) fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
+        self.poll_async_status(text);
+
         if self.status_cache_text.as_str() != text {
             self.status_cache_text.clear();
             self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status(text.as_bytes());
+            self.status_cache = status::parse_status_fallback(text);
+            self.status_cache_complete = false;
+            self.request_status_parse_if_needed(text);
+        } else if !self.status_cache_complete {
+            self.request_status_parse_if_needed(text);
         }
+
         self.status_cache.items.as_slice()
     }
 
     pub(crate) fn parsed_status_for_text(&mut self, text: &str) -> &status::ParsedStatus {
+        self.poll_async_status(text);
+
         if self.status_cache_text.as_str() != text {
             self.status_cache_text.clear();
             self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status(text.as_bytes());
+            self.status_cache = status::parse_status_fallback(text);
+            self.status_cache_complete = false;
+            self.request_status_parse_if_needed(text);
+        } else if !self.status_cache_complete {
+            self.request_status_parse_if_needed(text);
         }
+
         &self.status_cache
     }
 }
@@ -165,4 +254,157 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
     width + core.globals().cfg.horizontal_padding
+}
+
+pub fn clear_hover(ctx: &mut WmCtx) {
+    if ctx.core().globals().selected_monitor().gesture != Gesture::None {
+        reset_bar_common(ctx.core_mut());
+        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+    }
+}
+
+pub fn resolve_bar_position_at_root(
+    core: &mut CoreCtx,
+    root_x: i32,
+    root_y: i32,
+    sync_selected_monitor: bool,
+) -> Option<(MonitorId, BarPosition)> {
+    let rect = Rect {
+        x: root_x,
+        y: root_y,
+        w: 1,
+        h: 1,
+    };
+    let monitor_id = crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &rect)?;
+    if sync_selected_monitor && monitor_id != core.globals().selected_monitor_id() {
+        core.globals_mut().set_selected_monitor(monitor_id);
+    }
+
+    let mon = core.globals().monitor(monitor_id)?;
+    let bar_h = core.globals().cfg.bar_height.max(1);
+    let in_bar = monitor_bar_visible(core.globals(), mon)
+        && root_y >= mon.bar_y
+        && root_y < mon.bar_y + bar_h;
+    if !in_bar {
+        return None;
+    }
+
+    let local_x = root_x - mon.work_rect.x;
+    Some((monitor_id, mon.bar_position_at_x(core, local_x)))
+}
+
+pub(crate) fn monitor_has_real_fullscreen(globals: &Globals, monitor: &Monitor) -> bool {
+    let selected_tags = monitor.selected_tags();
+    monitor
+        .fullscreen
+        .and_then(|win| globals.clients.get(&win))
+        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+}
+
+pub(crate) fn monitor_bar_visible(globals: &Globals, monitor: &Monitor) -> bool {
+    monitor.shows_bar() && !monitor_has_real_fullscreen(globals, monitor)
+}
+
+pub fn update_hover(
+    ctx: &mut WmCtx,
+    root_x: i32,
+    root_y: i32,
+    reset_start_menu: bool,
+    sync_selected_monitor: bool,
+) -> Option<BarPosition> {
+    let Some((monitor_id, pos)) =
+        resolve_bar_position_at_root(ctx.core_mut(), root_x, root_y, sync_selected_monitor)
+    else {
+        clear_hover(ctx);
+        return None;
+    };
+
+    if reset_start_menu && pos == BarPosition::StartMenu {
+        reset_bar_common(ctx.core_mut());
+        ctx.request_bar_update(Some(monitor_id));
+    }
+
+    let old_gesture = ctx.core().globals().selected_monitor().gesture;
+    let gesture = if pos == BarPosition::StatusText {
+        old_gesture
+    } else {
+        bar_position_to_gesture(pos)
+    };
+    if old_gesture != gesture {
+        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
+        ctx.request_bar_update(Some(monitor_id));
+    }
+
+    Some(pos)
+}
+
+pub fn handle_status_text_click(
+    ctx: &mut WmCtx,
+    root_x: i32,
+    root_y: i32,
+    button_code: u8,
+    clean_state: u32,
+) {
+    let mode = ctx.current_mode();
+    if !mode.is_empty() && mode != "default" {
+        ctx.reset_mode();
+        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+        return;
+    }
+
+    let selmon = ctx.core().globals().selected_monitor().clone();
+    let local_x = root_x - selmon.work_rect.x;
+    let status_text = ctx.core().globals().bar_runtime.status_text.clone();
+    let parsed = ctx
+        .core_mut()
+        .bar
+        .parsed_status_for_text(&status_text)
+        .clone();
+    let click_targets = ctx
+        .core()
+        .bar
+        .monitor_hit_cache(selmon.id())
+        .map(|h| h.status_click_targets.as_slice())
+        .unwrap_or(&[]);
+    status::emit_i3bar_status_click(
+        &parsed,
+        click_targets,
+        local_x,
+        root_y - selmon.bar_y,
+        button_code,
+        ctx.core().globals().cfg.bar_height,
+        clean_state,
+    );
+}
+
+pub fn dispatch_configured_button(
+    ctx: &mut WmCtx,
+    pos: BarPosition,
+    window: Option<WindowId>,
+    btn: MouseButton,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+    numlockmask: u32,
+) {
+    let buttons = ctx.core().globals().cfg.buttons.clone();
+    for b in &buttons {
+        if !b.matches(pos) || b.button != btn {
+            continue;
+        }
+        if crate::util::clean_mask(b.mask, numlockmask) != clean_state {
+            continue;
+        }
+        crate::actions::execute_button_action(
+            ctx,
+            &b.action,
+            ButtonArg {
+                pos,
+                window,
+                btn: b.button,
+                rx: root_x,
+                ry: root_y,
+            },
+        );
+    }
 }

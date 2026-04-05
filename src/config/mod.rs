@@ -26,6 +26,7 @@ pub mod buttons;
 pub mod commands;
 pub mod commands_common;
 pub mod config_toml;
+pub mod generated_keybinds;
 pub mod keybind_config;
 pub mod keybindings;
 pub mod keysyms;
@@ -36,7 +37,6 @@ pub use crate::types::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 
 use commands::{ExternalCommands, default_commands};
-use keybindings::{get_desktop_keybinds, get_keys};
 use mod_consts::BORDERPX;
 
 // ---------------------------------------------------------------------------
@@ -101,6 +101,7 @@ use crate::types::{
     BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
     TagColorConfigs, WindowColorConfigs,
 };
+use generated_keybinds::build_default_keybinds;
 
 /// Mode configuration with keybinds and optional description.
 #[derive(Debug, Clone, Default)]
@@ -208,19 +209,20 @@ pub struct Config {
 ///
 /// Called once from `init_globals` in `startup::x11`.  All values here are the
 /// compile-time defaults; TOML config overrides the appearance fields when present.
-pub fn init_config() -> Config {
+pub fn init_config(backend: crate::backend::BackendKind) -> Config {
     let theme = config_toml::load_config_file();
+    let defaults = build_default_keybinds(backend, &theme);
 
     // Merge TOML keybinds over compiled defaults
     let keys = if theme.keybinds.is_empty() {
-        get_keys()
+        defaults.keys
     } else {
-        keybind_config::merge_keybinds(get_keys(), &theme.keybinds)
+        keybind_config::merge_keybinds(defaults.keys, &theme.keybinds)
     };
     let desktop_keybinds = if theme.desktop_keybinds.is_empty() {
-        get_desktop_keybinds()
+        defaults.desktop_keybinds
     } else {
-        keybind_config::merge_keybinds(get_desktop_keybinds(), &theme.desktop_keybinds)
+        keybind_config::merge_keybinds(defaults.desktop_keybinds, &theme.desktop_keybinds)
     };
 
     let mut modes = std::collections::HashMap::new();

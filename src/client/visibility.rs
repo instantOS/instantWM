@@ -1,11 +1,11 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
-use crate::animation::animate_client_x11;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::properties::set_client_state;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize;
-use crate::client::state::set_client_state;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
@@ -64,7 +64,7 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
         let selected_tags = mon.selected_tags();
 
         for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
-            let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
+            let is_visible = c.is_visible(selected_tags);
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
                 (c.is_floating, c.is_fullscreen, c.isfakefullscreen);
@@ -139,7 +139,7 @@ pub fn show_hide_wayland(ctx: &mut WmCtxWayland<'_>) {
     for mon in ctx.core.globals().monitors_iter_all() {
         let selected_tags = mon.selected_tags();
         for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
-            let is_visible = c.is_visible_on_tags(selected_tags) && !c.is_hidden;
+            let is_visible = c.is_visible(selected_tags);
             operations.push((win, is_visible));
         }
     }
@@ -181,6 +181,22 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
 
     crate::focus::focus_soft(ctx, Some(win));
     arrange(ctx, Some(monitor_id));
+}
+
+pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
+    let scratchpad_name = ctx.core().globals().clients.get(&win).and_then(|c| {
+        if c.is_scratchpad() {
+            Some(c.scratchpad_name.clone())
+        } else {
+            None
+        }
+    });
+
+    if let Some(name) = scratchpad_name {
+        crate::floating::scratchpad_hide_name(ctx, &name);
+    } else {
+        hide(ctx, win);
+    }
 }
 
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
@@ -239,21 +255,19 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, win, WM_STATE_NORMAL);
 
-    // Start the window slightly above its target position so the animation
-    // slides it down into place.
-    {
-        let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
-        resize(&mut tmp_ctx, win, &Rect { x, y: -50, w, h }, false);
-    }
-
     let _ = ctx.x11.conn.configure_window(
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
     let _ = ctx.x11.conn.flush();
 
-    // Animate: slide down to (x, y) from (x, -50).
-    animate_client_x11(ctx, win, &Rect { x, y, w: 0, h: 0 }, 14, 0);
+    move_resize_client(
+        &mut WmCtx::X11(ctx.reborrow()),
+        win,
+        &Rect { x, y, w, h },
+        MoveResizeMode::AnimateFrom(Rect { x, y: -50, w, h }),
+        14,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -276,17 +290,17 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
-        animate_client_x11(
-            ctx,
+        move_resize_client(
+            &mut WmCtx::X11(ctx.reborrow()),
             win,
             &Rect {
                 x,
                 y: bar_height - h + 40,
-                w: 0,
-                h: 0,
+                w,
+                h,
             },
+            MoveResizeMode::Normal,
             10,
-            0,
         );
     }
 

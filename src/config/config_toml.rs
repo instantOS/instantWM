@@ -7,6 +7,7 @@ use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, Rule, StatusColorConfig, TagColorConfigs,
     WindowColorConfigs,
 };
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
@@ -109,6 +110,29 @@ pub struct MonitorConfig {
     pub transform: Option<String>,
     /// Whether the monitor is enabled.
     pub enable: Option<bool>,
+    /// Variable refresh rate policy for this output.
+    pub vrr: Option<VrrMode>,
+}
+
+#[derive(
+    Debug,
+    Deserialize,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Default,
+    Encode,
+    Decode,
+    clap::ValueEnum,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum VrrMode {
+    Off,
+    #[default]
+    Auto,
+    On,
 }
 
 /// Toggle setting for boolean-like input options (tap, natural_scroll).

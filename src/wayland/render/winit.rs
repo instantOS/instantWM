@@ -1,4 +1,3 @@
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
@@ -11,8 +10,10 @@ use smithay::output::Output;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    get_render_element_counts, poll_wayland_systray, resolve_cursor_presentation,
+    send_frame_callbacks, update_primary_scanout_output,
 };
+use crate::wm::Wm;
 
 render_elements! {
     pub WaylandExtras<=GlesRenderer>;
@@ -24,6 +25,7 @@ render_elements! {
 
 /// Render a frame using the winit backend.
 pub fn render_frame(
+    wm: &mut Wm,
     state: &mut WaylandState,
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     output: &Output,
@@ -34,24 +36,18 @@ pub fn render_frame(
     let cursor_presentation = resolve_cursor_presentation(
         &state.cursor_image_status,
         state.cursor_icon_override,
-        state.dnd_icon.as_ref(),
+        state.runtime.dnd_icon.as_ref(),
     );
     apply_cursor_presentation_internal(backend, &cursor_presentation);
+    if state.has_active_window_animations() {
+        state.tick_window_animations();
+    }
 
     // Backend-specific: get buffer age
     let buffer_age = backend.buffer_age().unwrap_or(0);
 
     // Backend-specific: bind to get framebuffer
     let (renderer, mut framebuffer) = backend.bind().expect("renderer bind");
-
-    // Process any deferred dmabuf imports from the handler
-    for (dmabuf, notifier) in state.pending_dmabuf_imports.drain(..) {
-        if renderer.import_dmabuf(&dmabuf, None).is_ok() {
-            let _ = notifier.successful::<WaylandState>();
-        } else {
-            notifier.failed();
-        }
-    }
 
     let mut render_elements: Vec<WaylandExtras>;
 
@@ -74,8 +70,9 @@ pub fn render_frame(
             }
         }
     } else {
+        poll_wayland_systray(wm);
         // Shared: build scene elements
-        let scene = build_common_scene_elements(state, renderer, 0);
+        let scene = build_common_scene_elements(wm, state, renderer, 0);
 
         // Shared: get space render elements
         let space_render_elements =
@@ -118,15 +115,23 @@ pub fn render_frame(
         )
         .expect("render output");
 
+    update_primary_scanout_output(state, output, &render_result.states);
+
     // Shared: submit pending screencopies
     crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
-        &mut state.pending_screencopies,
+        &mut state.runtime.pending_screencopies,
         renderer,
         &framebuffer,
         output,
-        start_time,
+        true,
     );
-
+    crate::backend::wayland::compositor::image_capture::submit_pending_image_captures(
+        &mut state.runtime.pending_image_captures,
+        renderer,
+        &framebuffer,
+        output,
+        true,
+    );
     // Get damage before framebuffer is dropped
     let damage = render_result.damage.cloned();
 
@@ -138,7 +143,6 @@ pub fn render_frame(
 
     // Shared: send frame callbacks
     send_frame_callbacks(state, output, start_time.elapsed());
-    state.frame_callback_sequence = state.frame_callback_sequence.wrapping_add(1);
 }
 
 // Backend-specific: cursor handling via winit window API

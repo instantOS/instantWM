@@ -2,7 +2,7 @@ use crate::ipc_types::Response;
 use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
-use crate::toggles::set_border_width;
+use crate::toggles::{set_border_width, set_special_next};
 use crate::types::{MonitorDirection, SpecialNext};
 use crate::wm::Wm;
 
@@ -32,9 +32,11 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
 }
 
 pub fn run_action(wm: &mut Wm, name: String, args: Vec<String>) -> Response {
+    use crate::actions::execute_key_action;
     use crate::config::keybind_config::compile_action_with_args;
     if let Some(action) = compile_action_with_args(&name, &args) {
-        action(&mut wm.ctx());
+        let mut ctx = wm.ctx();
+        execute_key_action(&mut ctx, &action);
         Response::ok()
     } else {
         Response::err(format!("unknown or invalid action '{name}'"))
@@ -47,14 +49,27 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     }
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c").arg(&command);
-    if wm.ctx().is_wayland()
-        && let crate::backend::BackendRef::Wayland(wayland) = wm.ctx().backend()
-        && let Some(display) = wayland.xdisplay()
-    {
-        cmd.env("DISPLAY", format!(":{display}"));
-    }
+    let metadata = {
+        let ctx = wm.ctx();
+        let metadata = crate::util::configure_spawn_command(&ctx, &mut cmd);
+        if ctx.is_wayland()
+            && let crate::backend::BackendRef::Wayland(wayland) = ctx.backend()
+            && let Some(display) = wayland.xdisplay()
+        {
+            cmd.env("DISPLAY", format!(":{display}"));
+        }
+        metadata
+    };
     match cmd.spawn() {
-        Ok(child) => Response::Message(format!("pid={}", child.id())),
+        Ok(child) => {
+            crate::client::record_pending_launch(
+                &mut wm.g,
+                Some(child.id()),
+                Some(metadata.startup_id),
+                metadata.context,
+            );
+            Response::Message(format!("pid={}", child.id()))
+        }
         Err(err) => Response::err(format!("spawn failed: {}", err)),
     }
 }
@@ -92,34 +107,12 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
 }
 
 pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
-    wm.ctx()
-        .core_mut()
-        .globals_mut()
-        .behavior
-        .set_special_next(mode);
+    set_special_next(&mut wm.ctx().core_mut().globals_mut().behavior, mode);
     Response::ok()
 }
 
 pub fn update_status(wm: &mut Wm, text: String) -> Response {
-    if !text.starts_with("instantwm-") {
-        crate::bar::status::CUSTOM_STATUS_RECEIVED
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    wm.g.bar_runtime.status_text = text;
-
-    if let crate::backend::Backend::X11(_) = wm.backend {
-        let ctx = wm.ctx();
-        if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-            crate::bar::x11::draw_bars_x11(
-                &mut x11_ctx.core,
-                x11_ctx.x11_runtime,
-                x11_ctx.systray.as_deref(),
-            );
-        }
-    }
-    wm.bar.mark_dirty();
-
+    crate::bar::status::apply_status_update(wm, text);
     Response::ok()
 }
 

@@ -1,3 +1,4 @@
+pub use crate::config::config_toml::VrrMode;
 pub use crate::layouts::LayoutKind;
 pub use crate::types::{MonitorDirection, SpecialNext};
 use bincode::{Decode, Encode};
@@ -167,6 +168,7 @@ pub enum MonitorCommand {
         scale: Option<f32>,
         transform: Option<Transform>,
         enable: Option<bool>,
+        vrr: Option<VrrMode>,
     },
     Modes {
         identifier: Option<String>,
@@ -186,15 +188,34 @@ pub enum ScratchpadCommand {
     Toggle(Option<String>),
     Show(Option<String>),
     ShowAll,
-    Hide(String),
+    Hide(Option<String>),
+    HideAll,
     Status(Option<String>),
     Create {
         name: String,
         window_id: Option<u32>,
+        status: ScratchpadInitialStatus,
     },
     Delete {
         window_id: Option<u32>,
     },
+}
+
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Encode,
+    Decode,
+    serde::Serialize,
+    serde::Deserialize,
+    clap::ValueEnum,
+)]
+pub enum ScratchpadInitialStatus {
+    Hidden,
+    Shown,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -218,7 +239,15 @@ pub enum TagCommand {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum WindowCommand {
-    Geom(Option<u32>),
+    Info(Option<u32>),
+    Resize {
+        window_id: Option<u32>,
+        monitor: Option<String>,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
     Close(Option<u32>),
     List(Option<u32>),
 }
@@ -344,20 +373,18 @@ pub struct WindowInfo {
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct WindowGeometryInfo {
-    pub id: u64,
-    pub geometry: GeometryInfo,
-}
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct MonitorInfo {
     pub id: usize,
     pub index: i32,
+    pub name: String,
     pub width: i32,
     pub height: i32,
     pub x: i32,
     pub y: i32,
     pub is_primary: bool,
+    pub vrr_support: crate::backend::BackendVrrSupport,
+    pub vrr_mode: Option<VrrMode>,
+    pub vrr_enabled: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -428,7 +455,7 @@ pub enum Response {
     Ok,
     Err(String),
     WindowList(Vec<WindowInfo>),
-    WindowGeometry(WindowGeometryInfo),
+    WindowInfo(WindowInfo),
     MonitorList(Vec<MonitorInfo>),
     MonitorModes(Vec<DisplayModes>),
     ScratchpadList(Vec<ScratchpadInfo>),

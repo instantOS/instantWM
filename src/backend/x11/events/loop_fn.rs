@@ -12,14 +12,14 @@ use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
 use crate::ipc::IpcServer;
-use crate::types::WindowId;
+use crate::runtime::AnimationTimerGuard;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 
 use super::handlers;
 
-pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
+pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     let mut event_loop: EventLoop<Wm> =
         EventLoop::try_new().expect("failed to create X11 calloop event loop");
     let loop_handle = event_loop.handle();
@@ -45,30 +45,12 @@ pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
         })
         .expect("failed to insert X11 fd source");
 
-    // ── IPC as event-driven calloop source ──────────────────────────────
-    // This mirrors the Wayland/DRM backend approach - IPC is processed
-    // immediately when a client connects, not polled every iteration.
-    if let Some(ipc) = ipc_server {
-        crate::wayland::runtime::calloop_helpers::setup_ipc_source(
-            loop_handle.clone(),
-            ipc,
-            |ipc, wm| {
-                if ipc.process_pending(wm) {
-                    let mut ctx = wm.ctx();
-                    crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
-                }
-            },
-        );
-    }
+    // ── IPC listener fd source ──────────────────────────────────────────
+    crate::runtime::register_ipc_source(&loop_handle, ipc_server);
 
-    // ── Animation timer (~60 fps) ───────────────────────────────────────
-    // Uses smart timing: 16ms when animations active, long sleep when idle
-    // to reduce CPU usage. This mirrors the Wayland/DRM backend approach.
-    crate::wayland::runtime::calloop_helpers::setup_animation_timer(
-        loop_handle.clone(),
-        tick_x11_animations,
-        |wm| wm.has_active_animations(),
-    );
+    // ── Animation timer (on-demand, not persistent) ─────────────────────
+    let anim_guard = AnimationTimerGuard::new();
+    let loop_handle_for_timer = event_loop.handle();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
 
@@ -77,16 +59,25 @@ pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
             // ── 1. Drain all pending X11 events ─────────────────────────
             drain_x11_events(wm);
 
-            // ── 2. Apply monitor config and arrange layout ──────────────
-            // NOTE: IPC is now handled by calloop source, not polled here
-            let mut ctx = wm.ctx();
-            crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
-            crate::runtime::arrange_layout_if_dirty(&mut ctx);
+            // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
+            crate::runtime::event_loop_tick(wm, ipc_server);
 
-            // ── 3. Flush X11 connection ─────────────────────────────────
+            // ── 3. Arm animation timer if needed ────────────────────────
+            let has_animations = wm
+                .backend
+                .x11_data()
+                .is_some_and(|d| !d.x11_runtime.window_animations.is_empty());
+            anim_guard.ensure_armed(has_animations, &loop_handle_for_timer, |wm| {
+                tick_x11_animations(wm);
+                wm.backend
+                    .x11_data()
+                    .is_some_and(|d| !d.x11_runtime.window_animations.is_empty())
+            });
+
+            // ── 4. Flush X11 connection ─────────────────────────────────
             BackendRef::from_backend(&wm.backend).flush();
 
-            // ── 4. Stop loop if WM is shutting down ─────────────────────
+            // ── 5. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {
                 loop_signal.stop();
             }
@@ -97,80 +88,80 @@ pub fn run(wm: &mut Wm, ipc_server: Option<IpcServer>) {
 /// Drain all pending X11 events from the connection and dispatch them.
 fn drain_x11_events(wm: &mut Wm) {
     loop {
-        let event = wm
-            .backend
-            .x11_conn()
-            .and_then(|(conn, _)| conn.poll_for_event().ok())
-            .flatten();
-        match event {
-            Some(event) => dispatch_event(wm, event),
-            None => break,
+        let Some((conn, _)) = wm.backend.x11_conn() else {
+            break;
+        };
+        match conn.poll_for_event() {
+            Ok(Some(event)) => dispatch_event(wm, event),
+            Ok(None) => break,
+            Err(err) => {
+                log::warn!("X11 poll_for_event error: {}", err);
+                break;
+            }
         }
     }
 }
 
 /// Tick active X11 window animations, interpolating geometry each frame.
 fn tick_x11_animations(wm: &mut Wm) {
-    let data = match wm.backend.x11_data_mut() {
-        Some(d) => d,
-        None => return,
+    let finished_targets = {
+        let data = match wm.backend.x11_data_mut() {
+            Some(d) => d,
+            None => return,
+        };
+
+        if data.x11_runtime.window_animations.is_empty() {
+            return;
+        }
+
+        let now = std::time::Instant::now();
+        let mut finished = Vec::new();
+        let mut needs_flush = false;
+
+        for (win, anim) in data.x11_runtime.window_animations.iter() {
+            let rect = crate::animation::interpolated_rect(anim, now);
+
+            if rect.is_valid() {
+                let x11_win: x11rb::protocol::xproto::Window = (*win).into();
+                let width = rect.w.max(1) as u32;
+                let height = rect.h.max(1) as u32;
+                let _ = data.conn.configure_window(
+                    x11_win,
+                    &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                        .x(rect.x)
+                        .y(rect.y)
+                        .width(width)
+                        .height(height),
+                );
+                needs_flush = true;
+            }
+
+            if now.duration_since(anim.started_at) >= anim.duration {
+                finished.push((*win, anim.to));
+            }
+        }
+
+        for (win, _) in &finished {
+            data.x11_runtime.window_animations.remove(win);
+        }
+
+        if needs_flush {
+            let _ = data.conn.flush();
+        }
+
+        finished
     };
 
-    if data.x11_runtime.window_animations.is_empty() {
+    if finished_targets.is_empty() {
         return;
     }
 
-    let now = std::time::Instant::now();
-
-    // Collect finished animation targets and windows that need geometry updates.
-    let mut finished: Vec<(WindowId, crate::types::Rect)> = Vec::new();
-    for (win, anim) in data.x11_runtime.window_animations.iter() {
-        let elapsed = now.duration_since(anim.started_at);
-        let progress = if anim.duration.is_zero() {
-            1.0
-        } else {
-            (elapsed.as_secs_f64() / anim.duration.as_secs_f64()).min(1.0)
-        };
-        let eased = crate::animation::ease_out_cubic(progress);
-
-        let x = anim.from.x as f64 + (anim.to.x - anim.from.x) as f64 * eased;
-        let y = anim.from.y as f64 + (anim.to.y - anim.from.y) as f64 * eased;
-        let w = anim.from.w as f64 + (anim.to.w - anim.from.w) as f64 * eased;
-        let h = anim.from.h as f64 + (anim.to.h - anim.from.h) as f64 * eased;
-
-        let rect = crate::types::Rect {
-            x: x.round() as i32,
-            y: y.round() as i32,
-            w: w.round() as i32,
-            h: h.round() as i32,
-        };
-
-        if rect.is_valid() {
-            let x11_win: x11rb::protocol::xproto::Window = (*win).into();
-            let width = rect.w.max(1) as u32;
-            let height = rect.h.max(1) as u32;
-            let _ = data.conn.configure_window(
-                x11_win,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .x(rect.x)
-                    .y(rect.y)
-                    .width(width)
-                    .height(height),
-            );
-        }
-
-        if progress >= 1.0 {
-            finished.push((*win, anim.to));
-        }
-    }
-
-    // Remove completed animations and update client geometry.
-    for (win, to) in &finished {
-        data.x11_runtime.window_animations.remove(win);
-        if let Some(client) = wm.g.clients.get_mut(win) {
-            client.old_geo = client.geo;
-            client.geo = *to;
-        }
+    let ctx = wm.ctx();
+    let crate::contexts::WmCtx::X11(mut ctx) = ctx else {
+        return;
+    };
+    for (win, rect) in finished_targets {
+        crate::contexts::WmCtx::X11(ctx.reborrow()).resize_client(win, rect);
     }
 }
 
@@ -190,12 +181,8 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(&mut ctx, &e),
         x11rb::protocol::Event::Expose(e) => handlers::expose(&mut ctx, &e),
         x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(&mut ctx, &e),
-        x11rb::protocol::Event::KeyPress(e) => {
-            crate::backend::x11::grab::key_press_x11(&mut ctx, &e)
-        }
-        x11rb::protocol::Event::KeyRelease(e) => {
-            crate::backend::x11::grab::key_release_x11(&mut ctx, &e)
-        }
+        x11rb::protocol::Event::KeyPress(e) => crate::keyboard::key_press_x11(&mut ctx, &e),
+        x11rb::protocol::Event::KeyRelease(e) => crate::keyboard::key_release_x11(&mut ctx, &e),
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),

@@ -1,7 +1,8 @@
 use crate::contexts::WmCtx;
 use crate::globals::Globals;
+use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
-use crate::types::{WindowId, SCRATCHPAD_MASK};
+use crate::types::WindowId;
 use bincode::{Decode, Encode};
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -28,7 +29,13 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
         .collect();
 
     for win in clients {
-        if ctx.core_mut().globals_mut().clients.is_hidden(win) {
+        let should_unhide = ctx
+            .core()
+            .globals()
+            .clients
+            .get(&win)
+            .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
+        if should_unhide {
             crate::client::show(ctx, win);
             return true;
         }
@@ -36,7 +43,12 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
     false
 }
 
-pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>) {
+pub fn scratchpad_make(
+    ctx: &mut WmCtx,
+    name: &str,
+    window_id: Option<WindowId>,
+    status: ScratchpadInitialStatus,
+) {
     if name.is_empty() {
         return;
     }
@@ -60,7 +72,11 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>)
     };
 
     let was_scratchpad = client.is_scratchpad();
-    let old_tags = if was_scratchpad { 0 } else { client.tags };
+    let old_tags = if was_scratchpad {
+        crate::types::TagMask::EMPTY
+    } else {
+        client.tags
+    };
 
     client.scratchpad_name = name.to_string();
 
@@ -68,7 +84,7 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>)
         client.scratchpad_restore_tags = old_tags;
     }
 
-    client.tags = SCRATCHPAD_MASK;
+    client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     client.issticky = false;
 
     if !client.is_floating {
@@ -76,6 +92,10 @@ pub fn scratchpad_make(ctx: &mut WmCtx, name: &str, window_id: Option<WindowId>)
     }
 
     crate::client::hide(ctx, selected_window);
+
+    if matches!(status, ScratchpadInitialStatus::Shown) {
+        let _ = scratchpad_show_name(ctx, name);
+    }
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
@@ -102,14 +122,11 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let mut was_hidden = false;
     if let Some(client) = ctx.client_mut(selected_window) {
         was_hidden = client.is_hidden;
-        client.scratchpad_name.clear();
-        client.issticky = false;
-        client.tags = if restore_tags != 0 {
+        client.set_tag_mask(if !restore_tags.is_empty() {
             restore_tags
         } else {
             monitor_tags
-        };
-        client.scratchpad_restore_tags = 0;
+        });
     }
 
     if was_hidden {
@@ -190,10 +207,10 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
     let scratchpad_names: Vec<String> = ctx
         .core()
         .globals()
-        .monitors_iter_all()
-        .flat_map(|mon| mon.iter_clients(ctx.core().globals().clients.map()))
-        .filter(|(_, c)| c.is_scratchpad() && !c.issticky)
-        .map(|(_, c)| c.scratchpad_name.clone())
+        .clients
+        .values()
+        .filter(|c| c.is_scratchpad() && !c.issticky)
+        .map(|c| c.scratchpad_name.clone())
         .collect();
 
     let mut shown_count = 0;
@@ -215,6 +232,42 @@ pub fn scratchpad_show_all(ctx: &mut WmCtx) -> Option<String> {
     }
 }
 
+pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
+    let scratchpad_names: Vec<String> = ctx
+        .core()
+        .globals()
+        .clients
+        .values()
+        .filter(|c| c.is_scratchpad() && c.issticky)
+        .map(|c| c.scratchpad_name.clone())
+        .collect();
+
+    let mut hidden_count = 0;
+
+    for name in scratchpad_names {
+        let was_visible = ctx
+            .core()
+            .globals()
+            .clients
+            .values()
+            .any(|c| c.is_scratchpad() && c.scratchpad_name == name && c.issticky);
+        scratchpad_hide_name(ctx, &name);
+        if was_visible {
+            hidden_count += 1;
+        }
+    }
+
+    if hidden_count > 0 {
+        Some(format!(
+            "hid {} scratchpad{}",
+            hidden_count,
+            if hidden_count == 1 { "" } else { "s" }
+        ))
+    } else {
+        None
+    }
+}
+
 pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     let Some(found) = scratchpad_find(ctx.core().globals(), name) else {
         return;
@@ -228,7 +281,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     }
 
     client.issticky = false;
-    client.tags = SCRATCHPAD_MASK;
+    client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
 
     crate::client::hide(ctx, found);
 }
@@ -269,22 +322,20 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
     let mut scratchpads = Vec::new();
 
-    for mon in g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(g.clients.map()) {
-            if c.is_scratchpad() {
-                scratchpads.push(ScratchpadInfo {
-                    name: c.scratchpad_name.clone(),
-                    visible: c.issticky,
-                    window_id: Some(c_win.0),
-                    monitor: Some(c.monitor_id),
-                    x: Some(c.geo.x),
-                    y: Some(c.geo.y),
-                    width: Some(c.geo.w),
-                    height: Some(c.geo.h),
-                    floating: c.is_floating,
-                    fullscreen: c.is_fullscreen,
-                });
-            }
+    for c in g.clients.values() {
+        if c.is_scratchpad() {
+            scratchpads.push(ScratchpadInfo {
+                name: c.scratchpad_name.clone(),
+                visible: c.issticky,
+                window_id: Some(c.win.0),
+                monitor: Some(c.monitor_id),
+                x: Some(c.geo.x),
+                y: Some(c.geo.y),
+                width: Some(c.geo.w),
+                height: Some(c.geo.h),
+                floating: c.is_floating,
+                fullscreen: c.is_fullscreen,
+            });
         }
     }
 
@@ -358,16 +409,14 @@ pub fn scratchpad_list(g: &Globals) -> String {
     out
 }
 
-fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
+pub fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
     if name.is_empty() {
         return None;
     }
 
-    for mon in g.monitors_iter_all() {
-        for (c_win, c) in mon.iter_clients(g.clients.map()) {
-            if c.is_scratchpad() && c.scratchpad_name == name {
-                return Some(c_win);
-            }
+    for c in g.clients.values() {
+        if c.is_scratchpad() && c.scratchpad_name == name {
+            return Some(c.win);
         }
     }
     None

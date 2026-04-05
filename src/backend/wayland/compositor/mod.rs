@@ -28,6 +28,7 @@
 
 mod focus;
 mod handlers;
+pub(crate) mod image_capture;
 mod layer_shell;
 pub mod output;
 pub mod screencopy;
@@ -38,14 +39,16 @@ mod xdg_shell;
 mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
-pub use state::{SurfaceFrameThrottle, WaylandClientState, WaylandState, WindowIdMarker};
+pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
-    delegate_compositor, delegate_data_device, delegate_dmabuf, delegate_idle_inhibit,
-    delegate_keyboard_shortcuts_inhibit, delegate_layer_shell, delegate_output,
-    delegate_pointer_gestures, delegate_relative_pointer, delegate_seat, delegate_session_lock,
-    delegate_shm, delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration,
-    delegate_xdg_shell, delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
+    delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
+    delegate_ext_data_control, delegate_idle_inhibit, delegate_image_capture_source,
+    delegate_image_copy_capture, delegate_layer_shell, delegate_output,
+    delegate_output_capture_source, delegate_pointer_gestures, delegate_presentation,
+    delegate_relative_pointer, delegate_seat, delegate_session_lock, delegate_shm,
+    delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------
@@ -53,12 +56,18 @@ use smithay::{
 // ---------------------------------------------------------------------------
 
 delegate_compositor!(WaylandState);
+delegate_data_control!(WaylandState);
 delegate_data_device!(WaylandState);
 delegate_dmabuf!(WaylandState);
+delegate_ext_data_control!(WaylandState);
 delegate_idle_inhibit!(WaylandState);
+delegate_image_capture_source!(WaylandState);
+delegate_output_capture_source!(WaylandState);
+delegate_image_copy_capture!(WaylandState);
 delegate_layer_shell!(WaylandState);
 delegate_output!(WaylandState);
 delegate_pointer_gestures!(WaylandState);
+delegate_presentation!(WaylandState);
 delegate_relative_pointer!(WaylandState);
 delegate_seat!(WaylandState);
 delegate_shm!(WaylandState);
@@ -67,6 +76,5 @@ delegate_xdg_activation!(WaylandState);
 delegate_xdg_decoration!(WaylandState);
 delegate_xdg_shell!(WaylandState);
 delegate_session_lock!(WaylandState);
-delegate_keyboard_shortcuts_inhibit!(WaylandState);
 delegate_xwayland_keyboard_grab!(WaylandState);
 delegate_xwayland_shell!(WaylandState);

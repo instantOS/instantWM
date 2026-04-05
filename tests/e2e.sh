@@ -81,7 +81,12 @@ fi
 
 : >/tmp/iwm-e2e-geoms.txt
 while read -r id; do
-  run_ctl geom "$id" >>/tmp/iwm-e2e-geoms.txt
+  run_ctl --json window info "$id" | python3 -c '
+import json, sys
+w = json.load(sys.stdin)
+g = w["geometry"]
+print(w["id"], g["x"], g["y"], g["width"], g["height"])
+' >>/tmp/iwm-e2e-geoms.txt
 done </tmp/iwm-e2e-ids-new.txt
 
 awk 'NF >= 5 && $1 ~ /^[0-9]+$/ {print $0}' /tmp/iwm-e2e-geoms.txt >/tmp/iwm-e2e-geoms-clean.txt

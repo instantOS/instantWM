@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 pub(crate) const TEXT_PADDING: i32 = 6;
 const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
@@ -81,6 +82,19 @@ pub(crate) struct ParsedStatus {
     pub i3bar: Option<I3StatusLine>,
 }
 
+#[derive(Debug, Clone)]
+struct PendingStatusParse {
+    seq: u64,
+    text: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StatusParseResult {
+    pub seq: u64,
+    pub text: String,
+    pub parsed: ParsedStatus,
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub(crate) struct I3ClickEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,7 +124,31 @@ struct I3ClickRuntime {
     receiver: Mutex<Receiver<I3ClickEvent>>,
 }
 
+#[derive(Debug)]
+struct StatusParseShared {
+    pending: Mutex<Option<PendingStatusParse>>,
+    wake: Condvar,
+    results_tx: Sender<StatusParseResult>,
+}
+
+#[derive(Debug)]
+struct StatusParseRuntime {
+    shared: Arc<StatusParseShared>,
+    results_rx: Mutex<Receiver<StatusParseResult>>,
+    next_seq: AtomicU64,
+}
+
 static I3BAR_CLICK_RUNTIME: OnceLock<I3ClickRuntime> = OnceLock::new();
+static STATUS_PARSE_RUNTIME: OnceLock<StatusParseRuntime> = OnceLock::new();
+
+#[derive(Debug)]
+struct InternalStatusRuntime {
+    sender: Sender<String>,
+    receiver: Mutex<Receiver<String>>,
+    ping: Mutex<Option<calloop::ping::Ping>>,
+}
+
+static INTERNAL_STATUS_RUNTIME: OnceLock<InternalStatusRuntime> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize)]
 struct RawI3Block {
@@ -189,19 +227,14 @@ pub(crate) fn draw_status_bar(
     }
 
     let items = ctx.bar.status_items_for_text(stext).to_vec();
-    let layout = measure_layout(systray_width, m, items.as_slice(), painter);
-
-    let mut click_targets = Vec::new();
-    draw_items(
-        painter,
+    draw_status_items(
+        systray_width,
+        m,
         bar_height,
         items.as_slice(),
-        layout,
-        ctx.globals(),
-        &mut click_targets,
-    );
-
-    (layout.draw_start_x, layout.total_width, click_targets)
+        ctx.globals().status_scheme(),
+        painter,
+    )
 }
 
 fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
@@ -232,16 +265,31 @@ fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
             _ => None,
         };
 
+        let border = raw.border.filter(|c| c.starts_with('#'));
+        let has_border = border.is_some();
+
         let block = I3Block {
             full_text: raw.full_text,
             short_text: raw.short_text,
             color: raw.color.filter(|c| c.starts_with('#')),
             background: raw.background.filter(|c| c.starts_with('#')),
-            border: raw.border.filter(|c| c.starts_with('#')),
-            border_top: raw.border_top.unwrap_or(1).max(0),
-            border_right: raw.border_right.unwrap_or(1).max(0),
-            border_bottom: raw.border_bottom.unwrap_or(1).max(0),
-            border_left: raw.border_left.unwrap_or(1).max(0),
+            border,
+            border_top: raw
+                .border_top
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
+            border_right: raw
+                .border_right
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
+            border_bottom: raw
+                .border_bottom
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
+            border_left: raw
+                .border_left
+                .unwrap_or(if has_border { 1 } else { 0 })
+                .max(0),
             min_width,
             align,
             urgent: raw.urgent,
@@ -272,13 +320,16 @@ pub(crate) fn parse_status(bytes: &[u8]) -> ParsedStatus {
     }
 
     // Fall back to plain text
-    let text = std::str::from_utf8(bytes).unwrap_or("").to_string();
+    parse_status_fallback(std::str::from_utf8(bytes).unwrap_or(""))
+}
+
+pub(crate) fn parse_status_fallback(text: &str) -> ParsedStatus {
     if text.is_empty() {
         return ParsedStatus::default();
     }
 
     ParsedStatus {
-        items: vec![StatusItem::Text(text)],
+        items: vec![StatusItem::Text(text.to_string())],
         i3bar: None,
     }
 }
@@ -426,6 +477,78 @@ fn i3bar_click_runtime() -> &'static I3ClickRuntime {
     })
 }
 
+fn status_parse_runtime() -> &'static StatusParseRuntime {
+    STATUS_PARSE_RUNTIME.get_or_init(|| {
+        let (results_tx, results_rx) = mpsc::channel();
+        let shared = Arc::new(StatusParseShared {
+            pending: Mutex::new(None),
+            wake: Condvar::new(),
+            results_tx,
+        });
+
+        let worker_shared = Arc::clone(&shared);
+        std::thread::Builder::new()
+            .name("instantwm-status-parse".to_string())
+            .spawn(move || {
+                loop {
+                    let pending = {
+                        let mut guard = worker_shared.pending.lock().unwrap();
+                        loop {
+                            if let Some(pending) = guard.take() {
+                                break pending;
+                            }
+                            guard = worker_shared.wake.wait(guard).unwrap();
+                        }
+                    };
+
+                    let parsed = parse_status(pending.text.as_bytes());
+                    let _ = worker_shared.results_tx.send(StatusParseResult {
+                        seq: pending.seq,
+                        text: pending.text,
+                        parsed,
+                    });
+                }
+            })
+            .expect("failed to spawn status parser thread");
+
+        StatusParseRuntime {
+            shared,
+            results_rx: Mutex::new(results_rx),
+            next_seq: AtomicU64::new(1),
+        }
+    })
+}
+
+fn internal_status_runtime() -> &'static InternalStatusRuntime {
+    INTERNAL_STATUS_RUNTIME.get_or_init(|| {
+        let (sender, receiver) = mpsc::channel();
+        InternalStatusRuntime {
+            sender,
+            receiver: Mutex::new(receiver),
+            ping: Mutex::new(None),
+        }
+    })
+}
+
+pub(crate) fn request_status_parse(text: &str) -> u64 {
+    let runtime = status_parse_runtime();
+    let seq = runtime.next_seq.fetch_add(1, Ordering::Relaxed);
+    let mut pending = runtime.shared.pending.lock().unwrap();
+    *pending = Some(PendingStatusParse {
+        seq,
+        text: text.to_string(),
+    });
+    runtime.shared.wake.notify_one();
+    seq
+}
+
+pub(crate) fn try_recv_status_parse_result() -> Option<StatusParseResult> {
+    let receiver = status_parse_runtime().results_rx.lock().ok()?;
+    match receiver.try_recv() {
+        Ok(result) => Some(result),
+        Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => None,
+    }
+}
 pub(crate) fn enqueue_i3bar_click_event(event: I3ClickEvent) {
     let _ = i3bar_click_runtime().sender.send(event);
 }
@@ -446,6 +569,55 @@ pub(crate) fn flush_i3bar_click_events<W: Write>(
         write_i3bar_click_event(&mut *writer, &event, first_event)?;
     }
     writer.flush()
+}
+
+pub(crate) fn set_internal_status_ping(ping: calloop::ping::Ping) {
+    let runtime = internal_status_runtime();
+    if let Ok(mut slot) = runtime.ping.lock() {
+        *slot = Some(ping);
+    }
+}
+
+pub(crate) fn enqueue_internal_status(text: String) {
+    let runtime = internal_status_runtime();
+    let _ = runtime.sender.send(text);
+    if let Ok(guard) = runtime.ping.lock()
+        && let Some(ping) = guard.as_ref()
+    {
+        ping.ping();
+    }
+}
+
+pub(crate) fn apply_status_update(wm: &mut crate::wm::Wm, text: String) {
+    if !text.starts_with("instantwm-") {
+        CUSTOM_STATUS_RECEIVED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    wm.bar.prepare_status_for_render(&text);
+    wm.g.bar_runtime.status_text = text;
+    wm.bar.mark_dirty();
+}
+
+pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
+    let runtime = internal_status_runtime();
+    let Ok(receiver) = runtime.receiver.lock() else {
+        return false;
+    };
+
+    let mut latest = None;
+    loop {
+        match receiver.try_recv() {
+            Ok(text) => latest = Some(text),
+            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+        }
+    }
+
+    let Some(text) = latest else {
+        return false;
+    };
+
+    apply_status_update(wm, text);
+    true
 }
 
 fn measure_layout(
@@ -501,16 +673,36 @@ fn measure_i3_block_width(block: &I3Block, painter: &mut dyn crate::bar::paint::
     (block_width + separator_width).max(0)
 }
 
+pub(crate) fn draw_status_items(
+    systray_width: i32,
+    m: &Monitor,
+    bar_height: i32,
+    items: &[StatusItem],
+    base_scheme: crate::bar::paint::BarScheme,
+    painter: &mut dyn crate::bar::paint::BarPainter,
+) -> (i32, i32, Vec<StatusClickTarget>) {
+    let layout = measure_layout(systray_width, m, items, painter);
+    let mut click_targets = Vec::new();
+    draw_items(
+        painter,
+        bar_height,
+        items,
+        layout,
+        &base_scheme,
+        &mut click_targets,
+    );
+    (layout.draw_start_x, layout.total_width, click_targets)
+}
+
 fn draw_items(
     painter: &mut dyn crate::bar::paint::BarPainter,
     bar_height: i32,
     items: &[StatusItem],
     layout: StatusLayout,
-    g: &crate::globals::Globals,
+    base_scheme: &crate::bar::paint::BarScheme,
     click_targets: &mut Vec<StatusClickTarget>,
 ) {
-    let scheme = g.status_scheme();
-    painter.set_scheme(scheme);
+    painter.set_scheme(base_scheme.clone());
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
@@ -532,7 +724,7 @@ fn draw_items(
                 x += seg_w;
             }
             StatusItem::I3Block(block) => {
-                let total_w = draw_i3_block(painter, x, bar_height, block, g);
+                let total_w = draw_i3_block(painter, x, bar_height, block, base_scheme);
                 if total_w > 0 {
                     click_targets.push(StatusClickTarget {
                         start_x: x,
@@ -552,9 +744,8 @@ fn draw_i3_block(
     x: i32,
     bar_height: i32,
     block: &I3Block,
-    g: &crate::globals::Globals,
+    base_scheme: &crate::bar::paint::BarScheme,
 ) -> i32 {
-    let base_scheme = g.status_scheme();
     let mut fg = block
         .color
         .as_deref()
@@ -704,6 +895,15 @@ fn send_status_ipc(text: &str) {
     }
 }
 
+fn send_status_update(text: &str) {
+    let has_internal_runtime = INTERNAL_STATUS_RUNTIME.get().is_some();
+    if has_internal_runtime {
+        enqueue_internal_status(text.to_string());
+    } else {
+        send_status_ipc(text);
+    }
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn default_status_text() -> String {
@@ -738,7 +938,7 @@ pub(crate) fn spawn_default_status() {
             if CUSTOM_STATUS_RECEIVED.load(Ordering::Relaxed) {
                 break;
             }
-            send_status_ipc(&default_status_text());
+            send_status_update(&default_status_text());
             thread::sleep(Duration::from_secs(30));
         }
     });
@@ -767,7 +967,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
             }
         };
 
-        let mut i3bar_header_seen = false;
+        let mut i3bar_mode = false;
 
         if let Some(stdout) = child.stdout.take() {
             let reader = BufReader::new(stdout);
@@ -781,8 +981,8 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     continue;
                 }
 
-                if !i3bar_header_seen && let Some(header) = parse_i3bar_header(text) {
-                    i3bar_header_seen = true;
+                if !i3bar_mode && let Some(header) = parse_i3bar_header(text) {
+                    i3bar_mode = true;
                     if header.click_events
                         && let Some(mut stdin) = child.stdin.take()
                     {
@@ -798,8 +998,68 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     continue;
                 }
 
-                send_status_ipc(text);
+                if i3bar_mode {
+                    if parse_i3bar_json(text.as_bytes()).is_some() {
+                        send_status_update(text);
+                    } else {
+                        log::debug!("dropping malformed i3bar status frame: {text}");
+                    }
+                } else {
+                    send_status_update(text);
+                }
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{I3Align, StatusItem, parse_i3bar_header, parse_i3bar_json, parse_status};
+
+    #[test]
+    fn parses_i3bar_frame_with_leading_comma() {
+        let parsed = parse_i3bar_json(br##",[{"full_text":"cpu","color":"#ffffff"}]"##).unwrap();
+
+        assert_eq!(parsed.items.len(), 1);
+        let Some(StatusItem::I3Block(block)) = parsed.items.first() else {
+            panic!("expected i3 block");
+        };
+        assert_eq!(block.full_text, "cpu");
+        assert_eq!(block.color.as_deref(), Some("#ffffff"));
+        assert_eq!(block.align, I3Align::Left);
+    }
+
+    #[test]
+    fn parses_i3bar_frame_with_trailing_comma() {
+        let parsed = parse_i3bar_json(br#"[{"full_text":"mem","separator":false}],"#).unwrap();
+
+        assert_eq!(parsed.items.len(), 1);
+        let Some(StatusItem::I3Block(block)) = parsed.items.first() else {
+            panic!("expected i3 block");
+        };
+        assert_eq!(block.full_text, "mem");
+        assert!(!block.separator);
+    }
+
+    #[test]
+    fn parse_status_keeps_plain_text_fallback_for_non_json() {
+        let parsed = parse_status(b"plain text");
+
+        assert_eq!(parsed.items.len(), 1);
+        let Some(StatusItem::Text(text)) = parsed.items.first() else {
+            panic!("expected plain text item");
+        };
+        assert_eq!(text, "plain text");
+        assert!(parsed.i3bar.is_none());
+    }
+
+    #[test]
+    fn parses_i3bar_header_with_click_events() {
+        let header =
+            parse_i3bar_header(r#"{"version":1,"click_events":true,"stop_signal":19}"#).unwrap();
+
+        assert_eq!(header.version, Some(1));
+        assert!(header.click_events);
+        assert_eq!(header.stop_signal, Some(19));
+    }
 }

@@ -10,12 +10,33 @@ pub mod x11;
 
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::config::config_toml::VrrMode;
 use crate::types::{Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use bincode::{Decode, Encode};
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Encode, Decode,
+)]
+pub enum BackendVrrSupport {
+    Unsupported,
+    RequiresModeset,
+    Supported,
+}
 
 #[derive(Debug, Clone)]
 pub struct BackendOutputInfo {
     pub name: String,
     pub rect: Rect,
+    pub scale: f64,
+    pub vrr_support: BackendVrrSupport,
+    pub vrr_mode: Option<VrrMode>,
+    pub vrr_enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackendKind {
+    X11,
+    Wayland,
 }
 
 /// Core backend operations required by the WM.
@@ -171,6 +192,20 @@ impl Backend {
         match self {
             Self::X11(_) => Vec::new(),
             Self::Wayland(data) => data.backend.get_input_devices(),
+        }
+    }
+
+    pub fn get_outputs(&self) -> Vec<BackendOutputInfo> {
+        match self {
+            Self::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
+            Self::Wayland(data) => data.backend.get_outputs(),
+        }
+    }
+
+    pub fn kind(&self) -> BackendKind {
+        match self {
+            Self::X11(_) => BackendKind::X11,
+            Self::Wayland(_) => BackendKind::Wayland,
         }
     }
 }

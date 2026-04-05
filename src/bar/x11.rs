@@ -2,6 +2,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::CoreCtx;
 use crate::types::{Monitor, Systray, WindowId};
+use std::collections::HashMap;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::Window;
@@ -70,20 +71,69 @@ pub fn draw_bars_x11(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
-    let indices: Vec<usize> = core.globals().monitors_iter().map(|(i, _)| i).collect();
-    for i in indices {
-        draw_bar(core, x11_runtime, systray, i);
+    let monitor_ids: Vec<usize> = core.globals().monitors_iter().map(|(i, _)| i).collect();
+    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
+    let snapshot_by_monitor_id: HashMap<usize, &crate::bar::scene::MonitorBarSnapshot> = snapshots
+        .iter()
+        .map(|snapshot| (snapshot.monitor_id, snapshot))
+        .collect();
+
+    for i in monitor_ids {
+        let bar_win = core
+            .globals()
+            .monitor(i)
+            .map(|m| m.bar_win)
+            .unwrap_or_default();
+        if bar_win == WindowId::default() {
+            continue;
+        }
+
+        let work_rect_w = match core.globals().monitor(i) {
+            Some(m) => m.work_rect.w,
+            None => continue,
+        };
+        let bar_height = core.globals().cfg.bar_height;
+        if work_rect_w <= 0 || bar_height <= 0 {
+            continue;
+        }
+
+        if core.globals().cfg.show_systray {
+            core.globals_mut().bar_runtime.systray_width =
+                crate::systray::get_systray_width(core, systray) as i32;
+        }
+
+        let drw = {
+            let Some(drw) = x11_runtime.draw.as_mut() else {
+                continue;
+            };
+            if !drw.has_display() {
+                continue;
+            }
+            drw.resize(work_rect_w as u32, bar_height as u32);
+            drw.clone()
+        };
+
+        let Some(monitor) = core.globals().monitor(i).cloned() else {
+            continue;
+        };
+        let Some(snapshot) = snapshot_by_monitor_id.get(&monitor.id()).copied() else {
+            continue;
+        };
+
+        let mut painter = crate::bar::x11_painter::X11BarPainter::new(drw);
+        crate::bar::renderer::draw_bar_snapshot(core, i, &monitor, snapshot, &mut painter);
+        painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
     }
+    core.bar.mark_drawn();
 }
 
 pub fn reset_bar_x11(
     core: &mut CoreCtx,
-    x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&Systray>,
+    _x11_runtime: &mut X11RuntimeConfig,
+    _systray: Option<&Systray>,
 ) {
-    let selmon_idx = core.globals().selected_monitor_id();
     crate::bar::renderer::reset_bar_common(core);
-    draw_bar(core, x11_runtime, systray, selmon_idx);
+    core.bar.mark_dirty();
 }
 
 /// Resize bar window with dependency injection.

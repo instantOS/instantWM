@@ -7,7 +7,6 @@ use std::thread;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::{OwnedValue, Value};
 
-use crate::bar::paint::BarPainter;
 use crate::contexts::CoreCtx;
 use crate::types::{
     Monitor, MouseButton, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
@@ -276,6 +275,7 @@ impl WaylandSystrayRuntime {
 pub fn get_wayland_systray_width_with_state(
     core: &CoreCtx,
     wayland_systray: &WaylandSystray,
+    bar_height: i32,
 ) -> i32 {
     if !core.globals().cfg.show_systray {
         return 0;
@@ -284,7 +284,7 @@ pub fn get_wayland_systray_width_with_state(
     if items.is_empty() {
         return 0;
     }
-    let icon_h = core.globals().cfg.bar_height.max(1);
+    let icon_h = bar_height.max(1);
     let spacing = core.globals().cfg.systray_spacing.max(0);
     let mut width = spacing;
     for item in items {
@@ -310,88 +310,7 @@ pub fn hit_test_wayland_systray_menu_item(
     None
 }
 
-pub fn draw_wayland_systray(
-    core: &mut CoreCtx,
-    wayland_systray: &WaylandSystray,
-    wayland_systray_menu: Option<&WaylandSystrayMenu>,
-    mon: &crate::types::Monitor,
-    painter: &mut crate::bar::wayland::WaylandBarPainter,
-) {
-    let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
-
-    // Populate the hit cache with systray slots
-    let mon_id = mon.id();
-    if let Some(hit) = core.bar.monitor_hit_cache_mut(mon_id) {
-        hit.systray_slots = layout
-            .tray_slots
-            .iter()
-            .map(|s| crate::bar::SystrayHitSlot {
-                idx: s.idx,
-                start: s.start,
-                end: s.end,
-            })
-            .collect();
-        hit.systray_menu_slots = layout
-            .menu_slots
-            .iter()
-            .map(|s| crate::bar::SystrayHitSlot {
-                idx: s.idx,
-                start: s.start,
-                end: s.end,
-            })
-            .collect();
-    }
-
-    let bg = core.globals().status_scheme().bg;
-    let bg_scheme = crate::bar::paint::BarScheme {
-        fg: bg,
-        bg,
-        detail: bg,
-    };
-    painter.set_scheme(bg_scheme);
-    if layout.tray_total_w > 0 {
-        painter.rect(
-            layout.tray_start_x,
-            0,
-            layout.tray_total_w,
-            core.globals().cfg.bar_height,
-            true,
-            true,
-        );
-    }
-    if layout.menu_total_w > 0 {
-        painter.rect(
-            layout.menu_start_x,
-            0,
-            layout.menu_total_w,
-            core.globals().cfg.bar_height,
-            true,
-            true,
-        );
-    }
-
-    let icon_h = core.globals().cfg.bar_height.max(1);
-    for slot in &layout.tray_slots {
-        let Some(item) = wayland_systray.items.get(slot.idx) else {
-            continue;
-        };
-        painter.blit_rgba_bgra(
-            slot.start,
-            0,
-            slot.end - slot.start,
-            icon_h,
-            item.icon_w,
-            item.icon_h,
-            &item.icon_rgba,
-        );
-    }
-
-    if let Some(menu) = wayland_systray_menu {
-        draw_menu_overlay(core, painter, menu, &layout);
-    }
-}
-
-fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
+pub(crate) fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
     if src_w <= 0 || src_h <= 0 || dst_h <= 0 {
         return 0;
     }
@@ -690,7 +609,7 @@ fn systray_layout(
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &Monitor,
 ) -> SystrayLayout {
-    let icon_h = core.globals().cfg.bar_height.max(1);
+    let icon_h = mon.bar_height.max(1);
     let spacing = core.globals().cfg.systray_spacing.max(0);
     let mut tray_total_w = 0;
     if !wayland_systray.items.is_empty() {
@@ -747,7 +666,7 @@ fn systray_layout(
 
 fn draw_menu_overlay(
     core: &CoreCtx,
-    painter: &mut crate::bar::wayland::WaylandBarPainter,
+    painter: &mut dyn crate::bar::paint::BarPainter,
     menu: &WaylandSystrayMenu,
     layout: &SystrayLayout,
 ) {
@@ -756,7 +675,7 @@ fn draw_menu_overlay(
     }
     let mut scheme = core.globals().status_scheme();
     painter.set_scheme(scheme.clone());
-    let item_h = core.globals().cfg.bar_height.max(1);
+    let item_h = core.globals().selected_monitor().bar_height.max(1);
     for (row, item) in menu.items.iter().enumerate() {
         let Some(slot) = layout.menu_slots.get(row) else {
             continue;
@@ -928,7 +847,7 @@ fn fetch_item_icon_on_conn(
     conn: &Connection,
     service: &str,
     path: &str,
-) -> Option<(Vec<u8>, i32, i32)> {
+) -> Option<(Arc<[u8]>, i32, i32)> {
     let proxy = Proxy::new(conn, service, path, ITEM_IFACE).ok()?;
 
     let pixmaps: Vec<(i32, i32, Vec<u8>)> = proxy.get_property("IconPixmap").ok()?;
@@ -949,7 +868,7 @@ fn fetch_item_icon_on_conn(
     }
     let (w, h, bytes, _) = best?;
     let rgba = dbus_icon_bytes_to_rgba(&bytes, w, h)?;
-    Some((rgba, w, h))
+    Some((Arc::from(rgba), w, h))
 }
 
 fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
@@ -962,23 +881,33 @@ fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
     let mut out = vec![0u8; need];
     for i in 0..px_count {
         let si = i * 4;
-        // D-Bus ARGB32 bytes are in network byte order (Big Endian), so A, R, G, B.
-        // Or if it's little-endian host order ARGB, then it's B, G, R, A.
-        // Qt actually serializes `QImage::Format_ARGB32` to D-Bus array of bytes
-        // which gives B, G, R, A on little-endian machines.
-        // Let's assume standard little-endian BGRA -> RGBA mapping here.
-        let b = bytes[si];
-        let g = bytes[si + 1];
-        let r = bytes[si + 2];
-        let a = bytes[si + 3];
-        // Our blit_rgba_bgra method takes RGBA byte array, but wait!
-        // In bar.rs `blit_rgba_bgra`, it actually parses the array as [R, G, B, A]
-        // and assigns it to ARGB8888 (Little-endian B, G, R, A buffer).
-        // So we must output [R, G, B, A] bytes exactly.
+        // StatusNotifierItem::IconPixmap stores ARGB32 pixels in network byte
+        // order, so each pixel arrives as A, R, G, B bytes on the wire.
+        let a = bytes[si];
+        let r = bytes[si + 1];
+        let g = bytes[si + 2];
+        let b = bytes[si + 3];
         out[si] = r;
         out[si + 1] = g;
         out[si + 2] = b;
         out[si + 3] = a;
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dbus_icon_bytes_to_rgba;
+
+    #[test]
+    fn dbus_icon_bytes_are_decoded_from_argb_to_rgba() {
+        let bytes = [
+            0xff, 0x00, 0x82, 0xc9, // opaque Nextcloud blue
+            0x40, 0x11, 0x22, 0x33, // translucent pixel
+        ];
+
+        let rgba = dbus_icon_bytes_to_rgba(&bytes, 2, 1).expect("valid icon bytes");
+
+        assert_eq!(rgba, vec![0x00, 0x82, 0xc9, 0xff, 0x11, 0x22, 0x33, 0x40]);
+    }
 }

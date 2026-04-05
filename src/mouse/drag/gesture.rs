@@ -34,8 +34,8 @@ pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
                 } else {
                     &["/usr/share/instantassist/utils/p.sh", "-"]
                 };
-                let wm_ctx = WmCtx::X11(ctx.reborrow());
-                crate::util::spawn(&wm_ctx, cmd);
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                crate::util::spawn(&mut wm_ctx, cmd);
                 last_y = event_y;
             }
         }

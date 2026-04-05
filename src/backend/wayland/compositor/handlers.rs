@@ -5,15 +5,10 @@ use smithay::{
     reexports::wayland_server::Client,
     wayland::{
         buffer::BufferHandler,
-        compositor::{BufferAssignment, CompositorHandler, get_parent, is_sync_subsurface},
+        compositor::{CompositorHandler, get_parent, is_sync_subsurface},
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
-        keyboard_shortcuts_inhibit::{
-            KeyboardShortcutsInhibitHandler, KeyboardShortcutsInhibitState,
-            KeyboardShortcutsInhibitor,
-        },
         output::OutputHandler,
         seat::WaylandFocus,
-        selection::data_device::{ClientDndGrabHandler, ServerDndGrabHandler},
         shm::ShmHandler,
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
         xwayland_shell::XWaylandShellHandler,
@@ -48,34 +43,18 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        // Find the root surface by walking up the surface tree
-        // We need this BEFORE calling on_commit_buffer_handler to check for new buffer
-        let mut root = surface.clone();
-        while let Some(parent) = get_parent(&root) {
-            root = parent;
-        }
-
-        // Check if root surface has a new buffer in pending state BEFORE
-        // on_commit_buffer_handler processes it
-        let has_new_buffer = smithay::wayland::compositor::with_states(&root, |states| {
-            let mut guard = states
-                .cached_state
-                .get::<smithay::wayland::compositor::SurfaceAttributes>();
-            guard
-                .pending()
-                .buffer
-                .as_ref()
-                .is_some_and(|b| matches!(b, BufferAssignment::NewBuffer(_)))
-        });
-
+        // Surface commits must drive redraws in the DRM backend; otherwise
+        // removing the vblank self-redraw loop stalls client updates until
+        // some unrelated input/layout path dirties the outputs.
+        self.request_render();
         on_commit_buffer_handler::<Self>(surface);
 
         // Check if this commit is from a pending toplevel that has finally
         // produced a buffer.  If so, promote it to a managed window.
-        if let Some(pos) = self
-            .pending_toplevels
-            .iter()
-            .position(|t| t.wl_surface() == surface)
+        if let Some(pos) =
+            self.runtime.pending_toplevels.iter().position(
+                |t: &smithay::wayland::shell::xdg::ToplevelSurface| t.wl_surface() == surface,
+            )
         {
             let has_buffer =
                 smithay::backend::renderer::utils::with_renderer_surface_state(surface, |state| {
@@ -83,7 +62,7 @@ impl CompositorHandler for WaylandState {
                 })
                 .unwrap_or(false);
             if has_buffer {
-                let toplevel = self.pending_toplevels.swap_remove(pos);
+                let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
                 let _ = self.map_new_toplevel(toplevel);
             }
         }
@@ -102,25 +81,31 @@ impl CompositorHandler for WaylandState {
             return;
         }
 
+        // Find the root surface by walking up the surface tree
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+
         // Only call on_commit for the root surface, not for subsurfaces
         if surface != &root {
             return;
         }
 
-        if let Some(window) = self
+        let committed_window = self
             .space
             .elements()
             .find(|w| w.wl_surface().as_deref() == Some(&root))
-            .cloned()
-        {
+            .cloned();
+        if let Some(window) = committed_window {
             window.on_commit();
-        }
-
-        // Mark content dirty so the DRM backend schedules a render on the
-        // next VBlank.  The damage tracker will handle GPU-efficiency.
-        // Only set if root surface had a new buffer attached.
-        if has_new_buffer {
-            self.content_dirty_pending = true;
+            if let Some(id) = window
+                .user_data()
+                .get::<super::state::WindowIdMarker>()
+                .map(|marker| marker.id)
+            {
+                self.sync_client_geometry_from_window(id);
+            }
         }
 
         super::layer_shell::handle_layer_commit(self, surface);
@@ -157,50 +142,15 @@ impl DmabufHandler for WaylandState {
             dmabuf.set_node(node);
         }
 
-        if let Some(renderer) = self.renderer.as_mut() {
-            // DRM path: renderer is available, import immediately.
-            let imported = renderer.import_dmabuf(&dmabuf, None).ok().is_some();
-            if imported {
-                let _ = notifier.successful::<Self>();
-            } else {
-                notifier.failed();
-            }
+        let imported = self
+            .renderer_mut()
+            .and_then(|renderer| renderer.import_dmabuf(&dmabuf, None).ok())
+            .is_some();
+        if imported {
+            let _ = notifier.successful::<Self>();
         } else {
-            // Winit path: renderer is owned by the winit backend, not stored
-            // in state. Queue the import — it will be processed during
-            // render_frame when the renderer is available via backend.bind().
-            self.pending_dmabuf_imports.push((dmabuf, notifier));
+            notifier.failed();
         }
-    }
-}
-
-impl ClientDndGrabHandler for WaylandState {
-    fn started(
-        &mut self,
-        _source: Option<smithay::reexports::wayland_server::protocol::wl_data_source::WlDataSource>,
-        icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-        _seat: smithay::input::Seat<Self>,
-    ) {
-        self.dnd_icon = icon;
-    }
-
-    fn dropped(
-        &mut self,
-        _icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-        _accepted: bool,
-        _seat: smithay::input::Seat<Self>,
-    ) {
-        self.dnd_icon = None;
-    }
-}
-
-impl ServerDndGrabHandler for WaylandState {
-    fn send(
-        &mut self,
-        _mime_type: String,
-        _fd: std::os::unix::io::OwnedFd,
-        _seat: smithay::input::Seat<Self>,
-    ) {
     }
 }
 
@@ -229,30 +179,9 @@ impl XWaylandKeyboardGrabHandler for WaylandState {
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<Self::KeyboardFocus> {
-        if let Some(win) = self.window_id_for_surface(surface)
-            && let Some(window) = self.window_index.get(&win)
-        {
-            return Some(KeyboardFocusTarget::Window(window.clone()));
-        }
-        // For unmanaged X11 surfaces (like dmenu), search in the space
-        if let Some(window) = self.window_for_surface(surface) {
-            return Some(KeyboardFocusTarget::Window(window));
-        }
-
-        // Fallback: If XWayland requests a grab for a surface that isn't mapped
-        // as a full window (e.g., grabbing the root window or a dummy surface),
-        // we must still allow the grab by returning the raw WlSurface.
-        Some(KeyboardFocusTarget::WlSurface(surface.clone()))
-    }
-}
-
-impl KeyboardShortcutsInhibitHandler for WaylandState {
-    fn keyboard_shortcuts_inhibit_state(&mut self) -> &mut KeyboardShortcutsInhibitState {
-        &mut self.keyboard_shortcuts_inhibit_state
-    }
-
-    fn new_inhibitor(&mut self, _inhibitor: KeyboardShortcutsInhibitor) {
-        // We handle the inhibitor implicitly via KeyboardShortcutsInhibitState::keyboard_shortcuts_inhibited
+        let win = self.window_id_for_surface(surface)?;
+        let window = self.window_index.get(&win)?;
+        Some(KeyboardFocusTarget::Window(window.clone()))
     }
 }
 

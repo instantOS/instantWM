@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
-use crate::client::set_client_state;
+use crate::backend::x11::set_client_state;
 use crate::contexts::CoreCtx;
 use crate::types::Systray;
 use crate::types::*;
@@ -133,9 +133,9 @@ pub fn update_systray_icon_state(
         }
     };
 
-    if (flags & XEMBED_MAPPED) != 0 && current_tags == 0 {
+    if (flags & XEMBED_MAPPED) != 0 && current_tags.is_empty() {
         if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
-            client.tags = 1;
+            client.tags = crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY);
         }
 
         let systray_win = systray.as_ref().map(|s| s.win).unwrap_or_default();
@@ -157,9 +157,9 @@ pub fn update_systray_icon_state(
             XEMBED_EMBEDDED_VERSION as i64,
         );
         set_client_state(core, x11, x11_runtime, icon_win, 1);
-    } else if (flags & XEMBED_MAPPED) == 0 && current_tags != 0 {
+    } else if (flags & XEMBED_MAPPED) == 0 && !current_tags.is_empty() {
         if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
-            client.tags = 0;
+            client.tags = crate::types::TagMask::EMPTY;
         }
 
         let systray_win = systray.as_ref().map(|s| s.win).unwrap_or_default();

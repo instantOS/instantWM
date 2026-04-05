@@ -2,70 +2,73 @@
 
 use crate::contexts::{CoreCtx, WmCtx};
 // focus() is used via focus_soft() in this module
+use crate::layouts::LayoutKind;
 use crate::layouts::arrange;
 use crate::types::{Direction, TagMask, WindowId};
 
-/// View tags using type-safe mask.
-pub fn view(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
-    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
-    let effective_mask = mask & tagmask;
-    if effective_mask.is_empty() {
-        return;
-    }
-
-    {
-        let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        mon.sel_tags ^= 1;
-        mon.set_selected_tags(effective_mask.bits());
-
-        let prev = mon.current_tag;
-        if mask == TagMask::ALL_BITS {
-            mon.current_tag = 0;
-        } else {
-            let new_tag = effective_mask.first_tag().unwrap_or(0);
-            if new_tag == mon.current_tag {
-                mon.sel_tags ^= 1;
-                return;
-            }
-            mon.prev_tag = prev;
-            mon.current_tag = new_tag;
-        }
-    }
-
+fn finalize_view_change(ctx: &mut WmCtx, selmon_id: usize) {
     apply_pertag_settings(ctx.core_mut());
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 
-pub fn toggle_view_ctx(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
-    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
-    let new_mask = TagMask::from_bits(ctx.core().globals().selected_monitor().selected_tags())
-        ^ (mask & tagmask);
-    if new_mask.is_empty() {
-        return;
-    }
+fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<usize> {
+    let selmon_id = ctx.core().globals().selected_monitor_id();
 
     {
         let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        mon.set_selected_tags(new_mask.bits());
-        if new_mask == TagMask::ALL_BITS {
-            mon.prev_tag = mon.current_tag;
-            mon.current_tag = 0;
+        let previous_mask = mon.selected_tags();
+        if previous_mask == new_mask {
+            return None;
+        }
+
+        mon.sel_tags ^= 1;
+        mon.set_selected_tags(new_mask);
+
+        let current_tag = mon.current_tag;
+        let all_tags = TagMask::all(mon.tags.len());
+        if new_mask == all_tags {
+            mon.prev_tag = current_tag;
+            mon.current_tag = None;
         } else {
-            let new_tag = new_mask.first_tag().unwrap_or(0);
-            let current_tag = mon.current_tag;
-            if current_tag == 0 || !new_mask.contains(current_tag) {
+            let new_tag = new_mask.first_tag();
+            if current_tag.is_none_or(|tag| !new_mask.contains(tag)) {
                 mon.prev_tag = current_tag;
                 mon.current_tag = new_tag;
             }
         }
     }
 
-    apply_pertag_settings(ctx.core_mut());
-    crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    Some(selmon_id)
+}
+
+/// View tags using type-safe mask.
+pub fn view(ctx: &mut WmCtx, mask: TagMask) {
+    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
+    let effective_mask = mask & tagmask;
+    if effective_mask.is_empty() {
+        return;
+    }
+
+    let Some(selmon_id) = commit_view_selection(ctx, effective_mask) else {
+        return;
+    };
+
+    finalize_view_change(ctx, selmon_id);
+}
+
+pub fn toggle_view_ctx(ctx: &mut WmCtx, mask: TagMask) {
+    let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
+    let new_mask = ctx.core().globals().selected_monitor().selected_tags() ^ (mask & tagmask);
+    if new_mask.is_empty() {
+        return;
+    }
+
+    let Some(selmon_id) = commit_view_selection(ctx, new_mask) else {
+        return;
+    };
+
+    finalize_view_change(ctx, selmon_id);
 }
 
 /// Toggle a single tag in or out of the current view by its 0-based index.
@@ -92,7 +95,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
         return;
     }
 
-    let current = TagMask::from_bits(ctx.core().globals().selected_monitor().selected_tags());
+    let current = ctx.core().globals().selected_monitor().selected_tags();
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -106,10 +109,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 
 pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
     let mon = ctx.core().globals().selected_monitor();
-    let (tagset, numtags) = (
-        TagMask::from_bits(mon.selected_tags()),
-        ctx.core().globals().tags.count(),
-    );
+    let (tagset, numtags) = (mon.selected_tags(), ctx.core().globals().tags.count());
 
     let mut next_mask = tagset;
     let mut found = false;
@@ -124,7 +124,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
 
         for &win in &clients {
             if let Some(c) = ctx.client(win)
-                && TagMask::from_bits(c.tags).intersects(next_mask)
+                && c.tags.intersects(next_mask)
             {
                 found = true;
                 break;
@@ -155,7 +155,7 @@ pub fn last_view(ctx: &mut WmCtx) {
         return;
     }
 
-    if let Some(mask) = TagMask::single(prev_tag) {
+    if let Some(mask) = prev_tag.and_then(TagMask::single) {
         view(ctx, mask);
     }
 }
@@ -165,12 +165,16 @@ pub fn win_view(ctx: &mut WmCtx) {
         return;
     };
 
-    let tags = ctx.core().globals().clients.tags(win).unwrap_or(1);
-    let tag_mask = TagMask::from_bits(tags);
+    let tag_mask = ctx
+        .core()
+        .globals()
+        .clients
+        .tag_mask(win)
+        .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY));
 
     if tag_mask.is_scratchpad_only() {
         let current_tag = ctx.core().globals().selected_monitor().current_tag;
-        if let Some(mask) = TagMask::single(current_tag) {
+        if let Some(mask) = current_tag.and_then(TagMask::single) {
             view(ctx, mask);
         }
     } else {
@@ -180,12 +184,19 @@ pub fn win_view(ctx: &mut WmCtx) {
     crate::focus::focus_soft(ctx, Some(win));
 }
 
+fn overview_shortcut_targets_focused_window(
+    current_tag: Option<usize>,
+    layout: LayoutKind,
+) -> bool {
+    current_tag.is_none() || layout.is_overview()
+}
+
 pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
     let tagmask = TagMask::from_bits(ctx.core().globals().tags.mask());
     let newtag = mask & tagmask;
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, current_tagset) = (mon.current_tag, TagMask::from_bits(mon.selected_tags()));
+    let (current_tag, current_tagset) = (mon.current_tag, mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
     }
@@ -194,7 +205,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
         let mut result = Vec::new();
         let m = ctx.core().globals().selected_monitor();
         for (win, c) in m.iter_clients(ctx.core().globals().clients.map()) {
-            let ctags = TagMask::from_bits(c.tags);
+            let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
                 result.push(win);
             }
@@ -203,21 +214,21 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     };
     for win in clients_to_swap {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            let ctags = TagMask::from_bits(client.tags);
+            let ctags = client.tags;
             let new_tags = ctags ^ current_tagset ^ newtag;
-            client.tags = if new_tags.is_empty() {
-                newtag.bits()
+            client.set_tag_mask(if new_tags.is_empty() {
+                newtag
             } else {
-                new_tags.bits()
-            };
+                new_tags
+            });
         }
     }
     let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-    mon.set_selected_tags(newtag.bits());
-    if mon.prev_tag == target_idx {
+    mon.set_selected_tags(newtag);
+    if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
     }
-    mon.current_tag = target_idx;
+    mon.current_tag = Some(target_idx);
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
@@ -229,14 +240,14 @@ pub fn follow_view(ctx: &mut WmCtx) {
 
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;
 
-    if prev_tag == 0 {
+    if prev_tag.is_none() {
         return;
     }
 
-    let target_mask = TagMask::single(prev_tag).unwrap_or(TagMask::EMPTY);
+    let target_mask = prev_tag.and_then(TagMask::single).unwrap_or(TagMask::EMPTY);
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        client.tags = target_mask.bits();
+        client.set_tag_mask(target_mask);
     }
 
     view(ctx, target_mask);
@@ -245,30 +256,64 @@ pub fn follow_view(ctx: &mut WmCtx) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    let (has_clients, current_tag, num_tags) = {
-        let has_clients = !ctx.core().globals().selected_monitor().clients.is_empty();
-        let current_tag = ctx.core().globals().selected_monitor().current_tag;
-        (has_clients, current_tag, ctx.core().globals().tags.count())
+    let (has_clients, current_tag, current_layout, num_tags) = {
+        let mon = ctx.core().globals().selected_monitor();
+        (
+            !mon.clients.is_empty(),
+            mon.current_tag,
+            mon.current_layout(),
+            ctx.core().globals().tags.count(),
+        )
     };
 
     if !has_clients {
-        if current_tag == 0 {
+        if overview_shortcut_targets_focused_window(current_tag, current_layout) {
             last_view(ctx);
         }
         return;
     }
 
-    match current_tag {
-        0 => {
-            crate::floating::restore_all_floating(ctx, Some(selmon_id));
-            win_view(ctx);
-        }
-        _ => {
-            crate::floating::save_all_floating(ctx, Some(selmon_id));
-            let all_tags = TagMask::all(num_tags);
-            view(ctx, all_tags);
-        }
+    if overview_shortcut_targets_focused_window(current_tag, current_layout) {
+        crate::floating::restore_all_floating(
+            ctx,
+            Some(ctx.core().globals().selected_monitor_id()),
+        );
+        win_view(ctx);
+    } else {
+        let selmon_id = ctx.core().globals().selected_monitor_id();
+        crate::floating::save_all_floating(ctx, Some(selmon_id));
+        let all_tags = TagMask::all(num_tags);
+        view(ctx, all_tags);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::overview_shortcut_targets_focused_window;
+    use crate::layouts::LayoutKind;
+
+    #[test]
+    fn overview_shortcut_targets_focused_window_for_tag_zero() {
+        assert!(overview_shortcut_targets_focused_window(
+            None,
+            LayoutKind::Tile
+        ));
+    }
+
+    #[test]
+    fn overview_shortcut_targets_focused_window_for_overview_layout() {
+        assert!(overview_shortcut_targets_focused_window(
+            Some(3),
+            LayoutKind::Overview
+        ));
+    }
+
+    #[test]
+    fn overview_shortcut_enters_overview_from_normal_tag_layouts() {
+        assert!(!overview_shortcut_targets_focused_window(
+            Some(3),
+            LayoutKind::Grid
+        ));
     }
 }
 
@@ -276,8 +321,8 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
     let current_tag = ctx.core().globals().selected_monitor().current_tag;
 
     match current_tag {
-        0 => win_view(ctx),
-        _ => {
+        None => win_view(ctx),
+        Some(_) => {
             let num_tags = ctx.core().globals().tags.count();
             view(ctx, TagMask::all(num_tags))
         }
@@ -287,8 +332,10 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
 pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
     let (nmaster, mfact) = {
         let mon = core.globals().selected_monitor();
-        let current_tag = mon.current_tag;
-        if current_tag == 0 || current_tag > mon.tags.len() {
+        let Some(current_tag) = mon.current_tag else {
+            return;
+        };
+        if current_tag >= mon.tags.len() {
             return;
         }
         let tag = &mon.tags[current_tag - 1];
@@ -301,10 +348,10 @@ pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
 }
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
-    let core = ctx.core_mut();
-    let selmon_id = core.globals().selected_monitor_id();
-    let mon = core.globals().selected_monitor();
-    let (current_tag, tagset) = (mon.current_tag, TagMask::from_bits(mon.selected_tags()));
+    let mon = ctx.core().globals().selected_monitor();
+    let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
+        return;
+    };
 
     if dir == Direction::Left && current_tag <= 1 {
         return;
@@ -350,17 +397,9 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
         return;
     }
 
-    // Get mutable access to monitor and apply changes
-    {
-        let mon = core.globals_mut().selected_monitor_mut();
-        mon.sel_tags ^= 1;
-        mon.set_selected_tags(new_mask.bits());
-        mon.prev_tag = mon.current_tag;
-        mon.current_tag = new_mask.first_tag().unwrap_or(0);
-    }
-    apply_pertag_settings(core);
-    // Release core borrow before calling ctx methods
-    let _ = core;
-    crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    let Some(selmon_id) = commit_view_selection(ctx, new_mask) else {
+        return;
+    };
+
+    finalize_view_change(ctx, selmon_id);
 }

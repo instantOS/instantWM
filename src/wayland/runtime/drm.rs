@@ -1,10 +1,6 @@
 //! DRM/KMS bare-metal backend for running directly on hardware.
 
-use std::collections::HashMap;
-use std::process::exit;
-use std::sync::{Arc, Mutex};
-
-use smithay::backend::drm::{DrmDevice, DrmEvent};
+use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::ImportDma;
@@ -15,13 +11,22 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
+use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::reexports::wayland_server::Display;
+use smithay::utils::{Clock, Monotonic};
+use smithay::wayland::presentation::Refresh;
+use std::collections::{HashMap, HashSet};
+use std::process::exit;
+use std::sync::{Arc, Mutex, mpsc};
 
 use crate::backend::Backend as WmBackend;
+use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
+use crate::config::config_toml::VrrMode;
 use crate::startup::autostart::run_autostart;
+use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
     spawn_xwayland,
@@ -29,9 +34,87 @@ use crate::wayland::common::{
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
-    CursorManager, OutputSurfaceEntry, SharedDrmState, build_output_surfaces, render_drm_output,
+    CursorManager, ManagedDrmOutputManager, OutputHitRegion, OutputSurfaceEntry, RenderOutcome,
+    build_output_surfaces, create_output_manager, render_drm_output,
 };
 use crate::wm::Wm;
+
+#[derive(Debug)]
+struct DrmLayoutState {
+    total_width: i32,
+    total_height: i32,
+    output_hit_regions: Vec<OutputHitRegion>,
+}
+
+#[derive(Debug)]
+struct DrmLoopState {
+    session_active: bool,
+    render_flags: HashMap<crtc::Handle, bool>,
+    pending_crtcs: HashSet<crtc::Handle>,
+    presentation_seq: HashMap<crtc::Handle, u64>,
+    last_bar_update_seq: u64,
+}
+
+impl DrmLoopState {
+    fn new(output_surfaces: &[OutputSurfaceEntry]) -> Self {
+        let render_flags = output_surfaces
+            .iter()
+            .map(|entry| (entry.crtc, true))
+            .collect();
+        Self {
+            session_active: true,
+            render_flags,
+            pending_crtcs: HashSet::new(),
+            presentation_seq: output_surfaces
+                .iter()
+                .map(|entry| (entry.crtc, 0))
+                .collect(),
+            last_bar_update_seq: 0,
+        }
+    }
+
+    fn mark_all_dirty(&mut self) {
+        for flag in self.render_flags.values_mut() {
+            *flag = true;
+        }
+    }
+
+    fn mark_dirty(&mut self, crtc: crtc::Handle) {
+        if let Some(flag) = self.render_flags.get_mut(&crtc) {
+            *flag = true;
+        }
+    }
+
+    fn mark_pointer_output_dirty(&mut self, px: i32, layout: &DrmLayoutState) {
+        for entry in &layout.output_hit_regions {
+            if px >= entry.x_offset && px < entry.x_offset + entry.width {
+                self.mark_dirty(entry.crtc);
+                return;
+            }
+        }
+        self.mark_all_dirty();
+    }
+
+    fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
+        let flags = self.render_flags.clone();
+        for flag in self.render_flags.values_mut() {
+            *flag = false;
+        }
+        flags
+    }
+
+    fn has_dirty_outputs(&self) -> bool {
+        self.render_flags.values().any(|&dirty| dirty)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DrmRuntimeEvent {
+    SessionPaused,
+    SessionActivated,
+    VBlank(crtc::Handle),
+    PointerActivity(i32),
+}
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
 // great care and patience for random ass segfaults. Yes, this is awful, leave it.
@@ -53,56 +136,68 @@ pub fn run() -> ! {
     log::info!("Session on seat: {seat_name}");
 
     let display: Display<WaylandState> = Display::new().expect("wayland display");
+    let mut state = WaylandState::new(display, &loop_handle);
+    if let WmBackend::Wayland(data) = &mut wm.backend {
+        data.backend.attach_state(&mut state);
+    }
+
+    crate::runtime::init_keyboard_layout(&mut wm);
 
     let (
         primary_gpu_path,
-        mut drm_device,
+        drm_device,
         drm_notifier,
         _drm_fd,
         gbm_device,
         egl_display,
-        renderer,
+        mut renderer,
     ) = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
-    let dmabuf_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
-    let mut state = WaylandState::new(display, &loop_handle, *wm, Some(renderer));
-
-    let mut ctx = state.wm.ctx();
-    crate::keyboard_layout::init_keyboard_layout(&mut ctx);
-
-    state.init_dmabuf_global(dmabuf_formats, Some(&egl_display));
-
-    state.with_renderer(|state, renderer| {
-        state.bind_egl_to_display(renderer);
-    });
-
+    state.attach_renderer(&mut renderer);
+    state.init_dmabuf_global(
+        renderer.dmabuf_formats().into_iter().collect(),
+        Some(&egl_display),
+    );
     state.init_screencopy_manager();
+    state.attach_wm(&mut wm);
 
     let cursor_manager = init_cursor_manager(&state.cursor_config);
+    let output_manager = Arc::new(Mutex::new(create_output_manager(
+        drm_device,
+        &renderer,
+        &gbm_device,
+    )));
 
-    let mut output_surfaces = state.with_renderer(|state, renderer| {
-        build_output_surfaces(&mut drm_device, renderer, state, &gbm_device)
-    });
+    let mut output_surfaces = {
+        let mut manager = output_manager.lock().unwrap();
+        build_output_surfaces(&mut manager, &mut renderer, &mut state)
+    };
     for entry in &output_surfaces {
         state.space.map_output(&entry.output, (entry.x_offset, 0));
     }
 
     let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
-    crate::wayland::render::drm::sync_monitors_from_outputs_vec(&mut state.wm.g, &output_surfaces);
     {
         use crate::monitor::update_geom;
-        update_geom(&mut state.wm.ctx());
+        update_geom(&mut wm.ctx());
     }
+    crate::monitor::apply_monitor_config(&mut wm.ctx());
 
-    let shared = init_shared_state(&output_surfaces, total_width, total_height);
+    let layout_state = Arc::new(init_layout_state(
+        &output_surfaces,
+        total_width,
+        total_height,
+    ));
+    let mut loop_state = DrmLoopState::new(&output_surfaces);
+    let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
     setup_wayland_socket(&loop_handle, &state);
     spawn_xwayland(&state, &loop_handle);
 
     // Initialize Wayland systray runtime - only applicable for Wayland backend
-    if let WmBackend::Wayland(data) = &mut state.wm.backend {
+    if let WmBackend::Wayland(data) = &mut wm.backend {
         data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
     }
 
@@ -113,21 +208,25 @@ pub fn run() -> ! {
         .expect("libinput assign seat");
 
     let libinput_backend = LibinputInputBackend::new(libinput_context.clone());
-    let shared_input = Arc::clone(&shared);
+    let shared_layout = Arc::clone(&layout_state);
+    let runtime_event_tx_input = runtime_event_tx.clone();
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let _span = tracy_client::span!("libinput callback");
-            let (total_w, total_h) = {
-                let s = shared_input.lock().unwrap();
-                (s.total_width, s.total_height)
-            };
-            let any_input =
-                crate::wayland::input::drm::dispatch_libinput_event(event, state, total_w, total_h);
+            let total_w = shared_layout.total_width;
+            let total_h = shared_layout.total_height;
+
+            let any_input = state
+                .with_wm_mut_unified(|wm, state| {
+                    crate::wayland::input::drm::dispatch_libinput_event(
+                        event, state, wm, total_w, total_h,
+                    )
+                })
+                .unwrap_or(false);
+
             if any_input {
-                shared_input
-                    .lock()
-                    .unwrap()
-                    .mark_pointer_output_dirty(state.pointer_location.x as i32);
+                let _ = runtime_event_tx_input.send(DrmRuntimeEvent::PointerActivity(
+                    state.runtime.pointer_location.x as i32,
+                ));
             }
         })
         .expect("failed to insert libinput source");
@@ -135,37 +234,62 @@ pub fn run() -> ! {
     setup_session_handlers(
         &loop_handle,
         notifier,
-        &shared,
         &mut libinput_context,
-        drm_device,
+        Arc::clone(&output_manager),
+        runtime_event_tx.clone(),
     );
 
-    setup_drm_vblank_handler(&loop_handle, drm_notifier, &shared);
+    setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
 
     run_autostart();
     spawn_wayland_smoke_window();
 
-    let ipc_server = crate::ipc::IpcServer::bind().ok();
+    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
+
+    // Register IPC listener fd so the event loop wakes on incoming commands.
+    crate::runtime::register_ipc_source(&event_loop.handle(), &ipc_server);
+
+    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
+    crate::bar::status::set_internal_status_ping(status_ping);
+    event_loop
+        .handle()
+        .insert_source(status_ping_source, |_, _, _| {})
+        .expect("status ping source");
+
+    // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
+    let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
+    event_loop
+        .handle()
+        .insert_source(retry_ping_source, |_, _, state| {
+            state.runtime.render_dirty = true;
+        })
+        .expect("ping source");
+    state.runtime.render_ping = Some(retry_ping.clone());
+    retry_ping.ping(); // Wake loop once to render the initial frame
+
     let start_time = std::time::Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
-    let ctx = state.wm.ctx();
-    let core = ctx.core();
-    crate::runtime::spawn_status_bar(core);
+    crate::runtime::spawn_status_bar(&wm);
 
     let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
-    state.led_state_tx = Some(led_state_tx);
+    state.runtime.led_state_tx = Some(led_state_tx);
 
     run_event_loop(
         event_loop,
+        &mut wm,
         &mut state,
-        &shared,
+        &layout_state,
+        &mut loop_state,
         &mut output_surfaces,
+        &mut renderer,
         &cursor_manager,
-        ipc_server,
+        &mut ipc_server,
         &mut render_failures,
         start_time,
         led_state_rx,
+        runtime_event_rx,
+        retry_ping,
     );
 
     exit(0);
@@ -196,71 +320,58 @@ fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> (i32, i32
     (total_width, total_height)
 }
 
-/// Initialize shared DRM state with render flags for each CRTC.
-///
-/// The `Arc<Mutex<SharedDrmState>>` is necessary because multiple execution contexts
-/// access the shared state concurrently:
-/// - Session handlers (pause/activate) run in **libseat callback context** (VT switch events)
-/// - Vblank handlers run in **DRM event callback context** (page flip completion)
-/// - The event loop processes state in **normal thread context**
-///
-/// These contexts all access `render_flags`, `completed_crtcs`, and `pending_crtcs`,
-/// so a mutex is required to synchronize access across callback threads.
-fn init_shared_state(
+fn init_layout_state(
     output_surfaces: &[OutputSurfaceEntry],
     total_width: i32,
     total_height: i32,
-) -> Arc<Mutex<SharedDrmState>> {
-    let shared = Arc::new(Mutex::new(SharedDrmState::new(total_width, total_height)));
-    {
-        let mut s = shared.lock().unwrap();
-        for entry in output_surfaces {
-            s.render_flags.insert(entry.crtc, true);
-            s.output_hit_regions
-                .push(crate::wayland::render::drm::OutputHitRegion {
-                    crtc: entry.crtc,
-                    x_offset: entry.x_offset,
-                    width: entry.width,
-                });
-            if entry.vrr_active {
-                s.vrr_crtcs.insert(entry.crtc);
-            }
-        }
+) -> DrmLayoutState {
+    DrmLayoutState {
+        total_width,
+        total_height,
+        output_hit_regions: output_surfaces
+            .iter()
+            .map(|entry| OutputHitRegion {
+                crtc: entry.crtc,
+                x_offset: entry.x_offset,
+                width: entry.width,
+            })
+            .collect(),
     }
-    shared
 }
 
 /// Setup session pause/activate handlers for VT switching.
 fn setup_session_handlers(
     loop_handle: &calloop::LoopHandle<WaylandState>,
     notifier: smithay::backend::session::libseat::LibSeatSessionNotifier,
-    shared: &Arc<Mutex<SharedDrmState>>,
     libinput_context: &mut Libinput,
-    drm_device: DrmDevice,
+    output_manager: Arc<Mutex<ManagedDrmOutputManager>>,
+    runtime_event_tx: mpsc::Sender<DrmRuntimeEvent>,
 ) {
-    let shared_session = Arc::clone(shared);
     let mut session_libinput = libinput_context.clone();
-    let mut session_drm_device = drm_device;
+    let session_output_manager = Arc::clone(&output_manager);
 
     loop_handle
         .insert_source(notifier, move |event, _, _data| match event {
             SessionEvent::PauseSession => {
                 log::info!("Session paused (VT switch away) - suspending rendering");
                 session_libinput.suspend();
-                session_drm_device.pause();
-                shared_session.lock().unwrap().session_active = false;
+                session_output_manager.lock().unwrap().pause();
+                let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionPaused);
             }
             SessionEvent::ActivateSession => {
                 log::info!("Session activated (VT switch back) - resuming rendering");
                 if let Err(err) = session_libinput.resume() {
                     log::error!("failed to resume libinput context: {:?}", err);
                 }
-                if let Err(err) = session_drm_device.activate(false) {
+                if let Err(err) = session_output_manager
+                    .lock()
+                    .unwrap()
+                    .lock()
+                    .activate(false)
+                {
                     log::error!("failed to reactivate DRM device: {err}");
                 }
-                let mut s = shared_session.lock().unwrap();
-                s.session_active = true;
-                s.mark_all_dirty();
+                let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionActivated);
             }
         })
         .expect("session source");
@@ -270,37 +381,12 @@ fn setup_session_handlers(
 fn setup_drm_vblank_handler(
     loop_handle: &calloop::LoopHandle<WaylandState>,
     drm_notifier: smithay::backend::drm::DrmDeviceNotifier,
-    shared: &Arc<Mutex<SharedDrmState>>,
+    runtime_event_tx: mpsc::Sender<DrmRuntimeEvent>,
 ) {
-    let shared_vblank = Arc::clone(shared);
     loop_handle
-        .insert_source(drm_notifier, move |event, meta, _data| match event {
+        .insert_source(drm_notifier, move |event, _metadata, _data| match event {
             DrmEvent::VBlank(crtc) => {
-                // Extract presentation time from VBlank metadata if available
-                let presentation_time = meta
-                    .and_then(|m| match m.time {
-                        smithay::backend::drm::DrmEventTime::Monotonic(time) => Some(time),
-                        smithay::backend::drm::DrmEventTime::Realtime(_) => None,
-                    })
-                    .unwrap_or(std::time::Duration::ZERO);
-
-                let mut s = shared_vblank.lock().unwrap();
-                // For fixed-rate displays, VBlank drives the render loop but
-                // we only re-mark dirty when content has actually changed.
-                // For VRR outputs, only content changes (input, animations,
-                // surface commits) should trigger renders — not VBlank.
-                if !s.vrr_crtcs.contains(&crtc)
-                    && s.content_dirty
-                    && let Some(flag) = s.render_flags.get_mut(&crtc)
-                {
-                    *flag = true;
-                }
-                s.completed_crtcs.push(crtc);
-
-                // Store presentation time for frame clock updates
-                if !presentation_time.is_zero() {
-                    s.presentation_times.insert(crtc, presentation_time);
-                }
+                let _ = runtime_event_tx.send(DrmRuntimeEvent::VBlank(crtc));
             }
             DrmEvent::Error(err) => {
                 log::error!("DRM error: {err}");
@@ -322,134 +408,90 @@ fn setup_drm_vblank_handler(
 #[allow(clippy::too_many_arguments)]
 fn run_event_loop(
     mut event_loop: EventLoop<WaylandState>,
+    wm: &mut Wm,
     state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
+    layout_state: &Arc<DrmLayoutState>,
+    loop_state: &mut DrmLoopState,
     output_surfaces: &mut [OutputSurfaceEntry],
+    renderer: &mut GlesRenderer,
     cursor_manager: &CursorManager,
-    ipc_server: Option<crate::ipc::IpcServer>,
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
     led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
+    runtime_event_rx: mpsc::Receiver<DrmRuntimeEvent>,
+    retry_ping: calloop::ping::Ping,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
     let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
+    let anim_guard = crate::runtime::AnimationTimerGuard::new();
+    let shared_layout = Arc::clone(layout_state);
+    let monotonic_clock = Clock::<Monotonic>::new();
 
-    // Register IPC server as a calloop source if available
-    // This makes IPC event-driven rather than polled every iteration
-    if let Some(ipc) = ipc_server {
-        let shared_ipc = Arc::clone(shared);
-        super::calloop_helpers::setup_ipc_source(loop_handle.clone(), ipc, move |ipc, state| {
-            if ipc.process_pending(&mut state.wm) {
-                state.wm.g.dirty.layout = true;
-                let mut ctx = state.wm.ctx();
-                crate::runtime::apply_monitor_config_if_dirty(&mut ctx);
-                state.wm.g.dirty.space = true;
-                shared_ipc.lock().unwrap().mark_all_dirty();
+    event_loop
+        .run(None, state, move |state| {
+            process_runtime_events(
+                &runtime_event_rx,
+                loop_state,
+                &shared_layout,
+                output_surfaces,
+                &monotonic_clock,
+            );
+            process_commit_redraws(state, loop_state);
+            process_common_tick(ipc_server, wm, state, loop_state);
+            sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
+
+            let bar_update_seq = wm.bar.update_seq();
+            if loop_state.last_bar_update_seq != bar_update_seq {
+                loop_state.last_bar_update_seq = bar_update_seq;
+                loop_state.mark_all_dirty();
             }
-        });
-    }
 
-    // Animation timer - fires every 16ms when animations are active.
-    // The tick callback also handles LED state checks from the keyboard.
-    // When animations are active, marks all DRM outputs dirty for re-render.
-    let shared_anim = Arc::clone(shared);
-    super::calloop_helpers::setup_animation_timer(
-        loop_handle.clone(),
-        move |state| {
-            // Check LED state updates
+            if wm.g.dirty.input_config {
+                wm.g.dirty.input_config = false;
+                crate::wayland::input::drm::reconfigure_all_devices(
+                    &mut state.runtime.tracked_devices,
+                    &wm.g.cfg.input,
+                );
+            }
+
             while let Ok(led_state) = led_state_rx.try_recv() {
                 let leds = smithay::reexports::input::Led::from(led_state);
-                for device in state.tracked_devices.iter_mut() {
+                for device in state.runtime.tracked_devices.iter_mut() {
                     use smithay::reexports::input::DeviceCapability;
                     if device.has_capability(DeviceCapability::Keyboard) {
                         device.led_update(leds);
                     }
                 }
             }
-            state.tick_window_animations();
-        },
-        move |state| {
-            let active = state.has_active_window_animations();
-            if active {
-                shared_anim.lock().unwrap().mark_all_dirty();
-            }
-            active
-        },
-    );
 
-    // Main event loop - no timeout needed since all work is event-driven
-    // The timeout is only for safety in case we miss an event wakeup
-    event_loop
-        .run(None, state, move |state| {
-            process_completed_crtcs(state, shared, output_surfaces);
+            process_animations(wm, state, loop_state);
 
-            process_pending_libinput_events(state, shared);
+            // Arm an on-demand animation timer when animations are active.
+            anim_guard.ensure_armed(
+                state.has_active_window_animations(),
+                &loop_handle,
+                move |state| state.has_active_window_animations(),
+            );
 
-            state.popups.cleanup();
-            state.refresh_popup_grab();
+            process_cursor_warp(state, &pointer_handle, loop_state);
 
-            super::common::arrange_layout_if_dirty(state);
+            render_outputs(
+                wm,
+                state,
+                renderer,
+                output_surfaces,
+                cursor_manager,
+                loop_state,
+                render_failures,
+                start_time,
+            );
 
-            if state.wm.g.dirty.input_config {
-                state.wm.g.dirty.input_config = false;
-                crate::wayland::input::drm::reconfigure_all_devices(
-                    &mut state.tracked_devices,
-                    &state.wm.g.cfg.input,
-                );
-            }
-
-            // Drain and execute commands BEFORE sync/render so that
-            // map/unmap from show_hide_wayland takes effect in the Space
-            // before we build render elements.  Without this, invisible
-            // windows would render for one extra frame after a tag switch.
-            super::common::drain_and_execute_ops(state);
-
-            if super::common::sync_space_if_dirty(state) {
-                shared.lock().unwrap().mark_content_dirty();
-            }
-
-            // Tick animations and mark outputs dirty when active.
-            // This handles the case where drain_and_execute_ops started
-            // animations but dirty.space was not set, so sync_space_if_dirty
-            // returned false. Without this, the sleeping animation timer
-            // (86400s) would not wake to tick these animations.
-            if state.has_active_window_animations() {
-                state.tick_window_animations();
-                shared.lock().unwrap().mark_all_dirty();
-            }
-
-            process_cursor_warp(state, &pointer_handle, shared);
-
-            // Surface commits from client windows set content_dirty_pending.
-            // Propagate it to SharedDrmState so the VBlank handler will mark
-            // render_flags.  This must be checked on every tick (not just inside
-            // render_outputs) so that commits on an idle desktop wake up
-            // rendering on the next VBlank even when no CRTC is currently dirty.
-            if state.content_dirty_pending {
-                state.content_dirty_pending = false;
-                shared.lock().unwrap().mark_content_dirty();
-            }
-
-            state.with_renderer(|state, renderer| {
-                render_outputs(
-                    state,
-                    renderer,
-                    output_surfaces,
-                    cursor_manager,
-                    shared,
-                    render_failures,
-                    start_time,
-                );
-            });
-
-            // Second drain pass for any commands queued during execute_command
-            // or render (e.g. screencopy, surface lifecycle callbacks).
-            super::common::drain_and_execute_ops(state);
-
-            // Sync caches
-            if let crate::backend::Backend::Wayland(data) = &state.wm.backend {
-                data.backend.sync_cache(state);
+            // If any outputs still need rendering (e.g. render failure or
+            // EBUSY re-mark), ping the loop so it wakes up to retry.
+            if loop_state.has_dirty_outputs() {
+                retry_ping.ping();
             }
 
             if state.display_handle.flush_clients().is_err() {
@@ -459,46 +501,95 @@ fn run_event_loop(
         .expect("event loop run");
 }
 
-/// Drain and dispatch queued libinput events.
-///
-/// Events are now processed immediately in the libinput callback,
-/// so this function is a no-op kept for backwards compatibility.
-fn process_pending_libinput_events(
-    _state: &mut WaylandState,
-    _shared: &Arc<Mutex<SharedDrmState>>,
-) {
-}
-
-/// Process frame submissions for completed CRTCs.
-fn process_completed_crtcs(
-    _state: &mut WaylandState,
-    shared: &Arc<Mutex<SharedDrmState>>,
+fn process_runtime_events(
+    runtime_event_rx: &mpsc::Receiver<DrmRuntimeEvent>,
+    loop_state: &mut DrmLoopState,
+    layout_state: &DrmLayoutState,
     output_surfaces: &mut [OutputSurfaceEntry],
+    monotonic_clock: &Clock<Monotonic>,
 ) {
-    let (completed_crtcs, presentation_times) = {
-        let mut s = shared.lock().unwrap();
-        let crtcs = std::mem::take(&mut s.completed_crtcs);
-        let times = std::mem::take(&mut s.presentation_times);
-        (crtcs, times)
-    };
-    if completed_crtcs.is_empty() {
-        return;
-    }
-    for crtc in &completed_crtcs {
-        if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == *crtc) {
-            if let Err(err) = entry.surface.frame_submitted() {
-                log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+    while let Ok(event) = runtime_event_rx.try_recv() {
+        match event {
+            DrmRuntimeEvent::SessionPaused => {
+                loop_state.session_active = false;
             }
-            // Update frame clock with presentation time if available
-            if let Some(presentation_time) = presentation_times.get(crtc) {
-                entry.frame_clock.presented(*presentation_time);
+            DrmRuntimeEvent::SessionActivated => {
+                loop_state.session_active = true;
+                loop_state.mark_all_dirty();
+            }
+            DrmRuntimeEvent::VBlank(crtc) => {
+                if let Some(entry) = output_surfaces.iter_mut().find(|entry| entry.crtc == crtc) {
+                    match entry.surface.frame_submitted() {
+                        Ok(Some(mut metadata)) => {
+                            let seq = loop_state.presentation_seq.entry(crtc).or_insert(0);
+                            *seq += 1;
+                            metadata.presentation_feedback.presented(
+                                monotonic_clock.now(),
+                                output_refresh(entry),
+                                *seq,
+                                wp_presentation_feedback::Kind::Vsync,
+                            );
+                        }
+                        Ok(None) => {}
+                        Err(err) => {
+                            log::warn!("frame_submitted failed for {:?}: {err}", crtc);
+                        }
+                    }
+                }
+                loop_state.pending_crtcs.remove(&crtc);
+            }
+            DrmRuntimeEvent::PointerActivity(px) => {
+                loop_state.mark_pointer_output_dirty(px, layout_state);
             }
         }
     }
-    // Clear in-flight tracking so these CRTCs can render again.
-    let mut s = shared.lock().unwrap();
-    for crtc in &completed_crtcs {
-        s.pending_crtcs.remove(crtc);
+}
+
+fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
+    let period = entry.output.current_mode().and_then(|mode| {
+        let refresh = u64::try_from(mode.refresh).ok()?;
+        (refresh > 0).then(|| std::time::Duration::from_nanos(1_000_000_000_000u64 / refresh))
+    });
+
+    match (entry.vrr_enabled, period) {
+        (true, Some(period)) => Refresh::variable(period),
+        (false, Some(period)) => Refresh::fixed(period),
+        (_, None) => Refresh::Unknown,
+    }
+}
+
+/// Promote compositor-side redraw requests into DRM output dirties.
+fn process_commit_redraws(state: &mut WaylandState, loop_state: &mut DrmLoopState) {
+    if state.take_render_dirty() {
+        loop_state.mark_all_dirty();
+    }
+}
+
+/// Run the shared Wayland tick, then apply DRM-specific invalidation.
+fn process_common_tick(
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    wm: &mut Wm,
+    state: &WaylandState,
+    loop_state: &mut DrmLoopState,
+) {
+    let monitor_config_dirty = wm.g.dirty.monitor_config;
+    let handled = super::common::event_loop_tick(wm, state, ipc_server);
+    if handled || monitor_config_dirty {
+        // DRM-specific: also mark space and all outputs dirty
+        wm.g.dirty.space = true;
+        loop_state.mark_all_dirty();
+    }
+}
+
+/// Process window animations and sync compositor space when dirty.
+fn process_animations(wm: &mut Wm, state: &mut WaylandState, loop_state: &mut DrmLoopState) {
+    if super::common::sync_space_if_dirty(wm, state) {
+        // DRM-specific: mark all outputs dirty after space sync
+        loop_state.mark_all_dirty();
+    }
+    if state.has_active_window_animations() {
+        state.tick_window_animations();
+        loop_state.mark_all_dirty();
     }
 }
 
@@ -506,42 +597,165 @@ fn process_completed_crtcs(
 fn process_cursor_warp(
     state: &mut WaylandState,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
-    shared: &Arc<Mutex<SharedDrmState>>,
+    loop_state: &mut DrmLoopState,
 ) {
     if apply_pending_warp(state, pointer_handle) {
-        let mut s = shared.lock().unwrap();
-        s.mark_all_dirty();
+        loop_state.mark_all_dirty();
+    }
+}
+
+fn sync_output_vrr_modes_from_state(
+    state: &mut WaylandState,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    loop_state: &mut DrmLoopState,
+) {
+    let mut changed = false;
+    for entry in output_surfaces.iter_mut() {
+        let output_name = entry.output.name();
+        if let Some(metadata) = state.output_vrr_metadata(&output_name)
+            && entry.configured_vrr_mode != metadata.vrr_mode
+        {
+            entry.configured_vrr_mode = metadata.vrr_mode;
+            log::info!(
+                "Output {}: VRR mode set to {:?} (support: {:?})",
+                output_name,
+                entry.configured_vrr_mode,
+                entry.vrr_support
+            );
+            changed = true;
+        }
+    }
+    if changed {
+        loop_state.mark_all_dirty();
+    }
+}
+
+fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {
+    state
+        .runtime
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output.name() == output_name)
+}
+
+fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
+    let Some(mon) = wm.g.monitors_iter_all().find(|m| m.name == output_name) else {
+        return false;
+    };
+    if mon.current_layout().is_overview() {
+        return false;
+    }
+
+    let selected = mon.selected_tags();
+    let mut visible_clients = mon
+        .iter_clients(wm.g.clients.map())
+        .filter(|(_, client)| client.is_visible(selected))
+        .filter(|(_, client)| !client.is_scratchpad())
+        .collect::<Vec<_>>();
+
+    if visible_clients.len() != 1 {
+        return false;
+    }
+
+    visible_clients
+        .pop()
+        .is_some_and(|(_, client)| client.is_true_fullscreen())
+}
+
+fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {
+    let output_name = entry.output.name();
+
+    match entry.vrr_support {
+        BackendVrrSupport::Unsupported => false,
+        BackendVrrSupport::RequiresModeset => matches!(entry.configured_vrr_mode, VrrMode::On),
+        BackendVrrSupport::Supported => {
+            let hard_blocked = state.is_locked()
+                || state.has_active_window_animations()
+                || has_pending_screencopy_for_output(state, &output_name)
+                || !state.overlay_windows_for_render(entry.x_offset).is_empty()
+                || !matches!(
+                    state.cursor_image_status,
+                    smithay::input::pointer::CursorImageStatus::Named(_)
+                        | smithay::input::pointer::CursorImageStatus::Hidden
+                )
+                || state.runtime.dnd_icon.is_some();
+
+            if hard_blocked {
+                return false;
+            }
+
+            match entry.configured_vrr_mode {
+                VrrMode::Off => false,
+                VrrMode::On => true,
+                VrrMode::Auto => auto_vrr_content_is_suitable(wm, &output_name),
+            }
+        }
+    }
+}
+
+fn apply_output_vrr_policy(wm: &Wm, state: &mut WaylandState, entry: &mut OutputSurfaceEntry) {
+    let target = compute_output_vrr_target(wm, state, entry);
+    if entry.vrr_enabled == target {
+        state.set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
+        return;
+    }
+
+    match entry
+        .surface
+        .with_compositor(|compositor| compositor.use_vrr(target))
+    {
+        Ok(()) => {
+            entry.vrr_enabled = target;
+            state.set_output_vrr_enabled(&entry.output.name(), target);
+            log::info!(
+                "Output {}: VRR {} (mode: {:?}, support: {:?})",
+                entry.output.name(),
+                if target { "enabled" } else { "disabled" },
+                entry.configured_vrr_mode,
+                entry.vrr_support
+            );
+        }
+        Err(err) => {
+            state.set_output_vrr_enabled(&entry.output.name(), entry.vrr_enabled);
+            log::warn!(
+                "Output {}: failed to set VRR {}: {:?}",
+                entry.output.name(),
+                if target { "on" } else { "off" },
+                err
+            );
+        }
     }
 }
 
 /// Render all outputs that need it.
 #[allow(clippy::too_many_arguments)]
 fn render_outputs(
+    wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     output_surfaces: &mut [OutputSurfaceEntry],
     cursor_manager: &CursorManager,
-    shared: &Arc<Mutex<SharedDrmState>>,
+    loop_state: &mut DrmLoopState,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
 ) {
-    let (session_active, render_flags, pending_crtcs) = {
-        let mut s = shared.lock().unwrap();
-        let flags = s.render_flags.clone();
-        for flag in s.render_flags.values_mut() {
-            *flag = false;
-        }
-        (s.session_active, flags, s.pending_crtcs.clone())
-    };
+    let render_flags = loop_state.take_render_flags();
+    let session_active = loop_state.session_active;
+    let pending_crtcs = loop_state.pending_crtcs.clone();
 
-    if !render_flags.values().any(|&v| v) {
-        return;
-    }
-
-    let pointer_location = state.pointer_location;
-    let mut any_rendered = false;
+    let pointer_location = state.runtime.pointer_location;
 
     if session_active {
+        let needs_any_render = output_surfaces
+            .iter()
+            .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
+        let fixed_scene = if needs_any_render && !state.is_locked() {
+            poll_wayland_systray(wm);
+            Some(build_fixed_scene_elements(wm, state))
+        } else {
+            None
+        };
+
         for entry in output_surfaces.iter_mut() {
             let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
             if !needs_render {
@@ -551,11 +765,10 @@ fn render_outputs(
             // would fail with EBUSY and leak a swapchain slot.
             if pending_crtcs.contains(&entry.crtc) {
                 // Re-mark as dirty so we render after the VBlank arrives.
-                shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                loop_state.mark_dirty(entry.crtc);
                 continue;
             }
-
-            let render_start = std::time::Instant::now();
+            apply_output_vrr_policy(wm, state, entry);
             let rendered = render_drm_output(
                 state,
                 renderer,
@@ -563,46 +776,39 @@ fn render_outputs(
                 cursor_manager,
                 pointer_location,
                 start_time,
+                fixed_scene.clone(),
             );
-            let render_duration = render_start.elapsed();
 
-            if rendered {
-                any_rendered = true;
-                // Update estimated render duration (exponential moving average)
-                entry.last_render_duration = std::time::Duration::from_nanos(
-                    (entry.last_render_duration.as_nanos() as f64 * 0.8
-                        + render_duration.as_nanos() as f64 * 0.2) as u64,
-                );
-
-                shared.lock().unwrap().pending_crtcs.insert(entry.crtc);
-                if let Some(failed_frames) = render_failures.remove(&entry.crtc)
-                    && failed_frames >= 3
-                {
-                    log::info!(
-                        "DRM render recovered on {:?} after {failed_frames} failed frames",
-                        entry.crtc
-                    );
+            match rendered {
+                RenderOutcome::Submitted => {
+                    loop_state.pending_crtcs.insert(entry.crtc);
+                    if let Some(failed_frames) = render_failures.remove(&entry.crtc)
+                        && failed_frames >= 3
+                    {
+                        log::info!(
+                            "DRM render recovered on {:?} after {failed_frames} failed frames",
+                            entry.crtc
+                        );
+                    }
                 }
-            } else {
-                let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
-                *failed_frames += 1;
-
-                if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
-                    log::warn!(
-                        "DRM render failed on {:?} (consecutive failures: {})",
-                        entry.crtc,
-                        *failed_frames
-                    );
+                RenderOutcome::Skipped => {
+                    render_failures.remove(&entry.crtc);
                 }
+                RenderOutcome::Failed => {
+                    let failed_frames = render_failures.entry(entry.crtc).or_insert(0);
+                    *failed_frames += 1;
 
-                shared.lock().unwrap().render_flags.insert(entry.crtc, true);
+                    if *failed_frames == 1 || (*failed_frames).is_multiple_of(60) {
+                        log::warn!(
+                            "DRM render failed on {:?} (consecutive failures: {})",
+                            entry.crtc,
+                            *failed_frames
+                        );
+                    }
+
+                    loop_state.mark_dirty(entry.crtc);
+                }
             }
         }
-    }
-
-    // If at least one frame was rendered, clear content_dirty so non-VRR
-    // outputs skip rendering on subsequent VBlanks until something changes.
-    if any_rendered {
-        shared.lock().unwrap().clear_content_dirty();
     }
 }

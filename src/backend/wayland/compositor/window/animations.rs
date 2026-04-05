@@ -1,84 +1,196 @@
-use smithay::desktop::Window;
 use smithay::utils::{Logical, Point};
 use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::types::WindowId;
+use crate::types::{Rect, WindowId};
 
-/// Window animation state.
-#[derive(Debug, Clone, Copy)]
-pub struct WaylandWindowAnimation {
-    pub(crate) from: Point<i32, Logical>,
-    pub(crate) to: Point<i32, Logical>,
-    pub(crate) started_at: Instant,
-    pub(crate) duration: Duration,
+pub type WaylandWindowAnimation = crate::animation::WindowAnimation;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum WindowMoveMode {
+    Normal,
+    RemapImmediate,
+    AnimateFrom { from: Rect, duration: Duration },
 }
 
 impl WaylandState {
-    pub(crate) fn animations_enabled(&self) -> bool {
-        self.wm.g.behavior.animated
-    }
-
-    pub(crate) fn interactive_motion_active(&self) -> bool {
-        self.wm.g.drag.interactive.active && self.wm.g.drag.interactive.dragging
-    }
-
-    pub(crate) fn set_window_target_location(
+    fn insert_window_animation(
         &mut self,
         window_id: WindowId,
-        element: Window,
-        target: Point<i32, Logical>,
-        remap: bool,
+        from: Rect,
+        to: Rect,
+        duration: Duration,
     ) {
-        // Use the client's stored geometry as the authoritative current position
-        // to avoid animating from stale locations after map/unmap cycles.
-        let actual_loc = self.space.element_location(&element);
-
-        // Do not update the location if it is visually already at the target
-        // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
-        if actual_loc == Some(target) && !remap {
-            self.window_animations.remove(&window_id);
-            return;
-        }
-
-        // Use the client's stored geometry as the authoritative current position
-        // to avoid animating from stale locations after map/unmap cycles.
-        let current = actual_loc
-            .or_else(|| {
-                self.wm
-                    .g
-                    .clients
-                    .get(&window_id)
-                    .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
-            })
-            .unwrap_or(target);
-
-        if !self.animations_enabled() || remap || current == target {
-            self.window_animations.remove(&window_id);
-            // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
-            self.space.map_element(element, target, false);
-            return;
-        }
-
-        if self
-            .window_animations
-            .get(&window_id)
-            .is_some_and(|anim| anim.to == target)
-        {
-            return;
-        }
-
         self.window_animations.insert(
             window_id,
             WaylandWindowAnimation {
-                from: current,
-                to: target,
+                from,
+                to,
                 started_at: Instant::now(),
-                duration: Duration::from_millis(90),
+                duration,
             },
         );
     }
 
+    pub(crate) fn animations_enabled(&self) -> bool {
+        self.globals().map(|g| g.behavior.animated).unwrap_or(false)
+    }
+
+    pub(crate) fn interactive_motion_active(&self) -> bool {
+        self.globals()
+            .map(|g| g.drag.interactive.active && g.drag.interactive.dragging)
+            .unwrap_or(false)
+    }
+
+    pub(crate) fn set_window_target_rect(
+        &mut self,
+        window_id: WindowId,
+        target: Rect,
+        mode: WindowMoveMode,
+    ) {
+        let Some(element) = self.find_window(window_id).cloned() else {
+            return;
+        };
+        let Some(border_width) = self
+            .globals()
+            .and_then(|g| g.clients.get(&window_id).map(|c| c.border_width))
+        else {
+            return;
+        };
+
+        let target_loc: Point<i32, Logical> =
+            Point::from((target.x + border_width, target.y + border_width));
+        let actual_loc = self.space.element_location(&element);
+
+        // Geometry updates for hidden/unmapped windows must not remap them as a
+        // side effect. The behavioral layer owns visibility; the backend should
+        // only move windows that are already mapped (or are being interactively
+        // remapped on purpose).
+        if actual_loc.is_none() && mode != WindowMoveMode::RemapImmediate {
+            self.window_animations.remove(&window_id);
+            return;
+        }
+
+        // Do not update the location if it is visually already at the target
+        // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
+        if actual_loc == Some(target_loc) && mode == WindowMoveMode::Normal {
+            self.window_animations.remove(&window_id);
+            return;
+        }
+
+        let (from_rect, animation_duration) = match mode {
+            WindowMoveMode::AnimateFrom { from, duration } => (
+                Some(Rect {
+                    x: from.x + border_width,
+                    y: from.y + border_width,
+                    w: from.w,
+                    h: from.h,
+                }),
+                duration,
+            ),
+            WindowMoveMode::Normal | WindowMoveMode::RemapImmediate => {
+                (None, Duration::from_millis(90))
+            }
+        };
+
+        // Use the client's stored geometry as the authoritative current position
+        // to avoid animating from stale locations after map/unmap cycles.
+        let current = from_rect.unwrap_or_else(|| {
+            actual_loc
+                .map(|loc| Rect {
+                    x: loc.x,
+                    y: loc.y,
+                    w: target.w,
+                    h: target.h,
+                })
+                .or_else(|| {
+                    self.globals().and_then(|g| {
+                        g.clients.get(&window_id).map(|c| Rect {
+                            x: c.geo.x + c.border_width,
+                            y: c.geo.y + c.border_width,
+                            w: c.geo.w,
+                            h: c.geo.h,
+                        })
+                    })
+                })
+                .unwrap_or(Rect {
+                    x: target_loc.x,
+                    y: target_loc.y,
+                    w: target.w,
+                    h: target.h,
+                })
+        });
+
+        if element.toplevel().is_some() {
+            let configured = (target.w.max(1), target.h.max(1));
+            let unchanged = self
+                .last_configured_size
+                .get(&window_id)
+                .is_some_and(|&size| size == configured);
+            if !unchanged {
+                let size = smithay::utils::Size::<i32, smithay::utils::Logical>::new(
+                    configured.0,
+                    configured.1,
+                );
+                self.send_toplevel_configure(&element, Some(size));
+                self.last_configured_size.insert(window_id, configured);
+            }
+        }
+
+        let should_remap_immediately = !self.animations_enabled()
+            || mode == WindowMoveMode::RemapImmediate
+            || (current.x == target_loc.x && current.y == target_loc.y);
+
+        if should_remap_immediately {
+            self.window_animations.remove(&window_id);
+            // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
+            self.remap_element_preserving_z_order(&element, target_loc, false);
+            return;
+        }
+
+        if self.window_animations.get(&window_id).is_some_and(|anim| {
+            anim.to.x == target_loc.x
+                && anim.to.y == target_loc.y
+                && anim.to.w == target.w
+                && anim.to.h == target.h
+        }) {
+            return;
+        }
+
+        if let Some(from) = from_rect {
+            // For decorative slide-ins the WM should already treat the client
+            // as living at `target`, but the compositor still needs the mapped
+            // element to start from the off-screen location so the first
+            // rendered frame is visible and the animation direction is correct.
+            self.remap_element_preserving_z_order(&element, Point::from((from.x, from.y)), false);
+        }
+
+        self.insert_window_animation(
+            window_id,
+            current,
+            Rect {
+                x: target_loc.x,
+                y: target_loc.y,
+                w: target.w,
+                h: target.h,
+            },
+            animation_duration,
+        );
+    }
+
+    pub fn active_window_animation_count(&self) -> usize {
+        self.window_animations.len()
+    }
+
+    pub fn window_animation_target_rect(&self, window: WindowId) -> Option<Rect> {
+        self.window_animations.get(&window).map(|anim| anim.to)
+    }
+
+    pub fn current_window_animation_rect(&self, window: WindowId, now: Instant) -> Option<Rect> {
+        self.window_animations
+            .get(&window)
+            .map(|anim| crate::animation::interpolated_rect(anim, now))
+    }
     /// Tick all active window animations.
     pub fn tick_window_animations(&mut self) {
         if self.window_animations.is_empty() {
@@ -98,7 +210,7 @@ impl WaylandState {
         let mut finished: Vec<WindowId> = Vec::new();
         for (win, loc, done) in updates {
             if let Some(element) = self.find_window(win).cloned() {
-                self.space.map_element(element, loc, false);
+                self.remap_element_preserving_z_order(&element, loc, false);
             } else {
                 finished.push(win);
                 continue;
@@ -109,6 +221,7 @@ impl WaylandState {
         }
         for win in finished {
             self.window_animations.remove(&win);
+            self.sync_client_geometry_from_window(win);
         }
     }
 

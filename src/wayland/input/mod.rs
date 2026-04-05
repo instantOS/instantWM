@@ -58,13 +58,11 @@ pub fn apply_pending_warp(
         return false;
     };
 
-    state.pointer_location = target;
+    state.runtime.pointer_location = target;
 
-    // Single unified hit-test instead of multiple separate calls
-    let hit_test = state.hit_test(target);
-    let focus = hit_test
-        .layer_surface
-        .or(hit_test.window_surface)
+    let focus = state
+        .layer_surface_under_pointer(target)
+        .or_else(|| state.surface_under_pointer(target))
         .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
 
     let serial = SERIAL_COUNTER.next_serial();
@@ -85,15 +83,18 @@ pub fn apply_pending_warp(
 // Resize helper (winit-only — output size comes from the backend window)
 // ─────────────────────────────────────────────────────────────────────────────
 
-pub fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
+pub fn handle_resize(
+    wm: &mut Wm,
+    state: &mut crate::backend::wayland::compositor::WaylandState,
+    output: &Output,
+    w: i32,
+    h: i32,
+) {
     let (safe_w, safe_h) = crate::wayland::common::sanitize_wayland_size(w, h);
     let mode = OutputMode {
         size: (safe_w, safe_h).into(),
         refresh: 60_000,
     };
-    wm.g.cfg.screen_width = safe_w;
-    wm.g.cfg.screen_height = safe_h;
-    update_geom(&mut wm.ctx());
     // Transform::Flipped180 is REQUIRED for the winit (nested) backend.
     //
     // Smithay's winit backend renders into an OpenGL framebuffer whose
@@ -111,5 +112,17 @@ pub fn handle_resize(wm: &mut Wm, output: &Output, w: i32, h: i32) {
         Some((0, 0).into()),
     );
     output.set_preferred(mode);
+    let output_loc = state
+        .space
+        .output_geometry(output)
+        .map(|geo| geo.loc)
+        .unwrap_or_default();
+    state.space.map_output(output, output_loc);
     layer_map_for_output(output).arrange();
+
+    wm.g.cfg.screen_width = safe_w;
+    wm.g.cfg.screen_height = safe_h;
+    update_geom(&mut wm.ctx());
+    wm.g.dirty.layout = true;
+    wm.g.dirty.space = true;
 }

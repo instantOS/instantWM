@@ -1,8 +1,9 @@
 //! X11 XRandR support for display configuration.
 
 use crate::backend::BackendOutputInfo;
+use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::MonitorConfig;
-use crate::types::Rect;
+use crate::types::{MonitorPosition, Rect};
 use x11rb::protocol::randr::{self, ConnectionExt as RandrExt};
 use x11rb::protocol::xproto::Window;
 use x11rb::rust_connection::RustConnection;
@@ -83,7 +84,14 @@ fn get_screen_resources_current(
             }
         };
 
-        outputs.push(BackendOutputInfo { name, rect });
+        outputs.push(BackendOutputInfo {
+            name,
+            rect,
+            scale: 1.0,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        });
     }
 
     Some(outputs)
@@ -144,7 +152,14 @@ fn get_screen_resources(conn: &RustConnection, root: Window) -> Option<Vec<Backe
             }
         };
 
-        outputs.push(BackendOutputInfo { name, rect });
+        outputs.push(BackendOutputInfo {
+            name,
+            rect,
+            scale: 1.0,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        });
     }
 
     Some(outputs)
@@ -178,6 +193,8 @@ fn set_monitor_config_current(
     };
 
     let config_timestamp = resources.config_timestamp;
+    let known_outputs =
+        collect_output_rects(conn, &resources.outputs, config_timestamp, &resources.modes);
 
     for output_id in &resources.outputs {
         let output_info = match conn
@@ -207,6 +224,7 @@ fn set_monitor_config_current(
             config,
             config_timestamp,
             &resources.modes,
+            &known_outputs,
         );
     }
 
@@ -230,6 +248,8 @@ fn set_monitor_config_fallback(
     };
 
     let config_timestamp = resources.config_timestamp;
+    let known_outputs =
+        collect_output_rects(conn, &resources.outputs, config_timestamp, &resources.modes);
 
     for output_id in &resources.outputs {
         let output_info = match conn
@@ -259,6 +279,7 @@ fn set_monitor_config_fallback(
             config,
             config_timestamp,
             &resources.modes,
+            &known_outputs,
         );
     }
 
@@ -274,6 +295,7 @@ fn apply_output_config(
     config: &MonitorConfig,
     config_timestamp: u32,
     modes: &[randr::ModeInfo],
+    known_outputs: &[(String, Rect)],
 ) {
     // Handle enable/disable
     if let Some(enable) = config.enable
@@ -310,7 +332,16 @@ fn apply_output_config(
 
     // Parse position
     let (x, y) = if let Some(ref position) = config.position {
-        parse_position(position).unwrap_or((0, 0))
+        MonitorPosition::parse(position)
+            .and_then(|p| {
+                p.resolve(
+                    (mode_info.width as i32, mode_info.height as i32),
+                    known_outputs
+                        .iter()
+                        .map(|(name, rect)| (name.as_str(), *rect)),
+                )
+            })
+            .unwrap_or((0, 0))
     } else {
         (0, 0)
     };
@@ -348,6 +379,7 @@ fn apply_output_config_fallback(
     config: &MonitorConfig,
     config_timestamp: u32,
     modes: &[randr::ModeInfo],
+    known_outputs: &[(String, Rect)],
 ) {
     // Handle enable/disable
     if let Some(enable) = config.enable
@@ -384,7 +416,16 @@ fn apply_output_config_fallback(
 
     // Parse position
     let (x, y) = if let Some(ref position) = config.position {
-        parse_position(position).unwrap_or((0, 0))
+        MonitorPosition::parse(position)
+            .and_then(|p| {
+                p.resolve(
+                    (mode_info.width as i32, mode_info.height as i32),
+                    known_outputs
+                        .iter()
+                        .map(|(name, rect)| (name.as_str(), *rect)),
+                )
+            })
+            .unwrap_or((0, 0))
     } else {
         (0, 0)
     };
@@ -452,15 +493,55 @@ fn parse_resolution(res: &str) -> Option<(u16, u16)> {
     }
 }
 
-/// Parse a position string like "1920,0".
-fn parse_position(pos: &str) -> Option<(i32, i32)> {
-    if let Some(comma_pos) = pos.find(',') {
-        let x = pos[..comma_pos].parse().ok()?;
-        let y = pos[comma_pos + 1..].parse().ok()?;
-        return Some((x, y));
+fn collect_output_rects(
+    conn: &RustConnection,
+    output_ids: &[randr::Output],
+    config_timestamp: u32,
+    modes: &[randr::ModeInfo],
+) -> Vec<(String, Rect)> {
+    let mut outputs = Vec::new();
+
+    for output_id in output_ids {
+        let Some(output_info) = conn
+            .randr_get_output_info(*output_id, config_timestamp)
+            .ok()
+            .and_then(|c| c.reply().ok())
+        else {
+            continue;
+        };
+
+        if output_info.connection != randr::Connection::CONNECTED {
+            continue;
+        }
+
+        let name = String::from_utf8_lossy(&output_info.name).to_string();
+        let rect = if output_info.crtc != 0 {
+            let Some(crtc_info) = conn
+                .randr_get_crtc_info(output_info.crtc, config_timestamp)
+                .ok()
+                .and_then(|c| c.reply().ok())
+            else {
+                continue;
+            };
+
+            let (w, h) = modes
+                .iter()
+                .find(|m| m.id == crtc_info.mode)
+                .map(|m| (m.width as i32, m.height as i32))
+                .unwrap_or((crtc_info.width as i32, crtc_info.height as i32));
+
+            Rect::new(crtc_info.x as i32, crtc_info.y as i32, w, h)
+        } else {
+            let Some(mode) = find_preferred_mode(&output_info, modes) else {
+                continue;
+            };
+            Rect::new(0, 0, mode.width as i32, mode.height as i32)
+        };
+
+        outputs.push((name, rect));
     }
 
-    None
+    outputs
 }
 
 /// Find an available CRTC (current version).

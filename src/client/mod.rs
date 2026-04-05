@@ -1,9 +1,7 @@
 //! Client window management.
 //!
-//! This module is the public surface for everything related to managing X11
-//! client windows.  The implementation is split across focused sub-modules;
-//! this file re-exports the public API so that callers can write
-//! `crate::backend::x11::lifecycle::manage(...)` for X11 lifecycle details.
+//! This module is the public surface for generic client/window management.
+//! X11-specific property plumbing lives under `crate::backend::x11`.
 //!
 //! # Sub-module map
 //!
@@ -14,7 +12,6 @@
 //! | `visibility`    | Show / hide / show_hide, WM_STATE queries                   |
 //! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
 //! | `fullscreen`    | Real and fake fullscreen transitions                        |
-//! | `state`         | X11 property read/write (titles, rules, hints, lists)       |
 //! | `kill`          | Graceful and forceful window termination                    |
 //! | `lifecycle`     | internal X11 lifecycle implementation details                  |
 //! | `layout_ops`    | zoom (promote to master)                                    |
@@ -32,8 +29,8 @@ pub mod layout_ops;
 pub mod lifecycle;
 pub mod manager;
 pub mod rules;
-pub mod state;
 pub mod visibility;
+pub mod x11_policy;
 
 // ---------------------------------------------------------------------------
 // Flat re-exports
@@ -44,16 +41,16 @@ pub mod visibility;
 // ---------------------------------------------------------------------------
 
 // -- Rules ------------------------------------------------------------------
-pub use rules::{WindowProperties, apply_rules};
+pub use rules::{WindowProperties, apply_rules, handle_property_change};
 
 // -- Constants ---------------------------------------------------------------
 pub use constants::WM_STATE_WITHDRAWN;
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::resize;
+pub use geometry::{resize, sane_floating_spawn_rect, sync_client_geometry};
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{hide, show, show_hide};
+pub use visibility::{hide, hide_for_user, show, show_hide};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{
@@ -62,7 +59,7 @@ pub use focus::{
 };
 
 // -- Fullscreen --------------------------------------------------------------
-pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen, toggle_fake_fullscreen_x11};
+pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen_x11};
 
 pub fn save_border_width(client: &mut crate::types::Client) {
     client.save_border_width();
@@ -72,14 +69,14 @@ pub fn restore_border_width(client: &mut crate::types::Client) {
     client.restore_border_width();
 }
 
-// -- X11 state / properties --------------------------------------------------
-pub use state::{set_client_state, set_client_tag_prop, update_title_x11, update_wm_hints};
-
 // -- Kill --------------------------------------------------------------------
 pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
-pub use lifecycle::initial_tags_for_monitor;
+pub use lifecycle::{
+    LaunchContext, PendingLaunch, current_launch_context, initial_tags_for_monitor, new_startup_id,
+    record_pending_launch, select_client, take_pending_launch,
+};
 
 // -- Layout operations -------------------------------------------------------
 pub use layout_ops::zoom;

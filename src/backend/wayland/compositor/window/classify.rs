@@ -73,6 +73,17 @@ impl WaylandState {
         WindowType::Normal
     }
 
+    /// Check if a window should suppress WM keyboard shortcuts when focused.
+    ///
+    /// Returns true for overlay windows (dmenu, popups, menus) where
+    /// keyboard input should go to the window without triggering keybindings.
+    pub fn should_suppress_shortcuts_for(&self, window: &Window) -> bool {
+        match self.classify_window(window) {
+            WindowType::Overlay | WindowType::Launcher | WindowType::Unmanaged => true,
+            WindowType::Normal | WindowType::Dying => false,
+        }
+    }
+
     /// Iterator over windows in z-order (top-to-bottom), along with their type.
     ///
     /// This follows the render-order defined in `assemble_scene_elements!`:

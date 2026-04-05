@@ -1,9 +1,10 @@
 use smithay::desktop::Window;
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State as ToplevelState;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::state::{PendingLaunchContextMarker, WindowIdMarker};
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -59,7 +60,7 @@ impl WaylandState {
         let app_id = self.window_app_id(window).unwrap_or_default();
         let handle = self
             .foreign_toplevel_list_state
-            .new_toplevel::<WaylandState>(title, app_id);
+            .new_toplevel::<Self>(title, app_id);
         self.foreign_toplevel_handles.insert(window, handle);
     }
 
@@ -95,14 +96,42 @@ impl WaylandState {
 
     /// Ensure a client exists for the given window.
     pub(crate) fn ensure_client_for_window(&mut self, window: WindowId) {
-        if self.wm.g.clients.contains_key(&window) {
+        if self
+            .globals()
+            .is_some_and(|g| g.clients.contains_key(&window))
+        {
             return;
         }
 
         let props = self.window_properties(window);
+        let x11_launch_ids = self
+            .find_window(window)
+            .and_then(|element| element.x11_surface())
+            .map(|x11| (x11.pid(), x11.startup_id()));
+        let launch_context = x11_launch_ids
+            .and_then(|(pid, startup_id)| {
+                self.globals_mut()
+                    .and_then(|g| crate::client::take_pending_launch(g, pid, startup_id.as_deref()))
+            })
+            .or_else(|| {
+                self.find_window(window)
+                    .and_then(|element| element.wl_surface())
+                    .and_then(|wl_surface| {
+                        smithay::wayland::compositor::with_states(&wl_surface, |states| {
+                            states
+                                .data_map
+                                .get::<PendingLaunchContextMarker>()
+                                .map(|marker| marker.context)
+                        })
+                    })
+            });
 
-        let g = &mut self.wm.g;
-        let monitor_id = g.selected_monitor_id();
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
+        let monitor_id = launch_context
+            .map(|ctx| ctx.monitor_id)
+            .unwrap_or_else(|| g.selected_monitor_id());
         let (base_w, base_h) = g
             .monitor(monitor_id)
             .map(|m| {
@@ -130,13 +159,18 @@ impl WaylandState {
         c.border_width = g.cfg.border_width_px;
         c.old_border_width = g.cfg.border_width_px;
         c.monitor_id = monitor_id;
-        c.tags = crate::client::initial_tags_for_monitor(g, c.monitor_id);
+        c.set_tag_mask(
+            launch_context
+                .map(|ctx| ctx.tags)
+                .unwrap_or_else(|| crate::client::initial_tags_for_monitor(g, c.monitor_id)),
+        );
 
         g.clients.insert(window, c);
-        crate::client::apply_rules(g, window, &props);
+        crate::client::apply_rules(g, window, &props, launch_context);
 
         g.attach(window);
         g.attach_stack(window);
+        crate::client::select_client(g, window);
     }
 
     /// Get the window ID for a toplevel surface.
@@ -159,28 +193,11 @@ impl WaylandState {
             .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
-    /// Get the window for a surface, including unmanaged windows in the space.
-    /// This is needed for X11 override-redirect windows (like dmenu) that are
-    /// mapped to the space but not added to window_index.
-    pub(crate) fn window_for_surface(
-        &self,
-        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-    ) -> Option<smithay::desktop::Window> {
-        self.space
-            .elements()
-            .find(|w| {
-                if w.wl_surface().as_deref() == Some(surface) {
-                    return true;
-                }
-                let mut found = false;
-                w.with_surfaces(|surf, _| {
-                    if surf == surface {
-                        found = true;
-                    }
-                });
-                found
-            })
-            .cloned()
+    pub(crate) fn window_id_for_x11_window(&self, window: u32) -> Option<WindowId> {
+        self.window_index
+            .values()
+            .find(|w| w.x11_surface().is_some_and(|x11| x11.window_id() == window))
+            .and_then(|w| w.user_data().get::<WindowIdMarker>().map(|m| m.id))
     }
 
     /// Get the window ID for a surface.
@@ -215,11 +232,33 @@ impl WaylandState {
         size: Option<smithay::utils::Size<i32, smithay::utils::Logical>>,
     ) {
         if let Some(toplevel) = window.toplevel() {
-            if let Some(size) = size {
-                toplevel.with_pending_state(|state| {
+            let is_resizing = window
+                .user_data()
+                .get::<WindowIdMarker>()
+                .is_some_and(|marker| self.active_resizes.contains(&marker.id));
+            let is_fullscreen = window
+                .user_data()
+                .get::<WindowIdMarker>()
+                .and_then(|marker| {
+                    self.globals()
+                        .and_then(|g| g.clients.get(&marker.id).map(|c| c.is_fullscreen))
+                })
+                .unwrap_or(false);
+            toplevel.with_pending_state(|state| {
+                if let Some(size) = size {
                     state.size = Some(size);
-                });
-            }
+                }
+                if is_resizing {
+                    state.states.set(ToplevelState::Resizing);
+                } else {
+                    state.states.unset(ToplevelState::Resizing);
+                }
+                if is_fullscreen {
+                    state.states.set(ToplevelState::Fullscreen);
+                } else {
+                    state.states.unset(ToplevelState::Fullscreen);
+                }
+            });
             toplevel.send_pending_configure();
         }
     }

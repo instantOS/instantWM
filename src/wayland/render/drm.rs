@@ -2,26 +2,36 @@
 
 use smithay::backend::allocator::Fourcc;
 use smithay::backend::allocator::gbm::{GbmAllocator, GbmBufferFlags, GbmDevice};
-use smithay::backend::drm::{DrmDevice, DrmDeviceFd, GbmBufferedSurface, VrrSupport};
-use smithay::backend::renderer::Bind;
+use smithay::backend::drm::compositor::{FrameError, FrameFlags, PrimaryPlaneElement};
+use smithay::backend::drm::exporter::gbm::{GbmFramebufferExporter, NodeFilter};
+use smithay::backend::drm::output::DrmOutputRenderElements;
+use smithay::backend::drm::{DrmDevice, DrmDeviceFd, VrrSupport};
 use smithay::backend::renderer::ImportDma;
-use smithay::backend::renderer::damage::OutputDamageTracker;
 use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
 use smithay::backend::renderer::element::render_elements;
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::texture::TextureRenderElement;
+use smithay::backend::renderer::element::{Element, Id, RenderElementStates};
 use smithay::backend::renderer::gles::{GlesRenderer, GlesTexture};
+use smithay::backend::renderer::{Bind, BufferType, Offscreen, Renderer, buffer_type};
+use smithay::desktop::utils::{
+    OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
+    surface_primary_scanout_output, take_presentation_feedback_surface_tree,
+};
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::drm::control::crtc;
-use smithay::utils::{Physical, Point, Rectangle};
+use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 
+use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
-    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, resolve_cursor_presentation, send_frame_callbacks,
+    CursorPresentation, FixedSceneElements, build_common_scene_elements_from_fixed,
+    count_upper_layer_render_elements, get_render_element_counts, resolve_cursor_presentation,
+    send_frame_callbacks, update_primary_scanout_output,
 };
 
 mod cursor;
@@ -29,11 +39,23 @@ mod cursor;
 // Re-export cursor management
 pub use cursor::CursorManager;
 pub use state::{
-    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, OutputHitRegion, OutputSurfaceEntry,
-    SharedDrmState, sync_monitors_from_outputs_vec,
+    DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, ManagedDrmOutputManager, OutputHitRegion,
+    OutputSurfaceEntry,
 };
 
 pub mod state;
+
+#[derive(Debug)]
+pub struct DrmFrameMetadata {
+    pub presentation_feedback: OutputPresentationFeedback,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderOutcome {
+    Submitted,
+    Skipped,
+    Failed,
+}
 
 render_elements! {
     pub DrmExtras<=GlesRenderer>;
@@ -45,26 +67,22 @@ render_elements! {
 }
 
 pub fn build_output_surfaces(
-    drm_device: &mut DrmDevice,
+    output_manager: &mut ManagedDrmOutputManager,
     renderer: &mut GlesRenderer,
-    state: &WaylandState,
-    gbm_device: &GbmDevice<DrmDeviceFd>,
+    state: &mut WaylandState,
 ) -> Vec<OutputSurfaceEntry> {
-    let gbm_allocator = GbmAllocator::new(
-        gbm_device.clone(),
-        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
-    );
-    let color_formats: &[Fourcc] = &[Fourcc::Argb8888, Fourcc::Xrgb8888];
-    let renderer_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
-
     let mut output_surfaces: Vec<OutputSurfaceEntry> = Vec::new();
     let mut output_x_offset: i32 = 0;
 
-    let res = drm_device.resource_handles().expect("drm resource_handles");
+    let res = output_manager
+        .device()
+        .resource_handles()
+        .expect("drm resource_handles");
     let mut used_crtcs: Vec<crtc::Handle> = Vec::new();
+    let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmExtras>::default();
 
     for &conn_handle in res.connectors() {
-        let Ok(conn_info) = drm_device.get_connector(conn_handle, false) else {
+        let Ok(conn_info) = output_manager.device().get_connector(conn_handle, false) else {
             continue;
         };
         if conn_info.state() != connector::State::Connected
@@ -90,7 +108,7 @@ pub fn build_output_surfaces(
         let encoder_crtcs: Vec<crtc::Handle> = conn_info
             .encoders()
             .iter()
-            .filter_map(|&enc_h| drm_device.get_encoder(enc_h).ok())
+            .filter_map(|&enc_h| output_manager.device().get_encoder(enc_h).ok())
             .flat_map(|enc| res.filter_crtcs(enc.possible_crtcs()))
             .collect();
 
@@ -98,31 +116,6 @@ pub fn build_output_surfaces(
             continue;
         };
         used_crtcs.push(picked_crtc);
-
-        let drm_surface = drm_device
-            .create_surface(picked_crtc, mode, &[conn_handle])
-            .expect("create_surface");
-        let gbm_surface = GbmBufferedSurface::new(
-            drm_surface,
-            gbm_allocator.clone(),
-            color_formats,
-            renderer_formats.iter().cloned(),
-        )
-        .expect("GbmBufferedSurface::new");
-
-        // Enable VRR if the output supports it
-        let vrr_active = match gbm_surface.vrr_supported(conn_handle) {
-            Ok(VrrSupport::Supported | VrrSupport::RequiresModeset) => {
-                match gbm_surface.use_vrr(true) {
-                    Ok(()) => true,
-                    Err(e) => {
-                        log::warn!("Failed to enable VRR: {e}");
-                        false
-                    }
-                }
-            }
-            _ => false,
-        };
 
         let (mode_w, mode_h) = mode.size();
         let (mode_w, mode_h) = (mode_w as i32, mode_h as i32);
@@ -132,18 +125,13 @@ pub fn build_output_surfaces(
             conn_info.interface_id()
         );
         log::info!(
-            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?} (VRR: {})",
+            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?}",
             mode.vrefresh(),
-            picked_crtc,
-            if vrr_active {
-                "enabled"
-            } else {
-                "not supported"
-            }
+            picked_crtc
         );
 
         let output = Output::new(
-            output_name,
+            output_name.clone(),
             PhysicalProperties {
                 size: {
                     let (mm_w, mm_h) = conn_info.size().unwrap_or((0, 0));
@@ -152,6 +140,7 @@ pub fn build_output_surfaces(
                 subpixel: Subpixel::Unknown,
                 make: "instantOS".into(),
                 model: "instantWM".into(),
+                serial_number: "Unknown".into(),
             },
         );
         let out_mode = OutputMode {
@@ -167,34 +156,72 @@ pub fn build_output_surfaces(
         output.set_preferred(out_mode);
         let _global = output.create_global::<WaylandState>(&state.display_handle);
 
-        let damage_tracker = OutputDamageTracker::from_output(&output);
-
-        // Calculate refresh interval for frame clock
-        let vrefresh = mode.vrefresh();
-        let refresh_interval = if vrefresh > 0 {
-            Some(std::time::Duration::from_micros(
-                1_000_000 / vrefresh as u64,
-            ))
-        } else {
-            None
-        };
+        let surface = output_manager
+            .lock()
+            .initialize_output(
+                picked_crtc,
+                mode,
+                &[conn_handle],
+                &output,
+                None,
+                renderer,
+                &init_render_elements,
+            )
+            .expect("initialize_output");
+        let vrr_support =
+            match surface.with_compositor(|compositor| compositor.vrr_supported(conn_handle)) {
+                Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
+                Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
+                Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
+            };
+        state.set_output_vrr_support(&output_name, vrr_support);
+        let configured_vrr_mode = state
+            .output_vrr_metadata(&output_name)
+            .map(|m| m.vrr_mode)
+            .unwrap_or(VrrMode::Auto);
+        state.set_output_vrr_mode(&output_name, configured_vrr_mode);
+        state.set_output_vrr_enabled(&output_name, false);
+        log::info!("Output {output_name}: VRR support = {:?}", vrr_support);
 
         output_surfaces.push(OutputSurfaceEntry {
             crtc: picked_crtc,
-            surface: gbm_surface,
+            connector: conn_handle,
+            surface,
             output: output.clone(),
-            damage_tracker,
             x_offset: output_x_offset,
             width: mode_w,
             height: mode_h,
-            frame_clock: crate::frame_clock::FrameClock::new(refresh_interval),
-            last_render_duration: std::time::Duration::from_micros(1000), // Initial estimate: 1ms
-            vrr_active,
+            vrr_support,
+            configured_vrr_mode,
+            vrr_enabled: false,
         });
         output_x_offset += mode_w;
     }
 
     output_surfaces
+}
+
+pub fn create_output_manager(
+    drm_device: DrmDevice,
+    renderer: &GlesRenderer,
+    gbm_device: &GbmDevice<DrmDeviceFd>,
+) -> ManagedDrmOutputManager {
+    let allocator = GbmAllocator::new(
+        gbm_device.clone(),
+        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
+    );
+    let exporter = GbmFramebufferExporter::new(gbm_device.clone(), NodeFilter::None);
+    let color_formats: [Fourcc; 2] = [Fourcc::Argb8888, Fourcc::Xrgb8888];
+    let renderer_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+
+    ManagedDrmOutputManager::new(
+        drm_device,
+        allocator,
+        exporter,
+        Some(gbm_device.clone()),
+        color_formats,
+        renderer_formats,
+    )
 }
 
 fn connector_type_name(interface: connector::Interface) -> &'static str {
@@ -223,21 +250,8 @@ pub fn render_drm_output(
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: std::time::Instant,
-) -> bool {
-    let (dmabuf, age) = match entry.surface.next_buffer() {
-        Ok(buf) => buf,
-        Err(e) => {
-            log::trace!("next_buffer: {e}");
-            return false;
-        }
-    };
-
-    let mut dmabuf_clone = dmabuf.clone();
-    let Ok(mut target) = renderer.bind(&mut dmabuf_clone) else {
-        log::warn!("renderer bind failed");
-        return false;
-    };
-
+    fixed_scene: Option<FixedSceneElements>,
+) -> RenderOutcome {
     let local_pointer = Point::from((
         pointer_location.x - entry.x_offset as f64,
         pointer_location.y,
@@ -245,7 +259,7 @@ pub fn render_drm_output(
     let cursor_presentation = resolve_cursor_presentation(
         &state.cursor_image_status,
         state.cursor_icon_override,
-        state.dnd_icon.as_ref(),
+        state.runtime.dnd_icon.as_ref(),
     );
 
     let cursor_scale = entry.output.current_scale().integer_scale();
@@ -258,6 +272,10 @@ pub fn render_drm_output(
         cursor_scale,
         millis,
     );
+    let cursor_element_ids: Vec<Id> = cursor_elements
+        .iter()
+        .map(|element| element.id().clone())
+        .collect();
 
     let mut render_elements: Vec<DrmExtras>;
 
@@ -286,7 +304,12 @@ pub fn render_drm_output(
             }
         }
     } else {
-        let scene = build_common_scene_elements(state, renderer, entry.x_offset);
+        let scene = build_common_scene_elements_from_fixed(
+            state,
+            renderer,
+            entry.x_offset,
+            fixed_scene.expect("fixed scene elements"),
+        );
         let space_render_elements = smithay::desktop::space::space_render_elements(
             renderer,
             [&state.space],
@@ -317,40 +340,362 @@ pub fn render_drm_output(
         );
     }
 
-    let render_result = entry.damage_tracker.render_output(
+    let has_pending_screencopy = state
+        .runtime
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output == entry.output);
+    let has_cursor_screencopy = state
+        .runtime
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output == entry.output && copy.overlay_cursor);
+    let has_cursorless_screencopy = state
+        .runtime
+        .pending_screencopies
+        .iter()
+        .any(|copy| copy.output == entry.output && !copy.overlay_cursor);
+    let mut cursorless_image_captures =
+        crate::backend::wayland::compositor::image_capture::drain_pending_image_captures(
+            &mut state.runtime.pending_image_captures,
+            &entry.output,
+            false,
+        );
+    let mut cursor_image_captures =
+        crate::backend::wayland::compositor::image_capture::drain_pending_image_captures(
+            &mut state.runtime.pending_image_captures,
+            &entry.output,
+            true,
+        );
+    let has_pending_image_capture =
+        !cursorless_image_captures.is_empty() || !cursor_image_captures.is_empty();
+    let mut frame_flags = FrameFlags::DEFAULT;
+    if entry.vrr_enabled {
+        frame_flags |= FrameFlags::SKIP_CURSOR_ONLY_UPDATES;
+    }
+
+    let frame_result = match entry.surface.render_frame(
         renderer,
-        &mut target,
-        age as usize,
         &render_elements,
         [0.05, 0.05, 0.07, 1.0],
-    );
+        frame_flags,
+    ) {
+        Ok(result) => result,
+        Err(err) => {
+            log::warn!("render_frame: {:?}", err);
+            return RenderOutcome::Failed;
+        }
+    };
 
-    crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
-        &mut state.pending_screencopies,
-        renderer,
-        &target,
-        &entry.output,
-        start_time,
-    );
-    drop(target);
+    if has_pending_screencopy || has_pending_image_capture {
+        let output_scale = entry.output.current_scale().fractional_scale();
+        let output_transform = entry.output.current_transform().invert();
+        let mode_size = entry
+            .output
+            .current_mode()
+            .map(|mode| mode.size)
+            .unwrap_or_else(|| (entry.width, entry.height).into());
+        let target_size = output_transform.transform_size(mode_size);
+        let target_size_buffer: smithay::utils::Size<i32, BufferCoords> =
+            (target_size.w, target_size.h).into();
 
-    match render_result {
-        Ok(result) => {
-            let damage: Option<Vec<Rectangle<i32, Physical>>> = result.damage.cloned();
-            if let Err(e) = entry.surface.queue_buffer(None, damage, ()) {
-                log::warn!("queue_buffer: {e}");
-                return false;
+        let mut cursorless_dmabuf_captures = Vec::new();
+        let mut cursorless_target_captures = Vec::new();
+        for capture in cursorless_image_captures.drain(..) {
+            if matches!(buffer_type(&capture.frame.buffer()), Some(BufferType::Dma)) {
+                cursorless_dmabuf_captures.push(capture);
+            } else {
+                cursorless_target_captures.push(capture);
             }
         }
-        Err(e) => {
-            log::warn!("render_output: {:?}", e);
-            return false;
+        cursorless_image_captures = cursorless_target_captures;
+
+        let mut cursor_dmabuf_captures = Vec::new();
+        let mut cursor_target_captures = Vec::new();
+        for capture in cursor_image_captures.drain(..) {
+            if matches!(buffer_type(&capture.frame.buffer()), Some(BufferType::Dma)) {
+                cursor_dmabuf_captures.push(capture);
+            } else {
+                cursor_target_captures.push(capture);
+            }
+        }
+        cursor_image_captures = cursor_target_captures;
+
+        for capture in cursorless_dmabuf_captures {
+            let buffer = capture.frame.buffer();
+            let mut dmabuf = match smithay::wayland::dmabuf::get_dmabuf(&buffer) {
+                Ok(dmabuf) => dmabuf.clone(),
+                Err(err) => {
+                    log::warn!("image-capture: failed to access dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            let mut target = match renderer.bind(&mut dmabuf) {
+                Ok(target) => target,
+                Err(err) => {
+                    log::warn!("image-capture: failed to bind dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            match frame_result.blit_frame_result(
+                target_size,
+                output_transform,
+                output_scale,
+                renderer,
+                &mut target,
+                [Rectangle::from_size(target_size)],
+                cursor_element_ids.iter().cloned(),
+            ) {
+                Ok(sync) => {
+                    let _ = renderer.wait(&sync);
+                    capture.frame.success(
+                        capture.transform,
+                        None::<Vec<Rectangle<i32, BufferCoords>>>,
+                        crate::backend::wayland::compositor::image_capture::monotonic_timestamp(),
+                    );
+                }
+                Err(err) => {
+                    log::warn!("image-capture direct dmabuf blit failed: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                }
+            }
+        }
+
+        for capture in cursor_dmabuf_captures {
+            let buffer = capture.frame.buffer();
+            let mut dmabuf = match smithay::wayland::dmabuf::get_dmabuf(&buffer) {
+                Ok(dmabuf) => dmabuf.clone(),
+                Err(err) => {
+                    log::warn!("image-capture: failed to access dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            let mut target = match renderer.bind(&mut dmabuf) {
+                Ok(target) => target,
+                Err(err) => {
+                    log::warn!("image-capture: failed to bind dmabuf: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                    continue;
+                }
+            };
+            match frame_result.blit_frame_result(
+                target_size,
+                output_transform,
+                output_scale,
+                renderer,
+                &mut target,
+                [Rectangle::from_size(target_size)],
+                std::iter::empty::<Id>(),
+            ) {
+                Ok(sync) => {
+                    let _ = renderer.wait(&sync);
+                    capture.frame.success(
+                        capture.transform,
+                        None::<Vec<Rectangle<i32, BufferCoords>>>,
+                        crate::backend::wayland::compositor::image_capture::monotonic_timestamp(),
+                    );
+                }
+                Err(err) => {
+                    log::warn!("image-capture direct dmabuf blit failed: {:?}", err);
+                    capture
+                        .frame
+                        .fail(smithay::wayland::image_copy_capture::CaptureFailureReason::Unknown);
+                }
+            }
+        }
+
+        if has_cursorless_screencopy || !cursorless_image_captures.is_empty() {
+            let mut capture: GlesTexture =
+                match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+                    Ok(buffer) => buffer,
+                    Err(err) => {
+                        log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                };
+            match renderer.bind(&mut capture) {
+                Ok(mut target) => match frame_result.blit_frame_result(
+                    target_size,
+                    output_transform,
+                    output_scale,
+                    renderer,
+                    &mut target,
+                    [Rectangle::from_size(target_size)],
+                    cursor_element_ids.iter().cloned(),
+                ) {
+                    Ok(sync) => {
+                        crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+                            &mut state.runtime.pending_screencopies,
+                            renderer,
+                            &target,
+                            &entry.output,
+                            false,
+                        );
+                        crate::backend::wayland::compositor::image_capture::submit_image_captures(
+                            cursorless_image_captures,
+                            renderer,
+                            &target,
+                        );
+                        let _ = sync;
+                    }
+                    Err(err) => {
+                        log::warn!("screencopy blit_frame_result failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                },
+                Err(err) => {
+                    log::warn!("screencopy offscreen bind failed: {:?}", err);
+                    return RenderOutcome::Failed;
+                }
+            }
+        }
+
+        if has_cursor_screencopy || !cursor_image_captures.is_empty() {
+            let mut capture: GlesTexture =
+                match renderer.create_buffer(Fourcc::Xrgb8888, target_size_buffer) {
+                    Ok(buffer) => buffer,
+                    Err(err) => {
+                        log::warn!("screencopy offscreen buffer creation failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                };
+            match renderer.bind(&mut capture) {
+                Ok(mut target) => match frame_result.blit_frame_result(
+                    target_size,
+                    output_transform,
+                    output_scale,
+                    renderer,
+                    &mut target,
+                    [Rectangle::from_size(target_size)],
+                    std::iter::empty::<Id>(),
+                ) {
+                    Ok(sync) => {
+                        crate::backend::wayland::compositor::screencopy::submit_pending_screencopies(
+                            &mut state.runtime.pending_screencopies,
+                            renderer,
+                            &target,
+                            &entry.output,
+                            true,
+                        );
+                        crate::backend::wayland::compositor::image_capture::submit_image_captures(
+                            cursor_image_captures,
+                            renderer,
+                            &target,
+                        );
+                        let _ = sync;
+                    }
+                    Err(err) => {
+                        log::warn!("screencopy blit_frame_result failed: {:?}", err);
+                        return RenderOutcome::Failed;
+                    }
+                },
+                Err(err) => {
+                    log::warn!("screencopy offscreen bind failed: {:?}", err);
+                    return RenderOutcome::Failed;
+                }
+            }
+        }
+    }
+
+    if frame_result.needs_sync()
+        && let PrimaryPlaneElement::Swapchain(primary_swapchain) = &frame_result.primary_element
+    {
+        let _ = primary_swapchain.sync.wait();
+    }
+
+    update_primary_scanout_output(state, &entry.output, &frame_result.states);
+
+    let frame_metadata = DrmFrameMetadata {
+        presentation_feedback: collect_presentation_feedback(state, entry, &frame_result.states),
+    };
+
+    match entry.surface.queue_frame(frame_metadata) {
+        Ok(()) => {}
+        Err(FrameError::EmptyFrame) => {
+            // Even when KMS can skip submitting an unchanged frame, visible
+            // Wayland clients still need their frame callbacks to keep driving
+            // content updates. Without this, callback-paced clients such as
+            // Firefox can appear frozen until unrelated input dirties the
+            // output and forces a real page flip.
+            send_frame_callbacks(state, &entry.output, start_time.elapsed());
+            return RenderOutcome::Skipped;
+        }
+        Err(err) => {
+            log::warn!("queue_frame: {:?}", err);
+            return RenderOutcome::Failed;
         }
     }
 
     send_frame_callbacks(state, &entry.output, start_time.elapsed());
-    state.frame_callback_sequence = state.frame_callback_sequence.wrapping_add(1);
-    true
+    RenderOutcome::Submitted
+}
+
+fn collect_presentation_feedback(
+    state: &WaylandState,
+    entry: &OutputSurfaceEntry,
+    render_states: &RenderElementStates,
+) -> OutputPresentationFeedback {
+    let mut output_feedback = OutputPresentationFeedback::new(&entry.output);
+    let output_geo = state.space.output_geometry(&entry.output);
+    let surface_flags =
+        |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+         _: &smithay::wayland::compositor::SurfaceData| {
+            surface_presentation_feedback_flags_from_states(surface, render_states)
+        };
+
+    if state.is_locked() {
+        let output_name = entry.output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            take_presentation_feedback_surface_tree(
+                lock_surface.wl_surface(),
+                &mut output_feedback,
+                surface_primary_scanout_output,
+                surface_flags,
+            );
+        }
+        return output_feedback;
+    }
+
+    for window in state.space.elements() {
+        if let Some(out_geo) = output_geo
+            && let Some(win_loc) = state.space.element_location(window)
+        {
+            let win_rect = Rectangle::new(win_loc, window.geometry().size);
+            if !out_geo.overlaps(win_rect) {
+                continue;
+            }
+        }
+
+        window.take_presentation_feedback(
+            &mut output_feedback,
+            surface_primary_scanout_output,
+            surface_flags,
+        );
+    }
+
+    let layer_map = smithay::desktop::layer_map_for_output(&entry.output);
+    for layer_surface in layer_map.layers() {
+        layer_surface.take_presentation_feedback(
+            &mut output_feedback,
+            surface_primary_scanout_output,
+            surface_flags,
+        );
+    }
+
+    output_feedback
 }
 
 fn build_cursor_elements(

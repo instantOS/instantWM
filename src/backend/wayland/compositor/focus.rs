@@ -5,11 +5,12 @@ use smithay::{
     desktop::{PopupKind, Window},
     input::{
         Seat,
+        dnd::{DndFocus, Source},
         keyboard::{KeysymHandle, ModifiersState},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{IsAlive, Serial},
-    wayland::seat::WaylandFocus,
+    wayland::{seat::WaylandFocus, selection::data_device::WlOfferData},
 };
 
 use super::WaylandState;
@@ -116,6 +117,93 @@ impl PointerFocusTarget {
             f(surface.as_ref());
         } else {
             log::trace!("PointerFocusTarget has no wl_surface, dropping event");
+        }
+    }
+}
+
+impl DndFocus<WaylandState> for PointerFocusTarget {
+    type OfferData<S: Source> = WlOfferData<S>;
+
+    fn enter<S: Source>(
+        &self,
+        data: &mut WaylandState,
+        dh: &smithay::reexports::wayland_server::DisplayHandle,
+        source: std::sync::Arc<S>,
+        seat: &Seat<WaylandState>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        serial: &Serial,
+    ) -> Option<Self::OfferData<S>> {
+        match self {
+            PointerFocusTarget::Window(window) => window.wl_surface().and_then(|surface| {
+                DndFocus::enter(surface.as_ref(), data, dh, source, seat, location, serial)
+            }),
+            PointerFocusTarget::WlSurface(surface) => {
+                DndFocus::enter(surface, data, dh, source, seat, location, serial)
+            }
+            PointerFocusTarget::Popup(popup) => {
+                DndFocus::enter(popup.wl_surface(), data, dh, source, seat, location, serial)
+            }
+        }
+    }
+
+    fn motion<S: Source>(
+        &self,
+        data: &mut WaylandState,
+        offer: Option<&mut Self::OfferData<S>>,
+        seat: &Seat<WaylandState>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        time: u32,
+    ) {
+        match self {
+            PointerFocusTarget::Window(window) => {
+                if let Some(surface) = window.wl_surface() {
+                    DndFocus::motion(surface.as_ref(), data, offer, seat, location, time);
+                }
+            }
+            PointerFocusTarget::WlSurface(surface) => {
+                DndFocus::motion(surface, data, offer, seat, location, time)
+            }
+            PointerFocusTarget::Popup(popup) => {
+                DndFocus::motion(popup.wl_surface(), data, offer, seat, location, time)
+            }
+        }
+    }
+
+    fn leave<S: Source>(
+        &self,
+        data: &mut WaylandState,
+        offer: Option<&mut Self::OfferData<S>>,
+        seat: &Seat<WaylandState>,
+    ) {
+        match self {
+            PointerFocusTarget::Window(window) => {
+                if let Some(surface) = window.wl_surface() {
+                    DndFocus::leave(surface.as_ref(), data, offer, seat);
+                }
+            }
+            PointerFocusTarget::WlSurface(surface) => DndFocus::leave(surface, data, offer, seat),
+            PointerFocusTarget::Popup(popup) => {
+                DndFocus::leave(popup.wl_surface(), data, offer, seat)
+            }
+        }
+    }
+
+    fn drop<S: Source>(
+        &self,
+        data: &mut WaylandState,
+        offer: Option<&mut Self::OfferData<S>>,
+        seat: &Seat<WaylandState>,
+    ) {
+        match self {
+            PointerFocusTarget::Window(window) => {
+                if let Some(surface) = window.wl_surface() {
+                    DndFocus::drop(surface.as_ref(), data, offer, seat);
+                }
+            }
+            PointerFocusTarget::WlSurface(surface) => DndFocus::drop(surface, data, offer, seat),
+            PointerFocusTarget::Popup(popup) => {
+                DndFocus::drop(popup.wl_surface(), data, offer, seat)
+            }
         }
     }
 }

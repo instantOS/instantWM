@@ -1,9 +1,6 @@
-//! X11 input-grab helpers.
+//! X11 pointer-grab helpers.
 //!
-//! Three distinct concepts live here:
-//!
-//! * **Key grabs** ([`grab_keys_x11`], [`key_press_x11`]) – keyboard event
-//!   handling on the X11 root window.
+//! Two distinct concepts live here:
 //!
 //! * **Button grabs** ([`grab_buttons`]) – passive grabs registered on a
 //!   client window so the WM receives button-press events even when that
@@ -29,8 +26,8 @@
 //! ungrab_ctx(ctx);
 //! ```
 
-use crate::contexts::{CoreCtx, WmCtxX11};
-use crate::types::{AltCursor, Key, MouseButton, WindowId};
+use crate::contexts::WmCtxX11;
+use crate::types::{AltCursor, MouseButton, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -117,7 +114,13 @@ fn grab_pointer_impl<C: Connection>(
 /// Borrows the connection only for the duration of the call, so the caller
 /// can freely mutate `ctx` between events.
 pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
-    ctx.x11.conn.wait_for_event().ok()
+    match ctx.x11.conn.wait_for_event() {
+        Ok(event) => Some(event),
+        Err(err) => {
+            log::warn!("X11 wait_for_event error in drag loop: {}", err);
+            None
+        }
+    }
 }
 
 /// Release an active pointer grab via context.
@@ -128,6 +131,12 @@ pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
 pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
     let _ = ungrab_pointer(ctx.x11.conn, CURRENT_TIME);
     let _ = ctx.x11.conn.flush();
+}
+
+fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
+    if ctx.core.bar.needs_redraw() {
+        crate::bar::x11::draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+    }
 }
 
 /// Generic X11 mouse-drag event loop.
@@ -156,6 +165,8 @@ pub fn mouse_drag_loop<F>(
         return;
     }
 
+    pump_deferred_work(ctx);
+
     loop {
         // Wait for at least one event (blocking).
         let Some(mut event) = wait_event(ctx) else {
@@ -166,33 +177,47 @@ pub fn mouse_drag_loop<F>(
         // motion events in the queue, keeping only the absolute latest.
         // This ensures zero-latency dragging without artificial 16ms FPS caps.
         if let x11rb::protocol::Event::MotionNotify(_) = event {
-            while let Ok(Some(next_evt)) = ctx.x11.conn.poll_for_event() {
-                if let x11rb::protocol::Event::MotionNotify(_) = next_evt {
-                    event = next_evt; // Discard older motion, keep newest.
-                } else {
-                    // It's a different event (e.g. ButtonRelease). We must put it
-                    // back so wait_event/poll_for_event yield it next time!
-                    // x11rb doesn't let us un-read events easily, so we process
-                    // the compressed motion *now*, then process this next_evt.
-                    if !on_event(ctx, &event) {
-                        ungrab(ctx);
-                        return;
-                    }
+            loop {
+                match ctx.x11.conn.poll_for_event() {
+                    Ok(Some(next_evt)) => {
+                        if let x11rb::protocol::Event::MotionNotify(_) = next_evt {
+                            event = next_evt; // Discard older motion, keep newest.
+                        } else {
+                            // It's a different event (e.g. ButtonRelease). We must put it
+                            // back so wait_event/poll_for_event yield it next time!
+                            // x11rb doesn't let us un-read events easily, so we process
+                            // the compressed motion *now*, then process this next_evt.
+                            if !on_event(ctx, &event) {
+                                pump_deferred_work(ctx);
+                                ungrab(ctx);
+                                return;
+                            }
+                            pump_deferred_work(ctx);
 
-                    // Now process the non-motion event we peeked.
-                    if let x11rb::protocol::Event::ButtonRelease(br) = next_evt
-                        && br.detail == btn.as_u8()
-                    {
-                        ungrab(ctx);
-                        return;
-                    }
-                    if !on_event(ctx, &next_evt) {
-                        ungrab(ctx);
-                        return;
-                    }
+                            // Now process the non-motion event we peeked.
+                            if let x11rb::protocol::Event::ButtonRelease(br) = next_evt
+                                && br.detail == btn.as_u8()
+                            {
+                                pump_deferred_work(ctx);
+                                ungrab(ctx);
+                                return;
+                            }
+                            if !on_event(ctx, &next_evt) {
+                                pump_deferred_work(ctx);
+                                ungrab(ctx);
+                                return;
+                            }
+                            pump_deferred_work(ctx);
 
-                    // We've processed the peeking; continue the main `wait_event` loop.
-                    continue;
+                            // We've processed the peeking; continue the main `wait_event` loop.
+                            continue;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(err) => {
+                        log::warn!("X11 poll_for_event error in drag loop: {}", err);
+                        break;
+                    }
                 }
             }
         }
@@ -208,11 +233,14 @@ pub fn mouse_drag_loop<F>(
             _ => on_event(ctx, &event),
         };
 
+        pump_deferred_work(ctx);
+
         if !should_continue {
             break;
         }
     }
 
+    pump_deferred_work(ctx);
     ungrab(ctx);
 }
 
@@ -259,178 +287,3 @@ pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: b
         }
     }
 }
-
-// ── Key grabs ─────────────────────────────────────────────────────────────────
-
-fn grab_keys_for_key<C: Connection>(
-    conn: &C,
-    root: Window,
-    modifiers: &[u16],
-    key: &Key,
-    keycode: u8,
-) {
-    for &modif in modifiers {
-        let _ = grab_key(
-            conn,
-            false,
-            root,
-            ((key.mod_mask as u16) | modif).into(),
-            keycode,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-        );
-    }
-}
-
-pub fn grab_keys_x11(
-    core: &CoreCtx,
-    x11: &crate::backend::x11::X11BackendRef,
-    x11_runtime: &crate::backend::x11::X11RuntimeConfig,
-) {
-    let conn = x11.conn;
-    let root = x11_runtime.root;
-    let numlockmask = x11_runtime.numlockmask;
-    let keys = core.globals().cfg.keys.as_slice();
-    let desktop_keybinds = core.globals().cfg.desktop_keybinds.as_slice();
-    let modes = &core.globals().cfg.modes;
-
-    let _ = ungrab_key(conn, 0, root, ModMask::ANY);
-
-    let (keycode_min, keycode_max): (u8, u8) = (conn.setup().min_keycode, conn.setup().max_keycode);
-
-    let modifiers: [u16; 4] = [
-        0,
-        ModMask::LOCK.bits(),
-        numlockmask as u16,
-        (numlockmask as u16) | ModMask::LOCK.bits(),
-    ];
-
-    let mapping = match conn
-        .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-    {
-        Some(mapping) => mapping,
-        None => return,
-    };
-
-    let get_keysym = |keycode: u8| -> u32 {
-        let index = (keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-        if index < mapping.keysyms.len() {
-            mapping.keysyms[index]
-        } else {
-            0
-        }
-    };
-
-    for keycode in keycode_min..=keycode_max {
-        let keysym = get_keysym(keycode);
-        if keysym == 0 {
-            continue;
-        }
-
-        for key in keys {
-            if keysym == key.keysym {
-                grab_keys_for_key(conn, root, &modifiers, key, keycode);
-            }
-        }
-
-        for mode in modes.values() {
-            for key in &mode.keybinds {
-                if keysym == key.keysym {
-                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
-                }
-            }
-        }
-
-        let selected_window = core.selected_client();
-        let current_mode = &core.globals().behavior.current_mode;
-        let is_any_mode = !current_mode.is_empty() && current_mode != "default";
-
-        if selected_window.is_none() || is_any_mode {
-            for key in desktop_keybinds {
-                if keysym == key.keysym {
-                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
-                }
-            }
-        }
-    }
-
-    let _ = conn.flush();
-}
-
-pub fn update_num_lock_mask_x11(
-    _core: &mut CoreCtx,
-    x11: &crate::backend::x11::X11BackendRef,
-    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
-) {
-    let new_numlockmask = {
-        let conn = x11.conn;
-        let Ok(cookie) = conn.get_modifier_mapping() else {
-            return;
-        };
-        let Ok(reply) = cookie.reply() else {
-            return;
-        };
-        let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
-        let mapping = match conn
-            .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-        {
-            Some(mapping) => mapping,
-            None => return,
-        };
-
-        let mut new_numlockmask: u32 = 0;
-        for (i, keycode) in reply.keycodes.iter().enumerate() {
-            if *keycode >= keycode_min && *keycode <= keycode_max {
-                let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-                let keysym = if idx < mapping.keysyms.len() {
-                    mapping.keysyms[idx]
-                } else {
-                    0
-                };
-                // XK_Num_Lock keysym (X11 keysym 0xff7f) — used to detect
-                // which modifier bit corresponds to Num Lock so we can mask
-                // it out when matching keybindings.
-                if keysym == 0xff7f {
-                    let mod_index = i / reply.keycodes_per_modifier() as usize;
-                    // X11 supports at most 8 modifier bits (Mod1–Mod5 + Shift/Control/Lock).
-                    if mod_index < 8 {
-                        new_numlockmask = 1 << mod_index;
-                    }
-                }
-            }
-        }
-
-        new_numlockmask
-    };
-
-    x11_runtime.numlockmask = new_numlockmask;
-}
-
-// ── Keyboard event handlers ───────────────────────────────────────────────────
-
-use crate::keyboard::handle_keysym;
-use x11rb::protocol::xproto::{KeyPressEvent, KeyReleaseEvent};
-
-pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> u32 {
-    if let Ok(cookie) = conn.get_keyboard_mapping(keycode, 1)
-        && let Ok(reply) = cookie.reply()
-        && index < reply.keysyms_per_keycode as usize
-    {
-        return reply.keysyms[index];
-    }
-    0
-}
-
-pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
-    let keycode = e.detail;
-    let state = e.state;
-    let keysym = keycode_to_keysym(ctx.x11.conn, keycode, 0);
-    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let _ = handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
-}
-
-pub fn key_release_x11(_ctx: &mut WmCtxX11, _e: &KeyReleaseEvent) {}

@@ -14,20 +14,9 @@ impl WaylandState {
     /// 2. Activates the new window
     /// 3. Sets Smithay keyboard focus
     ///
-    /// If a layer-shell surface (e.g. fuzzel, rofi, dmenu) currently wants
-    /// keyboard focus this is a no-op so that no caller can accidentally
-    /// steal input from an active launcher.
-    ///
     /// It does **not** update `mon.sel`. The WM layer (`focus_generic` /
     /// `focus_soft`) is the single authority for `mon.sel`.
     pub fn set_focus(&mut self, window: WindowId) {
-        // A layer-shell surface with keyboard interactivity trumps any
-        // WM window focus request.  This single guard protects every
-        // call-site (sync_space, map_new_toplevel, hover focus, …).
-        if self.has_layer_keyboard_focus() {
-            return;
-        }
-
         let serial = SERIAL_COUNTER.next_serial();
         let focus_window = self.find_window(window).cloned();
 
@@ -56,7 +45,10 @@ impl WaylandState {
         let focus = focus_window.clone().map(KeyboardFocusTarget::Window);
 
         // Get the previously focused window from WM state (mon.sel)
-        let previously_focused = self.wm.g.selected_win().filter(|&old_id| old_id != window);
+        let previously_focused = self
+            .globals()
+            .and_then(|g| g.selected_win())
+            .filter(|&old_id| old_id != window);
 
         // Deactivate the previously focused window
         if let Some(old_id) = previously_focused
@@ -74,6 +66,11 @@ impl WaylandState {
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
                 keyboard.set_focus(self, focus, serial);
+            } else {
+                log::warn!(
+                    "set_focus: no keyboard seat available for window {:?}",
+                    window
+                );
             }
         }
     }
@@ -81,7 +78,7 @@ impl WaylandState {
     /// This returns the window that the WM thinks should be focused.
     /// For the actual Smithay seat focus, use `seat.get_keyboard().current_focus()`.
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.wm.g.selected_win()
+        self.globals().and_then(|g| g.selected_win())
     }
 
     /// Check whether the Smithay keyboard seat is currently focused on the
@@ -138,31 +135,15 @@ impl WaylandState {
             })
     }
 
-    /// Returns `true` when a layer-shell surface (e.g. fuzzel, rofi,
-    /// dmenu) currently wants keyboard focus.
-    ///
-    /// Used as a guard so that periodic focus reconciliation
-    /// (`sync_space_from_globals`, `map_window`, etc.) does not steal
-    /// keyboard focus away from an active launcher overlay.
-    pub(crate) fn has_layer_keyboard_focus(&self) -> bool {
-        self.keyboard_focus_layer_surface().is_some()
-    }
-
     /// Restore seat focus after an overlay (e.g., dmenu) is closed, or
     /// after a window was destroyed and `mon.sel` was cleared.
-    ///
-    /// If a layer-shell surface currently wants keyboard focus this is a
-    /// no-op — the layer surface keeps focus until it is destroyed.
     ///
     /// If `mon.sel` is valid and alive, applies seat focus to it.
     /// If `mon.sel` is `None` or stale, walks the monitor stack to find
     /// the next visible window and updates `mon.sel` before focusing.
     pub(crate) fn restore_focus_after_overlay(&mut self) {
-        if self.has_layer_keyboard_focus() {
-            return;
-        }
         // First, try mon.sel as-is.
-        let valid_sel = self.wm.g.selected_win().filter(|&w| {
+        let valid_sel = self.globals().and_then(|g| g.selected_win()).filter(|&w| {
             self.window_index.contains_key(&w)
                 && self.window_index.get(&w).is_some_and(|win| win.alive())
         });
@@ -175,17 +156,17 @@ impl WaylandState {
 
         // mon.sel is None or stale.  Walk the stack to find the next
         // visible window and update mon.sel.
-        let sel_mon_id = self.wm.g.selected_monitor_id();
-        let next = self
-            .wm
-            .g
-            .monitor(sel_mon_id)
-            .and_then(|m| m.first_visible_client(self.wm.g.clients.map()));
-        let recovered = if let Some(mon) = self.wm.g.monitor_mut(sel_mon_id) {
-            mon.sel = next;
+        let recovered = if let Some(g) = self.globals_mut() {
+            let sel_mon_id = g.selected_monitor_id();
+            let next = g
+                .monitor(sel_mon_id)
+                .and_then(|m| m.first_visible_client(g.clients.map()));
+            if let Some(mon) = g.monitor_mut(sel_mon_id) {
+                mon.sel = next;
+            }
             next
         } else {
-            next
+            None
         };
 
         if let Some(win) = recovered {

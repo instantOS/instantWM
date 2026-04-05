@@ -28,7 +28,7 @@ pub use snap::{change_snap, reset_snap};
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{center_window, key_resize, moveresize};
+pub use movement::{center_window, key_resize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
@@ -48,4 +48,7 @@ pub use overlay::{create_overlay, hide_overlay, set_overlay, set_overlay_mode, s
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
 /// Make a window a scratchpad.
-pub use scratchpad::{scratchpad_show_name, scratchpad_toggle, unhide_one};
+pub use scratchpad::{
+    scratchpad_find, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    scratchpad_toggle, unhide_one,
+};

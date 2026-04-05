@@ -117,6 +117,10 @@ impl Clone for Drw {
 
 impl Drop for Drw {
     fn drop(&mut self) {
+        // Drop fonts while the X display is still valid. `Fnt::drop()`
+        // calls `XftFontClose`, which requires a live display.
+        self.fonts.take();
+
         // SAFETY: only the owning instance frees resources.
         unsafe {
             if self.owns_resources && !self.display.is_null() {
@@ -472,6 +476,7 @@ impl Drw {
         }
         let xfont: *mut XftFont;
         let pattern: *mut FcPattern;
+        let owns_pattern: bool;
 
         if let Some(name) = fontname {
             let c_name = CString::new(name).map_err(|_| "Invalid font name")?;
@@ -481,6 +486,7 @@ impl Drw {
                 return Ok(None);
             }
             pattern = unsafe { FcNameParse(c_name.as_ptr() as *const u8) };
+            owns_pattern = true;
             if pattern.is_null() {
                 eprintln!("draw: cannot parse font name '{}' to Fc pattern", name);
                 unsafe { XftFontClose(self.display, xfont) };
@@ -493,6 +499,7 @@ impl Drw {
                 return Ok(None);
             }
             pattern = pat;
+            owns_pattern = false;
         } else {
             return Err("xfont_create: no font name or pattern provided".to_string());
         }
@@ -504,6 +511,7 @@ impl Drw {
             h: (ascent + descent) as u32,
             xfont,
             pattern,
+            owns_pattern,
             ascent,
             owns_resources: true,
         }))

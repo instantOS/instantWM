@@ -3,22 +3,74 @@ use smithay::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
         find_popup_root_surface,
     },
-    input::{SeatHandler, pointer::Focus},
+    input::{
+        SeatHandler,
+        dnd::{GrabType, Source},
+        pointer::Focus,
+    },
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
+        compositor,
         seat::WaylandFocus,
         selection::{
             SelectionHandler,
-            data_device::{DataDeviceHandler, DataDeviceState, set_data_device_focus},
+            data_device::{
+                DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
+            },
+            ext_data_control::{
+                DataControlHandler as ExtDataControlHandler,
+                DataControlState as ExtDataControlState,
+            },
+            wlr_data_control::{
+                DataControlHandler as WlrDataControlHandler,
+                DataControlState as WlrDataControlState,
+            },
         },
         shell::xdg::{
-            PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler,
+            PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
             decoration::XdgDecorationHandler,
         },
     },
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
+
+impl WaylandState {
+    fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
+        if surface.parent().is_some() {
+            return true;
+        }
+
+        compositor::with_states(surface.wl_surface(), |states| {
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let current = *guard.current();
+            let min = current.min_size;
+            let max = current.max_size;
+
+            min.w > 0 && min.h > 0 && (min.w == max.w || min.h == max.h)
+        })
+    }
+
+    pub(crate) fn apply_xdg_toplevel_floating_policy(&mut self, surface: &ToplevelSurface) {
+        let wants_floating = self.xdg_toplevel_wants_floating(surface);
+        let Some(win) = self.window_id_for_toplevel(surface) else {
+            return;
+        };
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
+        let Some(client) = g.clients.get_mut(&win) else {
+            return;
+        };
+
+        if wants_floating && !client.is_floating {
+            client.float_geo = client.geo;
+            client.is_floating = true;
+            g.dirty.layout = true;
+            g.dirty.space = true;
+        }
+    }
+}
 
 impl SeatHandler for WaylandState {
     type KeyboardFocus = KeyboardFocusTarget;
@@ -45,6 +97,7 @@ impl SeatHandler for WaylandState {
         image: smithay::input::pointer::CursorImageStatus,
     ) {
         self.cursor_image_status = image;
+        self.request_render();
     }
 
     fn led_state_changed(
@@ -52,7 +105,7 @@ impl SeatHandler for WaylandState {
         _seat: &smithay::input::Seat<Self>,
         led_state: smithay::input::keyboard::LedState,
     ) {
-        if let Some(tx) = &self.led_state_tx {
+        if let Some(tx) = &self.runtime.led_state_tx {
             let _ = tx.send(led_state);
         }
     }
@@ -63,8 +116,47 @@ impl SelectionHandler for WaylandState {
 }
 
 impl DataDeviceHandler for WaylandState {
-    fn data_device_state(&self) -> &DataDeviceState {
-        &self.data_device_state
+    fn data_device_state(&mut self) -> &mut DataDeviceState {
+        &mut self.data_device_state
+    }
+}
+
+impl ExtDataControlHandler for WaylandState {
+    fn data_control_state(&mut self) -> &mut ExtDataControlState {
+        &mut self.ext_data_control_state
+    }
+}
+
+impl WlrDataControlHandler for WaylandState {
+    fn data_control_state(&mut self) -> &mut WlrDataControlState {
+        &mut self.wlr_data_control_state
+    }
+}
+
+impl WaylandDndGrabHandler for WaylandState {
+    fn dnd_requested<S: Source>(
+        &mut self,
+        _source: S,
+        icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+        _seat: smithay::input::Seat<Self>,
+        _serial: smithay::utils::Serial,
+        _type_: GrabType,
+    ) {
+        self.runtime.dnd_icon = icon;
+        self.request_render();
+    }
+}
+
+impl smithay::input::dnd::DndGrabHandler for WaylandState {
+    fn dropped(
+        &mut self,
+        _target: Option<smithay::input::dnd::DndTarget<'_, Self>>,
+        _validated: bool,
+        _seat: smithay::input::Seat<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
+        self.runtime.dnd_icon = None;
+        self.request_render();
     }
 }
 
@@ -82,22 +174,10 @@ impl XdgShellHandler for WaylandState {
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
         // Defer window creation until the surface commits its first buffer.
-        // Send an initial configure with the selected monitor's work area size
-        // to ensure the client knows the correct size from the start.
-        // This prevents issues where clients pick their own default size before
-        // the WM properly communicates the desired dimensions.
         if !surface.is_initial_configure_sent() {
-            // Get the selected monitor's work area for a reasonable default size
-            let mon = self.wm.g.selected_monitor();
-            let w = mon.work_rect.w.max(Self::MIN_WL_DIM);
-            let h = mon.work_rect.h.max(Self::MIN_WL_DIM);
-            let size = smithay::utils::Size::new(w, h);
-            surface.with_pending_state(|state| {
-                state.size = Some(size);
-            });
             let _ = surface.send_configure();
         }
-        self.pending_toplevels.push(surface);
+        self.runtime.pending_toplevels.push(surface);
     }
 
     fn title_changed(&mut self, surface: ToplevelSurface) {
@@ -105,14 +185,12 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         let props = self.window_properties(win);
-        {
-            let g = &mut self.wm.g;
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.name = props.title.clone();
-            }
-            crate::client::apply_rules(g, win, &props);
+        if let Some(g) = self.globals_mut() {
+            crate::client::handle_property_change(g, win, &props);
         }
+        self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
     }
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
@@ -120,8 +198,16 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         let props = self.window_properties(win);
-        crate::client::apply_rules(&mut self.wm.g, win, &props);
+        if let Some(g) = self.globals_mut() {
+            crate::client::handle_property_change(g, win, &props);
+        }
+        self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
+    }
+
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        self.apply_xdg_toplevel_floating_policy(&surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -133,11 +219,12 @@ impl XdgShellHandler for WaylandState {
         // If the surface was still pending (never committed a buffer),
         // just remove it — no window management state was ever created.
         if let Some(pos) = self
+            .runtime
             .pending_toplevels
             .iter()
-            .position(|t| t.wl_surface() == surface.wl_surface())
+            .position(|t: &ToplevelSurface| t.wl_surface() == surface.wl_surface())
         {
-            self.pending_toplevels.swap_remove(pos);
+            self.runtime.pending_toplevels.swap_remove(pos);
             return;
         }
 
@@ -146,7 +233,9 @@ impl XdgShellHandler for WaylandState {
         };
         self.remove_window_tracking(win);
         {
-            let g = &mut self.wm.g;
+            let Some(g) = self.globals_mut() else {
+                return;
+            };
             g.detach(win);
             g.detach_stack(win);
             g.clients.remove(&win);
@@ -194,31 +283,27 @@ impl XdgShellHandler for WaylandState {
             Err(_) => return,
         };
 
-        let keyboard = self.seat.get_keyboard();
-        let pointer = self.seat.get_pointer();
-
-        let keyboard_grab_mismatches = keyboard.as_ref().is_some_and(|k| {
-            k.is_grabbed()
-                && !(k.has_grab(serial) || grab.previous_serial().is_some_and(|s| k.has_grab(s)))
-        });
-        let pointer_grab_mismatches = pointer.as_ref().is_some_and(|p| {
-            p.is_grabbed()
-                && !(p.has_grab(serial) || grab.previous_serial().is_some_and(|s| p.has_grab(s)))
-        });
-
-        if keyboard_grab_mismatches || pointer_grab_mismatches {
-            grab.ungrab(PopupUngrabStrategy::All);
-            return;
-        }
-
-        if let Some(ref keyboard) = keyboard {
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            if keyboard.is_grabbed()
+                && !(keyboard.has_grab(serial)
+                    || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            keyboard.set_focus(self, grab.current_grab(), serial);
             keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
         }
-        if let Some(ref pointer) = pointer {
-            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+        if let Some(pointer) = self.seat.get_pointer() {
+            if pointer.is_grabbed()
+                && !(pointer.has_grab(serial)
+                    || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
+            {
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Clear);
         }
-
-        self.popup_grab = Some(grab);
     }
 
     fn reposition_request(
@@ -242,8 +327,7 @@ impl XdgShellHandler for WaylandState {
             let pointer = self.pointer.current_location();
             let root_x = pointer.x.round() as i32;
             let root_y = pointer.y.round() as i32;
-            {
-                let g = &mut self.wm.g;
+            if let Some(g) = self.globals_mut() {
                 if g.drag.interactive.active {
                     return;
                 }
@@ -294,14 +378,23 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            let g = &mut self.wm.g;
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
+            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = true;
             }
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
+            }
             g.dirty.space = true;
             g.dirty.layout = true;
-            if let Some(mon) = g.selected_monitor_mut_opt() {
+            if let Some(monitor_id) = monitor_id
+                && let Some(mon) = g.monitor_mut(monitor_id)
+            {
                 mon.fullscreen = Some(win);
             }
         }
@@ -312,17 +405,18 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            let g = &mut self.wm.g;
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = false;
             }
             g.dirty.space = true;
             g.dirty.layout = true;
-            if let Some(mon) = g.selected_monitor_mut_opt()
-                && mon.fullscreen == Some(win)
-            {
-                mon.fullscreen = None;
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
             }
         }
         surface.with_pending_state(|state| {
@@ -332,8 +426,9 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            let g = &mut self.wm.g;
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
             let is_currently_floating = g.clients.get(&win).map(|c| c.is_floating).unwrap_or(false);
 
             if let Some(client) = g.clients.get_mut(&win) {
@@ -355,8 +450,9 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            let g = &mut self.wm.g;
+        if let Some(win) = self.window_id_for_toplevel(&surface)
+            && let Some(g) = self.globals_mut()
+        {
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_floating = false;
             }
@@ -409,27 +505,75 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         &mut self.xdg_activation_state
     }
 
+    fn token_created(
+        &mut self,
+        _token: smithay::wayland::xdg_activation::XdgActivationToken,
+        token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
+    ) -> bool {
+        if let Some(g) = self.globals() {
+            let context = token_data
+                .surface
+                .as_ref()
+                .and_then(|surface| self.window_id_for_surface(surface))
+                .and_then(|source_win| g.clients.get(&source_win))
+                .map(|client| crate::client::LaunchContext {
+                    monitor_id: client.monitor_id,
+                    tags: client.tags,
+                })
+                .unwrap_or_else(|| crate::client::current_launch_context(g));
+            let _ = token_data
+                .user_data
+                .insert_if_missing_threadsafe(|| context);
+        }
+        true
+    }
+
     fn request_activation(
         &mut self,
         _token: smithay::wayland::xdg_activation::XdgActivationToken,
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
+        let launch_context = token_data
+            .user_data
+            .get::<crate::client::LaunchContext>()
+            .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
-            let monitor_id = self.wm.g.clients.monitor_id(win);
-            if let Some(mon_id) = monitor_id
-                && let Some(mon) = self.wm.g.monitor_mut(mon_id)
-            {
-                mon.sel = Some(win);
+            let activated = self.with_wm_mut_unified(|wm, _state| {
+                let mut ctx = wm.ctx();
+                crate::focus::activate_client(&mut ctx, win)
+            });
+            if activated == Some(true) {
+                log::debug!(
+                    "xdg_activation: activated window {:?} (app_id: {:?})",
+                    win,
+                    token_data.app_id
+                );
+            } else {
+                log::warn!(
+                    "xdg_activation: failed to activate window {:?} (app_id: {:?})",
+                    win,
+                    token_data.app_id
+                );
             }
-            self.set_focus(win);
+            return;
+        }
+
+        if let Some(context) = launch_context {
+            smithay::wayland::compositor::with_states(&surface, |states| {
+                let _ = states.data_map.insert_if_missing_threadsafe(|| {
+                    crate::backend::wayland::compositor::state::PendingLaunchContextMarker {
+                        context,
+                    }
+                });
+            });
             log::debug!(
-                "xdg_activation: activated window (app_id: {:?})",
+                "xdg_activation: stored launch context for pending surface (app_id: {:?})",
                 token_data.app_id
             );
         } else {
             log::warn!(
-                "xdg_activation: could not find window for surface (app_id: {:?})",
+                "xdg_activation: missing launch context for pending surface (app_id: {:?})",
                 token_data.app_id
             );
         }

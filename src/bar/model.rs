@@ -7,7 +7,7 @@ use crate::types::*;
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientBarStats {
     pub occupied_tags: TagMask,
-    pub urgent_tags: u32,
+    pub urgent_tags: TagMask,
     pub visible_clients: i32,
 }
 
@@ -17,26 +17,26 @@ impl ClientBarStats {
         let mut stats = Self::default();
         let selected = monitor.selected_tags();
 
-        // ── Pass 1: visible_clients via the linked list ───────────────────
+        // ── Pass 1: clients with title entries in the bar ─────────────────
         for (_win, client) in monitor.iter_clients(globals.clients.map()) {
-            if client.is_visible_on_tags(selected) {
+            if client.shows_in_bar(selected) {
                 stats.visible_clients += 1;
             }
         }
 
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
         let monitor_id = monitor.id();
-        let mut occupied: u32 = 0;
+        let mut occupied = TagMask::EMPTY;
         for client in globals.clients.values() {
             if client.monitor_id != monitor_id {
                 continue;
             }
-            occupied |= client.tags;
+            occupied = occupied | client.tags;
             if client.is_urgent {
-                stats.urgent_tags |= client.tags;
+                stats.urgent_tags = stats.urgent_tags | client.tags;
             }
         }
-        stats.occupied_tags = TagMask::from_bits(occupied).without_scratchpad();
+        stats.occupied_tags = occupied.without_scratchpad();
 
         stats
     }
@@ -65,7 +65,7 @@ pub(crate) fn hit_test(
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
-    if local_x < core.globals().cfg.startmenusize {
+    if local_x < monitor.startmenu_size {
         return BarPosition::StartMenu;
     }
 
@@ -127,11 +127,11 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let is_selmon = core.globals().selected_monitor().num == mon.num;
     let tag_end = get_tag_width(core);
     let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
-    let bar_height = core.globals().cfg.bar_height;
+    let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
-    let mut acc = core.globals().cfg.startmenusize;
+    let mut acc = mon.startmenu_size;
     for (slot, &w) in core.bar.tag_widths.iter().enumerate() {
         tag_ranges.push(TagHitRange {
             start: acc,
@@ -158,24 +158,24 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
-    let visible_clients: Vec<WindowId> = mon
+    let title_clients: Vec<WindowId> = mon
         .iter_clients(core.globals().clients.map())
-        .filter_map(|(win, c)| c.is_visible_on_tags(selected).then_some(win))
+        .filter_map(|(win, c)| c.shows_in_bar(selected).then_some(win))
         .collect();
 
     let mut title_ranges: Vec<TitleHitRange> = Vec::new();
-    if !visible_clients.is_empty() {
+    if !title_clients.is_empty() {
         let title_area_start = layout_end;
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
             (mon.work_rect.w - title_area_start).max(0)
         };
-        let n = visible_clients.len() as i32;
+        let n = title_clients.len() as i32;
         let each_width = total_width / n;
         let mut remainder = total_width % n;
         let mut cell_start = title_area_start;
-        for win in visible_clients {
+        for win in title_clients {
             let this_width = if remainder > 0 {
                 remainder -= 1;
                 each_width + 1

@@ -2,6 +2,7 @@ use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, focus_n_mon};
 use crate::types::MonitorDirection;
 use crate::wm::Wm;
+use std::collections::HashMap;
 
 pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
     match cmd {
@@ -17,6 +18,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             scale,
             transform,
             enable,
+            vrr,
         } => set_monitor_config(
             wm,
             identifier,
@@ -26,6 +28,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             scale,
             transform.map(|t| t.to_string()),
             enable,
+            vrr,
         ),
         MonitorCommand::Modes { identifier } => list_modes(wm, identifier),
     }
@@ -33,17 +36,30 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
 
 fn list_monitors(wm: &Wm) -> Response {
     let selected_id = wm.g.selected_monitor_id();
+    let output_info: HashMap<_, _> = wm
+        .backend
+        .get_outputs()
+        .into_iter()
+        .map(|output| (output.name.clone(), output))
+        .collect();
 
     let monitors: Vec<crate::ipc_types::MonitorInfo> =
         wm.g.monitors_iter()
             .map(|(id, m)| crate::ipc_types::MonitorInfo {
                 id,
                 index: m.num,
+                name: m.name.clone(),
                 width: m.monitor_rect.w,
                 height: m.monitor_rect.h,
                 x: m.monitor_rect.x,
                 y: m.monitor_rect.y,
                 is_primary: id == selected_id,
+                vrr_support: output_info
+                    .get(&m.name)
+                    .map(|o| o.vrr_support)
+                    .unwrap_or(crate::backend::BackendVrrSupport::Unsupported),
+                vrr_mode: output_info.get(&m.name).and_then(|o| o.vrr_mode),
+                vrr_enabled: output_info.get(&m.name).is_some_and(|o| o.vrr_enabled),
             })
             .collect();
 
@@ -80,6 +96,7 @@ fn set_monitor_config(
     scale: Option<f32>,
     transform: Option<String>,
     enable: Option<bool>,
+    vrr: Option<crate::config::config_toml::VrrMode>,
 ) -> Response {
     let resolved_id = if identifier == "focused" {
         let name = wm.g.selected_monitor().name.clone();
@@ -99,6 +116,7 @@ fn set_monitor_config(
         scale,
         transform,
         enable,
+        vrr,
     };
 
     wm.g.cfg.monitors.insert(resolved_id, config);

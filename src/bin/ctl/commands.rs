@@ -1,9 +1,11 @@
 use clap::{Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
-    MonitorCommand, MonitorDirection, ScratchpadCommand, SpecialNext, TagCommand, ToggleCommand,
-    Transform, WindowCommand,
+    MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus, SpecialNext,
+    TagCommand, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
+
+const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 
 #[derive(Debug, Clone)]
 pub struct KeyboardLayoutArg {
@@ -65,6 +67,8 @@ pub enum MonitorAction {
         scale: Option<f32>,
         #[arg(long, short = 't')]
         transform: Option<Transform>,
+        #[arg(long)]
+        vrr: Option<VrrMode>,
         #[arg(long, conflicts_with = "disable")]
         enable: bool,
         #[arg(long, conflicts_with = "enable")]
@@ -111,16 +115,21 @@ pub enum ScratchpadAction {
         all: bool,
     },
     Hide {
-        name: String,
+        name: Option<String>,
+        #[arg(short, long)]
+        all: bool,
     },
     Toggle {
         name: Option<String>,
     },
     #[command(alias = "make")]
     Create {
+        #[arg(default_value = "instantwm_scratchpad")]
         name: String,
         #[arg(long, short = 'w')]
         window_id: Option<u32>,
+        #[arg(long, default_value = "hidden")]
+        status: ScratchpadInitialStatus,
     },
     Delete {
         #[arg(long, short = 'w')]
@@ -130,9 +139,28 @@ pub enum ScratchpadAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum WindowAction {
-    List { window_id: Option<u32> },
-    Geom { window_id: Option<u32> },
-    Close { window_id: Option<u32> },
+    List {
+        window_id: Option<u32>,
+    },
+    Info {
+        window_id: Option<u32>,
+    },
+    Resize {
+        window_id: Option<u32>,
+        #[arg(long)]
+        monitor: Option<String>,
+        #[arg(long)]
+        x: i32,
+        #[arg(long)]
+        y: i32,
+        #[arg(long)]
+        width: i32,
+        #[arg(long)]
+        height: i32,
+    },
+    Close {
+        window_id: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -299,6 +327,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     pos,
                     scale,
                     transform,
+                    vrr,
                     enable,
                     disable,
                 } => {
@@ -317,6 +346,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                         scale,
                         transform,
                         enable: enable_val,
+                        vrr,
                     }
                 }
                 MonitorAction::Modes { identifier } => MonitorCommand::Modes {
@@ -328,7 +358,22 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         CommandKind::Window { action } => {
             let cmd = match action {
                 WindowAction::List { window_id } => WindowCommand::List(window_id),
-                WindowAction::Geom { window_id } => WindowCommand::Geom(window_id),
+                WindowAction::Info { window_id } => WindowCommand::Info(window_id),
+                WindowAction::Resize {
+                    window_id,
+                    monitor,
+                    x,
+                    y,
+                    width,
+                    height,
+                } => WindowCommand::Resize {
+                    window_id,
+                    monitor,
+                    x,
+                    y,
+                    width,
+                    height,
+                },
                 WindowAction::Close { window_id } => WindowCommand::Close(window_id),
             };
             IpcCommand::Window(cmd)
@@ -398,14 +443,30 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     if all {
                         ScratchpadCommand::ShowAll
                     } else {
-                        ScratchpadCommand::Show(name)
+                        ScratchpadCommand::Show(Some(
+                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                        ))
                     }
                 }
-                ScratchpadAction::Hide { name } => ScratchpadCommand::Hide(name),
-                ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
-                ScratchpadAction::Create { name, window_id } => {
-                    ScratchpadCommand::Create { name, window_id }
+                ScratchpadAction::Hide { name, all } => {
+                    if all {
+                        ScratchpadCommand::HideAll
+                    } else {
+                        ScratchpadCommand::Hide(Some(
+                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                        ))
+                    }
                 }
+                ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
+                ScratchpadAction::Create {
+                    name,
+                    window_id,
+                    status,
+                } => ScratchpadCommand::Create {
+                    name,
+                    window_id,
+                    status,
+                },
                 ScratchpadAction::Delete { window_id } => ScratchpadCommand::Delete { window_id },
             };
             IpcCommand::Scratchpad(cmd)

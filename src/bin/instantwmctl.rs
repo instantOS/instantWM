@@ -7,12 +7,183 @@ use instantwm::ipc_types::IpcCommand;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ctl::commands::ScratchpadAction;
     use clap::Parser;
+    use instantwm::ipc_types::{ScratchpadInitialStatus, WindowCommand};
 
     #[test]
     fn parses_reload_command() {
         let cli = Cli::parse_from(["instantwmctl", "reload"]);
         assert!(matches!(cli.command, ctl::CommandKind::Reload));
+    }
+
+    #[test]
+    fn parses_scratchpad_create_status_flag() {
+        let cli = Cli::parse_from([
+            "instantwmctl",
+            "scratchpad",
+            "create",
+            "term",
+            "--status",
+            "shown",
+        ]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ScratchpadAction::Create {
+                    name,
+                    window_id: None,
+                    status: ScratchpadInitialStatus::Shown,
+                }
+            } if name == "term"
+        ));
+    }
+
+    #[test]
+    fn scratchpad_create_defaults_to_hidden() {
+        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "create", "term"]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ScratchpadAction::Create {
+                    name,
+                    window_id: None,
+                    status: ScratchpadInitialStatus::Hidden,
+                }
+            } if name == "term"
+        ));
+    }
+
+    #[test]
+    fn scratchpad_create_defaults_name_when_omitted() {
+        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "create"]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ScratchpadAction::Create {
+                    name,
+                    window_id: None,
+                    status: ScratchpadInitialStatus::Hidden,
+                }
+            } if name == "instantwm_scratchpad"
+        ));
+    }
+
+    #[test]
+    fn parses_scratchpad_hide_all_flag() {
+        let cli = Cli::parse_from(["instantwmctl", "scratchpad", "hide", "--all"]);
+
+        assert!(matches!(
+            cli.command,
+            ctl::CommandKind::Scratchpad {
+                action: ScratchpadAction::Hide {
+                    name: None,
+                    all: true
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn scratchpad_show_defaults_name_when_omitted() {
+        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "scratchpad", "show"]).command);
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Show(Some(name)))
+                if name == "instantwm_scratchpad"
+        ));
+    }
+
+    #[test]
+    fn scratchpad_hide_defaults_name_when_omitted() {
+        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "scratchpad", "hide"]).command);
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Scratchpad(instantwm::ipc_types::ScratchpadCommand::Hide(Some(name)))
+                if name == "instantwm_scratchpad"
+        ));
+    }
+
+    #[test]
+    fn parses_window_info_command() {
+        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "window", "info", "42"]).command);
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Window(WindowCommand::Info(Some(42)))
+        ));
+    }
+
+    #[test]
+    fn parses_window_resize_command() {
+        let cmd = command_to_ipc(
+            Cli::parse_from([
+                "instantwmctl",
+                "window",
+                "resize",
+                "42",
+                "--monitor",
+                "1",
+                "--x",
+                "10",
+                "--y",
+                "20",
+                "--width",
+                "800",
+                "--height",
+                "600",
+            ])
+            .command,
+        );
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Window(WindowCommand::Resize {
+                window_id: Some(42),
+                monitor: Some(monitor),
+                x: 10,
+                y: 20,
+                width: 800,
+                height: 600,
+            }) if monitor == "1"
+        ));
+    }
+
+    #[test]
+    fn parses_window_resize_without_monitor() {
+        let cmd = command_to_ipc(
+            Cli::parse_from([
+                "instantwmctl",
+                "window",
+                "resize",
+                "--x",
+                "10",
+                "--y",
+                "20",
+                "--width",
+                "800",
+                "--height",
+                "600",
+            ])
+            .command,
+        );
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Window(WindowCommand::Resize {
+                window_id: None,
+                monitor: None,
+                x: 10,
+                y: 20,
+                width: 800,
+                height: 600,
+            })
+        ));
     }
 }
 
@@ -24,7 +195,7 @@ fn main() {
             if *list {
                 let actions = instantwm::config::keybind_config::get_actions_for_ipc();
                 let response = instantwm::ipc_types::Response::ActionList(actions);
-                format_response(&response, cli.json, None);
+                format_response(&response, cli.json);
                 return;
             }
             let name = match name {
@@ -71,16 +242,12 @@ fn main() {
     let response = match client.send(command, cli.ignore_version_mismatches) {
         Ok(r) => r,
         Err(e) => {
-            if let Some(version_msg) = IpcClient::check_version(&socket) {
-                eprintln!("instantwmctl: {}", version_msg);
-            } else {
-                eprintln!("instantwmctl: {}", e);
-            }
+            eprintln!("instantwmctl: {}", e);
             std::process::exit(1);
         }
     };
 
-    format_response(&response, cli.json, Some(&socket));
+    format_response(&response, cli.json);
 }
 
 fn handle_status_from_stdin(ignore_version_mismatches: bool) {

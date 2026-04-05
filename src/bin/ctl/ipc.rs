@@ -1,4 +1,4 @@
-use instantwm::ipc_types::{IPC_PROTOCOL_VERSION, IpcCommand, IpcRequest, Response};
+use instantwm::ipc_types::{IpcCommand, IpcRequest, Response};
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
@@ -39,26 +39,6 @@ impl IpcClient {
         let (response, _) = bincode::decode_from_slice(&data, bincode::config::standard())
             .map_err(|e| IpcError::Deserialize(e.to_string()))?;
         Ok(response)
-    }
-
-    /// Try to fetch the server's version via a Status command to produce a
-    /// helpful version-mismatch message.  Returns `None` when the check itself
-    /// fails (the server might be unreachable by now).
-    pub fn check_version(socket_path: &str) -> Option<String> {
-        let mut client = IpcClient::connect(socket_path).ok()?;
-        // Status is the most stable command – send with ignore_version so the
-        // server doesn't reject it for the same mismatch we're diagnosing.
-        let response = client.send(IpcCommand::Status, true).ok()?;
-        if let Response::Status(info) = response {
-            let client_version = IPC_PROTOCOL_VERSION;
-            if info.protocol_version != client_version {
-                return Some(format!(
-                    "version mismatch: client is {}, server is {}. Please ensure instantwmctl and instantWM are the same version.",
-                    client_version, info.protocol_version
-                ));
-            }
-        }
-        None
     }
 }
 

@@ -5,6 +5,7 @@ use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 
 use crate::backend::Backend as WmBackend;
+use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
 use crate::backend::x11::draw::Drw;
@@ -43,9 +44,9 @@ pub fn run() {
             crate::backend::x11::events::scan(&mut x11_ctx);
         }
     }
-    let ipc_server = crate::runtime::late_init(&mut wm);
+    let mut ipc_server = crate::runtime::late_init(&wm);
 
-    crate::backend::x11::events::run(&mut wm, ipc_server);
+    crate::backend::x11::events::run(&mut wm, &mut ipc_server);
     crate::backend::x11::lifecycle::cleanup(&mut wm);
 }
 
@@ -71,9 +72,8 @@ fn wm_init(wm: &mut Wm) {
     crate::backend::x11::events::setup_root(wm);
 
     // After atoms + drw exist, we can verify tag naming and create bars.
+    crate::runtime::init_keyboard_layout(wm);
     {
-        // Call init_keyboard_layout before destructuring to avoid moving ctx
-        crate::keyboard_layout::init_keyboard_layout(&mut wm.ctx());
         let crate::contexts::WmCtx::X11(mut ctx) = wm.ctx() else {
             return;
         };
@@ -89,7 +89,7 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.systray.as_deref_mut(),
         );
-        crate::backend::x11::grab::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+        crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
         crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
     }
 }
@@ -100,7 +100,7 @@ fn init_globals(
     root: Window,
     screen: &x11rb::protocol::xproto::Screen,
 ) {
-    let cfg = init_config();
+    let cfg = init_config(BackendKind::X11);
 
     // X11-specific runtime initialization
     if let Some(data) = wm.backend.x11_data_mut() {

@@ -16,7 +16,7 @@
 //! window is snapped into place instantly (0 frames) to avoid mid-air ghost
 //! windows appearing during the animation.
 
-use crate::animation::animate_client;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::backend::BackendOps;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
 use crate::contexts::WmCtx;
@@ -61,7 +61,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0
             };
 
-        animate_client(
+        move_resize_client(
             ctx,
             win,
             &Rect {
@@ -70,8 +70,8 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
                 h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
             },
+            MoveResizeMode::Normal,
             frames,
-            0,
         );
     }
 }

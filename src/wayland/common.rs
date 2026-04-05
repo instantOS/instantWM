@@ -18,12 +18,20 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use smithay::backend::renderer::element::Kind;
-use smithay::backend::renderer::element::memory::MemoryRenderBufferRenderElement;
+use smithay::backend::renderer::element::memory::{
+    MemoryRenderBuffer, MemoryRenderBufferRenderElement,
+};
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::{
+    RenderElementStates, default_primary_scanout_output_compare,
+};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::PopupManager;
-use smithay::desktop::utils::{send_frames_surface_tree, surface_primary_scanout_output};
+use smithay::desktop::utils::{
+    send_frames_surface_tree, surface_primary_scanout_output,
+    update_surface_primary_scanout_output, with_surfaces_surface_tree,
+};
 use smithay::input::keyboard::ModifiersState;
 use smithay::input::pointer::{CursorIcon, CursorImageAttributes, CursorImageStatus};
 use smithay::output::Output;
@@ -35,7 +43,7 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
-use crate::backend::wayland::compositor::{SurfaceFrameThrottle, WaylandClientState, WaylandState};
+use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
@@ -185,7 +193,7 @@ pub fn resolve_cursor_presentation(
 /// the Wayland compositor is fully initialized, so monitor geometry is not
 /// available yet - that will be done via update_geom later.
 pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
-    let cfg = init_config();
+    let cfg = init_config(crate::backend::BackendKind::Wayland);
     g.cfg.screen_width = 1280;
     g.cfg.screen_height = 800;
     crate::globals::apply_config(g, &cfg);
@@ -228,6 +236,9 @@ pub fn apply_wayland_session_env(socket_name: &str) {
     unsafe {
         std::env::set_var("WAYLAND_DISPLAY", socket_name);
         std::env::set_var("XDG_SESSION_TYPE", "wayland");
+        std::env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
+        std::env::set_var("XDG_SESSION_DESKTOP", "instantwm");
+        std::env::set_var("DESKTOP_SESSION", "instantwm");
         std::env::remove_var("DISPLAY");
         std::env::set_var("GDK_BACKEND", "wayland");
         std::env::set_var("QT_QPA_PLATFORM", "wayland");
@@ -262,6 +273,51 @@ pub fn ensure_dbus_session() {
     }
 }
 
+/// Import the Wayland session environment into the D-Bus activation environment.
+///
+/// Portals and other D-Bus-activated services need these variables to discover
+/// the compositor socket and desktop identity. This mirrors the environment
+/// import step commonly done by compositor session wrappers.
+pub fn import_wayland_env_into_dbus_activation() {
+    let mut attempted = false;
+
+    if let Ok(status) = Command::new("dbus-update-activation-environment")
+        .arg("--systemd")
+        .arg("WAYLAND_DISPLAY")
+        .arg("XDG_CURRENT_DESKTOP")
+        .arg("XDG_SESSION_DESKTOP")
+        .arg("DESKTOP_SESSION")
+        .status()
+    {
+        attempted = true;
+        if !status.success() {
+            log::debug!(
+                "dbus-update-activation-environment exited with status {}",
+                status
+            );
+        }
+    }
+
+    // Fall back to the non-systemd import path when systemd integration is
+    // unavailable.
+    if !attempted {
+        match Command::new("dbus-update-activation-environment")
+            .arg("WAYLAND_DISPLAY")
+            .arg("XDG_CURRENT_DESKTOP")
+            .arg("XDG_SESSION_DESKTOP")
+            .arg("DESKTOP_SESSION")
+            .status()
+        {
+            Ok(status) if !status.success() => log::debug!(
+                "dbus-update-activation-environment exited with status {}",
+                status
+            ),
+            Ok(_) => {}
+            Err(err) => log::debug!("dbus-update-activation-environment unavailable: {}", err),
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Wayland socket
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,9 +339,10 @@ pub fn setup_wayland_socket(
         .into_owned();
 
     apply_wayland_session_env(&socket_name);
+    import_wayland_env_into_dbus_activation();
 
     loop_handle
-        .insert_source(listening_socket, |client, _, data: &mut WaylandState| {
+        .insert_source(listening_socket, |client, _, data| {
             let _ = data
                 .display_handle
                 .insert_client(client, Arc::new(WaylandClientState::default()));
@@ -322,27 +379,28 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         Ok((xwayland, client)) => {
             unsafe { std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
             let handle_for_wm = loop_handle.clone();
-            if let Err(err) =
-                loop_handle.insert_source(xwayland, move |event, _, data: &mut WaylandState| {
-                    match event {
-                        XWaylandEvent::Ready {
-                            x11_socket,
-                            display_number,
-                        } => {
-                            data.xdisplay = Some(display_number);
-                            unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
-                            match X11Wm::start_wm(handle_for_wm.clone(), x11_socket, client.clone())
-                            {
-                                Ok(wm) => data.xwm = Some(wm),
-                                Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
-                            }
-                        }
-                        XWaylandEvent::Error => {
-                            log::error!("XWayland failed to start");
-                        }
-                    }
-                })
+            if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
             {
+                XWaylandEvent::Ready {
+                    x11_socket,
+                    display_number,
+                } => {
+                    data.xdisplay = Some(display_number);
+                    unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
+                    match X11Wm::start_wm(
+                        handle_for_wm.clone(),
+                        &data.display_handle,
+                        x11_socket,
+                        client.clone(),
+                    ) {
+                        Ok(wm) => data.xwm = Some(wm),
+                        Err(e) => log::error!("failed to start X11 WM for XWayland: {e}"),
+                    }
+                }
+                XWaylandEvent::Error => {
+                    log::error!("XWayland failed to start");
+                }
+            }) {
                 log::error!("failed to insert XWayland source: {err}");
             }
         }
@@ -381,33 +439,23 @@ pub fn spawn_wayland_smoke_window() {
 /// The caller is responsible for adding the returned elements to its own
 /// custom-element list under the appropriate backend-specific wrapper variant
 /// (e.g. `DrmExtras::Memory` or `WaylandExtras::Memory`).
-pub fn build_bar_elements(
+pub fn build_bar_buffers(
     wm: &mut Wm,
-    renderer: &mut GlesRenderer,
-) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
+    state: &mut WaylandState,
+) -> Vec<(MemoryRenderBuffer, i32, i32)> {
     if !wm.g.cfg.show_bar {
         return Vec::new();
     }
 
     let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
 
-    let bar_buffers = {
+    {
         let Backend::Wayland(data) = &mut wm.backend else {
             return Vec::new();
         };
 
-        // Poll systray events
-        if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
-            let dirty = runtime.poll_events(
-                &mut core,
-                &mut data.wayland_systray,
-                &mut data.wayland_systray_menu,
-            );
-            if dirty {
-                core.bar.mark_dirty();
-            }
-        }
-
+        data.bar_painter
+            .set_render_ping(state.runtime.render_ping.clone());
         crate::bar::wayland::render_bar_buffers(
             &mut core,
             &mut data.bar_painter,
@@ -415,7 +463,15 @@ pub fn build_bar_elements(
             &data.wayland_systray,
             data.wayland_systray_menu.as_ref(),
         )
-    };
+    }
+}
+
+pub fn build_bar_elements(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    renderer: &mut GlesRenderer,
+) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
+    let bar_buffers = build_bar_buffers(wm, state);
     let mut elements = Vec::new();
     for (buffer, x, y) in bar_buffers {
         match MemoryRenderBufferRenderElement::from_buffer(
@@ -434,6 +490,41 @@ pub fn build_bar_elements(
     elements
 }
 
+/// Poll Wayland systray events once and mark the bar dirty when icons changed.
+pub fn poll_wayland_systray(wm: &mut Wm) {
+    let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let Backend::Wayland(data) = &mut wm.backend else {
+        return;
+    };
+
+    if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
+        let dirty = runtime.poll_events(
+            &mut core,
+            &mut data.wayland_systray,
+            &mut data.wayland_systray_menu,
+        );
+        if dirty {
+            core.bar.mark_dirty();
+        }
+    }
+}
+
+/// Shared render elements that are not output-local and can be reused across
+/// multiple output renders in the same frame.
+#[derive(Clone)]
+pub struct FixedSceneElements {
+    pub bar_buffers: Vec<(MemoryRenderBuffer, i32, i32)>,
+    pub borders: Vec<SolidColorRenderElement>,
+}
+
+/// Build the shared scene pieces that do not depend on the target output.
+pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> FixedSceneElements {
+    FixedSceneElements {
+        bar_buffers: build_bar_buffers(wm, state),
+        borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),
+    }
+}
+
 /// Backend-agnostic render element buckets used by both Wayland startup paths.
 pub struct CommonSceneElements {
     pub overlays: Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
@@ -443,9 +534,21 @@ pub struct CommonSceneElements {
 
 /// Build the shared set of scene extras used by both startup renderers.
 pub fn build_common_scene_elements(
+    wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
     output_x_offset: i32,
+) -> CommonSceneElements {
+    let fixed = build_fixed_scene_elements(wm, state);
+    build_common_scene_elements_from_fixed(state, renderer, output_x_offset, fixed)
+}
+
+/// Build the full scene for one output from reusable shared pieces.
+pub fn build_common_scene_elements_from_fixed(
+    state: &WaylandState,
+    renderer: &mut GlesRenderer,
+    output_x_offset: i32,
+    fixed: FixedSceneElements,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
@@ -462,13 +565,26 @@ pub fn build_common_scene_elements(
         overlays.extend(elems);
     }
 
-    let bar = build_bar_elements(&mut state.wm, renderer);
-    let borders = crate::wayland::render::borders::render_border_elements(&state.wm.g, state);
+    let mut bar = Vec::new();
+    for (buffer, x, y) in fixed.bar_buffers {
+        match MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            (x as f64, y as f64),
+            &buffer,
+            None,
+            None,
+            None,
+            Kind::Unspecified,
+        ) {
+            Ok(elem) => bar.push(elem),
+            Err(e) => log::warn!("bar buffer upload failed: {:?}", e),
+        }
+    }
 
     CommonSceneElements {
         overlays,
         bar,
-        borders,
+        borders: fixed.borders,
     }
 }
 
@@ -484,13 +600,12 @@ pub fn build_common_scene_elements(
 /// Only windows whose geometry intersects the output receive callbacks,
 /// preventing off-screen windows from committing empty-damage frames in a
 /// busy loop (an approach borrowed from niri's per-output frame throttling).
-///
-/// Frame callback sending is throttled per-surface using `frame_callback_sequence`.
-/// A surface will not receive duplicate frame callbacks within a single sequence,
-/// preventing clients from busy-looping (commit → callback → commit).
-pub fn send_frame_callbacks(state: &mut WaylandState, output: &Output, elapsed: Duration) {
-    let sequence = state.frame_callback_sequence;
+pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
     let output_geo = state.space.output_geometry(output);
+    let throttle = output.current_mode().and_then(|mode| {
+        let refresh = u64::try_from(mode.refresh).ok()?;
+        (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
+    });
 
     for window in state.space.elements() {
         // Only notify windows that are actually visible on this output.
@@ -505,52 +620,21 @@ pub fn send_frame_callbacks(state: &mut WaylandState, output: &Output, elapsed: 
         }
 
         if let Some(wl_surface) = window.wl_surface() {
-            // Check throttle: skip if already sent this surface on this output in this sequence
-            if let Some(throttle) = state.surface_frame_throttle.get(&*wl_surface) {
-                if let Some((last_output, last_seq)) = &throttle.last_sent {
-                    if last_output == output && *last_seq == sequence {
-                        continue;
-                    }
-                }
-            }
-
             send_frames_surface_tree(
                 &wl_surface,
                 output,
                 elapsed,
-                Some(Duration::from_millis(16)),
+                throttle,
                 surface_primary_scanout_output,
             );
-            state.surface_frame_throttle.insert(
-                wl_surface.clone().into_owned(),
-                SurfaceFrameThrottle {
-                    last_sent: Some((output.clone(), sequence)),
-                },
-            );
-
             if let Some(toplevel) = window.toplevel() {
                 for (popup, _) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-                    let popup_surface = popup.wl_surface();
-                    if let Some(throttle) = state.surface_frame_throttle.get(&*popup_surface) {
-                        if let Some((last_output, last_seq)) = &throttle.last_sent {
-                            if last_output == output && *last_seq == sequence {
-                                continue;
-                            }
-                        }
-                    }
-
                     send_frames_surface_tree(
-                        &popup_surface,
+                        popup.wl_surface(),
                         output,
                         elapsed,
-                        Some(Duration::from_millis(16)),
+                        throttle,
                         surface_primary_scanout_output,
-                    );
-                    state.surface_frame_throttle.insert(
-                        popup_surface.clone().to_owned(),
-                        SurfaceFrameThrottle {
-                            last_sent: Some((output.clone(), sequence)),
-                        },
                     );
                 }
             }
@@ -560,12 +644,71 @@ pub fn send_frame_callbacks(state: &mut WaylandState, output: &Output, elapsed: 
     // Layer surfaces for this output only.
     let map = smithay::desktop::layer_map_for_output(output);
     for layer_surface in map.layers() {
-        layer_surface.send_frame(
-            output,
-            elapsed,
-            Some(Duration::from_millis(16)),
-            surface_primary_scanout_output,
-        );
+        layer_surface.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
+    }
+}
+
+/// Update Smithay's primary-scanout bookkeeping for all surfaces visible on `output`.
+///
+/// `send_frames_surface_tree` and presentation feedback use this state to decide
+/// which output should drive a surface's callbacks. If we never update it,
+/// frame callbacks are throttled as if every surface were off-screen, which can
+/// stall clients that rely on `wl_surface.frame`.
+pub fn update_primary_scanout_output(
+    state: &WaylandState,
+    output: &Output,
+    render_states: &RenderElementStates,
+) {
+    let output_geo = state.space.output_geometry(output);
+
+    if state.is_locked() {
+        let output_name = output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            with_surfaces_surface_tree(lock_surface.wl_surface(), |surface, data| {
+                let _ = update_surface_primary_scanout_output(
+                    surface,
+                    output,
+                    data,
+                    render_states,
+                    default_primary_scanout_output_compare,
+                );
+            });
+        }
+        return;
+    }
+
+    for window in state.space.elements() {
+        if let Some(out_geo) = output_geo
+            && let Some(win_loc) = state.space.element_location(window)
+        {
+            let win_rect = smithay::utils::Rectangle::new(win_loc, window.geometry().size);
+            if !out_geo.overlaps(win_rect) {
+                continue;
+            }
+        }
+
+        window.with_surfaces(|surface, data| {
+            let _ = update_surface_primary_scanout_output(
+                surface,
+                output,
+                data,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
+    }
+
+    let map = smithay::desktop::layer_map_for_output(output);
+    for layer_surface in map.layers() {
+        layer_surface.with_surfaces(|surface, data| {
+            let _ = update_surface_primary_scanout_output(
+                surface,
+                output,
+                data,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+        });
     }
 }
 

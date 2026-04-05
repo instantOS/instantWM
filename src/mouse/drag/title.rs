@@ -265,7 +265,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
         restack(ctx, selmon_id);
     } else if was_focused {
-        crate::client::hide(ctx, win);
+        crate::client::hide_for_user(ctx, win);
     } else {
         crate::focus::focus_soft(ctx, Some(win));
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
