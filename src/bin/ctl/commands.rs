@@ -214,6 +214,11 @@ pub enum InputAction {
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    LeftHanded {
+        state: String,
+        #[arg(short, long)]
+        identifier: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -445,6 +450,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     KeyboardCommand::Add(KeyboardLayout::from(arg))
                 }
                 KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
+                KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
             };
             IpcCommand::Keyboard(cmd)
         }
@@ -509,6 +515,10 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                 InputAction::ScrollFactor { identifier, value } => {
                     InputCommand::ScrollFactor { identifier, value }
                 }
+                InputAction::LeftHanded { identifier, state } => InputCommand::LeftHanded {
+                    identifier,
+                    enabled: state == "enabled" || state == "on",
+                },
             };
             IpcCommand::Input(cmd)
         }

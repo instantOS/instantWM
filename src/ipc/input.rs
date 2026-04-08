@@ -36,8 +36,8 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
                 .iter()
                 .map(|(id, cfg)| {
                     format!(
-                        "[{}]\ntap: {:?}\nnatural_scroll: {:?}\naccel_profile: {:?}\npointer_accel: {:?}\nscroll_factor: {:?}",
-                        id, cfg.tap, cfg.natural_scroll, cfg.accel_profile, cfg.pointer_accel, cfg.scroll_factor,
+                        "[{}]\ntap: {:?}\nnatural_scroll: {:?}\naccel_profile: {:?}\npointer_accel: {:?}\nscroll_factor: {:?}\nleft_handed: {:?}",
+                        id, cfg.tap, cfg.natural_scroll, cfg.accel_profile, cfg.pointer_accel, cfg.scroll_factor, cfg.left_handed,
                     )
                 })
                 .collect();
@@ -102,6 +102,18 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             let identifier = identifier.unwrap_or_else(|| "*".to_string());
             let cfg = inputs.entry(identifier).or_default();
             cfg.scroll_factor = Some(value);
+        }
+        InputCommand::LeftHanded {
+            identifier,
+            enabled,
+        } => {
+            let identifier = identifier.unwrap_or_else(|| "*".to_string());
+            let cfg = inputs.entry(identifier).or_default();
+            cfg.left_handed = Some(if enabled {
+                ToggleSetting::Enabled
+            } else {
+                ToggleSetting::Disabled
+            });
         }
     }
     wm.g.dirty.input_config = true;

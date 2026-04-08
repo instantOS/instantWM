@@ -286,6 +286,10 @@ pub enum InputCommand {
         identifier: Option<String>,
         value: f64,
     },
+    LeftHanded {
+        identifier: Option<String>,
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
