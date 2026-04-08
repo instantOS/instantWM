@@ -51,6 +51,9 @@ jobs:
     concurrency:
       group: release-plz-${{ github.ref }}
       cancel-in-progress: false
+    env:
+      CARGO_HOME: /opt/cargo
+      RUSTUP_HOME: /opt/rustup
     steps:
       - name: Install dependencies
         run: apt-get update && apt-get install -y curl git ca-certificates jq tar build-essential pkg-config libssl-dev cmake
@@ -62,9 +65,15 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install release-plz
+        run: |
+          curl -sSLf https://github.com/release-plz/release-plz/releases/latest/download/release-plz-x86_64-unknown-linux-gnu.tar.gz | tar xz -C /usr/local/bin
       - name: Run release-plz
-        uses: release-plz/action@v0.5
-        with:
-          command: release-pr
+        run: release-plz release-pr --git-token "$RELEASE_PLZ_TOKEN"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PLZ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Clean up toolchains
+        if: always()
+        run: rm -rf /opt/cargo /opt/rustup

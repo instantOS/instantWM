@@ -221,6 +221,12 @@ pub enum ModeAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
+pub enum ConfigAction {
+    /// Print a commented-out default config to stdout
+    Default,
+}
+
+#[derive(Debug, Clone, Subcommand)]
 pub enum CommandKind {
     Action {
         name: Option<String>,
@@ -289,6 +295,10 @@ pub enum CommandKind {
     },
     Wallpaper {
         path: String,
+    },
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
     },
 }
 
@@ -509,5 +519,6 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         }
         CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
         CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
+        CommandKind::Config { .. } => unreachable!("config is handled locally"),
     }
 }

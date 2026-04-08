@@ -539,14 +539,41 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .get::<crate::client::LaunchContext>()
             .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
+            // Check whether the window is already visible on its monitor's
+            // currently selected tags.  When it is, we focus it immediately.
+            // When it is not (i.e. it lives on a different tag), we mark it
+            // as urgent so the bar highlights the tag without stealing focus.
+            let is_currently_visible = self
+                .globals()
+                .and_then(|g| {
+                    g.clients.get(&win).and_then(|c| {
+                        g.monitor(c.monitor_id)
+                            .map(|m| c.is_visible(m.selected_tags()))
+                    })
+                })
+                .unwrap_or(false);
+
             let activated = self.with_wm_mut_unified(|wm, _state| {
                 let mut ctx = wm.ctx();
-                crate::focus::activate_client(&mut ctx, win)
+                if is_currently_visible {
+                    crate::focus::activate_client(&mut ctx, win)
+                } else {
+                    // Mark as urgent so the bar shows the indicator.
+                    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                        client.is_urgent = true;
+                    }
+                    true
+                }
             });
+
+            // Re-render the bar so urgency (or the new focus) becomes visible.
+            self.request_bar_redraw();
+
             if activated == Some(true) {
                 log::debug!(
-                    "xdg_activation: activated window {:?} (app_id: {:?})",
+                    "xdg_activation: activated window {:?} (visible={}, app_id: {:?})",
                     win,
+                    is_currently_visible,
                     token_data.app_id
                 );
             } else {
