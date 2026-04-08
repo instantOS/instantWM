@@ -178,6 +178,17 @@ impl Default for InputConfig {
     }
 }
 
+impl std::fmt::Display for InputConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "tap: {:?}", self.tap)?;
+        writeln!(f, "natural_scroll: {:?}", self.natural_scroll)?;
+        writeln!(f, "accel_profile: {:?}", self.accel_profile)?;
+        writeln!(f, "pointer_accel: {:?}", self.pointer_accel)?;
+        writeln!(f, "scroll_factor: {:?}", self.scroll_factor)?;
+        write!(f, "left_handed: {:?}", self.left_handed)
+    }
+}
+
 /// Keyboard (XKB) layout configuration from the TOML `[keyboard]` section.
 #[derive(Debug, Deserialize, Clone, Serialize, Default)]
 #[serde(default)]

@@ -34,12 +34,7 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             }
             let info: Vec<String> = entries
                 .iter()
-                .map(|(id, cfg)| {
-                    format!(
-                        "[{}]\ntap: {:?}\nnatural_scroll: {:?}\naccel_profile: {:?}\npointer_accel: {:?}\nscroll_factor: {:?}\nleft_handed: {:?}",
-                        id, cfg.tap, cfg.natural_scroll, cfg.accel_profile, cfg.pointer_accel, cfg.scroll_factor, cfg.left_handed,
-                    )
-                })
+                .map(|(id, cfg)| format!("[{}]\n{}", id, cfg))
                 .collect();
             return Response::Message(info.join("\n\n"));
         }
