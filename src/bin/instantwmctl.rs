@@ -191,6 +191,17 @@ fn main() {
     let cli = Cli::parse();
 
     let command = match &cli.command {
+        ctl::CommandKind::Config { action } => {
+            match action {
+                ctl::commands::ConfigAction::Default => {
+                    println!(
+                        "{}",
+                        instantwm::config::config_toml::generate_commented_config()
+                    );
+                }
+            }
+            return;
+        }
         ctl::CommandKind::Action { name, args, list } => {
             if *list {
                 let actions = instantwm::config::keybind_config::get_actions_for_ipc();
