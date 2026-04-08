@@ -99,6 +99,9 @@ pub enum KeyboardAction {
     Remove {
         layout: String,
     },
+    SwapEscape {
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
