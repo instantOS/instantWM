@@ -70,16 +70,13 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> V
 
     for tag_idx in 0..numtags {
         // Skip tags that have a tiling layout — only purely-floating tags matter.
-        let tag_is_floating = match mon.tags.get(tag_idx) {
-            Some(tag) => !tag.layouts.is_tiling(),
-            _ => false,
-        };
+        let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
+        let tag_is_floating = mon.pertag.get(&tag_mask.bits()).map(|s| !s.layouts.is_tiling()).unwrap_or(false);
 
         if !tag_is_floating {
             continue;
         }
 
-        let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
         for (c_win, c) in mon.iter_clients(globals.clients.map()) {
             if c.tags.intersects(tag_mask) && c.snap_status == SnapPosition::None {
                 wins.push(c_win);

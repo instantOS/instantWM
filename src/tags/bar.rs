@@ -47,7 +47,11 @@ pub(crate) fn visible_tags_ctx<'a>(
         }
 
         let tag = &monitor.tags[tag_index];
-        let label = tag.display_name(show_alt);
+        let label = if show_alt && !tag.alt_name.is_empty() {
+            tag.alt_name.as_str()
+        } else {
+            tag.name.as_str()
+        };
         let cached = core.bar.get_tag_width(slot);
         let width = if cached > 0 {
             cached

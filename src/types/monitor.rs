@@ -12,7 +12,6 @@ use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientI
 use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
-use crate::types::Tag;
 use crate::types::TagLayouts;
 use crate::types::tag_types::MonitorDirection;
 
@@ -364,21 +363,39 @@ impl Monitor {
 
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
-        if !self.showbar {
-            return false;
+        self.showbar_for_mask(self.selected_tags())
+    }
+
+    /// Returns showbar state for the given tag mask.
+    pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
+        self.pertag.get(&mask.bits()).map(|s| s.showbar).unwrap_or(true)
+    }
+
+    /// Returns layout state for the given tag mask (immutable lookup).
+    pub fn layouts_for_mask(&self, mask: TagMask) -> TagLayouts {
+        self.pertag
+            .get(&mask.bits())
+            .map(|s| s.layouts)
+            .unwrap_or_default()
+    }
+
+    /// Get the name data for a given tag index (1-based).
+    pub fn tag_name(&self, tag_index: usize) -> Option<&TagNames> {
+        tag_index.checked_sub(1).and_then(|i| self.tags.get(i))
+    }
+
+    /// Get the current tag name data for this monitor.
+    pub fn current_tag(&self) -> Option<&TagNames> {
+        let idx = self.current_tag?;
+        if idx > 0 && idx <= self.tags.len() {
+            Some(&self.tags[idx - 1])
+        } else {
+            None
         }
-        self.current_tag().map(|t| t.showbar).unwrap_or(true)
     }
 
-    /// Get the current tag for this monitor.
-    pub fn current_tag(&self) -> Option<&Tag> {
-        self.current_tag
-            .filter(|&idx| idx > 0 && idx <= self.tags.len())
-            .map(|idx| &self.tags[idx - 1])
-    }
-
-    /// Get a mutable reference to the current tag.
-    pub fn current_tag_mut(&mut self) -> Option<&mut Tag> {
+    /// Get a mutable reference to the current tag name data.
+    pub fn current_tag_mut(&mut self) -> Option<&mut TagNames> {
         let idx = self.current_tag?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&mut self.tags[idx - 1])
@@ -389,44 +406,34 @@ impl Monitor {
 
     /// Get the current layout symbol for this monitor.
     pub fn layout_symbol(&self) -> String {
-        self.current_tag()
-            .map(|t| t.layouts.symbol().to_string())
-            .unwrap_or_else(|| "[]=".to_string())
+        self.layouts_for_mask(self.selected_tags()).symbol().to_string()
     }
 
     /// Check if the current layout is a tiling layout.
     pub fn is_tiling_layout(&self) -> bool {
-        self.current_tag()
-            .map(|t| t.layouts.is_tiling())
-            .unwrap_or(true)
+        self.layouts_for_mask(self.selected_tags()).is_tiling()
     }
 
     /// Check if the current layout is a monocle layout.
     pub fn is_monocle_layout(&self) -> bool {
-        self.current_tag()
-            .map(|t| t.layouts.is_monocle())
-            .unwrap_or(false)
+        self.layouts_for_mask(self.selected_tags()).is_monocle()
     }
 
     /// Get the current layout kind.
     pub fn current_layout(&self) -> LayoutKind {
-        self.current_tag()
-            .map(|t| t.layouts.get_layout())
-            .unwrap_or(LayoutKind::Tile)
+        self.layouts_for_mask(self.selected_tags()).get_layout()
     }
 
     /// Toggle between primary and secondary layout slots.
     pub fn toggle_layout_slot(&mut self) {
-        if let Some(tag) = self.current_tag_mut() {
-            tag.layouts.toggle_slot();
-        }
+        self.pertag_state().layouts.toggle_slot();
     }
 
     /// Update the bar position based on monitor geometry.
     pub fn update_bar_position(&mut self, bar_height: i32) {
         self.bar_height = bar_height.max(0);
         let safe_bh = self.bar_height.min(self.monitor_rect.h.max(0));
-        if self.showbar {
+        if self.pertag_state().showbar {
             self.work_rect.y = if self.topbar {
                 self.monitor_rect.y + safe_bh
             } else {

@@ -258,7 +258,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = m.layout_symbol();
+        let symbol = m.layouts_for_mask(m.selected_tags()).symbol();
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
     width + core.globals().cfg.horizontal_padding

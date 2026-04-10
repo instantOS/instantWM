@@ -33,21 +33,6 @@ pub fn overlay_exists(ctx: &WmCtx) -> bool {
 
 /// Raise a window to the top of the stack (backend-agnostic).
 /// Calculate the y offset based on showbar and fullscreen clients.
-fn calculate_yoffset(ctx: &WmCtx, mon: &Monitor, current_tag: TagMask) -> i32 {
-    let bar_height = ctx.core().globals().cfg.bar_height;
-    let base_offset = if mon.showbar { bar_height } else { 0 };
-
-    // Check if any visible client is fullscreen
-    for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-        if c.tags.intersects(current_tag) && c.is_true_fullscreen() {
-            return 0;
-        }
-    }
-
-    base_offset
-}
-
-/// Get the initial position rect for the overlay (off-screen, for animation start).
 fn get_initial_overlay_rect(info: &OverlayPositionInfo) -> Rect {
     let OverlayPositionInfo {
         mode,
@@ -291,31 +276,46 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();
-    let mon = ctx.core().globals().selected_monitor();
-
-    if mon.overlaystatus != 0 {
-        return;
-    }
-
-    let overlay_win = match mon.overlay {
-        Some(w) => w,
-        None => return,
+    let (overlaystatus, overlay, current_tag) = {
+        let mon = ctx.core().globals().selected_monitor();
+        if mon.overlaystatus != 0 {
+            return;
+        }
+        let overlay_win = match mon.overlay {
+            Some(w) => w,
+            None => return,
+        };
+        (mon.overlaystatus, overlay_win, mon.selected_tags())
     };
 
-    let current_tag = mon.selected_tags();
-    let yoffset = calculate_yoffset(ctx, mon, current_tag);
+    let yoffset = {
+        let mon = ctx.core().globals().selected_monitor();
+        let showbar = mon.showbar_for_mask(current_tag);
+        let bar_height = ctx.core().globals().cfg.bar_height;
+        let base_offset = if showbar { bar_height } else { 0 };
+        let mut yoffset_val = base_offset;
+
+        // Check if any visible client is fullscreen
+        for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
+            if c.tags.intersects(current_tag) && c.is_true_fullscreen() {
+                yoffset_val = 0;
+                break;
+            }
+        }
+        yoffset_val
+    };
 
     // Mark overlay as shown on all monitors
     for (_i, mon) in ctx.core_mut().globals_mut().monitors_iter_mut() {
         mon.overlaystatus = 1;
     }
 
-    prepare_overlay_window(ctx, overlay_win, selmon_id);
+    prepare_overlay_window(ctx, overlay, selmon_id);
 
     // Gather all needed data in one place
     let (overlay_mode, mon_rect, mon_ww, is_locked, client_w, client_h) = {
         let mon = ctx.core().globals().monitor(selmon_id).unwrap();
-        let client = match ctx.client(overlay_win) {
+        let client = match ctx.client(overlay) {
             Some(c) => c,
             None => return,
         };
@@ -344,7 +344,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     if is_locked {
         let initial_rect = get_initial_overlay_rect(&pos_info);
-        resize(ctx, overlay_win, &initial_rect, true);
+        resize(ctx, overlay, &initial_rect, true);
     }
 
     let tags = ctx
@@ -352,27 +352,27 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         .globals_mut()
         .selected_monitor()
         .selected_tags();
-    update_overlay_client_for_show(ctx, overlay_win, tags);
+    update_overlay_client_for_show(ctx, overlay, tags);
 
     if is_locked {
-        ctx.backend().raise_window(overlay_win);
+        ctx.backend().raise_window(overlay);
 
         let target_rect = get_target_overlay_rect(&pos_info);
         crate::animation::move_resize_client(
             ctx,
-            overlay_win,
+            overlay,
             &target_rect,
             crate::animation::MoveResizeMode::Normal,
             OVERLAY_ANIMATION_FRAMES,
         );
 
-        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
+        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay) {
             client.issticky = true;
         }
     }
 
-    crate::focus::focus_soft(ctx, Some(overlay_win));
-    ctx.backend().raise_window(overlay_win);
+    crate::focus::focus_soft(ctx, Some(overlay));
+    ctx.backend().raise_window(overlay);
 }
 
 /// Check if overlay is fullscreen on the given monitor.

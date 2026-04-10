@@ -78,7 +78,8 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     let mon = ctx.core().globals().selected_monitor();
-    if mon.showbar && y < mon.monitor_rect.y + mon.bar_height {
+    let mask = mon.selected_tags();
+    if mon.showbar_for_mask(mask) && y < mon.monitor_rect.y + mon.bar_height {
         return None;
     }
 
@@ -126,8 +127,9 @@ pub fn selected_hover_resize_target_at(
     let win = ctx.selected_client()?;
     let c = ctx.client(win)?;
     let mon = ctx.core().globals().selected_monitor();
+    let mask = mon.selected_tags();
     let bar_h = mon.bar_height.max(1);
-    if mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h {
+    if mon.showbar_for_mask(mask) && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h {
         return None;
     }
     let selected_tags = mon.selected_tags();
@@ -200,7 +202,8 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
     }
 
     let mon = ctx.core().globals().selected_monitor();
-    if mon.showbar && y < mon.monitor_rect.y + mon.bar_height {
+    let mask = mon.selected_tags();
+    if mon.showbar_for_mask(mask) && y < mon.monitor_rect.y + mon.bar_height {
         return false;
     }
     geometry::is_point_in_resize_border(&c.geo, x, y, RESIZE_BORDER_ZONE)

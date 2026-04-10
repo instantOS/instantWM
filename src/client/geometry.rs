@@ -255,12 +255,12 @@ fn calculate_scaled_geometry(
 mod tests {
     use super::sane_floating_spawn_rect;
     use crate::globals::Globals;
-    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
+    use crate::types::{Client, Monitor, MonitorId, Rect, TagMask, WindowId};
 
     fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> Globals {
         let mut globals = Globals::default();
 
-        let mut monitor = Monitor::new_with_values(0.55, 1, true, true);
+        let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
         monitor.work_rect = work_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
@@ -268,7 +268,7 @@ mod tests {
 
         let mut client = Client::default();
         client.win = WindowId::from(1_u32);
-        client.monitor_id = 0;
+        client.monitor_id = MonitorId(0);
         client.set_tag_mask(TagMask::single(1).unwrap());
         client.is_floating = true;
         client.border_width = border_width;

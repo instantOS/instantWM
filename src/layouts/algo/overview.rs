@@ -47,13 +47,12 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if ctx.core_mut().globals_mut().monitors.is_empty() {
         return;
     }
-    let mon = ctx.core_mut().globals_mut().selected_monitor();
-    let (mon_x, mon_y, work_h, work_w, showbar) = (
-        mon.monitor_rect.x,
-        mon.monitor_rect.y,
-        mon.work_rect.h,
-        mon.work_rect.w,
-        mon.showbar,
+    let showbar = m.showbar_for_mask(m.selected_tags());
+    let (mon_x, mon_y, work_h, work_w) = (
+        m.monitor_rect.x,
+        m.monitor_rect.y,
+        m.work_rect.h,
+        m.work_rect.w,
     );
 
     let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;

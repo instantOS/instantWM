@@ -191,23 +191,25 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
     };
 
     // Geometry of the target monitor.
-    let (m_mx, m_mw, m_mh, m_wh, mony) = match ctx.core.globals().monitor(monitor_id) {
-        Some(m) => {
-            let mony = m.monitor_rect.y
-                + if m.showbar {
-                    ctx.core.globals().cfg.bar_height
-                } else {
-                    0
-                };
-            (
-                m.monitor_rect.x,
-                m.monitor_rect.w,
-                m.monitor_rect.h,
-                m.work_rect.h,
-                mony,
-            )
-        }
-        None => return None,
+    let (m_mx, m_mw, m_mh, m_wh, mony) = {
+        let m = match ctx.core.globals().monitor(monitor_id) {
+            Some(m) => m,
+            None => return None,
+        };
+        let showbar = m.showbar_for_mask(m.selected_tags());
+        let mony = m.monitor_rect.y
+            + if showbar {
+                ctx.core.globals().cfg.bar_height
+            } else {
+                0
+            };
+        (
+            m.monitor_rect.x,
+            m.monitor_rect.w,
+            m.monitor_rect.h,
+            m.work_rect.h,
+            mony,
+        )
     };
 
     // Restore border width for all positions except Maximized (which needs bw=0).

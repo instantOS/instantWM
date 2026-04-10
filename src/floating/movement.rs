@@ -92,11 +92,15 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let mon = ctx.core().globals().selected_monitor();
-    let work_rect = mon.work_rect;
-    let mon_rect = mon.monitor_rect;
-    let showbar = mon.showbar;
     let bar_height = ctx.core().globals().cfg.bar_height;
+    let (work_rect, mon_rect, showbar) = {
+        let mon = ctx.core().globals().selected_monitor();
+        (mon.work_rect, mon.monitor_rect, mon.selected_tags())
+    };
+    let showbar = {
+        let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
+        mon.pertag_state().showbar
+    };
 
     if geo.w > work_rect.w || geo.h > work_rect.h {
         return;

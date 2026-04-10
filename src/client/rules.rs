@@ -77,11 +77,22 @@ pub fn apply_rules(
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
-            let mon_geo = g
-                .clients
-                .monitor_id(win)
-                .and_then(|mid| g.monitor(mid))
-                .map(|m| (m.monitor_rect, m.work_rect, m.showbar));
+            let mon_geo = {
+                let client = match g.clients.get(&win) {
+                    Some(c) => c,
+                    None => continue,
+                };
+                let mid = match g.clients.monitor_id(win) {
+                    Some(m) => m,
+                    None => continue,
+                };
+                let mon = match g.monitor(mid) {
+                    Some(m) => m,
+                    None => continue,
+                };
+                let mask = client.tags;
+                Some((mon.monitor_rect, mon.work_rect, mon.showbar_for_mask(mask)))
+            };
 
             if let Some(c) = g.clients.get_mut(&win) {
                 apply_float_rule(c, &rule.isfloating, mon_geo, bar_height);
@@ -276,21 +287,21 @@ fn clamp_client_tags(
 mod tests {
     use super::{WindowProperties, handle_property_change};
     use crate::globals::Globals;
-    use crate::types::{Client, Monitor, TagMask, WindowId};
+    use crate::types::{Client, Monitor, MonitorId, TagMask, WindowId};
 
     #[test]
     fn property_change_preserves_existing_tags_without_matching_rule() {
         let mut g = Globals::default();
         g.tags.num_tags = 9;
 
-        let mut mon = Monitor::new_with_values(0.55, 1, true, true);
+        let mut mon = Monitor::new_with_values(true, true);
         mon.set_selected_tags(TagMask::single(1).unwrap());
         g.monitors.push(mon);
 
         let win = WindowId(42);
         let client = Client {
             win,
-            monitor_id: 0,
+            monitor_id: MonitorId(0),
             tags: TagMask::single(2).unwrap(),
             ..Default::default()
         };

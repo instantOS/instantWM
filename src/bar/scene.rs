@@ -216,7 +216,7 @@ pub(crate) fn build_monitor_snapshots(
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: mon.layout_symbol(),
+            layout_symbol: mon.layouts_for_mask(selected_tags).symbol().to_string(),
             tags,
             show_shutdown: mon.sel.is_none(),
             titles,

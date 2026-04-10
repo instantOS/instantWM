@@ -60,6 +60,7 @@ pub fn snap_window_to_monitor_edges(
 /// Returns edge snap position based on cursor position.
 pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     let mon = ctx.core().globals().selected_monitor();
+    let mask = mon.selected_tags();
 
     if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
         return Some(SnapPosition::Left);
@@ -69,7 +70,7 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     {
         return Some(SnapPosition::Right);
     }
-    if y <= mon.monitor_rect.y + if mon.showbar { mon.bar_height } else { 5 } {
+    if y <= mon.monitor_rect.y + if mon.showbar_for_mask(mask) { mon.bar_height } else { 5 } {
         return Some(SnapPosition::Top);
     }
     None
@@ -78,7 +79,8 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
 /// Returns `true` when `(x, y)` (root-space) is inside the bar of `selmon`.
 pub fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
     let mon = ctx.core().globals().selected_monitor();
-    mon.showbar
+    let mask = mon.selected_tags();
+    mon.showbar_for_mask(mask)
         && y >= mon.bar_y
         && y < mon.bar_y + mon.bar_height
         && x >= mon.monitor_rect.x

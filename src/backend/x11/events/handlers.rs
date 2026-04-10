@@ -417,11 +417,18 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root_win = WindowId::from(ctx.x11_runtime.root);
     if event_win != root_win {
         let root_y = e.root_y as i32;
-        let selmon = ctx.core.globals().selected_monitor();
-        let in_bar = selmon.showbar
-            && root_y >= selmon.bar_y
-            && root_y < selmon.bar_y + ctx.core.globals().cfg.bar_height;
-        if !in_bar && selmon.gesture != Gesture::None {
+        let (bar_y, gesture, showbar) = {
+            let selmon = ctx.core.globals().selected_monitor();
+            (selmon.bar_y, selmon.gesture, selmon.selected_tags())
+        };
+        let showbar = {
+            let selmon = ctx.core.globals_mut().selected_monitor_mut();
+            selmon.pertag_state().showbar
+        };
+        let in_bar = showbar
+            && root_y >= bar_y
+            && root_y < bar_y + ctx.core.globals().cfg.bar_height;
+        if !in_bar && gesture != Gesture::None {
             crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         }
         return;

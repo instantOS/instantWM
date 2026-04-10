@@ -52,7 +52,23 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     };
 
     apply_border_widths(ctx, &monitor_before_layout);
+    {
+        let mon = ctx.core_mut().globals_mut().monitor_mut(monitor_id).unwrap();
+        let (nmaster, mfact) = {
+            let pertag = mon.pertag_state();
+            (pertag.nmaster, pertag.mfact)
+        };
+        mon.nmaster = nmaster;
+        mon.mfact = mfact;
+    }
     run_layout(ctx, monitor_id);
+    {
+        let mon = ctx.core_mut().globals_mut().monitor_mut(monitor_id).unwrap();
+        let (nmaster, mfact) = (mon.nmaster, mon.mfact);
+        let pertag = mon.pertag_state();
+        pertag.nmaster = nmaster;
+        pertag.mfact = mfact;
+    }
 
     let Some(monitor_after_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
         return;
@@ -243,21 +259,13 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    if let Some(tag) = m.current_tag
-        && tag <= m.tags.len()
-    {
-        m.tags[tag - 1].layouts.set_layout(layout);
-    }
+    m.pertag_state().layouts.set_layout(layout);
     finish_layout_change(ctx);
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    if let Some(tag) = m.current_tag
-        && tag <= m.tags.len()
-    {
-        m.tags[tag - 1].layouts.toggle_slot();
-    }
+    m.pertag_state().layouts.toggle_slot();
     finish_layout_change(ctx);
 }
 
@@ -319,12 +327,8 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     } else {
         let new_nmaster = max(m.nmaster + delta, 0);
         m.nmaster = new_nmaster;
-        if let Some(tag) = m.current_tag
-            && tag <= m.tags.len()
-        {
-            m.tags[tag - 1].nmaster = new_nmaster;
-        }
     }
+    m.pertag_state().nmaster = m.nmaster;
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
@@ -366,11 +370,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
 
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
     m.mfact = new_mfact;
-    if let Some(tag) = m.current_tag
-        && tag <= m.tags.len()
-    {
-        m.tags[tag - 1].mfact = new_mfact;
-    }
+    m.pertag_state().mfact = new_mfact;
 
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));

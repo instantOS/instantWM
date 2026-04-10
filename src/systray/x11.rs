@@ -206,10 +206,11 @@ pub fn update_systray(
             Some(mon) => mon,
             None => return,
         };
+        let mask = mon.selected_tags();
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
             mon.bar_y,
-            mon.showbar,
+            mon.showbar_for_mask(mask),
             mon.bar_win,
         )
     };
