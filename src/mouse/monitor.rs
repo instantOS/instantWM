@@ -18,8 +18,14 @@
 
 use crate::contexts::WmCtx;
 use crate::focus::unfocus_win;
+use crate::globals::Globals;
 use crate::monitor::transfer_client;
 use crate::types::*;
+
+fn target_monitor_for_rect(g: &Globals, rect: &Rect) -> Option<usize> {
+    crate::types::find_monitor_by_rect(g.monitors.monitors(), rect)
+        .or(Some(g.selected_monitor_id()))
+}
 
 /// Check whether `rect` lies on a different monitor than the currently
 /// selected one and, if so, migrate the window and update `selmon`.
@@ -36,11 +42,9 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     if ctx.is_wayland() {
         return;
     }
-    let new_mon =
-        crate::types::find_monitor_by_rect(ctx.core_mut().globals_mut().monitors.monitors(), rect)
-            .or(Some(ctx.core_mut().globals_mut().selected_monitor_id()));
+    let new_mon = target_monitor_for_rect(ctx.core().globals(), rect);
 
-    let current_mon = ctx.core_mut().globals_mut().selected_monitor_id();
+    let current_mon = ctx.core().globals().selected_monitor_id();
 
     let Some(target) = new_mon else { return };
     if target == current_mon {
@@ -49,8 +53,8 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 
     // Unfocus the window on the old monitor before moving it.
     if let Some(cur_sel) = ctx
-        .core_mut()
-        .globals_mut()
+        .core()
+        .globals()
         .monitor(current_mon)
         .and_then(|m| m.sel)
     {
@@ -77,7 +81,7 @@ pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(c) = ctx.core_mut().globals_mut().clients.get(&c_win) else {
+    let Some(c) = ctx.core().client(c_win) else {
         return;
     };
     let rect = c.geo;

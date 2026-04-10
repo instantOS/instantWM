@@ -17,8 +17,7 @@ use std::process::Command;
 fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().globals().keyboard_layout;
     let layout = state
-        .layouts
-        .get(index)
+        .layout(index)
         .ok_or_else(|| format!("layout index {index} out of range"))?;
     let variant = layout.variant.as_deref().unwrap_or("");
     let mut options = state.options.clone();
@@ -65,7 +64,7 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
 
 /// Switch to a specific keyboard layout by index (0-based).
 pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
-    if ctx.core().globals().keyboard_layout.layouts.is_empty() {
+    if ctx.core().globals().keyboard_layout.is_empty() {
         return;
     }
     if let Err(e) = apply_layout(ctx, index) {
@@ -78,13 +77,7 @@ pub fn set_keyboard_layout(ctx: &mut WmCtx, index: usize) {
 /// If the name matches one of the configured layouts, switch to it.
 /// Returns `true` if the layout was found and applied.
 pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
-    let index = ctx
-        .core()
-        .globals()
-        .keyboard_layout
-        .layouts
-        .iter()
-        .position(|l| l.name == name);
+    let index = ctx.core().globals().keyboard_layout.find_layout_index(name);
     match index {
         Some(idx) => {
             set_keyboard_layout(ctx, idx);
@@ -98,10 +91,10 @@ pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
 /// Returns the status string of the new layout, or an empty string if no layouts are configured.
 pub fn cycle_keyboard_layout(ctx: &mut WmCtx, forward: bool) -> String {
     let state = &ctx.core().globals().keyboard_layout;
-    if state.layouts.is_empty() {
+    if state.is_empty() {
         return String::new();
     }
-    let len = state.layouts.len();
+    let len = state.len();
     let current = state.current;
     let next = if forward {
         (current + 1) % len
@@ -117,7 +110,7 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, forward: bool) -> String {
 /// Get the current keyboard layout status as a formatted string.
 pub fn keyboard_layout_status(ctx: &WmCtx) -> String {
     let state = &ctx.core().globals().keyboard_layout;
-    if state.layouts.is_empty() {
+    if state.is_empty() {
         return "no layouts configured".to_string();
     }
     let current_name = state.current_layout().unwrap_or("unknown");
@@ -130,7 +123,7 @@ pub fn keyboard_layout_status(ctx: &WmCtx) -> String {
     format!(
         "{}/{}: {}{}",
         state.current + 1,
-        state.layouts.len(),
+        state.len(),
         current_name,
         variant_str
     )
@@ -139,7 +132,7 @@ pub fn keyboard_layout_status(ctx: &WmCtx) -> String {
 /// Get the list of configured keyboard layouts as a formatted string.
 pub fn keyboard_layout_list(ctx: &WmCtx) -> String {
     let state = &ctx.core().globals().keyboard_layout;
-    if state.layouts.is_empty() {
+    if state.is_empty() {
         return String::new();
     }
     let mut out = String::new();
@@ -159,9 +152,11 @@ pub fn keyboard_layout_list(ctx: &WmCtx) -> String {
 ///
 /// This allows IPC clients to reconfigure layouts without editing the TOML file.
 pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
-    ctx.core_mut().globals_mut().keyboard_layout.layouts = layouts;
-    ctx.core_mut().globals_mut().keyboard_layout.current = 0;
-    if !ctx.core().globals().keyboard_layout.layouts.is_empty() {
+    ctx.core_mut()
+        .globals_mut()
+        .keyboard_layout
+        .reset_layouts(layouts);
+    if !ctx.core().globals().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
     }
 }
@@ -169,14 +164,14 @@ pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
 pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
     let current = ctx.core().globals().keyboard_layout.current;
     ctx.core_mut().globals_mut().keyboard_layout.swapescape = enabled;
-    if !ctx.core().globals().keyboard_layout.layouts.is_empty() {
+    if !ctx.core().globals().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, current);
     }
 }
 
 /// Apply the initially configured keyboard layout (called during startup).
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
-    if !ctx.core().globals().keyboard_layout.layouts.is_empty() {
+    if !ctx.core().globals().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, 0);
     }
 }
@@ -212,25 +207,11 @@ pub fn get_all_keyboard_layouts() -> Vec<String> {
 /// If the layout already exists, returns an error.
 /// Switches to the newly added layout.
 pub fn add_keyboard_layout(ctx: &mut WmCtx, layout: KeyboardLayout) -> Result<(), String> {
-    // Check if layout already exists
-    let exists = ctx
-        .core()
-        .globals()
-        .keyboard_layout
-        .layouts
-        .iter()
-        .any(|l| l.name == layout.name);
-    if exists {
-        return Err(format!("layout '{}' already exists", layout.name));
-    }
-
-    // Add the layout
-    let new_index = ctx.core().globals().keyboard_layout.layouts.len();
-    ctx.core_mut()
+    let new_index = ctx
+        .core_mut()
         .globals_mut()
         .keyboard_layout
-        .layouts
-        .push(layout);
+        .add_layout(layout)?;
 
     // Switch to the new layout
     set_keyboard_layout(ctx, new_index);
@@ -269,26 +250,12 @@ pub fn remove_keyboard_layout(ctx: &mut WmCtx, layout: &str) -> Result<(), Strin
 
     let index = index.ok_or_else(|| format!("layout '{}' not found", layout))?;
 
-    // Don't allow removing the last layout
-    if state.layouts.len() == 1 {
-        return Err("cannot remove the last layout".to_string());
-    }
-
-    // Remove the layout
     ctx.core_mut()
         .globals_mut()
         .keyboard_layout
-        .layouts
-        .remove(index);
+        .remove_layout(index)?;
 
     let current = ctx.core().globals().keyboard_layout.current;
-    if index < current {
-        ctx.core_mut().globals_mut().keyboard_layout.current = current - 1;
-    } else if index == current && current >= ctx.core().globals().keyboard_layout.layouts.len() {
-        ctx.core_mut().globals_mut().keyboard_layout.current =
-            ctx.core().globals().keyboard_layout.layouts.len() - 1;
-    }
-
-    set_keyboard_layout(ctx, ctx.core().globals().keyboard_layout.current);
+    set_keyboard_layout(ctx, current);
     Ok(())
 }

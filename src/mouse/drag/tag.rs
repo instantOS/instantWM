@@ -19,8 +19,8 @@ use x11rb::protocol::xproto::ModMask;
 /// [`drag_tag_motion`] and [`drag_tag_finish`].  On X11 the caller enters a
 /// grab loop that calls those two functions synchronously.
 pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -> bool {
-    let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
-    let mon_mx = ctx.core_mut().globals_mut().selected_monitor().work_rect.x;
+    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let mon_mx = ctx.core().globals().selected_monitor().work_rect.x;
 
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => 1u32 << (idx as u32),
@@ -42,18 +42,13 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     };
 
     let current_tagset = ctx
-        .core_mut()
-        .globals_mut()
+        .core()
+        .globals()
         .selected_monitor()
         .selected_tags()
         .bits();
-    let is_current_tag = (initial_tag & ctx.core_mut().globals_mut().tags.mask()) == current_tagset;
-    let has_sel = ctx
-        .core_mut()
-        .globals_mut()
-        .selected_monitor()
-        .sel
-        .is_some();
+    let is_current_tag = (initial_tag & ctx.core().globals().tags.mask()) == current_tagset;
+    let has_sel = ctx.core().globals().selected_monitor().sel.is_some();
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
@@ -87,7 +82,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 /// Updates gesture highlighting and detects when the cursor leaves the bar.
 /// Returns `false` if the cursor left the bar (caller should finish the drag).
 pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if !ctx.core_mut().globals_mut().drag.tag.active {
+    if !ctx.core().globals().drag.tag.active {
         return false;
     }
 
@@ -138,7 +133,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// `modifier_state` is the X11-style modifier bitmask at release time
 /// (Shift, Control, …).
 pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
-    if !ctx.core_mut().globals_mut().drag.tag.active {
+    if !ctx.core().globals().drag.tag.active {
         return;
     }
 

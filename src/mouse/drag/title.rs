@@ -68,16 +68,16 @@ pub fn title_drag_begin(
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
 fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    let win = ctx.core_mut().globals_mut().drag.interactive.win;
-    let btn = ctx.core_mut().globals_mut().drag.interactive.button;
+    let (win, btn, start_x, start_y) = {
+        let drag = &ctx.core().globals().drag.interactive;
+        (drag.win, drag.button, drag.start_x, drag.start_y)
+    };
     let is_right_click = btn == MouseButton::Right;
 
     if is_right_click {
         // Right-click: promote to floating, set up resize mode, warp cursor.
         let (current_geo, _) = promote_to_floating(ctx, win, None);
 
-        let start_x = ctx.core().globals().drag.interactive.start_x;
-        let start_y = ctx.core().globals().drag.interactive.start_y;
         let hit_x = start_x - current_geo.x;
         let hit_y = start_y - current_geo.y;
         let dir =
@@ -101,12 +101,12 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 button: btn,
                 dragging: true,
                 drag_type: crate::globals::DragType::Resize(dir),
+                win_start_geo: current_geo,
                 start_x: warp_x,
                 start_y: warp_y,
-                win_start_geo: current_geo,
-                drop_restore_geo: current_geo,
                 last_root_x: warp_x,
                 last_root_y: warp_y,
+                drop_restore_geo: current_geo,
                 ..Default::default()
             };
             set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
@@ -147,13 +147,13 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed.
 pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if !ctx.core_mut().globals_mut().drag.interactive.active {
+    if !ctx.core().globals().drag.interactive.active {
         return false;
     }
     ctx.core_mut().globals_mut().drag.interactive.last_root_x = root_x;
     ctx.core_mut().globals_mut().drag.interactive.last_root_y = root_y;
 
-    if ctx.core_mut().globals_mut().drag.interactive.dragging {
+    if ctx.core().globals().drag.interactive.dragging {
         // Once dragging is active the unified handler
         // (wayland_hover_resize_drag_motion) drives the interaction.
         return false;
@@ -167,9 +167,10 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
 
     // Threshold exceeded — start the drag action.
-    let win = ctx.core_mut().globals_mut().drag.interactive.win;
-    let btn = ctx.core_mut().globals_mut().drag.interactive.button;
-    let was_hidden = ctx.core_mut().globals_mut().drag.interactive.was_hidden;
+    let drag = &ctx.core().globals().drag.interactive;
+    let win = drag.win;
+    let btn = drag.button;
+    let was_hidden = drag.was_hidden;
     let is_right_click = btn == MouseButton::Right;
 
     if was_hidden {
@@ -237,16 +238,12 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         return;
     }
 
-    let win = ctx.core_mut().globals_mut().drag.interactive.win;
-    let is_right_click = ctx.core_mut().globals_mut().drag.interactive.button == MouseButton::Right;
-    let was_focused = ctx.core_mut().globals_mut().drag.interactive.was_focused;
-    let was_hidden = ctx.core_mut().globals_mut().drag.interactive.was_hidden;
-    let suppress_click_action = ctx
-        .core_mut()
-        .globals_mut()
-        .drag
-        .interactive
-        .suppress_click_action;
+    let drag = &ctx.core().globals().drag.interactive;
+    let win = drag.win;
+    let is_right_click = drag.button == MouseButton::Right;
+    let was_focused = drag.was_focused;
+    let was_hidden = drag.was_hidden;
+    let suppress_click_action = drag.suppress_click_action;
 
     ctx.core_mut().globals_mut().drag.interactive.active = false;
     if suppress_click_action {
