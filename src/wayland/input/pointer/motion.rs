@@ -267,6 +267,13 @@ fn resolve_pointer_focus(
     Option<crate::types::WindowId>,
 ) {
     let pointer_location = state.runtime.pointer_location;
+
+    // When the session is locked, only the lock surface should receive pointer events.
+    if state.is_locked() {
+        let pointer_focus = state.lock_surface_under_pointer(pointer_location);
+        return (pointer_focus, None);
+    }
+
     let mut pointer_focus = if in_bar_band || in_bar_guard_band {
         state.layer_surface_under_pointer(pointer_location)
     } else {

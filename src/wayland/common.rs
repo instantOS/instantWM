@@ -607,6 +607,20 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
     });
 
+    if state.is_locked() {
+        let output_name = output.name();
+        if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
+            send_frames_surface_tree(
+                lock_surface.wl_surface(),
+                output,
+                elapsed,
+                throttle,
+                surface_primary_scanout_output,
+            );
+        }
+        return;
+    }
+
     for window in state.space.elements() {
         // Only notify windows that are actually visible on this output.
         if let Some(out_geo) = output_geo

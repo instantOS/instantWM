@@ -101,6 +101,42 @@ impl WaylandState {
         None
     }
 
+    /// Get the lock surface under a given point (used when session is locked).
+    pub fn lock_surface_under_pointer(
+        &self,
+        point: Point<f64, Logical>,
+    ) -> Option<(
+        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        Point<i32, Logical>,
+    )> {
+        use smithay::desktop::WindowSurfaceType;
+
+        let outputs: Vec<_> = self.space.outputs().cloned().collect();
+        for output in outputs.iter().rev() {
+            let Some(output_geo) = self.space.output_geometry(output) else {
+                continue;
+            };
+            if !output_geo.contains(point.to_i32_round()) {
+                continue;
+            }
+            let output_name = output.name();
+            if let Some(lock_surface) = self.lock_surfaces.get(&output_name) {
+                let rel = point - output_geo.loc.to_f64();
+                if let Some((surface, loc)) =
+                    smithay::desktop::utils::under_from_surface_tree(
+                        lock_surface.wl_surface(),
+                        rel,
+                        (0, 0),
+                        WindowSurfaceType::ALL,
+                    )
+                {
+                    return Some((surface, loc + output_geo.loc));
+                }
+            }
+        }
+        None
+    }
+
     /// Get the surface under a given point.
     pub fn surface_under_pointer(
         &self,

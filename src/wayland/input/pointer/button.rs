@@ -33,6 +33,19 @@ pub fn handle_pointer_button<B: InputBackend>(
     let root_y = pointer_location.y.round() as i32;
     let wm_button = wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
 
+    // When the session is locked, just forward the raw button event to the lock surface.
+    if state.is_locked() {
+        let button = smithay::input::pointer::ButtonEvent {
+            serial,
+            time: event.time_msec(),
+            button: event.button_code(),
+            state: event.state(),
+        };
+        pointer_handle.button(state, &button);
+        pointer_handle.frame(state);
+        return;
+    }
+
     if event.state() == smithay::backend::input::ButtonState::Pressed {
         // Bar interactions must short-circuit the generic surface click path.
         if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {

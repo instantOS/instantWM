@@ -19,27 +19,32 @@ pub fn handle_keyboard<B: InputBackend>(
     event: impl KeyboardKeyEvent<B>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let wm_shortcuts_allowed = match keyboard_handle.current_focus() {
-        None => true,
-        Some(KeyboardFocusTarget::Window(ref w)) => {
-            // Use the unified window classifier to determine if shortcuts
-            // should be suppressed. This handles all overlay types consistently.
-            !state.should_suppress_shortcuts_for(w)
+    // When the session is locked, all input must go to the lock surface.
+    let wm_shortcuts_allowed = if state.is_locked() {
+        false
+    } else {
+        match keyboard_handle.current_focus() {
+            None => true,
+            Some(KeyboardFocusTarget::Window(ref w)) => {
+                // Use the unified window classifier to determine if shortcuts
+                // should be suppressed. This handles all overlay types consistently.
+                !state.should_suppress_shortcuts_for(w)
+            }
+            // Layer shell surfaces (e.g. rofi, dmenu) that request exclusive keyboard
+            // interactivity must receive all input — suppress WM shortcuts for them.
+            // Non-exclusive surfaces (e.g. the bar) still allow WM shortcuts.
+            Some(KeyboardFocusTarget::WlSurface(ref s)) => {
+                let interactivity = with_states(s, |states| {
+                    states
+                        .cached_state
+                        .get::<LayerSurfaceCachedState>()
+                        .current()
+                        .keyboard_interactivity
+                });
+                interactivity != KeyboardInteractivity::Exclusive
+            }
+            Some(KeyboardFocusTarget::Popup(_)) => false,
         }
-        // Layer shell surfaces (e.g. rofi, dmenu) that request exclusive keyboard
-        // interactivity must receive all input — suppress WM shortcuts for them.
-        // Non-exclusive surfaces (e.g. the bar) still allow WM shortcuts.
-        Some(KeyboardFocusTarget::WlSurface(ref s)) => {
-            let interactivity = with_states(s, |states| {
-                states
-                    .cached_state
-                    .get::<LayerSurfaceCachedState>()
-                    .current()
-                    .keyboard_interactivity
-            });
-            interactivity != KeyboardInteractivity::Exclusive
-        }
-        Some(KeyboardFocusTarget::Popup(_)) => false,
     };
     let key_code = event.key_code();
     let key_state = event.state();
