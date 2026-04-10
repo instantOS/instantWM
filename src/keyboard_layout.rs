@@ -166,6 +166,14 @@ pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
     }
 }
 
+pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
+    let current = ctx.core().globals().keyboard_layout.current;
+    ctx.core_mut().globals_mut().keyboard_layout.swapescape = enabled;
+    if !ctx.core().globals().keyboard_layout.layouts.is_empty() {
+        set_keyboard_layout(ctx, current);
+    }
+}
+
 /// Apply the initially configured keyboard layout (called during startup).
 pub fn init_keyboard_layout(ctx: &mut WmCtx) {
     if !ctx.core().globals().keyboard_layout.layouts.is_empty() {

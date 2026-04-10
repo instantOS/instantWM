@@ -1,6 +1,6 @@
 use crate::floating::scratchpad::{
-    collect_scratchpad_info, scratchpad_hide_all, scratchpad_hide_name, scratchpad_make, scratchpad_show_all,
-    scratchpad_show_name, scratchpad_toggle, scratchpad_unmake,
+    collect_scratchpad_info, scratchpad_hide_all, scratchpad_hide_name, scratchpad_make,
+    scratchpad_show_all, scratchpad_show_name, scratchpad_toggle, scratchpad_unmake,
 };
 use crate::ipc_types::{Response, ScratchpadCommand};
 use crate::types::WindowId;

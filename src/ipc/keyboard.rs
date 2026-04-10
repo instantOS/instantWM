@@ -63,5 +63,9 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
                 Err(e) => Response::err(e),
             }
         }
+        KeyboardCommand::SwapEscape(enabled) => {
+            keyboard_layout::set_swapescape(&mut ctx, enabled);
+            Response::ok()
+        }
     }
 }

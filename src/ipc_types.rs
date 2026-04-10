@@ -228,6 +228,7 @@ pub enum KeyboardCommand {
     Set(Vec<KeyboardLayout>),
     Add(KeyboardLayout),
     Remove(String),
+    SwapEscape(bool),
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -284,6 +285,10 @@ pub enum InputCommand {
     ScrollFactor {
         identifier: Option<String>,
         value: f64,
+    },
+    LeftHanded {
+        identifier: Option<String>,
+        enabled: bool,
     },
 }
 
