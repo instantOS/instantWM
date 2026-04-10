@@ -25,19 +25,19 @@ use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
-fn master_width(m: &Monitor, tiled_count: u32) -> i32 {
-    if tiled_count > m.nmaster as u32 {
-        if m.nmaster > 0 {
-            (m.mfact * m.work_rect.w as f32) as i32
+fn master_width(monitor: &Monitor, tiled_client_count: u32) -> i32 {
+    if tiled_client_count > monitor.nmaster as u32 {
+        if monitor.nmaster > 0 {
+            (monitor.mfact * monitor.work_rect.w as f32) as i32
         } else {
             0
         }
     } else {
-        m.work_rect.w
+        monitor.work_rect.w
     }
 }
 
-pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let framecount = framecount_for_layout(
         ctx.core().globals(),
         FAST_ANIM_THRESHOLD,
@@ -45,72 +45,80 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         DEFAULT_FRAME_COUNT,
     );
 
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+    let tiled_client_count =
+        monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
-    if n == 0 {
+    if tiled_client_count == 0 {
         return;
     }
 
-    let master_w: i32 = if n > m.nmaster as u32 {
-        master_width(m, n)
+    let master_area_width: i32 = if tiled_client_count > monitor.nmaster as u32 {
+        master_width(monitor, tiled_client_count)
     } else {
-        if n > 1 && n < m.nmaster as u32 {
-            m.nmaster = n as i32;
-            tile(ctx, m);
+        if tiled_client_count > 1 && tiled_client_count < monitor.nmaster as u32 {
+            monitor.nmaster = tiled_client_count as i32;
+            tile(ctx, monitor);
             return;
         }
-        m.work_rect.w
+        monitor.work_rect.w
     };
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_y_offset: u32 = 0;
     let mut stack_y_offset: u32 = 0;
 
-    for (i, client) in tiled.iter().enumerate() {
-        if (i as u32) < (m.nmaster as u32) {
-            let h = (m.work_rect.h - master_y_offset as i32)
-                / (min(n, m.nmaster as u32) - i as u32) as i32;
+    for (index, client) in tiled_clients.iter().enumerate() {
+        if (index as u32) < (monitor.nmaster as u32) {
+            let master_window_height = (monitor.work_rect.h - master_y_offset as i32)
+                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
 
-            let frames = if n == 2 { 0 } else { framecount };
+            let animation_frames = if tiled_client_count == 2 {
+                0
+            } else {
+                framecount
+            };
 
             move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x,
-                    y: m.work_rect.y + master_y_offset as i32,
-                    w: master_w - BORDER_MULTIPLIER * client.border_width,
-                    h: h - BORDER_MULTIPLIER * client.border_width,
+                    x: monitor.work_rect.x,
+                    y: monitor.work_rect.y + master_y_offset as i32,
+                    w: master_area_width - BORDER_MULTIPLIER * client.border_width,
+                    h: master_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
-                frames,
+                animation_frames,
             );
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win)
-                && master_y_offset as i32 + c.total_height() < m.work_rect.h
+                && master_y_offset as i32 + c.total_height() < monitor.work_rect.h
             {
                 master_y_offset += c.total_height() as u32;
             }
         } else {
-            let h = (m.work_rect.h - stack_y_offset as i32) / (n - i as u32) as i32;
+            let stack_window_height = (monitor.work_rect.h - stack_y_offset as i32)
+                / (tiled_client_count - index as u32) as i32;
 
             move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x + master_w,
-                    y: m.work_rect.y + stack_y_offset as i32,
-                    w: m.work_rect.w - master_w - BORDER_MULTIPLIER * client.border_width,
-                    h: h - BORDER_MULTIPLIER * client.border_width,
+                    x: monitor.work_rect.x + master_area_width,
+                    y: monitor.work_rect.y + stack_y_offset as i32,
+                    w: monitor.work_rect.w
+                        - master_area_width
+                        - BORDER_MULTIPLIER * client.border_width,
+                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
                 framecount,
             );
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win)
-                && stack_y_offset as i32 + c.total_height() < m.work_rect.h
+                && stack_y_offset as i32 + c.total_height() < monitor.work_rect.h
             {
                 stack_y_offset += c.total_height() as u32;
             }

@@ -36,16 +36,17 @@ use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
 use crate::types::{Monitor, Rect};
 
-pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
+    let tiled_client_count =
+        monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
-    if n == 0 {
+    if tiled_client_count == 0 {
         return;
     }
 
     // Collect all tiled clients
-    let selected_tags = m.selected_tags();
-    let tiled_clients: Vec<_> = m
+    let selected_tags = monitor.selected_tags();
+    let tiled_clients: Vec<_> = monitor
         .clients
         .iter()
         .filter_map(|&win| {
@@ -64,8 +65,8 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let first_win = tiled_clients[0];
 
     // Column geometry
-    let mw = (m.mfact * m.work_rect.w as f32) as i32;
-    let sw = (m.work_rect.w - mw) / 2;
+    let master_area_width = (monitor.mfact * monitor.work_rect.w as f32) as i32;
+    let side_column_width = (monitor.work_rect.w - master_area_width) / 2;
 
     // Place master client
     let master_bw = ctx
@@ -76,16 +77,16 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         .map(|c| BORDER_MULTIPLIER * c.border_width())
         .unwrap_or(0);
 
-    let master_x = if n < 3 {
-        m.work_rect.x
+    let master_x = if tiled_client_count < 3 {
+        monitor.work_rect.x
     } else {
-        m.work_rect.x + sw
+        monitor.work_rect.x + side_column_width
     };
 
-    let master_w = if n == 1 {
-        m.work_rect.w - master_bw
+    let master_window_width = if tiled_client_count == 1 {
+        monitor.work_rect.w - master_bw
     } else {
-        mw - master_bw
+        master_area_width - master_bw
     };
 
     resize(
@@ -93,50 +94,53 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         first_win,
         &Rect {
             x: master_x,
-            y: m.work_rect.y,
-            w: master_w,
-            h: m.work_rect.h - master_bw,
+            y: monitor.work_rect.y,
+            w: master_window_width,
+            h: monitor.work_rect.h - master_bw,
         },
         false,
     );
 
-    if n <= 1 {
+    if tiled_client_count <= 1 {
         return;
     }
 
     // Distribute stack clients
-    let stack_n = n - 1;
-    let col_w = if stack_n == 1 { m.work_rect.w - mw } else { sw };
+    let stack_client_count = tiled_client_count - 1;
+    let stack_column_width = if stack_client_count == 1 {
+        monitor.work_rect.w - master_area_width
+    } else {
+        side_column_width
+    };
 
-    let right_n = stack_n.div_ceil(2);
-    let left_n = stack_n / 2;
+    let right_column_client_count = stack_client_count.div_ceil(2);
+    let left_column_client_count = stack_client_count / 2;
 
     let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
 
     // Right column (even indices in stack: 0, 2, 4...)
-    if right_n > 0 {
-        let raw_h = m.work_rect.h / right_n as i32;
-        let cell_h = if raw_h < bar_height {
-            m.work_rect.h
+    if right_column_client_count > 0 {
+        let raw_window_height = monitor.work_rect.h / right_column_client_count as i32;
+        let per_window_height = if raw_window_height < bar_height {
+            monitor.work_rect.h
         } else {
-            raw_h
+            raw_window_height
         };
 
-        let col_x = if n < 3 {
-            m.work_rect.x + mw
+        let column_x = if tiled_client_count < 3 {
+            monitor.work_rect.x + master_area_width
         } else {
-            m.work_rect.x + mw + sw
+            monitor.work_rect.x + master_area_width + side_column_width
         };
-        let mut y = m.work_rect.y;
+        let mut next_window_y = monitor.work_rect.y;
 
         // Stack clients start at index 1
-        for i in 0..right_n {
-            let stack_idx = 1 + i * 2;
-            let stack_idx = stack_idx as usize;
-            if stack_idx >= tiled_clients.len() {
+        for stack_position in 0..right_column_client_count {
+            let stack_client_index = (1 + stack_position * 2) as usize;
+            if stack_client_index >= tiled_clients.len() {
                 break;
             }
-            let win = tiled_clients[stack_idx];
+            let win = tiled_clients[stack_client_index];
 
             let border_width = ctx
                 .core()
@@ -146,52 +150,53 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 .map(|c| c.border_width())
                 .unwrap_or(0);
 
-            let h = if i + 1 == right_n {
-                m.work_rect.y + m.work_rect.h - y - BORDER_MULTIPLIER * border_width
+            let window_height = if stack_position + 1 == right_column_client_count {
+                monitor.work_rect.y + monitor.work_rect.h
+                    - next_window_y
+                    - BORDER_MULTIPLIER * border_width
             } else {
-                cell_h - BORDER_MULTIPLIER * border_width
+                per_window_height - BORDER_MULTIPLIER * border_width
             };
 
             resize(
                 ctx,
                 win,
                 &Rect {
-                    x: col_x,
-                    y,
-                    w: col_w - BORDER_MULTIPLIER * border_width,
-                    h,
+                    x: column_x,
+                    y: next_window_y,
+                    w: stack_column_width - BORDER_MULTIPLIER * border_width,
+                    h: window_height,
                 },
                 false,
             );
 
-            if cell_h != m.work_rect.h
+            if per_window_height != monitor.work_rect.h
                 && let Some(c) = ctx.core_mut().globals_mut().clients.get(&win)
             {
-                y = c.geo.y + c.total_height();
+                next_window_y = c.geo.y + c.total_height();
             }
         }
     }
 
     // Left column (odd indices in stack: 1, 3, 5...)
-    if left_n > 0 {
-        let raw_h = m.work_rect.h / left_n as i32;
-        let cell_h = if raw_h < bar_height {
-            m.work_rect.h
+    if left_column_client_count > 0 {
+        let raw_window_height = monitor.work_rect.h / left_column_client_count as i32;
+        let per_window_height = if raw_window_height < bar_height {
+            monitor.work_rect.h
         } else {
-            raw_h
+            raw_window_height
         };
 
-        let col_x = m.work_rect.x;
-        let mut y = m.work_rect.y;
+        let column_x = monitor.work_rect.x;
+        let mut next_window_y = monitor.work_rect.y;
 
         // Stack clients start at index 2 (second odd)
-        for i in 0..left_n {
-            let stack_idx = 2 + i * 2;
-            let stack_idx = stack_idx as usize;
-            if stack_idx >= tiled_clients.len() {
+        for stack_position in 0..left_column_client_count {
+            let stack_client_index = (2 + stack_position * 2) as usize;
+            if stack_client_index >= tiled_clients.len() {
                 break;
             }
-            let win = tiled_clients[stack_idx];
+            let win = tiled_clients[stack_client_index];
 
             let border_width = ctx
                 .core()
@@ -201,28 +206,30 @@ pub fn three_column(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 .map(|c| c.border_width())
                 .unwrap_or(0);
 
-            let h = if i + 1 == left_n {
-                m.work_rect.y + m.work_rect.h - y - BORDER_MULTIPLIER * border_width
+            let window_height = if stack_position + 1 == left_column_client_count {
+                monitor.work_rect.y + monitor.work_rect.h
+                    - next_window_y
+                    - BORDER_MULTIPLIER * border_width
             } else {
-                cell_h - BORDER_MULTIPLIER * border_width
+                per_window_height - BORDER_MULTIPLIER * border_width
             };
 
             resize(
                 ctx,
                 win,
                 &Rect {
-                    x: col_x,
-                    y,
-                    w: col_w - BORDER_MULTIPLIER * border_width,
-                    h,
+                    x: column_x,
+                    y: next_window_y,
+                    w: stack_column_width - BORDER_MULTIPLIER * border_width,
+                    h: window_height,
                 },
                 false,
             );
 
-            if cell_h != m.work_rect.h
+            if per_window_height != monitor.work_rect.h
                 && let Some(c) = ctx.core_mut().globals_mut().clients.get(&win)
             {
-                y = c.geo.y + c.total_height();
+                next_window_y = c.geo.y + c.total_height();
             }
         }
     }

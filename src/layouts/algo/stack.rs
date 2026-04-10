@@ -10,39 +10,40 @@ use std::cmp::min;
 
 // ── deck ─────────────────────────────────────────────────────────────────────
 
-pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+pub fn deck(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
+    let tiled_client_count =
+        monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
-    if n == 0 {
+    if tiled_client_count == 0 {
         return;
     }
 
-    let mw: u32 = if n > m.nmaster as u32 {
-        if m.nmaster > 0 {
-            (m.mfact * m.work_rect.w as f32) as u32
+    let master_area_width: u32 = if tiled_client_count > monitor.nmaster as u32 {
+        if monitor.nmaster > 0 {
+            (monitor.mfact * monitor.work_rect.w as f32) as u32
         } else {
             0
         }
     } else {
-        m.work_rect.w as u32
+        monitor.work_rect.w as u32
     };
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_column_offset: u32 = 0;
-    for (i, client) in tiled.iter().enumerate() {
-        if (i as u32) < (m.nmaster as u32) {
-            let h = (m.work_rect.h - master_column_offset as i32)
-                / (min(n, m.nmaster as u32) - i as u32) as i32;
+    for (index, client) in tiled_clients.iter().enumerate() {
+        if (index as u32) < (monitor.nmaster as u32) {
+            let master_window_height = (monitor.work_rect.h - master_column_offset as i32)
+                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
             resize(
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x,
-                    y: m.work_rect.y + master_column_offset as i32,
-                    w: mw as i32 - BORDER_MULTIPLIER * client.border_width,
-                    h: h - BORDER_MULTIPLIER * client.border_width,
+                    x: monitor.work_rect.x,
+                    y: monitor.work_rect.y + master_column_offset as i32,
+                    w: master_area_width as i32 - BORDER_MULTIPLIER * client.border_width,
+                    h: master_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 false,
             );
@@ -55,10 +56,12 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x + mw as i32,
-                    y: m.work_rect.y,
-                    w: m.work_rect.w - mw as i32 - BORDER_MULTIPLIER * client.border_width,
-                    h: m.work_rect.h - BORDER_MULTIPLIER * client.border_width,
+                    x: monitor.work_rect.x + master_area_width as i32,
+                    y: monitor.work_rect.y,
+                    w: monitor.work_rect.w
+                        - master_area_width as i32
+                        - BORDER_MULTIPLIER * client.border_width,
+                    h: monitor.work_rect.h - BORDER_MULTIPLIER * client.border_width,
                 },
                 false,
             );
@@ -68,49 +71,56 @@ pub fn deck(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 // ── bottom_stack ───────────────────────────────────────────────────────────────
 
-pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let framecount = framecount_for_layout(
         ctx.core().globals(),
         4,
         FAST_FRAME_COUNT,
         DEFAULT_FRAME_COUNT,
     );
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+    let tiled_client_count =
+        monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
-    if n == 0 {
+    if tiled_client_count == 0 {
         return;
     }
 
-    let (mh, tw, stack_y_offset) = if n > m.nmaster as u32 {
-        let mh = if m.nmaster > 0 {
-            (m.mfact * m.work_rect.h as f32) as i32
+    let (master_area_height, stack_window_width, stack_area_y) =
+        if tiled_client_count > monitor.nmaster as u32 {
+            let master_area_height = if monitor.nmaster > 0 {
+                (monitor.mfact * monitor.work_rect.h as f32) as i32
+            } else {
+                0
+            };
+            let stack_window_width =
+                monitor.work_rect.w / (tiled_client_count - monitor.nmaster as u32) as i32;
+            let stack_area_y = monitor.work_rect.y + master_area_height;
+            (master_area_height, stack_window_width, stack_area_y)
         } else {
-            0
+            (
+                monitor.work_rect.h,
+                monitor.work_rect.w,
+                monitor.work_rect.y,
+            )
         };
-        let tw = m.work_rect.w / (n - m.nmaster as u32) as i32;
-        let stack_y_offset = m.work_rect.y + mh;
-        (mh, tw, stack_y_offset)
-    } else {
-        (m.work_rect.h, m.work_rect.w, m.work_rect.y)
-    };
 
-    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_row_offset: i32 = 0;
-    let mut tx: i32 = m.work_rect.x;
+    let mut stack_window_x: i32 = monitor.work_rect.x;
 
-    for (i, client) in tiled.iter().enumerate() {
-        if (i as u32) < (m.nmaster as u32) {
-            let w =
-                (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i as u32) as i32;
+    for (index, client) in tiled_clients.iter().enumerate() {
+        if (index as u32) < (monitor.nmaster as u32) {
+            let master_window_width = (monitor.work_rect.w - master_row_offset)
+                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
             move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x + master_row_offset,
-                    y: m.work_rect.y,
-                    w: w - BORDER_MULTIPLIER * client.border_width,
-                    h: mh - BORDER_MULTIPLIER * client.border_width,
+                    x: monitor.work_rect.x + master_row_offset,
+                    y: monitor.work_rect.y,
+                    w: master_window_width - BORDER_MULTIPLIER * client.border_width,
+                    h: master_area_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
                 framecount,
@@ -120,24 +130,24 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 master_row_offset += c.total_width();
             }
         } else {
-            let h = m.work_rect.h - mh;
+            let stack_window_height = monitor.work_rect.h - master_area_height;
             move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
-                    x: tx,
-                    y: stack_y_offset,
-                    w: tw - BORDER_MULTIPLIER * client.border_width,
-                    h: h - BORDER_MULTIPLIER * client.border_width,
+                    x: stack_window_x,
+                    y: stack_area_y,
+                    w: stack_window_width - BORDER_MULTIPLIER * client.border_width,
+                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
                 framecount,
             );
 
-            if tw != m.work_rect.w
+            if stack_window_width != monitor.work_rect.w
                 && let Some(c) = ctx.core().globals().clients.get(&client.win)
             {
-                tx += c.total_width();
+                stack_window_x += c.total_width();
             }
         }
     }
@@ -145,49 +155,56 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
 // ── bstackhoriz ───────────────────────────────────────────────────────────────
 
-pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let framecount = framecount_for_layout(
         ctx.core().globals(),
         4,
         FAST_FRAME_COUNT,
         DEFAULT_FRAME_COUNT,
     );
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+    let tiled_client_count =
+        monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
-    if n == 0 {
+    if tiled_client_count == 0 {
         return;
     }
 
-    let (mh, th, mut stack_y_offset) = if n > m.nmaster as u32 {
-        let mh = if m.nmaster > 0 {
-            (m.mfact * m.work_rect.h as f32) as i32
+    let (master_area_height, stack_window_height, mut stack_window_y) =
+        if tiled_client_count > monitor.nmaster as u32 {
+            let master_area_height = if monitor.nmaster > 0 {
+                (monitor.mfact * monitor.work_rect.h as f32) as i32
+            } else {
+                0
+            };
+            let stack_window_height = (monitor.work_rect.h - master_area_height)
+                / (tiled_client_count - monitor.nmaster as u32) as i32;
+            let stack_window_y = monitor.work_rect.y + master_area_height;
+            (master_area_height, stack_window_height, stack_window_y)
         } else {
-            0
+            (
+                monitor.work_rect.h,
+                monitor.work_rect.h,
+                monitor.work_rect.y,
+            )
         };
-        let th = (m.work_rect.h - mh) / (n - m.nmaster as u32) as i32;
-        let stack_y_offset = m.work_rect.y + mh;
-        (mh, th, stack_y_offset)
-    } else {
-        (m.work_rect.h, m.work_rect.h, m.work_rect.y)
-    };
 
-    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
 
     let mut master_row_offset: i32 = 0;
-    let tx: i32 = m.work_rect.x;
+    let stack_window_x: i32 = monitor.work_rect.x;
 
-    for (i, client) in tiled.iter().enumerate() {
-        if (i as u32) < (m.nmaster as u32) {
-            let w =
-                (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i as u32) as i32;
+    for (index, client) in tiled_clients.iter().enumerate() {
+        if (index as u32) < (monitor.nmaster as u32) {
+            let master_window_width = (monitor.work_rect.w - master_row_offset)
+                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
             move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x + master_row_offset,
-                    y: m.work_rect.y,
-                    w: w - BORDER_MULTIPLIER * client.border_width,
-                    h: mh - BORDER_MULTIPLIER * client.border_width,
+                    x: monitor.work_rect.x + master_row_offset,
+                    y: monitor.work_rect.y,
+                    w: master_window_width - BORDER_MULTIPLIER * client.border_width,
+                    h: master_area_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
                 framecount,
@@ -201,19 +218,19 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 ctx,
                 client.win,
                 &Rect {
-                    x: tx,
-                    y: stack_y_offset,
-                    w: m.work_rect.w - BORDER_MULTIPLIER * client.border_width,
-                    h: th - BORDER_MULTIPLIER * client.border_width,
+                    x: stack_window_x,
+                    y: stack_window_y,
+                    w: monitor.work_rect.w - BORDER_MULTIPLIER * client.border_width,
+                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
                 framecount,
             );
 
-            if th != m.work_rect.h
+            if stack_window_height != monitor.work_rect.h
                 && let Some(c) = ctx.core().globals().clients.get(&client.win)
             {
-                stack_y_offset += c.total_height();
+                stack_window_y += c.total_height();
             }
         }
     }
