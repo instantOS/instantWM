@@ -25,6 +25,18 @@ use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
+fn master_width(m: &Monitor, tiled_count: u32) -> i32 {
+    if tiled_count > m.nmaster as u32 {
+        if m.nmaster > 0 {
+            (m.mfact * m.work_rect.w as f32) as i32
+        } else {
+            0
+        }
+    } else {
+        m.work_rect.w
+    }
+}
+
 pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let framecount = framecount_for_layout(
         ctx.core().globals(),
@@ -39,12 +51,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         return;
     }
 
-    let mut mw: i32 = if n > m.nmaster as u32 {
-        if m.nmaster > 0 {
-            (m.mfact * m.work_rect.w as f32) as i32
-        } else {
-            0
-        }
+    let master_w: i32 = if n > m.nmaster as u32 {
+        master_width(m, n)
     } else {
         if n > 1 && n < m.nmaster as u32 {
             m.nmaster = n as i32;
@@ -73,19 +81,12 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 &Rect {
                     x: m.work_rect.x,
                     y: m.work_rect.y + master_y_offset as i32,
-                    w: mw - BORDER_MULTIPLIER * client.border_width,
+                    w: master_w - BORDER_MULTIPLIER * client.border_width,
                     h: h - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
                 frames,
             );
-
-            if m.nmaster == 1
-                && n > 1
-                && let Some(c) = ctx.client(client.win)
-            {
-                mw = c.geo.w + c.border_width * 2;
-            }
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win)
                 && master_y_offset as i32 + c.total_height() < m.work_rect.h
@@ -99,9 +100,9 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 ctx,
                 client.win,
                 &Rect {
-                    x: m.work_rect.x + mw,
+                    x: m.work_rect.x + master_w,
                     y: m.work_rect.y + stack_y_offset as i32,
-                    w: m.work_rect.w - mw - BORDER_MULTIPLIER * client.border_width,
+                    w: m.work_rect.w - master_w - BORDER_MULTIPLIER * client.border_width,
                     h: h - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
@@ -114,5 +115,31 @@ pub fn tile(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 stack_y_offset += c.total_height() as u32;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::master_width;
+    use crate::types::{Monitor, Rect};
+
+    #[test]
+    fn master_width_respects_mfact_when_stack_exists() {
+        let mut monitor = Monitor::default();
+        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.mfact = 0.7;
+        monitor.nmaster = 1;
+
+        assert_eq!(master_width(&monitor, 2), 700);
+    }
+
+    #[test]
+    fn master_width_uses_full_width_when_everything_is_in_master() {
+        let mut monitor = Monitor::default();
+        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.mfact = 0.2;
+        monitor.nmaster = 2;
+
+        assert_eq!(master_width(&monitor, 1), 1000);
     }
 }
