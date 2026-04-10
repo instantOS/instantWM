@@ -1,13 +1,12 @@
 //! View (workspace) navigation.
 
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::LayoutKind;
 use crate::layouts::arrange;
 use crate::types::{Direction, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
-    apply_pertag_settings(ctx.core_mut());
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
@@ -327,24 +326,6 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
             view(ctx, TagMask::all(num_tags))
         }
     }
-}
-
-pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
-    let (nmaster, mfact) = {
-        let mon = core.globals().selected_monitor();
-        let Some(current_tag) = mon.current_tag else {
-            return;
-        };
-        if current_tag >= mon.tags.len() {
-            return;
-        }
-        let tag = &mon.tags[current_tag - 1];
-        (tag.nmaster, tag.mfact)
-    };
-
-    let mon = core.globals_mut().selected_monitor_mut();
-    mon.nmaster = nmaster;
-    mon.mfact = mfact;
 }
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
