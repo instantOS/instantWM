@@ -181,12 +181,19 @@ impl Client {
         self.border_width
     }
 
+    /// Resolve the monitor this client currently belongs to.
+    pub fn monitor<'a>(
+        &self,
+        globals: &'a crate::globals::Globals,
+    ) -> Option<&'a crate::types::Monitor> {
+        globals.monitor(self.monitor_id)
+    }
+
     /// Get the monitor's size (width, height) for this client.
     ///
     /// Returns `(0, 0)` if the client is not assigned to a monitor.
     pub fn monitor_size(&self, globals: &crate::globals::Globals) -> (i32, i32) {
-        globals
-            .monitor(self.monitor_id)
+        self.monitor(globals)
             .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
             .unwrap_or((0, 0))
     }

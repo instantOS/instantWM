@@ -53,11 +53,7 @@ pub fn set_client_tag_prop(
         return;
     };
 
-    let mon_num = core
-        .globals()
-        .monitor(c.monitor_id)
-        .map(|m| m.num as u32)
-        .unwrap_or(0);
+    let mon_num = c.monitor(core.globals()).map(|m| m.num as u32).unwrap_or(0);
 
     let mut data = [0u8; 8];
     data[..4].copy_from_slice(&c.tags.bits().to_ne_bytes());

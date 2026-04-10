@@ -47,17 +47,25 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         m.clientcount = clientcount;
     }
 
-    apply_border_widths(ctx, monitor_id);
+    let Some(monitor_before_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
+        return;
+    };
+
+    apply_border_widths(ctx, &monitor_before_layout);
     run_layout(ctx, monitor_id);
-    apply_fullscreen(ctx, monitor_id);
-    place_overlay(ctx, monitor_id);
+
+    let Some(monitor_after_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
+        return;
+    };
+
+    apply_fullscreen(ctx, &monitor_after_layout);
+    place_overlay(ctx, &monitor_after_layout);
 }
 
-fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let (mon_rect, clients, selected_tags) = match ctx.core().globals().monitor(monitor_id) {
-        Some(m) => (m.monitor_rect, m.clients.clone(), m.selected_tags()),
-        None => return,
-    };
+fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
+    let mon_rect = monitor.monitor_rect;
+    let clients = monitor.clients.clone();
+    let selected_tags = monitor.selected_tags();
 
     let fullscreen_windows: Vec<_> = clients
         .into_iter()
@@ -72,19 +80,14 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     }
 }
 
-fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let m = match ctx.core().globals().monitor(monitor_id) {
-        Some(m) => m,
-        None => return,
-    };
-
-    let is_tiling = m.current_layout().is_tiling();
-    let is_monocle = m.current_layout().is_monocle();
-    let clientcount = m.clientcount;
-    let selected_tags = m.selected_tags();
+fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
+    let is_tiling = monitor.current_layout().is_tiling();
+    let is_monocle = monitor.current_layout().is_monocle();
+    let clientcount = monitor.clientcount;
+    let selected_tags = monitor.selected_tags();
 
     // Collect border changes first to avoid borrow conflicts
-    let border_changes: Vec<(WindowId, i32)> = m
+    let border_changes: Vec<(WindowId, i32)> = monitor
         .clients
         .iter()
         .filter_map(|&win| {
@@ -131,11 +134,9 @@ fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     }
 }
 
-fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let (overlay_win, work_rect) = match ctx.core().globals().monitor(monitor_id) {
-        Some(m) => (m.overlay, m.work_rect),
-        None => return,
-    };
+fn place_overlay(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
+    let overlay_win = monitor.overlay;
+    let work_rect = monitor.work_rect;
 
     let win = match overlay_win {
         Some(w) => w,
@@ -187,18 +188,16 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
-    if let Some(m) = ctx.core().globals().monitor(monitor_id) {
-        for &win in &m.stack {
-            if let Some(c) = ctx.client(win)
-                && c.is_visible(selected_tags)
-            {
-                if c.is_true_fullscreen() {
-                    fullscreen_stack.push(win);
-                } else if c.is_floating {
-                    floating_stack.push(win);
-                } else {
-                    tiled_stack.push(win);
-                }
+    for &win in &monitor.stack {
+        if let Some(c) = ctx.client(win)
+            && c.is_visible(selected_tags)
+        {
+            if c.is_true_fullscreen() {
+                fullscreen_stack.push(win);
+            } else if c.is_floating {
+                floating_stack.push(win);
+            } else {
+                tiled_stack.push(win);
             }
         }
     }

@@ -480,7 +480,9 @@ fn run_manage_animation(
     let is_tiling = ctx
         .core()
         .globals()
-        .monitor(c.monitor_id)
+        .clients
+        .get(&w)
+        .and_then(|c| c.monitor(ctx.core().globals()))
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 

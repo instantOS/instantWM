@@ -63,7 +63,8 @@ impl WaylandState {
             .globals()
             .and_then(|g| {
                 g.clients.get(&window_id).and_then(|client| {
-                    g.monitor(client.monitor_id)
+                    client
+                        .monitor(g)
                         .map(|mon| client.is_visible(mon.selected_tags()))
                 })
             })

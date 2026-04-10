@@ -71,15 +71,10 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
         let size = window.geometry().size;
         let content_size = (size.w.max(1), size.h.max(1));
 
-        let is_visible = g
-            .monitor(c.monitor_id)
-            .map(|m| c.is_visible(m.selected_tags()))
-            .unwrap_or(false);
-
-        let is_tiling_layout = g
-            .monitor(c.monitor_id)
-            .map(|m| m.is_tiling_layout())
-            .unwrap_or(true);
+        let (is_visible, is_tiling_layout) = c
+            .monitor(g)
+            .map(|m| (c.is_visible(m.selected_tags()), m.is_tiling_layout()))
+            .unwrap_or((false, true));
 
         windows.push(WindowBorderInfo {
             id: marker.id,

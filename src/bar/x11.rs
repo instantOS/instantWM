@@ -26,18 +26,14 @@ pub fn draw_bar(
     systray: Option<&Systray>,
     mon_idx: MonitorId,
 ) {
-    let bar_win = core
-        .globals()
-        .monitor(mon_idx)
-        .map(|m| m.bar_win)
-        .unwrap_or_default();
+    let Some(monitor) = core.globals().monitor(mon_idx).cloned() else {
+        return;
+    };
+    let bar_win = monitor.bar_win;
     if bar_win == WindowId::default() {
         return;
     }
-    let work_rect_w = match core.globals().monitor(mon_idx) {
-        Some(m) => m.work_rect.w,
-        None => return,
-    };
+    let work_rect_w = monitor.work_rect.w;
     let bar_height = core.globals().cfg.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
@@ -60,8 +56,14 @@ pub fn draw_bar(
     };
 
     let mut painter = crate::bar::x11_painter::X11BarPainter::new(drw);
-
-    crate::bar::renderer::draw_bar(core, mon_idx, &mut painter);
+    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
+    let Some(snapshot) = snapshots
+        .iter()
+        .find(|snapshot| snapshot.monitor_id == mon_idx)
+    else {
+        return;
+    };
+    crate::bar::renderer::draw_bar_snapshot(core, mon_idx, &monitor, snapshot, &mut painter);
 
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }

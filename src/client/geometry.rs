@@ -47,7 +47,7 @@ pub fn sane_floating_spawn_rect(globals: &Globals, win: WindowId) -> Option<Rect
         return None;
     }
 
-    let work_rect = globals.monitor(client.monitor_id)?.work_rect;
+    let work_rect = client.monitor(globals)?.work_rect;
     if !work_rect.is_valid() {
         return None;
     }

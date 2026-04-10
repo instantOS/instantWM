@@ -546,10 +546,9 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             let is_currently_visible = self
                 .globals()
                 .and_then(|g| {
-                    g.clients.get(&win).and_then(|c| {
-                        g.monitor(c.monitor_id)
-                            .map(|m| c.is_visible(m.selected_tags()))
-                    })
+                    g.clients
+                        .get(&win)
+                        .and_then(|c| c.monitor(g).map(|m| c.is_visible(m.selected_tags())))
                 })
                 .unwrap_or(false);
 
