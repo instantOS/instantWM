@@ -359,7 +359,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
             .globals()
             .selected_monitor()
             .tiled_client_count(ctx.core().globals().clients.map())
-            > 2;
+            > 1;
     if animation_on {
         ctx.core_mut().globals_mut().behavior.animated = false;
     }

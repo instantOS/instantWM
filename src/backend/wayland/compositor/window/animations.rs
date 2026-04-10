@@ -73,7 +73,14 @@ impl WaylandState {
 
         // Do not update the location if it is visually already at the target
         // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
-        if actual_loc == Some(target_loc) && mode == WindowMoveMode::Normal {
+        // However, a size-only change (e.g. mfact adjustment) still needs a
+        // configure even when x,y are unchanged.
+        let configured_size = (target.w.max(1), target.h.max(1));
+        let size_unchanged = self
+            .last_configured_size
+            .get(&window_id)
+            .is_some_and(|&size| size == configured_size);
+        if actual_loc == Some(target_loc) && mode == WindowMoveMode::Normal && size_unchanged {
             self.window_animations.remove(&window_id);
             return;
         }
@@ -221,7 +228,6 @@ impl WaylandState {
         }
         for win in finished {
             self.window_animations.remove(&win);
-            self.sync_client_geometry_from_window(win);
         }
     }
 

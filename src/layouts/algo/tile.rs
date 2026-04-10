@@ -102,6 +102,12 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
             let stack_window_height = (monitor.work_rect.h - stack_y_offset as i32)
                 / (tiled_client_count - index as u32) as i32;
 
+            let animation_frames = if tiled_client_count == 2 {
+                0
+            } else {
+                framecount
+            };
+
             move_resize_client(
                 ctx,
                 client.win,
@@ -114,7 +120,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
                 MoveResizeMode::Normal,
-                framecount,
+                animation_frames,
             );
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win)
