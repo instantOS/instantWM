@@ -49,7 +49,7 @@ pub struct RuntimeConfig {
 
     pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
-    pub tag_template: Vec<crate::types::Tag>,
+    pub tag_template: Vec<crate::types::monitor::TagNames>,
 
     // Input configuration
     pub input: std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
@@ -609,9 +609,9 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
 
 /// Build the canonical tag template from config.
 ///
-/// Returns a `Vec<Tag>` that every monitor should clone into its own
+/// Returns a `Vec<TagNames>` that every monitor should clone into its own
 /// `tags` field via `Monitor::init_tags`.
-pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag> {
+pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::monitor::TagNames> {
     let num_tags = cfg.num_tags;
     let mut template = Vec::with_capacity(num_tags);
     for i in 0..num_tags {
@@ -625,15 +625,7 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::Tag>
         } else {
             String::new()
         };
-        let tag = crate::types::Tag {
-            name,
-            alt_name,
-            nmaster: cfg.nmaster,
-            mfact: cfg.mfact,
-            showbar: cfg.showbar,
-            ..Default::default()
-        };
-        template.push(tag);
+        template.push(crate::types::monitor::TagNames { name, alt_name });
     }
     template
 }

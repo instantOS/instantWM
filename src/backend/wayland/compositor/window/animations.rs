@@ -155,12 +155,14 @@ impl WaylandState {
             return;
         }
 
-        if self.window_animations.get(&window_id).is_some_and(|anim| {
-            anim.to.x == target_loc.x
-                && anim.to.y == target_loc.y
-                && anim.to.w == target.w
-                && anim.to.h == target.h
-        }) {
+        if from_rect.is_none()
+            && self.window_animations.get(&window_id).is_some_and(|anim| {
+                anim.to.x == target_loc.x
+                    && anim.to.y == target_loc.y
+                    && anim.to.w == target.w
+                    && anim.to.h == target.h
+            })
+        {
             return;
         }
 

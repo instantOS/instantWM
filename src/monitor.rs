@@ -458,8 +458,6 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
     let mut new_monitors = Vec::new();
     for (i, output) in outputs.into_iter().enumerate() {
         let mut m = Monitor::new_with_values(
-            ctx.core().globals().cfg.mfact,
-            ctx.core().globals().cfg.nmaster,
             ctx.core().globals().cfg.show_bar,
             ctx.core().globals().cfg.top_bar,
         );
@@ -584,8 +582,6 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
 fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     let template = ctx.core_mut().globals_mut().cfg.tag_template.clone();
     let mut mon = Monitor::new_with_values(
-        ctx.core_mut().globals_mut().cfg.mfact,
-        ctx.core_mut().globals_mut().cfg.nmaster,
         ctx.core_mut().globals_mut().cfg.show_bar,
         ctx.core_mut().globals_mut().cfg.top_bar,
     );
@@ -679,8 +675,6 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     let (
         old_count,
         _template,
-        _mfact,
-        _nmaster,
         _showbar,
         _topbar,
         _bar_height,
@@ -694,10 +688,10 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
 
         // Ensure count
         let template = g.cfg.tag_template.clone();
-        let (mfact, nmaster, showbar, topbar) =
-            (g.cfg.mfact, g.cfg.nmaster, g.cfg.show_bar, g.cfg.top_bar);
+        let (showbar, topbar) =
+            (g.cfg.show_bar, g.cfg.top_bar);
         while g.monitors.count() < new_count {
-            let mut mon = Monitor::new_with_values(mfact, nmaster, showbar, topbar);
+            let mut mon = Monitor::new_with_values(showbar, topbar);
             mon.init_tags(&template);
             g.monitors.push(mon);
         }
@@ -729,8 +723,6 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         (
             old_count,
             template,
-            mfact,
-            nmaster,
             showbar,
             topbar,
             bar_height,

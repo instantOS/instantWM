@@ -12,7 +12,7 @@ use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientI
 use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
-use crate::types::tag::Tag;
+use crate::types::Tag;
 use crate::types::TagLayouts;
 use crate::types::tag_types::MonitorDirection;
 
@@ -79,7 +79,7 @@ pub struct Monitor {
     /// Previously selected single tag index.
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
-    pub tags: Vec<Tag>,
+    pub tags: Vec<TagNames>,
     /// Client list (focus order).
     pub clients: Vec<WindowId>,
     /// Currently selected client.
@@ -170,7 +170,7 @@ impl Monitor {
     }
 
     /// Initialize tags from a template.
-    pub fn init_tags(&mut self, template: &[Tag]) {
+    pub fn init_tags(&mut self, template: &[TagNames]) {
         self.tags = template.to_vec();
     }
 
