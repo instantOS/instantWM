@@ -2,5 +2,8 @@
 # Skip crates.io publishing - we only want GitHub releases
 
 [workspace]
-# Disable all package publishing
 publish = false
+git_only = true
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
+git_release_body = "{{ changelog }}"
