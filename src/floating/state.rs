@@ -170,7 +170,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 pub fn toggle_maximized(ctx: &mut WmCtx) {
     // Read all the state we need through the backend-agnostic core.
     let maximized_win = ctx.core().globals().selected_monitor().fullscreen;
-    let selected_window = ctx.core().globals().selected_monitor().sel;
+    let selected_window = ctx.selected_client();
     let animated = ctx.core().globals().behavior.animated;
 
     if let Some(win) = maximized_win {

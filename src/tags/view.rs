@@ -235,7 +235,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn follow_view(ctx: &mut WmCtx) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
-    let selected_window = ctx.core().globals().selected_monitor().sel;
+    let selected_window = ctx.selected_client();
     let Some(win) = selected_window else { return };
 
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;

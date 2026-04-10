@@ -48,7 +48,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         .selected_tags()
         .bits();
     let is_current_tag = (initial_tag & ctx.core().globals().tags.mask()) == current_tagset;
-    let has_sel = ctx.core().globals().selected_monitor().sel.is_some();
+    let has_sel = ctx.selected_client().is_some();
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {

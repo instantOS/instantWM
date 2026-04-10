@@ -94,10 +94,6 @@ impl ClientManager {
         self.clients.get(&win).map(|c| c.effective_float_geo())
     }
 
-    pub fn win_to_client(&self, win: WindowId) -> Option<WindowId> {
-        self.clients.contains_key(&win).then_some(win)
-    }
-
     pub fn list_push(&mut self, id: ClientId) {
         self.client_list.push(id);
     }

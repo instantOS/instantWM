@@ -20,7 +20,7 @@ pub struct ScratchpadInfo {
 }
 
 fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> Option<WindowId> {
-    window_id.or_else(|| ctx.core().globals().selected_monitor().sel)
+    window_id.or_else(|| ctx.selected_client())
 }
 
 fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {

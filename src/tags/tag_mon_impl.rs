@@ -26,8 +26,10 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // 1. Early-exit guards.
     // -----------------------------------------------------------------------
     let (selected_window, has_multiple_mons) = {
-        let sel = ctx.core().globals().selected_monitor().sel;
-        (sel, ctx.core().globals().monitors.len() > 1)
+        (
+            ctx.selected_client(),
+            ctx.core().globals().monitors.len() > 1,
+        )
     };
 
     let Some(win) = selected_window else { return };
