@@ -123,9 +123,15 @@ pub fn render_frame(
         renderer,
         &framebuffer,
         output,
-        start_time,
+        true,
     );
-
+    crate::backend::wayland::compositor::image_capture::submit_pending_image_captures(
+        &mut state.runtime.pending_image_captures,
+        renderer,
+        &framebuffer,
+        output,
+        true,
+    );
     // Get damage before framebuffer is dropped
     let damage = render_result.damage.cloned();
 

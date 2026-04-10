@@ -65,7 +65,7 @@ pub(crate) fn hit_test(
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
-    if local_x < core.globals().cfg.startmenusize {
+    if local_x < monitor.startmenu_size {
         return BarPosition::StartMenu;
     }
 
@@ -127,11 +127,11 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let is_selmon = core.globals().selected_monitor().num == mon.num;
     let tag_end = get_tag_width(core);
     let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
-    let bar_height = core.globals().cfg.bar_height;
+    let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
-    let mut acc = core.globals().cfg.startmenusize;
+    let mut acc = mon.startmenu_size;
     for (slot, &w) in core.bar.tag_widths.iter().enumerate() {
         tag_ranges.push(TagHitRange {
             start: acc,

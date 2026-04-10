@@ -127,6 +127,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_R => named_args(NamedAction::Spawn, defaults::TERM_FILEMANAGER)),
         key!(MODKEY, XK_Y => named_args(NamedAction::Spawn, defaults::APPMENU)),
         key!(MODKEY, XK_X => named_args(NamedAction::Spawn, &["iswitch"])),
+        key!(MODKEY, XK_A => named_args(NamedAction::Spawn, &["ins", "assist"])),
         key!(MOD1, XK_TAB => named_args(NamedAction::Spawn, &["iswitch"])),
         key!(MODKEY, XK_DEAD_CIRCUMFLEX => named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
         key!(MODKEY | CONTROL, XK_L => named_args(NamedAction::Spawn, defaults::LOCKSCREEN)),

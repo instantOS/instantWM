@@ -3,14 +3,20 @@ use smithay::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
         find_popup_root_surface,
     },
-    input::{SeatHandler, pointer::Focus},
+    input::{
+        SeatHandler,
+        dnd::{GrabType, Source},
+        pointer::Focus,
+    },
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
         compositor,
         seat::WaylandFocus,
         selection::{
             SelectionHandler,
-            data_device::{DataDeviceHandler, DataDeviceState, set_data_device_focus},
+            data_device::{
+                DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
+            },
             ext_data_control::{
                 DataControlHandler as ExtDataControlHandler,
                 DataControlState as ExtDataControlState,
@@ -110,20 +116,47 @@ impl SelectionHandler for WaylandState {
 }
 
 impl DataDeviceHandler for WaylandState {
-    fn data_device_state(&self) -> &DataDeviceState {
-        &self.data_device_state
+    fn data_device_state(&mut self) -> &mut DataDeviceState {
+        &mut self.data_device_state
     }
 }
 
 impl ExtDataControlHandler for WaylandState {
-    fn data_control_state(&self) -> &ExtDataControlState {
-        &self.ext_data_control_state
+    fn data_control_state(&mut self) -> &mut ExtDataControlState {
+        &mut self.ext_data_control_state
     }
 }
 
 impl WlrDataControlHandler for WaylandState {
-    fn data_control_state(&self) -> &WlrDataControlState {
-        &self.wlr_data_control_state
+    fn data_control_state(&mut self) -> &mut WlrDataControlState {
+        &mut self.wlr_data_control_state
+    }
+}
+
+impl WaylandDndGrabHandler for WaylandState {
+    fn dnd_requested<S: Source>(
+        &mut self,
+        _source: S,
+        icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
+        _seat: smithay::input::Seat<Self>,
+        _serial: smithay::utils::Serial,
+        _type_: GrabType,
+    ) {
+        self.runtime.dnd_icon = icon;
+        self.request_render();
+    }
+}
+
+impl smithay::input::dnd::DndGrabHandler for WaylandState {
+    fn dropped(
+        &mut self,
+        _target: Option<smithay::input::dnd::DndTarget<'_, Self>>,
+        _validated: bool,
+        _seat: smithay::input::Seat<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
+        self.runtime.dnd_icon = None;
+        self.request_render();
     }
 }
 
@@ -157,6 +190,7 @@ impl XdgShellHandler for WaylandState {
         }
         self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
     }
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
@@ -169,6 +203,7 @@ impl XdgShellHandler for WaylandState {
         }
         self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
     }
 
     fn parent_changed(&mut self, surface: ToplevelSurface) {
@@ -346,12 +381,20 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
+            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = true;
             }
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
+            }
             g.dirty.space = true;
             g.dirty.layout = true;
-            if let Some(mon) = g.selected_monitor_mut_opt() {
+            if let Some(monitor_id) = monitor_id
+                && let Some(mon) = g.monitor_mut(monitor_id)
+            {
                 mon.fullscreen = Some(win);
             }
         }
@@ -370,10 +413,10 @@ impl XdgShellHandler for WaylandState {
             }
             g.dirty.space = true;
             g.dirty.layout = true;
-            if let Some(mon) = g.selected_monitor_mut_opt()
-                && mon.fullscreen == Some(win)
-            {
-                mon.fullscreen = None;
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
             }
         }
         surface.with_pending_state(|state| {
@@ -462,24 +505,102 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         &mut self.xdg_activation_state
     }
 
+    fn token_created(
+        &mut self,
+        _token: smithay::wayland::xdg_activation::XdgActivationToken,
+        token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
+    ) -> bool {
+        if let Some(g) = self.globals() {
+            let context = token_data
+                .surface
+                .as_ref()
+                .and_then(|surface| self.window_id_for_surface(surface))
+                .and_then(|source_win| g.clients.get(&source_win))
+                .map(|client| crate::client::LaunchContext {
+                    monitor_id: client.monitor_id,
+                    tags: client.tags,
+                })
+                .unwrap_or_else(|| crate::client::current_launch_context(g));
+            let _ = token_data
+                .user_data
+                .insert_if_missing_threadsafe(|| context);
+        }
+        true
+    }
+
     fn request_activation(
         &mut self,
         _token: smithay::wayland::xdg_activation::XdgActivationToken,
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
         surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
+        let launch_context = token_data
+            .user_data
+            .get::<crate::client::LaunchContext>()
+            .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
-            if let Some(g) = self.globals_mut() {
-                crate::client::select_client(g, win);
+            // Check whether the window is already visible on its monitor's
+            // currently selected tags.  When it is, we focus it immediately.
+            // When it is not (i.e. it lives on a different tag), we mark it
+            // as urgent so the bar highlights the tag without stealing focus.
+            let is_currently_visible = self
+                .globals()
+                .and_then(|g| {
+                    g.clients.get(&win).and_then(|c| {
+                        g.monitor(c.monitor_id)
+                            .map(|m| c.is_visible(m.selected_tags()))
+                    })
+                })
+                .unwrap_or(false);
+
+            let activated = self.with_wm_mut_unified(|wm, _state| {
+                let mut ctx = wm.ctx();
+                if is_currently_visible {
+                    crate::focus::activate_client(&mut ctx, win)
+                } else {
+                    // Mark as urgent so the bar shows the indicator.
+                    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                        client.is_urgent = true;
+                    }
+                    true
+                }
+            });
+
+            // Re-render the bar so urgency (or the new focus) becomes visible.
+            self.request_bar_redraw();
+
+            if activated == Some(true) {
+                log::debug!(
+                    "xdg_activation: activated window {:?} (visible={}, app_id: {:?})",
+                    win,
+                    is_currently_visible,
+                    token_data.app_id
+                );
+            } else {
+                log::warn!(
+                    "xdg_activation: failed to activate window {:?} (app_id: {:?})",
+                    win,
+                    token_data.app_id
+                );
             }
-            self.set_focus(win);
+            return;
+        }
+
+        if let Some(context) = launch_context {
+            smithay::wayland::compositor::with_states(&surface, |states| {
+                let _ = states.data_map.insert_if_missing_threadsafe(|| {
+                    crate::backend::wayland::compositor::state::PendingLaunchContextMarker {
+                        context,
+                    }
+                });
+            });
             log::debug!(
-                "xdg_activation: activated window (app_id: {:?})",
+                "xdg_activation: stored launch context for pending surface (app_id: {:?})",
                 token_data.app_id
             );
         } else {
             log::warn!(
-                "xdg_activation: could not find window for surface (app_id: {:?})",
+                "xdg_activation: missing launch context for pending surface (app_id: {:?})",
                 token_data.app_id
             );
         }

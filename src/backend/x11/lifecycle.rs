@@ -31,7 +31,7 @@
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::{
-    X11RuntimeConfig, apply_rules_x11, set_client_state, set_client_tag_prop, update_client_list,
+    X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
     update_motif_hints, update_window_type, update_wm_hints,
 };
 use crate::client::constants::BROKEN;
@@ -57,8 +57,16 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     let trans = get_transient_for_hint_x11(&ctx.x11, w);
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
-    assign_initial_monitor_and_tags(ctx.core.globals_mut(), &mut client, trans);
-    insert_client_and_apply_rules(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, client);
+    let launch_context = read_launch_context_x11(ctx.core.globals_mut(), &ctx.x11, w);
+    assign_initial_monitor_and_tags(ctx.core.globals_mut(), &mut client, trans, launch_context);
+    insert_client_and_apply_rules(
+        &mut ctx.core,
+        &ctx.x11,
+        ctx.x11_runtime,
+        w,
+        client,
+        launch_context,
+    );
 
     let borderpx = apply_default_border(ctx.core.globals_mut(), w);
     let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.globals(), w);
@@ -80,6 +88,9 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.globals_mut(), w, trans.is_some()) {
+        if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w) {
+            crate::client::sync_client_geometry(ctx.core.globals_mut(), w, rect);
+        }
         ctx.backend.raise_window(w);
         ctx.backend.flush();
     }
@@ -124,6 +135,7 @@ fn assign_initial_monitor_and_tags(
     g: &mut crate::globals::Globals,
     c: &mut Client,
     trans: Option<WindowId>,
+    launch_context: Option<crate::client::LaunchContext>,
 ) {
     let trans_client = trans.filter(|win| g.clients.contains_key(win));
     if let Some(tc_win) = trans_client
@@ -131,6 +143,11 @@ fn assign_initial_monitor_and_tags(
     {
         c.monitor_id = tc.monitor_id;
         c.set_tag_mask(tc.tags);
+        return;
+    }
+    if let Some(launch_context) = launch_context {
+        c.monitor_id = launch_context.monitor_id;
+        c.set_tag_mask(launch_context.tags);
         return;
     }
     c.monitor_id = g.selected_monitor_id();
@@ -143,11 +160,73 @@ fn insert_client_and_apply_rules(
     x11_cfg: &X11RuntimeConfig,
     w: WindowId,
     mut c: Client,
+    launch_context: Option<crate::client::LaunchContext>,
 ) {
     c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
         == crate::client::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
-    apply_rules_x11(core, x11, x11_cfg, w);
+    let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
+    crate::client::apply_rules(core.globals_mut(), w, &props, launch_context);
+}
+
+fn read_launch_context_x11(
+    g: &mut Globals,
+    x11: &X11BackendRef<'_>,
+    w: WindowId,
+) -> Option<crate::client::LaunchContext> {
+    let startup_id = read_string_prop_x11(x11, w, "_NET_STARTUP_ID");
+    let pid = read_u32_prop_x11(x11, w, "_NET_WM_PID");
+    crate::client::take_pending_launch(g, pid, startup_id.as_deref())
+}
+
+fn read_string_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<String> {
+    let atom = x11
+        .conn
+        .intern_atom(false, atom_name.as_bytes())
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    if atom == 0 {
+        return None;
+    }
+    let x11_win: Window = w.into();
+    let reply = x11
+        .conn
+        .get_property(false, x11_win, atom, AtomEnum::ANY, 0, 1024)
+        .ok()?
+        .reply()
+        .ok()?;
+    if reply.format != 8 || reply.value.is_empty() {
+        return None;
+    }
+    let len = reply
+        .value
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(reply.value.len());
+    Some(String::from_utf8_lossy(&reply.value[..len]).into_owned()).filter(|s| !s.is_empty())
+}
+
+fn read_u32_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<u32> {
+    let atom = x11
+        .conn
+        .intern_atom(false, atom_name.as_bytes())
+        .ok()?
+        .reply()
+        .ok()?
+        .atom;
+    if atom == 0 {
+        return None;
+    }
+    let x11_win: Window = w.into();
+    x11.conn
+        .get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 1)
+        .ok()?
+        .reply()
+        .ok()?
+        .value32()?
+        .next()
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
@@ -384,30 +463,17 @@ fn run_manage_animation(
         return;
     }
 
-    crate::animation::place_client_for_animation(
+    crate::animation::move_resize_client(
         ctx,
         w,
-        &Rect {
+        &c.geo,
+        crate::animation::MoveResizeMode::AnimateFrom(Rect {
             x: c.geo.x,
             y: c.geo.y - 70,
             w: c.geo.w,
             h: c.geo.h,
-        },
-        true,
-    );
-
-    // Use backend-agnostic animation
-    crate::animation::animate_client(
-        ctx,
-        w,
-        &Rect {
-            x: c.geo.x,
-            y: c.geo.y,
-            w: 0,
-            h: 0,
-        },
+        }),
         7,
-        0,
     );
 
     let is_tiling = ctx

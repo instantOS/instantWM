@@ -40,12 +40,53 @@ impl WaylandState {
         self.window_index.get(&window)
     }
 
+    /// Sync client geometry from the compositor's current mapped window state.
+    ///
+    /// Wayland resizes are configure-driven, so the client may commit a size
+    /// smaller than the compositor requested. Keep WM geometry aligned with the
+    /// actual mapped element so hover hit-testing and floating restore logic use
+    /// the real window bounds.
+    pub(crate) fn sync_client_geometry_from_window(&mut self, window: WindowId) {
+        let Some(element) = self.find_window(window).cloned() else {
+            return;
+        };
+        let Some(loc) = self.space.element_location(&element) else {
+            return;
+        };
+        let geo = element.geometry();
+        let Some(g) = self.globals_mut() else {
+            return;
+        };
+        let Some(border_width) = g.clients.get(&window).map(|client| client.border_width) else {
+            return;
+        };
+
+        let rect = crate::types::Rect {
+            x: loc.x - border_width,
+            y: loc.y - border_width,
+            w: geo.size.w.max(1),
+            h: geo.size.h.max(1),
+        };
+        crate::client::sync_client_geometry(g, window, rect);
+    }
+
     /// Request the compositor to warp the pointer to `(x, y)` in logical
     /// screen coordinates.  The warp is deferred until the next event-loop
     /// tick so that the pointer handle and the caller's `pointer_location`
     /// variable can both be updated consistently.
     pub fn request_warp(&mut self, x: f64, y: f64) {
         self.pending_warp = Some(Point::from((x, y)));
+    }
+
+    pub(crate) fn begin_interactive_resize(&mut self, window: WindowId) {
+        self.active_resizes.insert(window);
+    }
+
+    pub(crate) fn end_interactive_resize(&mut self, window: WindowId) {
+        self.active_resizes.remove(&window);
+        if let Some(element) = self.find_window(window).cloned() {
+            self.send_toplevel_configure(&element, None);
+        }
     }
 
     /// Consume and return the pending warp target, if any.

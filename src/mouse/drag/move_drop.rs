@@ -69,13 +69,7 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     {
         return Some(SnapPosition::Right);
     }
-    if y <= mon.monitor_rect.y
-        + if mon.showbar {
-            ctx.core().globals().cfg.bar_height
-        } else {
-            5
-        }
-    {
+    if y <= mon.monitor_rect.y + if mon.showbar { mon.bar_height } else { 5 } {
         return Some(SnapPosition::Top);
     }
     None
@@ -86,7 +80,7 @@ pub fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
     let mon = ctx.core().globals().selected_monitor();
     mon.showbar
         && y >= mon.bar_y
-        && y < mon.bar_y + ctx.core().globals().cfg.bar_height
+        && y < mon.bar_y + mon.bar_height
         && x >= mon.monitor_rect.x
         && x < mon.monitor_rect.x + mon.monitor_rect.w
 }
@@ -163,7 +157,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 
         if !has_tiling {
             let mon = g.selected_monitor();
-            let bar_height = g.cfg.bar_height;
+            let bar_height = mon.bar_height;
             if let Some(c) = g.clients.get(&selected_window) {
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.y >= mon.monitor_rect.y + bar_height - MAX_UNMAXIMIZE_OFFSET
@@ -270,8 +264,10 @@ pub fn on_motion(
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
-        let bar_bottom =
-            ctx.core().globals().selected_monitor().bar_y + ctx.core().globals().cfg.bar_height;
+        let bar_bottom = {
+            let mon = ctx.core().globals().selected_monitor();
+            mon.bar_y + mon.bar_height
+        };
         new_y = bar_bottom;
     }
 

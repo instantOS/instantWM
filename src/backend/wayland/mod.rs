@@ -125,6 +125,11 @@ impl WaylandBackend {
         });
     }
 
+    pub fn request_bar_redraw(&self) -> bool {
+        self.with_state(|state: &mut WaylandState| state.request_bar_redraw())
+            .is_some()
+    }
+
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
             .unwrap_or(false)
@@ -249,6 +254,7 @@ impl BackendOps for WaylandBackend {
                             h: geom.size.h,
                         }
                     },
+                    scale: o.current_scale().fractional_scale(),
                     vrr_support: state
                         .output_vrr_metadata(&o.name())
                         .map(|m| m.vrr_support)

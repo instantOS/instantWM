@@ -30,7 +30,7 @@
 //! divide evenly: `grid` pads the last *row*, while `horizgrid` pads the last
 //! *column*.
 
-use crate::animation::animate_client;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::constants::animation::{
     BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
 };
@@ -112,7 +112,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             0
         };
 
-        animate_client(
+        move_resize_client(
             ctx,
             win,
             &Rect {
@@ -121,8 +121,8 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                 h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
             },
+            MoveResizeMode::Normal,
             framecount,
-            0,
         );
 
         i += 1;
@@ -188,7 +188,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0
             };
 
-            animate_client(
+            move_resize_client(
                 ctx,
                 win,
                 &Rect {
@@ -197,8 +197,8 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                     h: cell_height - BORDER_MULTIPLIER * border_width,
                 },
+                MoveResizeMode::Normal,
                 framecount,
-                0,
             );
         }
     }

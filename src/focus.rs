@@ -453,6 +453,38 @@ pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId
     select_monitor(ctx, monitor_id)
 }
 
+/// Route an external activation request (e.g. xdg-activation from a notification)
+/// through the normal WM focus path.
+///
+/// This makes the target monitor current, reveals the client's non-scratchpad
+/// tags when needed, and then applies the backend focus/restack logic.
+pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
+    let Some((monitor_id, client_tags)) = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&win)
+        .map(|client| (client.monitor_id, client.tags))
+    else {
+        return false;
+    };
+
+    if monitor_id != ctx.core().globals().selected_monitor_id() {
+        ctx.core_mut()
+            .globals_mut()
+            .set_selected_monitor(monitor_id);
+    }
+
+    let target_tags = client_tags.without_scratchpad();
+    let visible_tags = ctx.core().globals().selected_monitor().selected_tags();
+    if !target_tags.is_empty() && !target_tags.intersects(visible_tags) {
+        crate::tags::view::view(ctx, target_tags);
+    }
+
+    focus_soft(ctx, Some(win));
+    true
+}
+
 pub fn select_monitor_at_pointer(
     ctx: &mut crate::contexts::WmCtx,
     pointer_pos: (i32, i32),

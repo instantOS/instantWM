@@ -7,7 +7,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
-    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_INPUT_HINT, WM_HINTS_URGENCY_HINT,
+    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
 };
 use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::geometry::resize;
@@ -16,6 +16,7 @@ use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
+use x11rb::properties::WmHints;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
@@ -129,7 +130,7 @@ pub fn apply_rules_x11(
     win: WindowId,
 ) {
     let props = window_properties_x11(x11, x11_runtime, win);
-    apply_rules_generic(core.globals_mut(), win, &props);
+    apply_rules_generic(core.globals_mut(), win, &props, None);
 }
 
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
@@ -148,40 +149,23 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
     {
-        client.is_floating = true;
+        client.is_floating = crate::client::x11_policy::should_float_for_x11_type(Some(
+            smithay::xwayland::xwm::WmWindowType::Dialog,
+        ));
     }
 }
 
 pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let conn = ctx.x11.conn;
-    let x11_win: Window = win.into();
-
-    let Ok(cookie) =
-        conn.get_property(false, x11_win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
-    else {
-        return;
+    let hints = match WmHints::get(ctx.x11.conn, win.into()) {
+        Ok(cookie) => match cookie.reply_unchecked() {
+            Ok(hints) => hints,
+            Err(_) => None,
+        },
+        Err(_) => None,
     };
-
-    let Ok(reply) = cookie.reply() else { return };
-
-    let data: Vec<u32> = reply.value32().map(|v| v.collect()).unwrap_or_default();
-    let Some(&flags) = data.first() else { return };
-
-    let input = if flags & WM_HINTS_INPUT_HINT != 0 {
-        data.get(1).copied().unwrap_or(0) as i32
-    } else {
-        0
-    };
-
-    let is_urgent = (flags & WM_HINTS_URGENCY_HINT) != 0;
 
     if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
-        client.is_urgent = is_urgent;
-        client.never_focus = if flags & WM_HINTS_INPUT_HINT != 0 {
-            input == 0
-        } else {
-            false
-        };
+        crate::client::x11_policy::apply_wm_hints_to_client(client, hints);
     }
 }
 

@@ -21,6 +21,29 @@ cd instantWM
 just install
 ```
 
+### Wayland screen sharing and screenshots
+
+For broad application compatibility on Wayland, instantWM follows the standard
+wlroots-style portal stack:
+
+- `xdg-desktop-portal`
+- `xdg-desktop-portal-wlr`
+- `xdg-desktop-portal-gtk` as the fallback portal backend
+
+The repository ships [`resources/instantwm-portals.conf`](resources/instantwm-portals.conf),
+which routes `ScreenCast` and `Screenshot` to the `wlr` portal backend for
+`XDG_CURRENT_DESKTOP=instantwm`.
+
+This is the recommended setup for:
+
+- OBS Studio
+- Firefox / Chromium / Electron screen sharing
+- portal-based screenshots in sandboxed applications
+
+On a systemd-based session this additionally requires the Wayland session
+environment to be imported into D-Bus activation. instantWM does this
+automatically when starting its Wayland socket.
+
 ## [Documentation](https://instantos.io/documentation)
 
 ## Features

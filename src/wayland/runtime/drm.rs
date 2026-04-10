@@ -52,6 +52,7 @@ struct DrmLoopState {
     render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
     presentation_seq: HashMap<crtc::Handle, u64>,
+    last_bar_update_seq: u64,
 }
 
 impl DrmLoopState {
@@ -68,6 +69,7 @@ impl DrmLoopState {
                 .iter()
                 .map(|entry| (entry.crtc, 0))
                 .collect(),
+            last_bar_update_seq: 0,
         }
     }
 
@@ -361,7 +363,12 @@ fn setup_session_handlers(
                 if let Err(err) = session_libinput.resume() {
                     log::error!("failed to resume libinput context: {:?}", err);
                 }
-                if let Err(err) = session_output_manager.lock().unwrap().activate(false) {
+                if let Err(err) = session_output_manager
+                    .lock()
+                    .unwrap()
+                    .lock()
+                    .activate(false)
+                {
                     log::error!("failed to reactivate DRM device: {err}");
                 }
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionActivated);
@@ -435,7 +442,9 @@ fn run_event_loop(
             process_common_tick(ipc_server, wm, state, loop_state);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
 
-            if wm.bar.needs_redraw() {
+            let bar_update_seq = wm.bar.update_seq();
+            if loop_state.last_bar_update_seq != bar_update_seq {
+                loop_state.last_bar_update_seq = bar_update_seq;
                 loop_state.mark_all_dirty();
             }
 

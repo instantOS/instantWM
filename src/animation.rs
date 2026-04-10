@@ -1,43 +1,16 @@
-use crate::backend::x11::X11WindowAnimation;
 use crate::constants::animation::*;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
 use std::time::{Duration, Instant};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 
-/// Backend-agnostic animation entry point.
-///
-/// On X11: enqueues a non-blocking animation that is ticked by the calloop timer.
-/// On Wayland: updates the window target geometry; the compositor backend
-/// animates the motion when animations are enabled.
-pub fn animate_client(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
-    match ctx {
-        WmCtx::X11(ctx_x11) => animate_client_x11(ctx_x11, win, rect, frames, reset_pos),
-        WmCtx::Wayland(_ctx_wayland) => ctx.resize_client(win, *rect),
-    }
-}
-
-/// Backend-agnostic check and animate.
-pub fn check_animate(ctx: &mut WmCtx, win: WindowId, rect: &Rect, frames: i32, reset_pos: i32) {
-    match ctx {
-        WmCtx::X11(ctx_x11) => check_animate_x11(ctx_x11, win, rect, frames, reset_pos),
-        WmCtx::Wayland(_ctx_wayland) => {
-            let should_animate = ctx
-                .core()
-                .globals()
-                .clients
-                .get(&win)
-                .map(|client| {
-                    client.geo.x != rect.x
-                        || client.geo.y != rect.y
-                        || client.geo.w != rect.w
-                        || client.geo.h != rect.h
-                })
-                .unwrap_or(false);
-            if should_animate {
-                ctx.resize_client(win, *rect);
-            }
-        }
-    }
+#[derive(Clone, Debug)]
+pub struct WindowAnimation {
+    pub from: Rect,
+    pub to: Rect,
+    pub started_at: Instant,
+    pub duration: Duration,
 }
 
 pub fn ease_out_cubic(t: f64) -> f64 {
@@ -52,7 +25,7 @@ fn current_client_rect(core: &CoreCtx, win: WindowId) -> Option<Rect> {
         .map(|c| if c.geo.is_valid() { c.geo } else { c.old_geo })
 }
 
-pub(crate) fn interpolated_rect(animation: &X11WindowAnimation, now: Instant) -> Rect {
+pub(crate) fn interpolated_rect(animation: &WindowAnimation, now: Instant) -> Rect {
     let elapsed = now.saturating_duration_since(animation.started_at);
     let progress = if animation.duration.is_zero() {
         1.0
@@ -74,21 +47,6 @@ pub(crate) fn interpolated_rect(animation: &X11WindowAnimation, now: Instant) ->
     }
 }
 
-fn get_x11_animation_start_rect(ctx: &WmCtxX11<'_>, win: WindowId, reset_pos: i32) -> Option<Rect> {
-    if let Some(animation) = ctx.x11_runtime.window_animations.get(&win) {
-        let now = Instant::now();
-        let current = interpolated_rect(animation, now);
-        return Some(if reset_pos != 0 {
-            animation.to
-        } else {
-            current
-        });
-    }
-
-    let _ = reset_pos;
-    current_client_rect(&ctx.core, win)
-}
-
 fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
     core.globals()
         .clients
@@ -101,10 +59,6 @@ fn get_monitor_size(core: &CoreCtx, win: WindowId) -> (i32, i32) {
         ))
 }
 
-fn clamp_to_monitor(target_w: i32, target_h: i32, mon_w: i32, mon_h: i32) -> (i32, i32) {
-    (target_w.min(mon_w), target_h.min(mon_h))
-}
-
 fn final_rect(rect: &Rect, actual_w: i32, actual_h: i32) -> Rect {
     Rect {
         x: rect.x,
@@ -114,166 +68,176 @@ fn final_rect(rect: &Rect, actual_w: i32, actual_h: i32) -> Rect {
     }
 }
 
-fn try_resize_x11(ctx: &mut WmCtxX11<'_>, win: WindowId, rect: &Rect) {
-    if rect.is_valid() {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        wm_ctx.resize_client(win, *rect);
-    }
+fn animation_duration(frames: i32) -> Duration {
+    Duration::from_micros(FRAME_SLEEP_MICROS * frames.max(0) as u64)
 }
 
-pub fn place_client_for_animation(ctx: &mut WmCtx, win: WindowId, rect: &Rect, interact: bool) {
-    let animated = ctx.core().globals().behavior.animated;
-    if animated {
-        ctx.core_mut().globals_mut().behavior.animated = false;
-    }
-    crate::client::geometry::resize(ctx, win, rect, interact);
-    if animated {
-        ctx.core_mut().globals_mut().behavior.animated = true;
-    }
-}
-
-/// Enqueue a non-blocking X11 window animation.
-///
-/// Instead of blocking with `thread::sleep`, this computes the animation
-/// parameters and stores them in `X11RuntimeConfig::window_animations`.
-/// The calloop timer in the event loop ticks these animations at ~60 fps.
-pub fn animate_client_x11(
-    ctx: &mut WmCtxX11<'_>,
-    win: WindowId,
-    rect: &Rect,
-    frames: i32,
-    reset_pos: i32,
-) {
-    let start_rect = match get_x11_animation_start_rect(ctx, win, reset_pos) {
-        Some(r) => r,
-        None => return,
-    };
-
-    let target_w = if rect.w != 0 { rect.w } else { start_rect.w };
-    let target_h = if rect.h != 0 { rect.h } else { start_rect.h };
-
-    let (mon_w, mon_h) = get_monitor_size(&ctx.core, win);
-    let (actual_w, actual_h) = clamp_to_monitor(target_w, target_h, mon_w, mon_h);
-
-    if !ctx.core.globals().behavior.animated || frames <= 0 {
-        try_resize_x11(
-            ctx,
-            win,
-            &Rect {
-                x: rect.x,
-                y: rect.y,
-                w: actual_w,
-                h: actual_h,
-            },
-        );
-        return;
-    }
-
-    let in_flight = ctx.x11_runtime.window_animations.len();
-    let effective_frames = if in_flight >= X11_ANIM_REDUCE_THRESHOLD {
+fn effective_animation_frames(count: usize, frames: i32) -> i32 {
+    if count >= X11_ANIM_REDUCE_THRESHOLD {
         0
-    } else if in_flight >= X11_ANIM_FULL_THRESHOLD {
+    } else if count >= X11_ANIM_FULL_THRESHOLD {
         (frames / 2).max(2)
     } else {
         frames
-    };
-
-    let final_rect = final_rect(rect, actual_w, actual_h);
-
-    if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
-        client.old_geo = start_rect;
-        client.geo = final_rect;
-        if client.is_floating {
-            client.float_geo = final_rect;
-        }
     }
+}
 
-    if effective_frames == 0 {
-        try_resize_x11(ctx, win, &final_rect);
-        return;
+pub fn current_visual_rect(ctx: &WmCtx<'_>, win: WindowId) -> Option<Rect> {
+    match ctx {
+        WmCtx::X11(x11) => x11
+            .x11_runtime
+            .window_animations
+            .get(&win)
+            .map(|anim| interpolated_rect(anim, Instant::now()))
+            .or_else(|| current_client_rect(&x11.core, win)),
+        WmCtx::Wayland(wl) => wl
+            .wayland
+            .backend
+            .with_state(|state| state.current_window_animation_rect(win, Instant::now()))
+            .flatten()
+            .or_else(|| current_client_rect(&wl.core, win)),
     }
+}
 
-    let dx = (rect.x - start_rect.x).abs();
-    let dy = (rect.y - start_rect.y).abs();
-    let dw = (actual_w - start_rect.w).abs();
-    let dh = (actual_h - start_rect.h).abs();
-
-    let dist_moved = dx > DISTANCE_THRESHOLD
-        || dy > DISTANCE_THRESHOLD
-        || dw > DISTANCE_THRESHOLD
-        || dh > DISTANCE_THRESHOLD;
-
-    if !dist_moved {
-        // Not enough movement to animate — just snap to final position.
-        try_resize_x11(ctx, win, &final_rect);
-        return;
-    }
-
-    // Special case: same position, only size changes, and window is small
-    // relative to monitor. Animate from offset instead.
-    if rect.x == start_rect.x
-        && rect.y == start_rect.y
-        && start_rect.w < mon_w - MONITOR_WIDTH_THRESHOLD
-    {
-        let delta_w = actual_w - start_rect.w;
-        let delta_h = actual_h - start_rect.h;
-        if delta_w != 0 || delta_h != 0 {
-            // Enqueue an animation from the offset position to the final position.
-            let from = Rect {
-                x: start_rect.x + delta_w,
-                y: start_rect.y + delta_h,
-                w: actual_w,
-                h: actual_h,
-            };
-            let duration = Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
-            ctx.x11_runtime.window_animations.insert(
+fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: Rect, frames: i32) {
+    let duration = animation_duration(frames);
+    match ctx {
+        WmCtx::X11(x11) => {
+            let x11_win: x11rb::protocol::xproto::Window = win.into();
+            let _ = x11.x11.conn.configure_window(
+                x11_win,
+                &x11rb::protocol::xproto::ConfigureWindowAux::new()
+                    .x(from.x)
+                    .y(from.y)
+                    .width(from.w.max(1) as u32)
+                    .height(from.h.max(1) as u32),
+            );
+            let _ = x11.x11.conn.flush();
+            x11.x11_runtime.window_animations.insert(
                 win,
-                X11WindowAnimation {
+                WindowAnimation {
                     from,
-                    to: final_rect,
+                    to,
                     started_at: Instant::now(),
                     duration,
                 },
             );
-            return;
+        }
+        WmCtx::Wayland(wl) => {
+            let _ = wl.wayland.backend.with_state(|state| {
+                state.set_window_target_rect(
+                    win,
+                    to,
+                    crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateFrom {
+                        from,
+                        duration,
+                    },
+                );
+            });
         }
     }
-
-    // Enqueue the animation: from start_rect position to final rect.
-    let from = Rect {
-        x: start_rect.x,
-        y: start_rect.y,
-        w: actual_w,
-        h: actual_h,
-    };
-    let duration = Duration::from_micros(FRAME_SLEEP_MICROS * effective_frames as u64);
-    ctx.x11_runtime.window_animations.insert(
-        win,
-        X11WindowAnimation {
-            from,
-            to: final_rect,
-            started_at: Instant::now(),
-            duration,
-        },
-    );
 }
 
-pub fn check_animate_x11(
-    ctx: &mut WmCtxX11<'_>,
+fn sync_authoritative_client_rect(ctx: &mut WmCtx<'_>, win: WindowId, rect: Rect) {
+    crate::client::sync_client_geometry(ctx.core_mut().globals_mut(), win, rect);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MoveResizeMode {
+    Normal,
+    RemapImmediate,
+    AnimateFrom(Rect),
+}
+
+fn animate_rect_transition(
+    ctx: &mut WmCtx<'_>,
     win: WindowId,
-    rect: &Rect,
+    target: &Rect,
+    mode: MoveResizeMode,
     frames: i32,
-    reset_pos: i32,
 ) {
-    if let Some(client) = ctx.core.globals().clients.get(&win) {
-        let should_animate = client.geo.x != rect.x
-            || client.geo.y != rect.y
-            || client.geo.w != rect.w
-            || client.geo.h != rect.h;
-        if should_animate {
-            animate_client_x11(ctx, win, rect, frames, reset_pos);
-        }
+    if !target.is_valid() {
+        return;
     }
+
+    let (mon_w, mon_h) = get_monitor_size(ctx.core(), win);
+    let final_rect = final_rect(
+        target,
+        target.w.min(mon_w).max(1),
+        target.h.min(mon_h).max(1),
+    );
+
+    if mode == MoveResizeMode::RemapImmediate {
+        ctx.resize_client(win, final_rect);
+        return;
+    }
+
+    let from = match mode {
+        MoveResizeMode::Normal => current_visual_rect(ctx, win),
+        MoveResizeMode::RemapImmediate => unreachable!(),
+        MoveResizeMode::AnimateFrom(from) => Some(from),
+    };
+    let Some(from) = from else {
+        return;
+    };
+    if !from.is_valid() {
+        return;
+    }
+
+    if from == final_rect {
+        if ctx.client(win).is_some_and(|c| c.geo != final_rect) {
+            ctx.resize_client(win, final_rect);
+        }
+        return;
+    }
+
+    let animated = ctx.core().globals().behavior.animated;
+    let effective_frames = match ctx {
+        WmCtx::X11(x11) => {
+            effective_animation_frames(x11.x11_runtime.window_animations.len(), frames)
+        }
+        WmCtx::Wayland(wl) => {
+            let count = wl
+                .wayland
+                .backend
+                .with_state(|state| state.active_window_animation_count())
+                .unwrap_or(0);
+            effective_animation_frames(count, frames)
+        }
+    };
+
+    if !animated || effective_frames <= 0 {
+        ctx.resize_client(win, final_rect);
+        return;
+    }
+
+    let dist_moved = (final_rect.x - from.x).abs() > DISTANCE_THRESHOLD
+        || (final_rect.y - from.y).abs() > DISTANCE_THRESHOLD
+        || (final_rect.w - from.w).abs() > DISTANCE_THRESHOLD
+        || (final_rect.h - from.h).abs() > DISTANCE_THRESHOLD;
+    if !dist_moved {
+        ctx.resize_client(win, final_rect);
+        return;
+    }
+
+    if mode == MoveResizeMode::Normal {
+        // Real geometry changes must update the WM's authoritative state
+        // immediately so later layout math sees the new rectangle even while
+        // the backend is still animating towards it.
+        sync_authoritative_client_rect(ctx, win, final_rect);
+    }
+
+    enqueue_window_animation(ctx, win, from, final_rect, effective_frames);
+}
+
+pub fn move_resize_client(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    target: &Rect,
+    mode: MoveResizeMode,
+    frames: i32,
+) {
+    animate_rect_transition(ctx, win, target, mode, frames);
 }
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
@@ -313,6 +277,24 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
         h: target.h,
     };
 
-    place_client_for_animation(ctx, win, &start, false);
-    animate_client(ctx, win, &target, DEFAULT_FRAME_COUNT, 0);
+    match ctx {
+        WmCtx::X11(ctx_x11) => {
+            move_resize_client(
+                &mut WmCtx::X11(ctx_x11.reborrow()),
+                win,
+                &target,
+                MoveResizeMode::AnimateFrom(start),
+                DEFAULT_FRAME_COUNT,
+            );
+        }
+        WmCtx::Wayland(_) => {
+            move_resize_client(
+                ctx,
+                win,
+                &target,
+                MoveResizeMode::AnimateFrom(start),
+                DEFAULT_FRAME_COUNT,
+            );
+        }
+    }
 }

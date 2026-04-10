@@ -7,7 +7,6 @@
 
 use libc::c_void;
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
@@ -25,14 +24,7 @@ pub struct XlibDisplay(pub *mut c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
 
-/// A single in-flight window animation (non-blocking).
-#[derive(Clone, Debug)]
-pub struct X11WindowAnimation {
-    pub from: Rect,
-    pub to: Rect,
-    pub started_at: Instant,
-    pub duration: Duration,
-}
+pub type X11WindowAnimation = crate::animation::WindowAnimation;
 
 /// X11-specific runtime configuration.
 /// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.
@@ -96,7 +88,7 @@ pub mod randr;
 
 pub use client::update_size_hints_x11;
 pub use properties::{
-    apply_rules_x11, set_client_state, set_client_tag_prop, update_client_list, update_motif_hints,
+    set_client_state, set_client_tag_prop, update_client_list, update_motif_hints,
     update_window_type, update_wm_hints, window_properties_x11,
 };
 
@@ -256,6 +248,7 @@ impl BackendOps for X11BackendRef<'_> {
                     w: screen.width_in_pixels as i32,
                     h: screen.height_in_pixels as i32,
                 },
+                scale: 1.0,
                 vrr_support: crate::backend::BackendVrrSupport::Unsupported,
                 vrr_mode: None,
                 vrr_enabled: false,

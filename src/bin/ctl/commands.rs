@@ -99,6 +99,9 @@ pub enum KeyboardAction {
     Remove {
         layout: String,
     },
+    SwapEscape {
+        enabled: bool,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -139,9 +142,28 @@ pub enum ScratchpadAction {
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum WindowAction {
-    List { window_id: Option<u32> },
-    Geom { window_id: Option<u32> },
-    Close { window_id: Option<u32> },
+    List {
+        window_id: Option<u32>,
+    },
+    Info {
+        window_id: Option<u32>,
+    },
+    Resize {
+        window_id: Option<u32>,
+        #[arg(long)]
+        monitor: Option<String>,
+        #[arg(long)]
+        x: i32,
+        #[arg(long)]
+        y: i32,
+        #[arg(long)]
+        width: i32,
+        #[arg(long)]
+        height: i32,
+    },
+    Close {
+        window_id: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -192,6 +214,11 @@ pub enum InputAction {
         #[arg(short, long)]
         identifier: Option<String>,
     },
+    LeftHanded {
+        state: String,
+        #[arg(short, long)]
+        identifier: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -199,6 +226,12 @@ pub enum ModeAction {
     List,
     Set { name: String },
     Toggle { name: String },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ConfigAction {
+    /// Print a commented-out default config to stdout
+    Default,
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -271,6 +304,10 @@ pub enum CommandKind {
     Wallpaper {
         path: String,
     },
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
 }
 
 #[derive(Debug, Parser)]
@@ -339,7 +376,22 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         CommandKind::Window { action } => {
             let cmd = match action {
                 WindowAction::List { window_id } => WindowCommand::List(window_id),
-                WindowAction::Geom { window_id } => WindowCommand::Geom(window_id),
+                WindowAction::Info { window_id } => WindowCommand::Info(window_id),
+                WindowAction::Resize {
+                    window_id,
+                    monitor,
+                    x,
+                    y,
+                    width,
+                    height,
+                } => WindowCommand::Resize {
+                    window_id,
+                    monitor,
+                    x,
+                    y,
+                    width,
+                    height,
+                },
                 WindowAction::Close { window_id } => WindowCommand::Close(window_id),
             };
             IpcCommand::Window(cmd)
@@ -398,6 +450,7 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     KeyboardCommand::Add(KeyboardLayout::from(arg))
                 }
                 KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
+                KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
             };
             IpcCommand::Keyboard(cmd)
         }
@@ -462,6 +515,10 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                 InputAction::ScrollFactor { identifier, value } => {
                     InputCommand::ScrollFactor { identifier, value }
                 }
+                InputAction::LeftHanded { identifier, state } => InputCommand::LeftHanded {
+                    identifier,
+                    enabled: state == "enabled" || state == "on",
+                },
             };
             IpcCommand::Input(cmd)
         }
@@ -475,5 +532,6 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         }
         CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
         CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
+        CommandKind::Config { .. } => unreachable!("config is handled locally"),
     }
 }

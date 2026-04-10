@@ -205,7 +205,6 @@ struct RawBarBuffer {
 #[derive(Clone)]
 struct AsyncBarRenderRequest {
     key: u64,
-    font_size: f32,
     monitors: Vec<scene::MonitorBarSnapshot>,
 }
 
@@ -762,9 +761,9 @@ fn render_async_snapshot(
 ) -> AsyncBarRenderResult {
     let mut buffers = Vec::new();
     let mut monitor_updates = Vec::new();
-    painter.set_font_size(request.font_size);
 
     for mon in request.monitors {
+        painter.set_font_size(mon.font_size);
         painter.begin(
             Scale::from(1.0),
             mon.origin_x,
@@ -801,9 +800,7 @@ fn render_async_snapshot(
 fn request_async_render(
     painter: &mut WaylandBarPainter,
     key: u64,
-    core: &mut CoreCtx,
-    wayland_systray: &crate::types::WaylandSystray,
-    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
+    monitors: Vec<scene::MonitorBarSnapshot>,
 ) {
     let Some(runtime) = painter.async_runtime.as_mut() else {
         return;
@@ -811,15 +808,9 @@ fn request_async_render(
     if runtime.pending_key == key {
         return;
     }
-    let monitors =
-        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)));
 
     let mut pending = runtime.shared.pending.lock().unwrap();
-    *pending = Some(AsyncBarRenderRequest {
-        key,
-        font_size: painter.font_size,
-        monitors,
-    });
+    *pending = Some(AsyncBarRenderRequest { key, monitors });
     runtime.pending_key = key;
     runtime.shared.wake.notify_one();
 }
@@ -867,16 +858,22 @@ pub fn render_bar_buffers(
     wayland_systray: &crate::types::WaylandSystray,
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
+    let snapshots =
+        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)));
     // Cache the systray width so status bar layout can account for it.
     core.globals_mut().bar_runtime.systray_width =
-        crate::systray::wayland::get_wayland_systray_width_with_state(core, wayland_systray);
+        crate::systray::wayland::get_wayland_systray_width_with_state(
+            core,
+            wayland_systray,
+            core.globals().selected_monitor().bar_height,
+        );
     let _ = scale;
 
-    let key = bar_render_key(core, painter, wayland_systray_menu);
+    let key = bar_render_key(core, &snapshots, wayland_systray_menu);
     poll_async_render_result(core, painter);
 
     if painter.cached_key != key {
-        request_async_render(painter, key, core, wayland_systray, wayland_systray_menu);
+        request_async_render(painter, key, snapshots);
     }
 
     if painter.cached_key == key {
@@ -892,15 +889,19 @@ pub fn render_bar_buffers(
 
 fn bar_render_key(
     core: &crate::contexts::CoreCtx,
-    painter: &WaylandBarPainter,
+    snapshots: &[scene::MonitorBarSnapshot],
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> u64 {
     let mut key = core.bar.update_seq();
     key = key.rotate_left(7) ^ (core.globals().cfg.show_bar as u64);
     key = key.rotate_left(7) ^ (core.globals().cfg.show_systray as u64);
-    key = key.rotate_left(7) ^ (core.globals().cfg.bar_height as u64);
-    key = key.rotate_left(7) ^ (core.globals().cfg.horizontal_padding as u64);
-    key = key.rotate_left(7) ^ (core.globals().cfg.startmenusize as u64);
     key = key.rotate_left(7) ^ u64::from(wayland_systray_menu.is_some());
-    key.rotate_left(7) ^ (painter.font_size.to_bits() as u64)
+    for snapshot in snapshots {
+        key = key.rotate_left(7) ^ (snapshot.monitor_id as u64);
+        key = key.rotate_left(7) ^ (snapshot.height as u64);
+        key = key.rotate_left(7) ^ (snapshot.horizontal_padding as u64);
+        key = key.rotate_left(7) ^ (snapshot.startmenu_size as u64);
+        key = key.rotate_left(7) ^ (snapshot.font_size.to_bits() as u64);
+    }
+    key
 }

@@ -83,13 +83,13 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     ctx.backend().raise_window(win);
     let mon_w = ctx.core().globals().selected_monitor().monitor_rect.w;
-    let (client_x, client_y) = ctx
+    let geo = ctx
         .core()
         .globals()
         .clients
         .get(&win)
-        .map(|c| (c.geo.x, c.geo.y))
-        .unwrap_or((0, 0));
+        .map(|c| c.geo)
+        .unwrap_or_default();
 
     let anim_dx = (mon_w / 10)
         * match dir {
@@ -99,16 +99,20 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
             Direction::Down => 1,
         };
 
-    crate::animation::animate_client(
+    crate::animation::move_resize_client(
         ctx,
         win,
         &Rect {
-            x: client_x + anim_dx,
-            y: client_y,
-            w: 0,
-            h: 0,
+            w: geo.w.max(1),
+            h: geo.h.max(1),
+            ..geo
         },
-        0,
+        crate::animation::MoveResizeMode::AnimateFrom(Rect {
+            x: geo.x + anim_dx,
+            y: geo.y,
+            w: geo.w.max(1),
+            h: geo.h.max(1),
+        }),
         7,
     );
 }

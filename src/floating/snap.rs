@@ -11,13 +11,13 @@
 //!      └─► change_snap(win, SnapDir::Left)
 //!               ├─ saves current float geometry (if entering snap for the first time)
 //!               ├─ looks up new position in SNAP_MATRIX
-//!               └─ calls apply_snap → check_animate
+//!               └─ calls apply_snap → move_resize_client(Normal)
 //! ```
 //!
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::animation::check_animate_x11;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::client::{restore_border_width, save_border_width};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::algo::apply_snap_for_window;
@@ -156,9 +156,12 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
     // Apply snap geometry (generic) and backend-specific extras.
     match ctx {
         WmCtx::X11(ctx_x11) => {
-            apply_snap(ctx_x11, win, monitor_id);
-            let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-            wm_ctx.warp_cursor_to_client(win);
+            let Some(rect) = snap_target_rect(ctx_x11, win, monitor_id) else {
+                return;
+            };
+            apply_snap(ctx_x11, win, &rect);
+            let wm_ctx = WmCtx::X11(ctx_x11.reborrow());
+            wm_ctx.warp_pointer((rect.x + rect.w / 2) as f64, (rect.y + rect.h / 2) as f64);
             crate::focus::focus_soft_x11(
                 &mut ctx_x11.core,
                 &ctx_x11.x11,
@@ -181,10 +184,10 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
 /// - [`SnapPosition::None`] restores the saved floating geometry.
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
-pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
+fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) -> Option<Rect> {
     let (snap_status, saved_geo, border_width) = match ctx.core.client(win) {
         Some(c) => (c.snap_status, c.float_geo, c.border_width),
-        None => return,
+        None => return None,
     };
 
     // Geometry of the target monitor.
@@ -204,7 +207,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
                 mony,
             )
         }
-        None => return,
+        None => return None,
     };
 
     // Restore border width for all positions except Maximized (which needs bw=0).
@@ -215,7 +218,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
     }
 
     // Compute target rect based on snap position.
-    let rect = match snap_status {
+    Some(match snap_status {
         SnapPosition::None => Rect {
             x: saved_geo.x,
             y: saved_geo.y,
@@ -282,9 +285,24 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, monitor_id: usize) {
                 h: m_mh + border_width * 2,
             }
         }
+    })
+}
+
+/// Apply the window's current [`SnapPosition`] by animating it into the
+/// corresponding screen region on monitor `monitor_id`.
+pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
+    let snap_status = match ctx.core.client(win) {
+        Some(c) => c.snap_status,
+        None => return,
     };
 
-    check_animate_x11(ctx, win, &rect, 7, 0);
+    move_resize_client(
+        &mut WmCtx::X11(ctx.reborrow()),
+        win,
+        rect,
+        MoveResizeMode::Normal,
+        7,
+    );
 
     // Raise the window if it is the focused one (Maximized only).
     if snap_status == SnapPosition::Maximized {

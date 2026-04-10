@@ -319,7 +319,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     }
 }
 
-fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
+pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
     let mut scratchpads = Vec::new();
 
     for c in g.clients.values() {

@@ -228,6 +228,7 @@ pub enum KeyboardCommand {
     Set(Vec<KeyboardLayout>),
     Add(KeyboardLayout),
     Remove(String),
+    SwapEscape(bool),
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -239,7 +240,15 @@ pub enum TagCommand {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum WindowCommand {
-    Geom(Option<u32>),
+    Info(Option<u32>),
+    Resize {
+        window_id: Option<u32>,
+        monitor: Option<String>,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    },
     Close(Option<u32>),
     List(Option<u32>),
 }
@@ -276,6 +285,10 @@ pub enum InputCommand {
     ScrollFactor {
         identifier: Option<String>,
         value: f64,
+    },
+    LeftHanded {
+        identifier: Option<String>,
+        enabled: bool,
     },
 }
 
@@ -365,12 +378,6 @@ pub struct WindowInfo {
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct WindowGeometryInfo {
-    pub id: u64,
-    pub geometry: GeometryInfo,
-}
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct MonitorInfo {
     pub id: usize,
     pub index: i32,
@@ -453,7 +460,7 @@ pub enum Response {
     Ok,
     Err(String),
     WindowList(Vec<WindowInfo>),
-    WindowGeometry(WindowGeometryInfo),
+    WindowInfo(WindowInfo),
     MonitorList(Vec<MonitorInfo>),
     MonitorModes(Vec<DisplayModes>),
     ScratchpadList(Vec<ScratchpadInfo>),

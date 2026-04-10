@@ -30,6 +30,7 @@ pub mod lifecycle;
 pub mod manager;
 pub mod rules;
 pub mod visibility;
+pub mod x11_policy;
 
 // ---------------------------------------------------------------------------
 // Flat re-exports
@@ -46,7 +47,7 @@ pub use rules::{WindowProperties, apply_rules, handle_property_change};
 pub use constants::WM_STATE_WITHDRAWN;
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::resize;
+pub use geometry::{resize, sane_floating_spawn_rect, sync_client_geometry};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{hide, hide_for_user, show, show_hide};
@@ -72,7 +73,10 @@ pub fn restore_border_width(client: &mut crate::types::Client) {
 pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
-pub use lifecycle::{initial_tags_for_monitor, select_client};
+pub use lifecycle::{
+    LaunchContext, PendingLaunch, current_launch_context, initial_tags_for_monitor, new_startup_id,
+    record_pending_launch, select_client, take_pending_launch,
+};
 
 // -- Layout operations -------------------------------------------------------
 pub use layout_ops::zoom;

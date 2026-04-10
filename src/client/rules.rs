@@ -1,5 +1,6 @@
 //! Window rule application and matching logic.
 
+use crate::client::LaunchContext;
 use crate::globals::Globals;
 use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, TagMask, WindowId};
 
@@ -23,7 +24,12 @@ pub struct WindowProperties {
 /// After rule matching, the final tag mask is clamped to the current tag set.
 /// If no rule matches (and `SpecialNext` is `None`), the window inherits its
 /// monitor's currently active tags.
-pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
+pub fn apply_rules(
+    g: &mut Globals,
+    win: WindowId,
+    props: &WindowProperties,
+    launch_context: Option<LaunchContext>,
+) {
     let before = rule_state_snapshot(g, win);
 
     // --- Initialise fields we are about to set -------------------------------
@@ -88,7 +94,7 @@ pub fn apply_rules(g: &mut Globals, win: WindowId, props: &WindowProperties) {
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
-    clamp_client_tags(g, win, tag_mask);
+    clamp_client_tags(g, win, tag_mask, launch_context);
 
     if before != rule_state_snapshot(g, win) {
         g.dirty.layout = true;
@@ -118,7 +124,12 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
         return;
     }
 
-    apply_rules(g, win, props);
+    let existing_context = g.clients.get(&win).map(|c| LaunchContext {
+        monitor_id: c.monitor_id,
+        tags: c.tags,
+    });
+
+    apply_rules(g, win, props, existing_context);
 }
 
 /// Return `true` when `rule` matches all provided window identifiers.
@@ -232,7 +243,12 @@ fn rule_state_snapshot(g: &Globals, win: WindowId) -> Option<RuleStateSnapshot> 
 
 /// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
 /// tags when no rule-assigned tag is currently visible.
-fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: TagMask) {
+fn clamp_client_tags(
+    g: &mut Globals,
+    win: WindowId,
+    tag_mask: TagMask,
+    launch_context: Option<LaunchContext>,
+) {
     let (client_mon_id, client_tags) = g
         .clients
         .get(&win)
@@ -245,10 +261,52 @@ fn clamp_client_tags(g: &mut Globals, win: WindowId, tag_mask: TagMask) {
 
     let mut final_tags = client_tags & tag_mask;
     if final_tags.is_empty() {
-        final_tags = mon.selected_tags();
+        final_tags = launch_context
+            .map(|ctx| ctx.tags & tag_mask)
+            .filter(|tags| !tags.is_empty())
+            .unwrap_or_else(|| mon.selected_tags());
     }
 
     if let Some(c) = g.clients.get_mut(&win) {
         c.set_tag_mask(final_tags);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{WindowProperties, handle_property_change};
+    use crate::globals::Globals;
+    use crate::types::{Client, Monitor, TagMask, WindowId};
+
+    #[test]
+    fn property_change_preserves_existing_tags_without_matching_rule() {
+        let mut g = Globals::default();
+        g.tags.num_tags = 9;
+
+        let mut mon = Monitor::new_with_values(0.55, 1, true, true);
+        mon.set_selected_tags(TagMask::single(1).unwrap());
+        g.monitors.push(mon);
+
+        let win = WindowId(42);
+        let client = Client {
+            win,
+            monitor_id: 0,
+            tags: TagMask::single(2).unwrap(),
+            ..Default::default()
+        };
+        g.clients.insert(win, client);
+
+        handle_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                title: "updated".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let client = g.clients.get(&win).expect("client should still exist");
+        assert_eq!(client.tags, TagMask::single(2).unwrap());
+        assert_eq!(client.name, "updated");
     }
 }

@@ -1,8 +1,8 @@
 use crate::floating::scratchpad::{
-    scratchpad_hide_all, scratchpad_hide_name, scratchpad_make, scratchpad_show_all,
-    scratchpad_show_name, scratchpad_toggle, scratchpad_unmake,
+    collect_scratchpad_info, scratchpad_hide_all, scratchpad_hide_name, scratchpad_make,
+    scratchpad_show_all, scratchpad_show_name, scratchpad_toggle, scratchpad_unmake,
 };
-use crate::ipc_types::{Response, ScratchpadCommand, ScratchpadInfo};
+use crate::ipc_types::{Response, ScratchpadCommand};
 use crate::types::WindowId;
 use crate::wm::Wm;
 
@@ -62,27 +62,4 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             Response::ok()
         }
     }
-}
-
-fn collect_scratchpad_info(g: &crate::globals::Globals) -> Vec<ScratchpadInfo> {
-    let mut scratchpads = Vec::new();
-
-    for c in g.clients.values() {
-        if c.is_scratchpad() {
-            scratchpads.push(ScratchpadInfo {
-                name: c.scratchpad_name.clone(),
-                visible: c.issticky,
-                window_id: Some(c.win.0),
-                monitor: Some(c.monitor_id),
-                x: Some(c.geo.x),
-                y: Some(c.geo.y),
-                width: Some(c.geo.w),
-                height: Some(c.geo.h),
-                floating: c.is_floating,
-                fullscreen: c.is_fullscreen,
-            });
-        }
-    }
-
-    scratchpads
 }

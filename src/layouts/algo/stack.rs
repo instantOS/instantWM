@@ -1,6 +1,6 @@
 //! Stacking layout algorithms: deck, bottom_stack, and bstackhoriz.
 
-use crate::animation::animate_client;
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::client::resize;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
@@ -103,7 +103,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         if (i as u32) < (m.nmaster as u32) {
             let w =
                 (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i as u32) as i32;
-            animate_client(
+            move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
@@ -112,8 +112,8 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: w - BORDER_MULTIPLIER * client.border_width,
                     h: mh - BORDER_MULTIPLIER * client.border_width,
                 },
+                MoveResizeMode::Normal,
                 framecount,
-                0,
             );
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win) {
@@ -121,7 +121,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             }
         } else {
             let h = m.work_rect.h - mh;
-            animate_client(
+            move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
@@ -130,8 +130,8 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: tw - BORDER_MULTIPLIER * client.border_width,
                     h: h - BORDER_MULTIPLIER * client.border_width,
                 },
+                MoveResizeMode::Normal,
                 framecount,
-                0,
             );
 
             if tw != m.work_rect.w
@@ -180,7 +180,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         if (i as u32) < (m.nmaster as u32) {
             let w =
                 (m.work_rect.w - master_row_offset) / (min(n, m.nmaster as u32) - i as u32) as i32;
-            animate_client(
+            move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
@@ -189,15 +189,15 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: w - BORDER_MULTIPLIER * client.border_width,
                     h: mh - BORDER_MULTIPLIER * client.border_width,
                 },
+                MoveResizeMode::Normal,
                 framecount,
-                0,
             );
 
             if let Some(c) = ctx.core().globals().clients.get(&client.win) {
                 master_row_offset += c.total_width();
             }
         } else {
-            animate_client(
+            move_resize_client(
                 ctx,
                 client.win,
                 &Rect {
@@ -206,8 +206,8 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: m.work_rect.w - BORDER_MULTIPLIER * client.border_width,
                     h: th - BORDER_MULTIPLIER * client.border_width,
                 },
+                MoveResizeMode::Normal,
                 framecount,
-                0,
             );
 
             if th != m.work_rect.h

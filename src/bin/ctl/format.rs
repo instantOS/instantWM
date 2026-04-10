@@ -1,6 +1,6 @@
 use instantwm::ipc_types::{
     ActionInfo, DisplayModes, KeyboardLayoutInfo, ModeInfo, MonitorInfo, Response, ScratchpadInfo,
-    TagInfo, WindowGeometryInfo, WindowInfo, WmStatusInfo,
+    TagInfo, WindowInfo, WmStatusInfo,
 };
 
 pub fn format_response(response: &Response, json: bool) {
@@ -11,7 +11,7 @@ pub fn format_response(response: &Response, json: bool) {
             std::process::exit(1);
         }
         Response::WindowList(windows) => format_window_list(windows, json),
-        Response::WindowGeometry(geom) => format_window_geometry(geom, json),
+        Response::WindowInfo(window) => format_window_info(window, json),
         Response::MonitorList(monitors) => format_monitor_list(monitors, json),
         Response::MonitorModes(modes) => format_monitor_modes(modes, json),
         Response::ScratchpadList(scratchpads) => format_scratchpad_list(scratchpads, json),
@@ -95,14 +95,54 @@ fn format_window_state(state: &instantwm::ipc_types::WindowState) -> String {
     parts.join(", ")
 }
 
-fn format_window_geometry(geom: &WindowGeometryInfo, json: bool) {
+fn format_window_info(window: &WindowInfo, json: bool) {
     if json {
-        println!("{}", serde_json::to_string_pretty(geom).unwrap());
+        println!("{}", serde_json::to_string_pretty(window).unwrap());
     } else {
+        let tags = if window.tags.is_empty() {
+            String::from("-")
+        } else {
+            window
+                .tags
+                .iter()
+                .map(|tag| tag.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        };
+        println!("id: {}", window.id);
+        println!("title: {}", window.title);
+        println!("monitor: {}", window.monitor);
+        println!("tags: {}", tags);
         println!(
-            "{}x{}+{}+{}",
-            geom.geometry.width, geom.geometry.height, geom.geometry.x, geom.geometry.y
+            "geometry: {}x{}+{}+{}",
+            window.geometry.width, window.geometry.height, window.geometry.x, window.geometry.y
         );
+        println!("border_width: {}", window.border_width);
+        println!("state: {}", format_window_state(&window.state));
+        if let Some(size_hints) = &window.size_hints {
+            println!(
+                "size_hints: min={}x{} max={}x{} base={}x{} inc={}x{}",
+                size_hints.min_width.unwrap_or(0),
+                size_hints.min_height.unwrap_or(0),
+                size_hints.max_width.unwrap_or(0),
+                size_hints.max_height.unwrap_or(0),
+                size_hints.base_width.unwrap_or(0),
+                size_hints.base_height.unwrap_or(0),
+                size_hints.width_increment.unwrap_or(0),
+                size_hints.height_increment.unwrap_or(0)
+            );
+        }
+        if let Some(scratchpad) = &window.scratchpad {
+            println!(
+                "scratchpad: {} ({})",
+                scratchpad.name,
+                if scratchpad.visible {
+                    "visible"
+                } else {
+                    "hidden"
+                }
+            );
+        }
     }
 }
 

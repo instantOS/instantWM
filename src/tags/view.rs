@@ -335,7 +335,7 @@ pub(super) fn apply_pertag_settings(core: &mut CoreCtx) {
         let Some(current_tag) = mon.current_tag else {
             return;
         };
-        if current_tag > mon.tags.len() {
+        if current_tag >= mon.tags.len() {
             return;
         }
         let tag = &mon.tags[current_tag - 1];

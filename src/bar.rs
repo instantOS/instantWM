@@ -15,6 +15,7 @@ pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 
 use crate::contexts::{CoreCtx, WmCtx};
+use crate::globals::Globals;
 use crate::types::*;
 
 #[derive(Default)]
@@ -281,13 +282,27 @@ pub fn resolve_bar_position_at_root(
 
     let mon = core.globals().monitor(monitor_id)?;
     let bar_h = core.globals().cfg.bar_height.max(1);
-    let in_bar = mon.showbar && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
+    let in_bar = monitor_bar_visible(core.globals(), mon)
+        && root_y >= mon.bar_y
+        && root_y < mon.bar_y + bar_h;
     if !in_bar {
         return None;
     }
 
     let local_x = root_x - mon.work_rect.x;
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
+}
+
+pub(crate) fn monitor_has_real_fullscreen(globals: &Globals, monitor: &Monitor) -> bool {
+    let selected_tags = monitor.selected_tags();
+    monitor
+        .fullscreen
+        .and_then(|win| globals.clients.get(&win))
+        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+}
+
+pub(crate) fn monitor_bar_visible(globals: &Globals, monitor: &Monitor) -> bool {
+    monitor.shows_bar() && !monitor_has_real_fullscreen(globals, monitor)
 }
 
 pub fn update_hover(

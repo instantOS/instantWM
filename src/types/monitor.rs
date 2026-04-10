@@ -34,6 +34,14 @@ pub struct Monitor {
     pub num: i32,
     /// Bar Y position (vertical position of the status bar).
     pub bar_y: i32,
+    /// Per-monitor UI scale, currently used by the Wayland bar.
+    pub ui_scale: f64,
+    /// Effective bar height for this monitor.
+    pub bar_height: i32,
+    /// Effective horizontal padding for this monitor's bar.
+    pub horizontal_padding: i32,
+    /// Effective start menu width for this monitor's bar.
+    pub startmenu_size: i32,
     /// Width reserved for client title display in the bar.
     pub bar_clients_width: i32,
     /// Full monitor geometry (including bar).
@@ -94,6 +102,10 @@ impl Default for Monitor {
             nmaster: 1,
             num: 0,
             bar_y: 0,
+            ui_scale: 1.0,
+            bar_height: 0,
+            horizontal_padding: 0,
+            startmenu_size: 0,
             bar_clients_width: 0,
             monitor_rect: Rect::default(),
             work_rect: Rect::default(),
@@ -288,12 +300,18 @@ impl Monitor {
         self.sel
     }
 
-    /// Walk the stacking list and return the first visible, non-hidden
+    /// Walk the stacking list and return the topmost visible, non-hidden
     /// client on the currently selected tags.
+    ///
+    /// The end of `self.stack` is the top of the z-order: interactive raises
+    /// append there, and `layouts::restack` keeps the focused overlap target
+    /// last. Focus recovery should therefore walk the stack in reverse so
+    /// closing an overlapping window selects the window immediately below it.
     pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
         let tags = self.selected_tags();
         self.stack
             .iter()
+            .rev()
             .find_map(|&w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
     }
 
@@ -396,7 +414,8 @@ impl Monitor {
 
     /// Update the bar position based on monitor geometry.
     pub fn update_bar_position(&mut self, bar_height: i32) {
-        let safe_bh = bar_height.max(0).min(self.monitor_rect.h.max(0));
+        self.bar_height = bar_height.max(0);
+        let safe_bh = self.bar_height.min(self.monitor_rect.h.max(0));
         if self.showbar {
             self.work_rect.y = if self.topbar {
                 self.monitor_rect.y + safe_bh
@@ -418,6 +437,24 @@ impl Monitor {
                 self.monitor_rect.h.max(0)
             };
         }
+    }
+
+    /// Set effective UI metrics for this monitor.
+    pub fn set_ui_metrics(
+        &mut self,
+        ui_scale: f64,
+        bar_height: i32,
+        horizontal_padding: i32,
+        startmenu_size: i32,
+    ) {
+        self.ui_scale = if ui_scale.is_finite() && ui_scale > 0.0 {
+            ui_scale
+        } else {
+            1.0
+        };
+        self.bar_height = bar_height.max(0);
+        self.horizontal_padding = horizontal_padding.max(0);
+        self.startmenu_size = startmenu_size.max(0);
     }
 
     /// Get the width of the monitor's work area.
@@ -548,4 +585,28 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<usize> 
     }
 
     Some(best_idx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn first_visible_client_prefers_topmost_visible_stack_entry() {
+        let mut monitor = Monitor::default();
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+
+        let mut clients = HashMap::new();
+        for id in [WindowId(1), WindowId(2), WindowId(3)] {
+            let mut client = Client {
+                win: id,
+                ..Client::default()
+            };
+            client.set_tag_mask(TagMask::single(1).unwrap());
+            clients.insert(id, client);
+        }
+
+        assert_eq!(monitor.first_visible_client(&clients), Some(WindowId(3)));
+    }
 }

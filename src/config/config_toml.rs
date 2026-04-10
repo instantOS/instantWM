@@ -162,6 +162,7 @@ pub struct InputConfig {
     pub accel_profile: Option<AccelProfile>,
     pub pointer_accel: Option<f64>,
     pub scroll_factor: Option<f64>,
+    pub left_handed: Option<ToggleSetting>,
 }
 
 impl Default for InputConfig {
@@ -172,7 +173,19 @@ impl Default for InputConfig {
             accel_profile: None,
             pointer_accel: None,
             scroll_factor: None,
+            left_handed: None,
         }
+    }
+}
+
+impl std::fmt::Display for InputConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "tap: {:?}", self.tap)?;
+        writeln!(f, "natural_scroll: {:?}", self.natural_scroll)?;
+        writeln!(f, "accel_profile: {:?}", self.accel_profile)?;
+        writeln!(f, "pointer_accel: {:?}", self.pointer_accel)?;
+        writeln!(f, "scroll_factor: {:?}", self.scroll_factor)?;
+        write!(f, "left_handed: {:?}", self.left_handed)
     }
 }
 
@@ -256,6 +269,48 @@ pub fn load_config_file() -> ThemeConfig {
         },
         Err(_) => ThemeConfig::default(),
     }
+}
+
+/// Generate a commented-out default config template.
+///
+/// All settings are commented out so that:
+/// - Users can see what options are available
+/// - Defaults are not baked in, so they track upstream changes
+pub fn generate_commented_config() -> String {
+    let config = ThemeConfig::default();
+    let full = toml::to_string_pretty(&config).expect("failed to serialize default config");
+
+    let mut out = String::new();
+    out.push_str("# instantWM configuration\n");
+    out.push_str("#\n");
+    out.push_str(
+        "# This file is optional. instantWM uses sensible defaults when no config exists.\n",
+    );
+    out.push_str("# Uncomment and modify any section below to override defaults.\n");
+    out.push_str("#\n");
+    out.push_str("# Config changes are applied on reload (instantwmctl reload).\n");
+    out.push_str("#\n");
+    out.push_str(
+        "# Use `instantwm --print-config` to see the full default config with all values.\n",
+    );
+    out.push_str("# Use `instantwm --list-actions` to see valid action names for keybinds.\n");
+    out.push_str("#\n\n");
+
+    for line in full.lines() {
+        if line.trim().is_empty() {
+            out.push('\n');
+        } else if line.starts_with('[') {
+            out.push_str("# ");
+            out.push_str(line);
+            out.push('\n');
+        } else {
+            out.push_str("# ");
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+
+    out
 }
 
 fn load_and_merge_config(path: &Path, visited: &mut HashSet<PathBuf>) -> Result<toml::Value, ()> {

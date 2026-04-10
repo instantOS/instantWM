@@ -22,7 +22,16 @@ impl WaylandState {
         self.window_index.insert(window_id, window.clone());
         self.ensure_client_for_window(window_id);
         if let Some(toplevel) = window.toplevel() {
-            self.apply_xdg_toplevel_floating_policy(&toplevel);
+            self.apply_xdg_toplevel_floating_policy(toplevel);
+        }
+        if let Some(rect) = self
+            .globals()
+            .and_then(|g| crate::client::sane_floating_spawn_rect(g, window_id))
+        {
+            if let Some(g) = self.globals_mut() {
+                crate::client::sync_client_geometry(g, window_id, rect);
+            }
+            self.set_window_target_rect(window_id, rect, super::animations::WindowMoveMode::Normal);
         }
 
         if let Some(title) = self.window_title(window_id)
@@ -50,8 +59,18 @@ impl WaylandState {
             g.dirty.layout = true;
             g.dirty.space = true;
         }
-        // Apply seat focus immediately so the new window can receive input.
-        self.set_focus(window_id);
+        let should_focus = self
+            .globals()
+            .and_then(|g| {
+                g.clients.get(&window_id).and_then(|client| {
+                    g.monitor(client.monitor_id)
+                        .map(|mon| client.is_visible(mon.selected_tags()))
+                })
+            })
+            .unwrap_or(false);
+        if should_focus {
+            self.set_focus(window_id);
+        }
         self.create_foreign_toplevel(window_id);
         window_id
     }

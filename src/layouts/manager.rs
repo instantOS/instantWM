@@ -1,7 +1,7 @@
 //! Layout manager — the stateful half of the layout system.
 
 use crate::contexts::WmCtx;
-use crate::layouts::algo::save_floating;
+use crate::floating::save_floating_geometry;
 use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
 
@@ -144,7 +144,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
     if let Some((is_floating, bw)) = client_info {
         if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            save_floating(client);
+            save_floating_geometry(client);
         }
         let geo = Rect {
             x: work_rect.x,

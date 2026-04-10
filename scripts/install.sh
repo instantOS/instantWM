@@ -54,6 +54,7 @@ echo "Installing..."
 $SUPERTOOL install -d "${DESTDIR}${PREFIX}/bin"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/xsessions"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/wayland-sessions"
+$SUPERTOOL install -d "${DESTDIR}/usr/share/xdg-desktop-portal"
 
 # Binary
 $SUPERTOOL install -m 755 "$INSTANTWM_BIN" "${DESTDIR}${PREFIX}/bin/instantwm"
@@ -76,7 +77,11 @@ $SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland.desktop" "${DEST
 $SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
 $SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland-debug.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 
+# Portal routing for Wayland screen sharing/screenshot support
+$SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-portals.conf" "${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
 echo "Wayland session: ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
 echo "Wayland debug:   ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
+echo "Portal config:   ${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"

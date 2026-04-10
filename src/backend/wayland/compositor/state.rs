@@ -26,6 +26,8 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         idle_inhibit::IdleInhibitManagerState,
+        image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
+        image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
         output::OutputManagerState,
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
@@ -55,6 +57,7 @@ use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
+use super::image_capture::PendingImageCapture;
 use super::screencopy::PendingScreencopy;
 use super::window::WaylandWindowAnimation;
 
@@ -118,6 +121,9 @@ pub struct WaylandState {
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub foreign_toplevel_list_state: ForeignToplevelListState,
+    pub image_capture_source_state: ImageCaptureSourceState,
+    pub output_capture_source_state: OutputCaptureSourceState,
+    pub image_copy_capture_state: ImageCopyCaptureState,
     pub pointer_gestures_state: PointerGesturesState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
@@ -155,6 +161,7 @@ pub struct WaylandState {
     /// to manage and performantly access from Smithay's handlers.
     wm: Option<NonNull<Wm>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    pub(super) active_resizes: HashSet<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     pub(super) window_animations: HashMap<WindowId, WaylandWindowAnimation>,
@@ -184,6 +191,11 @@ pub struct WindowIdMarker {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PendingLaunchContextMarker {
+    pub context: crate::client::LaunchContext,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WaylandOutputMetadata {
     pub vrr_support: crate::backend::BackendVrrSupport,
     pub vrr_mode: VrrMode,
@@ -193,6 +205,8 @@ pub struct WaylandOutputMetadata {
 pub struct WaylandRuntimeState {
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub pending_screencopies: Vec<PendingScreencopy>,
+    pub pending_image_captures: Vec<PendingImageCapture>,
+    pub image_copy_sessions: Vec<ImageCopySession>,
     pub render_dirty: bool,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
@@ -210,6 +224,8 @@ impl Default for WaylandRuntimeState {
         Self {
             tracked_devices: Vec::new(),
             pending_screencopies: Vec::new(),
+            pending_image_captures: Vec::new(),
+            image_copy_sessions: Vec::new(),
             render_dirty: false,
             render_ping: None,
             output_metadata: HashMap::new(),
@@ -270,6 +286,9 @@ impl WaylandState {
         let wlr_layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let dmabuf_state = DmabufState::new();
         let foreign_toplevel_list_state = ForeignToplevelListState::new::<Self>(&dh);
+        let image_capture_source_state = ImageCaptureSourceState::new();
+        let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
+        let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
@@ -305,6 +324,9 @@ impl WaylandState {
             dmabuf_state,
             dmabuf_global: None,
             foreign_toplevel_list_state,
+            image_capture_source_state,
+            output_capture_source_state,
+            image_copy_capture_state,
             pointer_gestures_state,
             relative_pointer_manager_state,
             viewporter_state,
@@ -326,6 +348,7 @@ impl WaylandState {
             next_window_id: 1,
             wm: None,
             last_configured_size: HashMap::new(),
+            active_resizes: HashSet::new(),
             window_index: HashMap::new(),
             window_animations: HashMap::new(),
             foreign_toplevel_handles: HashMap::new(),
@@ -334,25 +357,11 @@ impl WaylandState {
         }
     }
 
-    /// Attach the GLES renderer.
-    ///
-    /// When `egl_display` is provided and a render DRM node can be resolved
-    /// from it, we advertise `zwp_linux_dmabuf_feedback_v1` **v4** which
-    /// includes the device node identifier.  GPU-accelerated clients (kitty,
-    /// wlroots apps, etc.) use this to discover which DRM device to open for
-    /// dmabuf allocation and to choose zero-copy import paths — without it
-    /// Mesa/EGL falls back to software rendering and emits warnings like
-    /// "failed to get driver name" / "failed to retrieve device information".
-    ///
-    /// Falls back to the plain v3 global (formats only, no device) when no
-    /// EGL display is given or the node cannot be resolved.
     pub fn init_dmabuf_global(&mut self, formats: Vec<Format>, egl_display: Option<&EGLDisplay>) {
         if self.dmabuf_global.is_some() {
             return;
         }
 
-        // Attempt to get the render DrmNode from the EGL display so we can
-        // advertise zwp_linux_dmabuf_feedback_v1 v4 with a proper device id.
         let render_node: Option<DrmNode> = egl_display.and_then(|display| {
             EGLDevice::device_for_display(display)
                 .map_err(|err| {
@@ -369,7 +378,6 @@ impl WaylandState {
                 })
         });
 
-        // Store the render node so we can tag imported dmabufs with it.
         self.render_node = render_node;
 
         self.dmabuf_global = Some(if let Some(node) = self.render_node {
@@ -462,6 +470,11 @@ impl WaylandState {
             }
         }
 
+        // Purge surfaces whose underlying resource is gone, so the HashSet
+        // does not grow unbounded when clients crash or destroy surfaces
+        // without sending an explicit uninhibit request.
+        self.idle_inhibiting_surfaces.retain(|s| s.alive());
+
         // Only recover focus when the seat focus is actually missing or dead.
         // A plain space sync must not steal focus away from a live overlay
         // surface such as fuzzel/rofi, or from any other valid keyboard target.
@@ -477,36 +490,21 @@ impl WaylandState {
         let Some(g) = self.globals() else {
             return;
         };
-        let updates: Vec<(WindowId, Window, Rect, i32)> = self
+        let updates: Vec<(WindowId, Rect)> = self
             .space
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
                 let client = g.clients.get(&marker.id)?;
-                Some((marker.id, window.clone(), client.geo, client.border_width))
+                Some((marker.id, client.geo))
             })
             .collect();
-        for (window_id, window, geo, bw) in updates {
-            // Use the method from window.rs
-            let target_point = Point::from((geo.x + bw, geo.y + bw));
-            self.set_window_target_location(window_id, window.clone(), target_point, false);
-            let key = window
-                .user_data()
-                .get::<WindowIdMarker>()
-                .map(|m| m.id)
-                .unwrap_or_default();
-            let target = (geo.w.max(1), geo.h.max(1));
-            let unchanged = self
-                .last_configured_size
-                .get(&key)
-                .is_some_and(|&s| s == target);
-            if !unchanged {
-                let size =
-                    smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
-                // Use the method from window.rs
-                self.send_toplevel_configure(&window, Some(size));
-                self.last_configured_size.insert(key, target);
-            }
+        for (window_id, geo) in updates {
+            self.set_window_target_rect(
+                window_id,
+                geo,
+                super::window::animations::WindowMoveMode::Normal,
+            );
         }
         self.raise_unmanaged_x11_windows();
     }
@@ -517,6 +515,14 @@ impl WaylandState {
         if let Some(render_ping) = &self.runtime.render_ping {
             render_ping.ping();
         }
+    }
+
+    #[inline]
+    pub fn request_bar_redraw(&mut self) {
+        let _ = self.with_wm_mut_unified(|wm, _state| {
+            wm.bar.mark_dirty();
+        });
+        self.request_render();
     }
 
     #[inline]

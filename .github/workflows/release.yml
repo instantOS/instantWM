@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - "v*"
+      - "instantwm-v*"
   workflow_dispatch:
 jobs:
   build:
@@ -97,7 +98,18 @@ jobs:
             echo "Failed to determine version from Cargo.toml" >&2
             exit 1
           fi
-          tag_version="${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF_NAME" in
+            v*)
+              tag_version="${GITHUB_REF_NAME#v}"
+              ;;
+            instantwm-v*)
+              tag_version="${GITHUB_REF_NAME#instantwm-v}"
+              ;;
+            *)
+              echo "Unsupported tag format: $GITHUB_REF_NAME" >&2
+              exit 1
+              ;;
+          esac
           if [[ -n "$tag_version" && "$tag_version" != "$version" ]]; then
             echo "Tag version $tag_version does not match Cargo.toml version $version" >&2
             exit 1

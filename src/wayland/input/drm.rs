@@ -125,6 +125,10 @@ pub fn configure_device(
         let _ = device.config_accel_set_speed(pointer_accel.clamp(-1.0, 1.0));
     }
 
+    if let Some(left_handed) = config.left_handed {
+        let _ = device.config_left_handed_set(left_handed == ToggleSetting::Enabled);
+    }
+
     // scroll_factor is applied at the compositor level in the axis handler,
     // not via libinput. Nothing to do here for it.
 }

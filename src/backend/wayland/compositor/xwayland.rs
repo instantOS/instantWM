@@ -1,4 +1,7 @@
-use smithay::{utils::SERIAL_COUNTER, xwayland::XwmHandler};
+use smithay::{
+    utils::SERIAL_COUNTER,
+    xwayland::{X11Surface, XwmHandler, xwm::WmWindowProperty},
+};
 
 use super::{
     focus::KeyboardFocusTarget,
@@ -40,6 +43,113 @@ pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
                 0, // time doesn't strictly matter for forced update
             );
         });
+    }
+}
+
+fn sync_xwayland_surface_metadata(
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    surface: &X11Surface,
+) {
+    let props = crate::client::x11_policy::window_properties_from_x11_surface(surface);
+    if let Some(g) = state.globals_mut() {
+        crate::client::handle_property_change(g, win, &props);
+    }
+    state.update_foreign_toplevel(win);
+    state.request_bar_redraw();
+}
+
+fn apply_xwayland_surface_policy(
+    state: &mut WaylandState,
+    win: crate::types::WindowId,
+    surface: &X11Surface,
+) {
+    let transient_parent = crate::client::x11_policy::transient_for_window_id(surface)
+        .and_then(|parent_x11| state.window_id_for_x11_window(parent_x11.into()));
+    let should_float_for_type =
+        crate::client::x11_policy::should_float_for_x11_type(surface.window_type());
+    let preferred_border = state
+        .globals()
+        .map(|g| {
+            crate::client::x11_policy::preferred_border_width(
+                g.cfg.border_width_px,
+                surface.is_decorated(),
+            )
+        })
+        .unwrap_or(0);
+    let transient_parent_state = state.globals().and_then(|g| {
+        transient_parent.and_then(|parent| {
+            g.clients
+                .get(&parent)
+                .map(|parent_client| (parent_client.monitor_id, parent_client.tags))
+        })
+    });
+
+    let mut border_resize = None;
+    let mut changed_layout = false;
+    if let Some(g) = state.globals_mut()
+        && let Some(client) = g.clients.get_mut(&win)
+    {
+        crate::client::x11_policy::apply_wm_hints_to_client(client, surface.hints());
+        crate::client::x11_policy::apply_size_hints_to_client(client, surface.size_hints());
+
+        if let Some((monitor_id, tags)) = transient_parent_state {
+            client.monitor_id = monitor_id;
+            client.set_tag_mask(tags);
+        }
+
+        if (transient_parent.is_some() || client.is_fixed_size || should_float_for_type)
+            && !client.is_floating
+        {
+            client.float_geo = client.geo;
+            client.is_floating = true;
+            changed_layout = true;
+        }
+
+        client.is_fullscreen = surface.is_fullscreen();
+        client.is_hidden = surface.is_hidden();
+
+        if preferred_border != client.border_width {
+            let total_w = client.total_width();
+            let total_h = client.total_height();
+            client.border_width = preferred_border;
+            client.old_border_width = preferred_border;
+            border_resize = Some(crate::types::Rect {
+                x: client.geo.x,
+                y: client.geo.y,
+                w: (total_w - 2 * preferred_border).max(1),
+                h: (total_h - 2 * preferred_border).max(1),
+            });
+        }
+    }
+
+    if let Some(rect) = border_resize {
+        state.with_wm_mut_unified(|wm, _state| {
+            let mut ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
+                crate::client::resize(
+                    &mut crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()),
+                    win,
+                    &rect,
+                    false,
+                );
+            }
+        });
+    }
+
+    if changed_layout && let Some(g) = state.globals_mut() {
+        g.dirty.layout = true;
+        g.dirty.space = true;
+    }
+    if let Some(g) = state.globals_mut()
+        && let Some(mid) = g.clients.monitor_id(win)
+        && let Some(mon) = g.monitor_mut(mid)
+    {
+        if surface.is_fullscreen() {
+            mon.fullscreen = Some(win);
+        } else if mon.fullscreen == Some(win) {
+            mon.fullscreen = None;
+        }
     }
 }
 
@@ -94,6 +204,8 @@ impl XwmHandler for WaylandState {
             return;
         }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
+            sync_xwayland_surface_metadata(self, win, &window);
+            apply_xwayland_surface_policy(self, win, &window);
             self.map_window(win);
             self.set_focus(win);
             self.raise_window(win);
@@ -113,17 +225,41 @@ impl XwmHandler for WaylandState {
         self.space.map_element(element.clone(), geo.loc, false);
         self.window_index.insert(win, element);
         self.ensure_client_for_window(win);
-        if let Some(g) = self.globals_mut()
-            && let Some(c) = g.clients.get_mut(&win)
-        {
-            c.geo.x = geo.loc.x;
-            c.geo.y = geo.loc.y;
-            c.geo.w = geo.size.w.max(1);
-            c.geo.h = geo.size.h.max(1);
-            c.float_geo = c.geo;
-            c.name = window.title();
+        sync_xwayland_surface_metadata(self, win, &window);
+        apply_xwayland_surface_policy(self, win, &window);
+        if let Some(g) = self.globals_mut() {
+            crate::client::sync_client_geometry(
+                g,
+                win,
+                crate::types::Rect {
+                    x: geo.loc.x,
+                    y: geo.loc.y,
+                    w: geo.size.w.max(1),
+                    h: geo.size.h.max(1),
+                },
+            );
         }
-        let _ = window.configure(Some(geo));
+        let final_rect = if let Some(rect) = self
+            .globals()
+            .and_then(|g| crate::client::sane_floating_spawn_rect(g, win))
+        {
+            if let Some(g) = self.globals_mut() {
+                crate::client::sync_client_geometry(g, win, rect);
+            }
+            self.resize_window(win, rect);
+            rect
+        } else {
+            crate::types::Rect {
+                x: geo.loc.x,
+                y: geo.loc.y,
+                w: geo.size.w.max(1),
+                h: geo.size.h.max(1),
+            }
+        };
+        let _ = window.configure(Some(smithay::utils::Rectangle::new(
+            (final_rect.x, final_rect.y).into(),
+            (final_rect.w.max(1), final_rect.h.max(1)).into(),
+        )));
         if let Some(g) = self.globals_mut() {
             g.dirty.layout = true;
             g.dirty.space = true;
@@ -276,15 +412,27 @@ impl XwmHandler for WaylandState {
             }
             return;
         };
-        if let Some(g) = self.globals_mut()
-            && let Some(c) = g.clients.get_mut(&win)
-        {
-            c.geo.x = geometry.loc.x;
-            c.geo.y = geometry.loc.y;
-            c.geo.w = geometry.size.w.max(1);
-            c.geo.h = geometry.size.h.max(1);
+        if let Some(g) = self.globals_mut() {
+            crate::client::sync_client_geometry(
+                g,
+                win,
+                crate::types::Rect {
+                    x: geometry.loc.x,
+                    y: geometry.loc.y,
+                    w: geometry.size.w.max(1),
+                    h: geometry.size.h.max(1),
+                },
+            );
         }
-        self.resize_window(
+        // This is an acknowledgement/notification from XWayland about the
+        // geometry it is already using. Feeding it back into `resize_window`
+        // would send another X11 configure and create a resize loop.
+        let mode = if self.interactive_motion_active() {
+            crate::backend::wayland::compositor::window::animations::WindowMoveMode::RemapImmediate
+        } else {
+            crate::backend::wayland::compositor::window::animations::WindowMoveMode::Normal
+        };
+        self.set_window_target_rect(
             win,
             crate::types::Rect {
                 x: geometry.loc.x,
@@ -292,7 +440,201 @@ impl XwmHandler for WaylandState {
                 w: geometry.size.w.max(1),
                 h: geometry.size.h.max(1),
             },
+            mode,
         );
+    }
+
+    fn property_notify(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+        property: WmWindowProperty,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+
+        match property {
+            WmWindowProperty::Title | WmWindowProperty::Class => {
+                sync_xwayland_surface_metadata(self, win, &window);
+                apply_xwayland_surface_policy(self, win, &window);
+            }
+            WmWindowProperty::Hints
+            | WmWindowProperty::NormalHints
+            | WmWindowProperty::TransientFor
+            | WmWindowProperty::WindowType
+            | WmWindowProperty::MotifHints
+            | WmWindowProperty::StartupId
+            | WmWindowProperty::Pid
+            | WmWindowProperty::Protocols
+            | WmWindowProperty::Opacity => {
+                apply_xwayland_surface_policy(self, win, &window);
+                if matches!(
+                    property,
+                    WmWindowProperty::TransientFor | WmWindowProperty::WindowType
+                ) && let Some(g) = self.globals_mut()
+                {
+                    g.dirty.layout = true;
+                    g.dirty.space = true;
+                }
+                // WM_HINTS carries the urgency bit.  After applying it to the
+                // client, redraw the bar so the tag indicator updates at once.
+                if matches!(property, WmWindowProperty::Hints) {
+                    self.request_bar_redraw();
+                }
+            }
+        }
+    }
+
+    fn maximize_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let _ = window.set_maximized(true);
+        self.with_wm_mut_unified(|wm, _state| {
+            let mut ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
+                let work_rect = ctx_wayland
+                    .core
+                    .globals()
+                    .clients
+                    .monitor_id(win)
+                    .and_then(|mid| ctx_wayland.core.globals().monitor(mid))
+                    .map(|mon| mon.work_rect);
+                if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
+                    client.oldstate = client.is_floating as i32;
+                    client.float_geo = client.geo;
+                    client.is_floating = true;
+                }
+                if let Some(work_rect) = work_rect {
+                    crate::client::resize(
+                        &mut crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()),
+                        win,
+                        &work_rect,
+                        false,
+                    );
+                }
+            }
+        });
+    }
+
+    fn unmaximize_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let _ = window.set_maximized(false);
+        self.with_wm_mut_unified(|wm, _state| {
+            let mut ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
+                let restore_rect = ctx_wayland
+                    .core
+                    .globals()
+                    .clients
+                    .get(&win)
+                    .map(|client| client.float_geo);
+                if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
+                    client.is_floating = client.oldstate != 0;
+                }
+                if let Some(restore_rect) = restore_rect {
+                    crate::client::resize(
+                        &mut crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()),
+                        win,
+                        &restore_rect,
+                        false,
+                    );
+                }
+            }
+        });
+    }
+
+    fn fullscreen_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let _ = window.set_fullscreen(true);
+        if let Some(g) = self.globals_mut() {
+            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.is_fullscreen = true;
+            }
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
+            }
+            if let Some(monitor_id) = monitor_id
+                && let Some(mon) = g.monitor_mut(monitor_id)
+            {
+                mon.fullscreen = Some(win);
+            }
+            g.dirty.layout = true;
+            g.dirty.space = true;
+        }
+    }
+
+    fn unfullscreen_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let _ = window.set_fullscreen(false);
+        if let Some(g) = self.globals_mut() {
+            if let Some(client) = g.clients.get_mut(&win) {
+                client.is_fullscreen = false;
+            }
+            for (_id, mon) in g.monitors_iter_mut() {
+                if mon.fullscreen == Some(win) {
+                    mon.fullscreen = None;
+                }
+            }
+            g.dirty.layout = true;
+            g.dirty.space = true;
+        }
+    }
+
+    fn minimize_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let _ = window.set_hidden(true);
+        self.with_wm_mut_unified(|wm, _state| {
+            let mut ctx = wm.ctx();
+            crate::client::hide(&mut ctx, win);
+        });
+    }
+
+    fn unminimize_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+    ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let _ = window.set_hidden(false);
+        self.with_wm_mut_unified(|wm, _state| {
+            let mut ctx = wm.ctx();
+            crate::client::show(&mut ctx, win);
+        });
     }
 
     fn resize_request(
