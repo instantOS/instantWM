@@ -1,7 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::CoreCtx;
-use crate::types::{Monitor, Systray, WindowId};
+use crate::types::{Monitor, MonitorId, Systray, WindowId};
 use std::collections::HashMap;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -24,7 +24,7 @@ pub fn draw_bar(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
-    mon_idx: usize,
+    mon_idx: MonitorId,
 ) {
     let bar_win = core
         .globals()
@@ -71,12 +71,13 @@ pub fn draw_bars_x11(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
-    let monitor_ids: Vec<usize> = core.globals().monitors_iter().map(|(i, _)| i).collect();
+    let monitor_ids: Vec<MonitorId> = core.globals().monitors_iter().map(|(i, _)| i).collect();
     let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
-    let snapshot_by_monitor_id: HashMap<usize, &crate::bar::scene::MonitorBarSnapshot> = snapshots
-        .iter()
-        .map(|snapshot| (snapshot.monitor_id, snapshot))
-        .collect();
+    let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
+        snapshots
+            .iter()
+            .map(|snapshot| (snapshot.monitor_id, snapshot))
+            .collect();
 
     for i in monitor_ids {
         let bar_win = core
@@ -184,7 +185,7 @@ pub fn update_bars(
         let selected_monitor_id = core.globals().selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
-        let mut systray_widths: std::collections::HashMap<usize, u32> =
+        let mut systray_widths: std::collections::HashMap<MonitorId, u32> =
             std::collections::HashMap::new();
         if showsystray {
             systray_widths.insert(
@@ -215,7 +216,7 @@ pub fn update_bars(
     // Create bar windows for each monitor that needs one.
     // We collect window IDs first, then assign them to monitors to avoid
     // borrow conflicts between the X11 connection ref and ctx.globals().
-    let mut created: Vec<(usize, u32)> = Vec::new();
+    let mut created: Vec<(MonitorId, u32)> = Vec::new();
 
     let conn = x11.conn;
     for (i, wx, bar_y, w, bar_height) in &bar_configs {

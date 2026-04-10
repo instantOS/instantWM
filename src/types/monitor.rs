@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use crate::layouts::LayoutKind;
+use crate::types::MonitorId;
 use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
@@ -25,7 +26,7 @@ pub struct Monitor {
     /// This is set by `Globals` whenever the monitor is inserted or the vec is
     /// compacted after a removal.  Code should read it via `Monitor::id()`
     /// rather than accessing the field directly.
-    pub(crate) monitor_id: usize,
+    pub(crate) monitor_id: MonitorId,
     /// Master factor for tiling layouts (0.0 to 1.0).
     pub mfact: f32,
     /// Number of clients in the master area for tiling layouts.
@@ -97,7 +98,7 @@ pub struct Monitor {
 impl Default for Monitor {
     fn default() -> Self {
         Self {
-            monitor_id: 0,
+            monitor_id: MonitorId(0),
             mfact: 0.55,
             nmaster: 1,
             num: 0,
@@ -151,7 +152,7 @@ impl Monitor {
             current_tag: Some(1),
             prev_tag: Some(1),
             tags: Vec::new(),
-            monitor_id: 0,
+            monitor_id: MonitorId(0),
             ..Default::default()
         }
     }
@@ -161,7 +162,7 @@ impl Monitor {
     /// This is kept in sync by `Globals` whenever monitors are added or removed,
     /// so it is always valid for the lifetime of the monitor.
     #[inline]
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> MonitorId {
         self.monitor_id
     }
 
@@ -544,9 +545,9 @@ impl Monitor {
 /// Find a monitor in a given direction from the current one.
 pub fn find_monitor_by_direction(
     monitors: &[Monitor],
-    current: usize,
+    current: MonitorId,
     direction: MonitorDirection,
-) -> Option<usize> {
+) -> Option<MonitorId> {
     if monitors.is_empty() {
         return None;
     }
@@ -554,21 +555,23 @@ pub fn find_monitor_by_direction(
         return Some(current);
     }
 
+    let current = current.index();
+
     if direction.is_next() {
         if current + 1 >= monitors.len() {
-            Some(0)
+            Some(MonitorId(0))
         } else {
-            Some(current + 1)
+            Some(MonitorId(current + 1))
         }
     } else if current == 0 {
-        Some(monitors.len() - 1)
+        Some(MonitorId(monitors.len() - 1))
     } else {
-        Some(current - 1)
+        Some(MonitorId(current - 1))
     }
 }
 
 /// Find the monitor that contains the given rectangle (by maximum intersection area).
-pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<usize> {
+pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<MonitorId> {
     if monitors.is_empty() {
         return None;
     }
@@ -584,7 +587,7 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<usize> 
         }
     }
 
-    Some(best_idx)
+    Some(MonitorId(best_idx))
 }
 
 #[cfg(test)]

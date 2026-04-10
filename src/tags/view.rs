@@ -4,15 +4,15 @@ use crate::contexts::{CoreCtx, WmCtx};
 // focus() is used via focus_soft() in this module
 use crate::layouts::LayoutKind;
 use crate::layouts::arrange;
-use crate::types::{Direction, TagMask, WindowId};
+use crate::types::{Direction, MonitorId, TagMask, WindowId};
 
-fn finalize_view_change(ctx: &mut WmCtx, selmon_id: usize) {
+fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     apply_pertag_settings(ctx.core_mut());
     crate::focus::focus_soft(ctx, None);
     arrange(ctx, Some(selmon_id));
 }
 
-fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<usize> {
+fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId> {
     let selmon_id = ctx.core().globals().selected_monitor_id();
 
     {

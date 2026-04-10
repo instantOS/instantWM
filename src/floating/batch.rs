@@ -31,7 +31,7 @@ use crate::types::*;
 ///
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
-pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
+pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
     let Some(mid) = monitor_id else { return };
 
     let wins_to_save = collect_floating_wins(ctx.core().globals(), mid);
@@ -46,7 +46,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 ///
 /// Counterpart to [`save_all_floating`]: resizes each window back to the rect
 /// that was captured by the most recent `save_all_floating` call.
-pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
+pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
     let Some(mid) = monitor_id else { return };
 
     let wins_to_restore = collect_floating_wins(ctx.core().globals(), mid);
@@ -60,7 +60,7 @@ pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<usize>) {
 /// - not currently snapped.
 ///
 /// This is the shared selection logic for both save and restore.
-fn collect_floating_wins(globals: &crate::globals::Globals, mid: usize) -> Vec<WindowId> {
+fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> Vec<WindowId> {
     let Some(mon) = globals.monitor(mid) else {
         return Vec::new();
     };
@@ -146,7 +146,7 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
 /// is needed in the caller.
 fn collect_distribute_targets(
     globals: &crate::globals::Globals,
-    sel_mon_id: usize,
+    sel_mon_id: MonitorId,
 ) -> (Vec<WindowId>, Rect) {
     let empty = (Vec::new(), Rect::default());
 

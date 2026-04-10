@@ -38,6 +38,7 @@ use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::types::MonitorId;
 // focus() is used via focus_soft() in this module
 use crate::focus::focus_soft;
 use crate::globals::Globals;
@@ -495,7 +496,7 @@ fn run_manage_animation(
 ///
 /// This mirrors DWM semantics: a new client appears on all tags currently
 /// visible on its target monitor.
-pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> u32 {
+pub fn initial_tags_for_monitor(g: &Globals, monitor_id: MonitorId) -> u32 {
     g.monitor(monitor_id)
         .map(|m| m.selected_tags_bits())
         .filter(|tags| *tags != 0)

@@ -18,14 +18,8 @@
 
 use crate::contexts::WmCtx;
 use crate::focus::unfocus_win;
-use crate::globals::Globals;
 use crate::monitor::transfer_client;
 use crate::types::*;
-
-fn target_monitor_for_rect(g: &Globals, rect: &Rect) -> Option<usize> {
-    crate::types::find_monitor_by_rect(g.monitors.monitors(), rect)
-        .or(Some(g.selected_monitor_id()))
-}
 
 /// Check whether `rect` lies on a different monitor than the currently
 /// selected one and, if so, migrate the window and update `selmon`.
@@ -42,7 +36,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     if ctx.is_wayland() {
         return;
     }
-    let new_mon = target_monitor_for_rect(ctx.core().globals(), rect);
+    let new_mon = ctx.core().globals().monitors.find_id_by_rect(rect);
 
     let current_mon = ctx.core().globals().selected_monitor_id();
 

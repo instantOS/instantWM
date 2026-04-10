@@ -46,7 +46,7 @@ fn list_monitors(wm: &Wm) -> Response {
     let monitors: Vec<crate::ipc_types::MonitorInfo> =
         wm.g.monitors_iter()
             .map(|(id, m)| crate::ipc_types::MonitorInfo {
-                id,
+                id: id.index(),
                 index: m.num,
                 name: m.name.clone(),
                 width: m.monitor_rect.w,

@@ -19,7 +19,9 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     } else {
         crate::client::show_hide(ctx);
 
-        let mon_indices: Vec<usize> = (0..ctx.core().globals().monitors.count()).collect();
+        let mon_indices: Vec<MonitorId> = (0..ctx.core().globals().monitors.count())
+            .map(MonitorId)
+            .collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
             restack(ctx, idx);

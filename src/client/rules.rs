@@ -225,7 +225,7 @@ fn apply_monitor_rule(g: &mut Globals, win: WindowId, rule: &crate::types::Rule)
 struct RuleStateSnapshot {
     is_floating: bool,
     is_sticky: bool,
-    monitor_id: usize,
+    monitor_id: crate::types::MonitorId,
     tags: TagMask,
     geo: Rect,
 }
@@ -253,7 +253,7 @@ fn clamp_client_tags(
         .clients
         .get(&win)
         .map(|c| (c.monitor_id, c.tags))
-        .unwrap_or((0, TagMask::EMPTY));
+        .unwrap_or((crate::types::MonitorId(0), TagMask::EMPTY));
 
     let Some(mon) = g.monitor(client_mon_id) else {
         return;

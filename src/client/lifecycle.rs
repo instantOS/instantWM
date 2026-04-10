@@ -3,7 +3,7 @@
 //! Backend-specific manage/unmanage logic lives under backend modules.
 
 use crate::globals::Globals;
-use crate::types::{TagMask, WindowId};
+use crate::types::{MonitorId, TagMask, WindowId};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -12,7 +12,7 @@ const MAX_PENDING_LAUNCHES: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LaunchContext {
-    pub monitor_id: usize,
+    pub monitor_id: MonitorId,
     pub tags: TagMask,
 }
 
@@ -88,7 +88,7 @@ fn prune_pending_launches(pending_launches: &mut VecDeque<PendingLaunch>) {
 ///
 /// This mirrors DWM semantics: a new client appears on all tags currently
 /// visible on its target monitor.
-pub fn initial_tags_for_monitor(g: &Globals, monitor_id: usize) -> TagMask {
+pub fn initial_tags_for_monitor(g: &Globals, monitor_id: MonitorId) -> TagMask {
     g.monitor(monitor_id)
         .map(|m| m.selected_tags())
         .filter(|tags| !tags.is_empty())

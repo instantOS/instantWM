@@ -146,7 +146,7 @@ pub struct TagDragState {
     /// The initial tag bitmask that was clicked.
     pub initial_tag: u32,
     /// Monitor ID where the drag started.
-    pub monitor_id: usize,
+    pub monitor_id: MonitorId,
     /// Monitor X origin (for converting root coords to local).
     pub mon_mx: i32,
     /// Last seen tag gesture index (-1 = none).
@@ -372,12 +372,12 @@ impl Globals {
     }
 
     /// Return the ID of the currently selected monitor.
-    pub fn selected_monitor_id(&self) -> usize {
+    pub fn selected_monitor_id(&self) -> MonitorId {
         self.monitors.sel_idx()
     }
 
     /// Change the currently selected monitor.
-    pub fn set_selected_monitor(&mut self, id: usize) {
+    pub fn set_selected_monitor(&mut self, id: MonitorId) {
         self.monitors.set_sel_idx(id);
     }
 
@@ -402,17 +402,17 @@ impl Globals {
     }
 
     /// Delegation to get a monitor by index.
-    pub fn monitor(&self, id: usize) -> Option<&Monitor> {
+    pub fn monitor(&self, id: MonitorId) -> Option<&Monitor> {
         self.monitors.get(id)
     }
 
     /// Delegation to get a mutable monitor by index.
-    pub fn monitor_mut(&mut self, id: usize) -> Option<&mut Monitor> {
+    pub fn monitor_mut(&mut self, id: MonitorId) -> Option<&mut Monitor> {
         self.monitors.get_mut(id)
     }
 
     /// Delegation to iterate over monitors.
-    pub fn monitors_iter(&self) -> impl Iterator<Item = (usize, &Monitor)> {
+    pub fn monitors_iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
         self.monitors.iter()
     }
 
@@ -422,7 +422,7 @@ impl Globals {
     }
 
     /// Delegation to iterate over monitors mutably.
-    pub fn monitors_iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut Monitor)> {
+    pub fn monitors_iter_mut(&mut self) -> impl Iterator<Item = (MonitorId, &mut Monitor)> {
         self.monitors.iter_mut()
     }
 

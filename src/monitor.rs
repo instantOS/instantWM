@@ -18,7 +18,7 @@ use x11rb::protocol::xinerama;
 #[derive(Default)]
 pub struct MonitorManager {
     pub monitors: Vec<Monitor>,
-    pub selected_monitor_idx: usize,
+    pub selected_monitor_idx: MonitorId,
 }
 
 impl MonitorManager {
@@ -30,41 +30,41 @@ impl MonitorManager {
     // Data Accessors
     // -------------------------------------------------------------------------
 
-    pub fn sel_idx(&self) -> usize {
+    pub fn sel_idx(&self) -> MonitorId {
         self.selected_monitor_idx
     }
 
-    pub fn set_sel_idx(&mut self, idx: usize) {
-        if idx < self.monitors.len() {
+    pub fn set_sel_idx(&mut self, idx: MonitorId) {
+        if idx.index() < self.monitors.len() {
             self.selected_monitor_idx = idx;
         }
     }
 
-    pub fn get(&self, idx: usize) -> Option<&Monitor> {
-        self.monitors.get(idx)
+    pub fn get(&self, idx: MonitorId) -> Option<&Monitor> {
+        self.monitors.get(idx.index())
     }
 
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut Monitor> {
-        self.monitors.get_mut(idx)
+    pub fn get_mut(&mut self, idx: MonitorId) -> Option<&mut Monitor> {
+        self.monitors.get_mut(idx.index())
     }
 
     pub fn sel(&self) -> Option<&Monitor> {
-        self.monitors.get(self.selected_monitor_idx)
+        self.monitors.get(self.selected_monitor_idx.index())
     }
 
     pub fn sel_unchecked(&self) -> &Monitor {
         self.monitors
-            .get(self.selected_monitor_idx)
+            .get(self.selected_monitor_idx.index())
             .expect("no monitors")
     }
 
     pub fn sel_mut(&mut self) -> Option<&mut Monitor> {
-        self.monitors.get_mut(self.selected_monitor_idx)
+        self.monitors.get_mut(self.selected_monitor_idx.index())
     }
 
     pub fn sel_mut_unchecked(&mut self) -> &mut Monitor {
         self.monitors
-            .get_mut(self.selected_monitor_idx)
+            .get_mut(self.selected_monitor_idx.index())
             .expect("no monitors")
     }
 
@@ -82,27 +82,33 @@ impl MonitorManager {
 
     pub fn clear(&mut self) {
         self.monitors.clear();
-        self.selected_monitor_idx = 0;
+        self.selected_monitor_idx = MonitorId(0);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (usize, &Monitor)> {
-        self.monitors.iter().enumerate()
+    pub fn iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
+        self.monitors
+            .iter()
+            .enumerate()
+            .map(|(idx, monitor)| (MonitorId(idx), monitor))
     }
 
     pub fn iter_all(&self) -> impl Iterator<Item = &Monitor> {
         self.monitors.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (usize, &mut Monitor)> {
-        self.monitors.iter_mut().enumerate()
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (MonitorId, &mut Monitor)> {
+        self.monitors
+            .iter_mut()
+            .enumerate()
+            .map(|(idx, monitor)| (MonitorId(idx), monitor))
     }
 
     pub fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.monitors.iter_mut()
     }
 
-    pub fn push(&mut self, mut m: Monitor) -> usize {
-        let id = self.monitors.len();
+    pub fn push(&mut self, mut m: Monitor) -> MonitorId {
+        let id = MonitorId(self.monitors.len());
         m.monitor_id = id;
         self.monitors.push(m);
         id
@@ -112,9 +118,9 @@ impl MonitorManager {
         &self.monitors
     }
 
-    pub fn set_monitor(&mut self, idx: usize, m: Monitor) {
-        if idx < self.monitors.len() {
-            self.monitors[idx] = m;
+    pub fn set_monitor(&mut self, idx: MonitorId, m: Monitor) {
+        if idx.index() < self.monitors.len() {
+            self.monitors[idx.index()] = m;
         }
     }
 
@@ -122,7 +128,7 @@ impl MonitorManager {
         &self,
         w: WindowId,
         clients: &HashMap<WindowId, Client>,
-    ) -> Option<usize> {
+    ) -> Option<MonitorId> {
         for (i, m) in self.iter() {
             if w == m.bar_win {
                 return Some(i);
@@ -136,15 +142,22 @@ impl MonitorManager {
         None
     }
 
-    pub fn find_monitor_at_pointer(&self, ptr: (i32, i32)) -> Option<usize> {
+    pub fn find_id_by_rect(&self, rect: &Rect) -> Option<MonitorId> {
+        crate::types::find_monitor_by_rect(&self.monitors, rect).or(Some(self.selected_monitor_idx))
+    }
+
+    pub fn find_by_rect(&self, rect: &Rect) -> Option<&Monitor> {
+        self.find_id_by_rect(rect).and_then(|id| self.get(id))
+    }
+
+    pub fn find_monitor_at_pointer(&self, ptr: (i32, i32)) -> Option<MonitorId> {
         let rect = Rect {
             x: ptr.0,
             y: ptr.1,
             w: 1,
             h: 1,
         };
-        crate::types::find_monitor_by_rect(&self.monitors, &rect)
-            .or(Some(self.selected_monitor_idx))
+        self.find_id_by_rect(&rect)
     }
 }
 
@@ -152,8 +165,8 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
-    if monitor_id >= ctx.core_mut().globals_mut().monitors.len() {
+pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
+    if monitor_id.index() >= ctx.core_mut().globals_mut().monitors.len() {
         return;
     }
 
@@ -170,7 +183,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         .globals_mut()
         .monitors
         .monitors
-        .remove(monitor_id);
+        .remove(monitor_id.index());
     for (i, m) in ctx
         .core_mut()
         .globals_mut()
@@ -179,14 +192,20 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         .iter_mut()
         .enumerate()
     {
-        m.monitor_id = i;
+        m.monitor_id = MonitorId(i);
     }
 
     // Adjust selected index
     if ctx.core_mut().globals_mut().monitors.selected_monitor_idx == monitor_id {
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = 0;
+        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(0);
     } else if ctx.core_mut().globals_mut().monitors.selected_monitor_idx > monitor_id {
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx -= 1;
+        let current = ctx
+            .core_mut()
+            .globals_mut()
+            .monitors
+            .selected_monitor_idx
+            .index();
+        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(current - 1);
     }
 
     // Fix up client monitor references
@@ -195,7 +214,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: usize) {
         if client.monitor_id == monitor_id {
             client.monitor_id = target;
         } else if client.monitor_id > monitor_id {
-            client.monitor_id -= 1;
+            client.monitor_id = MonitorId(client.monitor_id.index() - 1);
         }
     }
 
@@ -310,7 +329,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
         if mgr.monitors.len() <= 1 {
             return;
         }
-        (index as usize).min(mgr.monitors.len() - 1)
+        MonitorId((index as usize).min(mgr.monitors.len() - 1))
     };
 
     if let Some(win) = ctx
@@ -458,7 +477,7 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
 
     // Preserve existing tags/clients if possible
     for (i, new_m) in new_monitors.iter_mut().enumerate() {
-        if let Some(old_m) = ctx.core().globals().monitors.get(i) {
+        if let Some(old_m) = ctx.core().globals().monitors.get(MonitorId(i)) {
             new_m.tags = old_m.tags.clone();
             new_m.clients = old_m.clients.clone();
             new_m.stack = old_m.stack.clone();
@@ -479,8 +498,10 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
     }
 
     ctx.core_mut().globals_mut().monitors.monitors = new_monitors;
-    if ctx.core().globals().monitors.selected_monitor_idx >= ctx.core().globals().monitors.len() {
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = 0;
+    if ctx.core().globals().monitors.selected_monitor_idx.index()
+        >= ctx.core().globals().monitors.len()
+    {
+        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(0);
     }
 
     if changed {
@@ -572,7 +593,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     ctx.core_mut().globals_mut().monitors.push(mon);
     let (bar_height, horizontal_padding, startmenu_size) =
         scaled_monitor_ui_metrics(ctx.core().globals(), 1.0);
-    if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(0) {
+    if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(MonitorId(0)) {
         m.num = 0;
         m.monitor_rect = Rect {
             x: 0,
@@ -589,7 +610,10 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.update_bar_position(bar_height);
     }
-    ctx.core_mut().globals_mut().monitors.set_sel_idx(0);
+    ctx.core_mut()
+        .globals_mut()
+        .monitors
+        .set_sel_idx(MonitorId(0));
     true
 }
 
@@ -600,7 +624,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         .core()
         .globals()
         .monitors
-        .get(0)
+        .get(MonitorId(0))
         .map(|m| {
             m.monitor_rect.w != sw
                 || m.monitor_rect.h != sh
@@ -613,7 +637,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         return false;
     }
 
-    if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(0) {
+    if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(MonitorId(0)) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.work_rect.w = sw;
@@ -683,7 +707,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         let startmenu_size = g.cfg.startmenusize;
 
         for (i, info) in unique.iter().enumerate() {
-            if let Some(m) = g.monitors.get_mut(i) {
+            if let Some(m) = g.monitors.get_mut(MonitorId(i)) {
                 let geometry_changed = m.monitor_rect.x != info.x
                     || m.monitor_rect.y != info.y
                     || m.monitor_rect.w != info.w
@@ -724,7 +748,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         for i in (new_count..old_count).rev() {
             let clients_to_move: Vec<WindowId> = clients_map
                 .values()
-                .filter(|c| c.monitor_id == i)
+                .filter(|c| c.monitor_id == MonitorId(i))
                 .map(|c| c.win)
                 .collect();
             // Create temporary WmCtx wrapper for each iteration
@@ -733,18 +757,18 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
                 wm_ctx.core_mut().globals_mut().detach(win);
                 wm_ctx.core_mut().globals_mut().detach_stack(win);
                 if let Some(c) = wm_ctx.client_mut(win) {
-                    c.monitor_id = 0;
+                    c.monitor_id = MonitorId(0);
                 }
                 wm_ctx.core_mut().globals_mut().attach(win);
                 wm_ctx.core_mut().globals_mut().attach_stack(win);
                 dirty = true;
             }
-            cleanup_monitor(&mut wm_ctx, i);
+            cleanup_monitor(&mut wm_ctx, MonitorId(i));
         }
     }
 
     if dirty {
-        x11.core.globals_mut().monitors.set_sel_idx(0);
+        x11.core.globals_mut().monitors.set_sel_idx(MonitorId(0));
         if let Ok(cookie) =
             x11rb::protocol::xproto::query_pointer(x11.x11.conn, x11.x11_runtime.root)
             && let Ok(reply) = cookie.reply()

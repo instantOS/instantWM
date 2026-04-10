@@ -2,7 +2,7 @@ use crate::contexts::WmCtx;
 use crate::globals::Globals;
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
-use crate::types::WindowId;
+use crate::types::{MonitorId, WindowId};
 use bincode::{Decode, Encode};
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -23,7 +23,7 @@ fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> 
     window_id.or_else(|| ctx.core().globals().selected_monitor().sel)
 }
 
-fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: usize) {
+fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {
     g.detach(win);
     g.detach_stack(win);
 
@@ -311,7 +311,7 @@ pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
                 name: c.scratchpad_name.clone(),
                 visible: c.issticky,
                 window_id: Some(c.win.0),
-                monitor: Some(c.monitor_id),
+                monitor: Some(c.monitor_id.index()),
                 x: Some(c.geo.x),
                 y: Some(c.geo.y),
                 width: Some(c.geo.w),

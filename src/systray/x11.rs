@@ -432,9 +432,9 @@ pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
     let target = core.globals().cfg.systray_pinning.min(n);
 
     if core.globals().cfg.systray_pinning > n {
-        0
+        MonitorId(0)
     } else {
-        target.saturating_sub(1)
+        MonitorId(target.saturating_sub(1))
     }
 }
 

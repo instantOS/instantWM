@@ -57,7 +57,7 @@ pub fn zoom(ctx: &mut WmCtx) {
         .clients
         .get(&win)
         .map(|c| (c.is_floating, c.monitor_id))
-        .unwrap_or((true, 0));
+        .unwrap_or((true, crate::types::MonitorId(0)));
 
     let Some(mon) = ctx.core().globals().monitor(monitor_id) else {
         return;

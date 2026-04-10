@@ -9,7 +9,44 @@ pub type Atom = u32;
 pub type ClientId = usize;
 
 /// Monitor identifier type.
-pub type MonitorId = usize;
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub struct MonitorId(pub usize);
+
+impl MonitorId {
+    #[inline]
+    pub const fn new(index: usize) -> Self {
+        Self(index)
+    }
+
+    #[inline]
+    pub const fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for MonitorId {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
+impl From<MonitorId> for usize {
+    fn from(value: MonitorId) -> Self {
+        value.0
+    }
+}
 
 // =============================================================================
 // Tag Constants

@@ -1,6 +1,6 @@
 //! Structured data and low-level logic for clients.
 
-use crate::types::{Client, ClientId, TagMask, WindowId};
+use crate::types::{Client, ClientId, MonitorId, TagMask, WindowId};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -62,7 +62,7 @@ impl ClientManager {
         self.clients.iter()
     }
 
-    pub fn monitor_id(&self, win: WindowId) -> Option<usize> {
+    pub fn monitor_id(&self, win: WindowId) -> Option<MonitorId> {
         self.clients.get(&win).map(|c| c.monitor_id)
     }
 

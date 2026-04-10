@@ -1,13 +1,13 @@
 use crate::bar::paint::BarPainter;
 use crate::bar::scene::MonitorBarSnapshot;
 use crate::contexts::CoreCtx;
-use crate::types::Gesture;
+use crate::types::{Gesture, MonitorId};
 
 /// Core bar drawing implementation shared between backends.
 ///
 /// Systray width must be cached in `core.globals().bar_runtime.systray_width` by the caller
 /// before invoking this function.
-pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn BarPainter) {
+pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: MonitorId, painter: &mut dyn BarPainter) {
     let monitor = match core.globals().monitor(mon_idx).cloned() {
         Some(m) => m,
         None => return,
@@ -23,7 +23,7 @@ pub(crate) fn draw_bar(core: &mut CoreCtx, mon_idx: usize, painter: &mut dyn Bar
 
 pub(crate) fn draw_bar_snapshot(
     core: &mut CoreCtx,
-    mon_idx: usize,
+    mon_idx: MonitorId,
     monitor: &crate::types::Monitor,
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,

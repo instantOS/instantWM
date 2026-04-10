@@ -1,7 +1,8 @@
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::contexts::CoreCtx;
 use crate::types::{
-    CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, Monitor, WindowId,
+    CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, Monitor, MonitorId,
+    WindowId,
 };
 use std::collections::HashMap;
 
@@ -35,7 +36,7 @@ pub(crate) struct SystraySnapshot {
 
 #[derive(Clone)]
 pub(crate) struct MonitorBarSnapshot {
-    pub monitor_id: usize,
+    pub monitor_id: MonitorId,
     pub origin_x: i32,
     pub origin_y: i32,
     pub width: i32,
@@ -63,7 +64,7 @@ pub(crate) struct MonitorRenderOutput {
 }
 
 pub(crate) struct MonitorRenderOutputWithId {
-    pub monitor_id: usize,
+    pub monitor_id: MonitorId,
     pub output: MonitorRenderOutput,
 }
 
@@ -110,7 +111,7 @@ pub(crate) fn build_monitor_snapshots(
         }
     };
     let monitors: Vec<Monitor> = core.globals().monitors_iter_all().cloned().collect();
-    let mut monitor_stats: HashMap<usize, crate::bar::model::ClientBarStats> = HashMap::new();
+    let mut monitor_stats: HashMap<MonitorId, crate::bar::model::ClientBarStats> = HashMap::new();
     for client in core.globals().clients.values() {
         let entry = monitor_stats.entry(client.monitor_id).or_default();
         entry.occupied_tags = entry.occupied_tags | client.tags;

@@ -897,7 +897,7 @@ fn bar_render_key(
     key = key.rotate_left(7) ^ (core.globals().cfg.show_systray as u64);
     key = key.rotate_left(7) ^ u64::from(wayland_systray_menu.is_some());
     for snapshot in snapshots {
-        key = key.rotate_left(7) ^ (snapshot.monitor_id as u64);
+        key = key.rotate_left(7) ^ (snapshot.monitor_id.index() as u64);
         key = key.rotate_left(7) ^ (snapshot.height as u64);
         key = key.rotate_left(7) ^ (snapshot.horizontal_padding as u64);
         key = key.rotate_left(7) ^ (snapshot.startmenu_size as u64);

@@ -53,7 +53,7 @@ fn build_scratchpad_info(
         name: c.scratchpad_name.clone(),
         visible: c.issticky,
         window_id: Some(c.win.0),
-        monitor: Some(c.monitor_id),
+        monitor: Some(c.monitor_id.index()),
         x: Some(c.geo.x),
         y: Some(c.geo.y),
         width: Some(c.geo.w),
@@ -98,7 +98,7 @@ fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) 
     WindowInfo {
         id: c.win.0 as u64,
         title: c.name.clone(),
-        monitor: c.monitor_id,
+        monitor: c.monitor_id.index(),
         tags: tags_from_mask(c.tags.bits(), valid_tag_mask),
         geometry: GeometryInfo {
             x: c.geo.x,
@@ -205,20 +205,21 @@ fn resize_window(
 
 fn resolve_resize_monitor(
     wm: &Wm,
-    current_monitor_id: usize,
+    current_monitor_id: crate::types::MonitorId,
     monitor_arg: Option<&str>,
-) -> Result<usize, String> {
+) -> Result<crate::types::MonitorId, String> {
     match monitor_arg {
         None => Ok(current_monitor_id),
         Some("focused") => Ok(wm.g.selected_monitor_id()),
         Some(raw) => {
-            let monitor_id = raw
-                .parse::<usize>()
-                .map_err(|_| format!("invalid monitor '{}'", raw))?;
+            let monitor_id = crate::types::MonitorId(
+                raw.parse::<usize>()
+                    .map_err(|_| format!("invalid monitor '{}'", raw))?,
+            );
             if wm.g.monitor(monitor_id).is_some() {
                 Ok(monitor_id)
             } else {
-                Err(format!("monitor {} not found", monitor_id))
+                Err(format!("monitor {} not found", monitor_id.index()))
             }
         }
     }
@@ -227,8 +228,8 @@ fn resolve_resize_monitor(
 fn transfer_window_to_monitor(
     ctx: &mut crate::contexts::WmCtx<'_>,
     win: WindowId,
-    current_monitor: usize,
-    target_monitor: usize,
+    current_monitor: crate::types::MonitorId,
+    target_monitor: crate::types::MonitorId,
 ) {
     if current_monitor == target_monitor || ctx.is_wayland() {
         return;

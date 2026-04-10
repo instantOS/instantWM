@@ -141,7 +141,8 @@ impl BarState {
         self.tag_widths.get(slot).copied().unwrap_or(0)
     }
 
-    pub fn begin_monitor_hit_cache(&mut self, monitor_id: usize) {
+    pub fn begin_monitor_hit_cache(&mut self, monitor_id: crate::types::MonitorId) {
+        let monitor_id = monitor_id.index();
         if self.hit_cache.len() <= monitor_id {
             self.hit_cache
                 .resize_with(monitor_id + 1, MonitorHitCache::default);
@@ -149,15 +150,22 @@ impl BarState {
         self.hit_cache[monitor_id] = MonitorHitCache::default();
     }
 
-    pub fn monitor_hit_cache_mut(&mut self, monitor_id: usize) -> Option<&mut MonitorHitCache> {
-        self.hit_cache.get_mut(monitor_id)
+    pub fn monitor_hit_cache_mut(
+        &mut self,
+        monitor_id: crate::types::MonitorId,
+    ) -> Option<&mut MonitorHitCache> {
+        self.hit_cache.get_mut(monitor_id.index())
     }
 
-    pub fn monitor_hit_cache(&self, monitor_id: usize) -> Option<&MonitorHitCache> {
-        self.hit_cache.get(monitor_id)
+    pub fn monitor_hit_cache(
+        &self,
+        monitor_id: crate::types::MonitorId,
+    ) -> Option<&MonitorHitCache> {
+        self.hit_cache.get(monitor_id.index())
     }
 
-    pub fn replace_hit_cache(&mut self, monitor_id: usize, hit: MonitorHitCache) {
+    pub fn replace_hit_cache(&mut self, monitor_id: crate::types::MonitorId, hit: MonitorHitCache) {
+        let monitor_id = monitor_id.index();
         if self.hit_cache.len() <= monitor_id {
             self.hit_cache
                 .resize_with(monitor_id + 1, MonitorHitCache::default);
