@@ -13,6 +13,7 @@ use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
 use crate::types::tag::Tag;
+use crate::types::TagLayouts;
 use crate::types::tag_types::MonitorDirection;
 
 /// Internal state of a monitor (screen) in the window manager.
@@ -85,6 +86,8 @@ pub struct Monitor {
     pub sel: Option<WindowId>,
     /// Focus history per tag mask.
     pub tag_focus_history: HashMap<u32, WindowId>,
+    /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
+    pub pertag: HashMap<u32, PertagState>,
     /// Overlay window.
     pub overlay: Option<WindowId>,
     /// Stack list (stacking order).
@@ -128,6 +131,7 @@ impl Default for Monitor {
             clients: Vec::new(),
             sel: None,
             tag_focus_history: HashMap::new(),
+            pertag: HashMap::new(),
             overlay: None,
             stack: Vec::new(),
             fullscreen: None,
@@ -140,12 +144,11 @@ impl Monitor {
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
-    pub fn new_with_values(mfact: f32, nmaster: i32, showbar: bool, topbar: bool) -> Self {
+    pub fn new_with_values(showbar: bool, topbar: bool) -> Self {
         Self {
-            mfact,
-            nmaster,
             showbar,
             topbar,
+            pertag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             clientcount: 0,
             overlaymode: OverlayMode::Top,
@@ -193,6 +196,12 @@ impl Monitor {
     #[inline]
     pub fn set_selected_tags_bits(&mut self, mask: u32) {
         self.tag_set[self.sel_tags as usize] = TagMask::from_bits(mask);
+    }
+
+    /// Get or initialize state for the current tag mask.
+    pub fn pertag_state(&mut self) -> &mut PertagState {
+        let mask = self.selected_tags().bits();
+        self.pertag.entry(mask).or_insert(PertagState::default())
     }
 
     /// Get the currently selected tags as a type-safe mask.
@@ -588,6 +597,23 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<Monitor
     }
 
     Some(MonitorId(best_idx))
+}
+
+/// Runtime state restored when a tag mask is revisited.
+/// Initialized with hardcoded defaults on first visit.
+#[derive(Debug, Clone, Default)]
+pub struct PertagState {
+    pub nmaster: i32,
+    pub mfact: f32,
+    pub showbar: bool,
+    pub layouts: TagLayouts,
+}
+
+/// Per-tag name data. No runtime layout state.
+#[derive(Debug, Clone, Default)]
+pub struct TagNames {
+    pub name: String,
+    pub alt_name: String,
 }
 
 #[cfg(test)]
