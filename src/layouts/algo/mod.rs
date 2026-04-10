@@ -11,7 +11,7 @@
 //! | [`grid`]      | `grid`, `horizgrid`, `gaplessgrid`            |
 //! | [`stack`]     | `deck`, `bstack`, `bstackhoriz`               |
 //! | [`fibonacci`] | `spiral`, `dwindle`, `fibonacci`              |
-//! | [`tcl`]       | `three_column`                                 |
+//! | [`three_column`] | `three_column`                              |
 //! | [`overview`]  | `overviewlayout`                              |
 //! | [`float`]     | `float_left`, `apply_snap_for_window`, `save_floating` |
 
@@ -21,7 +21,7 @@ mod grid;
 mod monocle;
 mod overview;
 mod stack;
-mod tcl;
+mod three_column;
 pub(super) mod tile;
 
 // ── tile ─────────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ pub use stack::{bottom_stack, bstackhoriz, deck};
 pub use fibonacci::{dwindle, fibonacci, spiral};
 
 // ── three-column ─────────────────────────────────────────────────────────────
-pub use tcl::three_column;
+pub use three_column::three_column;
 
 // ── overview ─────────────────────────────────────────────────────────────────
 pub use overview::overviewlayout;
