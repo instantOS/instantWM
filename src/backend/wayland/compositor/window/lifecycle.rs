@@ -31,11 +31,8 @@ impl WaylandState {
             if let Some(g) = self.globals_mut() {
                 crate::client::sync_client_geometry(g, window_id, rect);
             }
-            self.set_window_target_rect(
-                window_id,
-                rect,
-                super::animations::WindowMoveMode::AnimateTo,
-            );
+            let mode = self.default_window_move_mode();
+            self.set_window_target_rect(window_id, rect, mode);
         }
 
         if let Some(title) = self.window_title(window_id)
@@ -102,7 +99,7 @@ impl WaylandState {
                     .and_then(|g| g.clients.get(&window))
                     .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
                     .unwrap_or(Point::from((0, 0)));
-                self.window_animations.remove(&window);
+                self.drop_window_animation(window);
                 self.space.map_element(element.clone(), loc, false);
 
                 // If this window was the pending focus target (set by focus_soft
@@ -124,7 +121,7 @@ impl WaylandState {
         if let Some(element) = self.window_index.get(&window).cloned() {
             self.space.unmap_elem(&element);
         }
-        self.window_animations.remove(&window);
+        self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
@@ -142,7 +139,7 @@ impl WaylandState {
             self.space.unmap_elem(&element);
         }
         self.window_index.remove(&window);
-        self.window_animations.remove(&window);
+        self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);

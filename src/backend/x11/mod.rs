@@ -6,7 +6,6 @@
 //! connection.
 
 use libc::c_void;
-use std::collections::HashMap;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
@@ -23,8 +22,6 @@ use crate::types::{Rect, WindowId};
 pub struct XlibDisplay(pub *mut c_void);
 unsafe impl Send for XlibDisplay {}
 unsafe impl Sync for XlibDisplay {}
-
-pub type X11WindowAnimation = crate::animation::WindowAnimation;
 
 /// X11-specific runtime configuration.
 /// These fields are only meaningful on X11 and are left as defaults/zero on Wayland/DRM.
@@ -50,7 +47,7 @@ pub struct X11RuntimeConfig {
     /// Last cursor index applied to the X11 root cursor (caching to avoid redundant requests).
     pub last_x11_cursor_index: Option<usize>,
     /// Active non-blocking window animations, keyed by window id.
-    pub window_animations: HashMap<WindowId, X11WindowAnimation>,
+    pub window_animations: crate::animation::WindowAnimations,
 }
 
 impl Default for X11RuntimeConfig {
@@ -70,9 +67,29 @@ impl Default for X11RuntimeConfig {
             statusscheme: StatusScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor_index: None,
-            window_animations: HashMap::new(),
+            window_animations: crate::animation::WindowAnimations::new(),
         }
     }
+}
+
+impl X11RuntimeConfig {
+    #[inline]
+    pub(crate) fn insert_or_replace_window_animation(
+        &mut self,
+        win: WindowId,
+        animation: crate::animation::WindowAnimation,
+    ) {
+        self.window_animations.insert(win, animation);
+    }
+
+    #[inline]
+    pub(crate) fn take_window_animation(
+        &mut self,
+        win: WindowId,
+    ) -> Option<crate::animation::WindowAnimation> {
+        self.window_animations.remove(&win)
+    }
+
 }
 
 pub mod bar;

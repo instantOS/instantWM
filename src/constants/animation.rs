@@ -3,6 +3,15 @@
 /// Default animation frame count for smooth animations.
 pub const DEFAULT_FRAME_COUNT: i32 = 7;
 
+/// Frame count for small keyboard-driven floating moves.
+pub const FLOAT_MOVE_FRAME_COUNT: i32 = 5;
+
+/// Frame count for hide/minimize and fullscreen expansion transitions.
+pub const EMPHASIZED_FRAME_COUNT: i32 = 10;
+
+/// Frame count for decorative show/unhide slide-ins.
+pub const DECORATIVE_SHOW_FRAME_COUNT: i32 = 14;
+
 /// Fast animation frame count when many clients are present.
 pub const FAST_FRAME_COUNT: i32 = 4;
 

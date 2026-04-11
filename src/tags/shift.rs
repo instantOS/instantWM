@@ -4,6 +4,7 @@ use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 
 use crate::backend::BackendOps;
+use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::layouts::arrange;
 use crate::tags::sticky::reset_sticky_win;
 use crate::types::{Direction, OverlayMode, Rect, TagMask, WindowId};
@@ -113,6 +114,6 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
             w: geo.w.max(1),
             h: geo.h.max(1),
         }),
-        7,
+        DEFAULT_FRAME_COUNT,
     );
 }

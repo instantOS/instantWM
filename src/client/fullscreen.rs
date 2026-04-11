@@ -21,6 +21,7 @@
 //! fullscreen) but the window remains in the normal layout stack with its
 //! border intact.
 
+use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::{arrange, restack};
 use crate::types::{Rect, WindowId};
@@ -123,7 +124,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                     win,
                     &mon_rect,
                     crate::animation::MoveResizeMode::AnimateTo,
-                    10,
+                    EMPHASIZED_FRAME_COUNT,
                 );
             }
 

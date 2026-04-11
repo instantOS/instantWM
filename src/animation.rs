@@ -1,6 +1,7 @@
 use crate::constants::animation::*;
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -12,6 +13,8 @@ pub struct WindowAnimation {
     pub started_at: Instant,
     pub duration: Duration,
 }
+
+pub type WindowAnimations = HashMap<WindowId, WindowAnimation>;
 
 pub fn ease_out_cubic(t: f64) -> f64 {
     let t = t - 1.0;
@@ -94,12 +97,21 @@ fn effective_animation_frames(count: usize, frames: i32) -> i32 {
 /// Cancel an in-flight animation for a single window, snapping it to the
 /// animation target.  This ensures that `current_client_rect` (c.geo) is
 /// authoritative before any new animation is started.
+pub fn cancel_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: WindowId) {
+    if let Some(anim) = ctx.x11_runtime.take_window_animation(win) {
+        crate::contexts::WmCtx::X11(ctx.reborrow()).resize_client(win, anim.to);
+    }
+}
+
+/// Drop an in-flight X11 animation without applying its final target.
+pub fn drop_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: WindowId) {
+    let _ = ctx.x11_runtime.take_window_animation(win);
+}
+
 pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
     match ctx {
         WmCtx::X11(x11) => {
-            if let Some(anim) = x11.x11_runtime.window_animations.remove(&win) {
-                crate::contexts::WmCtx::X11(x11.reborrow()).resize_client(win, anim.to);
-            }
+            cancel_x11_animation(x11, win);
         }
         WmCtx::Wayland(wl) => {
             let _ = wl
@@ -124,7 +136,7 @@ fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: 
                     .height(from.h.max(1) as u32),
             );
             let _ = x11.x11.conn.flush();
-            x11.x11_runtime.window_animations.insert(
+            x11.x11_runtime.insert_or_replace_window_animation(
                 win,
                 WindowAnimation {
                     from,

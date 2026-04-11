@@ -6,6 +6,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::properties::set_client_state;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize;
+use crate::constants::animation::{DECORATIVE_SHOW_FRAME_COUNT, EMPHASIZED_FRAME_COUNT};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
@@ -86,7 +87,7 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
         // forcibly repositioning the X11 window (to c.geo for visible
         // clients, or off-screen for hidden ones), so any running
         // animation is now stale.
-        ctx.x11_runtime.window_animations.remove(&win);
+        crate::animation::drop_x11_animation(ctx, win);
 
         if is_visible {
             let Rect { x, y, w, h } = geo;
@@ -272,7 +273,7 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         win,
         &Rect { x, y, w, h },
         MoveResizeMode::AnimateFrom(Rect { x, y: -50, w, h }),
-        14,
+        DECORATIVE_SHOW_FRAME_COUNT,
     );
 }
 
@@ -306,7 +307,7 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
                 h,
             },
             MoveResizeMode::AnimateTo,
-            10,
+            EMPHASIZED_FRAME_COUNT,
         );
     }
 

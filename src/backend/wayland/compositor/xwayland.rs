@@ -427,11 +427,7 @@ impl XwmHandler for WaylandState {
         // This is an acknowledgement/notification from XWayland about the
         // geometry it is already using. Feeding it back into `resize_window`
         // would send another X11 configure and create a resize loop.
-        let mode = if self.interactive_motion_active() {
-            crate::backend::wayland::compositor::window::animations::WindowMoveMode::Immediate
-        } else {
-            crate::backend::wayland::compositor::window::animations::WindowMoveMode::AnimateTo
-        };
+        let mode = self.default_window_move_mode();
         self.set_window_target_rect(
             win,
             crate::types::Rect {

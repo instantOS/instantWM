@@ -19,6 +19,7 @@
 
 use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::client::{restore_border_width, save_border_width};
+use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::layouts::algo::apply_snap_for_window;
 use crate::types::*;
@@ -300,7 +301,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
         win,
         rect,
         MoveResizeMode::AnimateTo,
-        7,
+        DEFAULT_FRAME_COUNT,
     );
 
     // Raise the window if it is the focused one (Maximized only).

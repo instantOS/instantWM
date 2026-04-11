@@ -56,3 +56,16 @@ pub fn sync_space_if_dirty(wm: &mut Wm, state: &mut WaylandState) -> bool {
         false
     }
 }
+
+/// Run compositor-space sync and animation progression in one place.
+///
+/// Returns `true` when either the space was synchronized or at least one
+/// animation tick was processed.
+pub fn process_window_animations(wm: &mut Wm, state: &mut WaylandState) -> bool {
+    let mut changed = sync_space_if_dirty(wm, state);
+    if state.has_active_window_animations() {
+        state.tick_window_animations();
+        changed = true;
+    }
+    changed
+}

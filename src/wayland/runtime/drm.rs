@@ -583,12 +583,8 @@ fn process_common_tick(
 
 /// Process window animations and sync compositor space when dirty.
 fn process_animations(wm: &mut Wm, state: &mut WaylandState, loop_state: &mut DrmLoopState) {
-    if super::common::sync_space_if_dirty(wm, state) {
+    if super::common::process_window_animations(wm, state) {
         // DRM-specific: mark all outputs dirty after space sync
-        loop_state.mark_all_dirty();
-    }
-    if state.has_active_window_animations() {
-        state.tick_window_animations();
         loop_state.mark_all_dirty();
     }
 }

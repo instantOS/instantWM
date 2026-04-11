@@ -4,6 +4,7 @@ use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::client::restore_border_width;
+use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::layouts::arrange;
 use crate::types::*;
@@ -147,7 +148,13 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     // Animate when going to floating mode
     if should_animate && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
     {
-        move_resize_client(ctx, win, &saved_geo, MoveResizeMode::AnimateTo, 7);
+        move_resize_client(
+            ctx,
+            win,
+            &saved_geo,
+            MoveResizeMode::AnimateTo,
+            DEFAULT_FRAME_COUNT,
+        );
     }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();

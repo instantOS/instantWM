@@ -1,7 +1,6 @@
 use smithay::utils::{Point, Rectangle};
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::compositor::window::animations::WindowMoveMode;
 use crate::types::{Rect, WindowId};
 
 impl WaylandState {
@@ -41,11 +40,7 @@ impl WaylandState {
             );
             let _ = surface.configure(Some(geometry));
         }
-        let mode = if self.interactive_motion_active() {
-            WindowMoveMode::Immediate
-        } else {
-            WindowMoveMode::AnimateTo
-        };
+        let mode = self.default_window_move_mode();
         self.set_window_target_rect(window, rect, mode);
     }
 

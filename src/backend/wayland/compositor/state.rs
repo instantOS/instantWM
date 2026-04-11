@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr::NonNull;
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
@@ -12,12 +12,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupManager, Space, Window},
     input::{
-        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
+        Seat, SeatState,
     },
     reexports::{
-        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
+        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -40,7 +40,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{decoration::XdgDecorationState, XdgShellState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -59,7 +59,6 @@ use crate::wm::Wm;
 
 use super::image_capture::PendingImageCapture;
 use super::screencopy::PendingScreencopy;
-use super::window::WaylandWindowAnimation;
 
 // ---------------------------------------------------------------------------
 // Per-client state
@@ -164,7 +163,7 @@ pub struct WaylandState {
     pub(super) active_resizes: HashSet<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
-    pub(super) window_animations: HashMap<WindowId, WaylandWindowAnimation>,
+    pub(super) window_animations: crate::animation::WindowAnimations,
     /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
 
@@ -350,7 +349,7 @@ impl WaylandState {
             last_configured_size: HashMap::new(),
             active_resizes: HashSet::new(),
             window_index: HashMap::new(),
-            window_animations: HashMap::new(),
+            window_animations: crate::animation::WindowAnimations::new(),
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
             runtime: WaylandRuntimeState::default(),
@@ -500,6 +499,9 @@ impl WaylandState {
             })
             .collect();
         for (window_id, geo) in updates {
+            // Space sync reconciles compositor state from authoritative WM
+            // geometry; use a fixed policy to avoid interactive-motion
+            // heuristics changing this reconciliation path.
             self.set_window_target_rect(
                 window_id,
                 geo,

@@ -13,7 +13,6 @@ pub mod management;
 pub mod properties;
 pub mod x11;
 
-pub use animations::WaylandWindowAnimation;
 pub use classify::WindowType;
 pub(crate) use x11::is_unmanaged_x11_overlay;
 

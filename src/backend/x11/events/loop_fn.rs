@@ -116,6 +116,7 @@ fn tick_x11_animations(wm: &mut Wm) {
 
         let now = std::time::Instant::now();
         let mut finished = Vec::new();
+        let mut finished_targets = Vec::new();
         let mut needs_flush = false;
 
         for (win, anim) in data.x11_runtime.window_animations.iter() {
@@ -138,19 +139,26 @@ fn tick_x11_animations(wm: &mut Wm) {
             }
 
             if tick.done {
-                finished.push((*win, anim.to));
+                finished.push(*win);
             }
         }
 
-        for (win, _) in &finished {
-            data.x11_runtime.window_animations.remove(win);
+        for win in &finished {
+            // Completed animations snap to their final target.
+            if let Some(target) = data
+                .x11_runtime
+                .take_window_animation(*win)
+                .map(|anim| anim.to)
+            {
+                finished_targets.push((*win, target));
+            }
         }
 
         if needs_flush {
             let _ = data.conn.flush();
         }
 
-        finished
+        finished_targets
     };
 
     if finished_targets.is_empty() {

@@ -6,15 +6,15 @@
 use std::process::exit;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::ImportDma;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::Backend as WmBackend;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -152,7 +152,7 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             wm.g.dirty.input_config = false;
 
-            super::common::sync_space_if_dirty(&mut wm, state);
+            let changed = super::common::process_window_animations(&mut wm, state);
 
             // ── 3. Arm animation timer if needed ────────────────────────
             anim_guard.ensure_armed(
@@ -177,6 +177,10 @@ pub fn run() -> ! {
                 &mut damage_tracker,
                 start_time,
             );
+
+            if changed {
+                state.request_render();
+            }
 
             if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();

@@ -5,8 +5,6 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::{Rect, WindowId};
 
-pub type WaylandWindowAnimation = crate::animation::WindowAnimation;
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum WindowMoveMode {
     AnimateTo,
@@ -15,7 +13,7 @@ pub(crate) enum WindowMoveMode {
 }
 
 impl WaylandState {
-    fn insert_window_animation(
+    fn insert_or_replace_window_animation(
         &mut self,
         window_id: WindowId,
         from: Rect,
@@ -24,13 +22,17 @@ impl WaylandState {
     ) {
         self.window_animations.insert(
             window_id,
-            WaylandWindowAnimation {
+            crate::animation::WindowAnimation {
                 from,
                 to,
                 started_at: Instant::now(),
                 duration,
             },
         );
+    }
+
+    pub(crate) fn drop_window_animation(&mut self, win: WindowId) {
+        self.window_animations.remove(&win);
     }
 
     pub(crate) fn animations_enabled(&self) -> bool {
@@ -41,6 +43,67 @@ impl WaylandState {
         self.globals()
             .map(|g| g.drag.interactive.active && g.drag.interactive.dragging)
             .unwrap_or(false)
+    }
+
+    pub(crate) fn default_window_move_mode(&self) -> WindowMoveMode {
+        if self.interactive_motion_active() {
+            WindowMoveMode::Immediate
+        } else {
+            WindowMoveMode::AnimateTo
+        }
+    }
+
+    fn configured_size_unchanged(&self, window_id: WindowId, target: Rect) -> bool {
+        let configured_size = (target.w.max(1), target.h.max(1));
+        self.last_configured_size
+            .get(&window_id)
+            .is_some_and(|&size| size == configured_size)
+    }
+
+    fn resolve_animation_start_rect(
+        &self,
+        window_id: WindowId,
+        actual_loc: Option<Point<i32, Logical>>,
+        target: Rect,
+        target_loc: Point<i32, Logical>,
+        from_rect: Option<Rect>,
+    ) -> Rect {
+        from_rect
+            .or_else(|| {
+                actual_loc.map(|loc| Rect {
+                    x: loc.x,
+                    y: loc.y,
+                    w: target.w,
+                    h: target.h,
+                })
+            })
+            .or_else(|| {
+                self.globals().and_then(|g| {
+                    g.clients.get(&window_id).map(|c| Rect {
+                        x: c.geo.x + c.border_width,
+                        y: c.geo.y + c.border_width,
+                        w: c.geo.w,
+                        h: c.geo.h,
+                    })
+                })
+            })
+            .unwrap_or(Rect {
+                x: target_loc.x,
+                y: target_loc.y,
+                w: target.w,
+                h: target.h,
+            })
+    }
+
+    fn remap_window_immediately(
+        &mut self,
+        window_id: WindowId,
+        element: &smithay::desktop::Window,
+        target_loc: Point<i32, Logical>,
+    ) {
+        self.drop_window_animation(window_id);
+        // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
+        self.remap_element_preserving_z_order(element, target_loc, false);
     }
 
     pub(crate) fn set_window_target_rect(
@@ -68,7 +131,7 @@ impl WaylandState {
         // only move windows that are already mapped (or are being interactively
         // remapped on purpose).
         if actual_loc.is_none() && mode != WindowMoveMode::Immediate {
-            self.window_animations.remove(&window_id);
+            self.drop_window_animation(window_id);
             return;
         }
 
@@ -76,13 +139,9 @@ impl WaylandState {
         // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
         // However, a size-only change (e.g. mfact adjustment) still needs a
         // configure even when x,y are unchanged.
-        let configured_size = (target.w.max(1), target.h.max(1));
-        let size_unchanged = self
-            .last_configured_size
-            .get(&window_id)
-            .is_some_and(|&size| size == configured_size);
+        let size_unchanged = self.configured_size_unchanged(window_id, target);
         if actual_loc == Some(target_loc) && mode == WindowMoveMode::AnimateTo && size_unchanged {
-            self.window_animations.remove(&window_id);
+            self.drop_window_animation(window_id);
             return;
         }
 
@@ -103,31 +162,8 @@ impl WaylandState {
 
         // Use the client's stored geometry as the authoritative current position
         // to avoid animating from stale locations after map/unmap cycles.
-        let current = from_rect.unwrap_or_else(|| {
-            actual_loc
-                .map(|loc| Rect {
-                    x: loc.x,
-                    y: loc.y,
-                    w: target.w,
-                    h: target.h,
-                })
-                .or_else(|| {
-                    self.globals().and_then(|g| {
-                        g.clients.get(&window_id).map(|c| Rect {
-                            x: c.geo.x + c.border_width,
-                            y: c.geo.y + c.border_width,
-                            w: c.geo.w,
-                            h: c.geo.h,
-                        })
-                    })
-                })
-                .unwrap_or(Rect {
-                    x: target_loc.x,
-                    y: target_loc.y,
-                    w: target.w,
-                    h: target.h,
-                })
-        });
+        let current =
+            self.resolve_animation_start_rect(window_id, actual_loc, target, target_loc, from_rect);
 
         if element.toplevel().is_some() {
             let configured = (target.w.max(1), target.h.max(1));
@@ -150,9 +186,7 @@ impl WaylandState {
             || (current.x == target_loc.x && current.y == target_loc.y);
 
         if should_remap_immediately {
-            self.window_animations.remove(&window_id);
-            // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
-            self.remap_element_preserving_z_order(&element, target_loc, false);
+            self.remap_window_immediately(window_id, &element, target_loc);
             return;
         }
 
@@ -164,7 +198,7 @@ impl WaylandState {
             self.remap_element_preserving_z_order(&element, Point::from((from.x, from.y)), false);
         }
 
-        self.insert_window_animation(
+        self.insert_or_replace_window_animation(
             window_id,
             current,
             Rect {
@@ -223,25 +257,16 @@ impl WaylandState {
             }
         }
         for win in finished {
-            self.window_animations.remove(&win);
+            self.cancel_window_animation(win);
         }
     }
 
     /// Cancel all in-flight window animations, snapping each mapped window
     /// to its animation target position.
     pub fn cancel_all_window_animations(&mut self) {
-        let finished: Vec<(WindowId, Rect)> = self
-            .window_animations
-            .drain()
-            .map(|(win, anim)| (win, anim.to))
-            .collect();
-        for (win, target) in finished {
-            if let Some(element) = self.find_window(win).cloned()
-                && self.space.element_location(&element).is_some()
-            {
-                let loc = Point::from((target.x, target.y));
-                self.remap_element_preserving_z_order(&element, loc, false);
-            }
+        let active_windows: Vec<WindowId> = self.window_animations.keys().copied().collect();
+        for win in active_windows {
+            self.cancel_window_animation(win);
         }
     }
 
