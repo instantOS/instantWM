@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
     InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind, ModeCommand,
     MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus, SpecialNext,
@@ -100,6 +100,7 @@ pub enum KeyboardAction {
         layout: String,
     },
     SwapEscape {
+        #[arg(long, action = ArgAction::Set)]
         enabled: bool,
     },
 }
