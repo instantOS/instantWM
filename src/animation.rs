@@ -272,47 +272,54 @@ pub fn move_resize_client(
 }
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
-    let current_tag = ctx.core().globals().selected_monitor().current_tag;
-    crate::tags::view::scroll_view(ctx, dir);
-
-    let monitor = ctx.core().globals().selected_monitor();
-    if monitor.current_tag == current_tag {
+    let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {
         return;
+    };
+
+    let (monitor_rect, selected_tags, clients) = {
+        let Some(monitor) = ctx.core().globals().monitor(selmon_id) else {
+            return;
+        };
+        (
+            monitor.monitor_rect,
+            monitor.selected_tags(),
+            monitor.clients.clone(),
+        )
+    };
+
+    let mut animation_targets = Vec::new();
+    for win in clients {
+        let Some(client) = ctx.core().globals().clients.get(&win).cloned() else {
+            continue;
+        };
+        if !client.is_visible(selected_tags)
+            || client.is_true_fullscreen()
+            || !client.geo.is_valid()
+        {
+            continue;
+        }
+        animation_targets.push((win, client.geo, client.border_width()));
     }
 
-    let Some(win) = monitor.sel else {
-        return;
-    };
-
-    let Some(client) = ctx.core().globals().clients.get(&win).cloned() else {
-        return;
-    };
-
-    if !client.is_visible(monitor.selected_tags()) || client.is_true_fullscreen() {
-        return;
+    for (win, target, border_width) in animation_targets {
+        let start_x = match dir {
+            Direction::Left | Direction::Up => monitor_rect.x - target.w - border_width * 2,
+            Direction::Right | Direction::Down => {
+                monitor_rect.x + monitor_rect.w + border_width * 2
+            }
+        };
+        let start = Rect {
+            x: start_x,
+            y: target.y,
+            w: target.w,
+            h: target.h,
+        };
+        move_resize_client(
+            ctx,
+            win,
+            &target,
+            MoveResizeMode::AnimateFrom(start),
+            DEFAULT_FRAME_COUNT,
+        );
     }
-
-    let target = client.geo;
-    let start_x = match dir {
-        Direction::Left | Direction::Up => {
-            monitor.monitor_rect.x - target.w - client.border_width * 2
-        }
-        Direction::Right | Direction::Down => {
-            monitor.monitor_rect.x + monitor.monitor_rect.w + client.border_width * 2
-        }
-    };
-    let start = Rect {
-        x: start_x,
-        y: target.y,
-        w: target.w,
-        h: target.h,
-    };
-
-    move_resize_client(
-        ctx,
-        win,
-        &target,
-        MoveResizeMode::AnimateFrom(start),
-        DEFAULT_FRAME_COUNT,
-    );
 }

@@ -12,6 +12,26 @@ fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
+fn finalize_view_change_immediate(ctx: &mut WmCtx, selmon_id: MonitorId) {
+    crate::focus::focus_soft(ctx, None);
+    crate::layouts::arrange(ctx, Some(selmon_id));
+}
+
+fn adjacent_scroll_mask(current_tag: usize, tagset: TagMask, dir: Direction) -> Option<TagMask> {
+    if !tagset.is_single() {
+        return None;
+    }
+
+    let max_tag = crate::constants::animation::MAX_TAG_NUMBER as usize;
+    let next_tag = match dir {
+        Direction::Left | Direction::Up if current_tag > 1 => current_tag - 1,
+        Direction::Right | Direction::Down if current_tag < max_tag => current_tag + 1,
+        _ => return None,
+    };
+
+    TagMask::single(next_tag)
+}
+
 fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId> {
     let selmon_id = ctx.core().globals().selected_monitor_id();
 
@@ -293,8 +313,9 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
 
 #[cfg(test)]
 mod tests {
-    use super::overview_shortcut_targets_focused_window;
+    use super::{adjacent_scroll_mask, overview_shortcut_targets_focused_window};
     use crate::layouts::LayoutKind;
+    use crate::types::{Direction, TagMask};
 
     #[test]
     fn overview_shortcut_targets_focused_window_for_tag_zero() {
@@ -319,6 +340,35 @@ mod tests {
             LayoutKind::Grid
         ));
     }
+
+    #[test]
+    fn adjacent_scroll_mask_moves_left_and_right() {
+        let current = 3;
+        let tagset = TagMask::single(current).unwrap_or(TagMask::EMPTY);
+        assert_eq!(
+            adjacent_scroll_mask(current, tagset, Direction::Left),
+            TagMask::single(2)
+        );
+        assert_eq!(
+            adjacent_scroll_mask(current, tagset, Direction::Right),
+            TagMask::single(4)
+        );
+    }
+
+    #[test]
+    fn adjacent_scroll_mask_requires_single_tag_and_bounds() {
+        let multi = TagMask::single(2).unwrap_or(TagMask::EMPTY)
+            | TagMask::single(3).unwrap_or(TagMask::EMPTY);
+        assert_eq!(adjacent_scroll_mask(2, multi, Direction::Left), None);
+        assert_eq!(
+            adjacent_scroll_mask(
+                1,
+                TagMask::single(1).unwrap_or(TagMask::EMPTY),
+                Direction::Left
+            ),
+            None
+        );
+    }
 }
 
 pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
@@ -339,53 +389,26 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
         return;
     };
 
-    if dir == Direction::Left && current_tag <= 1 {
+    let Some(new_mask) = adjacent_scroll_mask(current_tag, tagset, dir) else {
         return;
-    }
-    if dir == Direction::Right
-        && current_tag >= crate::constants::animation::MAX_TAG_NUMBER as usize
-    {
-        return;
-    }
-
-    if !tagset.is_single() {
-        return;
-    }
-
-    let new_mask = match dir {
-        Direction::Left => {
-            if current_tag <= 1 {
-                return;
-            }
-            TagMask::single(current_tag - 1).unwrap_or(TagMask::EMPTY)
-        }
-        Direction::Right => {
-            if current_tag >= crate::constants::animation::MAX_TAG_NUMBER as usize {
-                return;
-            }
-            TagMask::single(current_tag + 1).unwrap_or(TagMask::EMPTY)
-        }
-        Direction::Up => {
-            if current_tag <= 1 {
-                return;
-            }
-            TagMask::single(current_tag - 1).unwrap_or(TagMask::EMPTY)
-        }
-        Direction::Down => {
-            if current_tag >= crate::constants::animation::MAX_TAG_NUMBER as usize {
-                return;
-            }
-            TagMask::single(current_tag + 1).unwrap_or(TagMask::EMPTY)
-        }
     };
-
-    if new_mask.is_empty() {
-        return;
-    }
 
     let Some(selmon_id) = commit_view_selection(ctx, new_mask) else {
         return;
     };
 
     finalize_view_change(ctx, selmon_id);
+}
+
+/// Scroll to adjacent tag and apply layout immediately for post-switch animations.
+pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: Direction) -> Option<MonitorId> {
+    let mon = ctx.core().globals().selected_monitor();
+    let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
+        return None;
+    };
+
+    let new_mask = adjacent_scroll_mask(current_tag, tagset, dir)?;
+    let selmon_id = commit_view_selection(ctx, new_mask)?;
+    finalize_view_change_immediate(ctx, selmon_id);
+    Some(selmon_id)
 }
