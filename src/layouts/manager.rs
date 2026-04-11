@@ -53,6 +53,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
     apply_border_widths(ctx, &monitor_before_layout);
     {
+        let bar_height = ctx.core().globals().cfg.bar_height;
         let mon = ctx.core_mut().globals_mut().monitor_mut(monitor_id).unwrap();
         let (nmaster, mfact) = {
             let pertag = mon.pertag_state();
@@ -60,6 +61,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         };
         mon.nmaster = nmaster;
         mon.mfact = mfact;
+        mon.update_bar_position(bar_height);
     }
     run_layout(ctx, monitor_id);
     {
