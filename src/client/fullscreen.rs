@@ -122,7 +122,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                     &mut WmCtx::X11(ctx_x11.reborrow()),
                     win,
                     &mon_rect,
-                    crate::animation::MoveResizeMode::Normal,
+                    crate::animation::MoveResizeMode::AnimateTo,
                     10,
                 );
             }

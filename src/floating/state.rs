@@ -147,7 +147,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     // Animate when going to floating mode
     if should_animate && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
     {
-        move_resize_client(ctx, win, &saved_geo, MoveResizeMode::Normal, 7);
+        move_resize_client(ctx, win, &saved_geo, MoveResizeMode::AnimateTo, 7);
     }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();

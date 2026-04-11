@@ -31,7 +31,11 @@ impl WaylandState {
             if let Some(g) = self.globals_mut() {
                 crate::client::sync_client_geometry(g, window_id, rect);
             }
-            self.set_window_target_rect(window_id, rect, super::animations::WindowMoveMode::Normal);
+            self.set_window_target_rect(
+                window_id,
+                rect,
+                super::animations::WindowMoveMode::AnimateTo,
+            );
         }
 
         if let Some(title) = self.window_title(window_id)

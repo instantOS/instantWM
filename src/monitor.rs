@@ -688,8 +688,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
 
         // Ensure count
         let template = g.cfg.tag_template.clone();
-        let (showbar, topbar) =
-            (g.cfg.show_bar, g.cfg.top_bar);
+        let (showbar, topbar) = (g.cfg.show_bar, g.cfg.top_bar);
         while g.monitors.count() < new_count {
             let mut mon = Monitor::new_with_values(showbar, topbar);
             mon.init_tags(&template);

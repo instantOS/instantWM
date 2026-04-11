@@ -276,7 +276,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();
-    let (overlaystatus, overlay, current_tag) = {
+    let (_overlaystatus, overlay, current_tag) = {
         let mon = ctx.core().globals().selected_monitor();
         if mon.overlaystatus != 0 {
             return;
@@ -362,7 +362,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
             ctx,
             overlay,
             &target_rect,
-            crate::animation::MoveResizeMode::Normal,
+            crate::animation::MoveResizeMode::AnimateTo,
             OVERLAY_ANIMATION_FRAMES,
         );
 
@@ -451,7 +451,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
             ctx,
             overlay_win,
             &hide_rect,
-            crate::animation::MoveResizeMode::Normal,
+            crate::animation::MoveResizeMode::AnimateTo,
             OVERLAY_ANIMATION_FRAMES,
         );
     }

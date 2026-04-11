@@ -82,6 +82,12 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
 
     // Second pass: apply visibility changes
     for (win, geo, is_visible, is_floating, is_fullscreen, is_fake_fullscreen) in operations {
+        // Clear any in-flight animation for this window.  show_hide is
+        // forcibly repositioning the X11 window (to c.geo for visible
+        // clients, or off-screen for hidden ones), so any running
+        // animation is now stale.
+        ctx.x11_runtime.window_animations.remove(&win);
+
         if is_visible {
             let Rect { x, y, w, h } = geo;
             let x11_win: Window = win.into();
@@ -299,7 +305,7 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
                 w,
                 h,
             },
-            MoveResizeMode::Normal,
+            MoveResizeMode::AnimateTo,
             10,
         );
     }

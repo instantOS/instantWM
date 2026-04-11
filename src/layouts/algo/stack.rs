@@ -122,7 +122,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     w: master_window_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_area_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 framecount,
             );
 
@@ -140,7 +140,7 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     w: stack_window_width - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 framecount,
             );
 
@@ -206,7 +206,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     w: master_window_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_area_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 framecount,
             );
 
@@ -223,7 +223,7 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     w: monitor.work_rect.w - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 framecount,
             );
 

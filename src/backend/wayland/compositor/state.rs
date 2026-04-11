@@ -503,7 +503,7 @@ impl WaylandState {
             self.set_window_target_rect(
                 window_id,
                 geo,
-                super::window::animations::WindowMoveMode::Normal,
+                super::window::animations::WindowMoveMode::AnimateTo,
             );
         }
         self.raise_unmanaged_x11_windows();

@@ -8,8 +8,8 @@ pub type WaylandWindowAnimation = crate::animation::WindowAnimation;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum WindowMoveMode {
-    Normal,
-    RemapImmediate,
+    AnimateTo,
+    Immediate,
     AnimateFrom { from: Rect, duration: Duration },
 }
 
@@ -66,7 +66,7 @@ impl WaylandState {
         // side effect. The behavioral layer owns visibility; the backend should
         // only move windows that are already mapped (or are being interactively
         // remapped on purpose).
-        if actual_loc.is_none() && mode != WindowMoveMode::RemapImmediate {
+        if actual_loc.is_none() && mode != WindowMoveMode::Immediate {
             self.window_animations.remove(&window_id);
             return;
         }
@@ -80,7 +80,7 @@ impl WaylandState {
             .last_configured_size
             .get(&window_id)
             .is_some_and(|&size| size == configured_size);
-        if actual_loc == Some(target_loc) && mode == WindowMoveMode::Normal && size_unchanged {
+        if actual_loc == Some(target_loc) && mode == WindowMoveMode::AnimateTo && size_unchanged {
             self.window_animations.remove(&window_id);
             return;
         }
@@ -95,7 +95,7 @@ impl WaylandState {
                 }),
                 duration,
             ),
-            WindowMoveMode::Normal | WindowMoveMode::RemapImmediate => {
+            WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
                 (None, Duration::from_millis(90))
             }
         };
@@ -145,24 +145,13 @@ impl WaylandState {
         }
 
         let should_remap_immediately = !self.animations_enabled()
-            || mode == WindowMoveMode::RemapImmediate
+            || mode == WindowMoveMode::Immediate
             || (current.x == target_loc.x && current.y == target_loc.y);
 
         if should_remap_immediately {
             self.window_animations.remove(&window_id);
             // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
             self.remap_element_preserving_z_order(&element, target_loc, false);
-            return;
-        }
-
-        if from_rect.is_none()
-            && self.window_animations.get(&window_id).is_some_and(|anim| {
-                anim.to.x == target_loc.x
-                    && anim.to.y == target_loc.y
-                    && anim.to.w == target.w
-                    && anim.to.h == target.h
-            })
-        {
             return;
         }
 
@@ -191,15 +180,23 @@ impl WaylandState {
         self.window_animations.len()
     }
 
-    pub fn window_animation_target_rect(&self, window: WindowId) -> Option<Rect> {
-        self.window_animations.get(&window).map(|anim| anim.to)
+    /// Cancel a single window's in-flight animation.
+    ///
+    /// If the window is currently mapped (has a location in the space), it is
+    /// snapped to the animation's target position. If not mapped, the animation
+    /// entry is simply dropped without remapping.
+    pub fn cancel_window_animation(&mut self, win: WindowId) {
+        let Some(anim) = self.window_animations.remove(&win) else {
+            return;
+        };
+        if let Some(element) = self.find_window(win).cloned()
+            && self.space.element_location(&element).is_some()
+        {
+            let loc = Point::from((anim.to.x, anim.to.y));
+            self.remap_element_preserving_z_order(&element, loc, false);
+        }
     }
 
-    pub fn current_window_animation_rect(&self, window: WindowId, now: Instant) -> Option<Rect> {
-        self.window_animations
-            .get(&window)
-            .map(|anim| crate::animation::interpolated_rect(anim, now))
-    }
     /// Tick all active window animations.
     pub fn tick_window_animations(&mut self) {
         if self.window_animations.is_empty() {
@@ -233,8 +230,8 @@ impl WaylandState {
         }
     }
 
-    /// Cancel all in-flight window animations, snapping each window to its
-    /// animation target position.
+    /// Cancel all in-flight window animations, snapping each mapped window
+    /// to its animation target position.
     pub fn cancel_all_window_animations(&mut self) {
         let finished: Vec<(WindowId, Rect)> = self
             .window_animations
@@ -242,7 +239,9 @@ impl WaylandState {
             .map(|(win, anim)| (win, anim.to))
             .collect();
         for (win, target) in finished {
-            if let Some(element) = self.find_window(win).cloned() {
+            if let Some(element) = self.find_window(win).cloned()
+                && self.space.element_location(&element).is_some()
+            {
                 let loc = Point::from((target.x, target.y));
                 self.remap_element_preserving_z_order(&element, loc, false);
             }

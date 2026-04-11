@@ -42,9 +42,9 @@ impl WaylandState {
             let _ = surface.configure(Some(geometry));
         }
         let mode = if self.interactive_motion_active() {
-            WindowMoveMode::RemapImmediate
+            WindowMoveMode::Immediate
         } else {
-            WindowMoveMode::Normal
+            WindowMoveMode::AnimateTo
         };
         self.set_window_target_rect(window, rect, mode);
     }

@@ -89,7 +89,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     w: master_area_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 animation_frames,
             );
 
@@ -119,7 +119,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                         - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 animation_frames,
             );
 

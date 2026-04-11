@@ -6,13 +6,13 @@ use std::collections::HashMap;
 
 use crate::layouts::LayoutKind;
 use crate::types::MonitorId;
+use crate::types::TagLayouts;
 use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
-use crate::types::TagLayouts;
 use crate::types::tag_types::MonitorDirection;
 
 /// Internal state of a monitor (screen) in the window manager.
@@ -200,7 +200,7 @@ impl Monitor {
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
         let mask = self.selected_tags().bits();
-        self.pertag.entry(mask).or_insert(PertagState::default())
+        self.pertag.entry(mask).or_default()
     }
 
     /// Get the currently selected tags as a type-safe mask.
@@ -368,7 +368,10 @@ impl Monitor {
 
     /// Returns showbar state for the given tag mask.
     pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
-        self.pertag.get(&mask.bits()).map(|s| s.showbar).unwrap_or(true)
+        self.pertag
+            .get(&mask.bits())
+            .map(|s| s.showbar)
+            .unwrap_or(true)
     }
 
     /// Returns layout state for the given tag mask (immutable lookup).
@@ -406,7 +409,9 @@ impl Monitor {
 
     /// Get the current layout symbol for this monitor.
     pub fn layout_symbol(&self) -> String {
-        self.layouts_for_mask(self.selected_tags()).symbol().to_string()
+        self.layouts_for_mask(self.selected_tags())
+            .symbol()
+            .to_string()
     }
 
     /// Check if the current layout is a tiling layout.

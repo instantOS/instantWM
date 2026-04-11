@@ -70,7 +70,13 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
     {
         return Some(SnapPosition::Right);
     }
-    if y <= mon.monitor_rect.y + if mon.showbar_for_mask(mask) { mon.bar_height } else { 5 } {
+    if y <= mon.monitor_rect.y
+        + if mon.showbar_for_mask(mask) {
+            mon.bar_height
+        } else {
+            5
+        }
+    {
         return Some(SnapPosition::Top);
     }
     None

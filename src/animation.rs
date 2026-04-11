@@ -82,45 +82,22 @@ fn effective_animation_frames(count: usize, frames: i32) -> i32 {
     }
 }
 
-/// Cancel all in-flight window animations, snapping each window to its
-/// animation target so that `current_visual_rect` returns the authoritative
-/// geometry rather than a stale mid-animation position.
-pub fn cancel_all_animations(ctx: &mut WmCtx<'_>) {
+/// Cancel an in-flight animation for a single window, snapping it to the
+/// animation target.  This ensures that `current_client_rect` (c.geo) is
+/// authoritative before any new animation is started.
+pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
     match ctx {
         WmCtx::X11(x11) => {
-            let finished: Vec<(WindowId, Rect)> = x11
-                .x11_runtime
-                .window_animations
-                .drain()
-                .map(|(win, anim)| (win, anim.to))
-                .collect();
-            for (win, rect) in finished {
-                crate::contexts::WmCtx::X11(x11.reborrow()).resize_client(win, rect);
+            if let Some(anim) = x11.x11_runtime.window_animations.remove(&win) {
+                crate::contexts::WmCtx::X11(x11.reborrow()).resize_client(win, anim.to);
             }
         }
         WmCtx::Wayland(wl) => {
             let _ = wl
                 .wayland
                 .backend
-                .with_state(|state| state.cancel_all_window_animations());
+                .with_state(|state| state.cancel_window_animation(win));
         }
-    }
-}
-
-pub fn current_visual_rect(ctx: &WmCtx<'_>, win: WindowId) -> Option<Rect> {
-    match ctx {
-        WmCtx::X11(x11) => x11
-            .x11_runtime
-            .window_animations
-            .get(&win)
-            .map(|anim| interpolated_rect(anim, Instant::now()))
-            .or_else(|| current_client_rect(&x11.core, win)),
-        WmCtx::Wayland(wl) => wl
-            .wayland
-            .backend
-            .with_state(|state| state.current_window_animation_rect(win, Instant::now()))
-            .flatten()
-            .or_else(|| current_client_rect(&wl.core, win)),
     }
 }
 
@@ -169,8 +146,14 @@ fn sync_authoritative_client_rect(ctx: &mut WmCtx<'_>, win: WindowId, rect: Rect
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MoveResizeMode {
-    Normal,
-    RemapImmediate,
+    /// The window is moving to a new position.  Cancelling snaps to target.
+    /// Updates c.geo immediately.
+    AnimateTo,
+    /// Instant move, no animation.
+    Immediate,
+    /// Purely decorative: the window visually starts from the given position
+    /// and animates back to where it already logically is.  Cancelling snaps
+    /// to the original (current) position.  c.geo is NOT changed.
     AnimateFrom(Rect),
 }
 
@@ -192,14 +175,19 @@ fn animate_rect_transition(
         target.h.min(mon_h).max(1),
     );
 
-    if mode == MoveResizeMode::RemapImmediate {
+    // Always cancel any existing animation first so that c.geo is
+    // authoritative and no stale intermediate state leaks into the new
+    // animation.
+    cancel_animation(ctx, win);
+
+    if mode == MoveResizeMode::Immediate {
         ctx.resize_client(win, final_rect);
         return;
     }
 
     let from = match mode {
-        MoveResizeMode::Normal => current_visual_rect(ctx, win),
-        MoveResizeMode::RemapImmediate => unreachable!(),
+        MoveResizeMode::AnimateTo => current_client_rect(ctx.core(), win),
+        MoveResizeMode::Immediate => unreachable!(),
         MoveResizeMode::AnimateFrom(from) => Some(from),
     };
     let Some(from) = from else {
@@ -245,10 +233,7 @@ fn animate_rect_transition(
         return;
     }
 
-    if mode == MoveResizeMode::Normal {
-        // Real geometry changes must update the WM's authoritative state
-        // immediately so later layout math sees the new rectangle even while
-        // the backend is still animating towards it.
+    if mode == MoveResizeMode::AnimateTo {
         sync_authoritative_client_rect(ctx, win, final_rect);
     }
 
@@ -267,11 +252,6 @@ pub fn move_resize_client(
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
     let current_tag = ctx.core().globals().selected_monitor().current_tag;
-    // Cancel any in-flight animations so that arrange() (called inside
-    // scroll_view) sees authoritative window geometry instead of stale
-    // mid-animation positions.  Without this, rapidly switching tags can
-    // leave windows stuck at an intermediate off-screen location.
-    cancel_all_animations(ctx);
     crate::tags::view::scroll_view(ctx, dir);
 
     let monitor = ctx.core().globals().selected_monitor();
@@ -307,24 +287,11 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
         h: target.h,
     };
 
-    match ctx {
-        WmCtx::X11(ctx_x11) => {
-            move_resize_client(
-                &mut WmCtx::X11(ctx_x11.reborrow()),
-                win,
-                &target,
-                MoveResizeMode::AnimateFrom(start),
-                DEFAULT_FRAME_COUNT,
-            );
-        }
-        WmCtx::Wayland(_) => {
-            move_resize_client(
-                ctx,
-                win,
-                &target,
-                MoveResizeMode::AnimateFrom(start),
-                DEFAULT_FRAME_COUNT,
-            );
-        }
-    }
+    move_resize_client(
+        ctx,
+        win,
+        &target,
+        MoveResizeMode::AnimateFrom(start),
+        DEFAULT_FRAME_COUNT,
+    );
 }

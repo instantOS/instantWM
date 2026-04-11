@@ -122,14 +122,12 @@ impl WaylandState {
             let output_name = output.name();
             if let Some(lock_surface) = self.lock_surfaces.get(&output_name) {
                 let rel = point - output_geo.loc.to_f64();
-                if let Some((surface, loc)) =
-                    smithay::desktop::utils::under_from_surface_tree(
-                        lock_surface.wl_surface(),
-                        rel,
-                        (0, 0),
-                        WindowSurfaceType::ALL,
-                    )
-                {
+                if let Some((surface, loc)) = smithay::desktop::utils::under_from_surface_tree(
+                    lock_surface.wl_surface(),
+                    rel,
+                    (0, 0),
+                    WindowSurfaceType::ALL,
+                ) {
                     return Some((surface, loc + output_geo.loc));
                 }
             }

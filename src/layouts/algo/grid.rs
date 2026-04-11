@@ -121,7 +121,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                 h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
             },
-            MoveResizeMode::Normal,
+            MoveResizeMode::AnimateTo,
             framecount,
         );
 
@@ -197,7 +197,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                     w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                     h: cell_height - BORDER_MULTIPLIER * border_width,
                 },
-                MoveResizeMode::Normal,
+                MoveResizeMode::AnimateTo,
                 framecount,
             );
         }

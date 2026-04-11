@@ -70,7 +70,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
                 h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
             },
-            MoveResizeMode::Normal,
+            MoveResizeMode::AnimateTo,
             frames,
         );
     }

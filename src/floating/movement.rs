@@ -40,7 +40,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
             w: geo.w,
             h: geo.h,
         },
-        MoveResizeMode::Normal,
+        MoveResizeMode::AnimateTo,
         5,
     );
     ctx.warp_cursor_to_client(win);
@@ -93,7 +93,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     }
 
     let bar_height = ctx.core().globals().cfg.bar_height;
-    let (work_rect, mon_rect, showbar) = {
+    let (work_rect, mon_rect, _showbar) = {
         let mon = ctx.core().globals().selected_monitor();
         (mon.work_rect, mon.monitor_rect, mon.selected_tags())
     };
