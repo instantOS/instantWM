@@ -278,6 +278,12 @@ impl<'a> WmCtx<'a> {
         self.backend().restack(wins);
     }
 
+    /// Apply a visual-only geometry projection without mutating WM client geometry.
+    pub(crate) fn project_client_geometry(&self, win: WindowId, rect: Rect) {
+        self.backend().resize_window(win, rect);
+        self.backend().flush();
+    }
+
     pub(crate) fn apply_client_geometry_authoritative(&mut self, win: WindowId, rect: Rect) {
         match self {
             WmCtx::X11(x11) => {

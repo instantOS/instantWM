@@ -6,19 +6,11 @@ use crate::constants::animation::{
 };
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
 
 #[derive(Clone, Copy, Debug)]
 pub enum GeometryReason {
     Direct,
-    Layout,
-    Spawn,
-    Visibility,
-    TagSwitch,
-    Fullscreen,
-    Interactive,
-    Other(&'static str),
+    Animation,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -101,16 +93,7 @@ fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: 
     let duration = animation_duration(frames);
     match ctx {
         WmCtx::X11(x11) => {
-            let x11_win: x11rb::protocol::xproto::Window = win.into();
-            let _ = x11.x11.conn.configure_window(
-                x11_win,
-                &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                    .x(from.x)
-                    .y(from.y)
-                    .width(from.w.max(1) as u32)
-                    .height(from.h.max(1) as u32),
-            );
-            let _ = x11.x11.conn.flush();
+            crate::contexts::WmCtx::X11(x11.reborrow()).project_client_geometry(win, from);
             x11.x11_runtime.insert_or_replace_window_animation(
                 win,
                 WindowAnimation {

@@ -166,7 +166,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     }
 }
 
-//TODO: should this be called handle_client_message?
+/// Handle incoming X11 client messages.
 pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let showsystray = ctx.core.globals().cfg.show_systray;
     let systray_win = ctx.systray.as_ref().map(|s| s.win).unwrap_or_default();

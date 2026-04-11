@@ -104,7 +104,7 @@ pub fn move_resize_client(
             target: *target,
             mode,
             frames,
-            reason: crate::geometry::GeometryReason::Other("animation"),
+            reason: crate::geometry::GeometryReason::Animation,
         },
     );
 }

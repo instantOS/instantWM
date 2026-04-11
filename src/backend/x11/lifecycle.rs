@@ -385,7 +385,7 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
         })
         .unwrap_or((0, 0, 0, 0, 0));
 
-    ctx.backend().resize_window(
+    ctx.project_client_geometry(
         w,
         Rect {
             x: client_x + 2 * screen_width,
@@ -394,7 +394,6 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
             h: client_height,
         },
     );
-    ctx.backend().flush();
 }
 
 fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
