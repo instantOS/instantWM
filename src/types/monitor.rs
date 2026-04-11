@@ -608,12 +608,23 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<Monitor
 
 /// Runtime state restored when a tag mask is revisited.
 /// Initialized with hardcoded defaults on first visit.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PertagState {
     pub nmaster: i32,
     pub mfact: f32,
     pub showbar: bool,
     pub layouts: TagLayouts,
+}
+
+impl Default for PertagState {
+    fn default() -> Self {
+        Self {
+            nmaster: 0,
+            mfact: 0.0,
+            showbar: true,
+            layouts: TagLayouts::default(),
+        }
+    }
 }
 
 /// Per-tag name data. No runtime layout state.

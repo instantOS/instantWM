@@ -233,6 +233,22 @@ impl WaylandState {
         }
     }
 
+    /// Cancel all in-flight window animations, snapping each window to its
+    /// animation target position.
+    pub fn cancel_all_window_animations(&mut self) {
+        let finished: Vec<(WindowId, Rect)> = self
+            .window_animations
+            .drain()
+            .map(|(win, anim)| (win, anim.to))
+            .collect();
+        for (win, target) in finished {
+            if let Some(element) = self.find_window(win).cloned() {
+                let loc = Point::from((target.x, target.y));
+                self.remap_element_preserving_z_order(&element, loc, false);
+            }
+        }
+    }
+
     /// Check if there are active window animations.
     pub fn has_active_window_animations(&self) -> bool {
         !self.window_animations.is_empty()

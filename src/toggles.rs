@@ -181,6 +181,8 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         }
     }
 
+    arrange(ctx, Some(selmon_idx));
+
     if tmp_no_anim {
         ctx.core_mut().globals_mut().behavior.animated = true;
     }

@@ -82,6 +82,31 @@ fn effective_animation_frames(count: usize, frames: i32) -> i32 {
     }
 }
 
+/// Cancel all in-flight window animations, snapping each window to its
+/// animation target so that `current_visual_rect` returns the authoritative
+/// geometry rather than a stale mid-animation position.
+pub fn cancel_all_animations(ctx: &mut WmCtx<'_>) {
+    match ctx {
+        WmCtx::X11(x11) => {
+            let finished: Vec<(WindowId, Rect)> = x11
+                .x11_runtime
+                .window_animations
+                .drain()
+                .map(|(win, anim)| (win, anim.to))
+                .collect();
+            for (win, rect) in finished {
+                crate::contexts::WmCtx::X11(x11.reborrow()).resize_client(win, rect);
+            }
+        }
+        WmCtx::Wayland(wl) => {
+            let _ = wl
+                .wayland
+                .backend
+                .with_state(|state| state.cancel_all_window_animations());
+        }
+    }
+}
+
 pub fn current_visual_rect(ctx: &WmCtx<'_>, win: WindowId) -> Option<Rect> {
     match ctx {
         WmCtx::X11(x11) => x11
@@ -242,6 +267,11 @@ pub fn move_resize_client(
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
     let current_tag = ctx.core().globals().selected_monitor().current_tag;
+    // Cancel any in-flight animations so that arrange() (called inside
+    // scroll_view) sees authoritative window geometry instead of stale
+    // mid-animation positions.  Without this, rapidly switching tags can
+    // leave windows stuck at an intermediate off-screen location.
+    cancel_all_animations(ctx);
     crate::tags::view::scroll_view(ctx, dir);
 
     let monitor = ctx.core().globals().selected_monitor();
