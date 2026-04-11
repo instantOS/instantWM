@@ -7,7 +7,6 @@ use crate::backend::BackendOps;
 use crate::backend::x11::set_client_tag_prop;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus_soft, unfocus_win};
-use crate::layouts::arrange;
 use crate::types::*;
 use std::collections::HashMap;
 use x11rb::protocol::xproto::Window;
@@ -285,7 +284,9 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         .map(|c| !c.is_floating)
         .unwrap_or(false);
     if needs_arrange {
-        crate::layouts::arrange(ctx, None);
+        ctx.core_mut()
+            .globals_mut()
+            .queue_layout_for_all_monitors_urgent();
     }
 
     if is_scratchpad {
@@ -396,7 +397,6 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
         }
     }
 
-    ctx.core_mut().globals_mut().dirty.monitor_config = false;
     update_geom(ctx);
 }
 
@@ -503,7 +503,7 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
     }
 
     if changed {
-        ctx.core_mut().globals_mut().dirty.layout = true;
+        ctx.core_mut().globals_mut().queue_layout_for_all_monitors();
         // The bar renderer also needs a poke
         ctx.core_mut().bar.mark_dirty();
     }
@@ -828,5 +828,7 @@ pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     }
 
     focus_soft(ctx, Some(win));
-    arrange(ctx, Some(selmon_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_id);
 }

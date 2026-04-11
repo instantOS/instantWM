@@ -6,15 +6,15 @@
 use std::process::exit;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::renderer::ImportDma;
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::{EventLoop, LoopSignal};
 use smithay::reexports::wayland_server::Display;
 
-use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::Backend as WmBackend;
+use crate::backend::wayland::WaylandBackend;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::update_geom;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
@@ -148,11 +148,11 @@ pub fn run() -> ! {
             super::common::event_loop_tick(&mut wm, state, &mut ipc_server);
 
             // Winit has no libinput devices to reconfigure, but clear the
-            // flag so it doesn't stay dirty forever (scroll_factor is
+            // pending bit so it doesn't remain queued forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
-            wm.g.dirty.input_config = false;
+            wm.g.pending.input_config = false;
 
-            let changed = super::common::process_window_animations(&mut wm, state);
+            let changed = super::common::process_window_animations(state);
 
             // ── 3. Arm animation timer if needed ────────────────────────
             anim_guard.ensure_armed(

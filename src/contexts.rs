@@ -240,6 +240,14 @@ impl<'a> WmCtx<'a> {
         self.backend().flush();
     }
 
+    /// Request backend-specific space/compositor sync after authoritative WM
+    /// geometry changes.
+    pub fn request_space_sync(&self) {
+        if let WmCtx::Wayland(ctx) = self {
+            ctx.wayland.backend.request_space_sync();
+        }
+    }
+
     pub fn pointer_location(&self) -> Option<(i32, i32)> {
         self.backend().pointer_location()
     }

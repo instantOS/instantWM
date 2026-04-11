@@ -9,9 +9,9 @@ use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
-    build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
-    poll_wayland_systray, resolve_cursor_presentation, send_frame_callbacks,
-    update_primary_scanout_output, CursorPresentation,
+    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
+    get_render_element_counts, poll_wayland_systray, resolve_cursor_presentation,
+    send_frame_callbacks, update_primary_scanout_output,
 };
 use crate::wm::Wm;
 

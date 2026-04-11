@@ -123,6 +123,6 @@ pub fn handle_resize(
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
     update_geom(&mut wm.ctx());
-    wm.g.dirty.layout = true;
-    wm.g.dirty.space = true;
+    wm.g.queue_layout_for_all_monitors_urgent();
+    state.request_space_sync();
 }

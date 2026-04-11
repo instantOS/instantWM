@@ -36,8 +36,8 @@ use crate::backend::x11::{
 };
 use crate::client::constants::BROKEN;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
+use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::types::MonitorId;
 // focus() is used via focus_soft() in this module

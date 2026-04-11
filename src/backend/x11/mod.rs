@@ -89,7 +89,6 @@ impl X11RuntimeConfig {
     ) -> Option<crate::animation::WindowAnimation> {
         self.window_animations.remove(&win)
     }
-
 }
 
 pub mod bar;

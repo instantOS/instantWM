@@ -1,7 +1,6 @@
 use crate::client::manager::ClientManager;
 use crate::contexts::WmCtx;
 use crate::globals::WmBehavior;
-use crate::layouts::arrange;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
@@ -44,7 +43,9 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     } else {
         return;
     };
-    arrange(ctx, Some(monitor_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(monitor_id);
 }
 
 pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
@@ -181,7 +182,9 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         }
     }
 
-    arrange(ctx, Some(selmon_idx));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_idx);
 
     if tmp_no_anim {
         ctx.core_mut().globals_mut().behavior.animated = true;

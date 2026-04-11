@@ -8,7 +8,6 @@ use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize;
 use crate::constants::animation::{DECORATIVE_SHOW_FRAME_COUNT, EMPHASIZED_FRAME_COUNT};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
-use crate::layouts::arrange;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -187,7 +186,9 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     // itself, so the window reappears as a side-effect of the arrange pass.
 
     crate::focus::focus_soft(ctx, Some(win));
-    arrange(ctx, Some(monitor_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(monitor_id);
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
@@ -238,7 +239,9 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         .monitor(monitor_id)
         .and_then(|m| m.stack.iter().find(|&&w| w != win).copied());
     crate::focus::focus_soft(ctx, snext);
-    arrange(ctx, Some(monitor_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(monitor_id);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 //! Keyboard-driven floating window movement, resize, and scaling.
 
-use crate::animation::{move_resize_client, MoveResizeMode};
+use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::client::resize;
 use crate::constants::animation::FLOAT_MOVE_FRAME_COUNT;
 use crate::contexts::WmCtx;

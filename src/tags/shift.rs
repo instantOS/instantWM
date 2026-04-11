@@ -5,7 +5,6 @@ use crate::contexts::WmCtx;
 
 use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
-use crate::layouts::arrange;
 use crate::tags::sticky::reset_sticky_win;
 use crate::types::{Direction, OverlayMode, Rect, TagMask, WindowId};
 
@@ -78,7 +77,9 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selected_monitor_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {

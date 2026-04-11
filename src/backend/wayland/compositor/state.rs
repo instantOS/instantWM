@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
@@ -12,12 +12,12 @@ use smithay::{
     backend::renderer::gles::GlesRenderer,
     desktop::{PopupManager, Space, Window},
     input::{
+        Seat, SeatState,
         keyboard::{KeyboardHandle, XkbConfig},
         pointer::PointerHandle,
-        Seat, SeatState,
     },
     reexports::{
-        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
+        calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
         wayland_server::{Display, DisplayHandle},
     },
     utils::{Logical, Point},
@@ -40,7 +40,7 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{decoration::XdgDecorationState, XdgShellState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
         },
         shm::ShmState,
         viewporter::ViewporterState,
@@ -206,6 +206,7 @@ pub struct WaylandRuntimeState {
     pub pending_screencopies: Vec<PendingScreencopy>,
     pub pending_image_captures: Vec<PendingImageCapture>,
     pub image_copy_sessions: Vec<ImageCopySession>,
+    pub space_sync_pending: bool,
     pub render_dirty: bool,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
@@ -225,6 +226,7 @@ impl Default for WaylandRuntimeState {
             pending_screencopies: Vec::new(),
             pending_image_captures: Vec::new(),
             image_copy_sessions: Vec::new(),
+            space_sync_pending: true,
             render_dirty: false,
             render_ping: None,
             output_metadata: HashMap::new(),
@@ -517,6 +519,16 @@ impl WaylandState {
         if let Some(render_ping) = &self.runtime.render_ping {
             render_ping.ping();
         }
+    }
+
+    #[inline]
+    pub fn request_space_sync(&mut self) {
+        self.runtime.space_sync_pending = true;
+    }
+
+    #[inline]
+    pub fn take_space_sync_pending(&mut self) -> bool {
+        std::mem::take(&mut self.runtime.space_sync_pending)
     }
 
     #[inline]

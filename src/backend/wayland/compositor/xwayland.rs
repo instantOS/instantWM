@@ -137,9 +137,11 @@ fn apply_xwayland_surface_policy(
         });
     }
 
-    if changed_layout && let Some(g) = state.globals_mut() {
-        g.dirty.layout = true;
-        g.dirty.space = true;
+    if changed_layout {
+        if let Some(g) = state.globals_mut() {
+            g.queue_layout_for_client(win);
+        }
+        state.request_space_sync();
     }
     if let Some(g) = state.globals_mut()
         && let Some(mid) = g.clients.monitor_id(win)
@@ -261,9 +263,9 @@ impl XwmHandler for WaylandState {
             (final_rect.w.max(1), final_rect.h.max(1)).into(),
         )));
         if let Some(g) = self.globals_mut() {
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_client(win);
         }
+        self.request_space_sync();
         self.create_foreign_toplevel(win);
         self.set_focus(win);
         self.raise_window(win);
@@ -468,13 +470,16 @@ impl XwmHandler for WaylandState {
                 if matches!(
                     property,
                     WmWindowProperty::TransientFor | WmWindowProperty::WindowType
-                ) && let Some(g) = self.globals_mut()
-                {
-                    g.dirty.layout = true;
-                    g.dirty.space = true;
+                ) {
+                    let mut request_space_sync = false;
+                    if let Some(g) = self.globals_mut() {
+                        g.queue_layout_for_client(win);
+                        request_space_sync = true;
+                    }
+                    if request_space_sync {
+                        self.request_space_sync();
+                    }
                 }
-                // WM_HINTS carries the urgency bit.  After applying it to the
-                // client, redraw the bar so the tag indicator updates at once.
                 if matches!(property, WmWindowProperty::Hints) {
                     self.request_bar_redraw();
                 }
@@ -575,9 +580,9 @@ impl XwmHandler for WaylandState {
             {
                 mon.fullscreen = Some(win);
             }
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_client(win);
         }
+        self.request_space_sync();
     }
 
     fn unfullscreen_request(
@@ -598,9 +603,9 @@ impl XwmHandler for WaylandState {
                     mon.fullscreen = None;
                 }
             }
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_client(win);
         }
+        self.request_space_sync();
     }
 
     fn minimize_request(

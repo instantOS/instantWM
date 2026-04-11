@@ -57,9 +57,9 @@ impl WaylandState {
             // ends up matching this initial target.
         }
         if let Some(g) = self.globals_mut() {
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_client(window_id);
         }
+        self.request_space_sync();
         let should_focus = self
             .globals()
             .and_then(|g| {
@@ -125,9 +125,9 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
         if let Some(g) = self.globals_mut() {
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_client(window);
         }
+        self.request_space_sync();
     }
 
     /// Remove all tracking for a window.
@@ -144,9 +144,9 @@ impl WaylandState {
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
         if let Some(g) = self.globals_mut() {
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_all_monitors();
         }
+        self.request_space_sync();
     }
 
     /// Close a window.

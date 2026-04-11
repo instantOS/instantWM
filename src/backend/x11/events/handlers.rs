@@ -206,7 +206,9 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 
     crate::monitor::update_geom(&mut WmCtx::X11(ctx.reborrow()));
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
-    crate::layouts::arrange(&mut WmCtx::X11(ctx.reborrow()), None);
+    ctx.core
+        .globals_mut()
+        .queue_layout_for_all_monitors_urgent();
 }
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {

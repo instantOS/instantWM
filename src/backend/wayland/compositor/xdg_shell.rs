@@ -56,18 +56,24 @@ impl WaylandState {
         let Some(win) = self.window_id_for_toplevel(surface) else {
             return;
         };
-        let Some(g) = self.globals_mut() else {
-            return;
-        };
-        let Some(client) = g.clients.get_mut(&win) else {
-            return;
-        };
+        let mut changed = false;
+        {
+            let Some(g) = self.globals_mut() else {
+                return;
+            };
+            let Some(client) = g.clients.get_mut(&win) else {
+                return;
+            };
 
-        if wants_floating && !client.is_floating {
-            client.float_geo = client.geo;
-            client.is_floating = true;
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            if wants_floating && !client.is_floating {
+                client.float_geo = client.geo;
+                client.is_floating = true;
+                g.queue_layout_for_client(win);
+                changed = true;
+            }
+        }
+        if changed {
+            self.request_space_sync();
         }
     }
 }
@@ -239,9 +245,9 @@ impl XdgShellHandler for WaylandState {
             g.detach(win);
             g.detach_stack(win);
             g.clients.remove(&win);
-            g.dirty.layout = true;
-            g.dirty.space = true;
+            g.queue_layout_for_all_monitors();
         }
+        self.request_space_sync();
 
         // Recover mon.sel if it was cleared by detach_stack, then re-apply seat focus.
         self.restore_focus_after_overlay();
@@ -378,6 +384,7 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
+        let mut request_space_sync = false;
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
@@ -390,13 +397,16 @@ impl XdgShellHandler for WaylandState {
                     mon.fullscreen = None;
                 }
             }
-            g.dirty.space = true;
-            g.dirty.layout = true;
+            g.queue_layout_for_client(win);
+            request_space_sync = true;
             if let Some(monitor_id) = monitor_id
                 && let Some(mon) = g.monitor_mut(monitor_id)
             {
                 mon.fullscreen = Some(win);
             }
+        }
+        if request_space_sync {
+            self.request_space_sync();
         }
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
@@ -405,19 +415,23 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        let mut request_space_sync = false;
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_fullscreen = false;
             }
-            g.dirty.space = true;
-            g.dirty.layout = true;
+            g.queue_layout_for_client(win);
+            request_space_sync = true;
             for (_id, mon) in g.monitors_iter_mut() {
                 if mon.fullscreen == Some(win) {
                     mon.fullscreen = None;
                 }
             }
+        }
+        if request_space_sync {
+            self.request_space_sync();
         }
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
@@ -426,6 +440,7 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
+        let mut request_space_sync = false;
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
@@ -437,11 +452,14 @@ impl XdgShellHandler for WaylandState {
                 }
                 client.is_floating = true;
             }
-            g.dirty.space = true;
-            g.dirty.layout = true;
+            g.queue_layout_for_client(win);
+            request_space_sync = true;
             if let Some(mon) = g.selected_monitor_mut_opt() {
                 mon.fullscreen = Some(win);
             }
+        }
+        if request_space_sync {
+            self.request_space_sync();
         }
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
@@ -450,19 +468,23 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        let mut request_space_sync = false;
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
             if let Some(client) = g.clients.get_mut(&win) {
                 client.is_floating = false;
             }
-            g.dirty.space = true;
-            g.dirty.layout = true;
+            g.queue_layout_for_client(win);
+            request_space_sync = true;
             if let Some(mon) = g.selected_monitor_mut_opt()
                 && mon.fullscreen == Some(win)
             {
                 mon.fullscreen = None;
             }
+        }
+        if request_space_sync {
+            self.request_space_sync();
         }
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);

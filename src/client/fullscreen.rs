@@ -259,7 +259,9 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
                     client.isfakefullscreen = !client.isfakefullscreen;
                 }
                 let selmon_id = ctx.core().globals().selected_monitor_id();
-                arrange(ctx, Some(selmon_id));
+                ctx.core_mut()
+                    .globals_mut()
+                    .queue_layout_for_monitor_urgent(selmon_id);
             }
         }
     }

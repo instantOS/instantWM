@@ -9,8 +9,8 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     normalize_current_mode(wm);
-    wm.g.dirty.monitor_config = true;
-    wm.g.dirty.input_config = true;
+    wm.g.queue_monitor_config_apply();
+    wm.g.queue_input_config_apply();
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
@@ -67,8 +67,8 @@ mod tests {
 
         reload_config(&mut wm).unwrap();
 
-        assert!(wm.g.dirty.monitor_config);
-        assert!(wm.g.dirty.input_config);
+        assert!(wm.g.pending.monitor_config);
+        assert!(wm.g.pending.input_config);
     }
 
     #[test]

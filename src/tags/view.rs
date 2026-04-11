@@ -3,12 +3,13 @@
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::LayoutKind;
-use crate::layouts::arrange;
 use crate::types::{Direction, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_id);
 }
 
 fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId> {
@@ -229,7 +230,9 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     }
     mon.current_tag = Some(target_idx);
     crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
@@ -251,7 +254,9 @@ pub fn follow_view(ctx: &mut WmCtx) {
 
     view(ctx, target_mask);
     crate::focus::focus_soft(ctx, Some(win));
-    arrange(ctx, Some(selmon_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {

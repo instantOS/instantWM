@@ -7,7 +7,6 @@
 use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::focus::focus_soft;
-use crate::layouts::arrange;
 
 // ---------------------------------------------------------------------------
 // zoom
@@ -20,7 +19,9 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
     focus_soft(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
-        arrange(ctx, Some(mid));
+        ctx.core_mut()
+            .globals_mut()
+            .queue_layout_for_monitor_urgent(mid);
     }
 }
 

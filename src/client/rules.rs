@@ -108,8 +108,7 @@ pub fn apply_rules(
     clamp_client_tags(g, win, tag_mask, launch_context);
 
     if before != rule_state_snapshot(g, win) {
-        g.dirty.layout = true;
-        g.dirty.space = true;
+        g.queue_layout_for_client(win);
     }
 }
 

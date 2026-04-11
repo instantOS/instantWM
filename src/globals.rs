@@ -3,6 +3,7 @@ use crate::config::ModeConfig;
 use crate::config::commands::ExternalCommands;
 use crate::monitor::MonitorManager;
 use crate::types::*;
+use std::collections::BTreeSet;
 use std::collections::VecDeque;
 
 /// Runtime configuration - values loaded from config
@@ -316,19 +317,90 @@ impl Default for WmBehavior {
     }
 }
 
-/// Flags that signal pending work for the event loop.
+/// Batched layout targets waiting to be arranged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LayoutWorkTargets {
+    AllMonitors,
+    Monitors(Vec<MonitorId>),
+}
+
+/// Pending layout invalidation with per-monitor granularity.
 #[derive(Debug, Clone, Default)]
-pub struct DirtyFlags {
+pub struct PendingLayoutWork {
+    all_monitors: bool,
+    monitors: BTreeSet<MonitorId>,
+    urgent: bool,
+}
+
+impl PendingLayoutWork {
+    pub fn mark_all(&mut self) {
+        self.all_monitors = true;
+        self.monitors.clear();
+    }
+
+    pub fn mark_all_urgent(&mut self) {
+        self.mark_all();
+        self.urgent = true;
+    }
+
+    pub fn mark_monitor(&mut self, monitor_id: MonitorId) {
+        if !self.all_monitors {
+            self.monitors.insert(monitor_id);
+        }
+    }
+
+    pub fn mark_monitor_urgent(&mut self, monitor_id: MonitorId) {
+        self.mark_monitor(monitor_id);
+        self.urgent = true;
+    }
+
+    pub fn mark_monitor_opt(&mut self, monitor_id: Option<MonitorId>) {
+        if let Some(monitor_id) = monitor_id {
+            self.mark_monitor(monitor_id);
+        } else {
+            self.mark_all();
+        }
+    }
+
+    pub fn is_pending(&self) -> bool {
+        self.all_monitors || !self.monitors.is_empty()
+    }
+
+    pub fn is_urgent(&self) -> bool {
+        self.urgent
+    }
+
+    pub fn clear(&mut self) {
+        self.all_monitors = false;
+        self.monitors.clear();
+        self.urgent = false;
+    }
+
+    /// Consume and return pending layout targets.
+    pub fn take_targets(&mut self) -> Option<LayoutWorkTargets> {
+        if self.all_monitors {
+            self.clear();
+            return Some(LayoutWorkTargets::AllMonitors);
+        }
+        if self.monitors.is_empty() {
+            self.urgent = false;
+            return None;
+        }
+        let monitors = self.monitors.iter().copied().collect();
+        self.clear();
+        Some(LayoutWorkTargets::Monitors(monitors))
+    }
+}
+
+/// Work queue consumed by runtime ticks.
+#[derive(Debug, Clone, Default)]
+pub struct PendingWork {
     /// Whether input configuration has changed and needs to be re-applied.
     pub input_config: bool,
     /// Whether monitor configuration has changed and needs to be re-applied.
     pub monitor_config: bool,
-    /// Whether the layout needs to be re-arranged (set by anything that
-    /// changes client/tag/monitor state; consumed by the event loop).
-    pub layout: bool,
-    /// Whether the Wayland compositor space needs to be synced from WM
-    /// globals (set when client geometry changes; consumed by the event loop).
-    pub space: bool,
+    /// Pending layout work.
+    pub layout: PendingLayoutWork,
 }
 
 /// Bar-specific runtime data (status text, systray geometry).
@@ -352,7 +424,7 @@ pub struct Globals {
     pub behavior: WmBehavior,
     pub drag: DragState,
     pub bar_runtime: BarRuntime,
-    pub dirty: DirtyFlags,
+    pub pending: PendingWork,
 
     /// XKB keyboard layout state.
     pub keyboard_layout: KeyboardLayoutState,
@@ -399,6 +471,42 @@ impl Globals {
     /// Shorthand to get the selected monitor mutably (Option version).
     pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut Monitor> {
         self.monitors.sel_mut()
+    }
+
+    // -------------------------------------------------------------------------
+    // Pending-work helpers
+    // -------------------------------------------------------------------------
+
+    /// Queue layout work for all monitors.
+    pub fn queue_layout_for_all_monitors(&mut self) {
+        self.pending.layout.mark_all();
+    }
+
+    /// Queue urgent layout work for all monitors (bypasses animation defers).
+    pub fn queue_layout_for_all_monitors_urgent(&mut self) {
+        self.pending.layout.mark_all_urgent();
+    }
+
+    /// Queue urgent layout work for a specific monitor.
+    pub fn queue_layout_for_monitor_urgent(&mut self, monitor_id: MonitorId) {
+        self.pending.layout.mark_monitor_urgent(monitor_id);
+    }
+
+    /// Queue layout work for a client's monitor, or all monitors if unknown.
+    pub fn queue_layout_for_client(&mut self, win: WindowId) {
+        self.pending
+            .layout
+            .mark_monitor_opt(self.clients.monitor_id(win));
+    }
+
+    /// Queue monitor-configuration application.
+    pub fn queue_monitor_config_apply(&mut self) {
+        self.pending.monitor_config = true;
+    }
+
+    /// Queue input-configuration application.
+    pub fn queue_input_config_apply(&mut self) {
+        self.pending.input_config = true;
     }
 
     /// Delegation to get a monitor by index.
@@ -507,8 +615,53 @@ impl Globals {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{LayoutWorkTargets, PendingLayoutWork};
+    use crate::types::MonitorId;
+
+    #[test]
+    fn pending_layout_returns_sorted_monitor_targets() {
+        let mut pending = PendingLayoutWork::default();
+        pending.mark_monitor(MonitorId(3));
+        pending.mark_monitor(MonitorId(1));
+        pending.mark_monitor(MonitorId(2));
+
+        let targets = pending.take_targets();
+        assert_eq!(
+            targets,
+            Some(LayoutWorkTargets::Monitors(vec![
+                MonitorId(1),
+                MonitorId(2),
+                MonitorId(3),
+            ]))
+        );
+        assert!(!pending.is_pending());
+    }
+
+    #[test]
+    fn pending_layout_all_overrides_specific_targets() {
+        let mut pending = PendingLayoutWork::default();
+        pending.mark_monitor(MonitorId(2));
+        pending.mark_all();
+        pending.mark_monitor(MonitorId(1)); // ignored while all-monitors is set
+
+        assert_eq!(pending.take_targets(), Some(LayoutWorkTargets::AllMonitors));
+        assert!(!pending.is_pending());
+    }
+
+    #[test]
+    fn pending_layout_none_monitor_marks_all() {
+        let mut pending = PendingLayoutWork::default();
+        pending.mark_monitor_opt(None);
+        assert_eq!(pending.take_targets(), Some(LayoutWorkTargets::AllMonitors));
+    }
+}
+
 impl Default for Globals {
     fn default() -> Self {
+        let mut pending = PendingWork::default();
+        pending.layout.mark_all();
         Self {
             cfg: RuntimeConfig::default(),
             monitors: MonitorManager::new(),
@@ -517,11 +670,7 @@ impl Default for Globals {
             behavior: WmBehavior::default(),
             drag: DragState::default(),
             bar_runtime: BarRuntime::default(),
-            dirty: DirtyFlags {
-                layout: true,
-                space: true,
-                ..Default::default()
-            },
+            pending,
             keyboard_layout: KeyboardLayoutState::default(),
             pending_launches: VecDeque::new(),
         }

@@ -28,8 +28,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
         }
     }
 
-    ctx.core_mut().globals_mut().dirty.layout = false;
-    ctx.core_mut().globals_mut().dirty.space = true;
+    ctx.request_space_sync();
     ctx.flush();
 }
 

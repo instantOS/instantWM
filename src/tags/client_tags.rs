@@ -1,7 +1,6 @@
 //! Client-to-tag assignment.
 
 use crate::contexts::WmCtx;
-use crate::layouts::arrange;
 use crate::types::{TagMask, WindowId};
 
 pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
@@ -25,7 +24,9 @@ pub fn set_client_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         crate::backend::x11::set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
     crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
@@ -59,7 +60,9 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
     }
 
     crate::focus::focus_soft(ctx, None);
-    arrange(ctx, Some(selmon_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn follow_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {

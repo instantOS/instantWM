@@ -699,7 +699,9 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     focus_soft(ctx, Some(last_win));
 
     let monitor_id = ctx.core().globals().selected_monitor_id();
-    crate::layouts::arrange(ctx, Some(monitor_id));
+    ctx.core_mut()
+        .globals_mut()
+        .queue_layout_for_monitor_urgent(monitor_id);
 }
 
 /// Focus the next or previous client in the stack.

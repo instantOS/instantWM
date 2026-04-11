@@ -10,49 +10,123 @@ use calloop::generic::Generic;
 use calloop::timer::{TimeoutAction, Timer};
 use calloop::{Interest, Mode, PostAction};
 
+use crate::globals::LayoutWorkTargets;
 use crate::wm::Wm;
 
 // ── Event-loop tick helpers ─────────────────────────────────────────────
 
-/// Shared per-tick housekeeping: process IPC, apply monitor config, arrange
-/// layout.  Returns `true` when at least one IPC command was handled.
+/// Backend-neutral scheduler options for a runtime tick.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TickOptions {
+    /// When true, defer non-urgent layout work while animations are active.
+    pub defer_layout_while_animations_active: bool,
+    /// Whether the backend currently has active window animations.
+    pub animations_active: bool,
+}
+
+/// Result of a runtime tick.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TickResult {
+    pub ipc_handled: bool,
+    pub monitor_config_applied: bool,
+    pub layout_applied: bool,
+    pub layout_deferred_for_animation: bool,
+}
+
+/// Shared per-tick housekeeping for backends that do not need custom options.
 ///
 /// Backend-specific work (rendering, space sync, event draining, flushing)
 /// should be done by the caller before/after this function.
-pub fn event_loop_tick(wm: &mut Wm, ipc_server: &mut Option<crate::ipc::IpcServer>) -> bool {
+pub fn event_loop_tick(wm: &mut Wm, ipc_server: &mut Option<crate::ipc::IpcServer>) -> TickResult {
+    event_loop_tick_with_options(wm, ipc_server, TickOptions::default())
+}
+
+/// Shared per-tick housekeeping with backend-specific scheduler options.
+///
+/// Processing order is backend-independent and deterministic:
+/// 1. IPC command dispatch
+/// 2. monitor configuration work
+/// 3. layout work
+/// 4. backend-specific bar draw (X11 only)
+pub fn event_loop_tick_with_options(
+    wm: &mut Wm,
+    ipc_server: &mut Option<crate::ipc::IpcServer>,
+    options: TickOptions,
+) -> TickResult {
     if wm.bar.poll_async_status(&wm.g.bar_runtime.status_text) {
         wm.bar.mark_dirty();
     }
 
-    let handled = process_ipc_commands(ipc_server, wm);
-    apply_monitor_config_if_dirty(wm);
-    arrange_layout_if_dirty(wm);
+    let ipc_handled = process_ipc_commands(ipc_server, wm);
+    let work = process_pending_work(wm, options);
+
     draw_x11_bars_if_dirty(wm);
-    handled
+    TickResult {
+        ipc_handled,
+        monitor_config_applied: work.monitor_config_applied,
+        layout_applied: work.layout_applied,
+        layout_deferred_for_animation: work.layout_deferred_for_animation,
+    }
 }
 
-/// Arrange client layout when the dirty flag is set.
-///
-/// Used by the X11 event loop (which previously called `arrange()` directly
-/// from event handlers) and by the Wayland event loop (which may add an
-/// additional animation guard on top).
-pub fn arrange_layout_if_dirty(wm: &mut Wm) {
-    if !wm.g.dirty.layout {
-        return;
-    }
-    if wm.g.clients.is_empty() {
-        return;
-    }
-    let mut ctx = wm.ctx();
-    let monitor_id = ctx.core().globals().selected_monitor_id();
-    crate::layouts::arrange(&mut ctx, Some(monitor_id));
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PendingWorkResult {
+    pub monitor_config_applied: bool,
+    pub layout_applied: bool,
+    pub layout_deferred_for_animation: bool,
 }
 
-/// Apply monitor configuration when the dirty flag is set.
-pub fn apply_monitor_config_if_dirty(wm: &mut Wm) {
-    if wm.g.dirty.monitor_config {
+/// Apply all pending work in deterministic order.
+pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkResult {
+    let mut result = PendingWorkResult::default();
+
+    if wm.g.pending.monitor_config {
+        wm.g.pending.monitor_config = false;
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
+        result.monitor_config_applied = true;
+    }
+
+    if !wm.g.pending.layout.is_pending() {
+        return result;
+    }
+
+    if options.defer_layout_while_animations_active
+        && options.animations_active
+        && !wm.g.pending.layout.is_urgent()
+    {
+        result.layout_deferred_for_animation = true;
+        return result;
+    }
+
+    let Some(targets) = wm.g.pending.layout.take_targets() else {
+        return result;
+    };
+    result.layout_applied = apply_layout_targets(wm, targets);
+    result
+}
+
+fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
+    if wm.g.clients.is_empty() {
+        return false;
+    }
+
+    match targets {
+        LayoutWorkTargets::AllMonitors => {
+            let mut ctx = wm.ctx();
+            crate::layouts::arrange(&mut ctx, None);
+            true
+        }
+        LayoutWorkTargets::Monitors(monitors) => {
+            if monitors.is_empty() {
+                return false;
+            }
+            for monitor_id in monitors {
+                let mut ctx = wm.ctx();
+                crate::layouts::arrange(&mut ctx, Some(monitor_id));
+            }
+            true
+        }
     }
 }
 
@@ -180,5 +254,49 @@ impl AnimationTimerGuard {
                 }
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TickOptions, process_pending_work};
+    use crate::backend::{Backend as WmBackend, wayland::WaylandBackend};
+    use crate::types::MonitorId;
+    use crate::wm::Wm;
+
+    #[test]
+    fn non_urgent_layout_can_be_deferred_for_animations() {
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+        wm.g.pending.layout.clear();
+        wm.g.pending.layout.mark_monitor(MonitorId(0));
+
+        let result = process_pending_work(
+            &mut wm,
+            TickOptions {
+                defer_layout_while_animations_active: true,
+                animations_active: true,
+            },
+        );
+
+        assert!(result.layout_deferred_for_animation);
+        assert!(wm.g.pending.layout.is_pending());
+    }
+
+    #[test]
+    fn urgent_layout_bypasses_animation_defer() {
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+        wm.g.pending.layout.clear();
+        wm.g.pending.layout.mark_monitor_urgent(MonitorId(0));
+
+        let result = process_pending_work(
+            &mut wm,
+            TickOptions {
+                defer_layout_while_animations_active: true,
+                animations_active: true,
+            },
+        );
+
+        assert!(!result.layout_deferred_for_animation);
+        assert!(!wm.g.pending.layout.is_pending());
     }
 }

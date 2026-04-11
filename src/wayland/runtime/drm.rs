@@ -448,8 +448,8 @@ fn run_event_loop(
                 loop_state.mark_all_dirty();
             }
 
-            if wm.g.dirty.input_config {
-                wm.g.dirty.input_config = false;
+            if wm.g.pending.input_config {
+                wm.g.pending.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(
                     &mut state.runtime.tracked_devices,
                     &wm.g.cfg.input,
@@ -466,7 +466,7 @@ fn run_event_loop(
                 }
             }
 
-            process_animations(wm, state, loop_state);
+            process_animations(state, loop_state);
 
             // Arm an on-demand animation timer when animations are active.
             anim_guard.ensure_armed(
@@ -572,18 +572,15 @@ fn process_common_tick(
     state: &WaylandState,
     loop_state: &mut DrmLoopState,
 ) {
-    let monitor_config_dirty = wm.g.dirty.monitor_config;
-    let handled = super::common::event_loop_tick(wm, state, ipc_server);
-    if handled || monitor_config_dirty {
-        // DRM-specific: also mark space and all outputs dirty
-        wm.g.dirty.space = true;
+    let tick = super::common::event_loop_tick(wm, state, ipc_server);
+    if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
         loop_state.mark_all_dirty();
     }
 }
 
-/// Process window animations and sync compositor space when dirty.
-fn process_animations(wm: &mut Wm, state: &mut WaylandState, loop_state: &mut DrmLoopState) {
-    if super::common::process_window_animations(wm, state) {
+/// Process window animations and pending compositor-space sync.
+fn process_animations(state: &mut WaylandState, loop_state: &mut DrmLoopState) {
+    if super::common::process_window_animations(state) {
         // DRM-specific: mark all outputs dirty after space sync
         loop_state.mark_all_dirty();
     }

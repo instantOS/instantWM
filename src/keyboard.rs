@@ -9,7 +9,6 @@ use crate::floating::{
 };
 use crate::focus::{direction_focus, focus_stack};
 
-use crate::layouts::arrange;
 use crate::types::*;
 use crate::types::{Direction, StackDirection};
 use x11rb::connection::Connection;
@@ -436,7 +435,9 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             }
 
             let selmon_id = ctx.core().globals().selected_monitor_id();
-            arrange(ctx, Some(selmon_id));
+            ctx.core_mut()
+                .globals_mut()
+                .queue_layout_for_monitor_urgent(selmon_id);
         }
     } else {
         toggle_floating(ctx);

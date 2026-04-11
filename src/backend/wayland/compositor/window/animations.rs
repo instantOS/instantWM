@@ -155,9 +155,10 @@ impl WaylandState {
                 }),
                 duration,
             ),
-            WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
-                (None, Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS))
-            }
+            WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => (
+                None,
+                Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
+            ),
         };
 
         // Use the client's stored geometry as the authoritative current position
