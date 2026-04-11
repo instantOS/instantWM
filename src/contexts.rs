@@ -278,7 +278,7 @@ impl<'a> WmCtx<'a> {
         self.backend().restack(wins);
     }
 
-    pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
+    pub(crate) fn apply_client_geometry_authoritative(&mut self, win: WindowId, rect: Rect) {
         match self {
             WmCtx::X11(x11) => {
                 let actual_rect = {
@@ -293,10 +293,20 @@ impl<'a> WmCtx<'a> {
             }
             WmCtx::Wayland(_) => {
                 crate::client::sync_client_geometry(self.core_mut().globals_mut(), win, rect);
-
                 self.backend().resize_window(win, rect);
             }
         }
+    }
+
+    pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
+        crate::geometry::request(
+            self,
+            crate::geometry::GeometryRequest::immediate(
+                win,
+                rect,
+                crate::geometry::GeometryReason::Direct,
+            ),
+        );
     }
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {

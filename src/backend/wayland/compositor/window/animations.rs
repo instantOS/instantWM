@@ -125,6 +125,25 @@ impl WaylandState {
         let target_loc: Point<i32, Logical> =
             Point::from((target.x + border_width, target.y + border_width));
         let actual_loc = self.space.element_location(&element);
+        let requested_target = Rect {
+            x: target_loc.x,
+            y: target_loc.y,
+            w: target.w,
+            h: target.h,
+        };
+
+        // Keep an in-flight animation when callers repeatedly request the same
+        // authoritative target (e.g. space sync during decorative AnimateFrom).
+        // Restarting here causes visible oscillation between the decorative
+        // start position and the target.
+        if mode == WindowMoveMode::AnimateTo
+            && self
+                .window_animations
+                .get(&window_id)
+                .is_some_and(|anim| anim.to == requested_target)
+        {
+            return;
+        }
 
         // Geometry updates for hidden/unmapped windows must not remap them as a
         // side effect. The behavioral layer owns visibility; the backend should
@@ -202,12 +221,7 @@ impl WaylandState {
         self.insert_or_replace_window_animation(
             window_id,
             current,
-            Rect {
-                x: target_loc.x,
-                y: target_loc.y,
-                w: target.w,
-                h: target.h,
-            },
+            requested_target,
             animation_duration,
         );
     }
@@ -274,5 +288,13 @@ impl WaylandState {
     /// Check if there are active window animations.
     pub fn has_active_window_animations(&self) -> bool {
         !self.window_animations.is_empty()
+    }
+
+    /// Current animation target for a window, if it has an in-flight animation.
+    pub(crate) fn window_animation_target(
+        &self,
+        win: WindowId,
+    ) -> Option<crate::animation::WindowAnimation> {
+        self.window_animations.get(&win).cloned()
     }
 }

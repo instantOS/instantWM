@@ -1,9 +1,12 @@
 use smithay::desktop::Window;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
+use std::time::Duration;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::window::animations::WindowMoveMode;
+use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::WindowId;
 
 impl WaylandState {
@@ -28,10 +31,28 @@ impl WaylandState {
             .globals()
             .and_then(|g| crate::client::sane_floating_spawn_rect(g, window_id))
         {
+            let mode = self
+                .globals()
+                .and_then(|g| {
+                    let client = g.clients.get(&window_id)?;
+                    let mon = g.monitor(client.monitor_id)?;
+                    if client.is_fullscreen || !self.animations_enabled() {
+                        return None;
+                    }
+                    Some(WindowMoveMode::AnimateFrom {
+                        from: crate::types::Rect {
+                            x: rect.x,
+                            y: mon.monitor_rect.y - rect.h - client.border_width * 2,
+                            w: rect.w,
+                            h: rect.h,
+                        },
+                        duration: Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
+                    })
+                })
+                .unwrap_or_else(|| self.default_window_move_mode());
             if let Some(g) = self.globals_mut() {
                 crate::client::sync_client_geometry(g, window_id, rect);
             }
-            let mode = self.default_window_move_mode();
             self.set_window_target_rect(window_id, rect, mode);
         }
 

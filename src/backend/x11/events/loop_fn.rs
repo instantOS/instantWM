@@ -170,7 +170,7 @@ fn tick_x11_animations(wm: &mut Wm) {
         return;
     };
     for (win, rect) in finished_targets {
-        crate::contexts::WmCtx::X11(ctx.reborrow()).resize_client(win, rect);
+        crate::contexts::WmCtx::X11(ctx.reborrow()).apply_client_geometry_authoritative(win, rect);
     }
 }
 

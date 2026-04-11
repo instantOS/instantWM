@@ -12,6 +12,7 @@ mod client;
 pub mod config;
 mod constants;
 mod contexts;
+mod geometry;
 
 mod floating;
 mod focus;

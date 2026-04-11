@@ -471,7 +471,7 @@ fn run_manage_animation(
         &c.geo,
         crate::animation::MoveResizeMode::AnimateFrom(Rect {
             x: c.geo.x,
-            y: c.geo.y - 70,
+            y: mon_monitor_rect.y - c.geo.h - c.border_width * 2,
             w: c.geo.w,
             h: c.geo.h,
         }),
