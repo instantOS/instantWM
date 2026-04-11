@@ -2,6 +2,7 @@ use smithay::utils::{Logical, Point};
 use std::time::{Duration, Instant};
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::{Rect, WindowId};
 
 pub type WaylandWindowAnimation = crate::animation::WindowAnimation;
@@ -96,7 +97,7 @@ impl WaylandState {
                 duration,
             ),
             WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
-                (None, Duration::from_millis(90))
+                (None, Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS))
             }
         };
 
@@ -205,12 +206,8 @@ impl WaylandState {
         let now = Instant::now();
         let mut updates: Vec<(WindowId, Point<i32, Logical>, bool)> = Vec::new();
         for (win, anim) in &self.window_animations {
-            let elapsed = now.saturating_duration_since(anim.started_at);
-            let raw_t = (elapsed.as_secs_f64() / anim.duration.as_secs_f64()).clamp(0.0, 1.0);
-            let t = crate::animation::ease_out_cubic(raw_t);
-            let x = anim.from.x + ((anim.to.x - anim.from.x) as f64 * t).round() as i32;
-            let y = anim.from.y + ((anim.to.y - anim.from.y) as f64 * t).round() as i32;
-            updates.push((*win, Point::from((x, y)), raw_t >= 1.0));
+            let tick = crate::animation::interpolate_animation_tick(anim, now);
+            updates.push((*win, Point::from((tick.rect.x, tick.rect.y)), tick.done));
         }
 
         let mut finished: Vec<WindowId> = Vec::new();

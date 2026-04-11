@@ -9,9 +9,9 @@ use smithay::output::Output;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
-    CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, poll_wayland_systray, resolve_cursor_presentation,
-    send_frame_callbacks, update_primary_scanout_output,
+    build_common_scene_elements, count_upper_layer_render_elements, get_render_element_counts,
+    poll_wayland_systray, resolve_cursor_presentation, send_frame_callbacks,
+    update_primary_scanout_output, CursorPresentation,
 };
 use crate::wm::Wm;
 
@@ -39,10 +39,6 @@ pub fn render_frame(
         state.runtime.dnd_icon.as_ref(),
     );
     apply_cursor_presentation_internal(backend, &cursor_presentation);
-    if state.has_active_window_animations() {
-        state.tick_window_animations();
-    }
-
     // Backend-specific: get buffer age
     let buffer_age = backend.buffer_age().unwrap_or(0);
 

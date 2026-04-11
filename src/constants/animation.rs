@@ -30,6 +30,9 @@ pub const MONITOR_WIDTH_THRESHOLD: i32 = 100;
 /// Frame sleep duration in microseconds.
 pub const FRAME_SLEEP_MICROS: u64 = 16667;
 
+/// Default Wayland animation duration in milliseconds.
+pub const WAYLAND_DEFAULT_ANIMATION_MILLIS: u64 = 90;
+
 /// Maximum tag number for view scrolling.
 pub const MAX_TAG_NUMBER: u32 = 9;
 

@@ -119,7 +119,8 @@ fn tick_x11_animations(wm: &mut Wm) {
         let mut needs_flush = false;
 
         for (win, anim) in data.x11_runtime.window_animations.iter() {
-            let rect = crate::animation::interpolated_rect(anim, now);
+            let tick = crate::animation::interpolate_animation_tick(anim, now);
+            let rect = tick.rect;
 
             if rect.is_valid() {
                 let x11_win: x11rb::protocol::xproto::Window = (*win).into();
@@ -136,7 +137,7 @@ fn tick_x11_animations(wm: &mut Wm) {
                 needs_flush = true;
             }
 
-            if now.duration_since(anim.started_at) >= anim.duration {
+            if tick.done {
                 finished.push((*win, anim.to));
             }
         }

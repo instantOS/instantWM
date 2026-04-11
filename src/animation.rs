@@ -18,6 +18,12 @@ pub fn ease_out_cubic(t: f64) -> f64 {
     1.0 + t * t * t
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct AnimationTick {
+    pub rect: Rect,
+    pub done: bool,
+}
+
 fn current_client_rect(core: &CoreCtx, win: WindowId) -> Option<Rect> {
     core.globals()
         .clients
@@ -25,25 +31,28 @@ fn current_client_rect(core: &CoreCtx, win: WindowId) -> Option<Rect> {
         .map(|c| if c.geo.is_valid() { c.geo } else { c.old_geo })
 }
 
-pub(crate) fn interpolated_rect(animation: &WindowAnimation, now: Instant) -> Rect {
+pub fn interpolate_animation_tick(animation: &WindowAnimation, now: Instant) -> AnimationTick {
     let elapsed = now.saturating_duration_since(animation.started_at);
-    let progress = if animation.duration.is_zero() {
+    let raw_t = if animation.duration.is_zero() {
         1.0
     } else {
-        (elapsed.as_secs_f64() / animation.duration.as_secs_f64()).min(1.0)
+        (elapsed.as_secs_f64() / animation.duration.as_secs_f64()).clamp(0.0, 1.0)
     };
-    let eased = ease_out_cubic(progress);
+    let eased = ease_out_cubic(raw_t);
 
     let x = animation.from.x as f64 + (animation.to.x - animation.from.x) as f64 * eased;
     let y = animation.from.y as f64 + (animation.to.y - animation.from.y) as f64 * eased;
     let w = animation.from.w as f64 + (animation.to.w - animation.from.w) as f64 * eased;
     let h = animation.from.h as f64 + (animation.to.h - animation.from.h) as f64 * eased;
 
-    Rect {
-        x: x.round() as i32,
-        y: y.round() as i32,
-        w: w.round() as i32,
-        h: h.round() as i32,
+    AnimationTick {
+        rect: Rect {
+            x: x.round() as i32,
+            y: y.round() as i32,
+            w: w.round() as i32,
+            h: h.round() as i32,
+        },
+        done: raw_t >= 1.0,
     }
 }
 
