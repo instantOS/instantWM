@@ -318,7 +318,7 @@ pub(crate) fn draw_window_titles(
             .collect();
 
         for c_win in wins {
-            let Some(c) = ctx.globals().clients.get(&c_win) else {
+            let Some(c) = ctx.client(c_win) else {
                 continue;
             };
             if !c.shows_in_bar(selected) {

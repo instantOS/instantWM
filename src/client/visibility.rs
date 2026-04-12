@@ -192,7 +192,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
-    let scratchpad_name = ctx.core().globals().clients.get(&win).and_then(|c| {
+    let scratchpad_name = ctx.client(win).and_then(|c| {
         if c.is_scratchpad() {
             Some(c.scratchpad_name.clone())
         } else {
@@ -254,7 +254,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 /// the X11-specific work: mapping the window, WM_STATE, slide-in animation.
 /// Guards, focus, and arrange are handled by the caller.
 fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
+    let Rect { x, y, w, h } = match ctx.core.client(win) {
         Some(c) => c.geo,
         None => return,
     };
@@ -291,7 +291,7 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 /// and geometry preservation. Guards, focus, and arrange are handled by the
 /// caller.
 fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
+    let Rect { x, y, w, h } = match ctx.core.client(win) {
         Some(c) => c.geo,
         None => return,
     };

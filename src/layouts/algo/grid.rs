@@ -85,7 +85,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let mut i: i32 = 0;
 
     for &win in &m.clients {
-        let Some(c) = ctx.core_mut().globals_mut().clients.get(&win) else {
+        let Some(c) = ctx.core().client(win) else {
             continue;
         };
 

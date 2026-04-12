@@ -355,7 +355,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        let Some(c) = self.core().globals().clients.get(&win).cloned() else {
+        let Some(c) = self.client(win).cloned() else {
             return;
         };
 

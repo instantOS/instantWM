@@ -41,7 +41,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── resize every tiled client to fill the work area ───────────────────
     for &win in &m.clients {
-        let Some(c) = ctx.core_mut().globals_mut().clients.get(&win) else {
+        let Some(c) = ctx.core().client(win) else {
             continue;
         };
 

@@ -49,7 +49,7 @@ pub fn set_client_tag_prop(
 ) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    let Some(c) = core.globals().clients.get(&win) else {
+    let Some(c) = core.client(win) else {
         return;
     };
 

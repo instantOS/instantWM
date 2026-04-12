@@ -25,7 +25,7 @@ pub fn has_tiling_layout(core: &CoreCtx) -> bool {
 /// - no tiling layout is active on the selected monitor (all windows float in
 ///   floating-only layouts).
 pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
-    if let Some(client) = core.globals().clients.get(&win) {
+    if let Some(client) = core.client(win) {
         if client.is_floating {
             return true;
         }
@@ -45,7 +45,7 @@ pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
 pub fn apply_size(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let geo = ctx.core.globals().clients.get(&win).map(|c| c.geo);
+    let geo = ctx.core.client(win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());

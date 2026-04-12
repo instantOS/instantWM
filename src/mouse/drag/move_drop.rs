@@ -35,10 +35,7 @@ pub fn snap_window_to_monitor_edges(
     let snap = ctx.core().globals().cfg.snap;
     let mon = ctx.core().globals().selected_monitor();
     let bw = ctx
-        .core()
-        .globals()
-        .clients
-        .get(&win)
+        .client(win)
         .map(|client| client.border_width.max(0))
         .unwrap_or(0);
     let width = w + bw * 2;
@@ -117,20 +114,16 @@ pub struct MoveState {
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
-    let (sel, is_true_fullscreen, is_overlay, is_fullscreen) = {
+    let (sel, overlay, fullscreen) = {
         let g = ctx.core_mut().globals_mut();
         let mon = g.selected_monitor();
         let sel = mon.sel?;
-        let overlay = mon.overlay;
-        let fullscreen = mon.fullscreen;
-        let c = g.clients.get(&sel)?;
-        (
-            sel,
-            c.is_true_fullscreen(),
-            Some(sel) == overlay,
-            Some(sel) == fullscreen,
-        )
+        (sel, mon.overlay, mon.fullscreen)
     };
+    let c = ctx.core().client(sel)?;
+    let is_true_fullscreen = c.is_true_fullscreen();
+    let is_overlay = Some(sel) == overlay;
+    let is_fullscreen = Some(sel) == fullscreen;
 
     if is_true_fullscreen {
         return None;
@@ -148,7 +141,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     crate::layouts::restack(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = match ctx.core().globals().clients.get(&selected_window) {
+    let is_snapped = match ctx.client(selected_window) {
         Some(c) => c.snap_status != SnapPosition::None,
         None => return None,
     };
@@ -160,13 +153,16 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     // In a floating layout, if the window fills (nearly) the whole monitor,
     // restore the saved float geometry so we drag the real size, not a maximized one.
     let restore_geo: Option<Rect> = {
-        let g = ctx.core_mut().globals_mut();
-        let has_tiling = g.selected_monitor().is_tiling_layout();
+        let has_tiling = ctx
+            .core_mut()
+            .globals_mut()
+            .selected_monitor()
+            .is_tiling_layout();
 
         if !has_tiling {
-            let mon = g.selected_monitor();
+            let mon = ctx.core().globals().selected_monitor();
             let bar_height = mon.bar_height;
-            if let Some(c) = g.clients.get(&selected_window) {
+            if let Some(c) = ctx.core().client(selected_window) {
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.y >= mon.monitor_rect.y + bar_height - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
@@ -281,7 +277,7 @@ pub fn on_motion(
 
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
-    let (mut is_floating, mut drag_geo) = match ctx.core().globals().clients.get(&win) {
+    let (mut is_floating, mut drag_geo) = match ctx.client(win) {
         Some(c) => (c.is_floating, c.geo),
         None => return,
     };
@@ -421,7 +417,7 @@ pub fn handle_bar_drop(
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = match ctx.core().globals().clients.get(&win) {
+    let was_floating = match ctx.client(win) {
         Some(c) => c.is_floating,
         None => return,
     };

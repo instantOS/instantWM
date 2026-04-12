@@ -89,7 +89,7 @@ fn wayland_selected_resize_target_at(
         return None;
     }
     let selected_tags = mon.selected_tags();
-    let c = ctx.core.globals().clients.get(&win)?;
+    let c = ctx.core.client(win)?;
     if !c.is_visible(selected_tags) {
         return None;
     }

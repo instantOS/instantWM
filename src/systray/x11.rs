@@ -24,7 +24,7 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
     let mut w: u32 = 0;
     if let Some(systray) = systray {
         for &icon_win in &systray.icons {
-            if let Some(c) = core.globals().clients.get(&icon_win) {
+            if let Some(c) = core.client(icon_win) {
                 w += c.geo.w as u32 + core.globals().cfg.systray_spacing as u32;
             }
         }

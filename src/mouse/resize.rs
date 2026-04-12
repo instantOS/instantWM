@@ -70,7 +70,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(win) = ctx.selected_client() else {
         return;
     };
-    let is_blocked = match ctx.core().globals().clients.get(&win) {
+    let is_blocked = match ctx.client(win) {
         Some(c) => c.is_true_fullscreen(),
         None => return,
     };
@@ -326,7 +326,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 }
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let (is_fullscreen, orig_left, orig_top) = match ctx.core.globals().clients.get(&win) {
+    let (is_fullscreen, orig_left, orig_top) = match ctx.core.client(win) {
         Some(c) => (c.is_fullscreen, c.geo.x, c.geo.y),
         None => return,
     };

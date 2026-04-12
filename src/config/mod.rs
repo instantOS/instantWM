@@ -125,7 +125,7 @@ pub struct Config {
     /// Border width in pixels.
     pub borderpx: i32,
     /// Snap-to-edge distance in pixels.
-    pub snap: i32,
+    pub snap_threshold: i32,
 
     // --- Bar / systray ---
     /// Start menu button width in pixels.
@@ -282,7 +282,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
     Config {
         // --- Window geometry ---
         borderpx: BORDERPX,
-        snap: 32,
+        snap_threshold: 32,
 
         // --- Bar / systray ---
         startmenusize: 30,

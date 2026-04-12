@@ -87,7 +87,7 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
 /// client window is not found.
 pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
-    let c = match ctx.core_mut().globals_mut().clients.get(&win) {
+    let c = match ctx.core().client(win) {
         Some(c) => c,
         None => return,
     };

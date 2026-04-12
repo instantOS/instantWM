@@ -23,7 +23,7 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let mut options = state.options.clone();
     let model = state.model.clone();
 
-    if state.swapescape {
+    if state.swap_escape {
         if let Some(ref mut opts) = options {
             if !opts.is_empty() {
                 opts.push_str(",caps:swapescape");
@@ -163,7 +163,7 @@ pub fn set_keyboard_layouts(ctx: &mut WmCtx, layouts: Vec<KeyboardLayout>) {
 
 pub fn set_swapescape(ctx: &mut WmCtx, enabled: bool) {
     let current = ctx.core().globals().keyboard_layout.current;
-    ctx.core_mut().globals_mut().keyboard_layout.swapescape = enabled;
+    ctx.core_mut().globals_mut().keyboard_layout.swap_escape = enabled;
     if !ctx.core().globals().keyboard_layout.is_empty() {
         set_keyboard_layout(ctx, current);
     }

@@ -29,7 +29,7 @@ pub fn title_drag_begin(
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
-        let is_true_fullscreen = match ctx.core().globals().clients.get(&win) {
+        let is_true_fullscreen = match ctx.client(win) {
             Some(c) => c.is_true_fullscreen(),
             None => return false,
         };
@@ -40,7 +40,7 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.selected_client();
-    let (win_start_geo, drop_restore_geo) = match ctx.core().globals().clients.get(&win) {
+    let (win_start_geo, drop_restore_geo) = match ctx.client(win) {
         Some(c) => {
             let restore = c.restore_geo_for_float();
             (c.geo, restore)
@@ -83,7 +83,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let dir =
             crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
-        let bw = match ctx.core().globals().clients.get(&win) {
+        let bw = match ctx.client(win) {
             Some(c) => c.border_width,
             None => return true,
         };
@@ -188,7 +188,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.core_mut().globals_mut().drag.interactive.active = false;
 
     if is_right_click {
-        if let Some(c) = ctx.core_mut().globals_mut().clients.get(&win) {
+        if let Some(c) = ctx.core().client(win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
             if let WmCtx::X11(x11) = ctx {

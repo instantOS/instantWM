@@ -127,7 +127,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
 
     let mut animation_targets = Vec::new();
     for win in clients {
-        let Some(client) = ctx.core().globals().clients.get(&win).cloned() else {
+        let Some(client) = ctx.client(win).cloned() else {
             continue;
         };
         if !client.is_visible(selected_tags)

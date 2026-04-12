@@ -524,7 +524,7 @@ where
         return;
     };
 
-    let Some(source_client) = core.globals().clients.get(&source_win) else {
+    let Some(source_client) = core.client(source_win) else {
         focus_fn(None);
         return;
     };
@@ -644,7 +644,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
     }
     let mon = core.globals().selected_monitor();
     let source_win = mon.sel?;
-    let source_client = core.globals().clients.get(&source_win)?;
+    let source_client = core.client(source_win)?;
     let (source_center_x, source_center_y) = source_client.geo.center();
 
     let selected = mon.selected_tag_mask();

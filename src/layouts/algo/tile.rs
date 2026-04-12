@@ -93,7 +93,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 animation_frames,
             );
 
-            if let Some(c) = ctx.core().globals().clients.get(&client.win)
+            if let Some(c) = ctx.client(client.win)
                 && master_y_offset as i32 + c.total_height() < monitor.work_rect.h
             {
                 master_y_offset += c.total_height() as u32;
@@ -123,7 +123,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 animation_frames,
             );
 
-            if let Some(c) = ctx.core().globals().clients.get(&client.win)
+            if let Some(c) = ctx.client(client.win)
                 && stack_y_offset as i32 + c.total_height() < monitor.work_rect.h
             {
                 stack_y_offset += c.total_height() as u32;

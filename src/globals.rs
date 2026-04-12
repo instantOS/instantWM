@@ -223,7 +223,7 @@ pub struct KeyboardLayoutState {
     /// XKB model string.
     pub model: Option<String>,
     /// Swap Caps Lock and Escape.
-    pub swapescape: bool,
+    pub swap_escape: bool,
     /// Index of the currently active layout in `layouts`.
     pub current: usize,
 }
@@ -682,7 +682,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.border_width_px = cfg.borderpx;
     g.cfg.input = cfg.input.clone();
     g.cfg.monitors = cfg.monitors.clone();
-    g.cfg.snap = cfg.snap;
+    g.cfg.snap = cfg.snap_threshold;
     g.cfg.startmenusize = cfg.startmenusize;
     g.cfg.systray_pinning = cfg.systraypinning;
     g.cfg.systray_spacing = cfg.systrayspacing;
@@ -748,7 +748,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
         layouts,
         options,
         model,
-        swapescape: cfg.keyboard_swapescape,
+        swap_escape: cfg.keyboard_swapescape,
         current: 0,
     };
 

@@ -70,7 +70,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── place every client ────────────────────────────────────────────────
     for &win in &m.clients {
-        let c = match ctx.core_mut().globals_mut().clients.get(&win) {
+        let c = match ctx.core().client(win) {
             Some(c) => c,
             None => continue,
         };
