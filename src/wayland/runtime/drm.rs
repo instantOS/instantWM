@@ -103,8 +103,10 @@ impl DrmLoopState {
         flags
     }
 
-    fn has_dirty_outputs(&self) -> bool {
-        self.render_flags.values().any(|&dirty| dirty)
+    fn has_renderable_dirty_outputs(&self) -> bool {
+        self.render_flags
+            .iter()
+            .any(|(crtc, &dirty)| dirty && !self.pending_crtcs.contains(crtc))
     }
 }
 
@@ -488,9 +490,10 @@ fn run_event_loop(
                 start_time,
             );
 
-            // If any outputs still need rendering (e.g. render failure or
-            // EBUSY re-mark), ping the loop so it wakes up to retry.
-            if loop_state.has_dirty_outputs() {
+            // If an output can be rendered immediately after a failure, ping
+            // the loop to retry. Dirty outputs with a page flip in flight are
+            // woken by the DRM vblank source instead; self-pinging there spins.
+            if loop_state.has_renderable_dirty_outputs() {
                 retry_ping.ping();
             }
 
