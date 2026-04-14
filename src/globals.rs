@@ -683,21 +683,21 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.input = cfg.input.clone();
     g.cfg.monitors = cfg.monitors.clone();
     g.cfg.snap = cfg.snap_threshold;
-    g.cfg.startmenusize = cfg.startmenusize;
+    g.cfg.startmenusize = cfg.startmenu_size;
     g.cfg.systray_pinning = cfg.systraypinning;
     g.cfg.systray_spacing = cfg.systrayspacing;
-    g.cfg.show_systray = cfg.showsystray;
+    g.cfg.show_systray = cfg.show_systray;
     g.cfg.show_bar = cfg.showbar;
     g.cfg.top_bar = cfg.topbar;
     g.cfg.bar_height = cfg.bar_height;
-    g.cfg.resizehints = cfg.resizehints;
+    g.cfg.resizehints = cfg.resize_hints;
     g.cfg.decorhints = cfg.decorhints;
     g.cfg.mfact = cfg.mfact;
     g.cfg.nmaster = cfg.nmaster;
 
-    g.cfg.windowcolors = cfg.windowcolors.clone();
+    g.cfg.windowcolors = cfg.window_colors.clone();
     g.cfg.closebuttoncolors = cfg.closebuttoncolors.clone();
-    g.cfg.bordercolors = cfg.bordercolors;
+    g.cfg.bordercolors = cfg.border_colors;
     g.cfg.statusbarcolors = cfg.statusbarcolors;
 
     g.cfg.keys = cfg.keys.clone();

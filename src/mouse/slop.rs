@@ -14,7 +14,7 @@
 //! user triggers draw_window keybinding
 //!   └─► spawn instantslop → parse stdout → validate rect
 //!             └─► handle_monitor_switch   (window may cross monitors)
-//!                   └─► apply_window_resize_rect
+//!                   └─► apply_window_resize
 //!                             └─► toggle_floating (if tiled) + resize
 //! ```
 
@@ -97,14 +97,7 @@ pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: WindowId) -> b
 ///
 /// This is the single point where all external "place this window here"
 /// requests should funnel.
-pub fn apply_window_resize(
-    ctx: &mut WmCtx,
-    c_win: WindowId,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-) {
+pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     let is_floating = ctx
         .core()
         .globals()
@@ -113,24 +106,14 @@ pub fn apply_window_resize(
         .map(|c| c.is_floating)
         .unwrap_or(false);
 
-    let rect = Rect {
-        x,
-        y,
-        w: width,
-        h: height,
-    };
-
     if !is_floating {
         toggle_floating(ctx);
     }
 
-    resize(ctx, c_win, &rect, true);
+    resize(ctx, c_win, rect, true);
 }
 
-/// Rect-typed convenience wrapper around [`apply_window_resize`].
-pub fn apply_window_resize_rect(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
-    apply_window_resize(ctx, c_win, rect.x, rect.y, rect.w, rect.h);
-}
+// ── draw_window ───────────────────────────────────────────────────────────────
 
 // ── draw_window ───────────────────────────────────────────────────────────────
 
@@ -170,5 +153,5 @@ pub fn draw_window(ctx: &mut WmCtx) {
     handle_monitor_switch(ctx, win, &rect);
 
     // Promote to floating if needed, then apply.
-    apply_window_resize_rect(ctx, win, &rect);
+    apply_window_resize(ctx, win, &rect);
 }

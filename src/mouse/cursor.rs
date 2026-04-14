@@ -3,6 +3,7 @@ use crate::types::AltCursor;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ChangeWindowAttributesAux, change_window_attributes};
 
+//TODO: should this be in another module? This is X11 specific
 fn set_x11_root_cursor_by_index(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
     if ctx.x11_runtime.last_x11_cursor_index == Some(cursor_index) {
         return;
