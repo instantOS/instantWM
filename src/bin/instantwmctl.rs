@@ -284,7 +284,7 @@ fn handle_status_from_stdin(ignore_version_mismatches: bool) {
             } else {
                 instantwm::ipc_types::IpcRequest::new(cmd)
             };
-            if let Ok(data) = serde_json::to_vec(&request) {
+            if let Ok(data) = bincode::encode_to_vec(&request, bincode::config::standard()) {
                 let _ = stream.write_all(&data);
             }
         }

@@ -2,7 +2,7 @@ use crate::ipc_types::{IpcCommand, IpcRequest, Response};
 use crate::reload::reload_config;
 use crate::wm::Wm;
 use std::fs;
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
@@ -19,6 +19,12 @@ pub mod window;
 pub struct IpcServer {
     listener: UnixListener,
     path: PathBuf,
+    clients: Vec<PendingClient>,
+}
+
+struct PendingClient {
+    stream: UnixStream,
+    buffer: Vec<u8>,
 }
 
 impl IpcServer {
@@ -27,73 +33,102 @@ impl IpcServer {
         let listener = UnixListener::bind(&path)?;
         listener.set_nonblocking(true)?;
         unsafe { std::env::set_var("INSTANTWM_SOCKET", &path) };
-        Ok(Self { listener, path })
+        Ok(Self {
+            listener,
+            path,
+            clients: Vec::new(),
+        })
     }
 
-    /// Process all pending IPC connections.  Returns `true` when at least one
+    /// Process all pending IPC connections and data. Returns `true` when at least one
     /// command was handled (callers can use this to decide whether to re-render).
     pub fn process_pending(&mut self, wm: &mut Wm) -> bool {
-        let mut handled = false;
+        // 1. Accept new connections
         loop {
             match self.listener.accept() {
                 Ok((stream, _)) => {
-                    self.handle_client(stream, wm);
-                    handled = true;
+                    if let Ok(()) = stream.set_nonblocking(true) {
+                        self.clients.push(PendingClient {
+                            stream,
+                            buffer: Vec::new(),
+                        });
+                    }
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(_) => break,
             }
         }
+
+        // 2. Read from existing clients
+        let mut handled = false;
+        let mut i = 0;
+        while i < self.clients.len() {
+            let client = &mut self.clients[i];
+            let mut chunk = [0u8; 1024];
+            match client.stream.read(&mut chunk) {
+                Ok(0) => {
+                    // Client closed their write half (EOF). Process the request.
+                    let client = self.clients.remove(i);
+                    if self.process_client_request(client, wm) {
+                        handled = true;
+                    }
+                    // Don't increment i, as we removed the current element.
+                }
+                Ok(n) => {
+                    client.buffer.extend_from_slice(&chunk[..n]);
+                    // Limit buffer size to prevent memory exhaustion (e.g. 1MB)
+                    if client.buffer.len() > 1024 * 1024 {
+                        let mut client = self.clients.remove(i);
+                        let _ =
+                            send_response(&mut client.stream, &Response::err("request too large"));
+                    } else {
+                        i += 1;
+                    }
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                    i += 1;
+                }
+                Err(_) => {
+                    self.clients.remove(i);
+                }
+            }
+        }
         handled
     }
 
-    fn handle_client(&self, mut stream: UnixStream, wm: &mut Wm) {
-        if let Err(e) = stream.set_nonblocking(false) {
-            log::warn!("Failed to set IPC stream to blocking mode: {}", e);
-            return;
-        }
-        let mut buffer = Vec::new();
-        let mut reader = BufReader::new(&stream);
-
-        loop {
-            let mut byte = [0u8; 1];
-            match reader.read(&mut byte) {
-                Ok(1) => buffer.push(byte[0]),
-                Ok(0) => break,
-                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
-                Err(_) => {
-                    let _ = send_response(&mut stream, &Response::err("read error"));
-                    return;
-                }
-                _ => break,
-            }
-        }
-
-        if buffer.is_empty() {
-            let _ = send_response(&mut stream, &Response::err("empty request"));
-            return;
+    fn process_client_request(&self, mut client: PendingClient, wm: &mut Wm) -> bool {
+        if client.buffer.is_empty() {
+            let _ = send_response(&mut client.stream, &Response::err("empty request"));
+            return false;
         }
 
         let request: IpcRequest =
-            match bincode::decode_from_slice(&buffer, bincode::config::standard()) {
+            match bincode::decode_from_slice(&client.buffer, bincode::config::standard()) {
                 Ok((req, _)) => req,
-                Err(e) => {
-                    let _ = send_response(
-                        &mut stream,
-                        &Response::err(format!("deserialize error: {}", e)),
-                    );
-                    return;
+                Err(_) => {
+                    // Try JSON fallback for older/simpler clients if bincode fails
+                    match serde_json::from_slice(&client.buffer) {
+                        Ok(req) => req,
+                        Err(e) => {
+                            let _ = send_response(
+                                &mut client.stream,
+                                &Response::err(format!("deserialize error: {}", e)),
+                            );
+                            return false;
+                        }
+                    }
                 }
             };
 
         // Validate protocol version (skip if ignore_version is set)
         if let Err(e) = request.validate_version() {
-            let _ = send_response(&mut stream, &Response::err(e));
-            return;
+            let _ = send_response(&mut client.stream, &Response::err(e));
+            return false;
         }
 
         let response = handle_command(wm, request.command);
-        let _ = send_response(&mut stream, &response);
+        let _ = send_response(&mut client.stream, &response);
+        true
     }
 }
 

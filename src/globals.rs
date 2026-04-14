@@ -30,7 +30,7 @@ pub struct RuntimeConfig {
     pub systray_spacing: i32,
 
     // Raw color values for config (parsed at load time)
-    pub windowcolors: WindowColorConfigs,
+    pub window_colors: WindowColorConfigs,
     pub closebuttoncolors: CloseButtonColorConfigs,
     pub bordercolors: BorderColorConfig,
     pub statusbarcolors: StatusColorConfig,
@@ -83,7 +83,7 @@ impl Default for RuntimeConfig {
             show_systray: true,
             systray_pinning: 0,
             systray_spacing: 2,
-            windowcolors: WindowColorConfigs::default(),
+            window_colors: WindowColorConfigs::default(),
             closebuttoncolors: CloseButtonColorConfigs::default(),
             bordercolors: BorderColorConfig::default(),
             statusbarcolors: StatusColorConfig::default(),
@@ -695,7 +695,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.mfact = cfg.mfact;
     g.cfg.nmaster = cfg.nmaster;
 
-    g.cfg.windowcolors = cfg.windowcolors.clone();
+    g.cfg.window_colors = cfg.windowcolors.clone();
     g.cfg.closebuttoncolors = cfg.closebuttoncolors.clone();
     g.cfg.bordercolors = cfg.bordercolors;
     g.cfg.statusbarcolors = cfg.statusbarcolors;
@@ -902,7 +902,7 @@ impl Globals {
             SchemeWin::Normal
         };
 
-        let colors = self.cfg.windowcolors.scheme(
+        let colors = self.cfg.window_colors.scheme(
             if is_hover {
                 SchemeHover::Hover
             } else {
