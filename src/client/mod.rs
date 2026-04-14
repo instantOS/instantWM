@@ -50,7 +50,7 @@ pub use constants::WM_STATE_WITHDRAWN;
 pub use geometry::{resize, sane_floating_spawn_rect, sync_client_geometry};
 
 // -- Visibility --------------------------------------------------------------
-pub use visibility::{hide, hide_for_user, show, show_hide};
+pub use visibility::{apply_visibility, hide, hide_for_user, show_window};
 
 // -- Focus / input -----------------------------------------------------------
 pub use focus::{

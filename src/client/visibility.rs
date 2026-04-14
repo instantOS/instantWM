@@ -56,7 +56,7 @@ pub fn get_state_x11(
 ///
 /// This mirrors the classic dwm `showhide` function and is called by the
 /// arrange path after every layout change.
-pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
+pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
     // First pass: collect visibility data to avoid borrow issues
     let mut operations: Vec<(WindowId, Rect, bool, bool, bool, bool)> = Vec::new();
 
@@ -138,7 +138,7 @@ pub fn show_hide_x11(ctx: &mut WmCtxX11<'_>) {
     }
 }
 
-pub fn show_hide_wayland(ctx: &mut WmCtxWayland<'_>) {
+pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
     // First pass: collect visibility data
     let mut operations: Vec<(WindowId, bool)> = Vec::new();
 
@@ -160,14 +160,14 @@ pub fn show_hide_wayland(ctx: &mut WmCtxWayland<'_>) {
     }
 }
 
-pub fn show_hide(ctx: &mut crate::contexts::WmCtx) {
+pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
     match ctx {
-        crate::contexts::WmCtx::X11(ctx_x11) => show_hide_x11(ctx_x11),
-        crate::contexts::WmCtx::Wayland(ctx_wayland) => show_hide_wayland(ctx_wayland),
+        crate::contexts::WmCtx::X11(ctx_x11) => apply_visibility_x11(ctx_x11),
+        crate::contexts::WmCtx::Wayland(ctx_wayland) => apply_visibility_wayland(ctx_wayland),
     }
 }
 
-pub fn show(ctx: &mut WmCtx, win: WindowId) {
+pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         if !c.is_hidden {
             return;
@@ -181,7 +181,7 @@ pub fn show(ctx: &mut WmCtx, win: WindowId) {
     if let WmCtx::X11(ctx_x11) = ctx {
         show_x11(ctx_x11, win);
     }
-    // On Wayland, map_window is not called here directly. show_hide_wayland
+    // On Wayland, map_window is not called here directly. apply_visibility_wayland
     // (called inside arrange below) checks !is_hidden and calls map_window
     // itself, so the window reappears as a side-effect of the arrange pass.
 

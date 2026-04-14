@@ -131,7 +131,7 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
             .get(&win)
             .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
         if should_unhide {
-            crate::client::show(ctx, win);
+            crate::client::show_window(ctx, win);
         }
     }
 }

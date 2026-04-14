@@ -634,7 +634,7 @@ impl XwmHandler for WaylandState {
         let _ = window.set_hidden(false);
         self.with_wm_mut_unified(|wm, _state| {
             let mut ctx = wm.ctx();
-            crate::client::show(&mut ctx, win);
+            crate::client::show_window(&mut ctx, win);
         });
     }
 

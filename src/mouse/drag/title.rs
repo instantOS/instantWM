@@ -174,7 +174,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     let is_right_click = btn == MouseButton::Right;
 
     if was_hidden {
-        crate::client::show(ctx, win);
+        crate::client::show_window(ctx, win);
     }
     crate::focus::focus_soft(ctx, Some(win));
     ctx.raise_interactive(win);
@@ -252,12 +252,12 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 
     if is_right_click {
         if was_hidden {
-            crate::client::show(ctx, win);
+            crate::client::show_window(ctx, win);
             crate::focus::focus_soft(ctx, Some(win));
         }
         crate::client::zoom(ctx);
     } else if was_hidden {
-        crate::client::show(ctx, win);
+        crate::client::show_window(ctx, win);
         crate::focus::focus_soft(ctx, Some(win));
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
         restack(ctx, selmon_id);

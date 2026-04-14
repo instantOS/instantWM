@@ -13,12 +13,12 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 
     if let Some(id) = monitor_id {
         // First pass: show/hide stack
-        crate::client::show_hide(ctx);
+        crate::client::apply_visibility(ctx);
         // Second pass: arrange and restack
         arrange_monitor(ctx, id);
         restack(ctx, id);
     } else {
-        crate::client::show_hide(ctx);
+        crate::client::apply_visibility(ctx);
 
         let mon_indices: Vec<MonitorId> = (0..ctx.core().globals().monitors.count())
             .map(MonitorId)

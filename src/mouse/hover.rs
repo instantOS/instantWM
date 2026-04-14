@@ -346,7 +346,8 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
 
                 x11rb::protocol::Event::MotionNotify(_) => {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    let in_border = wm_ctx.pointer_location()
+                    let in_border = wm_ctx
+                        .pointer_location()
                         .map(|(x, y)| is_in_resize_border(&wm_ctx, x, y))
                         .unwrap_or(false);
                     if !in_border {

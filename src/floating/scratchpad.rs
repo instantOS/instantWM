@@ -54,7 +54,7 @@ pub fn unhide_one(ctx: &mut WmCtx) -> bool {
             .get(&win)
             .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
         if should_unhide {
-            crate::client::show(ctx, win);
+            crate::client::show_window(ctx, win);
             return true;
         }
     }
@@ -139,7 +139,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     }
 
     if was_hidden {
-        crate::client::show(ctx, selected_window);
+        crate::client::show_window(ctx, selected_window);
     } else {
         arrange(ctx, Some(monitor_id));
     }
@@ -189,7 +189,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         .map(|c| c.is_hidden)
         .unwrap_or(false);
     if is_hidden {
-        crate::client::show(ctx, found);
+        crate::client::show_window(ctx, found);
     } else {
         let mid = ctx.core().globals().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
