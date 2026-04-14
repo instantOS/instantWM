@@ -319,37 +319,46 @@ pub enum OverlayMode {
 }
 
 impl OverlayMode {
-    /// Convert a raw `i32` to an `OverlayMode`.
-    ///
-    /// Returns `None` for any value outside `0..=3`.
-    pub fn from_i32(v: i32) -> Option<Self> {
-        match v {
-            0 => Some(Self::Top),
-            1 => Some(Self::Right),
-            2 => Some(Self::Bottom),
-            3 => Some(Self::Left),
-            _ => None,
-        }
-    }
-
-    /// Return the canonical `i32` representation of this mode.
-    pub fn to_i32(self) -> i32 {
-        match self {
-            Self::Top => 0,
-            Self::Right => 1,
-            Self::Bottom => 2,
-            Self::Left => 3,
-        }
-    }
-
     /// Returns `true` for modes where the overlay is sized along the vertical axis.
     pub fn is_vertical(self) -> bool {
         matches!(self, Self::Top | Self::Bottom)
     }
 }
 
-/// Direction for focus movement and keyboard-driven operations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Vertical axis (up / down).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VerticalDirection {
+    Up,
+    Down,
+}
+
+/// Horizontal axis (left / right).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HorizontalDirection {
+    Left,
+    Right,
+}
+
+impl From<VerticalDirection> for Direction {
+    fn from(v: VerticalDirection) -> Self {
+        match v {
+            VerticalDirection::Up => Self::Up,
+            VerticalDirection::Down => Self::Down,
+        }
+    }
+}
+
+impl From<HorizontalDirection> for Direction {
+    fn from(h: HorizontalDirection) -> Self {
+        match h {
+            HorizontalDirection::Left => Self::Left,
+            HorizontalDirection::Right => Self::Right,
+        }
+    }
+}
+
+/// Cardinal direction for focus movement, floating move/resize, snap navigation, etc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     /// Move up.
     Up,
@@ -362,17 +371,6 @@ pub enum Direction {
 }
 
 impl Direction {
-    /// Convert from integer (for backward compatibility).
-    pub fn from_i32(i: i32) -> Option<Self> {
-        match i {
-            0 => Some(Self::Down),
-            1 => Some(Self::Up),
-            2 => Some(Self::Right),
-            3 => Some(Self::Left),
-            _ => None,
-        }
-    }
-
     /// Get delta for movement as (dx, dy).
     pub fn move_delta(self, step: i32) -> (i32, i32) {
         match self {
@@ -392,6 +390,34 @@ impl Direction {
             Self::Left => (-step, 0),
         }
     }
+
+    /// Column index for [`crate::floating::snap::SNAP_MATRIX`] (Up=0, Right=1, Down=2, Left=3).
+    pub fn snap_matrix_index(self) -> usize {
+        match self {
+            Self::Up => 0,
+            Self::Right => 1,
+            Self::Down => 2,
+            Self::Left => 3,
+        }
+    }
+
+    /// `Some` if this is a vertical axis.
+    pub fn as_vertical(self) -> Option<VerticalDirection> {
+        match self {
+            Self::Up => Some(VerticalDirection::Up),
+            Self::Down => Some(VerticalDirection::Down),
+            _ => None,
+        }
+    }
+
+    /// `Some` if this is a horizontal axis.
+    pub fn as_horizontal(self) -> Option<HorizontalDirection> {
+        match self {
+            Self::Left => Some(HorizontalDirection::Left),
+            Self::Right => Some(HorizontalDirection::Right),
+            _ => None,
+        }
+    }
 }
 
 /// Direction for stack-based focus movement.
@@ -408,11 +434,5 @@ impl StackDirection {
     /// Returns true if this is the Next direction.
     pub fn is_forward(self) -> bool {
         matches!(self, Self::Next)
-    }
-
-    /// Parse from i32 (for command compatibility).
-    /// Positive = Next, negative/zero = Previous.
-    pub fn from_i32(v: i32) -> Self {
-        if v > 0 { Self::Next } else { Self::Previous }
     }
 }

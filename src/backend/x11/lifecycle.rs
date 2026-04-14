@@ -407,12 +407,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
         .map(|c| c.is_hidden)
         .unwrap_or(false);
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
-        set_client_state(
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
-            w,
-            WM_STATE_NORMAL,
-        );
+        set_client_state(&ctx_x11.x11, ctx_x11.x11_runtime, w, WM_STATE_NORMAL);
     }
     if let Some(selected_window) = ctx.selected_client()
         && let WmCtx::X11(ctx_x11) = ctx
@@ -551,12 +546,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
                     .conn
                     .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
 
-            set_client_state(
-                &ctx.x11,
-                ctx.x11_runtime,
-                win,
-                WM_STATE_WITHDRAWN,
-            );
+            set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_WITHDRAWN);
         }
     }
 

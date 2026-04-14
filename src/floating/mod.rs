@@ -21,8 +21,6 @@ mod state;
 
 // ── snap ─────────────────────────────────────────────────────────────────────
 
-/// `SnapDir` is the typed direction enum.
-pub use snap::SnapDir;
 pub use snap::{change_snap, reset_snap};
 
 // ── movement ─────────────────────────────────────────────────────────────────

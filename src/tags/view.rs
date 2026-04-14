@@ -3,7 +3,7 @@
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 use crate::layouts::LayoutKind;
-use crate::types::{Direction, MonitorId, TagMask, WindowId};
+use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     crate::focus::focus_soft(ctx, None);
@@ -12,15 +12,19 @@ fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
-fn adjacent_scroll_mask(current_tag: usize, tagset: TagMask, dir: Direction) -> Option<TagMask> {
+fn adjacent_scroll_mask(
+    current_tag: usize,
+    tagset: TagMask,
+    dir: HorizontalDirection,
+) -> Option<TagMask> {
     if !tagset.is_single() {
         return None;
     }
 
     let max_tag = crate::constants::animation::MAX_TAG_NUMBER as usize;
     let next_tag = match dir {
-        Direction::Left | Direction::Up if current_tag > 1 => current_tag - 1,
-        Direction::Right | Direction::Down if current_tag < max_tag => current_tag + 1,
+        HorizontalDirection::Left if current_tag > 1 => current_tag - 1,
+        HorizontalDirection::Right if current_tag < max_tag => current_tag + 1,
         _ => return None,
     };
 
@@ -122,7 +126,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
     toggle_view_ctx(ctx, clicked_mask);
 }
 
-pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
+pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
     let mon = ctx.core().globals().selected_monitor();
     let (tagset, numtags) = (mon.selected_tags(), ctx.core().globals().tags.count());
 
@@ -131,8 +135,8 @@ pub fn shift_view(ctx: &mut WmCtx, direction: Direction) {
 
     for step in 1..=10i32 {
         next_mask = match direction {
-            Direction::Right | Direction::Down => tagset.rotate_left(step as usize, numtags),
-            Direction::Left | Direction::Up => tagset.rotate_right(step as usize, numtags),
+            HorizontalDirection::Right => tagset.rotate_left(step as usize, numtags),
+            HorizontalDirection::Left => tagset.rotate_right(step as usize, numtags),
         };
 
         let clients = ctx.core().globals().selected_monitor().clients.clone();
@@ -310,7 +314,7 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
 mod tests {
     use super::{adjacent_scroll_mask, overview_shortcut_targets_focused_window};
     use crate::layouts::LayoutKind;
-    use crate::types::{Direction, TagMask};
+    use crate::types::{HorizontalDirection, TagMask};
 
     #[test]
     fn overview_shortcut_targets_focused_window_for_tag_zero() {
@@ -341,11 +345,11 @@ mod tests {
         let current = 3;
         let tagset = TagMask::single(current).unwrap_or(TagMask::EMPTY);
         assert_eq!(
-            adjacent_scroll_mask(current, tagset, Direction::Left),
+            adjacent_scroll_mask(current, tagset, HorizontalDirection::Left),
             TagMask::single(2)
         );
         assert_eq!(
-            adjacent_scroll_mask(current, tagset, Direction::Right),
+            adjacent_scroll_mask(current, tagset, HorizontalDirection::Right),
             TagMask::single(4)
         );
     }
@@ -354,12 +358,15 @@ mod tests {
     fn adjacent_scroll_mask_requires_single_tag_and_bounds() {
         let multi = TagMask::single(2).unwrap_or(TagMask::EMPTY)
             | TagMask::single(3).unwrap_or(TagMask::EMPTY);
-        assert_eq!(adjacent_scroll_mask(2, multi, Direction::Left), None);
+        assert_eq!(
+            adjacent_scroll_mask(2, multi, HorizontalDirection::Left),
+            None
+        );
         assert_eq!(
             adjacent_scroll_mask(
                 1,
                 TagMask::single(1).unwrap_or(TagMask::EMPTY),
-                Direction::Left
+                HorizontalDirection::Left
             ),
             None
         );
@@ -378,7 +385,7 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
     }
 }
 
-pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
+pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
     let mon = ctx.core().globals().selected_monitor();
     let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
         return;
@@ -396,7 +403,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
 }
 
 /// Scroll to adjacent tag and return the affected monitor id.
-pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: Direction) -> Option<MonitorId> {
+pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
     let mon = ctx.core().globals().selected_monitor();
     let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
         return None;

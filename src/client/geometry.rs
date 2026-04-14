@@ -36,8 +36,6 @@ pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
     }
 }
 
-
-
 /// Compute a saner initial position for a newly managed floating client.
 ///
 /// The goal is to preserve application-provided placement when it is already

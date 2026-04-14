@@ -78,7 +78,7 @@ pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
     }
 }
 
-pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
+pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
     let old_selected_tags = ctx.core().globals().selected_monitor().selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {
         return;
@@ -114,10 +114,8 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
 
     for (win, target, border_width) in animation_targets {
         let start_x = match dir {
-            Direction::Left | Direction::Up => monitor_rect.x - target.w - border_width * 2,
-            Direction::Right | Direction::Down => {
-                monitor_rect.x + monitor_rect.w + border_width * 2
-            }
+            HorizontalDirection::Left => monitor_rect.x - target.w - border_width * 2,
+            HorizontalDirection::Right => monitor_rect.x + monitor_rect.w + border_width * 2,
         };
         let start = Rect {
             x: start_x,

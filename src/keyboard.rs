@@ -4,13 +4,12 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::config::ModeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{
-    SnapDir, change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating,
-    unhide_one,
+    change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating, unhide_one,
 };
 use crate::focus::{direction_focus, focus_stack};
 
 use crate::types::*;
-use crate::types::{Direction, StackDirection};
+use crate::types::{Direction, StackDirection, VerticalDirection};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
@@ -361,7 +360,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if is_overview {
-        direction_focus(ctx, Direction::Up);
+        direction_focus(ctx, VerticalDirection::Up.into());
         return;
     }
 
@@ -378,7 +377,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
                     false,
                 );
             }
-            change_snap(ctx, win, SnapDir::Up);
+            change_snap(ctx, win, Direction::Up);
         }
         return;
     }
@@ -390,7 +389,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if is_overview {
-        direction_focus(ctx, Direction::Down);
+        direction_focus(ctx, VerticalDirection::Down.into());
         return;
     }
 
@@ -398,7 +397,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 
     if !has_tiling {
         if let Some(win) = ctx.selected_client() {
-            change_snap(ctx, win, SnapDir::Down);
+            change_snap(ctx, win, Direction::Down);
         }
         return;
     }

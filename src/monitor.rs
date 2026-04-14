@@ -3,8 +3,8 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::backend::{BackendOps, BackendOutputInfo, BackendVrrSupport};
 use crate::backend::x11::set_client_tag_prop;
+use crate::backend::{BackendOps, BackendOutputInfo, BackendVrrSupport};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus_soft, unfocus_win};
 use crate::globals::Globals;
@@ -447,7 +447,11 @@ fn output_layout_extent(outputs: &[BackendOutputInfo]) -> (i32, i32) {
     (w, h)
 }
 
-fn sync_runtime_screen_size(cfg: &mut RuntimeConfig, layout_width: i32, layout_height: i32) -> bool {
+fn sync_runtime_screen_size(
+    cfg: &mut RuntimeConfig,
+    layout_width: i32,
+    layout_height: i32,
+) -> bool {
     if cfg.screen_width != layout_width || cfg.screen_height != layout_height {
         cfg.screen_width = layout_width;
         cfg.screen_height = layout_height;
@@ -586,9 +590,7 @@ fn take_matching_monitor(
             let xin = output.name.starts_with("XINERAMA-");
             let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
             let both_empty = m.name.is_empty() && output.name.is_empty();
-            if (xin && (m.name.is_empty() || m.name == output.name))
-                || slot_unlabeled
-                || both_empty
+            if (xin && (m.name.is_empty() || m.name == output.name)) || slot_unlabeled || both_empty
             {
                 let mon = pool[output_index].take().expect("checked");
                 return Some((output_index, mon));
@@ -606,11 +608,17 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     }
 
     let template = ctx.core().globals().cfg.tag_template.clone();
-    let (showbar, topbar) = (ctx.core().globals().cfg.show_bar, ctx.core().globals().cfg.top_bar);
+    let (showbar, topbar) = (
+        ctx.core().globals().cfg.show_bar,
+        ctx.core().globals().cfg.top_bar,
+    );
 
     let (layout_width, layout_height) = output_layout_extent(&outputs);
-    let mut changed =
-        sync_runtime_screen_size(&mut ctx.core_mut().globals_mut().cfg, layout_width, layout_height);
+    let mut changed = sync_runtime_screen_size(
+        &mut ctx.core_mut().globals_mut().cfg,
+        layout_width,
+        layout_height,
+    );
 
     let old_count = ctx.core().globals().monitors.len();
     let sel_idx = ctx.core().globals().monitors.selected_monitor_idx;
@@ -839,12 +847,7 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     ))
 }
 
-pub enum Direction {
-    Up,
-    Down,
-}
-
-pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
+pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: VerticalDirection) {
     let tiled_count = {
         let g = ctx.core_mut().globals_mut();
         g.selected_monitor().tiled_client_count(g.clients.map())
@@ -871,7 +874,7 @@ pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
         && let Some(pos) = mon.clients.iter().position(|&w| w == win)
     {
         match direction {
-            Direction::Up => {
+            VerticalDirection::Up => {
                 if pos > 0 {
                     mon.clients.swap(pos, pos - 1);
                 } else {
@@ -881,7 +884,7 @@ pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
                     }
                 }
             }
-            Direction::Down => {
+            VerticalDirection::Down => {
                 if pos + 1 < mon.clients.len() {
                     mon.clients.swap(pos, pos + 1);
                 } else {

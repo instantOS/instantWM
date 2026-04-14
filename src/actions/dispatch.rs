@@ -2,13 +2,14 @@ use crate::actions::{ButtonAction, KeyAction};
 use crate::client::{close_win, kill_client};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::{hide_overlay, show_overlay, toggle_floating};
-use crate::monitor::{Direction as PushDirection, reorder_client};
+use crate::monitor::reorder_client;
 use crate::mouse::{
     drag_tag, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
     window_title_mouse_handler,
 };
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
+use crate::types::VerticalDirection;
 
 use super::named::execute_named_action;
 
@@ -168,9 +169,9 @@ pub fn execute_button_action(
                     ctx,
                     win,
                     if *up {
-                        PushDirection::Up
+                        VerticalDirection::Up
                     } else {
-                        PushDirection::Down
+                        VerticalDirection::Down
                     },
                 );
             }

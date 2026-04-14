@@ -62,13 +62,7 @@ fn pixel_fill(
 
 use crate::types::geometry::Rect;
 
-fn pixel_fill_rect(
-    pixels: &mut [u8],
-    canvas_w: i32,
-    canvas_h: i32,
-    rect: Rect,
-    color: [f32; 4],
-) {
+fn pixel_fill_rect(pixels: &mut [u8], canvas_w: i32, canvas_h: i32, rect: Rect, color: [f32; 4]) {
     let r = (color[0] * 255.0) as u8;
     let g = (color[1] * 255.0) as u8;
     let b = (color[2] * 255.0) as u8;

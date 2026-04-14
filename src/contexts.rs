@@ -295,8 +295,7 @@ impl<'a> WmCtx<'a> {
                 // Query the actual geometry back and sync that into WM state.
                 x11.backend.resize_window(win, rect);
                 x11.backend.flush();
-                let actual = crate::backend::x11::query_window_rect(&x11.x11, win)
-                    .unwrap_or(rect);
+                let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
                 crate::client::sync_client_geometry(x11.core.globals_mut(), win, actual);
 
                 crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);

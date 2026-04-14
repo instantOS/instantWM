@@ -11,9 +11,7 @@ use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
     LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
 };
-use crate::monitor::{
-    Direction as PushDirection, focus_monitor, move_to_monitor_and_follow, reorder_client,
-};
+use crate::monitor::{focus_monitor, move_to_monitor_and_follow, reorder_client};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
     follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
@@ -23,7 +21,9 @@ use crate::toggles::{
     toggle_alt_tag, toggle_animated, toggle_bar, toggle_double_draw, toggle_mode, toggle_show_tags,
     toggle_sticky, unhide_all,
 };
-use crate::types::{Direction, MonitorDirection, StackDirection, TagMask, ToggleAction};
+use crate::types::{
+    HorizontalDirection, MonitorDirection, StackDirection, TagMask, ToggleAction, VerticalDirection,
+};
 use crate::util::spawn;
 
 fn parse_layout_kind_name(name: &str) -> Option<LayoutKind> {
@@ -92,10 +92,10 @@ define_named_actions!(
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
-    FocusUp => { name: "focus_up", arg_example: None, doc: "focus window above", run: |ctx, _args| { direction_focus(ctx, Direction::Up); } },
-    FocusDown => { name: "focus_down", arg_example: None, doc: "focus window below", run: |ctx, _args| { direction_focus(ctx, Direction::Down); } },
-    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus window to left", run: |ctx, _args| { direction_focus(ctx, Direction::Left); } },
-    FocusRight => { name: "focus_right", arg_example: None, doc: "focus window to right", run: |ctx, _args| { direction_focus(ctx, Direction::Right); } },
+    FocusUp => { name: "focus_up", arg_example: None, doc: "focus window above", run: |ctx, _args| { direction_focus(ctx, VerticalDirection::Up.into()); } },
+    FocusDown => { name: "focus_down", arg_example: None, doc: "focus window below", run: |ctx, _args| { direction_focus(ctx, VerticalDirection::Down.into()); } },
+    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus window to left", run: |ctx, _args| { direction_focus(ctx, HorizontalDirection::Left.into()); } },
+    FocusRight => { name: "focus_right", arg_example: None, doc: "focus window to right", run: |ctx, _args| { direction_focus(ctx, HorizontalDirection::Right.into()); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
     ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
@@ -113,23 +113,23 @@ define_named_actions!(
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { center_window(ctx, win); } } },
     ToggleMaximized => { name: "toggle_maximized", arg_example: None, doc: "toggle maximized state", run: |ctx, _args| { toggle_maximized(ctx); } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
-    KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "resize floating window up", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, Direction::Up); } } },
-    KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "resize floating window down", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, Direction::Down); } } },
-    KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "resize floating window left", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, Direction::Left); } } },
-    KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "resize floating window right", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, Direction::Right); } } },
-    PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { reorder_client(ctx, win, PushDirection::Up); } } },
-    PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { reorder_client(ctx, win, PushDirection::Down); } } },
+    KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "resize floating window up", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
+    KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "resize floating window down", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
+    KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "resize floating window left", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
+    KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "resize floating window right", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
+    PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { reorder_client(ctx, win, VerticalDirection::Up); } } },
+    PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { reorder_client(ctx, win, VerticalDirection::Down); } } },
     LastView => { name: "last_view", arg_example: None, doc: "view previously viewed tags", run: |ctx, _args| { last_view(ctx); } },
     FollowView => { name: "follow_view", arg_example: None, doc: "follow client to its tags", run: |ctx, _args| { follow_view(ctx); } },
     WinView => { name: "win_view", arg_example: None, doc: "view tags of focused client", run: |ctx, _args| { win_view(ctx); } },
-    ScrollLeft => { name: "scroll_left", arg_example: None, doc: "scroll tags left", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, Direction::Left); } },
-    ScrollRight => { name: "scroll_right", arg_example: None, doc: "scroll tags right", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, Direction::Right); } },
-    MoveClientLeft => { name: "move_client_left", arg_example: None, doc: "move client to tag on left", run: |ctx, _args| { move_client(ctx, Direction::Left); } },
-    MoveClientRight => { name: "move_client_right", arg_example: None, doc: "move client to tag on right", run: |ctx, _args| { move_client(ctx, Direction::Right); } },
-    ShiftTagLeft => { name: "shift_tag_left", arg_example: None, doc: "shift client to tag on left", run: |ctx, _args| { shift_tag(ctx, Direction::Left, 1); } },
-    ShiftTagRight => { name: "shift_tag_right", arg_example: None, doc: "shift client to tag on right", run: |ctx, _args| { shift_tag(ctx, Direction::Right, 1); } },
-    ShiftViewLeft => { name: "shift_view_left", arg_example: None, doc: "shift view to tag on left", run: |ctx, _args| { shift_view(ctx, Direction::Left); } },
-    ShiftViewRight => { name: "shift_view_right", arg_example: None, doc: "shift view to tag on right", run: |ctx, _args| { shift_view(ctx, Direction::Right); } },
+    ScrollLeft => { name: "scroll_left", arg_example: None, doc: "scroll tags left", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Left); } },
+    ScrollRight => { name: "scroll_right", arg_example: None, doc: "scroll tags right", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Right); } },
+    MoveClientLeft => { name: "move_client_left", arg_example: None, doc: "move client to tag on left", run: |ctx, _args| { move_client(ctx, HorizontalDirection::Left); } },
+    MoveClientRight => { name: "move_client_right", arg_example: None, doc: "move client to tag on right", run: |ctx, _args| { move_client(ctx, HorizontalDirection::Right); } },
+    ShiftTagLeft => { name: "shift_tag_left", arg_example: None, doc: "shift client to tag on left", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Left.into(), 1); } },
+    ShiftTagRight => { name: "shift_tag_right", arg_example: None, doc: "shift client to tag on right", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Right.into(), 1); } },
+    ShiftViewLeft => { name: "shift_view_left", arg_example: None, doc: "shift view to tag on left", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Left); } },
+    ShiftViewRight => { name: "shift_view_right", arg_example: None, doc: "shift view to tag on right", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Right); } },
     ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::view::view(ctx, TagMask::ALL_BITS); } },
     TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { crate::tags::client_tags::set_client_tag_ctx(ctx, win, TagMask::ALL_BITS); } } },
     ToggleOverview => { name: "toggle_overview", arg_example: None, doc: "toggle overview mode", run: |ctx, _args| { toggle_overview(ctx, TagMask::ALL_BITS); } },

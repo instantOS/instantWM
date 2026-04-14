@@ -7,7 +7,7 @@
 use crate::bar::bar_position_to_gesture;
 use crate::client::resize;
 use crate::contexts::WmCtx;
-use crate::floating::{SnapDir, WindowMode, change_snap, reset_snap, set_window_mode};
+use crate::floating::{WindowMode, change_snap, reset_snap, set_window_mode};
 use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
 use crate::types::SnapPosition;
@@ -504,14 +504,14 @@ pub fn apply_edge_drop(
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root_y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_client(ctx, Direction::Left);
+                move_client(ctx, HorizontalDirection::Left);
             } else {
-                move_client(ctx, Direction::Right);
+                move_client(ctx, HorizontalDirection::Right);
             }
         } else if at_left {
-            shift_tag(ctx, Direction::Left, 1);
+            shift_tag(ctx, HorizontalDirection::Left.into(), 1);
         } else {
-            shift_tag(ctx, Direction::Right, 1);
+            shift_tag(ctx, HorizontalDirection::Right.into(), 1);
         }
 
         if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
@@ -521,9 +521,9 @@ pub fn apply_edge_drop(
         arrange(ctx, Some(selmon_id));
     } else {
         let dir = if at_left {
-            SnapDir::Left
+            Direction::Left
         } else {
-            SnapDir::Right
+            Direction::Right
         };
         change_snap(ctx, win, dir);
     }

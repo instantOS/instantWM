@@ -7,10 +7,10 @@ use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::tags::sticky::reset_sticky_win;
-use crate::types::{Direction, OverlayMode, Rect, TagMask, WindowId};
+use crate::types::{Direction, HorizontalDirection, OverlayMode, Rect, TagMask, WindowId};
 
-pub fn move_client(ctx: &mut WmCtx, dir: Direction) {
-    shift_tag(ctx, dir, 1);
+pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
+    shift_tag(ctx, dir.into(), 1);
     crate::tags::view::scroll_view(ctx, dir);
 }
 

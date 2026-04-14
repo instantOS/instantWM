@@ -8,7 +8,7 @@
 //!
 //! ```text
 //! user presses snap-left key
-//!      └─► change_snap(win, SnapDir::Left)
+//!      └─► change_snap(win, Direction::Left)
 //!               ├─ saves current float geometry (if entering snap for the first time)
 //!               ├─ looks up new position in SNAP_MATRIX
 //!               └─ calls apply_snap → ctx.move_resize(AnimateTo)
@@ -25,19 +25,6 @@ use crate::layouts::algo::apply_snap_for_window;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
-
-// ── Snap direction ────────────────────────────────────────────────────────────
-
-/// The four cardinal directions used to navigate the snap graph.
-///
-/// `SnapDir::index()` returns the column offset into [`SNAP_MATRIX`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnapDir {
-    Up = 0,
-    Right = 1,
-    Down = 2,
-    Left = 3,
-}
 
 // ── Snap navigation matrix ────────────────────────────────────────────────────
 //
@@ -133,7 +120,7 @@ fn snap_pos_to_index(s: SnapPosition) -> usize {
 ///
 /// If the window is not currently snapped, its current geometry is saved first
 /// so that [`reset_snap`] can restore it later.
-pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
+pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     let (monitor_id, _snap_status) =
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             let status = client.snap_status;
@@ -141,7 +128,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: SnapDir) {
             // Save geometry before entering snap for the first time.
             let new_snap = {
                 let row = snap_pos_to_index(status);
-                let col = direction as usize;
+                let col = direction.snap_matrix_index();
                 SNAP_MATRIX[row][col]
             };
 
