@@ -7,6 +7,372 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/instantOS/instantWM/compare/v0.1.0...v0.1.1) - 2026-04-12
+
+### Added
+
+- add PertagState and TagNames types
+
+### Fixed
+
+- *(ci)* add missing X11/Wayland/DRM development libraries to release-plz workflow
+- fix adjacent tag scroll
+- fix animation being odd
+- fix animation race condition
+- fix CI again
+- fix CI
+- fix screen lock on wayland
+- fix race condition
+- fix animation race condition
+- fix redundant function
+- fix redundant id -> monitor -> id round trips
+- fix tile layout
+- fix release-plz
+- fix monitor unplugs
+- fix cleanup bugs
+- fix xdg focus
+- fix fullscreen weirdness
+- fix activation for fuzzel
+- fix focus client order
+- fix firefox freeze?
+- fix bar titles not updating
+- fix flicker on xwayland
+- fix bar showing on fullscreen windows
+- fix animation regression
+- fix size hints being handled wrong
+- fix mako xdg client activation
+- fix scrolling
+- fix things briefly having the wrong size
+- fix bar performance
+- fix fuzzel steal
+- fix naming
+- fix fullscreen on X11
+- fix crash
+- fix overview and x11 animations
+- fix left/right tag
+- fix dragging on X11
+- fix backend messing with selection
+- fix drop animation
+- fix X11 animation boundary
+- fix right/left view scroll
+- fix scratchpads
+- fix scratchpad resets
+- fix scratchpads behaving odd
+- fix monocle again?
+- fix focus shifting on monocle layout
+- fix hue shift on tray colors
+- fix deferred resize handling
+- fix winit calloop source
+- fix accidental rofi dispatch on mode reset
+- fix rofi and desktop binds conflict
+- *(scratchpad)* properly map and unmap scratchpad windows
+- *(scratchpad)* properly map and unmap scratchpad windows
+- fix gtk clients not spawning
+- fix rotation
+- fix wl-copy causing layout shifts
+- fix list command
+- fix rofi crash
+- fix layer shell focus
+- fix right click popups
+- fix ordering?
+- fix public
+- fix test
+- fix restack after focus_stack
+- fix refcell usage
+- fix scattered focus logic
+- fix shiiiit
+- address clippy warnings and errors
+- fix drag stuff
+- correct cursor z-ordering in winit backend
+- fix no default cursor
+- fix ignored stuff
+- fix flipped image
+- fix dmenu mouse input
+- fix layer shell keeping focus after dying
+- fix cursors
+- fix xinerama
+- fix cursor stuff
+- fix unnecessary reborrow
+- fix build
+- Ensure proper fullscreen rendering without borders
+- Ensure proper fullscreen rendering without borders
+- Ensure proper fullscreen rendering without borders
+- fix dmenu regressions
+- *(wayland)* route input events to subsurfaces properly
+- fix bar drag
+- fix gtk3 interference
+- fix bar hover bug
+- fix hover focus offer
+- fix stuff?
+- fix z order
+- fix drag stacking
+- fix input
+- fix hover state?
+- fix natural scroll
+- fix key delay
+- fix input processing
+- fix dispatch bruh
+- fix dmenu surpressing shortcuts
+- fix status bar rendering
+- fix monitor geometry
+- fix inconsistent winit
+- fix
+- fix stuff
+- fix func signature
+- fix script
+- fix install script
+
+### Other
+
+- cleanup
+- unify animation pipeline
+- more unified queueing
+- unify more windowing animations
+- consolidate some animation logic
+- better animation semantics
+- more pertag mask progress
+- delete apply_pertag_settings, use pertag_state for bar toggle
+- more type safe monitor IDs
+- law of demeter
+- rename tcl
+- rename some variables
+- better release workflow
+- release v0.1.0
+- add default config for IPC
+- ins assist bind
+- less redundant lookups
+- better initializing
+- better launching
+- sane spawn position for floating windows
+- use git smithay
+- cleaner dma
+- better xwayland handling
+- better xwayland support
+- better instantwmctl resize
+- add wlroots portal screen casting
+- better screen recording
+- redo animation system
+- init scaling support for WM UI
+- support relative monitor position
+- refactor size hints
+- better initial tag assignment
+- Merge branch 'main' of github.com:instantOS/instantWM
+- add floating heuristics
+- add support for data protocols (better wl-copy)
+- introduce dynamic default keybinds
+- move hashing off the main thread
+- deduplicate
+- fmt
+- Merge remote-tracking branch 'origin/somefixes' into performance
+- no more self-ipc, and drop invalid bar frames
+- improve powerline appearance
+- better wayland multi monitor support
+- better bar caching
+- refactor X11 state handling
+- cleaner bar drawing
+- more tagmask usage
+- reintroduce scroll view
+- use default scratchpad name more
+- better scratchpad cli
+- more tagmask usage
+- more clear tagmask api
+- make scratchpad initial state configurable
+- fmt
+- refactor keybinds
+- remove unneeded old system
+- unify more stuff
+- event based thingy
+- reduce latency
+- consolidate
+- keep tag history
+- make backends share more code
+- migrate X11 to calloop
+- add way to list monitor modes
+- better mode escapes
+- refactor wayland handlers
+- support screen locking
+- remove kill animation
+- make wl-copy floating
+- better scratchpad listing
+- better scratchpad make
+- nicer transform enum
+- init output config
+- implement an idle inhibitor
+- empty ack handler
+- more delegate
+- carry over optimization from niri
+- better action json output
+- nicer ctl
+- use bincode
+- refactor instantwmctl
+- update pattern matching on client
+- use response enum
+- init response enum
+- better scratchpad info
+- init json flag for instantwmctl
+- add ignore-version-mismatches flag
+- more intuitive
+- better instantwmctl
+- port over niri cursor improvements, handle maximize/minimize
+- dmenu fix
+- make cursor configurable
+- refactor windowing on wayland
+- add more missing cursors
+- add missing cursor
+- remove unnecessessary mode functionality
+- remove duplication, fmt
+- generic mode toggle
+- remove legacy mode command
+- allow merging modes
+- fold prefix thing into modes
+- allow setting keybinds to none
+- remove redundant queries
+- less bloated parameters
+- more simple params
+- move reorder_client
+- move drawing code
+- wayland support for rules
+- make rules toml configurable
+- more unified urgency management
+- rename is_urgent
+- better general focus logic
+- less backend side effects
+- remove redundant logic
+- make state not optional
+- move modules
+- less backend specific stuff in Wm
+- remove unneeded wrapper
+- get rid of useless re-exports
+- make clippy happy
+- more unified globals access patterns
+- start unifying globals access
+- no more linked list, biatch
+- more idiomatic ring buffer
+- remove old list mod
+- clippy fixes
+- migrate to Rust 2024, replace self rolled utf 8 decoder
+- remove unused wrappers
+- make clippy happy
+- remove unused vars
+- Move X11RuntimeConfig from globals.rs to backend/x11/mod.rs
+- unify dragging more
+- better IPC typesafety, less magic numbers
+- remove old cursor type
+- remove commands.rs
+- refactor cursor styles
+- less param bloat
+- less awkward stuff
+- more readable drag type
+- refactor state machine
+- more clear axis resize compute
+- more over x11 functions
+- cleaner monitor manager design
+- add drm gesture support
+- refactor input mod
+- refactor mouse input
+- unify pointer motion handling
+- attempt another dmenu fix
+- attempt dmenu focus fix
+- better source of truth for selection
+- better focus management
+- remove old macros, enable tap to click
+- detectable environment variables
+- init dnd cursor icon support
+- refactor drm/winit unification
+- better xinerama
+- more idiomatic colors
+- less magic numbers
+- reorganize more
+- refactor X11 handling
+- unify drm/winit more
+- refactor mouse drag
+- init bigger wayland refactor
+- refactor borders
+- remove duplicate rect type
+- refactor border elements
+- add randr support
+- add new toplevel foreign protocol implementation
+- ensure dbus session
+- remove unused imports
+- remove dead code
+- remove unneeded trait
+- simplify client manager callsites
+- better encapsulation
+- less huge god object
+- Merge branch 'main' of github.com:instantOS/instantWM
+- init drm wayland dbus systray watcher
+- more desktop bindings
+- Revert "Fix dmenu keyboard grab on Wayland"
+- Merge pull request #227 from instantOS/fix-wayland-dmenu-keyboard-grab-7409422313332858039
+- Fix Wayland XDG shell fullscreen requests
+- remove old die stuff
+- remove unnecessary wrappers
+- remove old functions
+- Merge pull request #222 from instantOS/fix-focus-fallback-on-close-17157674909013637571
+- Fix window focus fallback and focus-on-spawn logic for Wayland and X11
+- less unsafe
+- better spawn behavior
+- mark dirty performance improvements
+- Refactor Wayland touchpad kinetic scrolling fix
+- Fix Wayland touchpad kinetic scrolling by explicitly sending stop events
+- Fix Wayland floating window stacking issues on hover and close
+- Fix Wayland new window restacking z-order
+- add guard area
+- if hover resize
+- add git commit to instantwmctl status
+- more performance opts
+- optimization
+- performance optimizations
+- update plans
+- account for mode deletion edge case
+- add live reloading
+- better keybind macro
+- improve action subcommand
+- add mode IPC command
+- add descriptions to modes
+- better monitor identifiers
+- more monitor config
+- init runtime monitor options
+- add insert capability to toml config
+- init sway like modes feature
+- add swapescape option
+- remove unused vars
+- Merge branch 'main' of github.com:instantOS/instantWM
+- run desloppify
+- process scroll sensitivity
+- init instantwmctl mouse command
+- better error message on instantwmctl
+- more structured instantwmctl
+- init instantwmctl status command
+- better version hash generation
+- detect protocol mismatches
+- refactor IPC thingy
+- better window IPC
+- remove redundant stuff
+- move cursor state
+- unify cursor set and close window
+- more unified animations
+- more unification
+- make more things backend agnostic
+- unify cursor warping
+- remove unneeded wrapper
+- consolidate more bar logic
+- deduplicate i3status handling
+- better i3status support
+- common bar drawing
+- better scratchpad IPC
+- make toml use decent layout fields
+- better keyboard layout IPC
+- systray width caching for X11
+- remove old fields
+- renames
+- docs for actions
+- dedupe IPC
+- better IPC list
+- init IPC actions
+- better actions docs
+- better default config serializer
+
 ## [0.1.0](https://github.com/instantOS/instantWM/releases/tag/v0.1.0) - 2026-04-08
 
 ### Fixed
