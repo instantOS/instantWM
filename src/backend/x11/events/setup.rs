@@ -130,7 +130,7 @@ pub fn setup_root(wm: &mut Wm) {
     let _ = conn.flush();
 
     // Now set wmcheckwin with mutable access
-    data.x11_runtime.wmcheckwin = wmcheckwin;
+    data.x11_runtime.wm_check_win = wmcheckwin;
 
     let mut ctx = wm.ctx();
     crate::monitor::update_geom(&mut ctx);

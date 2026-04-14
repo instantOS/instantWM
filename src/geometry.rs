@@ -209,7 +209,11 @@ pub fn request(ctx: &mut WmCtx<'_>, request: GeometryRequest) {
             }
 
             if request.mode == MoveResizeMode::AnimateTo {
-                ctx.apply_client_geometry_authoritative(request.win, final_rect);
+                crate::client::sync_client_geometry(
+                    ctx.core_mut().globals_mut(),
+                    request.win,
+                    final_rect,
+                );
             }
 
             enqueue_window_animation(ctx, request.win, from, final_rect, effective_frames);

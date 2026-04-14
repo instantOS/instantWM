@@ -12,11 +12,6 @@ fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
-fn finalize_view_change_immediate(ctx: &mut WmCtx, selmon_id: MonitorId) {
-    crate::focus::focus_soft(ctx, None);
-    crate::layouts::arrange(ctx, Some(selmon_id));
-}
-
 fn adjacent_scroll_mask(current_tag: usize, tagset: TagMask, dir: Direction) -> Option<TagMask> {
     if !tagset.is_single() {
         return None;
@@ -400,7 +395,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: Direction) {
     finalize_view_change(ctx, selmon_id);
 }
 
-/// Scroll to adjacent tag and apply layout immediately for post-switch animations.
+/// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: Direction) -> Option<MonitorId> {
     let mon = ctx.core().globals().selected_monitor();
     let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
@@ -409,6 +404,6 @@ pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: Direction) -> Option<MonitorI
 
     let new_mask = adjacent_scroll_mask(current_tag, tagset, dir)?;
     let selmon_id = commit_view_selection(ctx, new_mask)?;
-    finalize_view_change_immediate(ctx, selmon_id);
+    crate::focus::focus_soft(ctx, None);
     Some(selmon_id)
 }

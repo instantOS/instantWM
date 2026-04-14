@@ -704,7 +704,7 @@ pub fn cleanup(wm: &mut Wm) {
         }
     }
 
-    let wmcheckwin = x11_runtime.wmcheckwin;
+    let wmcheckwin = x11_runtime.wm_check_win;
     if wmcheckwin != 0 {
         let _ = conn.destroy_window(wmcheckwin);
     }
