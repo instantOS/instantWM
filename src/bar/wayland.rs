@@ -60,24 +60,23 @@ fn pixel_fill(
     }
 }
 
+use crate::types::geometry::Rect;
+
 fn pixel_fill_rect(
     pixels: &mut [u8],
     canvas_w: i32,
     canvas_h: i32,
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
+    rect: Rect,
     color: [f32; 4],
 ) {
     let r = (color[0] * 255.0) as u8;
     let g = (color[1] * 255.0) as u8;
     let b = (color[2] * 255.0) as u8;
     let a = (color[3] * 255.0) as u8;
-    let x_end = (x + w).min(canvas_w);
-    let y_end = (y + h).min(canvas_h);
-    let x_start = x.max(0);
-    let y_start = y.max(0);
+    let x_end = (rect.x + rect.w).min(canvas_w);
+    let y_end = (rect.y + rect.h).min(canvas_h);
+    let x_start = rect.x.max(0);
+    let y_start = rect.y.max(0);
     if a == 255 {
         for py in y_start..y_end {
             let row_start = ((py * canvas_w + x_start) * 4) as usize;
@@ -613,10 +612,7 @@ impl BarPainter for WaylandBarPainter {
             &mut self.pixels,
             self.canvas_w,
             self.canvas_h,
-            x,
-            y,
-            w,
-            h,
+            Rect::new(x, y, w, h),
             color,
         );
     }
@@ -640,10 +636,7 @@ impl BarPainter for WaylandBarPainter {
             &mut self.pixels,
             self.canvas_w,
             self.canvas_h,
-            x,
-            y,
-            w,
-            h,
+            Rect::new(x, y, w, h),
             bg,
         );
         if detail_height > 0 {
@@ -651,10 +644,7 @@ impl BarPainter for WaylandBarPainter {
                 &mut self.pixels,
                 self.canvas_w,
                 self.canvas_h,
-                x,
-                y + h - detail_height,
-                w,
-                detail_height,
+                Rect::new(x, y + h - detail_height, w, detail_height),
                 scheme.detail,
             );
         }
