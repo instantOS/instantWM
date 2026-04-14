@@ -473,13 +473,27 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
         new_monitors.push(m);
     }
 
-    // Preserve existing tags/clients if possible
+    // Preserve existing state if possible
     for (i, new_m) in new_monitors.iter_mut().enumerate() {
         if let Some(old_m) = ctx.core().globals().monitors.get(MonitorId(i)) {
             new_m.tags = old_m.tags.clone();
             new_m.clients = old_m.clients.clone();
             new_m.stack = old_m.stack.clone();
             new_m.sel = old_m.sel;
+            new_m.bar_win = old_m.bar_win;
+            new_m.pertag = old_m.pertag.clone();
+            new_m.tag_set = old_m.tag_set;
+            new_m.sel_tags = old_m.sel_tags;
+            new_m.current_tag = old_m.current_tag;
+            new_m.prev_tag = old_m.prev_tag;
+            new_m.showbar = old_m.showbar;
+            new_m.mfact = old_m.mfact;
+            new_m.nmaster = old_m.nmaster;
+            new_m.tag_focus_history = old_m.tag_focus_history.clone();
+            new_m.overlay = old_m.overlay;
+            new_m.overlaystatus = old_m.overlaystatus;
+            new_m.overlaymode = old_m.overlaymode;
+            new_m.fullscreen = old_m.fullscreen;
 
             if old_m.monitor_rect.w != new_m.monitor_rect.w
                 || old_m.monitor_rect.h != new_m.monitor_rect.h
