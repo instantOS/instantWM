@@ -47,7 +47,8 @@ Add `log::debug!` for no-op calls (already unmapped, window not found).
 
 ### `src/backend/wayland/compositor/state.rs`
 
-**`request_render`**: Skip redundant ping when `render_dirty` is already true.
+**`request_render`**: Always set `render_dirty = true`. Skip the render ping
+only when `render_dirty` was already true (avoid spurious event-loop wake).
 Add `log::debug!` for redundant render requests.
 
 **`request_space_sync`**: Add `log::debug!` for redundant sync requests
