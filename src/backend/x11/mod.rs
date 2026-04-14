@@ -32,7 +32,6 @@ pub struct X11RuntimeConfig {
     pub xatom: XAtoms,
     pub motifatom: Atom,
     pub numlockmask: u32,
-    pub screen: i32,
     pub root: Window,
     /// The small 1×1 window for _NET_SUPPORTING_WM_CHECK (EWMH).
     pub wm_check_win: Window,
@@ -58,7 +57,6 @@ impl Default for X11RuntimeConfig {
             xatom: XAtoms::default(),
             motifatom: 0,
             numlockmask: 0,
-            screen: 0,
             root: 0,
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),

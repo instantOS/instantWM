@@ -53,17 +53,17 @@ pub fn run() {
 fn wm_init(wm: &mut Wm) {
     setup_signal_handlers();
 
-    let (screen_num, screen, root) = {
+    let (screen, root) = {
         let Some((conn, screen_num)) = wm.backend.x11_conn() else {
             return;
         };
         let screen = conn.setup().roots[screen_num].clone();
         let root = screen.root;
         crate::backend::x11::events::check_other_wm(conn, root);
-        (screen_num, screen, root)
+        (screen, root)
     };
 
-    init_globals(wm, screen_num, root, &screen);
+    init_globals(wm, root, &screen);
 
     init_atoms(&mut wm.backend);
     init_drw_and_schemes(wm);
@@ -96,7 +96,6 @@ fn wm_init(wm: &mut Wm) {
 
 fn init_globals(
     wm: &mut Wm,
-    screen_num: usize,
     root: Window,
     screen: &x11rb::protocol::xproto::Screen,
 ) {
@@ -104,7 +103,6 @@ fn init_globals(
 
     // X11-specific runtime initialization
     if let Some(data) = wm.backend.x11_data_mut() {
-        data.x11_runtime.screen = screen_num as i32;
         data.x11_runtime.root = root;
     }
     wm.g.cfg.screen_width = screen.width_in_pixels as i32;
