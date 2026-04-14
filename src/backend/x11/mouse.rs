@@ -4,7 +4,6 @@ use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::mouse::drag::{
     MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
 };
-use crate::mouse::warp::get_root_ptr;
 use crate::types::{AltCursor, MouseButton, Rect, WindowId};
 use x11rb::protocol::xproto::ConnectionExt;
 
@@ -22,7 +21,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     };
 
     let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let Some((start_x, start_y)) = get_root_ptr(&wm_ctx) else {
+    let Some((start_x, start_y)) = wm_ctx.pointer_location() else {
         return;
     };
 

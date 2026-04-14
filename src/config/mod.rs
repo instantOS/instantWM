@@ -129,7 +129,7 @@ pub struct Config {
 
     // --- Bar / systray ---
     /// Start menu button width in pixels.
-    pub startmenusize: i32,
+    pub startmenu_size: i32,
     /// Index of monitor to pin the systray to (0 = primary).
     pub systraypinning: usize,
     /// Gap in pixels between systray icons.
@@ -137,17 +137,18 @@ pub struct Config {
     /// If systray pinning fails, place it on the first monitor.
     pub systraypinningfailfirst: bool,
     /// Whether to show the systray.
-    pub showsystray: bool,
+    pub show_systray: bool,
     /// Whether to show the bar by default.
     pub showbar: bool,
     /// `true` = bar at top, `false` = bar at bottom.
+    /// TODO: this should probably be bar_position and have an enum with Top and Bottom variants
     pub topbar: bool,
     /// Override bar height (0 = derive from font metrics).
     pub bar_height: i32,
 
     // --- Tiling ---
     /// Respect size hints for tiled clients (`1` = yes).
-    pub resizehints: i32,
+    pub resize_hints: i32,
     /// Respect decoration hints (`1` = yes).
     pub decorhints: i32,
     /// Master area size factor (0.0–1.0).
@@ -164,11 +165,11 @@ pub struct Config {
 
     // --- Color tables ---
     /// `[hover][SchemeWin]`
-    pub windowcolors: WindowColorConfigs,
+    pub window_colors: WindowColorConfigs,
     /// `[hover][SchemeClose]`
     pub closebuttoncolors: CloseButtonColorConfigs,
     /// `[SchemeBorder as usize]`
-    pub bordercolors: BorderColorConfig,
+    pub border_colors: BorderColorConfig,
     /// Status bar colors (fg, bg, detail)
     pub statusbarcolors: StatusColorConfig,
 
@@ -285,17 +286,17 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         snap_threshold: 32,
 
         // --- Bar / systray ---
-        startmenusize: 30,
+        startmenu_size: 30,
         systraypinning: 0,
         systrayspacing: 0,
         systraypinningfailfirst: true,
-        showsystray: true,
+        show_systray: true,
         showbar: true,
         topbar: true,
         bar_height: 0,
 
         // --- Tiling ---
-        resizehints: 1,
+        resize_hints: 1,
         decorhints: 1,
         mfact: 0.55,
         nmaster: 1,
@@ -308,9 +309,9 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         // --- Appearance (from TOML if present, else palette defaults) ---
         fonts: theme.fonts,
         tag_colors: theme.colors.tag,
-        windowcolors: theme.colors.window,
+        window_colors: theme.colors.window,
         closebuttoncolors: theme.colors.close_button,
-        bordercolors: theme.colors.border,
+        border_colors: theme.colors.border,
         statusbarcolors: theme.colors.status,
 
         // --- Bindings (merged with TOML overrides) ---

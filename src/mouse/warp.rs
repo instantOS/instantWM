@@ -23,12 +23,6 @@ pub(crate) const WARP_INTO_PADDING: i32 = 10;
 
 // ── Pointer position query ────────────────────────────────────────────────────
 
-/// Query the current pointer position in root (logical) coordinates.
-/// Returns `None` when the position is unavailable.
-pub fn get_root_ptr(ctx: &WmCtx) -> Option<(i32, i32)> {
-    ctx.pointer_location()
-}
-
 // ── Public backend-agnostic API ───────────────────────────────────────────────
 
 /// Warp the cursor into `win`'s geometry if the cursor is currently outside.

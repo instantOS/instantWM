@@ -15,6 +15,8 @@ use crate::types::WindowId;
 
 /// Walk the client list starting at `start_win` and return the first
 /// client that passes [`Client::is_visible`].
+/// TODO: does this mess with stacking policy? What is a sensible order?
+/// Choosing just ANY client should be the last resort
 pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
     let selected = g.selected_monitor().selected_tags();
 

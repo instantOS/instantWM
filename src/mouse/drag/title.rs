@@ -124,7 +124,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         ctx.core_mut().globals_mut().drag.interactive.start_y = root_y;
     } else {
         warp::warp_into(ctx, win);
-        let ptr = warp::get_root_ptr(ctx).unwrap_or((root_x, root_y));
+        let ptr = ctx.pointer_location().unwrap_or((root_x, root_y));
         let pad = warp::WARP_INTO_PADDING;
         let clamped_x = ptr
             .0
