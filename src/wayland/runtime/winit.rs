@@ -15,7 +15,7 @@ use smithay::reexports::wayland_server::Display;
 use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
-use crate::monitor::update_geom;
+use crate::monitor::refresh_monitor_layout;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{
     ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
@@ -63,7 +63,7 @@ pub fn run() -> ! {
         crate::wayland::common::sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;
     wm.g.cfg.screen_height = initial_h;
-    update_geom(&mut wm.ctx());
+    refresh_monitor_layout(&mut wm.ctx());
 
     // Store initial window size for the calloop source callback.
     state.runtime.winit_window_size = output_size;

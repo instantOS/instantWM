@@ -204,7 +204,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.globals_mut().cfg.screen_width = e.width as i32;
     ctx.core.globals_mut().cfg.screen_height = e.height as i32;
 
-    crate::monitor::update_geom(&mut WmCtx::X11(ctx.reborrow()));
+    crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
     crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
     ctx.core
         .globals_mut()

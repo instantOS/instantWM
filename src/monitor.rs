@@ -397,10 +397,10 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
         }
     }
 
-    update_geom(ctx);
+    refresh_monitor_layout(ctx);
 }
 
-pub fn update_geom(ctx: &mut WmCtx) -> bool {
+pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     // Try the backend's get_outputs first (uses XRandR on X11, native on Wayland)
     let outputs = ctx.backend().get_outputs();
     if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {

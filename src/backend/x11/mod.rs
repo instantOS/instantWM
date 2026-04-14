@@ -167,6 +167,17 @@ impl Drop for ServerGrab<'_> {
     }
 }
 
+/// Query the current geometry of an X11 window via `GetGeometry`.
+pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
+    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
+    Some(Rect {
+        x: reply.x as i32,
+        y: reply.y as i32,
+        w: reply.width as i32,
+        h: reply.height as i32,
+    })
+}
+
 impl BackendOps for X11BackendRef<'_> {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();

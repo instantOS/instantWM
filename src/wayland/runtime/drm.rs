@@ -187,8 +187,8 @@ pub fn run() -> ! {
     let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
 
     {
-        use crate::monitor::update_geom;
-        update_geom(&mut wm.ctx());
+        use crate::monitor::refresh_monitor_layout;
+        refresh_monitor_layout(&mut wm.ctx());
     }
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 

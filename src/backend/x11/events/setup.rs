@@ -133,7 +133,7 @@ pub fn setup_root(wm: &mut Wm) {
     data.x11_runtime.wm_check_win = wmcheckwin;
 
     let mut ctx = wm.ctx();
-    crate::monitor::update_geom(&mut ctx);
+    crate::monitor::refresh_monitor_layout(&mut ctx);
 
     if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
         crate::mouse::set_cursor_style(

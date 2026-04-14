@@ -21,7 +21,7 @@ pub use pointer::{
     motion_event_from_winit,
 };
 
-use crate::monitor::update_geom;
+use crate::monitor::refresh_monitor_layout;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
@@ -122,7 +122,7 @@ pub fn handle_resize(
 
     wm.g.cfg.screen_width = safe_w;
     wm.g.cfg.screen_height = safe_h;
-    update_geom(&mut wm.ctx());
+    refresh_monitor_layout(&mut wm.ctx());
     wm.g.queue_layout_for_all_monitors_urgent();
     state.request_space_sync();
 }

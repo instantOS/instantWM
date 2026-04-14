@@ -13,14 +13,11 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
 
 /// Record the resolved geometry of a managed client.
 ///
@@ -39,28 +36,7 @@ pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
     }
 }
 
-pub fn reconcile_client_geometry_after_backend_resize_x11(
-    globals: &mut Globals,
-    x11: &X11BackendRef<'_>,
-    win: WindowId,
-    requested_rect: Rect,
-) -> Rect {
-    x11.resize_window(win, requested_rect);
-    let _ = x11.conn.flush();
-    let actual_rect = query_x11_window_rect(x11, win).unwrap_or(requested_rect);
-    sync_client_geometry(globals, win, actual_rect);
-    actual_rect
-}
 
-fn query_x11_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
-    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
-    Some(Rect {
-        x: reply.x as i32,
-        y: reply.y as i32,
-        w: reply.width as i32,
-        h: reply.height as i32,
-    })
-}
 
 /// Compute a saner initial position for a newly managed floating client.
 ///
