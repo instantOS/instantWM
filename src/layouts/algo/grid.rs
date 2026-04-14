@@ -63,7 +63,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // ── find the smallest integer r such that r² ≥ n ─────────────────────
     let mut rows: i32 = 0;
-    for r in 0..=n / 2 {
+    for r in 0..=n {
         if r * r >= n {
             rows = r;
             break;
