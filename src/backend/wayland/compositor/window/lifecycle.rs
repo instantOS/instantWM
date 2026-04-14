@@ -1,3 +1,4 @@
+use log::debug;
 use smithay::desktop::Window;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
@@ -109,6 +110,7 @@ impl WaylandState {
         // If the window is already mapped, calling `map_element` will unnecessarily
         // pull it to the top of the stack and disrupt the Z-order.
         if is_already_mapped {
+            debug!("map_window({window:?}): no-op, already mapped");
             return;
         }
 
@@ -140,10 +142,12 @@ impl WaylandState {
     /// show/hide pass.
     pub fn unmap_window(&mut self, window: WindowId) {
         let Some(element) = self.window_index.get(&window).cloned() else {
+            debug!("unmap_window({window:?}): no-op, window not found");
             return;
         };
         let is_mapped = self.space.elements().any(|w| w == &element);
         if !is_mapped {
+            debug!("unmap_window({window:?}): no-op, already unmapped");
             return;
         }
 
@@ -151,9 +155,6 @@ impl WaylandState {
         self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
-        if let Some(g) = self.globals_mut() {
-            g.queue_layout_for_client(window);
-        }
         self.request_space_sync();
     }
 

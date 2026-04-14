@@ -515,14 +515,19 @@ impl WaylandState {
 
     #[inline]
     pub fn request_render(&mut self) {
-        self.runtime.render_dirty = true;
-        if let Some(render_ping) = &self.runtime.render_ping {
+        if self.runtime.render_dirty {
+            log::debug!("request_render: ping skipped, already dirty");
+        } else if let Some(render_ping) = &self.runtime.render_ping {
             render_ping.ping();
         }
+        self.runtime.render_dirty = true;
     }
 
     #[inline]
     pub fn request_space_sync(&mut self) {
+        if self.runtime.space_sync_pending {
+            log::debug!("request_space_sync: already pending");
+        }
         self.runtime.space_sync_pending = true;
     }
 
