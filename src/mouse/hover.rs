@@ -21,7 +21,6 @@ use x11rb::protocol::xproto::*;
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::set_cursor_style;
-use super::warp::get_root_ptr;
 
 use super::resize::resize_mouse_directional;
 
@@ -307,7 +306,7 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        let Some((x, y)) = get_root_ptr(&wm_ctx) else {
+        let Some((x, y)) = wm_ctx.pointer_location() else {
             return false;
         };
         let in_border = is_in_resize_border(&wm_ctx, x, y);
@@ -347,7 +346,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
 
                 x11rb::protocol::Event::MotionNotify(_) => {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    let in_border = get_root_ptr(&wm_ctx)
+                    let in_border = wm_ctx.pointer_location()
                         .map(|(x, y)| is_in_resize_border(&wm_ctx, x, y))
                         .unwrap_or(false);
                     if !in_border {
@@ -355,7 +354,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
                         let target = get_cursor_client_win(&mut wm_ctx)
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
-                                let (x, y) = get_root_ptr(&wm_ctx)?;
+                                let (x, y) = wm_ctx.pointer_location()?;
                                 find_tiled_win_at_point(&wm_ctx, x, y, sel)
                             });
                         if let Some(win) = target {
@@ -485,7 +484,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtxX11) -> bool {
             return false;
         }
 
-        let Some((x, y)) = get_root_ptr(&wm_ctx) else {
+        let Some((x, y)) = wm_ctx.pointer_location() else {
             return false;
         };
 

@@ -7,7 +7,6 @@ use crate::backend::x11::grab::mouse_drag_loop;
 use crate::bar::bar_position_to_gesture;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::cursor::set_cursor_style;
-use crate::mouse::warp::get_root_ptr;
 use crate::types::*;
 use x11rb::protocol::xproto::ModMask;
 
@@ -25,7 +24,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => 1u32 << (idx as u32),
         _ => {
-            let ptr_x = get_root_ptr(ctx).map(|(x, _)| x).unwrap_or(0);
+            let ptr_x = ctx.pointer_location().map(|(x, _)| x).unwrap_or(0);
             let core = ctx.core();
             core.globals()
                 .monitors

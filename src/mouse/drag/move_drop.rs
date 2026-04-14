@@ -17,7 +17,6 @@ use crate::types::*;
 use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 
 use crate::mouse::monitor::handle_client_monitor_switch;
-use crate::mouse::warp::get_root_ptr;
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
@@ -401,7 +400,7 @@ pub fn handle_bar_drop(
     grab_start_rect: Rect,
     pointer_override: Option<(i32, i32)>,
 ) {
-    let Some((ptr_x, ptr_y)) = pointer_override.or_else(|| get_root_ptr(ctx)) else {
+    let Some((ptr_x, ptr_y)) = pointer_override.or_else(|| ctx.pointer_location()) else {
         return;
     };
     if !point_is_on_bar(ctx, ptr_x, ptr_y) {
@@ -542,7 +541,7 @@ pub fn complete_move_drop(
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<(i32, i32)>,
 ) {
-    let pointer = pointer_override.or_else(|| get_root_ptr(ctx));
+    let pointer = pointer_override.or_else(|| ctx.pointer_location());
     let edge = edge_hint.or_else(|| pointer.and_then(|(x, y)| check_edge_snap(ctx, x, y)));
     let handled_edge = pointer
         .map(|(_x, y)| apply_edge_drop(ctx, win, edge, y))

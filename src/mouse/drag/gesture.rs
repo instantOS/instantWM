@@ -3,7 +3,6 @@
 //! This module handles root-window gestures like vertical swipes.
 
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::mouse::warp::get_root_ptr;
 use crate::types::*;
 
 /// Root-window vertical-swipe gesture recogniser.
@@ -18,7 +17,7 @@ pub fn gesture_mouse(ctx: &mut WmCtx, btn: MouseButton) {
 
 pub fn gesture_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
     let wm_ctx = WmCtx::X11(ctx.reborrow());
-    let Some((_, start_y)) = get_root_ptr(&wm_ctx) else {
+    let Some((_, start_y)) = wm_ctx.pointer_location() else {
         return;
     };
 
