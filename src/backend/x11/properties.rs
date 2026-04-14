@@ -22,7 +22,6 @@ use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 pub fn set_client_state(
-    _core: &CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,

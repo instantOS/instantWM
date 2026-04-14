@@ -408,7 +408,6 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
         .unwrap_or(false);
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
         set_client_state(
-            &ctx_x11.core,
             &ctx_x11.x11,
             ctx_x11.x11_runtime,
             w,
@@ -553,7 +552,6 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
                     .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
 
             set_client_state(
-                &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
                 win,

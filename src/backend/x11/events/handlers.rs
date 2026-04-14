@@ -558,7 +558,6 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     if ctx.core.globals().clients.contains_key(&event_win) {
         if e.response_type & 0x80 != 0 {
             crate::backend::x11::set_client_state(
-                &ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
                 event_win,
@@ -721,7 +720,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         ctx.x11_runtime,
         ctx.systray.as_deref_mut(),
     );
-    crate::backend::x11::set_client_state(&ctx.core, &ctx.x11, ctx.x11_runtime, icon_win, 1);
+    crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, icon_win, 1);
 }
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {

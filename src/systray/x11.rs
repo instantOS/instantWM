@@ -156,7 +156,7 @@ pub fn update_systray_icon_state(
             u32::from(systray_win) as i64,
             XEMBED_EMBEDDED_VERSION as i64,
         );
-        set_client_state(core, x11, x11_runtime, icon_win, 1);
+        set_client_state(x11, x11_runtime, icon_win, 1);
     } else if (flags & XEMBED_MAPPED) == 0 && !current_tags.is_empty() {
         if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
             client.tags = crate::types::TagMask::EMPTY;
@@ -176,7 +176,7 @@ pub fn update_systray_icon_state(
             u32::from(systray_win) as i64,
             XEMBED_EMBEDDED_VERSION as i64,
         );
-        set_client_state(core, x11, x11_runtime, icon_win, 0);
+        set_client_state(x11, x11_runtime, icon_win, 0);
     }
 }
 
