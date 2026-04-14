@@ -21,6 +21,7 @@
 //! fullscreen) but the window remains in the normal layout stack with its
 //! border intact.
 
+use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::{MoveResizeMode, MoveResizeOptions};
@@ -29,35 +30,6 @@ use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
-use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
-
-fn read_net_wm_state_atoms(ctx_x11: &WmCtxX11<'_>, x11_win: Window) -> Vec<u32> {
-    ctx_x11
-        .x11
-        .conn
-        .get_property(
-            false,
-            x11_win,
-            ctx_x11.x11_runtime.netatom.wm_state,
-            AtomEnum::ATOM,
-            0,
-            u32::MAX,
-        )
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().map(|it| it.collect()))
-        .unwrap_or_default()
-}
-
-fn write_net_wm_state_atoms(ctx_x11: &WmCtxX11<'_>, x11_win: Window, atoms: &[u32]) {
-    let _ = ctx_x11.x11.conn.change_property32(
-        PropMode::REPLACE,
-        x11_win,
-        ctx_x11.x11_runtime.netatom.wm_state,
-        AtomEnum::ATOM,
-        atoms,
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Real fullscreen
@@ -66,7 +38,8 @@ fn write_net_wm_state_atoms(ctx_x11: &WmCtxX11<'_>, x11_win: Window, atoms: &[u3
 /// Enter or exit fullscreen for `win`.
 pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen: bool) {
     let x11_win: Window = win.into();
-
+    let conn = ctx_x11.x11.conn;
+    let wm_state = ctx_x11.x11_runtime.netatom.wm_state;
     let net_wm_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
 
     // Snapshot what we need before taking a mutable borrow.
@@ -89,11 +62,11 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
     if fullscreen && !is_fs {
         // ---- Enter fullscreen -----------------------------------------------
 
-        let mut state_atoms = read_net_wm_state_atoms(ctx_x11, x11_win);
+        let mut state_atoms = get_atom_props(conn, x11_win, wm_state);
         if !state_atoms.contains(&net_wm_fullscreen) {
             state_atoms.push(net_wm_fullscreen);
         }
-        write_net_wm_state_atoms(ctx_x11, x11_win, &state_atoms);
+        write_net_wm_state_atoms(conn, x11_win, wm_state, &state_atoms);
 
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = true;
@@ -155,9 +128,9 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
     } else if !fullscreen && is_fs {
         // ---- Exit fullscreen ------------------------------------------------
 
-        let mut state_atoms = read_net_wm_state_atoms(ctx_x11, x11_win);
+        let mut state_atoms = get_atom_props(conn, x11_win, wm_state);
         state_atoms.retain(|&atom| atom != net_wm_fullscreen);
-        write_net_wm_state_atoms(ctx_x11, x11_win, &state_atoms);
+        write_net_wm_state_atoms(conn, x11_win, wm_state, &state_atoms);
 
         let mut restored_border = 0;
 

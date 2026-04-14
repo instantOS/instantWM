@@ -304,6 +304,21 @@ pub fn get_atom_props(
         .unwrap_or_default()
 }
 
+pub fn write_net_wm_state_atoms(
+    conn: &x11rb::rust_connection::RustConnection,
+    x11_win: Window,
+    wm_state_atom: u32,
+    atoms: &[u32],
+) {
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_win,
+        wm_state_atom,
+        AtomEnum::ATOM,
+        atoms,
+    );
+}
+
 fn read_window_title(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, win: WindowId) -> String {
     let conn = x11.conn;
     let x11_win: Window = win.into();
