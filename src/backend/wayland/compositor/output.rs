@@ -31,7 +31,11 @@ impl WaylandState {
     pub fn create_output(&mut self, name: &str, width: i32, height: i32) -> Output {
         let safe_width = width.max(Self::MIN_WL_DIM);
         let safe_height = height.max(Self::MIN_WL_DIM);
-        let output = Output::new(
+        let mode = OutputMode {
+            size: (safe_width, safe_height).into(),
+            refresh: 60_000,
+        };
+        let output = self.create_output_global(
             name.to_string(),
             PhysicalProperties {
                 size: (0, 0).into(),
@@ -40,27 +44,33 @@ impl WaylandState {
                 model: "instantWM".into(),
                 serial_number: "Unknown".into(),
             },
+            mode,
+            (0, 0),
         );
-
-        let mode = OutputMode {
-            size: (safe_width, safe_height).into(),
-            refresh: 60_000,
-        };
-
-        output.change_current_state(
-            Some(mode),
-            Some(Transform::Normal),
-            Some(Scale::Integer(1)),
-            Some((0, 0).into()),
-        );
-        output.set_preferred(mode);
-
-        let _global = output.create_global::<WaylandState>(&self.display_handle);
         self.space.map_output(&output, (0, 0));
         self.set_output_vrr_support(name, BackendVrrSupport::Unsupported);
         self.set_output_vrr_mode(name, VrrMode::Off);
         self.set_output_vrr_enabled(name, false);
 
+        output
+    }
+
+    pub(crate) fn create_output_global(
+        &self,
+        name: String,
+        physical_properties: PhysicalProperties,
+        mode: OutputMode,
+        location: (i32, i32),
+    ) -> Output {
+        let output = Output::new(name, physical_properties);
+        output.change_current_state(
+            Some(mode),
+            Some(Transform::Normal),
+            Some(Scale::Integer(1)),
+            Some(location.into()),
+        );
+        output.set_preferred(mode);
+        let _global = output.create_global::<WaylandState>(&self.display_handle);
         output
     }
 

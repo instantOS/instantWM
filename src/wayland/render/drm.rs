@@ -19,10 +19,9 @@ use smithay::desktop::utils::{
     OutputPresentationFeedback, surface_presentation_feedback_flags_from_states,
     surface_primary_scanout_output, take_presentation_feedback_surface_tree,
 };
-use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel};
+use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::drm::control::Device as ControlDevice;
-use smithay::reexports::drm::control::connector;
-use smithay::reexports::drm::control::crtc;
+use smithay::reexports::drm::control::{self, connector, crtc};
 use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 
 use crate::backend::BackendVrrSupport;
@@ -82,123 +81,194 @@ pub fn build_output_surfaces(
     let init_render_elements = DrmOutputRenderElements::<GlesRenderer, DrmExtras>::default();
 
     for &conn_handle in res.connectors() {
-        let Ok(conn_info) = output_manager.device().get_connector(conn_handle, false) else {
+        let Some(spec) = drm_output_spec(output_manager, &res, conn_handle, &used_crtcs) else {
             continue;
         };
-        if conn_info.state() != connector::State::Connected
-            && conn_info.state() != connector::State::Unknown
-        {
-            continue;
-        }
-        let modes = conn_info.modes();
-        if modes.is_empty() {
-            continue;
-        }
 
-        let mut sorted_modes = modes.to_vec();
-        sorted_modes.sort_by(|a, b| {
-            let (aw, ah) = a.size();
-            let (bw, bh) = b.size();
-            (bw as u64 * bh as u64)
-                .cmp(&(aw as u64 * ah as u64))
-                .then_with(|| b.vrefresh().cmp(&a.vrefresh()))
-        });
-        let mode = sorted_modes[0];
-
-        let encoder_crtcs: Vec<crtc::Handle> = conn_info
-            .encoders()
-            .iter()
-            .filter_map(|&enc_h| output_manager.device().get_encoder(enc_h).ok())
-            .flat_map(|enc| res.filter_crtcs(enc.possible_crtcs()))
-            .collect();
-
-        let Some(&picked_crtc) = encoder_crtcs.iter().find(|c| !used_crtcs.contains(c)) else {
-            continue;
-        };
-        used_crtcs.push(picked_crtc);
-
-        let (mode_w, mode_h) = mode.size();
-        let (mode_w, mode_h) = (mode_w as i32, mode_h as i32);
-        let output_name = format!(
-            "{}-{}",
-            connector_type_name(conn_info.interface()),
-            conn_info.interface_id()
+        used_crtcs.push(spec.crtc);
+        let entry = initialize_drm_output_surface(
+            output_manager,
+            renderer,
+            state,
+            &init_render_elements,
+            spec,
+            output_x_offset,
         );
-        log::info!(
-            "Output {output_name}: {mode_w}x{mode_h}@{}Hz on CRTC {:?}",
-            mode.vrefresh(),
-            picked_crtc
-        );
-
-        let output = Output::new(
-            output_name.clone(),
-            PhysicalProperties {
-                size: {
-                    let (mm_w, mm_h) = conn_info.size().unwrap_or((0, 0));
-                    (mm_w as i32, mm_h as i32).into()
-                },
-                subpixel: Subpixel::Unknown,
-                make: "instantOS".into(),
-                model: "instantWM".into(),
-                serial_number: "Unknown".into(),
-            },
-        );
-        let out_mode = OutputMode {
-            size: (mode_w, mode_h).into(),
-            refresh: (mode.vrefresh() as i32) * 1000,
-        };
-        output.change_current_state(
-            Some(out_mode),
-            Some(smithay::utils::Transform::Normal),
-            Some(Scale::Integer(1)),
-            Some((output_x_offset, 0).into()),
-        );
-        output.set_preferred(out_mode);
-        let _global = output.create_global::<WaylandState>(&state.display_handle);
-
-        let surface = output_manager
-            .lock()
-            .initialize_output(
-                picked_crtc,
-                mode,
-                &[conn_handle],
-                &output,
-                None,
-                renderer,
-                &init_render_elements,
-            )
-            .expect("initialize_output");
-        let vrr_support =
-            match surface.with_compositor(|compositor| compositor.vrr_supported(conn_handle)) {
-                Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
-                Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
-                Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
-            };
-        state.set_output_vrr_support(&output_name, vrr_support);
-        let configured_vrr_mode = state
-            .output_vrr_metadata(&output_name)
-            .map(|m| m.vrr_mode)
-            .unwrap_or(VrrMode::Auto);
-        state.set_output_vrr_mode(&output_name, configured_vrr_mode);
-        state.set_output_vrr_enabled(&output_name, false);
-        log::info!("Output {output_name}: VRR support = {:?}", vrr_support);
-
-        output_surfaces.push(OutputSurfaceEntry {
-            crtc: picked_crtc,
-            connector: conn_handle,
-            surface,
-            output: output.clone(),
-            x_offset: output_x_offset,
-            width: mode_w,
-            height: mode_h,
-            vrr_support,
-            configured_vrr_mode,
-            vrr_enabled: false,
-        });
-        output_x_offset += mode_w;
+        output_x_offset += entry.width;
+        output_surfaces.push(entry);
     }
 
     output_surfaces
+}
+
+struct DrmOutputSpec {
+    connector: connector::Handle,
+    crtc: crtc::Handle,
+    mode: control::Mode,
+    width: i32,
+    height: i32,
+    physical_size: (i32, i32),
+    name: String,
+}
+
+fn drm_output_spec(
+    output_manager: &ManagedDrmOutputManager,
+    resources: &control::ResourceHandles,
+    connector: connector::Handle,
+    used_crtcs: &[crtc::Handle],
+) -> Option<DrmOutputSpec> {
+    let conn_info = output_manager
+        .device()
+        .get_connector(connector, false)
+        .ok()?;
+    if !is_usable_connector(&conn_info) {
+        return None;
+    }
+
+    let mode = best_connector_mode(conn_info.modes())?;
+    let crtc = unused_connector_crtc(output_manager, resources, &conn_info, used_crtcs)?;
+    let (width, height) = mode.size();
+    let physical_size = conn_info.size().unwrap_or((0, 0));
+
+    Some(DrmOutputSpec {
+        connector,
+        crtc,
+        mode,
+        width: width as i32,
+        height: height as i32,
+        physical_size: (physical_size.0 as i32, physical_size.1 as i32),
+        name: format!(
+            "{}-{}",
+            connector_type_name(conn_info.interface()),
+            conn_info.interface_id()
+        ),
+    })
+}
+
+fn is_usable_connector(conn_info: &connector::Info) -> bool {
+    matches!(
+        conn_info.state(),
+        connector::State::Connected | connector::State::Unknown
+    ) && !conn_info.modes().is_empty()
+}
+
+fn best_connector_mode(modes: &[control::Mode]) -> Option<control::Mode> {
+    modes.iter().copied().max_by(|a, b| {
+        let (aw, ah) = a.size();
+        let (bw, bh) = b.size();
+        (aw as u64 * ah as u64)
+            .cmp(&(bw as u64 * bh as u64))
+            .then_with(|| a.vrefresh().cmp(&b.vrefresh()))
+    })
+}
+
+fn unused_connector_crtc(
+    output_manager: &ManagedDrmOutputManager,
+    resources: &control::ResourceHandles,
+    conn_info: &connector::Info,
+    used_crtcs: &[crtc::Handle],
+) -> Option<crtc::Handle> {
+    conn_info
+        .encoders()
+        .iter()
+        .filter_map(|&enc_h| output_manager.device().get_encoder(enc_h).ok())
+        .flat_map(|enc| resources.filter_crtcs(enc.possible_crtcs()))
+        .find(|crtc| !used_crtcs.contains(crtc))
+}
+
+fn initialize_drm_output_surface(
+    output_manager: &mut ManagedDrmOutputManager,
+    renderer: &mut GlesRenderer,
+    state: &mut WaylandState,
+    init_render_elements: &DrmOutputRenderElements<GlesRenderer, DrmExtras>,
+    spec: DrmOutputSpec,
+    x_offset: i32,
+) -> OutputSurfaceEntry {
+    log::info!(
+        "Output {}: {}x{}@{}Hz on CRTC {:?}",
+        spec.name,
+        spec.width,
+        spec.height,
+        spec.mode.vrefresh(),
+        spec.crtc
+    );
+
+    let output = create_drm_wayland_output(state, &spec, x_offset);
+    let surface = output_manager
+        .lock()
+        .initialize_output(
+            spec.crtc,
+            spec.mode,
+            &[spec.connector],
+            &output,
+            None,
+            renderer,
+            init_render_elements,
+        )
+        .expect("initialize_output");
+    let (vrr_support, configured_vrr_mode) =
+        configure_drm_output_vrr(state, &spec.name, spec.connector, &surface);
+
+    OutputSurfaceEntry {
+        crtc: spec.crtc,
+        connector: spec.connector,
+        surface,
+        output: output.clone(),
+        x_offset,
+        width: spec.width,
+        height: spec.height,
+        vrr_support,
+        configured_vrr_mode,
+        vrr_enabled: false,
+    }
+}
+
+fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offset: i32) -> Output {
+    let out_mode = OutputMode {
+        size: (spec.width, spec.height).into(),
+        refresh: (spec.mode.vrefresh() as i32) * 1000,
+    };
+    state.create_output_global(
+        spec.name.clone(),
+        PhysicalProperties {
+            size: spec.physical_size.into(),
+            subpixel: Subpixel::Unknown,
+            make: "instantOS".into(),
+            model: "instantWM".into(),
+            serial_number: "Unknown".into(),
+        },
+        out_mode,
+        (x_offset, 0),
+    )
+}
+
+fn configure_drm_output_vrr(
+    state: &mut WaylandState,
+    output_name: &str,
+    connector: connector::Handle,
+    surface: &state::ManagedDrmOutput,
+) -> (BackendVrrSupport, VrrMode) {
+    let vrr_support = drm_surface_vrr_support(surface, connector);
+    state.set_output_vrr_support(output_name, vrr_support);
+    let configured_vrr_mode = state
+        .output_vrr_metadata(output_name)
+        .map(|m| m.vrr_mode)
+        .unwrap_or(VrrMode::Auto);
+    state.set_output_vrr_mode(output_name, configured_vrr_mode);
+    state.set_output_vrr_enabled(output_name, false);
+    log::info!("Output {output_name}: VRR support = {:?}", vrr_support);
+    (vrr_support, configured_vrr_mode)
+}
+
+fn drm_surface_vrr_support(
+    surface: &state::ManagedDrmOutput,
+    connector: connector::Handle,
+) -> BackendVrrSupport {
+    match surface.with_compositor(|compositor| compositor.vrr_supported(connector)) {
+        Ok(VrrSupport::Supported) => BackendVrrSupport::Supported,
+        Ok(VrrSupport::RequiresModeset) => BackendVrrSupport::RequiresModeset,
+        Ok(VrrSupport::NotSupported) | Err(_) => BackendVrrSupport::Unsupported,
+    }
 }
 
 pub fn create_output_manager(
@@ -625,12 +695,6 @@ pub fn render_drm_output(
     match entry.surface.queue_frame(frame_metadata) {
         Ok(()) => {}
         Err(FrameError::EmptyFrame) => {
-            // Even when KMS can skip submitting an unchanged frame, visible
-            // Wayland clients still need their frame callbacks to keep driving
-            // content updates. Without this, callback-paced clients such as
-            // Firefox can appear frozen until unrelated input dirties the
-            // output and forces a real page flip.
-            send_frame_callbacks(state, &entry.output, start_time.elapsed());
             return RenderOutcome::Skipped;
         }
         Err(err) => {
