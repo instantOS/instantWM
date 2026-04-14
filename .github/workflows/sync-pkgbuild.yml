@@ -64,7 +64,7 @@ jobs:
           )"
 
           # Try common PKGBUILD locations
-          for pkgbuild_file in pkgbuild/instantwm/PKGBUILD PKGBUILD instantwm/PKGBUILD; do
+          for pkgbuild_file in packaging/arch/PKGBUILD pkgbuild/instantwm/PKGBUILD PKGBUILD instantwm/PKGBUILD; do
             if [[ -f "$pkgbuild_file" ]]; then
               break
             fi
