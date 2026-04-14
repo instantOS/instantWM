@@ -1,6 +1,6 @@
 //! X11 atom types.
 //!
-//! Named structs for X11 protocol atoms replacing the old array-based approach.
+//! Named structs for X11 protocol atoms
 
 /// Named struct for WM protocol atoms (replaces `wmatom: [u32; 4]`).
 #[derive(Debug, Clone, Copy, Default)]

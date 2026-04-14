@@ -23,6 +23,7 @@
 
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::layouts::{arrange, restack};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -119,12 +120,13 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
             if !is_floating {
-                crate::animation::move_resize_client(
-                    &mut WmCtx::X11(ctx_x11.reborrow()),
+                WmCtx::X11(ctx_x11.reborrow()).move_resize(
                     win,
-                    &mon_rect,
-                    crate::animation::MoveResizeMode::AnimateTo,
-                    EMPHASIZED_FRAME_COUNT,
+                    mon_rect,
+                    MoveResizeOptions {
+                        mode: MoveResizeMode::AnimateTo,
+                        frames: EMPHASIZED_FRAME_COUNT,
+                    },
                 );
             }
 
@@ -174,7 +176,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         if !is_fake_fs {
             // Snap back to the geometry that was stored before going fullscreen.
             let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
-            wmctx.resize_client(win, old_geo);
+            wmctx.move_resize(win, old_geo, MoveResizeOptions::immediate());
             arrange(&mut wmctx, Some(monitor_id));
         } else {
             let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
@@ -221,7 +223,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
             .unwrap_or_default();
 
         let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-        wm_ctx.resize_client(
+        wm_ctx.move_resize(
             win,
             Rect {
                 x: mon_rect.x + borderpx,
@@ -229,6 +231,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
                 w: mon_rect.w - 2 * borderpx,
                 h: mon_rect.h - 2 * borderpx,
             },
+            MoveResizeOptions::immediate(),
         );
 
         let x11_win: Window = win.into();

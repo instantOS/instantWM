@@ -19,11 +19,11 @@ use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
 use crate::types::BarPosition;
 use crate::types::WindowId;
-use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
+use x11rb::CURRENT_TIME;
 
 #[derive(Default)]
 pub struct FocusState {
@@ -41,7 +41,8 @@ pub struct FocusState {
 ///
 /// Some clients (e.g. those that cache their own geometry) need this to
 /// learn about position/size changes that did not originate from their own
-/// `ConfigureRequest`.  We send it after every [`super::geometry::resize_client`]
+/// `ConfigureRequest`.  We send it after every authoritative
+/// [`crate::contexts::WmCtx::move_resize`] application.
 /// call.
 pub fn configure_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;

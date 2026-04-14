@@ -2,6 +2,7 @@
 
 use crate::contexts::WmCtx;
 use crate::floating::save_floating_geometry;
+use crate::geometry::MoveResizeOptions;
 use crate::types::{MonitorId, Rect, WindowId};
 use std::cmp::max;
 
@@ -101,7 +102,7 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
         .collect();
 
     for win in fullscreen_windows {
-        ctx.resize_client(win, mon_rect);
+        ctx.move_resize(win, mon_rect, MoveResizeOptions::immediate());
     }
 }
 
@@ -180,7 +181,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
             w: work_rect.w - 2 * bw,
             h: work_rect.h - 2 * bw,
         };
-        ctx.resize_client(win, geo);
+        ctx.move_resize(win, geo, MoveResizeOptions::immediate());
     }
 }
 

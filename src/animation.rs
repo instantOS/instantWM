@@ -1,5 +1,6 @@
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
+use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::types::*;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -53,8 +54,8 @@ pub fn interpolate_animation_tick(animation: &WindowAnimation, now: Instant) -> 
 /// Cancel an in-flight X11 animation by snapping directly to its target.
 pub fn cancel_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: WindowId) {
     if let Some(anim) = ctx.x11_runtime.take_window_animation(win) {
-        crate::contexts::WmCtx::X11(ctx.reborrow())
-            .apply_client_geometry_authoritative(win, anim.to);
+        let mut wmctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+        wmctx.set_geometry_impl(win, anim.to, GeometryApplyMode::Logical);
     }
 }
 
@@ -77,90 +78,11 @@ pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum MoveResizeMode {
-    /// The window is moving to a new position.  Cancelling snaps to target.
-    /// Updates c.geo immediately.
-    AnimateTo,
-    /// Instant move, no animation.
-    Immediate,
-    /// Purely decorative: the window visually starts from the given position
-    /// and animates back to where it already logically is.  Cancelling snaps
-    /// to the original (current) position.  c.geo is NOT changed.
-    AnimateFrom(Rect),
-}
-
-pub fn move_resize_client(
-    ctx: &mut WmCtx<'_>,
-    win: WindowId,
-    target: &Rect,
-    mode: MoveResizeMode,
-    frames: i32,
-) {
-    crate::geometry::request(
-        ctx,
-        crate::geometry::GeometryRequest {
-            win,
-            target: *target,
-            mode,
-            frames,
-            reason: crate::geometry::GeometryReason::Animation,
-        },
-    );
-}
-
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
     let old_selected_tags = ctx.core().globals().selected_monitor().selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {
         return;
     };
-
-    if matches!(ctx, WmCtx::X11(_)) {
-        let (monitor_rect, selected_tags, clients) = {
-            let Some(monitor) = ctx.core().globals().monitor(selmon_id) else {
-                return;
-            };
-            (
-                monitor.monitor_rect,
-                monitor.selected_tags(),
-                monitor.clients.clone(),
-            )
-        };
-
-        let mut entering_targets = Vec::new();
-        for win in clients {
-            let Some(client) = ctx.client(win).cloned() else {
-                continue;
-            };
-            if !client.is_visible(selected_tags)
-                || client.is_visible(old_selected_tags)
-                || client.is_true_fullscreen()
-                || !client.geo.is_valid()
-            {
-                continue;
-            }
-            entering_targets.push((win, client.geo, client.border_width()));
-        }
-
-        for (win, target, border_width) in entering_targets {
-            let start_x = match dir {
-                Direction::Left | Direction::Up => monitor_rect.x - target.w - border_width * 2,
-                Direction::Right | Direction::Down => {
-                    monitor_rect.x + monitor_rect.w + border_width * 2
-                }
-            };
-            let start = Rect {
-                x: start_x,
-                y: target.y,
-                w: target.w,
-                h: target.h,
-            };
-            ctx.apply_client_geometry_authoritative(win, start);
-        }
-
-        crate::layouts::arrange(ctx, Some(selmon_id));
-        return;
-    }
 
     crate::layouts::arrange(ctx, Some(selmon_id));
 
@@ -181,6 +103,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
             continue;
         };
         if !client.is_visible(selected_tags)
+            || client.is_visible(old_selected_tags)
             || client.is_true_fullscreen()
             || !client.geo.is_valid()
         {
@@ -202,12 +125,10 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: Direction) {
             w: target.w,
             h: target.h,
         };
-        move_resize_client(
-            ctx,
+        ctx.move_resize(
             win,
-            &target,
-            MoveResizeMode::AnimateFrom(start),
-            DEFAULT_FRAME_COUNT,
+            target,
+            MoveResizeOptions::animate_from(start, DEFAULT_FRAME_COUNT),
         );
     }
 }

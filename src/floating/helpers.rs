@@ -3,6 +3,7 @@
 //! None of these functions mutate floating state – they only inspect it.
 
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::geometry::MoveResizeOptions;
 use crate::types::WindowId;
 
 // ── Layout query ─────────────────────────────────────────────────────────────
@@ -49,6 +50,6 @@ pub fn apply_size(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if let Some(mut rect) = geo {
         rect.x += 1;
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        wm_ctx.resize_client(win, rect);
+        wm_ctx.move_resize(win, rect, MoveResizeOptions::immediate());
     }
 }

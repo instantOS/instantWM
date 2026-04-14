@@ -94,11 +94,7 @@ fn wm_init(wm: &mut Wm) {
     }
 }
 
-fn init_globals(
-    wm: &mut Wm,
-    root: Window,
-    screen: &x11rb::protocol::xproto::Screen,
-) {
+fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Screen) {
     let cfg = init_config(BackendKind::X11);
 
     // X11-specific runtime initialization

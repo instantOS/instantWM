@@ -1,37 +1,52 @@
 use std::time::{Duration, Instant};
 
-use crate::animation::{MoveResizeMode, WindowAnimation};
+use crate::animation::WindowAnimation;
 use crate::constants::animation::{
     DISTANCE_THRESHOLD, FRAME_SLEEP_MICROS, X11_ANIM_FULL_THRESHOLD, X11_ANIM_REDUCE_THRESHOLD,
 };
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
 
-#[derive(Clone, Copy, Debug)]
-pub enum GeometryReason {
-    Direct,
-    Animation,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum MoveResizeMode {
+    AnimateTo,
+    Immediate,
+    AnimateFrom(Rect),
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct GeometryRequest {
-    pub win: WindowId,
-    pub target: Rect,
+pub struct MoveResizeOptions {
     pub mode: MoveResizeMode,
     pub frames: i32,
-    pub reason: GeometryReason,
 }
 
-impl GeometryRequest {
-    pub fn immediate(win: WindowId, target: Rect, reason: GeometryReason) -> Self {
+impl MoveResizeOptions {
+    pub fn immediate() -> Self {
         Self {
-            win,
-            target,
             mode: MoveResizeMode::Immediate,
             frames: 0,
-            reason,
         }
     }
+
+    pub fn animate_to(frames: i32) -> Self {
+        Self {
+            mode: MoveResizeMode::AnimateTo,
+            frames,
+        }
+    }
+
+    pub fn animate_from(from: Rect, frames: i32) -> Self {
+        Self {
+            mode: MoveResizeMode::AnimateFrom(from),
+            frames,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum GeometryApplyMode {
+    Logical,
+    VisualOnly,
 }
 
 fn current_client_rect(ctx: &WmCtx<'_>, win: WindowId) -> Option<Rect> {
@@ -93,7 +108,8 @@ fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: 
     let duration = animation_duration(frames);
     match ctx {
         WmCtx::X11(x11) => {
-            crate::contexts::WmCtx::X11(x11.reborrow()).project_client_geometry(win, from);
+            let mut wmctx = crate::contexts::WmCtx::X11(x11.reborrow());
+            wmctx.set_geometry_impl(win, from, GeometryApplyMode::VisualOnly);
             x11.x11_runtime.insert_or_replace_window_animation(
                 win,
                 WindowAnimation {
@@ -152,27 +168,31 @@ fn should_preserve_inflight_animation(ctx: &WmCtx<'_>, win: WindowId, target: Re
     }
 }
 
-pub fn request(ctx: &mut WmCtx<'_>, request: GeometryRequest) {
-    let _reason = request.reason;
-    if !request.target.is_valid() {
+pub(crate) fn move_resize(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    target: Rect,
+    options: MoveResizeOptions,
+) {
+    if !target.is_valid() {
         return;
     }
 
-    let (mon_w, mon_h) = monitor_size_for_client(ctx, request.win);
-    let final_rect = final_rect_for_target(request.target, mon_w, mon_h);
+    let (mon_w, mon_h) = monitor_size_for_client(ctx, win);
+    let final_rect = final_rect_for_target(target, mon_w, mon_h);
 
-    match request.mode {
+    match options.mode {
         MoveResizeMode::Immediate => {
-            if !should_preserve_inflight_animation(ctx, request.win, final_rect) {
-                crate::animation::cancel_animation(ctx, request.win);
+            if !should_preserve_inflight_animation(ctx, win, final_rect) {
+                crate::animation::cancel_animation(ctx, win);
             }
-            ctx.apply_client_geometry_authoritative(request.win, final_rect);
+            ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
         }
         MoveResizeMode::AnimateTo | MoveResizeMode::AnimateFrom(_) => {
-            crate::animation::cancel_animation(ctx, request.win);
+            crate::animation::cancel_animation(ctx, win);
 
-            let from = match request.mode {
-                MoveResizeMode::AnimateTo => current_client_rect(ctx, request.win),
+            let from = match options.mode {
+                MoveResizeMode::AnimateTo => current_client_rect(ctx, win),
                 MoveResizeMode::Immediate => unreachable!(),
                 MoveResizeMode::AnimateFrom(from) => Some(from),
             };
@@ -184,18 +204,18 @@ pub fn request(ctx: &mut WmCtx<'_>, request: GeometryRequest) {
             }
 
             if from == final_rect {
-                if ctx.client(request.win).is_some_and(|c| c.geo != final_rect) {
-                    ctx.apply_client_geometry_authoritative(request.win, final_rect);
+                if ctx.client(win).is_some_and(|c| c.geo != final_rect) {
+                    ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 }
                 return;
             }
 
             let animated = ctx.core().globals().behavior.animated;
             let effective_frames =
-                effective_animation_frames(active_animation_count(ctx), request.frames);
+                effective_animation_frames(active_animation_count(ctx), options.frames);
 
             if !animated || effective_frames <= 0 {
-                ctx.apply_client_geometry_authoritative(request.win, final_rect);
+                ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 return;
             }
 
@@ -204,19 +224,15 @@ pub fn request(ctx: &mut WmCtx<'_>, request: GeometryRequest) {
                 || (final_rect.w - from.w).abs() > DISTANCE_THRESHOLD
                 || (final_rect.h - from.h).abs() > DISTANCE_THRESHOLD;
             if !dist_moved {
-                ctx.apply_client_geometry_authoritative(request.win, final_rect);
+                ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 return;
             }
 
-            if request.mode == MoveResizeMode::AnimateTo {
-                crate::client::sync_client_geometry(
-                    ctx.core_mut().globals_mut(),
-                    request.win,
-                    final_rect,
-                );
+            if options.mode == MoveResizeMode::AnimateTo {
+                crate::client::sync_client_geometry(ctx.core_mut().globals_mut(), win, final_rect);
             }
 
-            enqueue_window_animation(ctx, request.win, from, final_rect, effective_frames);
+            enqueue_window_animation(ctx, win, from, final_rect, effective_frames);
         }
     }
 }

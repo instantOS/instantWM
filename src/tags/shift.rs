@@ -5,6 +5,7 @@ use crate::contexts::WmCtx;
 
 use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::tags::sticky::reset_sticky_win;
 use crate::types::{Direction, OverlayMode, Rect, TagMask, WindowId};
 
@@ -101,20 +102,21 @@ fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
             Direction::Down => 1,
         };
 
-    crate::animation::move_resize_client(
-        ctx,
+    ctx.move_resize(
         win,
-        &Rect {
+        Rect {
             w: geo.w.max(1),
             h: geo.h.max(1),
             ..geo
         },
-        crate::animation::MoveResizeMode::AnimateFrom(Rect {
-            x: geo.x + anim_dx,
-            y: geo.y,
-            w: geo.w.max(1),
-            h: geo.h.max(1),
-        }),
-        DEFAULT_FRAME_COUNT,
+        MoveResizeOptions {
+            mode: MoveResizeMode::AnimateFrom(Rect {
+                x: geo.x + anim_dx,
+                y: geo.y,
+                w: geo.w.max(1),
+                h: geo.h.max(1),
+            }),
+            frames: DEFAULT_FRAME_COUNT,
+        },
     );
 }

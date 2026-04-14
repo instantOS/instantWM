@@ -17,10 +17,10 @@
 //! - The right column holds all remaining clients in the same fashion.
 //! - When there is only one client it expands to fill the entire work area.
 
-use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
@@ -80,17 +80,18 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 framecount
             };
 
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 client.win,
-                &Rect {
+                Rect {
                     x: monitor.work_rect.x,
                     y: monitor.work_rect.y + master_y_offset as i32,
                     w: master_area_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                animation_frames,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: animation_frames,
+                },
             );
 
             if let Some(c) = ctx.client(client.win)
@@ -108,10 +109,9 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 framecount
             };
 
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 client.win,
-                &Rect {
+                Rect {
                     x: monitor.work_rect.x + master_area_width,
                     y: monitor.work_rect.y + stack_y_offset as i32,
                     w: monitor.work_rect.w
@@ -119,8 +119,10 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                         - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                animation_frames,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: animation_frames,
+                },
             );
 
             if let Some(c) = ctx.client(client.win)

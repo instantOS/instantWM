@@ -1,9 +1,9 @@
 //! Stacking layout algorithms: deck, bottom_stack, and bstackhoriz.
 
-use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::client::resize;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
@@ -113,17 +113,18 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         if (index as u32) < (monitor.nmaster as u32) {
             let master_window_width = (monitor.work_rect.w - master_row_offset)
                 / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 client.win,
-                &Rect {
+                Rect {
                     x: monitor.work_rect.x + master_row_offset,
                     y: monitor.work_rect.y,
                     w: master_window_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_area_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                framecount,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: framecount,
+                },
             );
 
             if let Some(c) = ctx.client(client.win) {
@@ -131,17 +132,18 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
             }
         } else {
             let stack_window_height = monitor.work_rect.h - master_area_height;
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 client.win,
-                &Rect {
+                Rect {
                     x: stack_window_x,
                     y: stack_area_y,
                     w: stack_window_width - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                framecount,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: framecount,
+                },
             );
 
             if stack_window_width != monitor.work_rect.w
@@ -197,34 +199,36 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         if (index as u32) < (monitor.nmaster as u32) {
             let master_window_width = (monitor.work_rect.w - master_row_offset)
                 / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 client.win,
-                &Rect {
+                Rect {
                     x: monitor.work_rect.x + master_row_offset,
                     y: monitor.work_rect.y,
                     w: master_window_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_area_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                framecount,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: framecount,
+                },
             );
 
             if let Some(c) = ctx.client(client.win) {
                 master_row_offset += c.total_width();
             }
         } else {
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 client.win,
-                &Rect {
+                Rect {
                     x: stack_window_x,
                     y: stack_window_y,
                     w: monitor.work_rect.w - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                framecount,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: framecount,
+                },
             );
 
             if stack_window_height != monitor.work_rect.h

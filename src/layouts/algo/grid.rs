@@ -30,11 +30,11 @@
 //! divide evenly: `grid` pads the last *row*, while `horizgrid` pads the last
 //! *column*.
 
-use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::constants::animation::{
     BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
 };
 use crate::contexts::WmCtx;
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 
@@ -112,17 +112,18 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             0
         };
 
-        move_resize_client(
-            ctx,
+        ctx.move_resize(
             win,
-            &Rect {
+            Rect {
                 x: cell_x,
                 y: cell_y,
                 w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                 h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
             },
-            MoveResizeMode::AnimateTo,
-            framecount,
+            MoveResizeOptions {
+                mode: MoveResizeMode::AnimateTo,
+                frames: framecount,
+            },
         );
 
         i += 1;
@@ -188,17 +189,18 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0
             };
 
-            move_resize_client(
-                ctx,
+            ctx.move_resize(
                 win,
-                &Rect {
+                Rect {
                     x: cell_x,
                     y: cell_y,
                     w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                     h: cell_height - BORDER_MULTIPLIER * border_width,
                 },
-                MoveResizeMode::AnimateTo,
-                framecount,
+                MoveResizeOptions {
+                    mode: MoveResizeMode::AnimateTo,
+                    frames: framecount,
+                },
             );
         }
     }

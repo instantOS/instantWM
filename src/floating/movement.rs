@@ -1,9 +1,9 @@
 //! Keyboard-driven floating window movement, resize, and scaling.
 
-use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::client::resize;
 use crate::constants::animation::FLOAT_MOVE_FRAME_COUNT;
 use crate::contexts::WmCtx;
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
@@ -32,17 +32,18 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
-    move_resize_client(
-        ctx,
+    ctx.move_resize(
         win,
-        &Rect {
+        Rect {
             x: new_x,
             y: new_y,
             w: geo.w,
             h: geo.h,
         },
-        MoveResizeMode::AnimateTo,
-        FLOAT_MOVE_FRAME_COUNT,
+        MoveResizeOptions {
+            mode: MoveResizeMode::AnimateTo,
+            frames: FLOAT_MOVE_FRAME_COUNT,
+        },
     );
     ctx.warp_cursor_to_client(win);
 }

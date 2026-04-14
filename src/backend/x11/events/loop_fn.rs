@@ -11,6 +11,7 @@ use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
 use crate::backend::BackendOps;
 use crate::backend::BackendRef;
+use crate::geometry::GeometryApplyMode;
 use crate::ipc::IpcServer;
 use crate::runtime::AnimationTimerGuard;
 use crate::wm::Wm;
@@ -170,7 +171,8 @@ fn tick_x11_animations(wm: &mut Wm) {
         return;
     };
     for (win, rect) in finished_targets {
-        crate::contexts::WmCtx::X11(ctx.reborrow()).apply_client_geometry_authoritative(win, rect);
+        let mut wmctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+        wmctx.set_geometry_impl(win, rect, GeometryApplyMode::Logical);
     }
 }
 

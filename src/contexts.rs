@@ -10,10 +10,9 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
+use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::globals::Globals;
 use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::ConnectionExt;
 
 pub struct CoreCtx<'a> {
     g: &'a mut Globals,
@@ -278,41 +277,46 @@ impl<'a> WmCtx<'a> {
         self.backend().restack(wins);
     }
 
-    /// Apply a visual-only geometry projection without mutating WM client geometry.
-    pub(crate) fn project_client_geometry(&self, win: WindowId, rect: Rect) {
-        self.backend().resize_window(win, rect);
-        self.backend().flush();
-    }
-
-    pub(crate) fn apply_client_geometry_authoritative(&mut self, win: WindowId, rect: Rect) {
+    pub(crate) fn set_geometry_impl(
+        &mut self,
+        win: WindowId,
+        rect: Rect,
+        apply_mode: GeometryApplyMode,
+    ) {
         match self {
             WmCtx::X11(x11) => {
-                let actual_rect = {
+                if apply_mode == GeometryApplyMode::VisualOnly {
                     x11.backend.resize_window(win, rect);
-                    let _ = x11.x11.conn.flush();
-                    query_x11_window_rect(&x11.x11, win).unwrap_or(rect)
-                };
+                    x11.backend.flush();
+                    return;
+                }
 
-                crate::client::sync_client_geometry(x11.core.globals_mut(), win, actual_rect);
+                let actual_rect =
+                    crate::client::geometry::reconcile_client_geometry_after_backend_resize_x11(
+                        x11.core.globals_mut(),
+                        &x11.x11,
+                        win,
+                        rect,
+                    );
 
                 crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);
+
+                let _ = actual_rect;
             }
             WmCtx::Wayland(_) => {
-                crate::client::sync_client_geometry(self.core_mut().globals_mut(), win, rect);
+                if apply_mode == GeometryApplyMode::Logical {
+                    crate::client::sync_client_geometry(self.core_mut().globals_mut(), win, rect);
+                }
                 self.backend().resize_window(win, rect);
+                if apply_mode == GeometryApplyMode::VisualOnly {
+                    self.backend().flush();
+                }
             }
         }
     }
 
-    pub fn resize_client(&mut self, win: WindowId, rect: Rect) {
-        crate::geometry::request(
-            self,
-            crate::geometry::GeometryRequest::immediate(
-                win,
-                rect,
-                crate::geometry::GeometryReason::Direct,
-            ),
-        );
+    pub fn move_resize(&mut self, win: WindowId, rect: Rect, options: MoveResizeOptions) {
+        crate::geometry::move_resize(self, win, rect, options);
     }
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {
@@ -433,14 +437,4 @@ impl<'a> WmCtx<'a> {
 
     // For backend-specific operations, use match on the enum directly
     // instead of accessor methods that return Option.
-}
-
-fn query_x11_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
-    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
-    Some(Rect {
-        x: reply.x as i32,
-        y: reply.y as i32,
-        w: reply.width as i32,
-        h: reply.height as i32,
-    })
 }

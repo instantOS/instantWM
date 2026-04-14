@@ -3,7 +3,7 @@
 //! # Responsibilities
 //!
 //! * [`resize`] – high-level resize that runs size-hint validation first.
-//! * [`WmCtx::resize_client`](crate::contexts::WmCtx::resize_client) – low-level configure + state update.
+//! * [`WmCtx::move_resize`](crate::contexts::WmCtx::move_resize) – low-level configure + state update.
 //! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM size hints.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
 //!
@@ -13,10 +13,14 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
+use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
+use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::ConnectionExt;
 
 /// Record the resolved geometry of a managed client.
 ///
@@ -33,6 +37,29 @@ pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
     if client.is_floating {
         client.float_geo = rect;
     }
+}
+
+pub fn reconcile_client_geometry_after_backend_resize_x11(
+    globals: &mut Globals,
+    x11: &X11BackendRef<'_>,
+    win: WindowId,
+    requested_rect: Rect,
+) -> Rect {
+    x11.resize_window(win, requested_rect);
+    let _ = x11.conn.flush();
+    let actual_rect = query_x11_window_rect(x11, win).unwrap_or(requested_rect);
+    sync_client_geometry(globals, win, actual_rect);
+    actual_rect
+}
+
+fn query_x11_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect> {
+    let reply = x11.conn.get_geometry(win.into()).ok()?.reply().ok()?;
+    Some(Rect {
+        x: reply.x as i32,
+        y: reply.y as i32,
+        w: reply.width as i32,
+        h: reply.height as i32,
+    })
 }
 
 /// Compute a saner initial position for a newly managed floating client.
@@ -110,7 +137,7 @@ pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, 
     let client_count = ctx.core().globals().clients.len();
 
     if changed || client_count == 1 {
-        ctx.resize_client(win, new_rect);
+        ctx.move_resize(win, new_rect, MoveResizeOptions::immediate());
     }
 }
 

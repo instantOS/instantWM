@@ -1,6 +1,5 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
-use crate::animation::{MoveResizeMode, move_resize_client};
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::properties::set_client_state;
@@ -8,6 +7,7 @@ use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::client::geometry::resize;
 use crate::constants::animation::{DECORATIVE_SHOW_FRAME_COUNT, EMPHASIZED_FRAME_COUNT};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
+use crate::geometry::{MoveResizeMode, MoveResizeOptions};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -271,12 +271,13 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     );
     let _ = ctx.x11.conn.flush();
 
-    move_resize_client(
-        &mut WmCtx::X11(ctx.reborrow()),
+    WmCtx::X11(ctx.reborrow()).move_resize(
         win,
-        &Rect { x, y, w, h },
-        MoveResizeMode::AnimateFrom(Rect { x, y: -50, w, h }),
-        DECORATIVE_SHOW_FRAME_COUNT,
+        Rect { x, y, w, h },
+        MoveResizeOptions {
+            mode: MoveResizeMode::AnimateFrom(Rect { x, y: -50, w, h }),
+            frames: DECORATIVE_SHOW_FRAME_COUNT,
+        },
     );
 }
 
@@ -300,17 +301,18 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     if animated {
         // Animate the window sliding down toward the bar before unmapping.
-        move_resize_client(
-            &mut WmCtx::X11(ctx.reborrow()),
+        WmCtx::X11(ctx.reborrow()).move_resize(
             win,
-            &Rect {
+            Rect {
                 x,
                 y: bar_height - h + 40,
                 w,
                 h,
             },
-            MoveResizeMode::AnimateTo,
-            EMPHASIZED_FRAME_COUNT,
+            MoveResizeOptions {
+                mode: MoveResizeMode::AnimateTo,
+                frames: EMPHASIZED_FRAME_COUNT,
+            },
         );
     }
 
