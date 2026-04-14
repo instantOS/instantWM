@@ -57,7 +57,7 @@ pub struct DrmFrameMetadata {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RenderOutcome {
     Submitted,
-    Skipped,
+    EmptyFrame,
     Failed,
 }
 
@@ -384,7 +384,7 @@ pub fn render_drm_output(
     match entry.surface.queue_frame(frame_metadata) {
         Ok(()) => {}
         Err(FrameError::EmptyFrame) => {
-            return RenderOutcome::Skipped;
+            return RenderOutcome::EmptyFrame;
         }
         Err(err) => {
             log::warn!("queue_frame: {:?}", err);

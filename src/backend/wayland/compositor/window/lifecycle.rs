@@ -139,9 +139,15 @@ impl WaylandState {
     /// touch `mon.sel`. The WM layer will reconcile focus after the
     /// show/hide pass.
     pub fn unmap_window(&mut self, window: WindowId) {
-        if let Some(element) = self.window_index.get(&window).cloned() {
-            self.space.unmap_elem(&element);
+        let Some(element) = self.window_index.get(&window).cloned() else {
+            return;
+        };
+        let is_mapped = self.space.elements().any(|w| w == &element);
+        if !is_mapped {
+            return;
         }
+
+        self.space.unmap_elem(&element);
         self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);

@@ -8,16 +8,19 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
+use smithay::reexports::calloop::{EventLoop, LoopHandle, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::process::exit;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
+use std::time::Duration;
 
 use crate::backend::Backend as WmBackend;
 use crate::backend::BackendVrrSupport;
@@ -28,8 +31,8 @@ use crate::config::config_toml::VrrMode;
 use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 use crate::wayland::common::{
-    ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
-    spawn_xwayland,
+    ensure_dbus_session, init_wayland_globals, send_frame_callbacks, setup_wayland_socket,
+    spawn_wayland_smoke_window, spawn_xwayland,
 };
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
@@ -51,6 +54,7 @@ struct DrmLoopState {
     session_active: bool,
     render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
+    empty_frame_callback_crtcs: Rc<RefCell<HashSet<crtc::Handle>>>,
     presentation_seq: HashMap<crtc::Handle, u64>,
     last_bar_update_seq: u64,
 }
@@ -65,6 +69,7 @@ impl DrmLoopState {
             session_active: true,
             render_flags,
             pending_crtcs: HashSet::new(),
+            empty_frame_callback_crtcs: Rc::new(RefCell::new(HashSet::new())),
             presentation_seq: output_surfaces
                 .iter()
                 .map(|entry| (entry.crtc, 0))
@@ -485,6 +490,7 @@ fn run_event_loop(
                 renderer,
                 output_surfaces,
                 cursor_manager,
+                &loop_handle,
                 loop_state,
                 render_failures,
                 start_time,
@@ -558,6 +564,49 @@ fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
         (true, Some(period)) => Refresh::variable(period),
         (false, Some(period)) => Refresh::fixed(period),
         (_, None) => Refresh::Unknown,
+    }
+}
+
+fn output_frame_callback_delay(entry: &OutputSurfaceEntry) -> Duration {
+    entry
+        .output
+        .current_mode()
+        .and_then(|mode| {
+            let refresh = u64::try_from(mode.refresh).ok()?;
+            (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
+        })
+        .unwrap_or_else(|| Duration::from_millis(16))
+}
+
+fn arm_empty_frame_callback_timer(
+    loop_handle: &LoopHandle<'_, WaylandState>,
+    loop_state: &DrmLoopState,
+    entry: &OutputSurfaceEntry,
+    start_time: std::time::Instant,
+) {
+    let crtc = entry.crtc;
+    let armed = Rc::clone(&loop_state.empty_frame_callback_crtcs);
+    if !armed.borrow_mut().insert(crtc) {
+        return;
+    }
+
+    let output = entry.output.clone();
+    let delay = output_frame_callback_delay(entry);
+    let armed_for_timer = Rc::clone(&armed);
+    if let Err(err) = loop_handle.insert_source(
+        calloop::timer::Timer::from_duration(delay),
+        move |_, _, state| {
+            if armed_for_timer.borrow_mut().remove(&crtc) {
+                send_frame_callbacks(state, &output, start_time.elapsed());
+            }
+            calloop::timer::TimeoutAction::Drop
+        },
+    ) {
+        armed.borrow_mut().remove(&crtc);
+        log::warn!(
+            "failed to arm empty-frame callback timer for {:?}: {err}",
+            crtc
+        );
     }
 }
 
@@ -731,6 +780,7 @@ fn render_outputs(
     renderer: &mut GlesRenderer,
     output_surfaces: &mut [OutputSurfaceEntry],
     cursor_manager: &CursorManager,
+    loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &mut DrmLoopState,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: std::time::Instant,
@@ -777,6 +827,10 @@ fn render_outputs(
 
             match rendered {
                 RenderOutcome::Submitted => {
+                    loop_state
+                        .empty_frame_callback_crtcs
+                        .borrow_mut()
+                        .remove(&entry.crtc);
                     loop_state.pending_crtcs.insert(entry.crtc);
                     if let Some(failed_frames) = render_failures.remove(&entry.crtc)
                         && failed_frames >= 3
@@ -787,7 +841,8 @@ fn render_outputs(
                         );
                     }
                 }
-                RenderOutcome::Skipped => {
+                RenderOutcome::EmptyFrame => {
+                    arm_empty_frame_callback_timer(loop_handle, loop_state, entry, start_time);
                     render_failures.remove(&entry.crtc);
                 }
                 RenderOutcome::Failed => {
