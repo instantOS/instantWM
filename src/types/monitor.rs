@@ -461,6 +461,27 @@ impl Monitor {
         }
     }
 
+    /// Apply output-derived geometry and UI metrics from the compositor / RandR.
+    ///
+    /// Does not change workspace state (tags, client lists, focus, `pertag`, etc.).
+    pub fn apply_output_layout(
+        &mut self,
+        index: usize,
+        name: String,
+        rect: Rect,
+        scale: f64,
+        bar_height: i32,
+        horizontal_padding: i32,
+        startmenu_size: i32,
+    ) {
+        self.num = index as i32;
+        self.monitor_rect = rect;
+        self.work_rect = rect;
+        self.name = name;
+        self.set_ui_metrics(scale, bar_height, horizontal_padding, startmenu_size);
+        self.update_bar_position(bar_height);
+    }
+
     /// Set effective UI metrics for this monitor.
     pub fn set_ui_metrics(
         &mut self,

@@ -3,7 +3,7 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::backend::BackendOps;
+use crate::backend::{BackendOps, BackendOutputInfo, BackendVrrSupport};
 use crate::backend::x11::set_client_tag_prop;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus_soft, unfocus_win};
@@ -164,6 +164,16 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
+fn destroy_monitor_bar_x11(ctx: &mut WmCtx, bar_win: WindowId) {
+    if bar_win != WindowId::default()
+        && let WmCtx::X11(x11) = ctx
+    {
+        let x11_bar_win: Window = bar_win.into();
+        let _ = x11rb::protocol::xproto::unmap_window(x11.x11.conn, x11_bar_win);
+        let _ = x11rb::protocol::xproto::destroy_window(x11.x11.conn, x11_bar_win);
+    }
+}
+
 pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
     if monitor_id.index() >= ctx.core_mut().globals_mut().monitors.len() {
         return;
@@ -217,13 +227,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
         }
     }
 
-    if bar_win != WindowId::default()
-        && let WmCtx::X11(x11) = ctx
-    {
-        let x11_bar_win: Window = bar_win.into();
-        let _ = x11rb::protocol::xproto::unmap_window(x11.x11.conn, x11_bar_win);
-        let _ = x11rb::protocol::xproto::destroy_window(x11.x11.conn, x11_bar_win);
-    }
+    destroy_monitor_bar_x11(ctx, bar_win);
 }
 
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
@@ -425,13 +429,49 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 }
 
-fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutputInfo>) -> bool {
-    let mut changed = false;
-    let old_count = ctx.core().globals().monitors.len();
-
-    if old_count != outputs.len() {
-        changed = true;
+/// Match an existing monitor to this output: prefer stable output name, then Xinerama / slot
+/// alignment for unnamed monitors.
+fn take_matching_monitor(
+    pool: &mut [Option<Monitor>],
+    output_index: usize,
+    output: &BackendOutputInfo,
+) -> Option<(usize, Monitor)> {
+    if !output.name.is_empty() {
+        for j in 0..pool.len() {
+            if let Some(m) = pool[j].as_ref() {
+                if m.name == output.name {
+                    let mon = pool[j].take().expect("checked");
+                    return Some((j, mon));
+                }
+            }
+        }
     }
+    if output_index < pool.len() {
+        if let Some(m) = pool[output_index].as_ref() {
+            let xin = output.name.starts_with("XINERAMA-");
+            let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
+            let both_empty = m.name.is_empty() && output.name.is_empty();
+            if (xin && (m.name.is_empty() || m.name == output.name))
+                || slot_unlabeled
+                || both_empty
+            {
+                let mon = pool[output_index].take().expect("checked");
+                return Some((output_index, mon));
+            }
+        }
+    }
+    None
+}
+
+/// Rebuilds the monitor list from backend outputs, preserving workspace state by **output name**
+/// (with Xinerama / unnamed-slot fallbacks). Remaps `Client::monitor_id` when indices shift.
+fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) -> bool {
+    if outputs.is_empty() {
+        return false;
+    }
+
+    let template = ctx.core().globals().cfg.tag_template.clone();
+    let (showbar, topbar) = (ctx.core().globals().cfg.show_bar, ctx.core().globals().cfg.top_bar);
 
     let layout_width = outputs
         .iter()
@@ -446,6 +486,7 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
         .unwrap_or(1)
         .max(1);
 
+    let mut changed = false;
     {
         let cfg = &mut ctx.core_mut().globals_mut().cfg;
         if cfg.screen_width != layout_width || cfg.screen_height != layout_height {
@@ -455,74 +496,114 @@ fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<crate::backend::BackendOutp
         }
     }
 
-    let mut new_monitors = Vec::new();
-    for (i, output) in outputs.into_iter().enumerate() {
-        let mut m = Monitor::new_with_values(
-            ctx.core().globals().cfg.show_bar,
-            ctx.core().globals().cfg.top_bar,
-        );
-        m.num = i as i32;
-        m.monitor_rect = output.rect;
-        m.work_rect = output.rect;
-        m.name = output.name;
-        let (bar_height, horizontal_padding, startmenu_size) =
-            scaled_monitor_ui_metrics(ctx.core().globals(), output.scale);
-        m.set_ui_metrics(output.scale, bar_height, horizontal_padding, startmenu_size);
-        m.init_tags(&ctx.core().globals().cfg.tag_template);
-        m.update_bar_position(m.bar_height);
-        new_monitors.push(m);
+    let old_count = ctx.core().globals().monitors.len();
+    let sel_idx = ctx.core().globals().monitors.selected_monitor_idx;
+
+    if old_count != outputs.len() {
+        changed = true;
     }
 
-    // Preserve existing state if possible
-    for (i, new_m) in new_monitors.iter_mut().enumerate() {
-        if let Some(old_m) = ctx.core().globals().monitors.get(MonitorId(i)) {
-            new_m.tags = old_m.tags.clone();
-            new_m.clients = old_m.clients.clone();
-            new_m.stack = old_m.stack.clone();
-            new_m.sel = old_m.sel;
-            new_m.bar_win = old_m.bar_win;
-            new_m.pertag = old_m.pertag.clone();
-            new_m.tag_set = old_m.tag_set;
-            new_m.sel_tags = old_m.sel_tags;
-            new_m.current_tag = old_m.current_tag;
-            new_m.prev_tag = old_m.prev_tag;
-            new_m.showbar = old_m.showbar;
-            new_m.mfact = old_m.mfact;
-            new_m.nmaster = old_m.nmaster;
-            new_m.tag_focus_history = old_m.tag_focus_history.clone();
-            new_m.overlay = old_m.overlay;
-            new_m.overlaystatus = old_m.overlaystatus;
-            new_m.overlaymode = old_m.overlaymode;
-            new_m.fullscreen = old_m.fullscreen;
+    let olds = std::mem::take(&mut ctx.core_mut().globals_mut().monitors.monitors);
+    let mut old_to_new: Vec<Option<MonitorId>> = vec![None; olds.len()];
+    let mut pool: Vec<Option<Monitor>> = olds.into_iter().map(Some).collect();
 
-            if old_m.monitor_rect.w != new_m.monitor_rect.w
-                || old_m.monitor_rect.h != new_m.monitor_rect.h
-                || old_m.monitor_rect.x != new_m.monitor_rect.x
-                || old_m.monitor_rect.y != new_m.monitor_rect.y
-                || old_m.bar_height != new_m.bar_height
-                || old_m.horizontal_padding != new_m.horizontal_padding
-                || old_m.startmenu_size != new_m.startmenu_size
-                || (old_m.ui_scale - new_m.ui_scale).abs() > f64::EPSILON
-            {
+    let mut new_monitors = Vec::with_capacity(outputs.len());
+    for (i, output) in outputs.iter().enumerate() {
+        let (bh, hp, sm) = scaled_monitor_ui_metrics(ctx.core().globals(), output.scale);
+
+        let taken = take_matching_monitor(&mut pool, i, output);
+        let mon = if let Some((j, mut m)) = taken {
+            let geom_changed = m.monitor_rect != output.rect
+                || m.name != output.name
+                || (m.ui_scale - output.scale).abs() > f64::EPSILON
+                || m.bar_height != bh
+                || m.horizontal_padding != hp
+                || m.startmenu_size != sm;
+            if geom_changed {
                 changed = true;
+            }
+            old_to_new[j] = Some(MonitorId(i));
+            m.apply_output_layout(
+                i,
+                output.name.clone(),
+                output.rect,
+                output.scale,
+                bh,
+                hp,
+                sm,
+            );
+            m
+        } else {
+            changed = true;
+            let mut m = Monitor::new_with_values(showbar, topbar);
+            m.init_tags(&template);
+            m.apply_output_layout(
+                i,
+                output.name.clone(),
+                output.rect,
+                output.scale,
+                bh,
+                hp,
+                sm,
+            );
+            m
+        };
+        new_monitors.push(mon);
+    }
+
+    for slot in pool.iter_mut() {
+        if let Some(m) = slot.as_ref() {
+            destroy_monitor_bar_x11(ctx, m.bar_win);
+        }
+    }
+
+    for (i, m) in new_monitors.iter_mut().enumerate() {
+        m.monitor_id = MonitorId(i);
+    }
+    ctx.core_mut().globals_mut().monitors.monitors = new_monitors;
+    let new_len = ctx.core().globals().monitors.len();
+
+    for client in ctx.core_mut().globals_mut().clients.values_mut() {
+        let oi = client.monitor_id.index();
+        if oi < old_to_new.len() {
+            if let Some(nid) = old_to_new[oi] {
+                client.monitor_id = nid;
+            } else {
+                client.monitor_id = MonitorId(0);
+            }
+        } else {
+            client.monitor_id = MonitorId(0);
+        }
+    }
+
+    let old_sel_idx = sel_idx.index();
+    let new_sel = if old_sel_idx < old_to_new.len() {
+        old_to_new[old_sel_idx].unwrap_or(MonitorId(0))
+    } else {
+        MonitorId(0)
+    };
+    let new_sel = if new_sel.index() < new_len {
+        new_sel
+    } else {
+        MonitorId(0)
+    };
+    ctx.core_mut().globals_mut().monitors.selected_monitor_idx = new_sel;
+
+    if changed {
+        ctx.core_mut().globals_mut().queue_layout_for_all_monitors();
+        ctx.core_mut().bar.mark_dirty();
+        if let Some(ptr) = ctx.pointer_location() {
+            if let Some(m) = ctx.core().globals().monitors.find_monitor_at_pointer(ptr) {
+                ctx.core_mut().globals_mut().monitors.set_sel_idx(m);
             }
         }
     }
 
-    ctx.core_mut().globals_mut().monitors.monitors = new_monitors;
-    if ctx.core().globals().monitors.selected_monitor_idx.index()
-        >= ctx.core().globals().monitors.len()
-    {
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(0);
-    }
-
-    if changed {
-        ctx.core_mut().globals_mut().queue_layout_for_all_monitors();
-        // The bar renderer also needs a poke
-        ctx.core_mut().bar.mark_dirty();
-    }
-
     changed
+}
+
+fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) -> bool {
+    sync_monitors_from_outputs(ctx, outputs)
 }
 
 fn scaled_i32(value: i32, scale: f64) -> i32 {
@@ -666,7 +747,6 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
     }
 
     let screens = xinerama::query_screens(conn).ok()?.reply().ok()?;
-    // conn borrow ends here; the rest only needs x11
     let mut unique = Vec::new();
     for s in &screens.screen_info {
         let info = Rect {
@@ -683,109 +763,23 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         }
     }
 
-    let new_count = unique.len();
+    let outputs: Vec<BackendOutputInfo> = unique
+        .into_iter()
+        .enumerate()
+        .map(|(i, rect)| BackendOutputInfo {
+            name: format!("XINERAMA-{i}"),
+            rect,
+            scale: 1.0,
+            vrr_support: BackendVrrSupport::Unsupported,
+            vrr_mode: None,
+            vrr_enabled: false,
+        })
+        .collect();
 
-    // Borrow g in a limited scope for monitor updates
-    let (
-        old_count,
-        _template,
-        _showbar,
-        _topbar,
-        _bar_height,
-        _horizontal_padding,
-        _startmenu_size,
-        any_changed,
-    ) = {
-        let g = x11.core.globals_mut();
-        let old_count = g.monitors.count();
-        let mut any_changed = false;
-
-        // Ensure count
-        let template = g.cfg.tag_template.clone();
-        let (showbar, topbar) = (g.cfg.show_bar, g.cfg.top_bar);
-        while g.monitors.count() < new_count {
-            let mut mon = Monitor::new_with_values(showbar, topbar);
-            mon.init_tags(&template);
-            g.monitors.push(mon);
-        }
-
-        let bar_height = g.cfg.bar_height;
-        let horizontal_padding = g.cfg.horizontal_padding;
-        let startmenu_size = g.cfg.startmenusize;
-
-        for (i, info) in unique.iter().enumerate() {
-            if let Some(m) = g.monitors.get_mut(MonitorId(i)) {
-                let geometry_changed = m.monitor_rect.x != info.x
-                    || m.monitor_rect.y != info.y
-                    || m.monitor_rect.w != info.w
-                    || m.monitor_rect.h != info.h;
-                let metrics_changed = m.bar_height != bar_height
-                    || m.horizontal_padding != horizontal_padding
-                    || m.startmenu_size != startmenu_size
-                    || (m.ui_scale - 1.0).abs() > f64::EPSILON;
-                if geometry_changed || metrics_changed {
-                    any_changed = true;
-                    m.num = i as i32;
-                    m.monitor_rect = *info;
-                    m.work_rect = *info;
-                    m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-                    m.update_bar_position(bar_height);
-                }
-            }
-        }
-        (
-            old_count,
-            template,
-            showbar,
-            topbar,
-            bar_height,
-            horizontal_padding,
-            startmenu_size,
-            any_changed,
-        )
-    };
-
-    let mut dirty = new_count > old_count || any_changed;
-
-    if new_count < old_count {
-        // Get clients while not holding mutable borrow
-        let clients_map = x11.core.globals().clients.map().clone();
-        for i in (new_count..old_count).rev() {
-            let clients_to_move: Vec<WindowId> = clients_map
-                .values()
-                .filter(|c| c.monitor_id == MonitorId(i))
-                .map(|c| c.win)
-                .collect();
-            // Create temporary WmCtx wrapper for each iteration
-            let mut wm_ctx = WmCtx::X11(x11.reborrow());
-            for win in clients_to_move {
-                wm_ctx.core_mut().globals_mut().detach(win);
-                wm_ctx.core_mut().globals_mut().detach_stack(win);
-                if let Some(c) = wm_ctx.client_mut(win) {
-                    c.monitor_id = MonitorId(0);
-                }
-                wm_ctx.core_mut().globals_mut().attach(win);
-                wm_ctx.core_mut().globals_mut().attach_stack(win);
-                dirty = true;
-            }
-            cleanup_monitor(&mut wm_ctx, MonitorId(i));
-        }
-    }
-
-    if dirty {
-        x11.core.globals_mut().monitors.set_sel_idx(MonitorId(0));
-        if let Ok(cookie) =
-            x11rb::protocol::xproto::query_pointer(x11.x11.conn, x11.x11_runtime.root)
-            && let Ok(reply) = cookie.reply()
-        {
-            let ptr = (reply.root_x as i32, reply.root_y as i32);
-            if let Some(m) = x11.core.globals_mut().monitors.find_monitor_at_pointer(ptr) {
-                x11.core.globals_mut().monitors.set_sel_idx(m);
-            }
-        }
-    }
-
-    Some(dirty)
+    Some(sync_monitors_from_outputs(
+        &mut WmCtx::X11(x11.reborrow()),
+        outputs,
+    ))
 }
 
 pub enum Direction {
