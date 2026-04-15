@@ -18,8 +18,9 @@ pub fn deck(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         return;
     }
 
-    let master_area_width: u32 = if tiled_client_count > monitor.nmaster as u32 {
-        if monitor.nmaster > 0 {
+    let nmaster = monitor.nmaster.max(0) as u32;
+    let master_area_width: u32 = if tiled_client_count > nmaster {
+        if nmaster > 0 {
             (monitor.mfact * monitor.work_rect.w as f32) as u32
         } else {
             0
@@ -33,9 +34,9 @@ pub fn deck(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
 
     let mut master_column_offset: u32 = 0;
     for (index, client) in tiled_clients.iter().enumerate() {
-        if (index as u32) < (monitor.nmaster as u32) {
+        if (index as u32) < nmaster {
             let master_window_height = (monitor.work_rect.h - master_column_offset as i32)
-                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
+                / (min(tiled_client_count, nmaster) - index as u32) as i32;
             resize(
                 ctx,
                 client.win,
@@ -72,12 +73,6 @@ pub fn deck(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
 // ── bottom_stack ───────────────────────────────────────────────────────────────
 
 pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
-    let framecount = framecount_for_layout(
-        ctx.core().globals(),
-        4,
-        FAST_FRAME_COUNT,
-        DEFAULT_FRAME_COUNT,
-    );
     let tiled_client_count =
         monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
@@ -85,24 +80,31 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         return;
     }
 
-    let (master_area_height, stack_window_width, stack_area_y) =
-        if tiled_client_count > monitor.nmaster as u32 {
-            let master_area_height = if monitor.nmaster > 0 {
-                (monitor.mfact * monitor.work_rect.h as f32) as i32
-            } else {
-                0
-            };
-            let stack_window_width =
-                monitor.work_rect.w / (tiled_client_count - monitor.nmaster as u32) as i32;
-            let stack_area_y = monitor.work_rect.y + master_area_height;
-            (master_area_height, stack_window_width, stack_area_y)
+    let framecount = framecount_for_layout(
+        ctx.core().globals().behavior.animated,
+        tiled_client_count as usize,
+        4,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
+
+    let nmaster = monitor.nmaster.max(0) as u32;
+    let (master_area_height, stack_window_width, stack_area_y) = if tiled_client_count > nmaster {
+        let master_area_height = if nmaster > 0 {
+            (monitor.mfact * monitor.work_rect.h as f32) as i32
         } else {
-            (
-                monitor.work_rect.h,
-                monitor.work_rect.w,
-                monitor.work_rect.y,
-            )
+            0
         };
+        let stack_window_width = monitor.work_rect.w / (tiled_client_count - nmaster) as i32;
+        let stack_area_y = monitor.work_rect.y + master_area_height;
+        (master_area_height, stack_window_width, stack_area_y)
+    } else {
+        (
+            monitor.work_rect.h,
+            monitor.work_rect.w,
+            monitor.work_rect.y,
+        )
+    };
 
     let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
 
@@ -110,9 +112,9 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let mut stack_window_x: i32 = monitor.work_rect.x;
 
     for (index, client) in tiled_clients.iter().enumerate() {
-        if (index as u32) < (monitor.nmaster as u32) {
+        if (index as u32) < nmaster {
             let master_window_width = (monitor.work_rect.w - master_row_offset)
-                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
+                / (min(tiled_client_count, nmaster) - index as u32) as i32;
             ctx.move_resize(
                 client.win,
                 Rect {
@@ -158,12 +160,6 @@ pub fn bottom_stack(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
 // ── bstackhoriz ───────────────────────────────────────────────────────────────
 
 pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
-    let framecount = framecount_for_layout(
-        ctx.core().globals(),
-        4,
-        FAST_FRAME_COUNT,
-        DEFAULT_FRAME_COUNT,
-    );
     let tiled_client_count =
         monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
 
@@ -171,15 +167,24 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         return;
     }
 
+    let framecount = framecount_for_layout(
+        ctx.core().globals().behavior.animated,
+        tiled_client_count as usize,
+        4,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
+
+    let nmaster = monitor.nmaster.max(0) as u32;
     let (master_area_height, stack_window_height, mut stack_window_y) =
-        if tiled_client_count > monitor.nmaster as u32 {
-            let master_area_height = if monitor.nmaster > 0 {
+        if tiled_client_count > nmaster {
+            let master_area_height = if nmaster > 0 {
                 (monitor.mfact * monitor.work_rect.h as f32) as i32
             } else {
                 0
             };
-            let stack_window_height = (monitor.work_rect.h - master_area_height)
-                / (tiled_client_count - monitor.nmaster as u32) as i32;
+            let stack_window_height =
+                (monitor.work_rect.h - master_area_height) / (tiled_client_count - nmaster) as i32;
             let stack_window_y = monitor.work_rect.y + master_area_height;
             (master_area_height, stack_window_height, stack_window_y)
         } else {
@@ -196,9 +201,9 @@ pub fn bstackhoriz(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let stack_window_x: i32 = monitor.work_rect.x;
 
     for (index, client) in tiled_clients.iter().enumerate() {
-        if (index as u32) < (monitor.nmaster as u32) {
+        if (index as u32) < nmaster {
             let master_window_width = (monitor.work_rect.w - master_row_offset)
-                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
+                / (min(tiled_client_count, nmaster) - index as u32) as i32;
             ctx.move_resize(
                 client.win,
                 Rect {

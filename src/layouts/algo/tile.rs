@@ -25,9 +25,13 @@ use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
 
-fn master_width(monitor: &Monitor, tiled_client_count: u32) -> i32 {
-    if tiled_client_count > monitor.nmaster as u32 {
-        if monitor.nmaster > 0 {
+fn effective_nmaster(monitor: &Monitor, tiled_client_count: u32) -> u32 {
+    min(monitor.nmaster.max(0) as u32, tiled_client_count)
+}
+
+fn master_width(monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32 {
+    if tiled_client_count > nmaster {
+        if nmaster > 0 {
             (monitor.mfact * monitor.work_rect.w as f32) as i32
         } else {
             0
@@ -38,41 +42,31 @@ fn master_width(monitor: &Monitor, tiled_client_count: u32) -> i32 {
 }
 
 pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
-    let framecount = framecount_for_layout(
-        ctx.core().globals(),
-        FAST_ANIM_THRESHOLD,
-        FAST_FRAME_COUNT,
-        DEFAULT_FRAME_COUNT,
-    );
-
-    let tiled_client_count =
-        monitor.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
+    let tiled_client_count = tiled_clients.len() as u32;
 
     if tiled_client_count == 0 {
         return;
     }
 
-    let master_area_width: i32 = if tiled_client_count > monitor.nmaster as u32 {
-        master_width(monitor, tiled_client_count)
-    } else {
-        if tiled_client_count > 1 && tiled_client_count < monitor.nmaster as u32 {
-            monitor.nmaster = tiled_client_count as i32;
-            tile(ctx, monitor);
-            return;
-        }
-        monitor.work_rect.w
-    };
+    let framecount = framecount_for_layout(
+        ctx.core().globals().behavior.animated,
+        tiled_client_count as usize,
+        FAST_ANIM_THRESHOLD,
+        FAST_FRAME_COUNT,
+        DEFAULT_FRAME_COUNT,
+    );
 
-    // Collect tiled clients first
-    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
+    let nmaster = effective_nmaster(monitor, tiled_client_count);
+    let master_area_width = master_width(monitor, tiled_client_count, nmaster);
 
     let mut master_y_offset: u32 = 0;
     let mut stack_y_offset: u32 = 0;
 
     for (index, client) in tiled_clients.iter().enumerate() {
-        if (index as u32) < (monitor.nmaster as u32) {
-            let master_window_height = (monitor.work_rect.h - master_y_offset as i32)
-                / (min(tiled_client_count, monitor.nmaster as u32) - index as u32) as i32;
+        if (index as u32) < nmaster {
+            let master_window_height =
+                (monitor.work_rect.h - master_y_offset as i32) / (nmaster - index as u32) as i32;
 
             let animation_frames = if tiled_client_count == 2 {
                 0
@@ -136,7 +130,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
 
 #[cfg(test)]
 mod tests {
-    use super::master_width;
+    use super::{effective_nmaster, master_width};
     use crate::types::{Monitor, Rect};
 
     #[test]
@@ -146,7 +140,10 @@ mod tests {
         monitor.mfact = 0.7;
         monitor.nmaster = 1;
 
-        assert_eq!(master_width(&monitor, 2), 700);
+        assert_eq!(
+            master_width(&monitor, 2, effective_nmaster(&monitor, 2)),
+            700
+        );
     }
 
     #[test]
@@ -156,6 +153,30 @@ mod tests {
         monitor.mfact = 0.2;
         monitor.nmaster = 2;
 
-        assert_eq!(master_width(&monitor, 1), 1000);
+        assert_eq!(
+            master_width(&monitor, 1, effective_nmaster(&monitor, 1)),
+            1000
+        );
+    }
+
+    #[test]
+    fn effective_nmaster_does_not_mutate_configured_nmaster() {
+        let mut monitor = Monitor::default();
+        monitor.nmaster = 4;
+
+        assert_eq!(effective_nmaster(&monitor, 2), 2);
+        assert_eq!(monitor.nmaster, 4);
+    }
+
+    #[test]
+    fn negative_nmaster_behaves_like_zero_master_clients() {
+        let mut monitor = Monitor::default();
+        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.nmaster = -1;
+
+        let nmaster = effective_nmaster(&monitor, 3);
+
+        assert_eq!(nmaster, 0);
+        assert_eq!(master_width(&monitor, 3, nmaster), 0);
     }
 }

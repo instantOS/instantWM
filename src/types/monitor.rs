@@ -275,7 +275,7 @@ impl Monitor {
         let selected = self.selected_tags();
         let mut count = 0;
         for (_win, c) in self.iter_clients(clients) {
-            if c.is_visible(selected) && !c.is_floating {
+            if c.is_tiled(selected) {
                 count += 1;
             }
         }
@@ -645,8 +645,8 @@ pub struct PertagState {
 impl Default for PertagState {
     fn default() -> Self {
         Self {
-            nmaster: 0,
-            mfact: 0.0,
+            nmaster: 1,
+            mfact: 0.55,
             showbar: true,
             layouts: TagLayouts::default(),
         }
@@ -681,5 +681,57 @@ mod tests {
         }
 
         assert_eq!(monitor.first_visible_client(&clients), Some(WindowId(3)));
+    }
+
+    #[test]
+    fn pertag_state_defaults_match_normal_tiling_defaults() {
+        let state = PertagState::default();
+
+        assert_eq!(state.nmaster, 1);
+        assert_eq!(state.mfact, 0.55);
+    }
+
+    #[test]
+    fn tiled_client_count_matches_collected_tiled_clients() {
+        let mut monitor = Monitor::default();
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+
+        let mut normal = Client {
+            win: WindowId(1),
+            ..Client::default()
+        };
+        normal.set_tag_mask(TagMask::single(1).unwrap());
+
+        let mut fullscreen = Client {
+            win: WindowId(2),
+            is_fullscreen: true,
+            ..Client::default()
+        };
+        fullscreen.set_tag_mask(TagMask::single(1).unwrap());
+
+        let mut floating = Client {
+            win: WindowId(3),
+            is_floating: true,
+            ..Client::default()
+        };
+        floating.set_tag_mask(TagMask::single(1).unwrap());
+
+        let mut hidden = Client {
+            win: WindowId(4),
+            is_hidden: true,
+            ..Client::default()
+        };
+        hidden.set_tag_mask(TagMask::single(1).unwrap());
+
+        let clients = HashMap::from([
+            (WindowId(1), normal),
+            (WindowId(2), fullscreen),
+            (WindowId(3), floating),
+            (WindowId(4), hidden),
+        ]);
+
+        assert_eq!(monitor.tiled_client_count(&clients), 1);
+        assert_eq!(monitor.collect_tiled(&clients).len(), 1);
     }
 }

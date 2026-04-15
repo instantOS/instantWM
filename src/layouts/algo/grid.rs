@@ -51,13 +51,38 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         return;
     }
 
-    let framecount = framecount_for_layout(ctx.core().globals(), FAST_ANIM_THRESHOLD, 3, 6);
-
     // ── count tiled clients ───────────────────────────────────────────────
     let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as i32;
 
-    // A single tiled client fills the whole work area — nothing to grid.
-    if n <= 1 {
+    if n == 0 {
+        return;
+    }
+
+    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let framecount = framecount_for_layout(
+        ctx.core().globals().behavior.animated,
+        n as usize,
+        FAST_ANIM_THRESHOLD,
+        3,
+        6,
+    );
+
+    // A single tiled client fills the whole work area.
+    if n == 1 {
+        let client = &tiled[0];
+        ctx.move_resize(
+            client.win,
+            Rect {
+                x: m.work_rect.x,
+                y: m.work_rect.y,
+                w: m.work_rect.w - BORDER_MULTIPLIER * client.border_width,
+                h: m.work_rect.h - BORDER_MULTIPLIER * client.border_width,
+            },
+            MoveResizeOptions {
+                mode: MoveResizeMode::AnimateTo,
+                frames: framecount,
+            },
+        );
         return;
     }
 
@@ -146,7 +171,8 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     let framecount = framecount_for_layout(
-        ctx.core().globals(),
+        ctx.core().globals().behavior.animated,
+        n as usize,
         FAST_ANIM_THRESHOLD,
         FAST_FRAME_COUNT,
         DEFAULT_FRAME_COUNT,
