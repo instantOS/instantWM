@@ -18,6 +18,9 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     if matches!(&wm.backend, Backend::X11(_)) {
         reload_x11(wm);
     }
+    if let Backend::Wayland(data) = &mut wm.backend {
+        reload_wayland(&mut wm.g, data, &cfg);
+    }
 
     Ok(())
 }
@@ -30,6 +33,29 @@ fn normalize_current_mode(wm: &mut Wm) {
     if !wm.g.cfg.modes.contains_key(&wm.g.behavior.current_mode) {
         wm.g.behavior.current_mode = "default".to_string();
     }
+}
+
+fn reload_wayland(
+    g: &mut crate::globals::Globals,
+    data: &mut crate::backend::WaylandBackendData,
+    cfg: &config::Config,
+) {
+    use crate::wayland::common::{wayland_font_height_from_size, wayland_font_size_from_config};
+    use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
+
+    let font_size = wayland_font_size_from_config(&cfg.fonts);
+    let font_height = wayland_font_height_from_size(font_size);
+
+    data.bar_painter.set_font_size(font_size);
+
+    let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
+    g.cfg.bar_height = (if cfg.bar_height > 0 {
+        font_height + cfg.bar_height
+    } else {
+        font_height + 12
+    })
+    .max(min_bar_height);
+    g.cfg.horizontal_padding = font_height;
 }
 
 fn reload_x11(wm: &mut Wm) {
@@ -69,6 +95,24 @@ mod tests {
 
         assert!(wm.g.pending.monitor_config);
         assert!(wm.g.pending.input_config);
+    }
+
+    #[test]
+    fn reload_sets_bar_height_on_wayland() {
+        let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
+
+        reload_config(&mut wm).unwrap();
+
+        assert!(
+            wm.g.cfg.bar_height > 0,
+            "bar_height should be computed from font metrics, got {}",
+            wm.g.cfg.bar_height
+        );
+        assert!(
+            wm.g.cfg.horizontal_padding > 0,
+            "horizontal_padding should be set from font height, got {}",
+            wm.g.cfg.horizontal_padding
+        );
     }
 
     #[test]
