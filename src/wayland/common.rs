@@ -210,12 +210,11 @@ pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
     // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
     // rounded up) when the user has not explicitly set bar_height in config.
-    g.cfg.bar_height = (if cfg.bar_height > 0 {
-        font_height + cfg.bar_height
+    g.cfg.bar_height = if cfg.bar_height > 0 {
+        cfg.bar_height.max(min_bar_height)
     } else {
-        font_height + 12
-    })
-    .max(min_bar_height);
+        (font_height + 12).max(min_bar_height)
+    };
     g.cfg.horizontal_padding = font_height;
 
     // Monitor geometry will be set up after the compositor is ready via update_geom

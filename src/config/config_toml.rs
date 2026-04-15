@@ -56,6 +56,9 @@ pub struct ThemeConfig {
     /// Window rules.
     #[serde(default)]
     pub rules: Vec<Rule>,
+    /// Bar height in logical pixels. 0 = auto (derive from font metrics).
+    #[serde(default)]
+    pub bar_height: u32,
 }
 
 impl Default for ThemeConfig {
@@ -73,6 +76,7 @@ impl Default for ThemeConfig {
             modes: std::collections::HashMap::new(),
             cursor: CursorConfig::default(),
             rules: Vec::new(),
+            bar_height: 0,
         }
     }
 }

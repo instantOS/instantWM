@@ -218,7 +218,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     let bordercolors = wm.g.cfg.bordercolors;
     let statusbarcolors = wm.g.cfg.statusbarcolors;
     let bar_height = if bar_height_cfg > 0 {
-        font_height + bar_height_cfg as u32
+        bar_height_cfg as u32
     } else {
         font_height + 12
     };

@@ -293,7 +293,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         show_systray: true,
         showbar: true,
         topbar: true,
-        bar_height: 0,
+        bar_height: theme.bar_height as i32,
 
         // --- Tiling ---
         resize_hints: 1,

@@ -40,8 +40,8 @@ fn reload_wayland(
     data: &mut crate::backend::WaylandBackendData,
     cfg: &config::Config,
 ) {
-    use crate::wayland::common::{wayland_font_height_from_size, wayland_font_size_from_config};
     use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
+    use crate::wayland::common::{wayland_font_height_from_size, wayland_font_size_from_config};
 
     let font_size = wayland_font_size_from_config(&cfg.fonts);
     let font_height = wayland_font_height_from_size(font_size);
@@ -49,12 +49,11 @@ fn reload_wayland(
     data.bar_painter.set_font_size(font_size);
 
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
-    g.cfg.bar_height = (if cfg.bar_height > 0 {
-        font_height + cfg.bar_height
+    g.cfg.bar_height = if cfg.bar_height > 0 {
+        cfg.bar_height.max(min_bar_height)
     } else {
-        font_height + 12
-    })
-    .max(min_bar_height);
+        (font_height + 12).max(min_bar_height)
+    };
     g.cfg.horizontal_padding = font_height;
 }
 
