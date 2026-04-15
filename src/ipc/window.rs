@@ -188,7 +188,11 @@ fn resize_window(
     }
 
     transfer_window_to_monitor(&mut ctx, win, current_monitor_id, target_monitor_id);
-    crate::client::resize(&mut ctx, win, &rect, true);
+    ctx.move_resize(
+        win,
+        rect,
+        crate::geometry::MoveResizeOptions::hinted_immediate(true),
+    );
     Response::ok()
 }
 

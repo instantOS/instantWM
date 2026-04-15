@@ -127,11 +127,10 @@ fn apply_xwayland_surface_policy(
         state.with_wm_mut_unified(|wm, _state| {
             let mut ctx = wm.ctx();
             if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
-                crate::client::resize(
-                    &mut crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()),
+                crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                     win,
-                    &rect,
-                    false,
+                    rect,
+                    crate::geometry::MoveResizeOptions::hinted_immediate(false),
                 );
             }
         });
@@ -512,11 +511,10 @@ impl XwmHandler for WaylandState {
                     client.is_floating = true;
                 }
                 if let Some(work_rect) = work_rect {
-                    crate::client::resize(
-                        &mut crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()),
+                    crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                         win,
-                        &work_rect,
-                        false,
+                        work_rect,
+                        crate::geometry::MoveResizeOptions::hinted_immediate(false),
                     );
                 }
             }
@@ -545,11 +543,10 @@ impl XwmHandler for WaylandState {
                     client.is_floating = client.oldstate != 0;
                 }
                 if let Some(restore_rect) = restore_rect {
-                    crate::client::resize(
-                        &mut crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()),
+                    crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                         win,
-                        &restore_rect,
-                        false,
+                        restore_rect,
+                        crate::geometry::MoveResizeOptions::hinted_immediate(false),
                     );
                 }
             }

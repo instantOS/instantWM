@@ -37,7 +37,8 @@ pub mod x11_policy;
 //
 // Only items actually imported from outside the `client` module are listed
 // here.  Internal cross-module references use their direct paths
-// (e.g. `crate::client::geometry::resize`) so they don't need to appear here.
+// (e.g. `crate::client::geometry::apply_size_hints`) so they don't need to
+// appear here.
 // ---------------------------------------------------------------------------
 
 // -- Rules ------------------------------------------------------------------
@@ -47,7 +48,7 @@ pub use rules::{WindowProperties, apply_rules, handle_property_change};
 pub use constants::WM_STATE_WITHDRAWN;
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{resize, sane_floating_spawn_rect, sync_client_geometry};
+pub use geometry::{sane_floating_spawn_rect, sync_client_geometry};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{apply_visibility, hide, hide_for_user, show_window};

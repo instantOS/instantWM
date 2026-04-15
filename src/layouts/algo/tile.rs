@@ -20,7 +20,7 @@
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
@@ -82,10 +82,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                     w: master_area_width - BORDER_MULTIPLIER * client.border_width,
                     h: master_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeOptions {
-                    mode: MoveResizeMode::AnimateTo,
-                    frames: animation_frames,
-                },
+                MoveResizeOptions::animate_to(animation_frames),
             );
 
             if let Some(c) = ctx.client(client.win)
@@ -113,10 +110,7 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                         - BORDER_MULTIPLIER * client.border_width,
                     h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
                 },
-                MoveResizeOptions {
-                    mode: MoveResizeMode::AnimateTo,
-                    frames: animation_frames,
-                },
+                MoveResizeOptions::animate_to(animation_frames),
             );
 
             if let Some(c) = ctx.client(client.win)

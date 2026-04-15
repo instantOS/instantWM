@@ -14,10 +14,25 @@ pub enum MoveResizeMode {
     AnimateFrom(Rect),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SizeHintPolicy {
+    Ignore,
+    Respect,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BoundsPolicy {
+    Unchanged,
+    Layout,
+    Interactive,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct MoveResizeOptions {
     pub mode: MoveResizeMode,
     pub frames: i32,
+    pub size_hints: SizeHintPolicy,
+    pub bounds: BoundsPolicy,
 }
 
 impl MoveResizeOptions {
@@ -25,6 +40,8 @@ impl MoveResizeOptions {
         Self {
             mode: MoveResizeMode::Immediate,
             frames: 0,
+            size_hints: SizeHintPolicy::Ignore,
+            bounds: BoundsPolicy::Unchanged,
         }
     }
 
@@ -32,6 +49,8 @@ impl MoveResizeOptions {
         Self {
             mode: MoveResizeMode::AnimateTo,
             frames,
+            size_hints: SizeHintPolicy::Ignore,
+            bounds: BoundsPolicy::Unchanged,
         }
     }
 
@@ -39,6 +58,32 @@ impl MoveResizeOptions {
         Self {
             mode: MoveResizeMode::AnimateFrom(from),
             frames,
+            size_hints: SizeHintPolicy::Ignore,
+            bounds: BoundsPolicy::Unchanged,
+        }
+    }
+
+    pub fn with_size_hints(mut self) -> Self {
+        self.size_hints = SizeHintPolicy::Respect;
+        self
+    }
+
+    pub fn with_layout_bounds(mut self) -> Self {
+        self.bounds = BoundsPolicy::Layout;
+        self
+    }
+
+    pub fn with_interactive_bounds(mut self) -> Self {
+        self.bounds = BoundsPolicy::Interactive;
+        self
+    }
+
+    pub fn hinted_immediate(interactive: bool) -> Self {
+        let options = Self::immediate().with_size_hints();
+        if interactive {
+            options.with_interactive_bounds()
+        } else {
+            options.with_layout_bounds()
         }
     }
 }
@@ -168,12 +213,56 @@ fn should_preserve_inflight_animation(ctx: &WmCtx<'_>, win: WindowId, target: Re
     }
 }
 
+fn apply_resize_policies(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    target: Rect,
+    options: MoveResizeOptions,
+) -> Option<Rect> {
+    if options.size_hints == SizeHintPolicy::Ignore {
+        return Some(target);
+    }
+
+    let mut adjusted = target;
+    let interact = options.bounds == BoundsPolicy::Interactive;
+    let changed = match ctx {
+        WmCtx::X11(x11_ctx) => crate::client::geometry::apply_size_hints(
+            &mut x11_ctx.core,
+            Some(&x11_ctx.x11),
+            win,
+            &mut adjusted,
+            interact,
+        ),
+        WmCtx::Wayland(wl_ctx) => crate::client::geometry::apply_size_hints(
+            &mut wl_ctx.core,
+            None,
+            win,
+            &mut adjusted,
+            interact,
+        ),
+    };
+
+    let client_count = ctx.core().globals().clients.len();
+    if changed || client_count == 1 {
+        Some(adjusted)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn move_resize(
     ctx: &mut WmCtx<'_>,
     win: WindowId,
     target: Rect,
     options: MoveResizeOptions,
 ) {
+    if options.size_hints == SizeHintPolicy::Ignore && !target.is_valid() {
+        return;
+    }
+
+    let Some(target) = apply_resize_policies(ctx, win, target, options) else {
+        return;
+    };
     if !target.is_valid() {
         return;
     }

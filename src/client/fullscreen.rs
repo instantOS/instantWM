@@ -24,7 +24,7 @@
 use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::layouts::{arrange, restack};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
@@ -96,10 +96,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                 WmCtx::X11(ctx_x11.reborrow()).move_resize(
                     win,
                     mon_rect,
-                    MoveResizeOptions {
-                        mode: MoveResizeMode::AnimateTo,
-                        frames: EMPHASIZED_FRAME_COUNT,
-                    },
+                    MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
                 );
             }
 

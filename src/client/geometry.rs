@@ -2,8 +2,7 @@
 //!
 //! # Responsibilities
 //!
-//! * [`resize`] – high-level resize that runs size-hint validation first.
-//! * [`WmCtx::move_resize`](crate::contexts::WmCtx::move_resize) – low-level configure + state update.
+//! * [`WmCtx::move_resize`](crate::contexts::WmCtx::move_resize) – high-level geometry API.
 //! * [`apply_size_hints`] – clamp a proposed geometry to ICCCM size hints.
 //! * [`scale_client`] – resize a client to a percentage of its monitor.
 //!
@@ -84,34 +83,6 @@ fn normalize_spawn_axis(
         bounds_pos + (bounds_len - total_len) / 2
     } else {
         pos.clamp(min_pos, max_pos)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// High-level resize (validates size hints)
-// ---------------------------------------------------------------------------
-
-/// Backend-agnostic resize entry point.
-///
-pub fn resize(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, rect: &Rect, interact: bool) {
-    let mut new_rect = *rect;
-
-    let changed = match ctx {
-        crate::contexts::WmCtx::X11(x11_ctx) => apply_size_hints(
-            &mut x11_ctx.core,
-            Some(&x11_ctx.x11),
-            win,
-            &mut new_rect,
-            interact,
-        ),
-        crate::contexts::WmCtx::Wayland(wl_ctx) => {
-            apply_size_hints(&mut wl_ctx.core, None, win, &mut new_rect, interact)
-        }
-    };
-    let client_count = ctx.core().globals().clients.len();
-
-    if changed || client_count == 1 {
-        ctx.move_resize(win, new_rect, MoveResizeOptions::immediate());
     }
 }
 
@@ -337,5 +308,5 @@ pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: 
         })
     };
 
-    resize(ctx, win, &target, false);
+    ctx.move_resize(win, target, MoveResizeOptions::hinted_immediate(false));
 }

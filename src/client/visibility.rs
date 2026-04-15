@@ -4,10 +4,9 @@ use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::properties::set_client_state;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
-use crate::client::geometry::resize;
 use crate::constants::animation::{DECORATIVE_SHOW_FRAME_COUNT, EMPHASIZED_FRAME_COUNT};
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -111,7 +110,11 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
 
             if (!is_tiling || is_floating) && (!is_fullscreen || is_fake_fullscreen) {
                 let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
-                resize(&mut tmp_ctx, win, &Rect { x, y, w, h }, false);
+                tmp_ctx.move_resize(
+                    win,
+                    Rect { x, y, w, h },
+                    MoveResizeOptions::hinted_immediate(false),
+                );
             }
         } else {
             let w_val = geo.w
@@ -274,10 +277,7 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     WmCtx::X11(ctx.reborrow()).move_resize(
         win,
         Rect { x, y, w, h },
-        MoveResizeOptions {
-            mode: MoveResizeMode::AnimateFrom(Rect { x, y: -50, w, h }),
-            frames: DECORATIVE_SHOW_FRAME_COUNT,
-        },
+        MoveResizeOptions::animate_from(Rect { x, y: -50, w, h }, DECORATIVE_SHOW_FRAME_COUNT),
     );
 }
 
@@ -309,10 +309,7 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
                 w,
                 h,
             },
-            MoveResizeOptions {
-                mode: MoveResizeMode::AnimateTo,
-                frames: EMPHASIZED_FRAME_COUNT,
-            },
+            MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
         );
     }
 
@@ -334,7 +331,11 @@ fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     // when shown again.
     {
         let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
-        resize(&mut tmp_ctx, win, &Rect { x, y, w, h }, false);
+        tmp_ctx.move_resize(
+            win,
+            Rect { x, y, w, h },
+            MoveResizeOptions::hinted_immediate(false),
+        );
     }
 }
 

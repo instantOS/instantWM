@@ -561,10 +561,10 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     }
     ctx.core_mut().globals_mut().queue_layout_for_all_monitors();
     ctx.core_mut().bar.mark_dirty();
-    if let Some(ptr) = ctx.pointer_location() {
-        if let Some(m) = ctx.core().globals().monitors.find_monitor_at_pointer(ptr) {
-            ctx.core_mut().globals_mut().monitors.set_sel_idx(m);
-        }
+    if let Some(ptr) = ctx.pointer_location()
+        && let Some(m) = ctx.core().globals().monitors.find_monitor_at_pointer(ptr)
+    {
+        ctx.core_mut().globals_mut().monitors.set_sel_idx(m);
     }
 }
 
@@ -577,24 +577,23 @@ fn take_matching_monitor(
 ) -> Option<(usize, Monitor)> {
     if !output.name.is_empty() {
         for j in 0..pool.len() {
-            if let Some(m) = pool[j].as_ref() {
-                if m.name == output.name {
-                    let mon = pool[j].take().expect("checked");
-                    return Some((j, mon));
-                }
+            if let Some(m) = pool[j].as_ref()
+                && m.name == output.name
+            {
+                let mon = pool[j].take().expect("checked");
+                return Some((j, mon));
             }
         }
     }
-    if output_index < pool.len() {
-        if let Some(m) = pool[output_index].as_ref() {
-            let xin = output.name.starts_with("XINERAMA-");
-            let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
-            let both_empty = m.name.is_empty() && output.name.is_empty();
-            if (xin && (m.name.is_empty() || m.name == output.name)) || slot_unlabeled || both_empty
-            {
-                let mon = pool[output_index].take().expect("checked");
-                return Some((output_index, mon));
-            }
+    if output_index < pool.len()
+        && let Some(m) = pool[output_index].as_ref()
+    {
+        let xin = output.name.starts_with("XINERAMA-");
+        let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
+        let both_empty = m.name.is_empty() && output.name.is_empty();
+        if (xin && (m.name.is_empty() || m.name == output.name)) || slot_unlabeled || both_empty {
+            let mon = pool[output_index].take().expect("checked");
+            return Some((output_index, mon));
         }
     }
     None

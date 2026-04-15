@@ -25,9 +25,9 @@
 //!   overview is fully visible even on monitors with topbar enabled.
 
 use crate::backend::BackendOps;
-use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::save_floating_geometry;
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect};
 
 pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
@@ -92,16 +92,15 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             save_floating_geometry(client);
         }
 
-        resize(
-            ctx,
+        ctx.move_resize(
             win,
-            &Rect {
+            Rect {
                 x: cur_x,
                 y: cur_y,
                 w: client_w,
                 h: client_h,
             },
-            false,
+            MoveResizeOptions::hinted_immediate(false),
         );
 
         // Raise each client above the bar so nothing is obscured.

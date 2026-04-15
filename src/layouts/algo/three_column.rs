@@ -31,9 +31,9 @@
 //! The column width for the two side columns is `(work_width - mfact_width) / 2`.
 //! When there is only one side column (2 clients), it takes the full remaining width.
 
-use crate::client::resize;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect};
 
 pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
@@ -86,16 +86,15 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         master_area_width - master_bw
     };
 
-    resize(
-        ctx,
+    ctx.move_resize(
         first_win,
-        &Rect {
+        Rect {
             x: master_x,
             y: monitor.work_rect.y,
             w: master_window_width,
             h: monitor.work_rect.h - master_bw,
         },
-        false,
+        MoveResizeOptions::hinted_immediate(false),
     );
 
     if tiled_client_count <= 1 {
@@ -149,16 +148,15 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 per_window_height - BORDER_MULTIPLIER * border_width
             };
 
-            resize(
-                ctx,
+            ctx.move_resize(
                 win,
-                &Rect {
+                Rect {
                     x: column_x,
                     y: next_window_y,
                     w: stack_column_width - BORDER_MULTIPLIER * border_width,
                     h: window_height,
                 },
-                false,
+                MoveResizeOptions::hinted_immediate(false),
             );
 
             if per_window_height != monitor.work_rect.h
@@ -199,16 +197,15 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 per_window_height - BORDER_MULTIPLIER * border_width
             };
 
-            resize(
-                ctx,
+            ctx.move_resize(
                 win,
-                &Rect {
+                Rect {
                     x: column_x,
                     y: next_window_y,
                     w: stack_column_width - BORDER_MULTIPLIER * border_width,
                     h: window_height,
                 },
-                false,
+                MoveResizeOptions::hinted_immediate(false),
             );
 
             if per_window_height != monitor.work_rect.h

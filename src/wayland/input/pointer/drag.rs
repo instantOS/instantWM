@@ -1,6 +1,7 @@
 //! Pointer drag handling (title drag, tag drag, resize drag).
 
 use crate::contexts::WmCtxWayland;
+use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::set_cursor_style;
 use crate::types::{AltCursor, MouseButton, Rect, ResizeDirection, WindowId, get_resize_direction};
@@ -189,16 +190,15 @@ pub fn wayland_hover_resize_drag_motion(
                     &mut new_y,
                 );
             }
-            crate::client::resize(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+            crate::contexts::WmCtx::Wayland(ctx.reborrow()).move_resize(
                 drag.win,
-                &Rect {
+                Rect {
                     x: new_x,
                     y: new_y,
                     w: drag.win_start_geo.w.max(1),
                     h: drag.win_start_geo.h.max(1),
                 },
-                true,
+                MoveResizeOptions::hinted_immediate(true),
             );
             if let Some(client) = ctx.core.globals_mut().clients.get_mut(&drag.win) {
                 client.float_geo.x = new_x;
@@ -226,16 +226,15 @@ pub fn wayland_hover_resize_drag_motion(
             } else {
                 (orig_top, drag.win_start_geo.h.max(1))
             };
-            crate::client::resize(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+            crate::contexts::WmCtx::Wayland(ctx.reborrow()).move_resize(
                 drag.win,
-                &Rect {
+                Rect {
                     x: new_x,
                     y: new_y,
                     w: new_w,
                     h: new_h,
                 },
-                true,
+                MoveResizeOptions::hinted_immediate(true),
             );
             true
         }

@@ -27,8 +27,8 @@
 //! ```
 //!
 use crate::backend::BackendOps;
-use crate::client::resize;
 use crate::contexts::WmCtx;
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect, SnapPosition, WindowId};
 
 // ── float_left ─────────────────────────────────────────────────────────────────
@@ -82,7 +82,8 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 ///
 /// This is a pure geometry function: it reads `client.snap_status` and
 /// `client.border_width`, derives the target `Rect` from the monitor's
-/// `work_rect`, and calls [`resize`].  It does *not* modify `snap_status`.
+/// `work_rect`, and applies it through `move_resize`. It does *not* modify
+/// `snap_status`.
 ///
 /// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
 /// client window is not found.
@@ -122,5 +123,9 @@ pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
         SnapPosition::None => return,
     };
 
-    resize(ctx, win, &Rect { x, y, w, h }, false);
+    ctx.move_resize(
+        win,
+        Rect { x, y, w, h },
+        MoveResizeOptions::hinted_immediate(false),
+    );
 }

@@ -15,12 +15,12 @@
 //!   └─► spawn instantslop → parse stdout → validate rect
 //!             └─► handle_monitor_switch   (window may cross monitors)
 //!                   └─► apply_window_resize
-//!                             └─► toggle_floating (if tiled) + resize
+//!                             └─► toggle_floating (if tiled) + move_resize
 //! ```
 
-use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
+use crate::geometry::MoveResizeOptions;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
 
@@ -110,7 +110,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         toggle_floating(ctx);
     }
 
-    resize(ctx, c_win, rect, true);
+    ctx.move_resize(c_win, *rect, MoveResizeOptions::hinted_immediate(true));
 }
 
 // ── draw_window ───────────────────────────────────────────────────────────────

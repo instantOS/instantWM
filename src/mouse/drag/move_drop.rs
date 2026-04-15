@@ -5,9 +5,9 @@
 //! including bar hover handling, edge snapping, and drop completion.
 
 use crate::bar::bar_position_to_gesture;
-use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::{WindowMode, change_snap, reset_snap, set_window_mode};
+use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
 use crate::types::SnapPosition;
@@ -179,7 +179,11 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         }
     };
     if let Some(geo) = restore_geo {
-        resize(ctx, selected_window, &geo, false);
+        ctx.move_resize(
+            selected_window,
+            geo,
+            MoveResizeOptions::hinted_immediate(false),
+        );
     }
 
     Some(selected_window)
@@ -298,16 +302,15 @@ pub fn on_motion(
         if let Some(client) = ctx.client(win).cloned() {
             snap_to_monitor_edges(ctx, &client, &mut new_x, &mut new_y);
         }
-        resize(
-            ctx,
+        ctx.move_resize(
             win,
-            &Rect {
+            Rect {
                 x: new_x,
                 y: new_y,
                 w: drag_geo.w,
                 h: drag_geo.h,
             },
-            true,
+            MoveResizeOptions::hinted_immediate(true),
         );
     }
 }
@@ -598,6 +601,6 @@ pub fn promote_to_floating(
         w: target_w,
         h: target_h,
     };
-    resize(ctx, win, &new_geo, true);
+    ctx.move_resize(win, new_geo, MoveResizeOptions::hinted_immediate(true));
     (new_geo, true)
 }

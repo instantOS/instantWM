@@ -1,9 +1,9 @@
 use crate::backend::BackendOps;
-use crate::client::{resize, save_border_width};
+use crate::client::save_border_width;
 use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
 use crate::constants::overlay::*;
 use crate::contexts::WmCtx;
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 // focus() is used via focus_soft() in this module
 use crate::layouts::arrange;
 use crate::types::*;
@@ -345,7 +345,11 @@ pub fn show_overlay(ctx: &mut WmCtx) {
 
     if is_locked {
         let initial_rect = get_initial_overlay_rect(&pos_info);
-        resize(ctx, overlay, &initial_rect, true);
+        ctx.move_resize(
+            overlay,
+            initial_rect,
+            MoveResizeOptions::hinted_immediate(true),
+        );
     }
 
     let tags = ctx
@@ -362,10 +366,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         ctx.move_resize(
             overlay,
             target_rect,
-            MoveResizeOptions {
-                mode: MoveResizeMode::AnimateTo,
-                frames: OVERLAY_ANIMATION_FRAMES,
-            },
+            MoveResizeOptions::animate_to(OVERLAY_ANIMATION_FRAMES),
         );
 
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay) {
@@ -452,10 +453,7 @@ pub fn hide_overlay(ctx: &mut WmCtx) {
         ctx.move_resize(
             overlay_win,
             hide_rect,
-            MoveResizeOptions {
-                mode: MoveResizeMode::AnimateTo,
-                frames: OVERLAY_ANIMATION_FRAMES,
-            },
+            MoveResizeOptions::animate_to(OVERLAY_ANIMATION_FRAMES),
         );
     }
 

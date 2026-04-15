@@ -17,9 +17,9 @@
 //! that hover-border drags use, giving correct per-quadrant behaviour without
 //! any cursor warp or anchor chaos.
 
-use crate::client::resize;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
+use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 use super::cursor::set_cursor_style;
@@ -269,16 +269,15 @@ pub fn resize_mouse_directional(
 
                     if !has_tiling || is_floating {
                         with_wm_ctx_x11(ctx, |ctx| {
-                            resize(
-                                ctx,
+                            ctx.move_resize(
                                 win,
-                                &Rect {
+                                Rect {
                                     x: new_x,
                                     y: new_y,
                                     w: new_w,
                                     h: new_h,
                                 },
-                                true,
+                                MoveResizeOptions::hinted_immediate(true),
                             );
                         });
                     }
@@ -384,16 +383,15 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
                     }
 
                     with_wm_ctx_x11(ctx, |ctx| {
-                        resize(
-                            ctx,
+                        ctx.move_resize(
                             win,
-                            &Rect {
+                            Rect {
                                 x: client_geo.x,
                                 y: client_geo.y,
                                 w: nw,
                                 h: nh,
                             },
-                            true,
+                            MoveResizeOptions::hinted_immediate(true),
                         );
                     });
                 }

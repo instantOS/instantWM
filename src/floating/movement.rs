@@ -1,9 +1,8 @@
 //! Keyboard-driven floating window movement, resize, and scaling.
 
-use crate::client::resize;
 use crate::constants::animation::FLOAT_MOVE_FRAME_COUNT;
 use crate::contexts::WmCtx;
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
@@ -40,10 +39,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
             w: geo.w,
             h: geo.h,
         },
-        MoveResizeOptions {
-            mode: MoveResizeMode::AnimateTo,
-            frames: FLOAT_MOVE_FRAME_COUNT,
-        },
+        MoveResizeOptions::animate_to(FLOAT_MOVE_FRAME_COUNT),
     );
     ctx.warp_cursor_to_client(win);
 }
@@ -67,16 +63,15 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 
     ctx.warp_cursor_to_client(win);
 
-    resize(
-        ctx,
+    ctx.move_resize(
         win,
-        &Rect {
+        Rect {
             x: geo.x,
             y: geo.y,
             w: nw,
             h: nh,
         },
-        true,
+        MoveResizeOptions::hinted_immediate(true),
     );
 }
 
@@ -110,15 +105,14 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
 
     let y_offset = if showbar { bar_height } else { -bar_height };
 
-    resize(
-        ctx,
+    ctx.move_resize(
         win,
-        &Rect {
+        Rect {
             x: mon_rect.x + (work_rect.w / 2) - (geo.w / 2),
             y: mon_rect.y + (work_rect.h / 2) - (geo.h / 2) + y_offset,
             w: geo.w,
             h: geo.h,
         },
-        true,
+        MoveResizeOptions::hinted_immediate(true),
     );
 }

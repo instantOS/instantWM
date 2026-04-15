@@ -19,7 +19,7 @@
 use crate::backend::BackendOps;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
 use crate::contexts::WmCtx;
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect};
 
 pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
@@ -69,10 +69,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
                 h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
             },
-            MoveResizeOptions {
-                mode: MoveResizeMode::AnimateTo,
-                frames,
-            },
+            MoveResizeOptions::animate_to(frames),
         );
     }
 }

@@ -5,7 +5,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::client::restore_border_width;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::geometry::{MoveResizeMode, MoveResizeOptions};
+use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::types::*;
 
@@ -42,7 +42,7 @@ pub fn save_floating_geometry(client: &mut Client) {
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     if let Some(rect) = ctx.core().globals().clients.effective_float_geo(win) {
-        crate::client::resize(ctx, win, &rect, false);
+        ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
     }
 }
 
@@ -93,7 +93,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             let Some(saved_geo) = saved_geo else {
                 return false;
             };
-            crate::client::resize(ctx, win, &saved_geo, false);
+            ctx.move_resize(win, saved_geo, MoveResizeOptions::hinted_immediate(false));
             true // Caller should animate
         }
         WindowMode::Tiled => {
@@ -151,10 +151,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         ctx.move_resize(
             win,
             saved_geo,
-            MoveResizeOptions {
-                mode: MoveResizeMode::AnimateTo,
-                frames: DEFAULT_FRAME_COUNT,
-            },
+            MoveResizeOptions::animate_to(DEFAULT_FRAME_COUNT),
         );
     }
 

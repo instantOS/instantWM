@@ -45,9 +45,9 @@
 //! | `true`  | toward the centre (spiral)   |
 //! | `false` | away from centre (dwindle)   |
 
-use crate::client::resize;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect};
 
 // ── public entry points ───────────────────────────────────────────────────────
@@ -131,16 +131,15 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
             }
         }
 
-        resize(
-            ctx,
+        ctx.move_resize(
             win,
-            &Rect {
+            Rect {
                 x,
                 y,
                 w: w - BORDER_MULTIPLIER * border_width,
                 h: h - BORDER_MULTIPLIER * border_width,
             },
-            false,
+            MoveResizeOptions::hinted_immediate(false),
         );
 
         // After placing the client, advance the remainder pointer.

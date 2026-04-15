@@ -15,9 +15,9 @@
 //! mode (see `tags.rs`) so that window positions survive the overview layout
 //! and are correctly restored when the user switches back.
 
-use crate::client::resize;
 use crate::contexts::WmCtx;
 use crate::floating::state::save_floating_geometry;
+use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 // ── Save / restore all floating ───────────────────────────────────────────────
@@ -123,16 +123,15 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
         let col = (i as i32) % cols;
         let row = (i as i32) / cols;
 
-        resize(
-            ctx,
+        ctx.move_resize(
             win,
-            &Rect {
+            Rect {
                 x: work_rect.x + col * cell_w,
                 y: work_rect.y + row * cell_h,
                 w: cell_w,
                 h: cell_h,
             },
-            true,
+            MoveResizeOptions::hinted_immediate(true),
         );
     }
 }

@@ -10,10 +10,10 @@ use crate::client::constants::{
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
 };
 use crate::client::fullscreen::set_fullscreen_x11;
-use crate::client::geometry::resize;
 use crate::client::rules::WindowProperties;
 use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::geometry::MoveResizeOptions;
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
@@ -268,16 +268,15 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
-    resize(
-        &mut tmp_ctx,
+    tmp_ctx.move_resize(
         win,
-        &Rect {
+        Rect {
             x: c_x,
             y: c_y,
             w: c_w - 2 * new_bw,
             h: c_h - 2 * new_bw,
         },
-        false,
+        MoveResizeOptions::hinted_immediate(false),
     );
 }
 

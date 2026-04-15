@@ -39,7 +39,7 @@ use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDR
 use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::geometry::{GeometryApplyMode, MoveResizeMode, MoveResizeOptions};
+use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::types::MonitorId;
 // focus() is used via focus_soft() in this module
 use crate::focus::focus_soft;
@@ -463,15 +463,15 @@ fn run_manage_animation(
     ctx.move_resize(
         w,
         c.geo,
-        MoveResizeOptions {
-            mode: MoveResizeMode::AnimateFrom(Rect {
+        MoveResizeOptions::animate_from(
+            Rect {
                 x: c.geo.x,
                 y: mon_monitor_rect.y - c.geo.h - c.border_width * 2,
                 w: c.geo.w,
                 h: c.geo.h,
-            }),
-            frames: DEFAULT_FRAME_COUNT,
-        },
+            },
+            DEFAULT_FRAME_COUNT,
+        ),
     );
 
     let is_tiling = ctx
