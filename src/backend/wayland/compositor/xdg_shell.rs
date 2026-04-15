@@ -5,7 +5,7 @@ use smithay::{
     },
     input::{
         SeatHandler,
-        dnd::{GrabType, Source},
+        dnd::{DnDGrab, GrabType, Source},
         pointer::Focus,
     },
     reexports::wayland_server::{Resource, protocol::wl_seat},
@@ -142,14 +142,58 @@ impl WlrDataControlHandler for WaylandState {
 impl WaylandDndGrabHandler for WaylandState {
     fn dnd_requested<S: Source>(
         &mut self,
-        _source: S,
+        source: S,
         icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
-        _seat: smithay::input::Seat<Self>,
-        _serial: smithay::utils::Serial,
-        _type_: GrabType,
+        seat: smithay::input::Seat<Self>,
+        serial: smithay::utils::Serial,
+        type_: GrabType,
     ) {
         self.runtime.dnd_icon = icon;
         self.request_render();
+
+        match type_ {
+            GrabType::Pointer => {
+                let Some(pointer) = seat.get_pointer() else {
+                    source.cancel();
+                    self.runtime.dnd_icon = None;
+                    self.request_render();
+                    return;
+                };
+                let Some(start_data) = pointer.grab_start_data() else {
+                    source.cancel();
+                    self.runtime.dnd_icon = None;
+                    self.request_render();
+                    return;
+                };
+
+                pointer.set_grab(
+                    self,
+                    DnDGrab::new_pointer(&self.display_handle, start_data, source, seat),
+                    serial,
+                    Focus::Keep,
+                );
+            }
+            GrabType::Touch => {
+                let Some(touch) = seat.get_touch() else {
+                    source.cancel();
+                    self.runtime.dnd_icon = None;
+                    self.request_render();
+                    return;
+                };
+                let Some(start_data) = touch.grab_start_data() else {
+                    source.cancel();
+                    self.runtime.dnd_icon = None;
+                    self.request_render();
+                    return;
+                };
+
+                touch.set_grab(
+                    self,
+                    DnDGrab::new_touch(&self.display_handle, start_data, source, seat),
+                    serial,
+                );
+            }
+        }
     }
 }
 
