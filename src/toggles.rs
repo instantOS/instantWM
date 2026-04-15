@@ -38,7 +38,7 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     let monitor_id = if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        client.issticky = !client.issticky;
+        client.is_sticky = !client.is_sticky;
         client.monitor_id
     } else {
         return;

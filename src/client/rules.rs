@@ -52,7 +52,7 @@ pub fn apply_rules(
 
     let special_next = g.behavior.specialnext;
     let rules = g.cfg.rules.clone();
-    let tag_mask = TagMask::from_bits(g.tags.mask());
+    let tag_mask = g.tags.mask();
     let bar_height = g.cfg.bar_height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
@@ -73,7 +73,7 @@ pub fn apply_rules(
             if rule.class.as_deref() == Some("Onboard")
                 && let Some(c) = g.clients.get_mut(&win)
             {
-                c.issticky = true;
+                c.is_sticky = true;
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
@@ -244,7 +244,7 @@ fn rule_state_snapshot(g: &Globals, win: WindowId) -> Option<RuleStateSnapshot> 
     let c = g.clients.get(&win)?;
     Some(RuleStateSnapshot {
         is_floating: c.is_floating,
-        is_sticky: c.issticky,
+        is_sticky: c.is_sticky,
         monitor_id: c.monitor_id,
         tags: c.tags,
         geo: c.geo,

@@ -38,7 +38,7 @@ fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: MonitorId)
 fn scratchpad_names(g: &Globals, visible: bool) -> Vec<String> {
     g.clients
         .values()
-        .filter(|c| c.is_scratchpad() && c.issticky == visible)
+        .filter(|c| c.is_scratchpad() && c.is_sticky == visible)
         .map(|c| c.scratchpad_name.clone())
         .collect()
 }
@@ -98,7 +98,7 @@ pub fn scratchpad_make(
     }
 
     client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
-    client.issticky = false;
+    client.is_sticky = false;
 
     if !client.is_floating {
         client.is_floating = true;
@@ -155,7 +155,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         .globals()
         .clients
         .get(&found)
-        .is_some_and(|c| c.issticky);
+        .is_some_and(|c| c.is_sticky);
 
     if was_sticky {
         return Ok(format!("scratchpad '{}' is already visible", name));
@@ -171,7 +171,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         .unwrap_or(current_mon);
 
     if let Some(client) = ctx.client_mut(found) {
-        client.issticky = true;
+        client.is_sticky = true;
         client.is_floating = true;
     }
 
@@ -237,7 +237,7 @@ pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
             .globals()
             .clients
             .values()
-            .any(|c| c.is_scratchpad() && c.scratchpad_name == name && c.issticky);
+            .any(|c| c.is_scratchpad() && c.scratchpad_name == name && c.is_sticky);
         scratchpad_hide_name(ctx, &name);
         if was_visible {
             hidden_count += 1;
@@ -263,11 +263,11 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     let Some(client) = ctx.client_mut(found) else {
         return;
     };
-    if !client.issticky {
+    if !client.is_sticky {
         return;
     }
 
-    client.issticky = false;
+    client.is_sticky = false;
     client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
 
     crate::client::hide(ctx, found);
@@ -293,7 +293,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
     let Some(client) = ctx.client(found) else {
         return;
     };
-    let is_sticky = client.issticky;
+    let is_sticky = client.is_sticky;
 
     if is_sticky {
         scratchpad_hide_name(ctx, name);
@@ -309,7 +309,7 @@ pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
         if c.is_scratchpad() {
             scratchpads.push(ScratchpadInfo {
                 name: c.scratchpad_name.clone(),
-                visible: c.issticky,
+                visible: c.is_sticky,
                 window_id: Some(c.win.0),
                 monitor: Some(c.monitor_id.index()),
                 x: Some(c.geo.x),

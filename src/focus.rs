@@ -478,7 +478,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
     let target_tags = client_tags.without_scratchpad();
     let visible_tags = ctx.core().globals().selected_monitor().selected_tags();
     if !target_tags.is_empty() && !target_tags.intersects(visible_tags) {
-        crate::tags::view::view(ctx, target_tags);
+        crate::tags::view::view_tags(ctx, target_tags);
     }
 
     focus_soft(ctx, Some(win));
@@ -695,7 +695,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
         ctx.core_mut().focus.last_client = cur;
     }
 
-    crate::tags::view::view(ctx, tags);
+    crate::tags::view::view_tags(ctx, tags);
     focus_soft(ctx, Some(last_win));
 
     let monitor_id = ctx.core().globals().selected_monitor_id();

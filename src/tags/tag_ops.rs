@@ -16,5 +16,5 @@ pub fn view_selection(ctx: &mut WmCtx, selection: TagSelection) {
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;
 
     let mask = selection.to_mask(current_mask, prev_tag, num_tags);
-    super::view::view(ctx, mask);
+    super::view::view_tags(ctx, mask);
 }

@@ -15,7 +15,17 @@ use crate::types::{MAX_TAGS, core::SCRATCHPAD_MASK};
 ///
 
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, Hash, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    Hash,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[serde(transparent)]
 pub struct TagMask(u32);

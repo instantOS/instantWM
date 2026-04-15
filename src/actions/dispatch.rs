@@ -43,7 +43,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
         KeyAction::Named { action, args } => execute_named_action(ctx, *action, args),
         KeyAction::ViewTag { tag_idx } => {
             if let Some(mask) = tag_mask_from_idx(*tag_idx) {
-                crate::tags::view::view(ctx, mask);
+                crate::tags::view::view_tags(ctx, mask);
             }
         }
         KeyAction::ToggleViewTag { tag_idx } => {
@@ -55,7 +55,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
             if let Some(win) = ctx.selected_client()
                 && let Some(mask) = tag_mask_from_idx(*tag_idx)
             {
-                crate::tags::client_tags::set_client_tag_ctx(ctx, win, mask);
+                crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         KeyAction::FollowClientTag { tag_idx } => {
@@ -69,7 +69,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
             if let Some(win) = ctx.selected_client()
                 && let Some(mask) = tag_mask_from_idx(*tag_idx)
             {
-                crate::tags::client_tags::toggle_tag_ctx(ctx, win, mask);
+                crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
         KeyAction::SwapTags { tag_idx } => {
@@ -114,14 +114,14 @@ pub fn execute_button_action(
             if let Some(win) = ctx.selected_client()
                 && let Some(mask) = tag_mask_from_pos(arg.pos)
             {
-                crate::tags::client_tags::set_client_tag_ctx(ctx, win, mask);
+                crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         ButtonAction::ToggleSelectedClientClickedTag => {
             if let Some(win) = ctx.selected_client()
                 && let Some(mask) = tag_mask_from_pos(arg.pos)
             {
-                crate::tags::client_tags::toggle_tag_ctx(ctx, win, mask);
+                crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
         ButtonAction::FollowSelectedClientClickedTag => {

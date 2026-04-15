@@ -14,7 +14,7 @@ pub fn handle_tag_command(wm: &mut Wm, cmd: TagCommand) -> Response {
 fn view_tag(wm: &mut Wm, tag_num: u32) -> Response {
     let tag = if tag_num == 0 { 2 } else { tag_num };
     if let Some(mask) = TagMask::single(tag as usize) {
-        crate::tags::view::view(&mut wm.ctx(), mask);
+        crate::tags::view::view_tags(&mut wm.ctx(), mask);
     }
     Response::ok()
 }

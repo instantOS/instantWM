@@ -236,7 +236,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         client.border_width = client.old_border_width;
-        client.issticky = false;
+        client.is_sticky = false;
         client.is_locked = false;
         client.is_floating = true;
     }
@@ -369,7 +369,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
         );
 
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay) {
-            client.issticky = true;
+            client.is_sticky = true;
         }
     }
 
@@ -385,7 +385,7 @@ fn is_overlay_fullscreen(_ctx: &WmCtx, overlay_win: WindowId, mon: &Monitor) -> 
 /// Clear overlay tags and sticky state.
 fn clear_overlay_state(ctx: &mut WmCtx, overlay_win: WindowId) {
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
-        client.issticky = false;
+        client.is_sticky = false;
         client.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 }

@@ -885,14 +885,14 @@ impl Globals {
         let scheme_idx = if is_selected {
             if is_overlay {
                 SchemeWin::OverlayFocus
-            } else if c.issticky {
+            } else if c.is_sticky {
                 SchemeWin::StickyFocus
             } else {
                 SchemeWin::Focus
             }
         } else if is_overlay {
             SchemeWin::Overlay
-        } else if c.issticky {
+        } else if c.is_sticky {
             SchemeWin::Sticky
         } else if c.is_minimized() {
             SchemeWin::Minimized

@@ -3,7 +3,7 @@
 //! Types for workspace tags, layouts, and tag management.
 
 use crate::layouts::LayoutKind;
-use crate::types::color::TagColorConfigs;
+use crate::types::{TagMask, color::TagColorConfigs};
 
 /// Identifies which layout slot (primary or secondary) is currently active.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -180,10 +180,10 @@ pub struct TagSet {
 }
 
 impl TagSet {
-    /// Bitmask covering all active tags: `(1 << count) - 1`.
+    /// Mask covering all active tags.
     #[inline]
-    pub fn mask(&self) -> u32 {
-        (1u32 << self.num_tags).wrapping_sub(1)
+    pub fn mask(&self) -> TagMask {
+        TagMask::all(self.num_tags)
     }
 
     /// Number of active tags.

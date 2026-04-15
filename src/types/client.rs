@@ -56,7 +56,7 @@ pub struct Client {
     /// Whether the window is locked (can't be closed accidentally).
     pub is_locked: bool,
     /// Whether the window is sticky (visible on all tags).
-    pub issticky: bool,
+    pub is_sticky: bool,
     /// Whether the window is minimized/hidden.
     pub is_hidden: bool,
     /// Current snap position.
@@ -91,7 +91,7 @@ impl Client {
     /// Check if this client is a scratchpad window.
     pub fn is_scratchpad(&self) -> bool {
         self.has_scratchpad_identity()
-            && (self.tags.is_scratchpad_only() || self.is_hidden || self.issticky)
+            && (self.tags.is_scratchpad_only() || self.is_hidden || self.is_sticky)
     }
 
     /// Check if this client is a normal minimized window rather than a hidden scratchpad.
@@ -104,7 +104,7 @@ impl Client {
     pub fn clear_scratchpad_state(&mut self) {
         self.scratchpad_name.clear();
         self.scratchpad_restore_tags = TagMask::EMPTY;
-        self.issticky = false;
+        self.is_sticky = false;
     }
 
     /// Keep scratchpad metadata consistent with the current tag assignment.
@@ -112,7 +112,7 @@ impl Client {
         if self.has_scratchpad_identity()
             && !self.tags.is_scratchpad_only()
             && !self.is_hidden
-            && !self.issticky
+            && !self.is_sticky
         {
             self.clear_scratchpad_state();
         }
@@ -133,7 +133,7 @@ impl Client {
     /// Check if the client is on the selected tags, ignoring hidden state.
     #[inline]
     pub fn is_on_selected_tags(&self, selected_tags: TagMask) -> bool {
-        self.issticky || self.tags.intersects(selected_tags)
+        self.is_sticky || self.tags.intersects(selected_tags)
     }
 
     /// Check if the client is actually visible for the given tag-set.
@@ -146,7 +146,7 @@ impl Client {
     #[inline]
     pub fn shows_in_bar(&self, selected_tags: TagMask) -> bool {
         if self.is_scratchpad() {
-            self.issticky && !self.is_hidden
+            self.is_sticky && !self.is_hidden
         } else {
             self.is_on_selected_tags(selected_tags)
         }
@@ -247,7 +247,7 @@ impl Client {
         x11: &crate::backend::x11::X11BackendRef,
         x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     ) {
-        let tag_mask = TagMask::from_bits(core.globals().tags.mask());
+        let tag_mask = core.globals().tags.mask();
         let effective_mask = mask & tag_mask;
 
         if effective_mask.is_empty() {
@@ -255,7 +255,7 @@ impl Client {
         }
 
         if self.tags.is_scratchpad_only() {
-            self.issticky = false;
+            self.is_sticky = false;
         }
 
         self.set_tag_mask(effective_mask);
@@ -297,7 +297,7 @@ mod tests {
 
         assert!(client.scratchpad_name.is_empty());
         assert_eq!(client.scratchpad_restore_tags, TagMask::EMPTY);
-        assert!(!client.issticky);
+        assert!(!client.is_sticky);
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
         let mut client = Client {
             scratchpad_name: "term".to_string(),
             scratchpad_restore_tags: TagMask::single(2).unwrap(),
-            issticky: true,
+            is_sticky: true,
             tags: TagMask::from_bits(SCRATCHPAD_MASK),
             ..Client::default()
         };
@@ -314,7 +314,7 @@ mod tests {
 
         assert_eq!(client.scratchpad_name, "term");
         assert_eq!(client.scratchpad_restore_tags, TagMask::single(2).unwrap());
-        assert!(client.issticky);
+        assert!(client.is_sticky);
         assert!(client.is_scratchpad());
     }
 
@@ -339,7 +339,7 @@ mod tests {
         let mut client = Client {
             scratchpad_name: "term".to_string(),
             scratchpad_restore_tags: TagMask::single(2).unwrap(),
-            issticky: true,
+            is_sticky: true,
             tags: TagMask::single(1).unwrap(),
             ..Client::default()
         };

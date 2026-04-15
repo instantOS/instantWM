@@ -699,7 +699,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     let Some(client) = ctx.client(win) else {
         return;
     };
-    if !client.is_scratchpad() || client.issticky {
+    if !client.is_scratchpad() || client.is_sticky {
         return;
     }
 

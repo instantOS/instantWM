@@ -28,7 +28,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             current_tag,
             mon.overlay,
             mon.selected_tags(),
-            TagMask::from_bits(ctx.core().globals().tags.mask()),
+            ctx.core().globals().tags.mask(),
             ctx.core().globals().behavior.animated,
         )
     };

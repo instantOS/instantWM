@@ -21,9 +21,9 @@ pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
     let target_tags = mon.current_tag.and_then(TagMask::single);
 
     if let Some(client) = core.globals_mut().clients.get_mut(&win)
-        && client.issticky
+        && client.is_sticky
     {
-        client.issticky = false;
+        client.is_sticky = false;
         if let Some(tags) = target_tags {
             client.set_tag_mask(tags);
         }

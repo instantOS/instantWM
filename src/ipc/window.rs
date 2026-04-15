@@ -4,8 +4,7 @@ use crate::ipc_types::{
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
 use crate::mouse::slop::is_valid_window_size_rect;
-use crate::types::Rect;
-use crate::types::WindowId;
+use crate::types::{Rect, TagMask, WindowId};
 use crate::wm::Wm;
 
 pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
@@ -32,16 +31,6 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
     }
 }
 
-/// Convert a tags bitmask to an array of 1-indexed tag numbers.
-fn tags_from_mask(tags_mask: u32, valid_mask: u32) -> Vec<u32> {
-    (1..=32)
-        .filter(|&t| {
-            let tag_bit = 1u32 << (t - 1);
-            (tags_mask & tag_bit) != 0 && (valid_mask & tag_bit) != 0
-        })
-        .collect()
-}
-
 /// Build scratchpad info from a client if it's a scratchpad window.
 fn build_scratchpad_info(
     c: &crate::types::client::Client,
@@ -51,7 +40,7 @@ fn build_scratchpad_info(
     }
     Some(crate::ipc_types::ScratchpadInfo {
         name: c.scratchpad_name.clone(),
-        visible: c.issticky,
+        visible: c.is_sticky,
         window_id: Some(c.win.0),
         monitor: Some(c.monitor_id.index()),
         x: Some(c.geo.x),
@@ -85,7 +74,7 @@ fn build_window_state(c: &crate::types::client::Client) -> WindowState {
         floating: c.is_floating,
         fullscreen: c.is_fullscreen,
         fake_fullscreen: c.isfakefullscreen,
-        sticky: c.issticky,
+        sticky: c.is_sticky,
         hidden: c.is_hidden,
         urgent: c.is_urgent,
         locked: c.is_locked,
@@ -94,12 +83,12 @@ fn build_window_state(c: &crate::types::client::Client) -> WindowState {
     }
 }
 
-fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: u32) -> WindowInfo {
+fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: TagMask) -> WindowInfo {
     WindowInfo {
         id: c.win.0 as u64,
         title: c.name.clone(),
         monitor: c.monitor_id.index(),
-        tags: tags_from_mask(c.tags.bits(), valid_tag_mask),
+        tags: c.tags & valid_tag_mask,
         geometry: GeometryInfo {
             x: c.geo.x,
             y: c.geo.y,

@@ -440,7 +440,7 @@ pub fn handle_bar_drop(
         if !ctx.client(win).is_some_and(|c| c.is_true_fullscreen()) {
             set_window_mode(ctx, win, WindowMode::Tiled);
         }
-        crate::tags::client_tags::set_client_tag_ctx(
+        crate::tags::client_tags::set_client_tag(
             ctx,
             win,
             TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),

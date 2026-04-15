@@ -1,6 +1,6 @@
 pub use crate::config::config_toml::VrrMode;
 pub use crate::layouts::LayoutKind;
-pub use crate::types::{MonitorDirection, SpecialNext};
+pub use crate::types::{MonitorDirection, SpecialNext, TagMask};
 use bincode::{Decode, Encode};
 
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
@@ -367,7 +367,7 @@ pub struct WindowInfo {
     pub id: u64,
     pub title: String,
     pub monitor: usize,
-    pub tags: Vec<u32>,
+    pub tags: TagMask,
     pub geometry: GeometryInfo,
     pub border_width: i32,
     pub state: WindowState,

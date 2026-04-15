@@ -40,18 +40,14 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         }
     };
 
-    let current_tagset = ctx
-        .core()
-        .globals()
-        .selected_monitor()
-        .selected_tags()
-        .bits();
-    let is_current_tag = (initial_tag & ctx.core().globals().tags.mask()) == current_tagset;
+    let current_tagset = ctx.core().globals().selected_monitor().selected_tags();
+    let is_current_tag =
+        (TagMask::from_bits(initial_tag) & ctx.core().globals().tags.mask()) == current_tagset;
     let has_sel = ctx.selected_client().is_some();
 
     // Click on a *different* tag → switch view, no drag.
     if !is_current_tag && initial_tag != 0 {
-        crate::tags::view::view(ctx, TagMask::from_bits(initial_tag));
+        crate::tags::view::view_tags(ctx, TagMask::from_bits(initial_tag));
         return false;
     }
     // No selected window → nothing to drag.
@@ -160,7 +156,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                     .monitor(selmon_id)
                     .and_then(|m| m.sel)
                 {
-                    crate::tags::client_tags::set_client_tag_ctx(ctx, win, tag_mask);
+                    crate::tags::client_tags::set_client_tag(ctx, win, tag_mask);
                 }
             } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
                 crate::tags::client_tags::tag_all_ctx(ctx, tag_mask);
