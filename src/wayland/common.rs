@@ -192,17 +192,20 @@ pub fn resolve_cursor_presentation(
 /// Sets up config, tags, and bar painter font size. This is called before
 /// the Wayland compositor is fully initialized, so monitor geometry is not
 /// available yet - that will be done via update_geom later.
-pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
-    let cfg = init_config(crate::backend::BackendKind::Wayland);
-    g.cfg.screen_width = 1280;
-    g.cfg.screen_height = 800;
-    crate::globals::apply_config(g, &cfg);
-    crate::globals::apply_tags_config(g, &cfg);
-    g.cfg.show_bar = true;
+/// Apply font-derived bar metrics to the runtime config and bar painter.
+///
+/// Computes `bar_height` and `horizontal_padding` from the font config and
+/// applies them to the given `Globals`. Also updates the bar painter's font
+/// size. Shared by both startup (`init_wayland_globals`) and reload.
+pub fn apply_bar_metrics(
+    g: &mut Globals,
+    data: &mut WaylandBackendData,
+    cfg: &crate::config::Config,
+) {
     let font_size = wayland_font_size_from_config(&cfg.fonts);
     let font_height = wayland_font_height_from_size(font_size);
 
-    wayland.bar_painter.set_font_size(font_size);
+    data.bar_painter.set_font_size(font_size);
 
     // CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL is the button's visual content;
     // the +2 adds a 1-pixel padding on each side so the button is never flush
@@ -216,6 +219,17 @@ pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
         (font_height + 12).max(min_bar_height)
     };
     g.cfg.horizontal_padding = font_height;
+}
+
+pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
+    let cfg = init_config(crate::backend::BackendKind::Wayland);
+    g.cfg.screen_width = 1280;
+    g.cfg.screen_height = 800;
+    crate::globals::apply_config(g, &cfg);
+    crate::globals::apply_tags_config(g, &cfg);
+    g.cfg.show_bar = true;
+
+    apply_bar_metrics(g, wayland, &cfg);
 
     // Monitor geometry will be set up after the compositor is ready via update_geom
 }
