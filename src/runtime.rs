@@ -33,14 +33,6 @@ pub struct TickResult {
     pub layout_deferred_for_animation: bool,
 }
 
-/// Shared per-tick housekeeping for backends that do not need custom options.
-///
-/// Backend-specific work (rendering, space sync, event draining, flushing)
-/// should be done by the caller before/after this function.
-pub fn event_loop_tick(wm: &mut Wm, ipc_server: &mut Option<crate::ipc::IpcServer>) -> TickResult {
-    event_loop_tick_with_options(wm, ipc_server, TickOptions::default())
-}
-
 /// Shared per-tick housekeeping with backend-specific scheduler options.
 ///
 /// Processing order is backend-independent and deterministic:

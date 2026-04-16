@@ -61,7 +61,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             drain_x11_events(wm);
 
             // ── 2. Shared tick: IPC, monitor config, layout arrangement ─
-            crate::runtime::event_loop_tick(wm, ipc_server);
+            crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
 
             // ── 3. Arm animation timer if needed ────────────────────────
             let has_animations = wm
