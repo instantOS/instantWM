@@ -104,7 +104,7 @@ impl CompositorHandler for WaylandState {
                 .get::<super::state::WindowIdMarker>()
                 .map(|marker| marker.id)
             {
-                self.sync_client_geometry_from_window(id);
+                self.sync_client_size_from_window(id);
             }
         }
 

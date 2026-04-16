@@ -187,29 +187,11 @@ fn should_preserve_inflight_animation(ctx: &WmCtx<'_>, win: WindowId, target: Re
             .window_animations
             .get(&win)
             .is_some_and(|anim| anim.to == target),
-        WmCtx::Wayland(wl) => {
-            let border_width = wl
-                .core
-                .globals()
-                .clients
-                .get(&win)
-                .map(|c| c.border_width())
-                .unwrap_or(0);
-            let requested_surface_target = Rect {
-                x: target.x + border_width,
-                y: target.y + border_width,
-                w: target.w,
-                h: target.h,
-            };
-            wl.wayland
-                .backend
-                .with_state(|state| {
-                    state
-                        .window_animation_target(win)
-                        .is_some_and(|anim| anim.to == requested_surface_target)
-                })
-                .unwrap_or(false)
-        }
+        WmCtx::Wayland(wl) => wl
+            .wayland
+            .backend
+            .with_state(|state| state.animation_targets_outer_rect(win, target))
+            .unwrap_or(false),
     }
 }
 

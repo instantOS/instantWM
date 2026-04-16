@@ -60,41 +60,6 @@ impl WaylandState {
             .is_some_and(|&size| size == configured_size)
     }
 
-    fn resolve_animation_start_rect(
-        &self,
-        window_id: WindowId,
-        actual_loc: Option<Point<i32, Logical>>,
-        target: Rect,
-        target_loc: Point<i32, Logical>,
-        from_rect: Option<Rect>,
-    ) -> Rect {
-        from_rect
-            .or_else(|| {
-                actual_loc.map(|loc| Rect {
-                    x: loc.x,
-                    y: loc.y,
-                    w: target.w,
-                    h: target.h,
-                })
-            })
-            .or_else(|| {
-                self.globals().and_then(|g| {
-                    g.clients.get(&window_id).map(|c| Rect {
-                        x: c.geo.x + c.border_width,
-                        y: c.geo.y + c.border_width,
-                        w: c.geo.w,
-                        h: c.geo.h,
-                    })
-                })
-            })
-            .unwrap_or(Rect {
-                x: target_loc.x,
-                y: target_loc.y,
-                w: target.w,
-                h: target.h,
-            })
-    }
-
     fn remap_window_immediately(
         &mut self,
         window_id: WindowId,
@@ -102,10 +67,20 @@ impl WaylandState {
         target_loc: Point<i32, Logical>,
     ) {
         self.drop_window_animation(window_id);
-        // In Smithay, activate=true steals visual focus. instantWM manages focus via `set_focus()`.
         self.remap_element_preserving_z_order(element, target_loc, false);
     }
 
+    /// Place a window at `target` (in outer/WM coordinates) using the given
+    /// movement mode.
+    ///
+    /// This is a **visual placement** function.  It converts the outer WM
+    /// rect to inner/surface coordinates (adding `border_width`), sends a
+    /// configure if the size changed, and either snaps or animates the
+    /// element to the target location.
+    ///
+    /// It does **not** write to `client.geo`.  The WM layer owns logical
+    /// position and always sets `client.geo` before calling this function
+    /// (or via `sync_space_from_globals`).
     pub(crate) fn set_window_target_rect(
         &mut self,
         window_id: WindowId,
@@ -122,69 +97,45 @@ impl WaylandState {
             return;
         };
 
+        // Convert outer WM rect → inner surface rect.
         let target_loc: Point<i32, Logical> =
             Point::from((target.x + border_width, target.y + border_width));
-        let actual_loc = self.space.element_location(&element);
-        let requested_target = Rect {
+        let target_inner = Rect {
             x: target_loc.x,
             y: target_loc.y,
             w: target.w,
             h: target.h,
         };
 
-        // Keep an in-flight animation when callers repeatedly request the same
-        // authoritative target (e.g. space sync during decorative AnimateFrom).
-        // Restarting here causes visible oscillation between the decorative
-        // start position and the target.
+        let actual_loc = self.space.element_location(&element);
+
+        // Keep an in-flight animation when callers repeatedly request the
+        // same target (e.g. sync_space_from_globals during a decorative
+        // AnimateFrom slide-in).
         if mode == WindowMoveMode::AnimateTo
             && self
                 .window_animations
                 .get(&window_id)
-                .is_some_and(|anim| anim.to == requested_target)
+                .is_some_and(|anim| anim.to == target_inner)
         {
             return;
         }
 
-        // Geometry updates for hidden/unmapped windows must not remap them as a
-        // side effect. The behavioral layer owns visibility; the backend should
-        // only move windows that are already mapped (or are being interactively
-        // remapped on purpose).
+        // Geometry updates for hidden/unmapped windows must not remap them.
+        // The WM layer owns visibility.
         if actual_loc.is_none() && mode != WindowMoveMode::Immediate {
             self.drop_window_animation(window_id);
             return;
         }
 
-        // Do not update the location if it is visually already at the target
-        // and we don't forcefully want to remap, to prevent unnecessary Z-order pops.
-        // However, a size-only change (e.g. mfact adjustment) still needs a
-        // configure even when x,y are unchanged.
+        // Skip if already at the target with unchanged size.
         let size_unchanged = self.configured_size_unchanged(window_id, target);
         if actual_loc == Some(target_loc) && mode == WindowMoveMode::AnimateTo && size_unchanged {
             self.drop_window_animation(window_id);
             return;
         }
 
-        let (from_rect, animation_duration) = match mode {
-            WindowMoveMode::AnimateFrom { from, duration } => (
-                Some(Rect {
-                    x: from.x + border_width,
-                    y: from.y + border_width,
-                    w: from.w,
-                    h: from.h,
-                }),
-                duration,
-            ),
-            WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => (
-                None,
-                Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
-            ),
-        };
-
-        // Use the client's stored geometry as the authoritative current position
-        // to avoid animating from stale locations after map/unmap cycles.
-        let current =
-            self.resolve_animation_start_rect(window_id, actual_loc, target, target_loc, from_rect);
-
+        // Send a configure if the size changed.
         if element.toplevel().is_some() {
             let configured = (target.w.max(1), target.h.max(1));
             let unchanged = self
@@ -201,27 +152,54 @@ impl WaylandState {
             }
         }
 
-        let should_remap_immediately = !self.animations_enabled()
-            || mode == WindowMoveMode::Immediate
-            || (current.x == target_loc.x && current.y == target_loc.y);
+        // Resolve the animation start position.
+        let (from_inner, animation_duration) = match mode {
+            WindowMoveMode::AnimateFrom { from, duration } => (
+                Rect {
+                    x: from.x + border_width,
+                    y: from.y + border_width,
+                    w: from.w,
+                    h: from.h,
+                },
+                duration,
+            ),
+            WindowMoveMode::AnimateTo | WindowMoveMode::Immediate => {
+                let loc = actual_loc.unwrap_or(target_loc);
+                (
+                    Rect {
+                        x: loc.x,
+                        y: loc.y,
+                        w: target.w,
+                        h: target.h,
+                    },
+                    Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
+                )
+            }
+        };
 
-        if should_remap_immediately {
+        let should_snap = !self.animations_enabled()
+            || mode == WindowMoveMode::Immediate
+            || (from_inner.x == target_loc.x && from_inner.y == target_loc.y);
+
+        if should_snap {
             self.remap_window_immediately(window_id, &element, target_loc);
             return;
         }
 
-        if let Some(from) = from_rect {
-            // For decorative slide-ins the WM should already treat the client
-            // as living at `target`, but the compositor still needs the mapped
-            // element to start from the off-screen location so the first
-            // rendered frame is visible and the animation direction is correct.
-            self.remap_element_preserving_z_order(&element, Point::from((from.x, from.y)), false);
+        // For decorative slide-ins, place element at the start position so
+        // the first rendered frame is correct.
+        if matches!(mode, WindowMoveMode::AnimateFrom { .. }) {
+            self.remap_element_preserving_z_order(
+                &element,
+                Point::from((from_inner.x, from_inner.y)),
+                false,
+            );
         }
 
         self.insert_or_replace_window_animation(
             window_id,
-            current,
-            requested_target,
+            from_inner,
+            target_inner,
             animation_duration,
         );
     }
@@ -290,11 +268,23 @@ impl WaylandState {
         !self.window_animations.is_empty()
     }
 
-    /// Current animation target for a window, if it has an in-flight animation.
-    pub(crate) fn window_animation_target(
-        &self,
-        win: WindowId,
-    ) -> Option<crate::animation::WindowAnimation> {
-        self.window_animations.get(&win).cloned()
+    /// Check if the window has an in-flight animation heading toward `outer_target`
+    /// (in WM/outer coordinates).  The border-width conversion is handled
+    /// internally so callers don't need to know about the inner coordinate space.
+    pub(crate) fn animation_targets_outer_rect(&self, win: WindowId, outer_target: Rect) -> bool {
+        let Some(anim) = self.window_animations.get(&win) else {
+            return false;
+        };
+        let border_width = self
+            .globals()
+            .and_then(|g| g.clients.get(&win).map(|c| c.border_width))
+            .unwrap_or(0);
+        let inner_target = Rect {
+            x: outer_target.x + border_width,
+            y: outer_target.y + border_width,
+            w: outer_target.w,
+            h: outer_target.h,
+        };
+        anim.to == inner_target
     }
 }

@@ -39,39 +39,38 @@ impl WaylandState {
         self.window_index.get(&window)
     }
 
-    /// Sync client geometry from the compositor's current mapped window state.
+    /// Sync client size from the compositor's committed window state.
     ///
-    /// Wayland resizes are configure-driven, so the client may commit a size
-    /// smaller than the compositor requested. Keep WM geometry aligned with the
-    /// actual mapped element so hover hit-testing and floating restore logic use
-    /// the real window bounds.
-    pub(crate) fn sync_client_geometry_from_window(&mut self, window: WindowId) {
-        // While an animation is in flight the element's space location is the
-        // interpolated (or AnimateFrom) position, not the authoritative target.
-        // Writing that back into client.geo would corrupt the WM-level geometry
-        // (e.g. a floating dialog ends up at the off-screen slide-in origin).
-        if self.window_animations.contains_key(&window) {
-            return;
-        }
+    /// Wayland resizes are configure-driven, so the client may commit a
+    /// different size than the compositor requested.  Keep WM geometry
+    /// width/height aligned with the actual surface, but preserve the
+    /// authoritative WM position (`client.geo.x/y`).
+    ///
+    /// Position is always owned by the WM layer and flows one-way into
+    /// the compositor via `sync_space_from_globals`.  We never read it
+    /// back from the Smithay space.
+    pub(crate) fn sync_client_size_from_window(&mut self, window: WindowId) {
         let Some(element) = self.find_window(window).cloned() else {
             return;
         };
-        let Some(loc) = self.space.element_location(&element) else {
-            return;
-        };
-        let geo = element.geometry();
+        let committed = element.geometry();
+        let new_w = committed.size.w.max(1);
+        let new_h = committed.size.h.max(1);
+
         let Some(g) = self.globals_mut() else {
             return;
         };
-        let Some(border_width) = g.clients.get(&window).map(|client| client.border_width) else {
+        let Some(client) = g.clients.get(&window) else {
             return;
         };
-
+        if client.geo.w == new_w && client.geo.h == new_h {
+            return;
+        }
         let rect = crate::types::Rect {
-            x: loc.x - border_width,
-            y: loc.y - border_width,
-            w: geo.size.w.max(1),
-            h: geo.size.h.max(1),
+            x: client.geo.x,
+            y: client.geo.y,
+            w: new_w,
+            h: new_h,
         };
         crate::client::sync_client_geometry(g, window, rect);
     }
