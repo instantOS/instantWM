@@ -1,8 +1,7 @@
 use super::{
     CUSTOM_STATUS_RECEIVED, flush_i3bar_click_events, parse_i3bar_header, parse_i3bar_json,
 };
-use std::process::Child;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -17,17 +16,15 @@ enum StatusSourceKind {
 struct RunningStatusSource {
     kind: StatusSourceKind,
     stop: Arc<AtomicBool>,
-    child: Option<Arc<Mutex<Option<Child>>>>,
+    pid: Arc<AtomicU32>,
 }
 
 impl RunningStatusSource {
     fn stop(&self) {
-        self.stop.store(true, Ordering::Relaxed);
-        if let Some(child) = &self.child
-            && let Ok(mut child) = child.lock()
-            && let Some(child) = child.as_mut()
-        {
-            let _ = child.kill();
+        self.stop.store(true, Ordering::Release);
+        let pid = self.pid.load(Ordering::Acquire) as i32;
+        if pid > 0 {
+            unsafe { libc::kill(pid, libc::SIGKILL) };
         }
     }
 }
@@ -38,7 +35,7 @@ fn status_source() -> &'static Mutex<Option<RunningStatusSource>> {
     STATUS_SOURCE.get_or_init(|| Mutex::new(None))
 }
 
-fn set_status_source(next: StatusSourceKind) -> Option<Arc<AtomicBool>> {
+fn set_status_source(next: StatusSourceKind) -> Option<(Arc<AtomicBool>, Arc<AtomicU32>)> {
     let mut active = status_source().lock().ok()?;
 
     if active.as_ref().is_some_and(|source| source.kind == next) {
@@ -50,28 +47,15 @@ fn set_status_source(next: StatusSourceKind) -> Option<Arc<AtomicBool>> {
     }
 
     let stop = Arc::new(AtomicBool::new(false));
-    let child = match next {
-        StatusSourceKind::Default => None,
-        StatusSourceKind::Command(_) => Some(Arc::new(Mutex::new(None))),
-    };
+    let pid = Arc::new(AtomicU32::new(0));
 
     *active = Some(RunningStatusSource {
         kind: next,
         stop: Arc::clone(&stop),
-        child,
+        pid: Arc::clone(&pid),
     });
 
-    Some(stop)
-}
-
-fn current_child_handle(cmd: &str) -> Option<Arc<Mutex<Option<Child>>>> {
-    let active = status_source().lock().ok()?;
-    let source = active.as_ref()?;
-    if source.kind == StatusSourceKind::Command(cmd.to_string()) {
-        source.child.clone()
-    } else {
-        None
-    }
+    Some((stop, pid))
 }
 
 fn default_status_text() -> String {
@@ -95,7 +79,7 @@ fn default_status_text() -> String {
 /// Spawn a background thread that periodically sends the default status
 /// (version + current time) via IPC. Used when no `status_command` is configured.
 pub(crate) fn spawn_default_status() {
-    let Some(stop) = set_status_source(StatusSourceKind::Default) else {
+    let Some((stop, _)) = set_status_source(StatusSourceKind::Default) else {
         return;
     };
 
@@ -121,7 +105,7 @@ pub(crate) fn spawn_default_status() {
 }
 
 pub(crate) fn spawn_status_command(cmd: &str) {
-    let Some(stop) = set_status_source(StatusSourceKind::Command(cmd.to_string())) else {
+    let Some((stop, pid)) = set_status_source(StatusSourceKind::Command(cmd.to_string())) else {
         return;
     };
 
@@ -149,18 +133,16 @@ pub(crate) fn spawn_status_command(cmd: &str) {
             }
         };
 
+        pid.store(child.id(), Ordering::Release);
+
+        if stop.load(Ordering::Acquire) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return;
+        }
+
         let stdout = child.stdout.take();
         let mut child_stdin = child.stdin.take();
-
-        let Some(child_handle) = current_child_handle(&cmd_str) else {
-            let mut child = child;
-            let _ = child.kill();
-            return;
-        };
-
-        if let Ok(mut slot) = child_handle.lock() {
-            *slot = Some(child);
-        }
 
         let mut i3bar_mode = false;
 
@@ -209,14 +191,10 @@ pub(crate) fn spawn_status_command(cmd: &str) {
             }
         }
 
-        if let Ok(mut child) = child_handle.lock()
-            && let Some(mut child) = child.take()
-        {
-            if stop.load(Ordering::Relaxed) {
-                let _ = child.kill();
-            }
-            let _ = child.wait();
+        if stop.load(Ordering::Relaxed) {
+            let _ = child.kill();
         }
+        let _ = child.wait();
     });
 }
 
