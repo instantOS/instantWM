@@ -14,6 +14,7 @@ const MAX_PENDING_LAUNCHES: usize = 128;
 pub struct LaunchContext {
     pub monitor_id: MonitorId,
     pub tags: TagMask,
+    pub is_floating: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +29,7 @@ pub fn current_launch_context(g: &Globals) -> LaunchContext {
     LaunchContext {
         monitor_id: g.selected_monitor_id(),
         tags: g.selected_monitor().selected_tags(),
+        is_floating: false,
     }
 }
 

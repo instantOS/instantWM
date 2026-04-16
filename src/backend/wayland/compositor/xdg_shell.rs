@@ -588,6 +588,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 .map(|client| crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
+                    is_floating: client.is_floating,
                 })
                 .unwrap_or_else(|| crate::client::current_launch_context(g));
             let _ = token_data

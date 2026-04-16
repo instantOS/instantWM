@@ -51,7 +51,7 @@ pub struct Rule {
     pub tags: TagMask,
     /// Floating behavior for matched windows.
     #[serde(default)]
-    pub isfloating: RuleFloat,
+    pub isfloating: Option<RuleFloat>,
     /// Monitor placement rule.
     #[serde(default)]
     pub monitor: MonitorRule,

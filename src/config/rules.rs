@@ -35,7 +35,7 @@ pub fn get_rules() -> Vec<Rule> {
             instance: None,
             title: None,
             tags: TagMask::EMPTY,
-            isfloating: RuleFloat::FloatCenter,
+            isfloating: Some(RuleFloat::FloatCenter),
             monitor: MonitorRule::Any,
         },
         // --- Scratchpad ---
@@ -44,7 +44,7 @@ pub fn get_rules() -> Vec<Rule> {
             instance: None,
             title: None,
             tags: TagMask::EMPTY,
-            isfloating: RuleFloat::Scratchpad,
+            isfloating: Some(RuleFloat::Scratchpad),
             monitor: MonitorRule::Any,
         },
         // --- Fullscreen floating (takes full screen but stays floating) ---
@@ -67,7 +67,7 @@ fn float(class: &'static str) -> Rule {
         instance: None,
         title: None,
         tags: TagMask::EMPTY,
-        isfloating: RuleFloat::Float,
+        isfloating: Some(RuleFloat::Float),
         monitor: MonitorRule::Any,
     }
 }
@@ -79,7 +79,7 @@ fn fullscreen_float(class: &'static str) -> Rule {
         instance: None,
         title: None,
         tags: TagMask::EMPTY,
-        isfloating: RuleFloat::FloatFullscreen,
+        isfloating: Some(RuleFloat::FloatFullscreen),
         monitor: MonitorRule::Any,
     }
 }

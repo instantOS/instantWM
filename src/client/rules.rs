@@ -46,7 +46,7 @@ pub fn apply_rules(
             return;
         }
 
-        c.is_floating = false;
+        c.is_floating = launch_context.map(|ctx| ctx.is_floating).unwrap_or(false);
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
@@ -95,7 +95,9 @@ pub fn apply_rules(
             };
 
             if let Some(c) = g.clients.get_mut(&win) {
-                apply_float_rule(c, &rule.isfloating, mon_geo, bar_height);
+                if let Some(ref float_rule) = rule.isfloating {
+                    apply_float_rule(c, float_rule, mon_geo, bar_height);
+                }
                 c.update_tag_mask(|tags| tags | rule.tags);
             }
 
@@ -137,6 +139,7 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
     let existing_context = g.clients.get(&win).map(|c| LaunchContext {
         monitor_id: c.monitor_id,
         tags: c.tags,
+        is_floating: c.is_floating,
     });
 
     apply_rules(g, win, props, existing_context);
@@ -318,5 +321,69 @@ mod tests {
         let client = g.clients.get(&win).expect("client should still exist");
         assert_eq!(client.tags, TagMask::single(2).unwrap());
         assert_eq!(client.name, "updated");
+    }
+
+    #[test]
+    fn property_change_preserves_manual_floating_state() {
+        let mut g = Globals::default();
+        let win = WindowId(42);
+        let client = Client {
+            win,
+            is_floating: true,
+            ..Default::default()
+        };
+        g.clients.insert(win, client);
+
+        handle_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                title: "updated".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let client = g.clients.get(&win).expect("client should still exist");
+        assert!(client.is_floating);
+    }
+
+    #[test]
+    fn rules_can_force_tiling_if_explicitly_specified() {
+        use crate::types::{Monitor, MonitorRule, Rule, RuleFloat};
+        use std::borrow::Cow;
+
+        let mut g = Globals::default();
+        g.monitors.push(Monitor::new_with_values(true, true)); // Add a monitor
+
+        g.cfg.rules = vec![Rule {
+            class: Some(Cow::Borrowed("test")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            isfloating: Some(RuleFloat::Tiled), // Explicitly Tiled
+            monitor: MonitorRule::Any,
+        }];
+
+        let win = WindowId(42);
+        let client = Client {
+            win,
+            monitor_id: MonitorId(0),
+            is_floating: true,
+            ..Default::default()
+        };
+        g.clients.insert(win, client);
+
+        handle_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                class: "test".to_string(),
+                title: "updated".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let client = g.clients.get(&win).expect("client should still exist");
+        assert!(!client.is_floating); // Should be tiling now
     }
 }

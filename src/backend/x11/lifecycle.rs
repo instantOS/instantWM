@@ -151,6 +151,7 @@ fn assign_initial_monitor_and_tags(
     if let Some(launch_context) = launch_context {
         c.monitor_id = launch_context.monitor_id;
         c.set_tag_mask(launch_context.tags);
+        c.is_floating = launch_context.is_floating;
         return;
     }
     c.monitor_id = g.selected_monitor_id();
