@@ -1,8 +1,78 @@
 use super::{
     CUSTOM_STATUS_RECEIVED, flush_i3bar_click_events, parse_i3bar_header, parse_i3bar_json,
 };
+use std::process::Child;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StatusSourceKind {
+    Default,
+    Command(String),
+}
+
+#[derive(Debug)]
+struct RunningStatusSource {
+    kind: StatusSourceKind,
+    stop: Arc<AtomicBool>,
+    child: Option<Arc<Mutex<Option<Child>>>>,
+}
+
+impl RunningStatusSource {
+    fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(child) = &self.child
+            && let Ok(mut child) = child.lock()
+            && let Some(child) = child.as_mut()
+        {
+            let _ = child.kill();
+        }
+    }
+}
+
+static STATUS_SOURCE: OnceLock<Mutex<Option<RunningStatusSource>>> = OnceLock::new();
+
+fn status_source() -> &'static Mutex<Option<RunningStatusSource>> {
+    STATUS_SOURCE.get_or_init(|| Mutex::new(None))
+}
+
+fn set_status_source(next: StatusSourceKind) -> Option<Arc<AtomicBool>> {
+    let mut active = status_source().lock().ok()?;
+
+    if active.as_ref().is_some_and(|source| source.kind == next) {
+        return None;
+    }
+
+    if let Some(source) = active.take() {
+        source.stop();
+    }
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let child = match next {
+        StatusSourceKind::Default => None,
+        StatusSourceKind::Command(_) => Some(Arc::new(Mutex::new(None))),
+    };
+
+    *active = Some(RunningStatusSource {
+        kind: next,
+        stop: Arc::clone(&stop),
+        child,
+    });
+
+    Some(stop)
+}
+
+fn current_child_handle(cmd: &str) -> Option<Arc<Mutex<Option<Child>>>> {
+    let active = status_source().lock().ok()?;
+    let source = active.as_ref()?;
+    if source.kind == StatusSourceKind::Command(cmd.to_string()) {
+        source.child.clone()
+    } else {
+        None
+    }
+}
 
 fn default_status_text() -> String {
     use std::time::SystemTime;
@@ -25,14 +95,22 @@ fn default_status_text() -> String {
 /// Spawn a background thread that periodically sends the default status
 /// (version + current time) via IPC. Used when no `status_command` is configured.
 pub(crate) fn spawn_default_status() {
+    let Some(stop) = set_status_source(StatusSourceKind::Default) else {
+        return;
+    };
+
+    CUSTOM_STATUS_RECEIVED.store(false, Ordering::Relaxed);
+
     std::thread::spawn(move || {
-        use std::sync::atomic::Ordering;
         use std::thread;
         use std::time::Duration;
 
         thread::sleep(Duration::from_millis(500));
 
         loop {
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
             if CUSTOM_STATUS_RECEIVED.load(Ordering::Relaxed) {
                 break;
             }
@@ -43,6 +121,12 @@ pub(crate) fn spawn_default_status() {
 }
 
 pub(crate) fn spawn_status_command(cmd: &str) {
+    let Some(stop) = set_status_source(StatusSourceKind::Command(cmd.to_string())) else {
+        return;
+    };
+
+    CUSTOM_STATUS_RECEIVED.store(false, Ordering::Relaxed);
+
     let cmd_str = cmd.to_string();
     std::thread::spawn(move || {
         use std::io::{BufRead, BufReader};
@@ -65,11 +149,28 @@ pub(crate) fn spawn_status_command(cmd: &str) {
             }
         };
 
+        let stdout = child.stdout.take();
+        let mut child_stdin = child.stdin.take();
+
+        let Some(child_handle) = current_child_handle(&cmd_str) else {
+            let mut child = child;
+            let _ = child.kill();
+            return;
+        };
+
+        if let Ok(mut slot) = child_handle.lock() {
+            *slot = Some(child);
+        }
+
         let mut i3bar_mode = false;
 
-        if let Some(stdout) = child.stdout.take() {
+        if let Some(stdout) = stdout {
             let reader = BufReader::new(stdout);
             for line in reader.lines() {
+                if stop.load(Ordering::Relaxed) {
+                    break;
+                }
+
                 let Ok(line) = line else {
                     continue;
                 };
@@ -82,7 +183,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                 if !i3bar_mode && let Some(header) = parse_i3bar_header(text) {
                     i3bar_mode = true;
                     if header.click_events
-                        && let Some(mut stdin) = child.stdin.take()
+                        && let Some(mut stdin) = child_stdin.take()
                     {
                         std::thread::spawn(move || {
                             let mut first_click_event = true;
@@ -107,5 +208,26 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                 }
             }
         }
+
+        if let Ok(mut child) = child_handle.lock()
+            && let Some(mut child) = child.take()
+        {
+            if stop.load(Ordering::Relaxed) {
+                let _ = child.kill();
+            }
+            let _ = child.wait();
+        }
     });
+}
+
+pub(crate) fn reload_status_command(previous: Option<&str>, next: Option<&str>) {
+    if previous == next {
+        return;
+    }
+
+    if let Some(cmd) = next {
+        spawn_status_command(cmd);
+    } else {
+        spawn_default_status();
+    }
 }

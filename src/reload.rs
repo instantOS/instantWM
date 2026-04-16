@@ -5,6 +5,7 @@ use crate::wm::Wm;
 
 pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     let cfg = config::init_config(wm.backend.kind());
+    let previous_status_command = wm.g.cfg.status_command.clone();
 
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
@@ -14,6 +15,10 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
+    crate::bar::status::reload_status_command(
+        previous_status_command.as_deref(),
+        wm.g.cfg.status_command.as_deref(),
+    );
 
     if matches!(&wm.backend, Backend::X11(_)) {
         reload_x11(wm);
