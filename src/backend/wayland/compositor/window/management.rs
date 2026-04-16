@@ -60,8 +60,8 @@ impl WaylandState {
         self.raise_unmanaged_x11_windows();
     }
 
-    /// Restack windows in the given order.
-    pub fn apply_window_order_bottom_to_top(&mut self, windows: &[WindowId]) {
+    /// Apply a complete z-order (bottom-to-top).
+    pub fn apply_z_order(&mut self, windows: &[WindowId]) {
         for window in windows.iter() {
             if let Some(element) = self.find_window(*window).cloned() {
                 // Focus / activation is managed by `set_focus`, so we pass `false`

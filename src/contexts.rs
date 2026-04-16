@@ -272,8 +272,8 @@ impl<'a> WmCtx<'a> {
         self.backend().raise_window_visual_only(win);
     }
 
-    pub fn apply_window_order_bottom_to_top(&self, wins: &[WindowId]) {
-        self.backend().apply_window_order_bottom_to_top(wins);
+    pub fn apply_z_order(&self, wins: &[WindowId]) {
+        self.backend().apply_z_order(wins);
     }
 
     pub(crate) fn set_geometry_impl(

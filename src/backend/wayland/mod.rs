@@ -170,9 +170,8 @@ impl BackendOps for WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.raise_window_visual_only(window));
     }
 
-    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]) {
-        let _ = self
-            .with_state(|state: &mut WaylandState| state.apply_window_order_bottom_to_top(windows));
+    fn apply_z_order(&self, windows: &[WindowId]) {
+        let _ = self.with_state(|state: &mut WaylandState| state.apply_z_order(windows));
     }
 
     fn set_focus(&self, window: WindowId) {

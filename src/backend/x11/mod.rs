@@ -201,9 +201,31 @@ impl BackendOps for X11BackendRef<'_> {
         );
     }
 
-    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]) {
-        for window in windows {
-            self.raise_window_visual_only(*window);
+    /// Apply a complete z-order using sibling-based stacking.
+    ///
+    /// The input is ordered bottom-to-top. The first window is placed at the
+    /// bottom via `StackMode::BELOW`, then each subsequent window is stacked
+    /// above its predecessor. This produces one `ConfigureWindow` per window
+    /// but they are all buffered in the X11 connection and flushed once by the
+    /// caller, resulting in a single round-trip.
+    fn apply_z_order(&self, windows: &[WindowId]) {
+        let mut prev: Option<Window> = None;
+        for &window in windows {
+            let x11_win: Window = window.into();
+            if let Some(sibling) = prev {
+                let _ = self.conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new()
+                        .sibling(sibling)
+                        .stack_mode(StackMode::ABOVE),
+                );
+            } else {
+                let _ = self.conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::BELOW),
+                );
+            }
+            prev = Some(x11_win);
         }
     }
 

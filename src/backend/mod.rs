@@ -43,7 +43,7 @@ pub enum BackendKind {
 pub trait BackendOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
     fn raise_window_visual_only(&self, window: WindowId);
-    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]);
+    fn apply_z_order(&self, windows: &[WindowId]);
     fn set_focus(&self, window: WindowId);
     fn map_window(&self, window: WindowId);
     fn unmap_window(&self, window: WindowId);
@@ -258,10 +258,10 @@ impl BackendOps for BackendRef<'_> {
         }
     }
 
-    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]) {
+    fn apply_z_order(&self, windows: &[WindowId]) {
         match self {
-            BackendRef::X11(x11) => x11.apply_window_order_bottom_to_top(windows),
-            BackendRef::Wayland(wayland) => wayland.apply_window_order_bottom_to_top(windows),
+            BackendRef::X11(x11) => x11.apply_z_order(windows),
+            BackendRef::Wayland(wayland) => wayland.apply_z_order(windows),
         }
     }
 

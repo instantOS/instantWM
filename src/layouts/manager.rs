@@ -212,7 +212,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let Some(stack) = compute_monitor_z_order(monitor, ctx.core().globals().clients.map()) else {
         return;
     };
-    ctx.apply_window_order_bottom_to_top(&stack);
+    ctx.apply_z_order(&stack);
     ctx.flush();
 }
 
