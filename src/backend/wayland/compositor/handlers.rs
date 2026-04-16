@@ -202,3 +202,11 @@ impl smithay::wayland::idle_inhibit::IdleInhibitHandler for WaylandState {
         log::debug!("idle uninhibited for surface");
     }
 }
+
+impl smithay::wayland::idle_notify::IdleNotifierHandler for WaylandState {
+    fn idle_notifier_state(
+        &mut self,
+    ) -> &mut smithay::wayland::idle_notify::IdleNotifierState<Self> {
+        &mut self.idle_notify_manager_state
+    }
+}

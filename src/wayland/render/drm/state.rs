@@ -39,4 +39,5 @@ pub struct OutputSurfaceEntry {
     pub vrr_support: BackendVrrSupport,
     pub configured_vrr_mode: VrrMode,
     pub vrr_enabled: bool,
+    pub enabled: bool,
 }

@@ -78,6 +78,9 @@ pub enum MonitorAction {
         #[arg(default_value = "focused")]
         identifier: String,
     },
+    Dpms {
+        state: String,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -305,6 +308,11 @@ pub enum CommandKind {
     Wallpaper {
         path: String,
     },
+    Dpms {
+        #[arg(default_value = "focused")]
+        identifier: String,
+        state: String,
+    },
     Config {
         #[command(subcommand)]
         action: ConfigAction,
@@ -372,6 +380,26 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                 MonitorAction::Modes { identifier } => MonitorCommand::Modes {
                     identifier: Some(identifier),
                 },
+                MonitorAction::Dpms { state } => {
+                    let enable = match state.to_lowercase().as_str() {
+                        "on" | "enable" | "enabled" => true,
+                        "off" | "disable" | "disabled" => false,
+                        _ => {
+                            eprintln!("instantwmctl: invalid dpms state (expected on/off)");
+                            std::process::exit(1);
+                        }
+                    };
+                    MonitorCommand::Set {
+                        identifier: "focused".to_string(),
+                        resolution: None,
+                        refresh_rate: None,
+                        position: None,
+                        scale: None,
+                        transform: None,
+                        enable: Some(enable),
+                        vrr: None,
+                    }
+                }
             };
             IpcCommand::Monitor(cmd)
         }
@@ -533,6 +561,26 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
             IpcCommand::Mode(cmd)
         }
         CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
+        CommandKind::Dpms { identifier, state } => {
+            let enable = match state.to_lowercase().as_str() {
+                "on" | "enable" | "enabled" => true,
+                "off" | "disable" | "disabled" => false,
+                _ => {
+                    eprintln!("instantwmctl: invalid dpms state (expected on/off)");
+                    std::process::exit(1);
+                }
+            };
+            IpcCommand::Monitor(MonitorCommand::Set {
+                identifier,
+                resolution: None,
+                refresh_rate: None,
+                position: None,
+                scale: None,
+                transform: None,
+                enable: Some(enable),
+                vrr: None,
+            })
+        }
         CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
         CommandKind::Config { .. } => unreachable!("config is handled locally"),
         CommandKind::Quit => IpcCommand::Quit,

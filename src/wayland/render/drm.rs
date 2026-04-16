@@ -225,6 +225,7 @@ fn initialize_drm_output_surface(
         vrr_support,
         configured_vrr_mode,
         vrr_enabled: false,
+        enabled: true,
     }
 }
 

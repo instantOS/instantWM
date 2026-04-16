@@ -197,6 +197,7 @@ fn dispatch_winit_input(
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     event: InputEvent<smithay::backend::winit::WinitInput>,
 ) {
+    state.notify_activity();
     state.with_wm_mut_unified(|wm, state| match event {
         InputEvent::Keyboard { event } => {
             handle_keyboard(wm, state, keyboard_handle, event);

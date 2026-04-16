@@ -231,6 +231,7 @@ pub fn run() -> ! {
                 .unwrap_or(false);
 
             if any_input {
+                state.notify_activity();
                 let _ = runtime_event_tx_input.send(DrmRuntimeEvent::PointerActivity(
                     state.runtime.pointer_location.x as i32,
                 ));
@@ -448,6 +449,7 @@ fn run_event_loop(
             process_commit_redraws(state, loop_state);
             process_common_tick(ipc_server, wm, state, loop_state);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
+            sync_output_enabled_from_state(state, output_surfaces, loop_state);
 
             let bar_update_seq = wm.bar.update_seq();
             if loop_state.last_bar_update_seq != bar_update_seq {
@@ -675,6 +677,27 @@ fn sync_output_vrr_modes_from_state(
     }
 }
 
+fn sync_output_enabled_from_state(
+    state: &mut WaylandState,
+    output_surfaces: &mut [OutputSurfaceEntry],
+    loop_state: &mut DrmLoopState,
+) {
+    let mut changed = false;
+    for entry in output_surfaces.iter_mut() {
+        let output_name = entry.output.name();
+        if let Some(&enabled) = state.runtime.output_enabled.get(&output_name)
+            && entry.enabled != enabled
+        {
+            entry.enabled = enabled;
+            log::info!("Output {}: enabled set to {}", output_name, entry.enabled);
+            changed = true;
+        }
+    }
+    if changed {
+        loop_state.mark_all_dirty();
+    }
+}
+
 fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) -> bool {
     state
         .runtime
@@ -804,7 +827,7 @@ fn render_outputs(
 
         for entry in output_surfaces.iter_mut() {
             let needs_render = render_flags.get(&entry.crtc).copied().unwrap_or(false);
-            if !needs_render {
+            if !needs_render || !entry.enabled {
                 continue;
             }
             // Don't render if a page flip is already in flight — queue_buffer

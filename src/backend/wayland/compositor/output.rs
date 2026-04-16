@@ -159,6 +159,10 @@ impl WaylandState {
                 self.set_output_vrr_mode(&output.name(), vrr);
             }
 
+            if let Some(enable) = config.enable {
+                self.runtime.output_enabled.insert(output.name(), enable);
+            }
+
             let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));
 
             if let Some(ref pos) = config.position

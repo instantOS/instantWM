@@ -26,6 +26,7 @@ use smithay::{
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
         idle_inhibit::IdleInhibitManagerState,
+        idle_notify::IdleNotifierState,
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
         image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
         output::OutputManagerState,
@@ -127,6 +128,7 @@ pub struct WaylandState {
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
+    pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
     /// Current session lock state.
     pub lock_state: SessionLockState,
@@ -217,6 +219,7 @@ pub struct WaylandRuntimeState {
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
     pub pending_winit_resize: Option<(i32, i32)>,
     pub winit_close_requested: bool,
+    pub output_enabled: HashMap<String, bool>,
 }
 
 impl Default for WaylandRuntimeState {
@@ -237,6 +240,7 @@ impl Default for WaylandRuntimeState {
             winit_window_size: smithay::utils::Size::from((0, 0)),
             pending_winit_resize: None,
             winit_close_requested: false,
+            output_enabled: HashMap::new(),
         }
     }
 }
@@ -294,6 +298,7 @@ impl WaylandState {
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
+        let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
 
         // -- Seat (input devices) --
@@ -332,6 +337,7 @@ impl WaylandState {
             relative_pointer_manager_state,
             viewporter_state,
             idle_inhibit_manager_state,
+            idle_notify_manager_state,
             session_lock_manager_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
@@ -627,5 +633,10 @@ impl WaylandState {
     pub fn flush(&mut self) {
         self.space.refresh();
         let _ = self.display_handle.flush_clients();
+    }
+
+    /// Notify the idle manager of user activity.
+    pub fn notify_activity(&mut self) {
+        self.idle_notify_manager_state.notify_activity(&self.seat);
     }
 }
