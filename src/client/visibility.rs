@@ -240,7 +240,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         .core()
         .globals()
         .monitor(monitor_id)
-        .and_then(|m| m.stack.iter().find(|&&w| w != win).copied());
+        .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win));
     crate::focus::focus_soft(ctx, snext);
     ctx.core_mut()
         .globals_mut()

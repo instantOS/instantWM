@@ -193,7 +193,7 @@ impl BackendOps for X11BackendRef<'_> {
         );
     }
 
-    fn raise_window(&self, window: WindowId) {
+    fn raise_window_visual_only(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.configure_window(
             x11_win,
@@ -201,9 +201,9 @@ impl BackendOps for X11BackendRef<'_> {
         );
     }
 
-    fn restack(&self, windows: &[WindowId]) {
+    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]) {
         for window in windows {
-            self.raise_window(*window);
+            self.raise_window_visual_only(*window);
         }
     }
 

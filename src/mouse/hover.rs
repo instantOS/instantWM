@@ -392,7 +392,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
                         query_pointer_on_win(&mut wm_ctx, win).unwrap_or((0, 0, 0, 0));
 
                     let btn = MouseButton::from_u8(bp.detail).unwrap_or(MouseButton::Left);
-                    wm_ctx.raise_interactive(win);
+                    wm_ctx.raise_client(win);
                     match bp.detail {
                         // Right-click → move
                         3 => {

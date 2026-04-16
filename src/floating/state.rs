@@ -235,6 +235,6 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 
     // Raise the newly maximized window above everything else.
     if let Some(win) = ctx.core().globals().selected_monitor().fullscreen {
-        ctx.backend().raise_window(win);
+        ctx.backend().raise_window_visual_only(win);
     }
 }

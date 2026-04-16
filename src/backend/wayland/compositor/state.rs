@@ -466,7 +466,7 @@ impl WaylandState {
             self.remove_window_tracking(win);
             if let Some(g) = self.globals_mut() {
                 g.detach(win);
-                g.detach_stack(win);
+                g.detach_z_order(win);
                 g.clients.remove(&win);
             }
         }

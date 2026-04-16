@@ -137,7 +137,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let selected_window = sel;
 
     let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
-    crate::layouts::restack(ctx, selmon_id);
+    crate::layouts::sync_monitor_z_order(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
     let is_snapped = match ctx.client(selected_window) {

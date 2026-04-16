@@ -94,12 +94,12 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w) {
             crate::client::sync_client_geometry(ctx.core.globals_mut(), w, rect);
         }
-        ctx.backend.raise_window(w);
+        ctx.backend.raise_window_visual_only(w);
         ctx.backend.flush();
     }
 
     ctx.core.globals_mut().attach(w);
-    ctx.core.globals_mut().attach_stack(w);
+    ctx.core.globals_mut().attach_z_order_top(w);
 
     register_client_root(&ctx.x11, ctx.x11_runtime, w);
 
@@ -484,7 +484,7 @@ fn run_manage_animation(
         .unwrap_or(false);
 
     if !is_tiling {
-        ctx.backend().raise_window(w);
+        ctx.backend().raise_window_visual_only(w);
         ctx.backend().flush();
     } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
         arrange(ctx, Some(c.monitor_id));
@@ -530,7 +530,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     {
         let g = &mut ctx.core.globals_mut();
         g.detach(win);
-        g.detach_stack(win);
+        g.detach_z_order(win);
     }
 
     if !destroyed {

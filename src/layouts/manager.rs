@@ -3,8 +3,9 @@
 use crate::contexts::WmCtx;
 use crate::floating::save_floating_geometry;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{MonitorId, Rect, WindowId};
+use crate::types::{Client, Monitor, MonitorId, Rect, WindowId};
 use std::cmp::max;
+use std::collections::HashMap;
 
 use super::LayoutKind;
 
@@ -14,9 +15,9 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     if let Some(id) = monitor_id {
         // First pass: show/hide stack
         crate::client::apply_visibility(ctx);
-        // Second pass: arrange and restack
+        // Second pass: arrange and sync_monitor_z_order
         arrange_monitor(ctx, id);
-        restack(ctx, id);
+        sync_monitor_z_order(ctx, id);
     } else {
         crate::client::apply_visibility(ctx);
 
@@ -25,7 +26,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
             .collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
-            restack(ctx, idx);
+            sync_monitor_z_order(ctx, idx);
         }
     }
 
@@ -185,7 +186,7 @@ fn place_overlay(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
     }
 }
 
-pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update(Some(monitor_id));
 
     let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
@@ -201,21 +202,37 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     };
     let layout = monitor.current_layout();
     let is_tiling = layout.is_tiling();
-    let is_monocle = layout.is_monocle();
-    let selected_tags = monitor.selected_tags();
-    let bar_win = monitor.bar_win;
 
     if !is_tiling {
-        ctx.raise(selected_window);
+        ctx.raise_window_visual_only(selected_window);
         ctx.flush();
         return;
     }
 
+    let Some(stack) = compute_monitor_z_order(monitor, ctx.core().globals().clients.map()) else {
+        return;
+    };
+    ctx.apply_window_order_bottom_to_top(&stack);
+    ctx.flush();
+}
+
+pub(crate) fn compute_monitor_z_order(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+) -> Option<Vec<WindowId>> {
+    if monitor.current_layout().is_overview() {
+        return None;
+    }
+
+    let selected_window = monitor.sel?;
+    let selected_tags = monitor.selected_tags();
+    let bar_win = monitor.bar_win;
+
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
-    for &win in &monitor.stack {
-        if let Some(c) = ctx.client(win)
+    for win in monitor.z_order.iter_bottom_to_top() {
+        if let Some(c) = clients.get(&win)
             && c.is_visible(selected_tags)
         {
             if c.is_true_fullscreen() {
@@ -241,16 +258,12 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let selected = floating_stack.remove(idx);
         floating_stack.push(selected);
     } else {
-        // In monocle every tiled client occupies the full work area, so the
-        // focused tiled client must be the last tiled element in z-order.
-        // Keeping this explicit also makes the generic tiled case easier to read.
+        // In overlapping tiled layouts such as monocle, the focused tiled
+        // client must be projected to the top of the tiled layer without
+        // mutating persistent z-order.
         if let Some(idx) = tiled_stack.iter().position(|&win| win == selected_window) {
             let selected = tiled_stack.remove(idx);
             tiled_stack.push(selected);
-        }
-        if is_monocle && tiled_stack.last().copied() != Some(selected_window) {
-            tiled_stack.retain(|&win| win != selected_window);
-            tiled_stack.push(selected_window);
         }
     }
 
@@ -263,8 +276,7 @@ pub fn restack(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     stack.push(bar_win);
     stack.extend(floating_stack);
     stack.extend(fullscreen_stack);
-    ctx.restack(&stack);
-    ctx.flush();
+    Some(stack)
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
@@ -386,5 +398,79 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     arrange(ctx, Some(selected_monitor_id));
     if animation_on {
         ctx.core_mut().globals_mut().behavior.animated = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_monitor_z_order;
+    use crate::types::{Client, Monitor, TagMask, WindowId};
+    use std::collections::HashMap;
+
+    fn visible_client(win: WindowId) -> Client {
+        let mut client = Client {
+            win,
+            ..Client::default()
+        };
+        client.set_tag_mask(TagMask::single(1).unwrap());
+        client
+    }
+
+    fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
+        let mut monitor = Monitor::default();
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        monitor.sel = Some(selected);
+        monitor.bar_win = WindowId(99);
+        for &win in order {
+            monitor.z_order.attach_top(win);
+        }
+        monitor
+    }
+
+    #[test]
+    fn projected_z_order_promotes_focused_tiled_without_mutating_persistent_order() {
+        let monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
+        let clients = [WindowId(1), WindowId(2), WindowId(3)]
+            .into_iter()
+            .map(|win| (win, visible_client(win)))
+            .collect::<HashMap<_, _>>();
+
+        let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+        assert_eq!(
+            projected,
+            vec![WindowId(1), WindowId(3), WindowId(2), WindowId(99)]
+        );
+        assert_eq!(
+            monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+            vec![WindowId(1), WindowId(2), WindowId(3)]
+        );
+    }
+
+    #[test]
+    fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() {
+        let monitor = monitor_with_order(
+            &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
+            WindowId(2),
+        );
+        let mut clients = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)]
+            .into_iter()
+            .map(|win| (win, visible_client(win)))
+            .collect::<HashMap<_, _>>();
+        clients.get_mut(&WindowId(3)).unwrap().is_floating = true;
+        clients.get_mut(&WindowId(4)).unwrap().is_fullscreen = true;
+
+        let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+        assert_eq!(
+            projected,
+            vec![
+                WindowId(1),
+                WindowId(2),
+                WindowId(99),
+                WindowId(3),
+                WindowId(4)
+            ]
+        );
     }
 }

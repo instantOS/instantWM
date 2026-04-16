@@ -25,7 +25,7 @@ use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::{arrange, restack};
+use crate::layouts::{arrange, sync_monitor_z_order};
 use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -121,7 +121,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         }
 
         let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
-        restack(&mut wmctx, monitor_id);
+        sync_monitor_z_order(&mut wmctx, monitor_id);
     } else if !fullscreen && is_fs {
         // ---- Exit fullscreen ------------------------------------------------
 
@@ -150,7 +150,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             arrange(&mut wmctx, Some(monitor_id));
         } else {
             let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
-            restack(&mut wmctx, monitor_id);
+            sync_monitor_z_order(&mut wmctx, monitor_id);
         }
     }
 }

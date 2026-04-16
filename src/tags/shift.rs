@@ -84,7 +84,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    ctx.backend().raise_window(win);
+    ctx.backend().raise_window_visual_only(win);
     let mon_w = ctx.core().globals().selected_monitor().monitor_rect.w;
     let geo = ctx
         .core()

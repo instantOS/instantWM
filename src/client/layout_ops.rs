@@ -49,7 +49,7 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Raise the window immediately so it appears on top while the layout
     // catches up on the next arrange pass.
-    ctx.backend().raise_window(win);
+    ctx.backend().raise_window_visual_only(win);
     ctx.backend().flush();
 
     let (is_floating, monitor_id) = ctx

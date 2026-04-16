@@ -8,7 +8,7 @@ impl WaylandState {
     ///
     /// Smithay's `map_element` updates the location but also raises the element.
     /// Layout code uses remaps for geometry changes, so preserve the previous
-    /// stacking order here to keep overlap semantics controlled by WM restacks.
+    /// stacking order here to keep overlap semantics controlled by WM z-order sync.
     pub(crate) fn remap_element_preserving_z_order(
         &mut self,
         element: &smithay::desktop::Window,
@@ -45,12 +45,12 @@ impl WaylandState {
     }
 
     /// Raise a window to the top of the stack.
-    pub fn raise_window(&mut self, window: WindowId) {
+    pub fn raise_window_visual_only(&mut self, window: WindowId) {
         if let Some(element) = self.find_window(window).cloned() {
             // Focus is handled independently by `set_focus`, so we pass `false`
             self.space.raise_element(&element, false);
 
-            // XWayland requires us to explicitly restack the X11 surface so X clients draw correctly
+            // XWayland requires us to explicitly raise the X11 surface so X clients draw correctly.
             if let Some(surface) = element.x11_surface()
                 && let Some(xwm) = self.xwm.as_mut()
             {
@@ -61,7 +61,7 @@ impl WaylandState {
     }
 
     /// Restack windows in the given order.
-    pub fn restack(&mut self, windows: &[WindowId]) {
+    pub fn apply_window_order_bottom_to_top(&mut self, windows: &[WindowId]) {
         for window in windows.iter() {
             if let Some(element) = self.find_window(*window).cloned() {
                 // Focus / activation is managed by `set_focus`, so we pass `false`

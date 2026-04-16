@@ -81,9 +81,6 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
             mon.tag_focus_history.insert(mon.selected_tags().bits(), t);
         }
     }
-    if let Some(t) = target {
-        core.globals_mut().raise_client_in_stack(t);
-    }
     target
 }
 
@@ -189,7 +186,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
     }
 }
 
-/// Outcome of a focus operation, used to decide whether a restack is needed.
+/// Outcome of a focus operation, used to decide whether a sync_monitor_z_order is needed.
 pub(crate) struct FocusOutcome {
     /// `true` when `mon.sel` actually changed.
     changed: bool,
@@ -295,7 +292,7 @@ pub(crate) fn focus_soft_x11(
 /// Best-effort focus - backend-agnostic entry point.
 ///
 /// Updates `mon.sel`, backend seat focus, and — when the selection actually
-/// changed — restacks the affected monitor so that Z-order stays in sync.
+/// changed — syncs the affected monitor z-order so visuals stay in sync.
 /// This is critical for overlapping layouts (monocle, floating) where the
 /// focused window must be visually on top.
 pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
@@ -321,7 +318,7 @@ pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
         }
     };
     if outcome.changed {
-        crate::layouts::restack(ctx, outcome.monitor_id);
+        crate::layouts::sync_monitor_z_order(ctx, outcome.monitor_id);
     }
 }
 
@@ -355,7 +352,7 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
 /// Backend-agnostic hover-focus entry point.
 ///
 /// Checks focus-follows-mouse guards, then delegates to `focus_soft` which
-/// handles `mon.sel`, backend seat focus, and restacking in one place.
+/// handles `mon.sel`, backend seat focus, and z-order sync in one place.
 pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
@@ -460,7 +457,7 @@ pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId
 /// through the normal WM focus path.
 ///
 /// This makes the target monitor current, reveals the client's non-scratchpad
-/// tags when needed, and then applies the backend focus/restack logic.
+/// tags when needed, and then applies the backend focus/sync_monitor_z_order logic.
 pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
     let Some((monitor_id, client_tags)) = ctx
         .core()

@@ -3,7 +3,7 @@
 //! This is a single-function module extracted from the original monolithic
 //! `tags.rs`.  It lives under `tags/` because the operation is semantically a
 //! tag action (the client's tag membership changes when it crosses monitors),
-//! but the heavy lifting — detach/attach, geometry update, restack — is
+//! but the heavy lifting — detach/attach, geometry update, z-order sync — is
 //! delegated to `monitor::transfer_client`.
 //!
 //! For floating clients the window is repositioned so that its relative
@@ -150,6 +150,6 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         .queue_layout_for_monitor_urgent(selmon_id);
 
     // Raise so the window is immediately visible on the new monitor.
-    ctx.raise(win);
+    ctx.raise_client(win);
     ctx.flush();
 }

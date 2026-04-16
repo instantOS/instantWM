@@ -104,7 +104,7 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         );
 
         // Raise each client above the bar so nothing is obscured.
-        ctx.backend().raise_window(win);
+        ctx.backend().raise_window_visual_only(win);
 
         // Advance to the next cell, wrapping to the next row.
         if cur_x + cell_w < mon_x + work_w {

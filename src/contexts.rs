@@ -255,26 +255,25 @@ impl<'a> WmCtx<'a> {
         self.backend().warp_pointer(x, y);
     }
 
-    pub fn raise(&self, win: WindowId) {
-        self.backend().raise_window(win);
+    pub fn raise_window_visual_only(&self, win: WindowId) {
+        self.backend().raise_window_visual_only(win);
     }
 
-    /// Raise a window and persist that z-order in monitor stack state.
+    /// Raise a client and persist that z-order in monitor state.
     ///
     /// Use this for interactive operations (move/resize drags) so later
-    /// restacks do not drop the dragged floating window behind others.
-    pub fn raise_interactive(&mut self, win: WindowId) {
+    /// z-order syncs do not drop the dragged floating window behind others.
+    pub fn raise_client(&mut self, win: WindowId) {
         if let Some(mid) = self.core().globals().clients.monitor_id(win)
             && let Some(mon) = self.core_mut().globals_mut().monitor_mut(mid)
         {
-            mon.stack.retain(|&w| w != win);
-            mon.stack.push(win);
+            mon.z_order.raise(win);
         }
-        self.backend().raise_window(win);
+        self.backend().raise_window_visual_only(win);
     }
 
-    pub fn restack(&self, wins: &[WindowId]) {
-        self.backend().restack(wins);
+    pub fn apply_window_order_bottom_to_top(&self, wins: &[WindowId]) {
+        self.backend().apply_window_order_bottom_to_top(wins);
     }
 
     pub(crate) fn set_geometry_impl(

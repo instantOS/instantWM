@@ -2,7 +2,7 @@
 //!
 //! These functions answer questions like "how many tiled clients are on the
 //! selected monitor?" or "what is the active layout?" without mutating
-//! any state.  They are kept separate from the arrange/restack machinery so
+//! any state.  They are kept separate from the arrange/z-order machinery so
 //! that both the algorithm modules and the manager can depend on them without
 //! creating circular imports.
 

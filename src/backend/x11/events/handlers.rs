@@ -73,7 +73,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
             if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(event_win) {
-                crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+                crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
     } else if let Some(mon) = ctx.core.globals().monitor(selmon_id) {
@@ -759,6 +759,6 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         let monitor_id = c.monitor_id;
         crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
         crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(win));
-        crate::layouts::restack(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+        crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     };
 }

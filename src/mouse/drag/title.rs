@@ -5,7 +5,7 @@
 
 use crate::backend::x11::grab::mouse_drag_loop;
 use crate::contexts::WmCtx;
-use crate::layouts::restack;
+use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::drag::move_drop::promote_to_floating;
@@ -177,7 +177,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         crate::client::show_window(ctx, win);
     }
     crate::focus::focus_soft(ctx, Some(win));
-    ctx.raise_interactive(win);
+    ctx.raise_client(win);
 
     if ctx.is_wayland() {
         return title_drag_start_wayland(ctx, root_x, root_y);
@@ -260,13 +260,13 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
         crate::client::show_window(ctx, win);
         crate::focus::focus_soft(ctx, Some(win));
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
-        restack(ctx, selmon_id);
+        sync_monitor_z_order(ctx, selmon_id);
     } else if was_focused {
         crate::client::hide_for_user(ctx, win);
     } else {
         crate::focus::focus_soft(ctx, Some(win));
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
-        restack(ctx, selmon_id);
+        sync_monitor_z_order(ctx, selmon_id);
     }
 }
 

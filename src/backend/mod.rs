@@ -42,8 +42,8 @@ pub enum BackendKind {
 /// Core backend operations required by the WM.
 pub trait BackendOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
-    fn raise_window(&self, window: WindowId);
-    fn restack(&self, windows: &[WindowId]);
+    fn raise_window_visual_only(&self, window: WindowId);
+    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]);
     fn set_focus(&self, window: WindowId);
     fn map_window(&self, window: WindowId);
     fn unmap_window(&self, window: WindowId);
@@ -251,17 +251,17 @@ impl BackendOps for BackendRef<'_> {
         }
     }
 
-    fn raise_window(&self, window: WindowId) {
+    fn raise_window_visual_only(&self, window: WindowId) {
         match self {
-            BackendRef::X11(x11) => x11.raise_window(window),
-            BackendRef::Wayland(wayland) => wayland.raise_window(window),
+            BackendRef::X11(x11) => x11.raise_window_visual_only(window),
+            BackendRef::Wayland(wayland) => wayland.raise_window_visual_only(window),
         }
     }
 
-    fn restack(&self, windows: &[WindowId]) {
+    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]) {
         match self {
-            BackendRef::X11(x11) => x11.restack(windows),
-            BackendRef::Wayland(wayland) => wayland.restack(windows),
+            BackendRef::X11(x11) => x11.apply_window_order_bottom_to_top(windows),
+            BackendRef::Wayland(wayland) => wayland.apply_window_order_bottom_to_top(windows),
         }
     }
 

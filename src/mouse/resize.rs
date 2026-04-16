@@ -175,7 +175,7 @@ fn begin_wayland_super_resize(
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
     let _ = crate::focus::focus_wayland(&mut wl.core, &wl.wayland, Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());
-    wmctx.raise_interactive(win);
+    wmctx.raise_client(win);
 }
 
 // ── resize_mouse_directional ──────────────────────────────────────────────────
@@ -212,9 +212,9 @@ pub fn resize_mouse_directional(
     let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
 
     with_wm_ctx_x11(ctx, |ctx| {
-        ctx.raise_interactive(win);
+        ctx.raise_client(win);
         let selmon_id = ctx.core().globals().selected_monitor_id();
-        crate::layouts::restack(ctx, selmon_id);
+        crate::layouts::sync_monitor_z_order(ctx, selmon_id);
     });
 
     crate::backend::x11::grab::mouse_drag_loop(
@@ -336,7 +336,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
     {
         let mut tmp = WmCtx::X11(ctx.reborrow());
         let selmon_id = tmp.core().globals().selected_monitor_id();
-        crate::layouts::restack(&mut tmp, selmon_id);
+        crate::layouts::sync_monitor_z_order(&mut tmp, selmon_id);
     }
 
     crate::backend::x11::grab::mouse_drag_loop(

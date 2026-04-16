@@ -118,7 +118,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
                 crate::types::AltCursor::Move,
             );
-            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_interactive(win);
+            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_client(win);
         }
     }
 }

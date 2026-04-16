@@ -107,5 +107,4 @@ pub fn select_client(g: &mut Globals, win: WindowId) {
     if let Some(mon) = g.monitor_mut(monitor_id) {
         mon.sel = Some(win);
     }
-    g.raise_client_in_stack(win);
 }

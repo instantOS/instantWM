@@ -25,14 +25,14 @@ fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> 
 
 fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {
     g.detach(win);
-    g.detach_stack(win);
+    g.detach_z_order(win);
 
     if let Some(client) = g.clients.get_mut(&win) {
         client.monitor_id = monitor_id;
     }
 
     g.attach(win);
-    g.attach_stack(win);
+    g.attach_z_order_top(win);
 }
 
 fn scratchpad_names(g: &Globals, visible: bool) -> Vec<String> {
@@ -194,7 +194,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         let mid = ctx.core().globals().selected_monitor_id();
         crate::focus::focus_soft(ctx, Some(found));
         arrange(ctx, Some(mid));
-        crate::layouts::restack(ctx, mid);
+        crate::layouts::sync_monitor_z_order(ctx, mid);
     }
 
     if focusfollowsmouse {

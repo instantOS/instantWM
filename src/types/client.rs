@@ -425,9 +425,9 @@ impl<'a> Iterator for ClientListIter<'a> {
     }
 }
 
-/// Iterator over a monitor's stack list (stacking order).
+/// Iterator over a monitor's persistent z-order.
 ///
-/// Yields `(Window, &Client)` pairs so restack/showhide style logic can use the
+/// Yields `(Window, &Client)` pairs so z-order/showhide style logic can use the
 /// correct ordering while keeping the window id available.
 ///
 /// This uses the same implementation as [`ClientListIter`] — the distinction

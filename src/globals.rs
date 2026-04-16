@@ -571,33 +571,27 @@ impl Globals {
         }
     }
 
-    /// Attach `win` to its assigned monitor's stacking list.
+    /// Attach `win` to the top of its assigned monitor's persistent z-order.
     ///
     /// Does **not** modify `mon.sel` — callers are responsible for
     /// deciding selection via `focus_soft` or explicit assignment.
-    pub fn attach_stack(&mut self, win: WindowId) {
+    pub fn attach_z_order_top(&mut self, win: WindowId) {
         if let Some(mid) = self.clients.monitor_id(win)
             && let Some(mon) = self.monitors.get_mut(mid)
         {
-            mon.stack.insert(0, win);
+            mon.z_order.attach_top(win);
         }
     }
 
-    /// Detach `win` from its assigned monitor's stacking list.
+    /// Detach `win` from its assigned monitor's persistent z-order.
     ///
     /// Pure list operation — does **not** modify `mon.sel`.
     /// Callers are responsible for focus recovery (e.g. `focus_soft`,
     /// `restore_focus_after_overlay`, or explicit `mon.sel` assignment).
-    pub fn detach_stack(&mut self, win: WindowId) {
+    pub fn detach_z_order(&mut self, win: WindowId) {
         let monitor_id = self.clients.monitor_id(win);
 
-        let handle_monitor = |mon: &mut crate::types::Monitor| -> bool {
-            if mon.stack.contains(&win) {
-                mon.stack.retain(|&w| w != win);
-                return true;
-            }
-            false
-        };
+        let handle_monitor = |mon: &mut crate::types::Monitor| -> bool { mon.z_order.remove(win) };
 
         if let Some(mid) = monitor_id
             && let Some(mon) = self.monitors.get_mut(mid)
@@ -614,16 +608,16 @@ impl Globals {
         }
     }
 
-    /// Move `win` to the top of its monitor's WM stack.
+    /// Move `win` to the top of its monitor's persistent z-order.
     ///
     /// The backend may also have its own native stacking structure (X11 server
     /// order, Smithay `Space`, etc.). This keeps the backend-agnostic model in
-    /// sync so later restacks, focus recovery, and focus-stack traversal do not
+    /// sync so later z-order syncs, focus recovery, and focus-stack traversal do not
     /// rebuild z-order from stale state.
-    pub fn raise_client_in_stack(&mut self, win: WindowId) {
+    pub fn raise_client_in_z_order(&mut self, win: WindowId) {
         if let Some(mid) = self.clients.monitor_id(win)
             && let Some(mon) = self.monitors.get_mut(mid)
-            && mon.raise_stack_client(win)
+            && mon.z_order.raise(win)
         {
             return;
         }
@@ -631,7 +625,7 @@ impl Globals {
         // Fallback: search all monitors if the client's monitor assignment is
         // stale during a transfer or teardown path.
         for mon in self.monitors.iter_all_mut() {
-            if mon.raise_stack_client(win) {
+            if mon.z_order.raise(win) {
                 return;
             }
         }

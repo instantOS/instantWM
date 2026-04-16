@@ -261,7 +261,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 
     ctx.core_mut().globals_mut().detach(win);
-    ctx.core_mut().globals_mut().detach_stack(win);
+    ctx.core_mut().globals_mut().detach_z_order(win);
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.monitor_id = target_mon;
@@ -275,7 +275,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 
     ctx.core_mut().globals_mut().attach(win);
-    ctx.core_mut().globals_mut().attach_stack(win);
+    ctx.core_mut().globals_mut().attach_z_order_top(win);
     if let WmCtx::X11(x11) = ctx {
         set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }

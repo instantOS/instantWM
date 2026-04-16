@@ -30,7 +30,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if is_animated {
         let mon = ctx.core_mut().globals_mut().selected_monitor();
         if let Some(selected_window) = mon.sel {
-            ctx.backend().raise_window(selected_window);
+            ctx.backend().raise_window_visual_only(selected_window);
             ctx.backend().flush();
         }
     }

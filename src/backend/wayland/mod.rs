@@ -166,12 +166,13 @@ impl BackendOps for WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }
 
-    fn raise_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.raise_window(window));
+    fn raise_window_visual_only(&self, window: WindowId) {
+        let _ = self.with_state(|state: &mut WaylandState| state.raise_window_visual_only(window));
     }
 
-    fn restack(&self, windows: &[WindowId]) {
-        let _ = self.with_state(|state: &mut WaylandState| state.restack(windows));
+    fn apply_window_order_bottom_to_top(&self, windows: &[WindowId]) {
+        let _ = self
+            .with_state(|state: &mut WaylandState| state.apply_window_order_bottom_to_top(windows));
     }
 
     fn set_focus(&self, window: WindowId) {

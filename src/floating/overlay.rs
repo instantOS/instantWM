@@ -217,7 +217,7 @@ pub fn create_overlay(ctx: &mut WmCtx, selected_window: WindowId) {
     }
 
     // Raise the window using backend-agnostic method
-    ctx.backend().raise_window(temp_client);
+    ctx.backend().raise_window_visual_only(temp_client);
 
     show_overlay(ctx);
 }
@@ -249,7 +249,7 @@ pub fn reset_overlay(ctx: &mut WmCtx) {
 /// Prepare the overlay window for display (detach, update state, reattach).
 fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: MonitorId) {
     ctx.core_mut().globals_mut().detach(overlay_win);
-    ctx.core_mut().globals_mut().detach_stack(overlay_win);
+    ctx.core_mut().globals_mut().detach_z_order(overlay_win);
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&overlay_win) {
         client.monitor_id = selmon_id;
@@ -257,7 +257,7 @@ fn prepare_overlay_window(ctx: &mut WmCtx, overlay_win: WindowId, selmon_id: Mon
     }
 
     ctx.core_mut().globals_mut().attach(overlay_win);
-    ctx.core_mut().globals_mut().attach_stack(overlay_win);
+    ctx.core_mut().globals_mut().attach_z_order_top(overlay_win);
 }
 
 /// Update overlay client properties for showing.
@@ -360,7 +360,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     update_overlay_client_for_show(ctx, overlay, tags);
 
     if is_locked {
-        ctx.backend().raise_window(overlay);
+        ctx.backend().raise_window_visual_only(overlay);
 
         let target_rect = get_target_overlay_rect(&pos_info);
         ctx.move_resize(
@@ -375,7 +375,7 @@ pub fn show_overlay(ctx: &mut WmCtx) {
     }
 
     crate::focus::focus_soft(ctx, Some(overlay));
-    ctx.backend().raise_window(overlay);
+    ctx.backend().raise_window_visual_only(overlay);
 }
 
 /// Check if overlay is fullscreen on the given monitor.

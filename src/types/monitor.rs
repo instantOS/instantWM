@@ -15,6 +15,63 @@ use crate::types::input::Gesture;
 use crate::types::input::OverlayMode;
 use crate::types::tag_types::MonitorDirection;
 
+/// Persistent per-monitor client z-order.
+///
+/// The stored order is bottom-to-top. Layout policy may project this into a
+/// different backend order temporarily (for example, monocle promotes the
+/// focused client visually), but focus changes alone should not mutate this
+/// persistent order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ClientZOrder {
+    bottom_to_top: Vec<WindowId>,
+}
+
+impl ClientZOrder {
+    pub fn as_slice(&self) -> &[WindowId] {
+        &self.bottom_to_top
+    }
+
+    pub fn attach_top(&mut self, win: WindowId) {
+        self.remove(win);
+        self.bottom_to_top.push(win);
+    }
+
+    pub fn attach_bottom(&mut self, win: WindowId) {
+        self.remove(win);
+        self.bottom_to_top.insert(0, win);
+    }
+
+    pub fn remove(&mut self, win: WindowId) -> bool {
+        let old_len = self.bottom_to_top.len();
+        self.bottom_to_top.retain(|&w| w != win);
+        self.bottom_to_top.len() != old_len
+    }
+
+    pub fn raise(&mut self, win: WindowId) -> bool {
+        if !self.remove(win) {
+            return false;
+        }
+        self.bottom_to_top.push(win);
+        true
+    }
+
+    pub fn lower(&mut self, win: WindowId) -> bool {
+        if !self.remove(win) {
+            return false;
+        }
+        self.bottom_to_top.insert(0, win);
+        true
+    }
+
+    pub fn iter_bottom_to_top(&self) -> impl DoubleEndedIterator<Item = WindowId> + '_ {
+        self.bottom_to_top.iter().copied()
+    }
+
+    pub fn iter_top_to_bottom(&self) -> impl Iterator<Item = WindowId> + '_ {
+        self.bottom_to_top.iter().rev().copied()
+    }
+}
+
 /// Internal state of a monitor (screen) in the window manager.
 ///
 /// This struct holds all runtime state for a monitor, including
@@ -89,8 +146,8 @@ pub struct Monitor {
     pub pertag: HashMap<u32, PertagState>,
     /// Overlay window.
     pub overlay: Option<WindowId>,
-    /// Stack list (stacking order).
-    pub stack: Vec<WindowId>,
+    /// Persistent client z-order.
+    pub z_order: ClientZOrder,
     /// Currently fullscreen client.
     pub fullscreen: Option<WindowId>,
     /// Monitor name (e.g., "DP-1", "HDMI-1").
@@ -132,7 +189,7 @@ impl Default for Monitor {
             tag_focus_history: HashMap::new(),
             pertag: HashMap::new(),
             overlay: None,
-            stack: Vec::new(),
+            z_order: ClientZOrder::default(),
             fullscreen: None,
             name: String::new(),
         }
@@ -233,10 +290,10 @@ impl Monitor {
         ClientListIter::new(&self.clients, clients)
     }
 
-    /// Iterate the monitor's stack list (stacking order).
+    /// Iterate the monitor's persistent z-order.
     #[inline]
     pub fn iter_stack<'a>(&'a self, clients: &'a HashMap<WindowId, Client>) -> ClientStackIter<'a> {
-        ClientStackIter::new(&self.stack, clients)
+        ClientStackIter::new(self.z_order.as_slice(), clients)
     }
 
     /// Check if a point is within this monitor's work area.
@@ -309,39 +366,21 @@ impl Monitor {
         self.sel
     }
 
-    /// Walk the stacking list and return the topmost visible, non-hidden
+    /// Walk the persistent z-order and return the topmost visible, non-hidden
     /// client on the currently selected tags.
     ///
-    /// The end of `self.stack` is the top of the z-order: interactive raises
-    /// append there, and `layouts::restack` keeps the focused overlap target
-    /// last. Focus recovery should therefore walk the stack in reverse so
+    /// `z_order` is bottom-to-top. Focus recovery walks it from the top so
     /// closing an overlapping window selects the window immediately below it.
     pub fn first_visible_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
         let tags = self.selected_tags();
-        self.stack
-            .iter()
-            .rev()
-            .find_map(|&w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
+        self.z_order
+            .iter_top_to_bottom()
+            .find_map(|w| clients.get(&w).filter(|c| c.is_visible(tags)).map(|_| w))
     }
 
     /// Check if this monitor has a selected client.
     pub fn has_selection(&self) -> bool {
         self.sel.is_some()
-    }
-
-    /// Move `win` to the top of this monitor's client z-order.
-    ///
-    /// `stack` is ordered bottom-to-top, so the topmost client is the last
-    /// element. Keeping this mutation explicit prevents backend raises from
-    /// drifting away from WM focus recovery and focus-stack behavior.
-    pub fn raise_stack_client(&mut self, win: WindowId) -> bool {
-        let old_len = self.stack.len();
-        self.stack.retain(|&w| w != win);
-        if self.stack.len() == old_len {
-            return false;
-        }
-        self.stack.push(win);
-        true
     }
 
     /// Set the selected client for this monitor.
@@ -683,7 +722,9 @@ mod tests {
     fn first_visible_client_prefers_topmost_visible_stack_entry() {
         let mut monitor = Monitor::default();
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+        monitor.z_order.attach_top(WindowId(1));
+        monitor.z_order.attach_top(WindowId(2));
+        monitor.z_order.attach_top(WindowId(3));
 
         let mut clients = HashMap::new();
         for id in [WindowId(1), WindowId(2), WindowId(3)] {
@@ -699,21 +740,31 @@ mod tests {
     }
 
     #[test]
-    fn raise_stack_client_moves_existing_client_to_top() {
-        let mut monitor = Monitor::default();
-        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+    fn client_z_order_raise_moves_existing_client_to_top() {
+        let mut z_order = ClientZOrder::default();
+        z_order.attach_top(WindowId(1));
+        z_order.attach_top(WindowId(2));
+        z_order.attach_top(WindowId(3));
 
-        assert!(monitor.raise_stack_client(WindowId(2)));
-        assert_eq!(monitor.stack, vec![WindowId(1), WindowId(3), WindowId(2)]);
+        assert!(z_order.raise(WindowId(2)));
+        assert_eq!(
+            z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+            vec![WindowId(1), WindowId(3), WindowId(2)]
+        );
     }
 
     #[test]
-    fn raise_stack_client_ignores_unknown_client() {
-        let mut monitor = Monitor::default();
-        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+    fn client_z_order_raise_ignores_unknown_client() {
+        let mut z_order = ClientZOrder::default();
+        z_order.attach_top(WindowId(1));
+        z_order.attach_top(WindowId(2));
+        z_order.attach_top(WindowId(3));
 
-        assert!(!monitor.raise_stack_client(WindowId(4)));
-        assert_eq!(monitor.stack, vec![WindowId(1), WindowId(2), WindowId(3)]);
+        assert!(!z_order.raise(WindowId(4)));
+        assert_eq!(
+            z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+            vec![WindowId(1), WindowId(2), WindowId(3)]
+        );
     }
 
     #[test]

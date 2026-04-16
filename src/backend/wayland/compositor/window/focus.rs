@@ -9,12 +9,13 @@ use crate::types::WindowId;
 impl WaylandState {
     /// Apply a compositor-side focus/raise request to both WM state and the
     /// Smithay seat.
-    pub(crate) fn focus_and_raise_window(&mut self, window: WindowId) {
+    pub(crate) fn activate_and_raise_window(&mut self, window: WindowId) {
         if let Some(g) = self.globals_mut() {
             crate::client::select_client(g, window);
+            g.raise_client_in_z_order(window);
         }
         self.set_focus(window);
-        self.raise_window(window);
+        self.raise_window_visual_only(window);
     }
 
     /// Apply keyboard focus to a window on the Smithay seat.

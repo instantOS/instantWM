@@ -8,7 +8,7 @@
 //! |---------------|-------------------------------------------------------------|
 //! | [`algo`]      | Pure geometry algorithms (tile, monocle, grid, …)          |
 //! | [`query`]     | Stateless reads: client counts, layout index resolution     |
-//! | [`manager`]   | Stateful operations: arrange, restack, set/cycle layout, …  |
+//! | [`manager`]   | Stateful operations: arrange, sync_monitor_z_order, set/cycle layout, …  |
 //!
 //! ## Layout enum
 //!
@@ -164,5 +164,6 @@ impl FromStr for LayoutKind {
 
 // ── Re-exports: manager ───────────────────────────────────────────────────────
 pub use manager::{
-    arrange, cycle_layout_direction, inc_nmaster_by, restack, set_layout, set_mfact, toggle_layout,
+    arrange, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, sync_monitor_z_order,
+    toggle_layout,
 };

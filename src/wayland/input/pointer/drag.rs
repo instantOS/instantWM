@@ -74,7 +74,7 @@ pub fn wayland_hover_resize_drag_begin(
         }
     }
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
-    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(win);
+    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_client(win);
     true
 }
 
@@ -284,6 +284,6 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
             );
         }
     }
-    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_interactive(drag.win);
+    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_client(drag.win);
     true
 }

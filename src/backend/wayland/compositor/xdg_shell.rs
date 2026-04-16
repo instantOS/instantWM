@@ -287,13 +287,13 @@ impl XdgShellHandler for WaylandState {
                 return;
             };
             g.detach(win);
-            g.detach_stack(win);
+            g.detach_z_order(win);
             g.clients.remove(&win);
             g.queue_layout_for_all_monitors();
         }
         self.request_space_sync();
 
-        // Recover mon.sel if it was cleared by detach_stack, then re-apply seat focus.
+        // Recover mon.sel if it was cleared by detach_z_order, then re-apply seat focus.
         self.restore_focus_after_overlay();
     }
 
@@ -372,7 +372,7 @@ impl XdgShellHandler for WaylandState {
         _serial: smithay::utils::Serial,
     ) {
         if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.focus_and_raise_window(win);
+            self.activate_and_raise_window(win);
             let pointer = self.pointer.current_location();
             let root_x = pointer.x.round() as i32;
             let root_y = pointer.y.round() as i32;
@@ -417,7 +417,7 @@ impl XdgShellHandler for WaylandState {
         _edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
         if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.focus_and_raise_window(win);
+            self.activate_and_raise_window(win);
         }
     }
 

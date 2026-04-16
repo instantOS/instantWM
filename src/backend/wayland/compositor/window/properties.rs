@@ -169,7 +169,7 @@ impl WaylandState {
         crate::client::apply_rules(g, window, &props, launch_context);
 
         g.attach(window);
-        g.attach_stack(window);
+        g.attach_z_order_top(window);
         crate::client::select_client(g, window);
     }
 

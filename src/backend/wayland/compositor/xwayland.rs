@@ -208,7 +208,7 @@ impl XwmHandler for WaylandState {
             sync_xwayland_surface_metadata(self, win, &window);
             apply_xwayland_surface_policy(self, win, &window);
             self.map_window(win);
-            self.focus_and_raise_window(win);
+            self.activate_and_raise_window(win);
             return;
         }
 
@@ -265,7 +265,7 @@ impl XwmHandler for WaylandState {
         }
         self.request_space_sync();
         self.create_foreign_toplevel(win);
-        self.focus_and_raise_window(win);
+        self.activate_and_raise_window(win);
     }
 
     fn mapped_override_redirect_window(
@@ -340,7 +340,7 @@ impl XwmHandler for WaylandState {
                 return;
             };
             g.detach(win);
-            g.detach_stack(win);
+            g.detach_z_order(win);
             g.clients.remove(&win);
         } else if is_overlay {
             let element = self
@@ -357,7 +357,7 @@ impl XwmHandler for WaylandState {
         }
         trigger_pointer_focus_update(self);
 
-        // Recover mon.sel if it was cleared by detach_stack, then
+        // Recover mon.sel if it was cleared by detach_z_order, then
         // re-apply seat focus.
         self.restore_focus_after_overlay();
     }
@@ -649,7 +649,7 @@ impl XwmHandler for WaylandState {
         _button: u32,
     ) {
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.focus_and_raise_window(win);
+            self.activate_and_raise_window(win);
         }
     }
 
