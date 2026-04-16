@@ -329,6 +329,21 @@ impl Monitor {
         self.sel.is_some()
     }
 
+    /// Move `win` to the top of this monitor's client z-order.
+    ///
+    /// `stack` is ordered bottom-to-top, so the topmost client is the last
+    /// element. Keeping this mutation explicit prevents backend raises from
+    /// drifting away from WM focus recovery and focus-stack behavior.
+    pub fn raise_stack_client(&mut self, win: WindowId) -> bool {
+        let old_len = self.stack.len();
+        self.stack.retain(|&w| w != win);
+        if self.stack.len() == old_len {
+            return false;
+        }
+        self.stack.push(win);
+        true
+    }
+
     /// Set the selected client for this monitor.
     pub fn set_selected(&mut self, win: Option<WindowId>) {
         self.sel = win;
@@ -681,6 +696,24 @@ mod tests {
         }
 
         assert_eq!(monitor.first_visible_client(&clients), Some(WindowId(3)));
+    }
+
+    #[test]
+    fn raise_stack_client_moves_existing_client_to_top() {
+        let mut monitor = Monitor::default();
+        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+
+        assert!(monitor.raise_stack_client(WindowId(2)));
+        assert_eq!(monitor.stack, vec![WindowId(1), WindowId(3), WindowId(2)]);
+    }
+
+    #[test]
+    fn raise_stack_client_ignores_unknown_client() {
+        let mut monitor = Monitor::default();
+        monitor.stack = vec![WindowId(1), WindowId(2), WindowId(3)];
+
+        assert!(!monitor.raise_stack_client(WindowId(4)));
+        assert_eq!(monitor.stack, vec![WindowId(1), WindowId(2), WindowId(3)]);
     }
 
     #[test]

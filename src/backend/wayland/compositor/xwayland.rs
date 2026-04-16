@@ -208,8 +208,7 @@ impl XwmHandler for WaylandState {
             sync_xwayland_surface_metadata(self, win, &window);
             apply_xwayland_surface_policy(self, win, &window);
             self.map_window(win);
-            self.set_focus(win);
-            self.raise_window(win);
+            self.focus_and_raise_window(win);
             return;
         }
 
@@ -266,8 +265,7 @@ impl XwmHandler for WaylandState {
         }
         self.request_space_sync();
         self.create_foreign_toplevel(win);
-        self.set_focus(win);
-        self.raise_window(win);
+        self.focus_and_raise_window(win);
     }
 
     fn mapped_override_redirect_window(
@@ -651,8 +649,7 @@ impl XwmHandler for WaylandState {
         _button: u32,
     ) {
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.set_focus(win);
-            self.raise_window(win);
+            self.focus_and_raise_window(win);
         }
     }
 

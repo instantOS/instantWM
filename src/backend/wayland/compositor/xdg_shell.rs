@@ -372,8 +372,7 @@ impl XdgShellHandler for WaylandState {
         _serial: smithay::utils::Serial,
     ) {
         if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.set_focus(win);
-            self.raise_window(win);
+            self.focus_and_raise_window(win);
             let pointer = self.pointer.current_location();
             let root_x = pointer.x.round() as i32;
             let root_y = pointer.y.round() as i32;
@@ -418,8 +417,7 @@ impl XdgShellHandler for WaylandState {
         _edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
         if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.set_focus(win);
-            self.raise_window(win);
+            self.focus_and_raise_window(win);
         }
     }
 

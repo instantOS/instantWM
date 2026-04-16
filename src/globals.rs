@@ -613,6 +613,29 @@ impl Globals {
             }
         }
     }
+
+    /// Move `win` to the top of its monitor's WM stack.
+    ///
+    /// The backend may also have its own native stacking structure (X11 server
+    /// order, Smithay `Space`, etc.). This keeps the backend-agnostic model in
+    /// sync so later restacks, focus recovery, and focus-stack traversal do not
+    /// rebuild z-order from stale state.
+    pub fn raise_client_in_stack(&mut self, win: WindowId) {
+        if let Some(mid) = self.clients.monitor_id(win)
+            && let Some(mon) = self.monitors.get_mut(mid)
+            && mon.raise_stack_client(win)
+        {
+            return;
+        }
+
+        // Fallback: search all monitors if the client's monitor assignment is
+        // stale during a transfer or teardown path.
+        for mon in self.monitors.iter_all_mut() {
+            if mon.raise_stack_client(win) {
+                return;
+            }
+        }
+    }
 }
 
 #[cfg(test)]

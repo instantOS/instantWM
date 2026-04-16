@@ -81,6 +81,9 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
             mon.tag_focus_history.insert(mon.selected_tags().bits(), t);
         }
     }
+    if let Some(t) = target {
+        core.globals_mut().raise_client_in_stack(t);
+    }
     target
 }
 
