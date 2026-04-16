@@ -318,6 +318,7 @@ pub enum IpcCommand {
     Wallpaper(String),
     Input(InputCommand),
     Mode(ModeCommand),
+    Quit,
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]

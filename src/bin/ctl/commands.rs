@@ -309,6 +309,7 @@ pub enum CommandKind {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    Quit,
 }
 
 #[derive(Debug, Parser)]
@@ -534,5 +535,6 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
         CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
         CommandKind::Config { .. } => unreachable!("config is handled locally"),
+        CommandKind::Quit => IpcCommand::Quit,
     }
 }

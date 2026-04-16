@@ -203,5 +203,9 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),
         IpcCommand::Mode(cmd) => mode::handle_mode_command(wm, cmd),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
+        IpcCommand::Quit => {
+            wm.quit();
+            Response::ok()
+        }
     }
 }
