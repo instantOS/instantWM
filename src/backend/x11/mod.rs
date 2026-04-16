@@ -251,6 +251,10 @@ impl BackendOps for X11BackendRef<'_> {
         self.conn.get_window_attributes(x11_win).is_ok()
     }
 
+    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
+        crate::backend::WindowProtocol::X11
+    }
+
     fn flush(&self) {
         let _ = self.conn.flush();
     }

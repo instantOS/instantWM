@@ -39,6 +39,18 @@ pub enum BackendKind {
     Wayland,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Encode, Decode,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowProtocol {
+    Unknown,
+    X11,
+    Wayland,
+    #[serde(rename = "xwayland")]
+    XWayland,
+}
+
 /// Core backend operations required by the WM.
 pub trait BackendOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
@@ -71,6 +83,11 @@ pub trait BackendOps {
     /// X properties).
     fn window_title(&self, _window: WindowId) -> Option<String> {
         None
+    }
+
+    /// Return the protocol/backend surface type for a managed window.
+    fn window_protocol(&self, _window: WindowId) -> WindowProtocol {
+        WindowProtocol::Unknown
     }
 
     /// Switch keyboard layout
@@ -318,6 +335,13 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.window_title(window),
             BackendRef::Wayland(wayland) => wayland.window_title(window),
+        }
+    }
+
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        match self {
+            BackendRef::X11(x11) => x11.window_protocol(window),
+            BackendRef::Wayland(wayland) => wayland.window_protocol(window),
         }
     }
 

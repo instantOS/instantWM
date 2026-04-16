@@ -3,6 +3,8 @@ use smithay::{
     xwayland::{X11Surface, XwmHandler, xwm::WmWindowProperty},
 };
 
+use crate::client::FloatingPlacementKind;
+
 use super::{
     focus::KeyboardFocusTarget,
     state::{WaylandState, WindowIdMarker},
@@ -63,7 +65,7 @@ fn apply_xwayland_surface_policy(
     state: &mut WaylandState,
     win: crate::types::WindowId,
     surface: &X11Surface,
-) {
+) -> Option<crate::types::WindowId> {
     let transient_parent = crate::client::x11_policy::transient_for_window_id(surface)
         .and_then(|parent_x11| state.window_id_for_x11_window(parent_x11.into()));
     let should_float_for_type =
@@ -152,6 +154,7 @@ fn apply_xwayland_surface_policy(
             mon.fullscreen = None;
         }
     }
+    transient_parent
 }
 
 impl XwmHandler for WaylandState {
@@ -206,9 +209,28 @@ impl XwmHandler for WaylandState {
         }
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             sync_xwayland_surface_metadata(self, win, &window);
-            apply_xwayland_surface_policy(self, win, &window);
+            let parent = apply_xwayland_surface_policy(self, win, &window);
             self.map_window(win);
             self.activate_and_raise_window(win);
+            if let Some(rect) = self.globals().and_then(|g| {
+                g.clients
+                    .get(&win)
+                    .filter(|client| client.is_floating)
+                    .map(|c| c.geo)
+            }) {
+                let resolved = self.globals_mut().map(|g| {
+                    crate::client::resolve_and_sync_floating_geometry(
+                        g,
+                        win,
+                        rect,
+                        FloatingPlacementKind::New,
+                        parent,
+                    )
+                });
+                if let Some(resolved) = resolved {
+                    self.resize_window(win, resolved);
+                }
+            }
             return;
         }
 
@@ -226,9 +248,9 @@ impl XwmHandler for WaylandState {
         self.window_index.insert(win, element);
         self.ensure_client_for_window(win);
         sync_xwayland_surface_metadata(self, win, &window);
-        apply_xwayland_surface_policy(self, win, &window);
+        let parent = apply_xwayland_surface_policy(self, win, &window);
         if let Some(g) = self.globals_mut() {
-            crate::client::sync_client_geometry(
+            crate::client::resolve_and_sync_floating_geometry(
                 g,
                 win,
                 crate::types::Rect {
@@ -237,6 +259,8 @@ impl XwmHandler for WaylandState {
                     w: geo.size.w.max(1),
                     h: geo.size.h.max(1),
                 },
+                FloatingPlacementKind::New,
+                parent,
             );
         }
         let final_rect = if let Some(rect) = self
@@ -385,6 +409,27 @@ impl XwmHandler for WaylandState {
         if let Some(h) = h {
             geo.size.h = h as i32;
         }
+        if let Some(win) = self.window_id_for_x11_surface(&window)
+            && let Some(resolved) = self.globals_mut().map(|g| {
+                crate::client::resolve_and_sync_floating_geometry(
+                    g,
+                    win,
+                    crate::types::Rect {
+                        x: geo.loc.x,
+                        y: geo.loc.y,
+                        w: geo.size.w.max(1),
+                        h: geo.size.h.max(1),
+                    },
+                    FloatingPlacementKind::AppRequest,
+                    None,
+                )
+            })
+        {
+            geo.loc.x = resolved.x;
+            geo.loc.y = resolved.y;
+            geo.size.w = resolved.w;
+            geo.size.h = resolved.h;
+        }
         let _ = window.configure(Some(geo));
     }
 
@@ -411,8 +456,8 @@ impl XwmHandler for WaylandState {
             }
             return;
         };
-        if let Some(g) = self.globals_mut() {
-            crate::client::sync_client_geometry(
+        let rect = if let Some(g) = self.globals_mut() {
+            crate::client::resolve_and_sync_floating_geometry(
                 g,
                 win,
                 crate::types::Rect {
@@ -421,22 +466,22 @@ impl XwmHandler for WaylandState {
                     w: geometry.size.w.max(1),
                     h: geometry.size.h.max(1),
                 },
-            );
-        }
-        // This is an acknowledgement/notification from XWayland about the
-        // geometry it is already using. Feeding it back into `resize_window`
-        // would send another X11 configure and create a resize loop.
-        let mode = self.default_window_move_mode();
-        self.set_window_target_rect(
-            win,
+                FloatingPlacementKind::BackendObserved,
+                None,
+            )
+        } else {
             crate::types::Rect {
                 x: geometry.loc.x,
                 y: geometry.loc.y,
                 w: geometry.size.w.max(1),
                 h: geometry.size.h.max(1),
-            },
-            mode,
-        );
+            }
+        };
+        // This is an acknowledgement/notification from XWayland about the
+        // geometry it is already using. Feeding it back into `resize_window`
+        // would send another X11 configure and create a resize loop.
+        let mode = self.default_window_move_mode();
+        self.set_window_target_rect(win, rect, mode);
     }
 
     fn property_notify(

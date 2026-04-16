@@ -48,7 +48,10 @@ pub use rules::{WindowProperties, apply_rules, handle_property_change};
 pub use constants::WM_STATE_WITHDRAWN;
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{sane_floating_spawn_rect, sync_client_geometry};
+pub use geometry::{
+    FloatingPlacementKind, resolve_and_sync_floating_geometry, sane_floating_spawn_rect,
+    sync_client_geometry,
+};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{apply_visibility, hide, hide_for_user, show_window};

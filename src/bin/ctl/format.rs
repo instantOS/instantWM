@@ -1,6 +1,6 @@
 use instantwm::ipc_types::{
     ActionInfo, DisplayModes, KeyboardLayoutInfo, ModeInfo, MonitorInfo, Response, ScratchpadInfo,
-    TagInfo, WindowInfo, WmStatusInfo,
+    TagInfo, WindowInfo, WindowProtocol, WmStatusInfo,
 };
 
 pub fn format_response(response: &Response, json: bool) {
@@ -33,13 +33,14 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
             return;
         }
         println!(
-            "{:<8} {:<50} {:<8} {:<15} {:<20}",
-            "ID", "TITLE", "MONITOR", "TAGS", "STATE"
+            "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
+            "ID", "TITLE", "PROTOCOL", "MONITOR", "TAGS", "STATE"
         );
         println!(
-            "{:<8} {:<50} {:<8} {:<15} {:<20}",
+            "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
             "------",
             "--------------------------------------------------",
+            "----------",
             "--------",
             "---------------",
             "--------------------"
@@ -61,10 +62,24 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
                 w.title.clone()
             };
             println!(
-                "{:<8} {:<50} {:<8} {:<15} {:<20}",
-                w.id, title, w.monitor, tags, state
+                "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
+                w.id,
+                title,
+                format_window_protocol(w.protocol),
+                w.monitor,
+                tags,
+                state
             );
         }
+    }
+}
+
+fn format_window_protocol(protocol: WindowProtocol) -> &'static str {
+    match protocol {
+        WindowProtocol::Unknown => "unknown",
+        WindowProtocol::X11 => "x11",
+        WindowProtocol::Wayland => "wayland",
+        WindowProtocol::XWayland => "xwayland",
     }
 }
 
@@ -111,6 +126,7 @@ fn format_window_info(window: &WindowInfo, json: bool) {
         };
         println!("id: {}", window.id);
         println!("title: {}", window.title);
+        println!("protocol: {}", format_window_protocol(window.protocol));
         println!("monitor: {}", window.monitor);
         println!("tags: {}", tags);
         println!(

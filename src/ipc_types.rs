@@ -1,3 +1,4 @@
+pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
 pub use crate::layouts::LayoutKind;
 pub use crate::types::{MonitorDirection, SpecialNext, TagMask};
@@ -367,6 +368,7 @@ pub struct SizeHintsInfo {
 pub struct WindowInfo {
     pub id: u64,
     pub title: String,
+    pub protocol: WindowProtocol,
     pub monitor: usize,
     pub tags: TagMask,
     pub geometry: GeometryInfo,

@@ -52,7 +52,7 @@
 
 pub mod compositor;
 
-use crate::backend::BackendOps;
+use crate::backend::{BackendOps, WindowProtocol};
 use crate::types::{Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
@@ -105,6 +105,11 @@ impl WaylandBackend {
     pub fn window_title(&self, window: WindowId) -> Option<String> {
         self.with_state(|state: &mut WaylandState| state.window_title(window))
             .flatten()
+    }
+
+    pub fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        self.with_state(|state: &mut WaylandState| state.window_protocol(window))
+            .unwrap_or(WindowProtocol::Unknown)
     }
 
     pub fn xdisplay(&self) -> Option<u32> {
@@ -211,6 +216,10 @@ impl BackendOps for WaylandBackend {
     fn window_title(&self, window: WindowId) -> Option<String> {
         self.with_state(|state: &mut WaylandState| state.window_title(window))
             .flatten()
+    }
+
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        self.window_protocol(window)
     }
 
     fn set_keyboard_layout(

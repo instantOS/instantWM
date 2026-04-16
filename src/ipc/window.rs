@@ -1,3 +1,4 @@
+use crate::backend::BackendOps;
 use crate::ipc_types::{
     GeometryInfo, Response, SizeHintsInfo, WindowCommand, WindowInfo, WindowState,
 };
@@ -83,10 +84,15 @@ fn build_window_state(c: &crate::types::client::Client) -> WindowState {
     }
 }
 
-fn client_to_window_info(c: &crate::types::client::Client, valid_tag_mask: TagMask) -> WindowInfo {
+fn client_to_window_info(
+    c: &crate::types::client::Client,
+    valid_tag_mask: TagMask,
+    protocol: crate::backend::WindowProtocol,
+) -> WindowInfo {
     WindowInfo {
         id: c.win.0 as u64,
         title: c.name.clone(),
+        protocol,
         monitor: c.monitor_id.index(),
         tags: c.tags & valid_tag_mask,
         geometry: GeometryInfo {
@@ -112,9 +118,10 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     wins.sort_by_key(|c| c.win.0);
 
     let tag_mask = wm.g.tags.mask();
+    let backend = crate::backend::BackendRef::from_backend(&wm.backend);
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| client_to_window_info(c, tag_mask))
+        .map(|c| client_to_window_info(c, tag_mask, backend.window_protocol(c.win)))
         .collect();
 
     Response::WindowList(windows)
@@ -139,7 +146,12 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     };
 
     let tag_mask = wm.g.tags.mask();
-    Response::WindowInfo(client_to_window_info(c, tag_mask))
+    let backend = crate::backend::BackendRef::from_backend(&wm.backend);
+    Response::WindowInfo(client_to_window_info(
+        c,
+        tag_mask,
+        backend.window_protocol(c.win),
+    ))
 }
 
 fn resize_window(

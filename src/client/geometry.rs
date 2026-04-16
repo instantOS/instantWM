@@ -35,6 +35,90 @@ pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FloatingPlacementKind {
+    New,
+    AppRequest,
+    BackendObserved,
+}
+
+/// Resolve a floating window rectangle before it becomes authoritative WM state.
+///
+/// Floating clients often provide stale coordinates, especially transient
+/// dialogs restored from a previous monitor setup.  Keep the app-provided size
+/// but ensure the position is usable on the target monitor.  Parent-relative
+/// placement is preferred for new transients without a usable position.
+pub fn resolve_floating_placement(
+    globals: &Globals,
+    win: WindowId,
+    requested: Rect,
+    kind: FloatingPlacementKind,
+    parent: Option<WindowId>,
+) -> Rect {
+    let Some(client) = globals.clients.get(&win) else {
+        return requested;
+    };
+    if !client.is_floating {
+        return requested;
+    }
+
+    let Some(work_rect) = globals.monitor(client.monitor_id).map(|m| m.work_rect) else {
+        return requested;
+    };
+    if !work_rect.is_valid() {
+        return requested;
+    }
+
+    let mut rect = requested;
+    rect.w = rect.w.max(1);
+    rect.h = rect.h.max(1);
+
+    let total_w = rect.total_width(client.border_width);
+    let total_h = rect.total_height(client.border_width);
+    let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.x + work_rect.w;
+    let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
+
+    let used_parent_position = if matches!(kind, FloatingPlacementKind::New)
+        && (fully_outside_x || fully_outside_y)
+        && let Some(parent_rect) =
+            parent.and_then(|parent| globals.clients.get(&parent).map(|c| c.geo))
+    {
+        rect.x = parent_rect.x + (parent_rect.w - rect.w) / 2;
+        rect.y = parent_rect.y + (parent_rect.h - rect.h) / 2;
+        true
+    } else {
+        false
+    };
+
+    rect.x = normalize_spawn_axis(
+        rect.x,
+        total_w,
+        work_rect.x,
+        work_rect.w,
+        fully_outside_x && !used_parent_position,
+    );
+    rect.y = normalize_spawn_axis(
+        rect.y,
+        total_h,
+        work_rect.y,
+        work_rect.h,
+        fully_outside_y && !used_parent_position,
+    );
+    rect
+}
+
+pub fn resolve_and_sync_floating_geometry(
+    globals: &mut Globals,
+    win: WindowId,
+    requested: Rect,
+    kind: FloatingPlacementKind,
+    parent: Option<WindowId>,
+) -> Rect {
+    let rect = resolve_floating_placement(globals, win, requested, kind, parent);
+    sync_client_geometry(globals, win, rect);
+    rect
+}
+
 /// Compute a saner initial position for a newly managed floating client.
 ///
 /// The goal is to preserve application-provided placement when it is already
@@ -47,20 +131,8 @@ pub fn sane_floating_spawn_rect(globals: &Globals, win: WindowId) -> Option<Rect
         return None;
     }
 
-    let work_rect = client.monitor(globals)?.work_rect;
-    if !work_rect.is_valid() {
-        return None;
-    }
-
-    let total_w = client.total_width();
-    let total_h = client.total_height();
-    let mut rect = client.geo;
-
-    let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.x + work_rect.w;
-    let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
-
-    rect.x = normalize_spawn_axis(rect.x, total_w, work_rect.x, work_rect.w, fully_outside_x);
-    rect.y = normalize_spawn_axis(rect.y, total_h, work_rect.y, work_rect.h, fully_outside_y);
+    let rect =
+        resolve_floating_placement(globals, win, client.geo, FloatingPlacementKind::New, None);
 
     rect.differs_from(&client.geo).then_some(rect)
 }
@@ -223,7 +295,7 @@ fn calculate_scaled_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::sane_floating_spawn_rect;
+    use super::{FloatingPlacementKind, resolve_floating_placement, sane_floating_spawn_rect};
     use crate::globals::Globals;
     use crate::types::{Client, Monitor, MonitorId, Rect, TagMask, WindowId};
 
@@ -286,6 +358,51 @@ mod tests {
         let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
         assert_eq!(rect.x, 16);
         assert_eq!(rect.y, 32);
+    }
+
+    #[test]
+    fn app_requested_floating_geometry_is_clamped_before_sync() {
+        let globals = globals_with_floating_client(
+            Rect::new(100, 100, 500, 300),
+            2,
+            Rect::new(0, 32, 1920, 1048),
+        );
+
+        let rect = resolve_floating_placement(
+            &globals,
+            WindowId::from(1_u32),
+            Rect::new(-4000, -3000, 500, 300),
+            FloatingPlacementKind::AppRequest,
+            None,
+        );
+
+        assert_eq!(rect.x, 708);
+        assert_eq!(rect.y, 404);
+    }
+
+    #[test]
+    fn new_offscreen_transient_prefers_parent_center() {
+        let mut globals = globals_with_floating_client(
+            Rect::new(-4000, -3000, 400, 200),
+            2,
+            Rect::new(0, 32, 1920, 1048),
+        );
+        let mut parent = Client::default();
+        parent.win = WindowId::from(2_u32);
+        parent.monitor_id = MonitorId(0);
+        parent.geo = Rect::new(500, 300, 800, 600);
+        globals.clients.insert(parent.win, parent);
+
+        let rect = resolve_floating_placement(
+            &globals,
+            WindowId::from(1_u32),
+            Rect::new(-4000, -3000, 400, 200),
+            FloatingPlacementKind::New,
+            Some(WindowId::from(2_u32)),
+        );
+
+        assert_eq!(rect.x, 700);
+        assert_eq!(rect.y, 500);
     }
 }
 

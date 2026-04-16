@@ -54,6 +54,21 @@ impl WaylandState {
         })
     }
 
+    /// Return the protocol/surface family that owns this window.
+    pub(crate) fn window_protocol(&self, window: WindowId) -> crate::backend::WindowProtocol {
+        let Some(element) = self.window_index.get(&window) else {
+            return crate::backend::WindowProtocol::Unknown;
+        };
+
+        if element.x11_surface().is_some() {
+            crate::backend::WindowProtocol::XWayland
+        } else if element.wl_surface().is_some() {
+            crate::backend::WindowProtocol::Wayland
+        } else {
+            crate::backend::WindowProtocol::Unknown
+        }
+    }
+
     /// Create a foreign toplevel handle for a window.
     pub(crate) fn create_foreign_toplevel(&mut self, window: WindowId) {
         let title = self.window_title(window).unwrap_or_default();
