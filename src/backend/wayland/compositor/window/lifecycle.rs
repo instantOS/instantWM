@@ -24,6 +24,12 @@ impl WaylandState {
 
         self.space.map_element(window.clone(), (0, 0), false);
         self.window_index.insert(window_id, window.clone());
+        // Refresh the Window's internal geometry cache so that
+        // ensure_client_for_window can read the actual committed size
+        // instead of a stale/default value. Without this, element.geometry()
+        // returns the pre-on_commit dimensions and the client is created
+        // with the full work-rect size, defeating floating placement.
+        window.on_commit();
         self.ensure_client_for_window(window_id);
         if let Some(toplevel) = window.toplevel() {
             self.apply_xdg_toplevel_floating_policy(toplevel);

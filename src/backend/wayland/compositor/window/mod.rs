@@ -46,6 +46,13 @@ impl WaylandState {
     /// actual mapped element so hover hit-testing and floating restore logic use
     /// the real window bounds.
     pub(crate) fn sync_client_geometry_from_window(&mut self, window: WindowId) {
+        // While an animation is in flight the element's space location is the
+        // interpolated (or AnimateFrom) position, not the authoritative target.
+        // Writing that back into client.geo would corrupt the WM-level geometry
+        // (e.g. a floating dialog ends up at the off-screen slide-in origin).
+        if self.window_animations.contains_key(&window) {
+            return;
+        }
         let Some(element) = self.find_window(window).cloned() else {
             return;
         };
