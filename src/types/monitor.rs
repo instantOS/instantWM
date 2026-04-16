@@ -142,6 +142,12 @@ pub struct Monitor {
     pub sel: Option<WindowId>,
     /// Focus history per tag mask.
     pub tag_focus_history: HashMap<u32, WindowId>,
+    /// Last tiled focus per tag mask.
+    ///
+    /// This is distinct from `sel`: a floating dialog can hold keyboard focus
+    /// while monocle still needs to keep the previously focused tiled client
+    /// visible below it.
+    pub tag_tiled_focus_history: HashMap<u32, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
     pub pertag: HashMap<u32, PertagState>,
     /// Overlay window.
@@ -187,6 +193,7 @@ impl Default for Monitor {
             clients: Vec::new(),
             sel: None,
             tag_focus_history: HashMap::new(),
+            tag_tiled_focus_history: HashMap::new(),
             pertag: HashMap::new(),
             overlay: None,
             z_order: ClientZOrder::default(),

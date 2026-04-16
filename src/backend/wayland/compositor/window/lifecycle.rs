@@ -93,7 +93,7 @@ impl WaylandState {
             })
             .unwrap_or(false);
         if should_focus {
-            self.set_focus(window_id);
+            self.activate_and_raise_window(window_id);
         }
         self.create_foreign_toplevel(window_id);
         window_id

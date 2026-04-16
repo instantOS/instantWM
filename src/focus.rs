@@ -75,10 +75,18 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
         target, sel_mon_id, ..
     } = result;
 
+    let target_is_tiled = target
+        .and_then(|win| core.globals().clients.get(&win))
+        .is_some_and(|client| !client.is_floating);
+
     if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
         if let Some(t) = target {
             mon.tag_focus_history.insert(mon.selected_tags().bits(), t);
+            if target_is_tiled {
+                mon.tag_tiled_focus_history
+                    .insert(mon.selected_tags().bits(), t);
+            }
         }
     }
     target

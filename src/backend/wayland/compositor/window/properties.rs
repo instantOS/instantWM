@@ -170,7 +170,6 @@ impl WaylandState {
 
         g.attach(window);
         g.attach_z_order_top(window);
-        crate::client::select_client(g, window);
     }
 
     /// Get the window ID for a toplevel surface.

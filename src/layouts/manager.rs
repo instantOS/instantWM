@@ -227,6 +227,15 @@ pub(crate) fn compute_monitor_z_order(
     let selected_window = monitor.sel?;
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
+    let tiled_focus = monitor
+        .tag_tiled_focus_history
+        .get(&selected_tags.bits())
+        .copied()
+        .filter(|win| {
+            clients
+                .get(win)
+                .is_some_and(|c| !c.is_floating && c.is_visible(selected_tags))
+        });
 
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
@@ -243,6 +252,18 @@ pub(crate) fn compute_monitor_z_order(
                 tiled_stack.push(win);
             }
         }
+    }
+
+    let selected_is_fullscreen = fullscreen_stack.contains(&selected_window);
+    let selected_is_floating = floating_stack.contains(&selected_window);
+
+    if let Some(tiled_focus) = tiled_focus
+        && selected_window != tiled_focus
+        && (selected_is_floating || selected_is_fullscreen)
+        && let Some(idx) = tiled_stack.iter().position(|&win| win == tiled_focus)
+    {
+        let selected = tiled_stack.remove(idx);
+        tiled_stack.push(selected);
     }
 
     if let Some(idx) = fullscreen_stack
@@ -471,6 +492,30 @@ mod tests {
                 WindowId(3),
                 WindowId(4)
             ]
+        );
+    }
+
+    #[test]
+    fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
+        let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
+        monitor
+            .tag_tiled_focus_history
+            .insert(monitor.selected_tags().bits(), WindowId(1));
+        let mut clients = [WindowId(1), WindowId(2), WindowId(3)]
+            .into_iter()
+            .map(|win| (win, visible_client(win)))
+            .collect::<HashMap<_, _>>();
+        clients.get_mut(&WindowId(2)).unwrap().is_floating = true;
+
+        let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+        assert_eq!(
+            projected,
+            vec![WindowId(3), WindowId(1), WindowId(99), WindowId(2)]
+        );
+        assert_eq!(
+            monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+            vec![WindowId(1), WindowId(2), WindowId(3)]
         );
     }
 }

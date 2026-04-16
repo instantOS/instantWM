@@ -52,6 +52,7 @@ impl WaylandState {
     }
 
     pub(crate) fn apply_xdg_toplevel_floating_policy(&mut self, surface: &ToplevelSurface) {
+        let has_parent = surface.parent().is_some();
         let wants_floating = self.xdg_toplevel_wants_floating(surface);
         let Some(win) = self.window_id_for_toplevel(surface) else {
             return;
@@ -71,8 +72,12 @@ impl WaylandState {
                 g.queue_layout_for_client(win);
                 changed = true;
             }
+            if wants_floating {
+                g.raise_client_in_z_order(win);
+            }
         }
-        if changed {
+        if changed || (wants_floating && has_parent) {
+            self.raise_window_visual_only(win);
             self.request_space_sync();
         }
     }
