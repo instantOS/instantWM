@@ -78,8 +78,13 @@ pub fn resolve_floating_placement(
     let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.x + work_rect.w;
     let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
 
+    // Center on parent when: (a) the window is off-screen, or (b) the
+    // position is the (0,0) placeholder that ensure_client_for_window sets
+    // for newly managed Wayland surfaces that have no app-provided position.
+    let needs_parent_placement =
+        fully_outside_x || fully_outside_y || (requested.x == 0 && requested.y == 0);
     let used_parent_position = if matches!(kind, FloatingPlacementKind::New)
-        && (fully_outside_x || fully_outside_y)
+        && needs_parent_placement
         && let Some(parent_rect) =
             parent.and_then(|parent| globals.clients.get(&parent).map(|c| c.geo))
     {
@@ -125,14 +130,18 @@ pub fn resolve_and_sync_floating_geometry(
 /// reasonable, while preventing new floats from spawning under the bar or
 /// mostly off-screen. The returned rect keeps the original size and only
 /// adjusts position.
-pub fn sane_floating_spawn_rect(globals: &Globals, win: WindowId) -> Option<Rect> {
+pub fn sane_floating_spawn_rect(
+    globals: &Globals,
+    win: WindowId,
+    parent: Option<WindowId>,
+) -> Option<Rect> {
     let client = globals.clients.get(&win)?;
     if !client.is_floating {
         return None;
     }
 
     let rect =
-        resolve_floating_placement(globals, win, client.geo, FloatingPlacementKind::New, None);
+        resolve_floating_placement(globals, win, client.geo, FloatingPlacementKind::New, parent);
 
     rect.differs_from(&client.geo).then_some(rect)
 }
@@ -330,7 +339,7 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
+        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32), None).unwrap();
         assert_eq!(rect.y, 32);
     }
 
@@ -342,7 +351,7 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
+        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32), None).unwrap();
         assert_eq!(rect.x, 708);
         assert_eq!(rect.y, 404);
     }
@@ -355,7 +364,7 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32)).unwrap();
+        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32), None).unwrap();
         assert_eq!(rect.x, 16);
         assert_eq!(rect.y, 32);
     }

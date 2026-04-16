@@ -265,7 +265,7 @@ impl XwmHandler for WaylandState {
         }
         let final_rect = if let Some(rect) = self
             .globals()
-            .and_then(|g| crate::client::sane_floating_spawn_rect(g, win))
+            .and_then(|g| crate::client::sane_floating_spawn_rect(g, win, parent))
         {
             if let Some(g) = self.globals_mut() {
                 crate::client::sync_client_geometry(g, win, rect);

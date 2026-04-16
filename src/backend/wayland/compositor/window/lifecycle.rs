@@ -28,9 +28,15 @@ impl WaylandState {
         if let Some(toplevel) = window.toplevel() {
             self.apply_xdg_toplevel_floating_policy(toplevel);
         }
+        // Resolve the XDG parent surface to a WindowId so floating dialogs
+        // can be centered on their parent instead of spawning at (0,0).
+        let parent_window_id = window
+            .toplevel()
+            .and_then(|tl| tl.parent())
+            .and_then(|parent_surface| self.window_id_for_surface(&parent_surface));
         if let Some(rect) = self
             .globals()
-            .and_then(|g| crate::client::sane_floating_spawn_rect(g, window_id))
+            .and_then(|g| crate::client::sane_floating_spawn_rect(g, window_id, parent_window_id))
         {
             let mode = self
                 .globals()

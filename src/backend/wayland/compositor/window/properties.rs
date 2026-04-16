@@ -141,29 +141,46 @@ impl WaylandState {
                     })
             });
 
+        // Use the actual committed window geometry when available so that
+        // floating placement runs against the real size, not an oversized
+        // work-rect placeholder that defeats off-screen detection.
+        let actual_geo = self
+            .find_window(window)
+            .map(|element| element.geometry())
+            .filter(|geo| geo.size.w > 0 && geo.size.h > 0);
+
         let Some(g) = self.globals_mut() else {
             return;
         };
         let monitor_id = launch_context
             .map(|ctx| ctx.monitor_id)
             .unwrap_or_else(|| g.selected_monitor_id());
-        let (base_w, base_h) = g
-            .monitor(monitor_id)
-            .map(|m| {
-                (
-                    m.work_rect.w.max(Self::MIN_WL_DIM),
-                    m.work_rect.h.max(Self::MIN_WL_DIM),
-                )
-            })
-            .unwrap_or((
-                g.cfg.screen_width.max(Self::MIN_WL_DIM),
-                g.cfg.screen_height.max(Self::MIN_WL_DIM),
-            ));
-        let geo = Rect {
-            x: 0,
-            y: 0,
-            w: base_w,
-            h: base_h,
+        let geo = if let Some(actual) = actual_geo {
+            Rect {
+                x: 0,
+                y: 0,
+                w: actual.size.w.max(Self::MIN_WL_DIM),
+                h: actual.size.h.max(Self::MIN_WL_DIM),
+            }
+        } else {
+            let (base_w, base_h) = g
+                .monitor(monitor_id)
+                .map(|m| {
+                    (
+                        m.work_rect.w.max(Self::MIN_WL_DIM),
+                        m.work_rect.h.max(Self::MIN_WL_DIM),
+                    )
+                })
+                .unwrap_or((
+                    g.cfg.screen_width.max(Self::MIN_WL_DIM),
+                    g.cfg.screen_height.max(Self::MIN_WL_DIM),
+                ));
+            Rect {
+                x: 0,
+                y: 0,
+                w: base_w,
+                h: base_h,
+            }
         };
 
         let mut c = crate::types::Client::default();
