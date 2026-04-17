@@ -89,6 +89,10 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
             }
         }
     }
+
+    if let Some(t) = target {
+        core.globals_mut().raise_client_in_z_order(t);
+    }
     target
 }
 
@@ -735,7 +739,7 @@ fn get_visible_stack(
     let mut stack = Vec::new();
     let selected = mon.selected_tag_mask();
 
-    for (c_win, c) in mon.iter_stack(clients) {
+    for (c_win, c) in mon.iter_clients(clients) {
         if c.is_visible(selected) {
             stack.push(c_win);
         }
