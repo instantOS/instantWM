@@ -98,12 +98,10 @@ fn wayland_selected_resize_target_at(
     if !c.is_floating && has_tiling {
         return None;
     }
-    if !crate::types::geometry::is_point_in_resize_border(
-        &c.geo,
-        root_x,
-        root_y,
-        RESIZE_BORDER_ZONE,
-    ) {
+    if !c
+        .geo
+        .contains_resize_border_point(root_x, root_y, RESIZE_BORDER_ZONE)
+    {
         return None;
     }
     let hit_x = root_x - c.geo.x;

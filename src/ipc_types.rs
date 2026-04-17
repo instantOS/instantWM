@@ -331,6 +331,17 @@ pub struct GeometryInfo {
     pub height: i32,
 }
 
+impl GeometryInfo {
+    pub fn from_rect(rect: crate::types::Rect) -> Self {
+        Self {
+            x: rect.x,
+            y: rect.y,
+            width: rect.w,
+            height: rect.h,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowState {
     pub floating: bool,
@@ -343,6 +354,22 @@ pub struct WindowState {
     pub locked: bool,
     pub fixed_size: bool,
     pub never_focus: bool,
+}
+
+impl WindowState {
+    pub fn from_client(c: &crate::types::client::Client) -> Self {
+        Self {
+            floating: c.is_floating,
+            fullscreen: c.is_fullscreen,
+            fake_fullscreen: c.isfakefullscreen,
+            sticky: c.is_sticky,
+            hidden: c.is_hidden,
+            urgent: c.is_urgent,
+            locked: c.is_locked,
+            fixed_size: c.is_fixed_size,
+            never_focus: c.never_focus,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
@@ -365,6 +392,25 @@ pub struct SizeHintsInfo {
     pub height_increment: Option<i32>,
 }
 
+impl SizeHintsInfo {
+    pub fn from_client(c: &crate::types::client::Client) -> Option<Self> {
+        if c.size_hints_valid <= 0 {
+            return None;
+        }
+        let h = &c.size_hints;
+        Some(Self {
+            min_width: (h.minw > 0).then_some(h.minw),
+            min_height: (h.minh > 0).then_some(h.minh),
+            max_width: (h.maxw > 0).then_some(h.maxw),
+            max_height: (h.maxh > 0).then_some(h.maxh),
+            base_width: (h.basew > 0).then_some(h.basew),
+            base_height: (h.baseh > 0).then_some(h.baseh),
+            width_increment: (h.incw > 0).then_some(h.incw),
+            height_increment: (h.inch > 0).then_some(h.inch),
+        })
+    }
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowInfo {
     pub id: u64,
@@ -379,6 +425,27 @@ pub struct WindowInfo {
     pub scratchpad: Option<ScratchpadInfo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size_hints: Option<SizeHintsInfo>,
+}
+
+impl WindowInfo {
+    pub fn from_client(
+        c: &crate::types::client::Client,
+        valid_tag_mask: TagMask,
+        protocol: WindowProtocol,
+    ) -> Self {
+        Self {
+            id: c.win.0 as u64,
+            title: c.name.clone(),
+            protocol,
+            monitor: c.monitor_id.index(),
+            tags: c.tags & valid_tag_mask,
+            geometry: GeometryInfo::from_rect(c.geo),
+            border_width: c.border_width,
+            state: WindowState::from_client(c),
+            scratchpad: ScratchpadInfo::from_client(c),
+            size_hints: SizeHintsInfo::from_client(c),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]

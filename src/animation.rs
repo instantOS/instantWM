@@ -26,28 +26,30 @@ pub struct AnimationTick {
     pub done: bool,
 }
 
-pub fn interpolate_animation_tick(animation: &WindowAnimation, now: Instant) -> AnimationTick {
-    let elapsed = now.saturating_duration_since(animation.started_at);
-    let raw_t = if animation.duration.is_zero() {
-        1.0
-    } else {
-        (elapsed.as_secs_f64() / animation.duration.as_secs_f64()).clamp(0.0, 1.0)
-    };
-    let eased = ease_out_cubic(raw_t);
+impl WindowAnimation {
+    pub fn tick(&self, now: Instant) -> AnimationTick {
+        let elapsed = now.saturating_duration_since(self.started_at);
+        let raw_t = if self.duration.is_zero() {
+            1.0
+        } else {
+            (elapsed.as_secs_f64() / self.duration.as_secs_f64()).clamp(0.0, 1.0)
+        };
+        let eased = ease_out_cubic(raw_t);
 
-    let x = animation.from.x as f64 + (animation.to.x - animation.from.x) as f64 * eased;
-    let y = animation.from.y as f64 + (animation.to.y - animation.from.y) as f64 * eased;
-    let w = animation.from.w as f64 + (animation.to.w - animation.from.w) as f64 * eased;
-    let h = animation.from.h as f64 + (animation.to.h - animation.from.h) as f64 * eased;
+        let x = self.from.x as f64 + (self.to.x - self.from.x) as f64 * eased;
+        let y = self.from.y as f64 + (self.to.y - self.from.y) as f64 * eased;
+        let w = self.from.w as f64 + (self.to.w - self.from.w) as f64 * eased;
+        let h = self.from.h as f64 + (self.to.h - self.from.h) as f64 * eased;
 
-    AnimationTick {
-        rect: Rect {
-            x: x.round() as i32,
-            y: y.round() as i32,
-            w: w.round() as i32,
-            h: h.round() as i32,
-        },
-        done: raw_t >= 1.0,
+        AnimationTick {
+            rect: Rect {
+                x: x.round() as i32,
+                y: y.round() as i32,
+                w: w.round() as i32,
+                h: h.round() as i32,
+            },
+            done: raw_t >= 1.0,
+        }
     }
 }
 

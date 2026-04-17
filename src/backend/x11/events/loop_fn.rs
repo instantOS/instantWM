@@ -121,7 +121,7 @@ fn tick_x11_animations(wm: &mut Wm) {
         let mut needs_flush = false;
 
         for (win, anim) in data.x11_runtime.window_animations.iter() {
-            let tick = crate::animation::interpolate_animation_tick(anim, now);
+            let tick = anim.tick(now);
             let rect = tick.rect;
 
             if rect.is_valid() {

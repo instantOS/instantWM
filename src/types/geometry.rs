@@ -309,6 +309,26 @@ impl Rect {
     pub fn differs_from(&self, other: &Rect) -> bool {
         self.x != other.x || self.y != other.y || self.w != other.w || self.h != other.h
     }
+
+    /// Check if a point is in the resize-border zone around this rectangle.
+    ///
+    /// The zone is a `border_zone`-pixel band around the outside of the
+    /// rectangle. Points inside the rectangle content are not considered part
+    /// of the resize border.
+    #[inline]
+    pub fn contains_resize_border_point(&self, x: i32, y: i32, border_zone: i32) -> bool {
+        if x > self.x && x < self.x + self.w && y > self.y && y < self.y + self.h {
+            return false;
+        }
+        if y < self.y - border_zone
+            || x < self.x - border_zone
+            || y > self.y + self.h + border_zone
+            || x > self.x + self.w + border_zone
+        {
+            return false;
+        }
+        true
+    }
 }
 
 #[cfg(test)]
@@ -449,21 +469,4 @@ impl SizeHints {
     pub fn is_fixed(&self) -> bool {
         self.maxw != 0 && self.maxh != 0 && self.maxw == self.minw && self.maxh == self.minh
     }
-}
-
-/// Check if point (x, y) is in the resize-border zone of a window with geometry geo.
-/// The zone is a `border_zone`-pixel band around the outside of the window.
-#[inline]
-pub fn is_point_in_resize_border(geo: &Rect, x: i32, y: i32, border_zone: i32) -> bool {
-    if x > geo.x && x < geo.x + geo.w && y > geo.y && y < geo.y + geo.h {
-        return false;
-    }
-    if y < geo.y - border_zone
-        || x < geo.x - border_zone
-        || y > geo.y + geo.h + border_zone
-        || x > geo.x + geo.w + border_zone
-    {
-        return false;
-    }
-    true
 }

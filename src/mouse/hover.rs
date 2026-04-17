@@ -90,7 +90,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
         if !c.is_floating && has_tiling {
             continue;
         }
-        if geometry::is_point_in_resize_border(&c.geo, x, y, RESIZE_BORDER_ZONE) {
+        if c.geo.contains_resize_border_point(x, y, RESIZE_BORDER_ZONE) {
             return Some(w);
         }
     }
@@ -139,7 +139,10 @@ pub fn selected_hover_resize_target_at(
     if !c.is_floating && has_tiling {
         return None;
     }
-    if !geometry::is_point_in_resize_border(&c.geo, root_x, root_y, RESIZE_BORDER_ZONE) {
+    if !c
+        .geo
+        .contains_resize_border_point(root_x, root_y, RESIZE_BORDER_ZONE)
+    {
         return None;
     }
     let hit_x = root_x - c.geo.x;
@@ -205,7 +208,7 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
     if mon.showbar_for_mask(mask) && y < mon.monitor_rect.y + mon.bar_height {
         return false;
     }
-    geometry::is_point_in_resize_border(&c.geo, x, y, RESIZE_BORDER_ZONE)
+    c.geo.contains_resize_border_point(x, y, RESIZE_BORDER_ZONE)
 }
 
 /// Check whether any visible client on the current monitor is tiled.
@@ -490,7 +493,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtxX11) -> bool {
         };
 
         // If cursor is already outside the resize border, just focus the tiled window
-        if !geometry::is_point_in_resize_border(&sel_geo, x, y, RESIZE_BORDER_ZONE) {
+        if !sel_geo.contains_resize_border_point(x, y, RESIZE_BORDER_ZONE) {
             crate::focus::focus_soft(&mut wm_ctx, Some(hovered_win));
             return true;
         }

@@ -27,81 +27,67 @@ struct EdgePositionInfo {
     work_width: i32,
     /// Y offset from top (accounting for bar height).
     yoffset: i32,
-    /// Client size.
-    client_size: Rect,
+    /// Client rectangle. Only the size is used for initial/target positions.
+    client_rect: Rect,
 }
 
-fn get_initial_edge_rect(info: &EdgePositionInfo) -> Rect {
-    let EdgePositionInfo {
-        direction,
-        monitor_rect,
-        work_width,
-        yoffset,
-        client_size,
-    } = *info;
-
-    match direction {
-        EdgeDirection::Top => Rect {
-            x: monitor_rect.x + EDGE_MARGIN_X,
-            y: monitor_rect.y + yoffset - client_size.h,
-            w: work_width - EDGE_INSET_X,
-            h: client_size.h,
-        },
-        EdgeDirection::Right => Rect {
-            x: monitor_rect.x + monitor_rect.w - EDGE_MARGIN_X,
-            y: monitor_rect.y + EDGE_MARGIN_Y,
-            w: client_size.w,
-            h: monitor_rect.h - EDGE_INSET_Y,
-        },
-        EdgeDirection::Bottom => Rect {
-            x: monitor_rect.x + EDGE_MARGIN_X,
-            y: monitor_rect.y + monitor_rect.h,
-            w: work_width - EDGE_INSET_X,
-            h: client_size.h,
-        },
-        EdgeDirection::Left => Rect {
-            x: monitor_rect.x - client_size.w + EDGE_MARGIN_X,
-            y: monitor_rect.y + EDGE_MARGIN_Y,
-            w: client_size.w,
-            h: monitor_rect.h - EDGE_INSET_Y,
-        },
+impl EdgePositionInfo {
+    fn initial_rect(self) -> Rect {
+        match self.direction {
+            EdgeDirection::Top => Rect {
+                x: self.monitor_rect.x + EDGE_MARGIN_X,
+                y: self.monitor_rect.y + self.yoffset - self.client_rect.h,
+                w: self.work_width - EDGE_INSET_X,
+                h: self.client_rect.h,
+            },
+            EdgeDirection::Right => Rect {
+                x: self.monitor_rect.x + self.monitor_rect.w - EDGE_MARGIN_X,
+                y: self.monitor_rect.y + EDGE_MARGIN_Y,
+                w: self.client_rect.w,
+                h: self.monitor_rect.h - EDGE_INSET_Y,
+            },
+            EdgeDirection::Bottom => Rect {
+                x: self.monitor_rect.x + EDGE_MARGIN_X,
+                y: self.monitor_rect.y + self.monitor_rect.h,
+                w: self.work_width - EDGE_INSET_X,
+                h: self.client_rect.h,
+            },
+            EdgeDirection::Left => Rect {
+                x: self.monitor_rect.x - self.client_rect.w + EDGE_MARGIN_X,
+                y: self.monitor_rect.y + EDGE_MARGIN_Y,
+                w: self.client_rect.w,
+                h: self.monitor_rect.h - EDGE_INSET_Y,
+            },
+        }
     }
-}
 
-fn get_target_edge_rect(info: &EdgePositionInfo) -> Rect {
-    let EdgePositionInfo {
-        direction,
-        monitor_rect,
-        work_width,
-        yoffset,
-        client_size,
-    } = *info;
-
-    match direction {
-        EdgeDirection::Top => Rect {
-            x: monitor_rect.x + EDGE_MARGIN_X,
-            y: monitor_rect.y + yoffset,
-            w: work_width - EDGE_INSET_X,
-            h: client_size.h,
-        },
-        EdgeDirection::Right => Rect {
-            x: monitor_rect.x + monitor_rect.w - client_size.w,
-            y: monitor_rect.y + EDGE_MARGIN_Y,
-            w: client_size.w,
-            h: monitor_rect.h - EDGE_INSET_Y,
-        },
-        EdgeDirection::Bottom => Rect {
-            x: monitor_rect.x + EDGE_MARGIN_X,
-            y: monitor_rect.y + monitor_rect.h - client_size.h,
-            w: work_width - EDGE_INSET_X,
-            h: client_size.h,
-        },
-        EdgeDirection::Left => Rect {
-            x: monitor_rect.x,
-            y: monitor_rect.y + EDGE_MARGIN_Y,
-            w: client_size.w,
-            h: monitor_rect.h - EDGE_INSET_Y,
-        },
+    fn target_rect(self) -> Rect {
+        match self.direction {
+            EdgeDirection::Top => Rect {
+                x: self.monitor_rect.x + EDGE_MARGIN_X,
+                y: self.monitor_rect.y + self.yoffset,
+                w: self.work_width - EDGE_INSET_X,
+                h: self.client_rect.h,
+            },
+            EdgeDirection::Right => Rect {
+                x: self.monitor_rect.x + self.monitor_rect.w - self.client_rect.w,
+                y: self.monitor_rect.y + EDGE_MARGIN_Y,
+                w: self.client_rect.w,
+                h: self.monitor_rect.h - EDGE_INSET_Y,
+            },
+            EdgeDirection::Bottom => Rect {
+                x: self.monitor_rect.x + EDGE_MARGIN_X,
+                y: self.monitor_rect.y + self.monitor_rect.h - self.client_rect.h,
+                w: self.work_width - EDGE_INSET_X,
+                h: self.client_rect.h,
+            },
+            EdgeDirection::Left => Rect {
+                x: self.monitor_rect.x,
+                y: self.monitor_rect.y + EDGE_MARGIN_Y,
+                w: self.client_rect.w,
+                h: self.monitor_rect.h - EDGE_INSET_Y,
+            },
+        }
     }
 }
 
@@ -111,45 +97,38 @@ struct HideAnimationInfo {
     direction: EdgeDirection,
     /// Monitor rectangle (position and total size).
     monitor_rect: Rect,
-    /// Client position x (for Top/Bottom animation).
-    client_x: i32,
-    /// Client size.
-    client_size: Rect,
+    /// Current client rectangle.
+    client_rect: Rect,
 }
 
-fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
-    let HideAnimationInfo {
-        direction,
-        monitor_rect,
-        client_x,
-        client_size,
-    } = *info;
-
-    match direction {
-        EdgeDirection::Top => Rect {
-            x: client_x,
-            y: -client_size.h,
-            w: 0,
-            h: 0,
-        },
-        EdgeDirection::Right => Rect {
-            x: monitor_rect.x + monitor_rect.w,
-            y: monitor_rect.y + EDGE_MARGIN_Y,
-            w: 0,
-            h: 0,
-        },
-        EdgeDirection::Bottom => Rect {
-            x: client_x,
-            y: monitor_rect.y + monitor_rect.h,
-            w: 0,
-            h: 0,
-        },
-        EdgeDirection::Left => Rect {
-            x: monitor_rect.x - client_size.w,
-            y: EDGE_MARGIN_Y,
-            w: 0,
-            h: 0,
-        },
+impl HideAnimationInfo {
+    fn rect(self) -> Rect {
+        match self.direction {
+            EdgeDirection::Top => Rect {
+                x: self.client_rect.x,
+                y: -self.client_rect.h,
+                w: 0,
+                h: 0,
+            },
+            EdgeDirection::Right => Rect {
+                x: self.monitor_rect.x + self.monitor_rect.w,
+                y: self.monitor_rect.y + EDGE_MARGIN_Y,
+                w: 0,
+                h: 0,
+            },
+            EdgeDirection::Bottom => Rect {
+                x: self.client_rect.x,
+                y: self.monitor_rect.y + self.monitor_rect.h,
+                w: 0,
+                h: 0,
+            },
+            EdgeDirection::Left => Rect {
+                x: self.monitor_rect.x - self.client_rect.w,
+                y: EDGE_MARGIN_Y,
+                w: 0,
+                h: 0,
+            },
+        }
     }
 }
 
@@ -407,15 +386,10 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
             offset
         };
 
-        let (mon_rect, mon_ww, client_w, client_h) = {
+        let (mon_rect, mon_ww, client_rect) = {
             let mon = ctx.core().globals().monitor(current_mon).unwrap();
             let client = ctx.client(found).unwrap();
-            (
-                mon.monitor_rect,
-                mon.work_rect.w,
-                client.geo.w,
-                client.geo.h,
-            )
+            (mon.monitor_rect, mon.work_rect.w, client.geo)
         };
 
         let pos_info = EdgePositionInfo {
@@ -423,15 +397,10 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
             monitor_rect: mon_rect,
             work_width: mon_ww,
             yoffset,
-            client_size: Rect {
-                x: 0,
-                y: 0,
-                w: client_w,
-                h: client_h,
-            },
+            client_rect,
         };
 
-        let initial_rect = get_initial_edge_rect(&pos_info);
+        let initial_rect = pos_info.initial_rect();
         ctx.move_resize(
             found,
             initial_rect,
@@ -439,7 +408,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         );
 
         ctx.backend().raise_window_visual_only(found);
-        let target_rect = get_target_edge_rect(&pos_info);
+        let target_rect = pos_info.target_rect();
         ctx.move_resize(
             found,
             target_rect,
@@ -556,16 +525,10 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         let hide_info = HideAnimationInfo {
             direction: dir,
             monitor_rect: mon_rect,
-            client_x: geo.x,
-            client_size: Rect {
-                x: 0,
-                y: 0,
-                w: geo.w,
-                h: geo.h,
-            },
+            client_rect: geo,
         };
 
-        let hide_rect = get_hide_animation_rect(&hide_info);
+        let hide_rect = hide_info.rect();
         ctx.move_resize(
             found,
             hide_rect,

@@ -1,11 +1,9 @@
 use crate::backend::BackendOps;
-use crate::ipc_types::{
-    GeometryInfo, Response, SizeHintsInfo, WindowCommand, WindowInfo, WindowState,
-};
+use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
 use crate::mouse::slop::is_valid_window_size_rect;
-use crate::types::{Rect, TagMask, WindowId};
+use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
 pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
@@ -32,68 +30,6 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
     }
 }
 
-/// Build scratchpad info from a client if it's a scratchpad window.
-fn build_scratchpad_info(
-    c: &crate::types::client::Client,
-) -> Option<crate::ipc_types::ScratchpadInfo> {
-    crate::floating::scratchpad::ScratchpadInfo::from_client(c)
-}
-
-fn build_size_hints(c: &crate::types::client::Client) -> Option<SizeHintsInfo> {
-    if c.size_hints_valid <= 0 {
-        return None;
-    }
-    let h = &c.size_hints;
-    Some(SizeHintsInfo {
-        min_width: (h.minw > 0).then_some(h.minw),
-        min_height: (h.minh > 0).then_some(h.minh),
-        max_width: (h.maxw > 0).then_some(h.maxw),
-        max_height: (h.maxh > 0).then_some(h.maxh),
-        base_width: (h.basew > 0).then_some(h.basew),
-        base_height: (h.baseh > 0).then_some(h.baseh),
-        width_increment: (h.incw > 0).then_some(h.incw),
-        height_increment: (h.inch > 0).then_some(h.inch),
-    })
-}
-
-fn build_window_state(c: &crate::types::client::Client) -> WindowState {
-    WindowState {
-        floating: c.is_floating,
-        fullscreen: c.is_fullscreen,
-        fake_fullscreen: c.isfakefullscreen,
-        sticky: c.is_sticky,
-        hidden: c.is_hidden,
-        urgent: c.is_urgent,
-        locked: c.is_locked,
-        fixed_size: c.is_fixed_size,
-        never_focus: c.never_focus,
-    }
-}
-
-fn client_to_window_info(
-    c: &crate::types::client::Client,
-    valid_tag_mask: TagMask,
-    protocol: crate::backend::WindowProtocol,
-) -> WindowInfo {
-    WindowInfo {
-        id: c.win.0 as u64,
-        title: c.name.clone(),
-        protocol,
-        monitor: c.monitor_id.index(),
-        tags: c.tags & valid_tag_mask,
-        geometry: GeometryInfo {
-            x: c.geo.x,
-            y: c.geo.y,
-            width: c.geo.w,
-            height: c.geo.h,
-        },
-        border_width: c.border_width,
-        state: build_window_state(c),
-        scratchpad: build_scratchpad_info(c),
-        size_hints: build_size_hints(c),
-    }
-}
-
 fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id;
     let mut wins: Vec<_> = if let Some(win) = target {
@@ -107,7 +43,7 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let backend = crate::backend::BackendRef::from_backend(&wm.backend);
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| client_to_window_info(c, tag_mask, backend.window_protocol(c.win)))
+        .map(|c| WindowInfo::from_client(c, tag_mask, backend.window_protocol(c.win)))
         .collect();
 
     Response::WindowList(windows)
@@ -133,7 +69,7 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
 
     let tag_mask = wm.g.tags.mask();
     let backend = crate::backend::BackendRef::from_backend(&wm.backend);
-    Response::WindowInfo(client_to_window_info(
+    Response::WindowInfo(WindowInfo::from_client(
         c,
         tag_mask,
         backend.window_protocol(c.win),

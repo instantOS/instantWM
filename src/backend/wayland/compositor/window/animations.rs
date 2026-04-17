@@ -233,7 +233,7 @@ impl WaylandState {
         let now = Instant::now();
         let mut updates: Vec<(WindowId, Point<i32, Logical>, bool)> = Vec::new();
         for (win, anim) in &self.window_animations {
-            let tick = crate::animation::interpolate_animation_tick(anim, now);
+            let tick = anim.tick(now);
             updates.push((*win, Point::from((tick.rect.x, tick.rect.y)), tick.done));
         }
 
