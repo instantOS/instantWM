@@ -17,16 +17,6 @@ pub enum SchemeHover {
     Hover,
 }
 
-impl SchemeHover {
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::NoHover),
-            1 => Some(Self::Hover),
-            _ => None,
-        }
-    }
-}
-
 /// State of a tag button in the bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeTag {
@@ -44,20 +34,6 @@ pub enum SchemeTag {
     Urgent,
 }
 
-impl SchemeTag {
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::Inactive),
-            1 => Some(Self::Filled),
-            2 => Some(Self::Focus),
-            3 => Some(Self::NoFocus),
-            4 => Some(Self::Empty),
-            5 => Some(Self::Urgent),
-            _ => None,
-        }
-    }
-}
-
 /// State of a window title button in the bar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeWin {
@@ -66,25 +42,9 @@ pub enum SchemeWin {
     Minimized,
     Sticky,
     StickyFocus,
-    Overlay,
-    OverlayFocus,
+    EdgeScratchpad,
+    EdgeScratchpadFocus,
     Urgent,
-}
-
-impl SchemeWin {
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::Focus),
-            1 => Some(Self::Normal),
-            2 => Some(Self::Minimized),
-            3 => Some(Self::Sticky),
-            4 => Some(Self::StickyFocus),
-            5 => Some(Self::Overlay),
-            6 => Some(Self::OverlayFocus),
-            7 => Some(Self::Urgent),
-            _ => None,
-        }
-    }
 }
 
 /// State of the close button widget.
@@ -95,17 +55,6 @@ pub enum SchemeClose {
     Fullscreen,
 }
 
-impl SchemeClose {
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::Normal),
-            1 => Some(Self::Locked),
-            2 => Some(Self::Fullscreen),
-            _ => None,
-        }
-    }
-}
-
 /// State of the window border.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SchemeBorder {
@@ -113,18 +62,6 @@ pub enum SchemeBorder {
     TileFocus,
     FloatFocus,
     Snap,
-}
-
-impl SchemeBorder {
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::Normal),
-            1 => Some(Self::TileFocus),
-            2 => Some(Self::FloatFocus),
-            3 => Some(Self::Snap),
-            _ => None,
-        }
-    }
 }
 
 /// A color scheme with foreground, background, and detail colors.
@@ -280,25 +217,14 @@ pub struct TagColorSet {
 }
 
 impl TagColorSet {
-    pub fn scheme(&self, scheme: SchemeTag) -> &ColorSchemeRgba {
-        match scheme {
+    pub fn colors_for(&self, role: SchemeTag) -> &ColorSchemeRgba {
+        match role {
             SchemeTag::Inactive => &self.inactive,
             SchemeTag::Filled => &self.filled,
             SchemeTag::Focus => &self.focus,
             SchemeTag::NoFocus => &self.nofocus,
             SchemeTag::Empty => &self.empty,
             SchemeTag::Urgent => &self.urgent,
-        }
-    }
-
-    pub fn scheme_mut(&mut self, scheme: SchemeTag) -> &mut ColorSchemeRgba {
-        match scheme {
-            SchemeTag::Inactive => &mut self.inactive,
-            SchemeTag::Filled => &mut self.filled,
-            SchemeTag::Focus => &mut self.focus,
-            SchemeTag::NoFocus => &mut self.nofocus,
-            SchemeTag::Empty => &mut self.empty,
-            SchemeTag::Urgent => &mut self.urgent,
         }
     }
 }
@@ -312,35 +238,22 @@ pub struct WindowColorSet {
     pub minimized: ColorSchemeRgba,
     pub sticky: ColorSchemeRgba,
     pub sticky_focus: ColorSchemeRgba,
-    pub overlay: ColorSchemeRgba,
-    pub overlay_focus: ColorSchemeRgba,
+    pub edge_scratchpad: ColorSchemeRgba,
+    pub edge_scratchpad_focus: ColorSchemeRgba,
     pub urgent: ColorSchemeRgba,
 }
 
 impl WindowColorSet {
-    pub fn scheme(&self, scheme: SchemeWin) -> &ColorSchemeRgba {
-        match scheme {
+    pub fn colors_for(&self, role: SchemeWin) -> &ColorSchemeRgba {
+        match role {
             SchemeWin::Focus => &self.focus,
             SchemeWin::Normal => &self.normal,
             SchemeWin::Minimized => &self.minimized,
             SchemeWin::Sticky => &self.sticky,
             SchemeWin::StickyFocus => &self.sticky_focus,
-            SchemeWin::Overlay => &self.overlay,
-            SchemeWin::OverlayFocus => &self.overlay_focus,
+            SchemeWin::EdgeScratchpad => &self.edge_scratchpad,
+            SchemeWin::EdgeScratchpadFocus => &self.edge_scratchpad_focus,
             SchemeWin::Urgent => &self.urgent,
-        }
-    }
-
-    pub fn scheme_mut(&mut self, scheme: SchemeWin) -> &mut ColorSchemeRgba {
-        match scheme {
-            SchemeWin::Focus => &mut self.focus,
-            SchemeWin::Normal => &mut self.normal,
-            SchemeWin::Minimized => &mut self.minimized,
-            SchemeWin::Sticky => &mut self.sticky,
-            SchemeWin::StickyFocus => &mut self.sticky_focus,
-            SchemeWin::Overlay => &mut self.overlay,
-            SchemeWin::OverlayFocus => &mut self.overlay_focus,
-            SchemeWin::Urgent => &mut self.urgent,
         }
     }
 }
@@ -355,19 +268,11 @@ pub struct CloseButtonColorSet {
 }
 
 impl CloseButtonColorSet {
-    pub fn scheme(&self, scheme: SchemeClose) -> &ColorSchemeRgba {
-        match scheme {
+    pub fn colors_for(&self, role: SchemeClose) -> &ColorSchemeRgba {
+        match role {
             SchemeClose::Normal => &self.normal,
             SchemeClose::Locked => &self.locked,
             SchemeClose::Fullscreen => &self.fullscreen,
-        }
-    }
-
-    pub fn scheme_mut(&mut self, scheme: SchemeClose) -> &mut ColorSchemeRgba {
-        match scheme {
-            SchemeClose::Normal => &mut self.normal,
-            SchemeClose::Locked => &mut self.locked,
-            SchemeClose::Fullscreen => &mut self.fullscreen,
         }
     }
 }
@@ -388,7 +293,7 @@ impl ColorSchemeRgba {
     }
 }
 
-/// Tag color configurations using strings.
+/// Tag color configuration with named normal/hover variants.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct TagColorConfigs {
@@ -400,30 +305,16 @@ pub struct TagColorConfigs {
 }
 
 impl TagColorConfigs {
-    pub fn schemes(&self, hover: SchemeHover) -> &TagColorSet {
+    pub fn colors_for(&self, hover: SchemeHover, role: SchemeTag) -> &ColorSchemeRgba {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
         }
-    }
-
-    pub fn schemes_mut(&mut self, hover: SchemeHover) -> &mut TagColorSet {
-        match hover {
-            SchemeHover::NoHover => &mut self.no_hover,
-            SchemeHover::Hover => &mut self.hover,
-        }
-    }
-
-    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeTag) -> &ColorSchemeRgba {
-        self.schemes(hover).scheme(scheme)
-    }
-
-    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeTag) -> &mut ColorSchemeRgba {
-        self.schemes_mut(hover).scheme_mut(scheme)
+        .colors_for(role)
     }
 }
 
-/// Window color configurations using strings.
+/// Window color configuration with named normal/hover variants.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct WindowColorConfigs {
@@ -435,30 +326,16 @@ pub struct WindowColorConfigs {
 }
 
 impl WindowColorConfigs {
-    pub fn schemes(&self, hover: SchemeHover) -> &WindowColorSet {
+    pub fn colors_for(&self, hover: SchemeHover, role: SchemeWin) -> &ColorSchemeRgba {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
         }
-    }
-
-    pub fn schemes_mut(&mut self, hover: SchemeHover) -> &mut WindowColorSet {
-        match hover {
-            SchemeHover::NoHover => &mut self.no_hover,
-            SchemeHover::Hover => &mut self.hover,
-        }
-    }
-
-    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeWin) -> &ColorSchemeRgba {
-        self.schemes(hover).scheme(scheme)
-    }
-
-    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeWin) -> &mut ColorSchemeRgba {
-        self.schemes_mut(hover).scheme_mut(scheme)
+        .colors_for(role)
     }
 }
 
-/// Close button color configurations using strings.
+/// Close button color configuration with named normal/hover variants.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct CloseButtonColorConfigs {
@@ -470,26 +347,12 @@ pub struct CloseButtonColorConfigs {
 }
 
 impl CloseButtonColorConfigs {
-    pub fn schemes(&self, hover: SchemeHover) -> &CloseButtonColorSet {
+    pub fn colors_for(&self, hover: SchemeHover, role: SchemeClose) -> &ColorSchemeRgba {
         match hover {
             SchemeHover::NoHover => &self.no_hover,
             SchemeHover::Hover => &self.hover,
         }
-    }
-
-    pub fn schemes_mut(&mut self, hover: SchemeHover) -> &mut CloseButtonColorSet {
-        match hover {
-            SchemeHover::NoHover => &mut self.no_hover,
-            SchemeHover::Hover => &mut self.hover,
-        }
-    }
-
-    pub fn scheme(&self, hover: SchemeHover, scheme: SchemeClose) -> &ColorSchemeRgba {
-        self.schemes(hover).scheme(scheme)
-    }
-
-    pub fn scheme_mut(&mut self, hover: SchemeHover, scheme: SchemeClose) -> &mut ColorSchemeRgba {
-        self.schemes_mut(hover).scheme_mut(scheme)
+        .colors_for(role)
     }
 }
 

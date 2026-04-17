@@ -2,7 +2,8 @@ use crate::actions::ActionMeta;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
-    OVERLAY_NAME, center_window, distribute_clients, key_resize, overlay_create, overlay_toggle,
+    DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
+    edge_scratchpad_hide, edge_scratchpad_show, edge_scratchpad_toggle, key_resize,
     scratchpad_find, scratchpad_make, scratchpad_toggle, set_scratchpad_direction, toggle_floating,
     toggle_maximized,
 };
@@ -140,12 +141,14 @@ define_named_actions!(
     FocusMonNext => { name: "focus_mon_next", arg_example: None, doc: "focus next monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::NEXT); } },
     FollowMonPrev => { name: "follow_mon_prev", arg_example: None, doc: "move client to prev monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::PREV); } },
     FollowMonNext => { name: "follow_mon_next", arg_example: None, doc: "move client to next monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::NEXT); } },
-    OverlayToggle => { name: "overlay_toggle", arg_example: None, doc: "toggle overlay scratchpad visibility", run: |ctx, _args| { overlay_toggle(ctx); } },
-    OverlayCreate => { name: "overlay_create", arg_example: None, doc: "create overlay scratchpad from focused window", run: |ctx, _args| { overlay_create(ctx); } },
-    OverlayDirectionUp => { name: "overlay_direction_up", arg_example: None, doc: "set overlay direction to top", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Top); } },
-    OverlayDirectionDown => { name: "overlay_direction_down", arg_example: None, doc: "set overlay direction to bottom", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Bottom); } },
-    OverlayDirectionLeft => { name: "overlay_direction_left", arg_example: None, doc: "set overlay direction to left", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Left); } },
-    OverlayDirectionRight => { name: "overlay_direction_right", arg_example: None, doc: "set overlay direction to right", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Right); } },
+    EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", arg_example: None, doc: "toggle the default edge scratchpad", run: |ctx, _args| { edge_scratchpad_toggle(ctx); } },
+    EdgeScratchpadCreate => { name: "edge_scratchpad_create", arg_example: None, doc: "create the default edge scratchpad from the focused window", run: |ctx, _args| { edge_scratchpad_create(ctx); } },
+    EdgeScratchpadShow => { name: "edge_scratchpad_show", arg_example: None, doc: "show the default edge scratchpad", run: |ctx, _args| { edge_scratchpad_show(ctx); } },
+    EdgeScratchpadHide => { name: "edge_scratchpad_hide", arg_example: None, doc: "hide the default edge scratchpad", run: |ctx, _args| { edge_scratchpad_hide(ctx); } },
+    EdgeScratchpadDirectionUp => { name: "edge_scratchpad_direction_up", arg_example: None, doc: "set default edge scratchpad direction to top", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Top); } },
+    EdgeScratchpadDirectionDown => { name: "edge_scratchpad_direction_down", arg_example: None, doc: "set default edge scratchpad direction to bottom", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Bottom); } },
+    EdgeScratchpadDirectionLeft => { name: "edge_scratchpad_direction_left", arg_example: None, doc: "set default edge scratchpad direction to left", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Left); } },
+    EdgeScratchpadDirectionRight => { name: "edge_scratchpad_direction_right", arg_example: None, doc: "set default edge scratchpad direction to right", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Right); } },
     ScratchpadToggle => {
         name: "scratchpad_toggle",
         arg_example: None,
@@ -182,15 +185,17 @@ define_named_actions!(
     FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| parse_stack_direction_name(s)) { focus_stack(ctx, direction); } } }
 );
 
-fn overlay_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
-    if let Some(win) = scratchpad_find(ctx.core().globals(), OVERLAY_NAME) {
+fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
+    if let Some(win) = scratchpad_find(ctx.core().globals(), DEFAULT_EDGE_SCRATCHPAD_NAME) {
         set_scratchpad_direction(ctx, win, dir);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_layout_kind_name, parse_stack_direction_name};
+    use super::{
+        NamedAction, parse_layout_kind_name, parse_named_action, parse_stack_direction_name,
+    };
     use crate::layouts::LayoutKind;
     use crate::types::StackDirection;
 
@@ -215,5 +220,19 @@ mod tests {
             Some(StackDirection::Previous)
         );
         assert_eq!(parse_stack_direction_name("bad"), None);
+    }
+
+    #[test]
+    fn edge_scratchpad_actions_replace_legacy_overlay_actions() {
+        assert_eq!(
+            parse_named_action("edge_scratchpad_toggle"),
+            Some(NamedAction::EdgeScratchpadToggle)
+        );
+        assert_eq!(
+            parse_named_action("edge_scratchpad_direction_left"),
+            Some(NamedAction::EdgeScratchpadDirectionLeft)
+        );
+        assert_eq!(parse_named_action("overlay_toggle"), None);
+        assert_eq!(parse_named_action("overlay_direction_left"), None);
     }
 }

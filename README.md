@@ -57,7 +57,7 @@ automatically when starting its Wayland socket.
   * Full multi monitor support
   * Tag system
   * Overview mode
-  * Overlays
+  * Edge-anchored scratchpads
 - Graphical Features
   * Animations
   * Hover indicators

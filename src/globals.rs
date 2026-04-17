@@ -826,7 +826,7 @@ impl Globals {
         let colors = self
             .tags
             .colors
-            .scheme(SchemeHover::Hover, SchemeTag::Filled);
+            .colors_for(SchemeHover::Hover, SchemeTag::Filled);
         crate::bar::paint::BarScheme {
             fg: colors.fg,
             bg: colors.bg,
@@ -846,7 +846,7 @@ impl Globals {
         use crate::config::{SchemeHover, SchemeTag};
 
         let tag_num = tag_index as usize + 1;
-        let scheme_idx = if urgent_tags.contains(tag_num) {
+        let tag_role = if urgent_tags.contains(tag_num) {
             SchemeTag::Urgent
         } else if occupied_tags.contains(tag_num) {
             let selmon = self.selected_monitor();
@@ -876,13 +876,13 @@ impl Globals {
             SchemeTag::Inactive
         };
 
-        let colors = self.tags.colors.scheme(
+        let colors = self.tags.colors.colors_for(
             if is_hover {
                 SchemeHover::Hover
             } else {
                 SchemeHover::NoHover
             },
-            scheme_idx,
+            tag_role,
         );
         crate::bar::paint::BarScheme {
             fg: colors.fg,
@@ -897,18 +897,18 @@ impl Globals {
 
         let selmon = self.selected_monitor();
         let is_selected = selmon.sel == Some(c.win);
-        let is_overlay = c.is_edge_scratchpad();
+        let is_edge_scratchpad = c.is_edge_scratchpad();
 
-        let scheme_idx = if is_selected {
-            if is_overlay {
-                SchemeWin::OverlayFocus
+        let window_role = if is_selected {
+            if is_edge_scratchpad {
+                SchemeWin::EdgeScratchpadFocus
             } else if c.is_sticky {
                 SchemeWin::StickyFocus
             } else {
                 SchemeWin::Focus
             }
-        } else if is_overlay {
-            SchemeWin::Overlay
+        } else if is_edge_scratchpad {
+            SchemeWin::EdgeScratchpad
         } else if c.is_sticky {
             SchemeWin::Sticky
         } else if c.is_minimized() {
@@ -919,13 +919,13 @@ impl Globals {
             SchemeWin::Normal
         };
 
-        let colors = self.cfg.window_colors.scheme(
+        let colors = self.cfg.window_colors.colors_for(
             if is_hover {
                 SchemeHover::Hover
             } else {
                 SchemeHover::NoHover
             },
-            scheme_idx,
+            window_role,
         );
         crate::bar::paint::BarScheme {
             fg: colors.fg,
@@ -943,7 +943,7 @@ impl Globals {
     ) -> crate::bar::paint::BarScheme {
         use crate::config::{SchemeClose, SchemeHover};
 
-        let scheme_idx = if is_locked {
+        let close_role = if is_locked {
             SchemeClose::Locked
         } else if is_fullscreen {
             SchemeClose::Fullscreen
@@ -951,13 +951,13 @@ impl Globals {
             SchemeClose::Normal
         };
 
-        let colors = self.cfg.closebuttoncolors.scheme(
+        let colors = self.cfg.closebuttoncolors.colors_for(
             if is_hover {
                 SchemeHover::Hover
             } else {
                 SchemeHover::NoHover
             },
-            scheme_idx,
+            close_role,
         );
         crate::bar::paint::BarScheme {
             fg: colors.fg,

@@ -15,7 +15,7 @@ const EDGE_MARGIN_Y: i32 = 40;
 const EDGE_INSET_X: i32 = 40;
 const EDGE_INSET_Y: i32 = 80;
 
-pub const OVERLAY_NAME: &str = "instantwm_overlay_scratch";
+pub const DEFAULT_EDGE_SCRATCHPAD_NAME: &str = "instantwm_edge_scratchpad";
 
 /// Positioning info for the edge slide-in animation.
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +41,7 @@ impl EdgePositionInfo {
                 h: self.client_rect.h,
             },
             EdgeDirection::Right => Rect {
-                x: self.monitor_rect.x + self.monitor_rect.w - EDGE_MARGIN_X,
+                x: self.monitor_rect.x + self.monitor_rect.w,
                 y: self.monitor_rect.y + EDGE_MARGIN_Y,
                 w: self.client_rect.w,
                 h: self.monitor_rect.h - EDGE_INSET_Y,
@@ -53,7 +53,7 @@ impl EdgePositionInfo {
                 h: self.client_rect.h,
             },
             EdgeDirection::Left => Rect {
-                x: self.monitor_rect.x - self.client_rect.w + EDGE_MARGIN_X,
+                x: self.monitor_rect.x - self.client_rect.w,
                 y: self.monitor_rect.y + EDGE_MARGIN_Y,
                 w: self.client_rect.w,
                 h: self.monitor_rect.h - EDGE_INSET_Y,
@@ -106,27 +106,27 @@ impl HideAnimationInfo {
         match self.direction {
             EdgeDirection::Top => Rect {
                 x: self.client_rect.x,
-                y: -self.client_rect.h,
-                w: 0,
-                h: 0,
+                y: self.monitor_rect.y - self.client_rect.h,
+                w: self.client_rect.w,
+                h: self.client_rect.h,
             },
             EdgeDirection::Right => Rect {
                 x: self.monitor_rect.x + self.monitor_rect.w,
                 y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: 0,
-                h: 0,
+                w: self.client_rect.w,
+                h: self.monitor_rect.h - EDGE_INSET_Y,
             },
             EdgeDirection::Bottom => Rect {
                 x: self.client_rect.x,
                 y: self.monitor_rect.y + self.monitor_rect.h,
-                w: 0,
-                h: 0,
+                w: self.client_rect.w,
+                h: self.client_rect.h,
             },
             EdgeDirection::Left => Rect {
                 x: self.monitor_rect.x - self.client_rect.w,
-                y: EDGE_MARGIN_Y,
-                w: 0,
-                h: 0,
+                y: self.monitor_rect.y + EDGE_MARGIN_Y,
+                w: self.client_rect.w,
+                h: self.monitor_rect.h - EDGE_INSET_Y,
             },
         }
     }
@@ -172,7 +172,7 @@ fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> 
     window_id.or_else(|| ctx.selected_client())
 }
 
-fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {
+fn attach_client_to_monitor_top(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {
     g.detach(win);
     g.detach_z_order(win);
 
@@ -182,6 +182,75 @@ fn move_client_to_monitor(g: &mut Globals, win: WindowId, monitor_id: MonitorId)
 
     g.attach(win);
     g.attach_z_order_top(win);
+}
+
+fn selected_monitor_yoffset(ctx: &WmCtx<'_>, tags: crate::types::TagMask) -> i32 {
+    let mon = ctx.core().globals().selected_monitor();
+    let showbar = mon.showbar_for_mask(tags);
+    let bar_height = ctx.core().globals().cfg.bar_height;
+    let mut offset = if showbar { bar_height } else { 0 };
+    for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
+        if c.tags.intersects(tags) && c.is_true_fullscreen() {
+            offset = 0;
+            break;
+        }
+    }
+    offset
+}
+
+fn prepare_scratchpad_for_show(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    monitor_id: MonitorId,
+    direction: Option<EdgeDirection>,
+) -> crate::types::TagMask {
+    attach_client_to_monitor_top(ctx.core_mut().globals_mut(), win, monitor_id);
+
+    let tags = ctx.core().globals().selected_monitor().selected_tags();
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        client.is_sticky = true;
+        client.is_floating = true;
+        if direction.is_some() {
+            client.border_width = 0;
+        }
+        client.set_tag_mask(tags);
+    }
+    tags
+}
+
+fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
+    let was_hidden = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&win)
+        .map(|c| c.is_hidden)
+        .unwrap_or(false);
+
+    if was_hidden {
+        crate::client::show_window(ctx, win);
+    }
+
+    ctx.backend().map_window(win);
+    ctx.backend().flush();
+
+    was_hidden
+}
+
+fn arrange_visible_scratchpad(ctx: &mut WmCtx<'_>, win: WindowId, was_hidden: bool) {
+    if was_hidden {
+        return;
+    }
+
+    let mid = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&win)
+        .map(|c| c.monitor_id)
+        .unwrap_or_else(|| ctx.core().globals().selected_monitor_id());
+    arrange(ctx, Some(mid));
+    crate::layouts::sync_monitor_z_order(ctx, mid);
 }
 
 fn scratchpad_names(g: &Globals, visible: bool) -> Vec<String> {
@@ -325,12 +394,12 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         return Err(format!("scratchpad '{}' not found", name));
     };
 
-    let (was_sticky, direction, target_mon) = ctx
+    let (was_sticky, direction) = ctx
         .core()
         .globals()
         .clients
         .get(&found)
-        .map(|c| (c.is_sticky, c.scratchpad_direction, c.monitor_id))
+        .map(|c| (c.is_sticky, c.scratchpad_direction))
         .unwrap_or_default();
 
     if was_sticky {
@@ -338,54 +407,11 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     }
 
     let current_mon = ctx.core().globals().selected_monitor_id();
-
-    if let Some(client) = ctx.client_mut(found) {
-        client.is_sticky = true;
-        client.is_floating = true;
-    }
-
-    if target_mon != current_mon {
-        move_client_to_monitor(ctx.core_mut().globals_mut(), found, current_mon);
-    }
-
     let focusfollowsmouse = ctx.core().globals().behavior.focus_follows_mouse;
+    let tags = prepare_scratchpad_for_show(ctx, found, current_mon, direction);
 
     if let Some(dir) = direction {
-        ctx.core_mut().globals_mut().detach(found);
-        ctx.core_mut().globals_mut().detach_z_order(found);
-
-        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&found) {
-            client.monitor_id = current_mon;
-        }
-
-        ctx.core_mut().globals_mut().attach(found);
-        ctx.core_mut().globals_mut().attach_z_order_top(found);
-
-        let tags = ctx
-            .core_mut()
-            .globals_mut()
-            .selected_monitor()
-            .selected_tags();
-
-        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&found) {
-            client.border_width = 0;
-            client.set_tag_mask(tags);
-        }
-
-        let yoffset = {
-            let mon = ctx.core().globals().selected_monitor();
-            let showbar = mon.showbar_for_mask(tags);
-            let bar_height = ctx.core().globals().cfg.bar_height;
-            let mut offset = if showbar { bar_height } else { 0 };
-            for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-                if c.tags.intersects(tags) && c.is_true_fullscreen() {
-                    offset = 0;
-                    break;
-                }
-            }
-            offset
-        };
-
+        let yoffset = selected_monitor_yoffset(ctx, tags);
         let (mon_rect, mon_ww, client_rect) = {
             let mon = ctx.core().globals().monitor(current_mon).unwrap();
             let client = ctx.client(found).unwrap();
@@ -401,13 +427,9 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         };
 
         let initial_rect = pos_info.initial_rect();
-        ctx.move_resize(
-            found,
-            initial_rect,
-            MoveResizeOptions::hinted_immediate(true),
-        );
+        ctx.move_resize(found, initial_rect, MoveResizeOptions::immediate());
 
-        ctx.backend().raise_window_visual_only(found);
+        reveal_scratchpad_window(ctx, found);
         let target_rect = pos_info.target_rect();
         ctx.move_resize(
             found,
@@ -415,21 +437,8 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
             MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
         );
     } else {
-        let is_hidden = ctx
-            .core()
-            .globals()
-            .clients
-            .get(&found)
-            .map(|c| c.is_hidden)
-            .unwrap_or(false);
-        if is_hidden {
-            crate::client::show_window(ctx, found);
-        } else {
-            let mid = ctx.core().globals().selected_monitor_id();
-            crate::focus::focus_soft(ctx, Some(found));
-            arrange(ctx, Some(mid));
-            crate::layouts::sync_monitor_z_order(ctx, mid);
-        }
+        let was_hidden = reveal_scratchpad_window(ctx, found);
+        arrange_visible_scratchpad(ctx, found, was_hidden);
     }
 
     crate::focus::focus_soft(ctx, Some(found));
@@ -684,8 +693,8 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
     }
 }
 
-pub fn overlay_create(ctx: &mut WmCtx) {
-    if let Some(existing) = scratchpad_find(ctx.core().globals(), OVERLAY_NAME) {
+pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
+    if let Some(existing) = scratchpad_find(ctx.core().globals(), DEFAULT_EDGE_SCRATCHPAD_NAME) {
         scratchpad_unmake(ctx, Some(existing));
     }
 
@@ -700,13 +709,74 @@ pub fn overlay_create(ctx: &mut WmCtx) {
 
     scratchpad_make(
         ctx,
-        OVERLAY_NAME,
+        DEFAULT_EDGE_SCRATCHPAD_NAME,
         None,
         Some(EdgeDirection::Top),
         ScratchpadInitialStatus::Shown,
     );
 }
 
-pub fn overlay_toggle(ctx: &mut WmCtx) {
-    scratchpad_toggle(ctx, Some(OVERLAY_NAME));
+pub fn edge_scratchpad_toggle(ctx: &mut WmCtx) {
+    scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME));
+}
+
+pub fn edge_scratchpad_show(ctx: &mut WmCtx) {
+    let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
+}
+
+pub fn edge_scratchpad_hide(ctx: &mut WmCtx) {
+    scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EDGE_INSET_Y, EDGE_MARGIN_Y, EdgePositionInfo, HideAnimationInfo};
+    use crate::types::Rect;
+    use crate::types::input::EdgeDirection;
+
+    fn edge_info(direction: EdgeDirection) -> EdgePositionInfo {
+        EdgePositionInfo {
+            direction,
+            monitor_rect: Rect::new(100, 200, 1920, 1080),
+            work_width: 1920,
+            yoffset: 30,
+            client_rect: Rect::new(300, 400, 640, 360),
+        }
+    }
+
+    #[test]
+    fn edge_initial_rects_start_fully_offscreen_for_side_edges() {
+        let right = edge_info(EdgeDirection::Right).initial_rect();
+        assert_eq!(right.x, 2020);
+        assert_eq!(right.w, 640);
+
+        let left = edge_info(EdgeDirection::Left).initial_rect();
+        assert_eq!(left.x + left.w, 100);
+        assert_eq!(left.w, 640);
+    }
+
+    #[test]
+    fn edge_hide_rects_keep_valid_size() {
+        let client_rect = Rect::new(300, 400, 640, 360);
+        let monitor_rect = Rect::new(100, 200, 1920, 1080);
+
+        let top = HideAnimationInfo {
+            direction: EdgeDirection::Top,
+            monitor_rect,
+            client_rect,
+        }
+        .rect();
+        assert_eq!(top, Rect::new(300, -160, 640, 360));
+
+        let left = HideAnimationInfo {
+            direction: EdgeDirection::Left,
+            monitor_rect,
+            client_rect,
+        }
+        .rect();
+        assert_eq!(
+            left,
+            Rect::new(100 - 640, 200 + EDGE_MARGIN_Y, 640, 1080 - EDGE_INSET_Y)
+        );
+    }
 }

@@ -117,8 +117,8 @@ pub fn get_window_colors() -> crate::types::WindowColorConfigs {
             minimized: crate::types::ColorSchemeRgba::new(BG_ACCENT, BG, BG),
             sticky: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
             sticky_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
-            overlay: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
-            overlay_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
+            edge_scratchpad: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
+            edge_scratchpad_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
             urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
         },
         hover: crate::types::WindowColorSet {
@@ -127,8 +127,12 @@ pub fn get_window_colors() -> crate::types::WindowColorConfigs {
             minimized: crate::types::ColorSchemeRgba::new(BG_ACCENT_HOVER, BG, BG),
             sticky: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
             sticky_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER),
-            overlay: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
-            overlay_focus: crate::types::ColorSchemeRgba::new(
+            edge_scratchpad: crate::types::ColorSchemeRgba::new(
+                BLACK,
+                LIGHT_YELLOW_HOVER,
+                YELLOW_HOVER,
+            ),
+            edge_scratchpad_focus: crate::types::ColorSchemeRgba::new(
                 BLACK,
                 LIGHT_GREEN_HOVER,
                 GREEN_HOVER,

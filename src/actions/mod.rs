@@ -61,8 +61,8 @@ pub enum ButtonAction {
     ScaleSelected {
         percent: i32,
     },
-    HideOverlay,
-    ShowOverlay,
+    HideEdgeScratchpad,
+    ShowEdgeScratchpad,
     ToggleFloatingSelected,
     ResizeMouseFromCursor,
 }

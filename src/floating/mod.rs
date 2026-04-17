@@ -9,7 +9,7 @@
 //! - [`batch`]   — save/restore all floating positions, distribute clients
 //! - [`helpers`] — check_floating, visible_client, has_tiling_layout, apply_size
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
-//!   with edge-anchored positioning support (overlay scratchpads)
+//!   with optional edge-anchored positioning
 
 mod batch;
 mod helpers;
@@ -40,6 +40,7 @@ pub use state::{
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
 pub use scratchpad::{
-    OVERLAY_NAME, overlay_create, overlay_toggle, scratchpad_find, scratchpad_hide_name,
+    DEFAULT_EDGE_SCRATCHPAD_NAME, edge_scratchpad_create, edge_scratchpad_hide,
+    edge_scratchpad_show, edge_scratchpad_toggle, scratchpad_find, scratchpad_hide_name,
     scratchpad_make, scratchpad_show_name, scratchpad_toggle, set_scratchpad_direction, unhide_one,
 };
