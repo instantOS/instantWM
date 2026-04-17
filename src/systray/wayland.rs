@@ -9,7 +9,7 @@ use zbus::zvariant::{OwnedValue, Value};
 
 use crate::contexts::CoreCtx;
 use crate::types::{
-    Monitor, MouseButton, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
+    Monitor, MouseButton, Rect, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
     WaylandSystrayMenuItem,
 };
 
@@ -684,14 +684,14 @@ fn draw_menu_overlay(
         let w = slot.end - slot.start;
         let y = 0;
         if item.separator {
-            painter.rect(x + 3, y + item_h / 2, w - 6, 1, true, false);
+            painter.rect(Rect::new(x + 3, y + item_h / 2, w - 6, 1), true, false);
             continue;
         }
         if !item.enabled {
             scheme.fg[3] = 0.6;
             painter.set_scheme(scheme.clone());
         }
-        painter.text(x, y, w, item_h, 8, &item.label, false, 0);
+        painter.text(Rect::new(x, y, w, item_h), 8, &item.label, false, 0);
         if !item.enabled {
             scheme.fg[3] = 1.0;
             painter.set_scheme(scheme.clone());

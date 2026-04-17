@@ -2,7 +2,7 @@ use crate::bar::paint::{BarPainter, BarScheme};
 use crate::contexts::CoreCtx;
 use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, Monitor, MonitorId,
-    WindowId,
+    Rect, WindowId,
 };
 use std::collections::HashMap;
 
@@ -245,28 +245,33 @@ fn draw_startmenu_icon_snapshot(
     let icon_offset = (bar_height - CLOSE_BUTTON_WIDTH) / 2;
     let startmenu_invert = gesture == Gesture::StartMenu;
     painter.set_scheme(scheme.clone());
-    painter.rect(0, 0, startmenu_size, bar_height, true, !startmenu_invert);
     painter.rect(
-        5,
-        icon_offset,
-        STARTMENU_ICON_SIZE,
-        STARTMENU_ICON_SIZE,
-        true,
-        startmenu_invert,
-    );
-    painter.rect(
-        9,
-        icon_offset + 4,
-        STARTMENU_ICON_INNER,
-        STARTMENU_ICON_INNER,
+        Rect::new(0, 0, startmenu_size, bar_height),
         true,
         !startmenu_invert,
     );
     painter.rect(
-        19,
-        icon_offset + STARTMENU_ICON_SIZE,
-        STARTMENU_ICON_INNER,
-        STARTMENU_ICON_INNER,
+        Rect::new(5, icon_offset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE),
+        true,
+        startmenu_invert,
+    );
+    painter.rect(
+        Rect::new(
+            9,
+            icon_offset + 4,
+            STARTMENU_ICON_INNER,
+            STARTMENU_ICON_INNER,
+        ),
+        true,
+        !startmenu_invert,
+    );
+    painter.rect(
+        Rect::new(
+            19,
+            icon_offset + STARTMENU_ICON_SIZE,
+            STARTMENU_ICON_INNER,
+            STARTMENU_ICON_INNER,
+        ),
         true,
         startmenu_invert,
     );
@@ -279,7 +284,7 @@ fn draw_shutdown_button_snapshot(
     bar_height: i32,
 ) -> i32 {
     painter.set_scheme(scheme.clone());
-    painter.rect(x, 0, bar_height, bar_height, true, true);
+    painter.rect(Rect::new(x, 0, bar_height, bar_height), true, true);
 
     let icon_size = bar_height * 5 / 8;
     let icon_x = x + (bar_height - icon_size) / 2;
@@ -299,10 +304,14 @@ fn draw_shutdown_button_snapshot(
     let bot_w = (icon_size - stroke * 2).max(0);
     let bot_h = stroke;
 
-    painter.rect(stem_x, stem_y, stem_w, stem_h, true, false);
-    painter.rect(arc_x, arc_y, arc_w, arc_h, true, false);
-    painter.rect(arc_x + icon_size - stroke, arc_y, arc_w, arc_h, true, false);
-    painter.rect(bot_x, bot_y, bot_w, bot_h, true, false);
+    painter.rect(Rect::new(stem_x, stem_y, stem_w, stem_h), true, false);
+    painter.rect(Rect::new(arc_x, arc_y, arc_w, arc_h), true, false);
+    painter.rect(
+        Rect::new(arc_x + icon_size - stroke, arc_y, arc_w, arc_h),
+        true,
+        false,
+    );
+    painter.rect(Rect::new(bot_x, bot_y, bot_w, bot_h), true, false);
 
     x + bar_height
 }
@@ -321,18 +330,17 @@ fn draw_close_button_snapshot(
     let detail_offset = if is_hover { CLOSE_BUTTON_DETAIL } else { 0 };
     let button_y = (bar_height - CLOSE_BUTTON_WIDTH) / 2 - detail_offset;
     painter.rect(
-        button_x,
-        button_y,
-        CLOSE_BUTTON_WIDTH,
-        CLOSE_BUTTON_HEIGHT,
+        Rect::new(button_x, button_y, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT),
         true,
         true,
     );
     painter.rect(
-        button_x,
-        (bar_height - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
-        CLOSE_BUTTON_WIDTH,
-        CLOSE_BUTTON_DETAIL + detail_offset,
+        Rect::new(
+            button_x,
+            (bar_height - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
+            CLOSE_BUTTON_WIDTH,
+            CLOSE_BUTTON_DETAIL + detail_offset,
+        ),
         true,
         false,
     );
@@ -453,10 +461,7 @@ fn render_monitor_snapshot_base(
         };
         let lpad = (snapshot.horizontal_padding / 2).max(0);
         x = painter.text(
-            x,
-            0,
-            width,
-            bar_height,
+            Rect::new(x, 0, width, bar_height),
             lpad,
             &tag.label,
             false,
@@ -475,10 +480,7 @@ fn render_monitor_snapshot_base(
     painter.set_scheme(snapshot.status_scheme.clone());
     let layout_start = x;
     x = painter.text(
-        x,
-        0,
-        layout_w,
-        bar_height,
+        Rect::new(x, 0, layout_w, bar_height),
         lpad,
         &snapshot.layout_symbol,
         false,
@@ -525,10 +527,7 @@ fn render_monitor_snapshot_base(
                 snapshot.horizontal_padding / 2 + if this_width >= 32 { 20 } else { 0 }
             };
             painter.text(
-                title_x,
-                0,
-                this_width,
-                bar_height,
+                Rect::new(title_x, 0, this_width, bar_height),
                 lpad,
                 &title.name,
                 false,
@@ -555,7 +554,7 @@ fn render_monitor_snapshot_base(
         }
     } else {
         painter.set_scheme(snapshot.status_scheme.clone());
-        painter.rect(x, 0, title_width, bar_height, true, true);
+        painter.rect(Rect::new(x, 0, title_width, bar_height), true, true);
     }
 
     if let (Some(_systray), Some(layout)) = (&snapshot.systray, &tray_layout) {

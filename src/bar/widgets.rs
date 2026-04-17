@@ -20,28 +20,33 @@ pub(crate) fn draw_startmenu_icon(
 
     painter.set_scheme(scheme);
 
-    painter.rect(0, 0, startmenu_size, bar_height, true, !startmenu_invert);
     painter.rect(
-        5,
-        icon_offset,
-        STARTMENU_ICON_SIZE,
-        STARTMENU_ICON_SIZE,
-        true,
-        startmenu_invert,
-    );
-    painter.rect(
-        9,
-        icon_offset + 4,
-        STARTMENU_ICON_INNER,
-        STARTMENU_ICON_INNER,
+        Rect::new(0, 0, startmenu_size, bar_height),
         true,
         !startmenu_invert,
     );
     painter.rect(
-        19,
-        icon_offset + STARTMENU_ICON_SIZE,
-        STARTMENU_ICON_INNER,
-        STARTMENU_ICON_INNER,
+        Rect::new(5, icon_offset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE),
+        true,
+        startmenu_invert,
+    );
+    painter.rect(
+        Rect::new(
+            9,
+            icon_offset + 4,
+            STARTMENU_ICON_INNER,
+            STARTMENU_ICON_INNER,
+        ),
+        true,
+        !startmenu_invert,
+    );
+    painter.rect(
+        Rect::new(
+            19,
+            icon_offset + STARTMENU_ICON_SIZE,
+            STARTMENU_ICON_INNER,
+            STARTMENU_ICON_INNER,
+        ),
         true,
         startmenu_invert,
     );
@@ -88,10 +93,7 @@ pub(crate) fn draw_tag_indicators(
         };
 
         x = painter.text(
-            x,
-            0,
-            width,
-            bar_height,
+            Rect::new(x, 0, width, bar_height),
             lpad as i32,
             t.label,
             urg.contains(t.tag_index + 1),
@@ -127,7 +129,7 @@ pub(crate) fn draw_layout_indicator(
 
     painter.set_scheme(ctx.globals().status_scheme());
     let start_x = x;
-    x = painter.text(x, 0, w, bar_height, lpad, &ltsymbol, false, 0);
+    x = painter.text(Rect::new(x, 0, w, bar_height), lpad, &ltsymbol, false, 0);
 
     if let Some(hit) = ctx.bar.monitor_hit_cache_mut(m.id()) {
         hit.layout_start = start_x;
@@ -153,7 +155,7 @@ pub(crate) fn draw_shutdown_button(
     painter.set_scheme(ctx.globals().status_scheme());
 
     // Background fill for the button cell.
-    painter.rect(x, 0, bar_height, bar_height, true, true);
+    painter.rect(Rect::new(x, 0, bar_height, bar_height), true, true);
 
     // Draw a simple power icon using raw X11 rectangles so we don't need a
     // special font glyph.  The icon is centred inside the `bar_height × bar_height` cell.
@@ -190,13 +192,17 @@ pub(crate) fn draw_shutdown_button(
     let bot_h = stroke;
 
     // Stem
-    painter.rect(stem_x, stem_y, stem_w, stem_h, true, false);
+    painter.rect(Rect::new(stem_x, stem_y, stem_w, stem_h), true, false);
     // Left side of arc
-    painter.rect(arc_x, arc_y, arc_w, arc_h, true, false);
+    painter.rect(Rect::new(arc_x, arc_y, arc_w, arc_h), true, false);
     // Right side of arc
-    painter.rect(arc_x + icon_size - stroke, arc_y, arc_w, arc_h, true, false);
+    painter.rect(
+        Rect::new(arc_x + icon_size - stroke, arc_y, arc_w, arc_h),
+        true,
+        false,
+    );
     // Bottom of arc
-    painter.rect(bot_x, bot_y, bot_w, bot_h, true, false);
+    painter.rect(Rect::new(bot_x, bot_y, bot_w, bot_h), true, false);
 
     x + bar_height
 }
@@ -235,18 +241,17 @@ pub(crate) fn draw_close_button(
     let button_y = (bar_height - CLOSE_BUTTON_WIDTH) / 2 - detail_offset;
 
     painter.rect(
-        button_x,
-        button_y,
-        CLOSE_BUTTON_WIDTH,
-        CLOSE_BUTTON_HEIGHT,
+        Rect::new(button_x, button_y, CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT),
         true,
         true,
     );
     painter.rect(
-        button_x,
-        (bar_height - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
-        CLOSE_BUTTON_WIDTH,
-        CLOSE_BUTTON_DETAIL + detail_offset,
+        Rect::new(
+            button_x,
+            (bar_height - CLOSE_BUTTON_WIDTH) / 2 + CLOSE_BUTTON_HEIGHT - detail_offset,
+            CLOSE_BUTTON_WIDTH,
+            CLOSE_BUTTON_DETAIL + detail_offset,
+        ),
         true,
         false,
     );
@@ -275,7 +280,13 @@ fn draw_window_title(
         ctx.globals().cfg.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
     };
 
-    painter.text(x, 0, width, bar_height, lpad, client_name, false, 4);
+    painter.text(
+        Rect::new(x, 0, width, bar_height),
+        lpad,
+        client_name,
+        false,
+        4,
+    );
 
     let is_selected = selected_monitor.sel == Some(c.win);
 
@@ -351,7 +362,7 @@ pub(crate) fn draw_window_titles(
     }
 
     painter.set_scheme(ctx.globals().status_scheme());
-    painter.rect(x, 0, w, bar_height, true, true);
+    painter.rect(Rect::new(x, 0, w, bar_height), true, true);
 
     let has_clients = !m.clients.is_empty();
 
@@ -361,10 +372,12 @@ pub(crate) fn draw_window_titles(
         let avail = w - bar_height;
         let title_width = text_w.min(avail);
         painter.text(
-            x + bar_height + ((avail - title_width + 1) / 2),
-            0,
-            title_width,
-            bar_height,
+            Rect::new(
+                x + bar_height + ((avail - title_width + 1) / 2),
+                0,
+                title_width,
+                bar_height,
+            ),
             0,
             help_text,
             false,

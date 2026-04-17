@@ -594,8 +594,8 @@ impl BarPainter for WaylandBarPainter {
         self.scheme.as_ref()
     }
 
-    fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, filled: bool, invert: bool) {
-        if !filled || w <= 0 || h <= 0 {
+    fn rect(&mut self, bounds: Rect, filled: bool, invert: bool) {
+        if !filled || bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
         let Some(scheme) = self.scheme.clone() else {
@@ -606,52 +606,48 @@ impl BarPainter for WaylandBarPainter {
             &mut self.pixels,
             self.canvas_w,
             self.canvas_h,
-            Rect::new(x, y, w, h),
+            bounds,
             color,
         );
     }
 
     fn text(
         &mut self,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
+        bounds: Rect,
         lpad: i32,
         text: &str,
         invert: bool,
         detail_height: i32,
     ) -> i32 {
         let Some(scheme) = self.scheme.clone() else {
-            return x;
+            return bounds.x;
         };
         let (bg, fg) = scheme.text_colors(invert);
-        pixel_fill_rect(
-            &mut self.pixels,
-            self.canvas_w,
-            self.canvas_h,
-            Rect::new(x, y, w, h),
-            bg,
-        );
+        pixel_fill_rect(&mut self.pixels, self.canvas_w, self.canvas_h, bounds, bg);
         if detail_height > 0 {
             pixel_fill_rect(
                 &mut self.pixels,
                 self.canvas_w,
                 self.canvas_h,
-                Rect::new(x, y + h - detail_height, w, detail_height),
+                Rect::new(
+                    bounds.x,
+                    bounds.y + bounds.h - detail_height,
+                    bounds.w,
+                    detail_height,
+                ),
                 scheme.detail,
             );
         }
         if !text.is_empty() {
             let powerline = Self::is_powerline_text(text);
             let bleed = if powerline { 2 } else { 0 };
-            let text_x = x + lpad - bleed;
-            let text_w = (w - lpad + bleed * 2).max(0);
+            let text_x = bounds.x + lpad - bleed;
+            let text_w = (bounds.w - lpad + bleed * 2).max(0);
             if text_w > 0 {
-                self.rasterize_text_cached(text_x, y, text_w, h, text, fg);
+                self.rasterize_text_cached(text_x, bounds.y, text_w, bounds.h, text, fg);
             }
         }
-        x + w
+        bounds.x + bounds.w
     }
 }
 
@@ -664,20 +660,14 @@ fn draw_wayland_systray_snapshot(
     painter.set_scheme(snapshot.base_scheme.clone());
     if layout.tray_total_w > 0 {
         painter.rect(
-            layout.tray_start_x,
-            0,
-            layout.tray_total_w,
-            bar_height,
+            Rect::new(layout.tray_start_x, 0, layout.tray_total_w, bar_height),
             true,
             true,
         );
     }
     if layout.menu_total_w > 0 {
         painter.rect(
-            layout.menu_start_x,
-            0,
-            layout.menu_total_w,
-            bar_height,
+            Rect::new(layout.menu_start_x, 0, layout.menu_total_w, bar_height),
             true,
             true,
         );
@@ -709,14 +699,14 @@ fn draw_wayland_systray_snapshot(
             let x = slot.start;
             let w = slot.end - slot.start;
             if item.separator {
-                painter.rect(x + 3, bar_height / 2, w - 6, 1, true, false);
+                painter.rect(Rect::new(x + 3, bar_height / 2, w - 6, 1), true, false);
                 continue;
             }
             if !item.enabled {
                 scheme.fg[3] = 0.6;
                 painter.set_scheme(scheme.clone());
             }
-            painter.text(x, 0, w, bar_height, 8, &item.label, false, 0);
+            painter.text(Rect::new(x, 0, w, bar_height), 8, &item.label, false, 0);
             if !item.enabled {
                 scheme.fg[3] = 1.0;
                 painter.set_scheme(scheme.clone());

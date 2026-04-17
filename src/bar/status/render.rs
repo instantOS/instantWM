@@ -3,7 +3,7 @@ use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
 use crate::contexts::CoreCtx;
-use crate::types::Monitor;
+use crate::types::{Monitor, Rect};
 
 #[derive(Debug, Clone, Copy)]
 struct StatusLayout {
@@ -234,7 +234,11 @@ fn draw_items(
 
     let draw_width = (layout.total_width + 2).max(0);
     if draw_width > 0 {
-        painter.rect(layout.draw_start_x, 0, draw_width, bar_height, true, true);
+        painter.rect(
+            Rect::new(layout.draw_start_x, 0, draw_width, bar_height),
+            true,
+            true,
+        );
     }
 
     click_targets.clear();
@@ -247,7 +251,7 @@ fn draw_items(
             StatusItem::Text(text) => {
                 let seg_w = painter.text_width(text);
                 if seg_w > 0 {
-                    painter.text(x, 0, seg_w, bar_height, 0, text, false, 0);
+                    painter.text(Rect::new(x, 0, seg_w, bar_height), 0, text, false, 0);
                 }
                 x += seg_w;
             }
@@ -315,7 +319,7 @@ fn draw_i3_block(
         return 0;
     }
 
-    painter.rect(x, 0, block_width, bar_height, true, true);
+    painter.rect(Rect::new(x, 0, block_width, bar_height), true, true);
 
     let border_color = block
         .border
@@ -332,31 +336,29 @@ fn draw_i3_block(
 
     if block.border_top > 0 {
         painter.rect(
-            x,
-            0,
-            block_width,
-            block.border_top.min(bar_height),
+            Rect::new(x, 0, block_width, block.border_top.min(bar_height)),
             true,
             false,
         );
     }
     if block.border_bottom > 0 {
         let h = block.border_bottom.min(bar_height);
-        painter.rect(x, bar_height - h, block_width, h, true, false);
+        painter.rect(Rect::new(x, bar_height - h, block_width, h), true, false);
     }
     if block.border_left > 0 {
         painter.rect(
-            x,
-            0,
-            block.border_left.min(block_width),
-            bar_height,
+            Rect::new(x, 0, block.border_left.min(block_width), bar_height),
             true,
             false,
         );
     }
     if block.border_right > 0 {
         let w = block.border_right.min(block_width);
-        painter.rect(x + block_width - w, 0, w, bar_height, true, false);
+        painter.rect(
+            Rect::new(x + block_width - w, 0, w, bar_height),
+            true,
+            false,
+        );
     }
 
     painter.set_scheme(block_scheme);
@@ -372,10 +374,7 @@ fn draw_i3_block(
             I3Align::Right => (text_area_width - text_width).max(0),
         };
         painter.text(
-            text_area_x,
-            0,
-            text_area_width,
-            bar_height,
+            Rect::new(text_area_x, 0, text_area_width, bar_height),
             lpad,
             text,
             false,
@@ -391,12 +390,16 @@ fn draw_i3_block(
 
     if separator_width > 0 {
         painter.set_scheme(base_scheme.clone());
-        painter.rect(x + block_width, 0, separator_width, bar_height, true, true);
+        painter.rect(
+            Rect::new(x + block_width, 0, separator_width, bar_height),
+            true,
+            true,
+        );
 
         let line_h = (bar_height - 8).max(4);
         let line_y = (bar_height - line_h) / 2;
         let line_x = x + block_width + separator_width / 2;
-        painter.rect(line_x, line_y, 1, line_h, true, false);
+        painter.rect(Rect::new(line_x, line_y, 1, line_h), true, false);
     }
 
     block_width + separator_width

@@ -1,6 +1,7 @@
 use crate::backend::x11::draw::Drw;
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::types::ColorScheme;
+use crate::types::Rect;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -81,32 +82,36 @@ impl BarPainter for X11BarPainter {
         self.scheme.as_ref()
     }
 
-    fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, filled: bool, invert: bool) {
-        if w <= 0 || h <= 0 {
+    fn rect(&mut self, bounds: Rect, filled: bool, invert: bool) {
+        if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        self.drw.rect(x, y, w as u32, h as u32, filled, invert);
+        self.drw.rect(
+            bounds.x,
+            bounds.y,
+            bounds.w as u32,
+            bounds.h as u32,
+            filled,
+            invert,
+        );
     }
 
     fn text(
         &mut self,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
+        bounds: Rect,
         lpad: i32,
         text: &str,
         invert: bool,
         detail_height: i32,
     ) -> i32 {
-        if w <= 0 || h <= 0 {
-            return x;
+        if bounds.w <= 0 || bounds.h <= 0 {
+            return bounds.x;
         }
         self.drw.text(
-            x,
-            y,
-            w as u32,
-            h as u32,
+            bounds.x,
+            bounds.y,
+            bounds.w as u32,
+            bounds.h as u32,
             lpad.max(0) as u32,
             text,
             invert,
