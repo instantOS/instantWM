@@ -20,7 +20,8 @@
 //! - Clients retain their own width/height inside the cell (they are not
 //!   stretched); only their x/y origin is repositioned.
 //! - Floating clients have their float geometry saved before being moved.
-//! - Overlay and hidden (`oldstate != 0`) clients are skipped entirely.
+//! - Clients with stashed floating state (`saved_floating`) and edge scratchpads
+//!   are skipped entirely.
 //! - After placement every client is raised above the bar window so the
 //!   overview is fully visible even on monitors with topbar enabled.
 
@@ -75,10 +76,10 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             None => continue,
         };
 
-        let is_hidden = c.old_state != 0;
+        let skip_saved_floating = c.saved_floating;
         let is_edge_scratchpad = c.is_edge_scratchpad();
 
-        if is_hidden || is_edge_scratchpad {
+        if skip_saved_floating || is_edge_scratchpad {
             continue;
         }
 

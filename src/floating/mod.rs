@@ -40,7 +40,6 @@ pub use state::{
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
 pub use scratchpad::{
-    DEFAULT_EDGE_SCRATCHPAD_NAME, edge_scratchpad_create, edge_scratchpad_hide,
-    edge_scratchpad_show, edge_scratchpad_toggle, scratchpad_find, scratchpad_hide_name,
+    DEFAULT_EDGE_SCRATCHPAD_NAME, edge_scratchpad_create, scratchpad_find, scratchpad_hide_name,
     scratchpad_make, scratchpad_show_name, scratchpad_toggle, set_scratchpad_direction, unhide_one,
 };

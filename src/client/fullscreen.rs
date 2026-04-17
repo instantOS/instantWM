@@ -49,12 +49,13 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
             c.is_floating,
             c.is_fake_fullscreen,
             c.monitor_id,
-            c.old_state,
+            c.saved_floating,
             c.old_geo,
         )
     });
 
-    let Some((is_fs, is_floating, is_fake_fs, monitor_id, _oldstate, old_geo)) = client_snapshot
+    let Some((is_fs, is_floating, is_fake_fs, monitor_id, _saved_floating, old_geo)) =
+        client_snapshot
     else {
         return;
     };
@@ -70,7 +71,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = true;
-            c.old_state = c.is_floating as i32;
+            c.saved_floating = c.is_floating;
             c.save_border_width();
 
             if !is_fake_fs {
@@ -133,7 +134,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = false;
-            c.is_floating = c.old_state != 0;
+            c.is_floating = c.saved_floating;
             c.restore_border_width();
             restored_border = c.border_width.max(0) as u32;
         }

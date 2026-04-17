@@ -549,7 +549,7 @@ impl XwmHandler for WaylandState {
                     .and_then(|mid| ctx_wayland.core.globals().monitor(mid))
                     .map(|mon| mon.work_rect);
                 if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
-                    client.old_state = client.is_floating as i32;
+                    client.saved_floating = client.is_floating;
                     client.float_geo = client.geo;
                     client.is_floating = true;
                 }
@@ -583,7 +583,7 @@ impl XwmHandler for WaylandState {
                     .get(&win)
                     .map(|client| client.float_geo);
                 if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
-                    client.is_floating = client.old_state != 0;
+                    client.is_floating = client.saved_floating;
                 }
                 if let Some(restore_rect) = restore_rect {
                     crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(

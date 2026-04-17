@@ -47,8 +47,9 @@ pub struct Client {
     pub is_urgent: bool,
     /// Whether the window should never receive focus.
     pub never_focus: bool,
-    /// Old window state.
-    pub old_state: i32,
+    /// Stashed [`Client::is_floating`] while the WM forces floating (fullscreen,
+    /// xwayland maximize, etc.), restored when that mode ends.
+    pub saved_floating: bool,
     /// Whether the window is fullscreen.
     pub is_fullscreen: bool,
     /// Whether the window is in fake fullscreen mode.

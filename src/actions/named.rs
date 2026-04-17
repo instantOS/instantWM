@@ -3,9 +3,8 @@ use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    edge_scratchpad_hide, edge_scratchpad_show, edge_scratchpad_toggle, key_resize,
-    scratchpad_find, scratchpad_make, scratchpad_toggle, set_scratchpad_direction, toggle_floating,
-    toggle_maximized,
+    key_resize, scratchpad_find, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    scratchpad_toggle, set_scratchpad_direction, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -141,10 +140,10 @@ define_named_actions!(
     FocusMonNext => { name: "focus_mon_next", arg_example: None, doc: "focus next monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::NEXT); } },
     FollowMonPrev => { name: "follow_mon_prev", arg_example: None, doc: "move client to prev monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::PREV); } },
     FollowMonNext => { name: "follow_mon_next", arg_example: None, doc: "move client to next monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::NEXT); } },
-    EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", arg_example: None, doc: "toggle the default edge scratchpad", run: |ctx, _args| { edge_scratchpad_toggle(ctx); } },
+    EdgeScratchpadToggle => { name: "edge_scratchpad_toggle", arg_example: None, doc: "toggle the default edge scratchpad", run: |ctx, _args| { scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME)); } },
     EdgeScratchpadCreate => { name: "edge_scratchpad_create", arg_example: None, doc: "create the default edge scratchpad from the focused window", run: |ctx, _args| { edge_scratchpad_create(ctx); } },
-    EdgeScratchpadShow => { name: "edge_scratchpad_show", arg_example: None, doc: "show the default edge scratchpad", run: |ctx, _args| { edge_scratchpad_show(ctx); } },
-    EdgeScratchpadHide => { name: "edge_scratchpad_hide", arg_example: None, doc: "hide the default edge scratchpad", run: |ctx, _args| { edge_scratchpad_hide(ctx); } },
+    EdgeScratchpadShow => { name: "edge_scratchpad_show", arg_example: None, doc: "show the default edge scratchpad", run: |ctx, _args| { let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
+    EdgeScratchpadHide => { name: "edge_scratchpad_hide", arg_example: None, doc: "hide the default edge scratchpad", run: |ctx, _args| { scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME); } },
     EdgeScratchpadDirectionUp => { name: "edge_scratchpad_direction_up", arg_example: None, doc: "set default edge scratchpad direction to top", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Top); } },
     EdgeScratchpadDirectionDown => { name: "edge_scratchpad_direction_down", arg_example: None, doc: "set default edge scratchpad direction to bottom", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Bottom); } },
     EdgeScratchpadDirectionLeft => { name: "edge_scratchpad_direction_left", arg_example: None, doc: "set default edge scratchpad direction to left", run: |ctx, _args| { edge_scratchpad_set_direction(ctx, EdgeDirection::Left); } },

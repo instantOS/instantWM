@@ -1,7 +1,9 @@
 use crate::actions::{ButtonAction, KeyAction};
 use crate::client::{close_win, kill_client};
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::floating::toggle_floating;
+use crate::floating::{
+    DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
+};
 use crate::monitor::reorder_client;
 use crate::mouse::{
     drag_tag, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
@@ -182,10 +184,10 @@ pub fn execute_button_action(
             }
         }
         ButtonAction::HideEdgeScratchpad => {
-            crate::floating::edge_scratchpad_hide(ctx);
+            scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
         }
         ButtonAction::ShowEdgeScratchpad => {
-            crate::floating::edge_scratchpad_show(ctx);
+            let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
         }
         ButtonAction::ToggleFloatingSelected => toggle_floating(ctx),
         ButtonAction::ResizeMouseFromCursor => resize_mouse_from_cursor(ctx, arg.btn),

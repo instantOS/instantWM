@@ -716,18 +716,6 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
     );
 }
 
-pub fn edge_scratchpad_toggle(ctx: &mut WmCtx) {
-    scratchpad_toggle(ctx, Some(DEFAULT_EDGE_SCRATCHPAD_NAME));
-}
-
-pub fn edge_scratchpad_show(ctx: &mut WmCtx) {
-    let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
-}
-
-pub fn edge_scratchpad_hide(ctx: &mut WmCtx) {
-    scratchpad_hide_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
-}
-
 #[cfg(test)]
 mod tests {
     use super::{EDGE_INSET_Y, EDGE_MARGIN_Y, EdgePositionInfo, HideAnimationInfo};
