@@ -121,7 +121,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     };
     let c = ctx.core().client(sel)?;
     let is_true_fullscreen = c.is_true_fullscreen();
-    let is_edge_scratchpad = c.scratchpad_direction.is_some();
+    let is_edge_scratchpad = c.is_edge_scratchpad();
     let is_fullscreen = Some(sel) == fullscreen;
 
     if is_true_fullscreen {

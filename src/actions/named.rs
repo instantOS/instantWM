@@ -2,8 +2,9 @@ use crate::actions::ActionMeta;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
-    center_window, distribute_clients, key_resize, overlay_create, overlay_toggle, scratchpad_find,
-    scratchpad_make, scratchpad_toggle, toggle_floating, toggle_maximized,
+    OVERLAY_NAME, center_window, distribute_clients, key_resize, overlay_create, overlay_toggle,
+    scratchpad_find, scratchpad_make, scratchpad_toggle, set_scratchpad_direction, toggle_floating,
+    toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -182,9 +183,7 @@ define_named_actions!(
 );
 
 fn overlay_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
-    use crate::floating::scratchpad::{scratchpad_find, set_scratchpad_direction};
-    const NAME: &str = "instantwm_overlay_scratch";
-    if let Some(win) = scratchpad_find(ctx.core().globals(), NAME) {
+    if let Some(win) = scratchpad_find(ctx.core().globals(), OVERLAY_NAME) {
         set_scratchpad_direction(ctx, win, dir);
     }
 }

@@ -1,7 +1,7 @@
 use crate::actions::{ButtonAction, KeyAction};
 use crate::client::{close_win, kill_client};
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::floating::toggle_floating;
+use crate::floating::{OVERLAY_NAME, toggle_floating};
 use crate::monitor::reorder_client;
 use crate::mouse::{
     drag_tag, gesture_mouse, resize_aspect_mouse, resize_mouse_from_cursor,
@@ -182,10 +182,10 @@ pub fn execute_button_action(
             }
         }
         ButtonAction::HideOverlay => {
-            crate::floating::scratchpad_hide_name(ctx, "instantwm_overlay_scratch");
+            crate::floating::scratchpad_hide_name(ctx, OVERLAY_NAME);
         }
         ButtonAction::ShowOverlay => {
-            let _ = crate::floating::scratchpad_show_name(ctx, "instantwm_overlay_scratch");
+            let _ = crate::floating::scratchpad_show_name(ctx, OVERLAY_NAME);
         }
         ButtonAction::ToggleFloatingSelected => toggle_floating(ctx),
         ButtonAction::ResizeMouseFromCursor => resize_mouse_from_cursor(ctx, arg.btn),

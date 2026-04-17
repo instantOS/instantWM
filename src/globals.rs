@@ -897,7 +897,7 @@ impl Globals {
 
         let selmon = self.selected_monitor();
         let is_selected = selmon.sel == Some(c.win);
-        let is_overlay = c.scratchpad_direction.is_some();
+        let is_overlay = c.is_edge_scratchpad();
 
         let scheme_idx = if is_selected {
             if is_overlay {

@@ -96,6 +96,11 @@ impl Client {
             && (self.tags.is_scratchpad_only() || self.is_hidden || self.is_sticky)
     }
 
+    /// Check if this client is an edge-anchored scratchpad (has a slide direction).
+    pub fn is_edge_scratchpad(&self) -> bool {
+        self.scratchpad_direction.is_some()
+    }
+
     /// Check if this client is a normal minimized window rather than a hidden scratchpad.
     #[inline]
     pub fn is_minimized(&self) -> bool {

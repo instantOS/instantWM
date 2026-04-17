@@ -1,6 +1,6 @@
 use crate::backend::BackendOps;
 use crate::client::save_border_width;
-use crate::constants::animation::OVERLAY_ANIMATION_FRAMES;
+use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
@@ -15,9 +15,9 @@ const EDGE_MARGIN_Y: i32 = 40;
 const EDGE_INSET_X: i32 = 40;
 const EDGE_INSET_Y: i32 = 80;
 
-const OVERLAY_NAME: &str = "instantwm_overlay_scratch";
+pub const OVERLAY_NAME: &str = "instantwm_overlay_scratch";
 
-/// Information needed to position an edge-anchored scratchpad window.
+/// Positioning info for the edge slide-in animation.
 #[derive(Debug, Clone, Copy)]
 struct EdgePositionInfo {
     direction: EdgeDirection,
@@ -31,7 +31,6 @@ struct EdgePositionInfo {
     client_size: Rect,
 }
 
-/// Get the initial rect for an edge-anchored scratchpad (off-screen position before animation).
 fn get_initial_edge_rect(info: &EdgePositionInfo) -> Rect {
     let EdgePositionInfo {
         direction,
@@ -69,7 +68,6 @@ fn get_initial_edge_rect(info: &EdgePositionInfo) -> Rect {
     }
 }
 
-/// Get the target position rect for an edge-anchored scratchpad (visible position after animation).
 fn get_target_edge_rect(info: &EdgePositionInfo) -> Rect {
     let EdgePositionInfo {
         direction,
@@ -107,7 +105,7 @@ fn get_target_edge_rect(info: &EdgePositionInfo) -> Rect {
     }
 }
 
-/// Information needed for hide animation of an edge-anchored scratchpad.
+/// Positioning info for the edge slide-out (hide) animation.
 #[derive(Debug, Clone, Copy)]
 struct HideAnimationInfo {
     direction: EdgeDirection,
@@ -119,7 +117,6 @@ struct HideAnimationInfo {
     client_size: Rect,
 }
 
-/// Get the target rect for hiding an edge-anchored scratchpad (off-screen position).
 fn get_hide_animation_rect(info: &HideAnimationInfo) -> Rect {
     let HideAnimationInfo {
         direction,
@@ -169,6 +166,27 @@ pub struct ScratchpadInfo {
     pub floating: bool,
     pub fullscreen: bool,
     pub direction: Option<String>,
+}
+
+impl ScratchpadInfo {
+    pub(crate) fn from_client(c: &crate::types::client::Client) -> Option<Self> {
+        if !c.is_scratchpad() {
+            return None;
+        }
+        Some(Self {
+            name: c.scratchpad_name.clone(),
+            visible: c.is_sticky,
+            window_id: Some(c.win.0),
+            monitor: Some(c.monitor_id.index()),
+            x: Some(c.geo.x),
+            y: Some(c.geo.y),
+            width: Some(c.geo.w),
+            height: Some(c.geo.h),
+            floating: c.is_floating,
+            fullscreen: c.is_fullscreen,
+            direction: c.scratchpad_direction.map(|d| d.as_str().to_string()),
+        })
+    }
 }
 
 fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> Option<WindowId> {
@@ -328,32 +346,19 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         return Err(format!("scratchpad '{}' not found", name));
     };
 
-    let was_sticky = ctx
+    let (was_sticky, direction, target_mon) = ctx
         .core()
         .globals()
         .clients
         .get(&found)
-        .is_some_and(|c| c.is_sticky);
+        .map(|c| (c.is_sticky, c.scratchpad_direction, c.monitor_id))
+        .unwrap_or_default();
 
     if was_sticky {
         return Ok(format!("scratchpad '{}' is already visible", name));
     }
 
-    let direction = ctx
-        .core()
-        .globals()
-        .clients
-        .get(&found)
-        .and_then(|c| c.scratchpad_direction);
-
     let current_mon = ctx.core().globals().selected_monitor_id();
-    let target_mon = ctx
-        .core()
-        .globals()
-        .clients
-        .get(&found)
-        .map(|c| c.monitor_id)
-        .unwrap_or(current_mon);
 
     if let Some(client) = ctx.client_mut(found) {
         client.is_sticky = true;
@@ -367,7 +372,6 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     let focusfollowsmouse = ctx.core().globals().behavior.focus_follows_mouse;
 
     if let Some(dir) = direction {
-        // Edge-anchored scratchpad: detach, animate in from edge
         ctx.core_mut().globals_mut().detach(found);
         ctx.core_mut().globals_mut().detach_z_order(found);
 
@@ -389,7 +393,6 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
             client.set_tag_mask(tags);
         }
 
-        // Calculate y offset (bar height + fullscreen check)
         let yoffset = {
             let mon = ctx.core().globals().selected_monitor();
             let showbar = mon.showbar_for_mask(tags);
@@ -440,10 +443,9 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         ctx.move_resize(
             found,
             target_rect,
-            MoveResizeOptions::animate_to(OVERLAY_ANIMATION_FRAMES),
+            MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
         );
     } else {
-        // Regular scratchpad: instant show
         let is_hidden = ctx
             .core()
             .globals()
@@ -534,32 +536,32 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         .get(&found)
         .and_then(|c| c.scratchpad_direction);
 
-    let Some(client) = ctx.client_mut(found) else {
-        return;
+    let (geo, mon_rect) = {
+        let mon = ctx.core().globals().selected_monitor();
+        let Some(client) = ctx.client(found) else {
+            return;
+        };
+        if !client.is_sticky {
+            return;
+        }
+        (client.geo, mon.monitor_rect)
     };
-    if !client.is_sticky {
-        return;
+
+    if let Some(client) = ctx.client_mut(found) {
+        client.is_sticky = false;
+        client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     }
 
-    client.is_sticky = false;
-    client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
-
     if let Some(dir) = direction {
-        let (mon_rect, client_x, client_w, client_h) = {
-            let client = ctx.client(found).unwrap();
-            let mon = ctx.core().globals().selected_monitor();
-            (mon.monitor_rect, client.geo.x, client.geo.w, client.geo.h)
-        };
-
         let hide_info = HideAnimationInfo {
             direction: dir,
             monitor_rect: mon_rect,
-            client_x,
+            client_x: geo.x,
             client_size: Rect {
                 x: 0,
                 y: 0,
-                w: client_w,
-                h: client_h,
+                w: geo.w,
+                h: geo.h,
             },
         };
 
@@ -567,7 +569,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         ctx.move_resize(
             found,
             hide_rect,
-            MoveResizeOptions::animate_to(OVERLAY_ANIMATION_FRAMES),
+            MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
         );
     }
 
@@ -604,27 +606,10 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 }
 
 pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
-    let mut scratchpads = Vec::new();
-
-    for c in g.clients.values() {
-        if c.is_scratchpad() {
-            scratchpads.push(ScratchpadInfo {
-                name: c.scratchpad_name.clone(),
-                visible: c.is_sticky,
-                window_id: Some(c.win.0),
-                monitor: Some(c.monitor_id.index()),
-                x: Some(c.geo.x),
-                y: Some(c.geo.y),
-                width: Some(c.geo.w),
-                height: Some(c.geo.h),
-                floating: c.is_floating,
-                fullscreen: c.is_fullscreen,
-                direction: c.scratchpad_direction.map(|d| d.as_str().to_string()),
-            });
-        }
-    }
-
-    scratchpads
+    g.clients
+        .values()
+        .filter_map(|c| ScratchpadInfo::from_client(c))
+        .collect()
 }
 
 pub fn scratchpad_list_json(g: &Globals) -> String {

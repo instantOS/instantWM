@@ -39,9 +39,7 @@ pub use state::{
 
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
-/// Make a window a scratchpad (with optional edge-anchored positioning).
 pub use scratchpad::{
-    overlay_create, overlay_toggle, scratchpad_find, scratchpad_hide_name, scratchpad_make,
-    scratchpad_show_name, scratchpad_toggle, scratchpad_unmake, set_scratchpad_direction,
-    unhide_one,
+    OVERLAY_NAME, overlay_create, overlay_toggle, scratchpad_find, scratchpad_hide_name,
+    scratchpad_make, scratchpad_show_name, scratchpad_toggle, set_scratchpad_direction, unhide_one,
 };

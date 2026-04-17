@@ -36,22 +36,7 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
 fn build_scratchpad_info(
     c: &crate::types::client::Client,
 ) -> Option<crate::ipc_types::ScratchpadInfo> {
-    if !c.is_scratchpad() {
-        return None;
-    }
-    Some(crate::ipc_types::ScratchpadInfo {
-        name: c.scratchpad_name.clone(),
-        visible: c.is_sticky,
-        window_id: Some(c.win.0),
-        monitor: Some(c.monitor_id.index()),
-        x: Some(c.geo.x),
-        y: Some(c.geo.y),
-        width: Some(c.geo.w),
-        height: Some(c.geo.h),
-        floating: c.is_floating,
-        fullscreen: c.is_fullscreen,
-        direction: c.scratchpad_direction.map(|d| d.as_str().to_string()),
-    })
+    crate::floating::scratchpad::ScratchpadInfo::from_client(c)
 }
 
 fn build_size_hints(c: &crate::types::client::Client) -> Option<SizeHintsInfo> {
