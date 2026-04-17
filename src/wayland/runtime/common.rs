@@ -1,16 +1,14 @@
 //! Shared Wayland runtime setup and per-tick logic for all backends.
 //!
-//! **Startup** — Both the winit (nested) and DRM (standalone) runtimes share
-//! the same initial steps: session D-Bus, [`crate::wm::Wm`] construction with
-//! [`crate::wayland::common::init_wayland_globals`], the Smithay
-//! [`smithay::reexports::calloop::EventLoop`], and [`WaylandState`]. Helpers
-//! here bundle the identical tail: listening socket + XWayland + systray
-//! runtime, then autostart / smoke window / IPC / status-bar ping registration.
+//! Bootstrap uses [`create_wayland_wm_boxed`] and [`new_wayland_event_loop_and_state`], then
+//! [`attach_wayland_backend_state`], [`attach_gles_renderer_and_protocols`], and the socket /
+//! autostart helpers. DRM inserts session/GPU/libinput between socket setup and autostart.
 //!
-//! **Per tick** — Both runtimes perform the same housekeeping: layout, IPC,
-//! monitor configuration, and compositor space synchronisation. Helpers
-//! delegate to [`crate::runtime`] with Wayland-specific animation options.
+//! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
 
+use smithay::backend::egl::EGLDisplay;
+use smithay::backend::renderer::ImportDma;
+use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::reexports::calloop::{EventLoop, LoopHandle};
 use smithay::reexports::wayland_server::Display;
 
@@ -19,8 +17,8 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
 
-/// D-Bus session, boxed [`Wm`] with a Wayland backend, and `init_wayland_globals`.
-pub fn create_wayland_wm_boxed() -> Box<Wm> {
+/// D-Bus session, boxed [`Wm`] with Wayland backend, and [`crate::wayland::common::init_wayland_globals`].
+pub(crate) fn create_wayland_wm_boxed() -> Box<Wm> {
     crate::wayland::common::ensure_dbus_session();
     let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
     if let Some(wayland) = wm.backend.wayland_data_mut() {
@@ -29,13 +27,33 @@ pub fn create_wayland_wm_boxed() -> Box<Wm> {
     wm
 }
 
-/// Create the calloop [`EventLoop`], Wayland [`Display`], and [`WaylandState`].
-pub fn new_wayland_event_loop_and_state() -> (EventLoop<'static, WaylandState>, WaylandState) {
+/// Calloop [`EventLoop`], Wayland [`Display`], and [`WaylandState`].
+pub(crate) fn new_wayland_event_loop_and_state() -> (EventLoop<'static, WaylandState>, WaylandState)
+{
     let event_loop = EventLoop::try_new().expect("wayland event loop");
     let loop_handle = event_loop.handle();
     let display = Display::new().expect("wayland display");
     let state = WaylandState::new(display, &loop_handle);
     (event_loop, state)
+}
+
+/// Attach GLES renderer, dmabuf global, and screencopy protocol (winit and DRM).
+///
+/// Pass `egl_display` when it comes from elsewhere (e.g. DRM `init_gpu`). Pass [`None`]
+/// for winit so the display is read from `renderer` after [`WaylandState::attach_renderer`]
+/// (avoids overlapping borrows from the winit backend).
+pub fn attach_gles_renderer_and_protocols(
+    state: &mut WaylandState,
+    renderer: &mut GlesRenderer,
+    egl_display: Option<&EGLDisplay>,
+) {
+    state.attach_renderer(renderer);
+    let egl_for_dmabuf = egl_display.or_else(|| Some(renderer.egl_context().display()));
+    state.init_dmabuf_global(
+        renderer.dmabuf_formats().into_iter().collect(),
+        egl_for_dmabuf,
+    );
+    state.init_screencopy_manager();
 }
 
 /// Wire the Smithay compositor state into [`WaylandBackend`].

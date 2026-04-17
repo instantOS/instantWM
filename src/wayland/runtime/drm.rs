@@ -3,7 +3,6 @@
 use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
@@ -25,8 +24,8 @@ use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
-use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 use crate::wayland::common::send_frame_callbacks;
+use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
@@ -144,12 +143,11 @@ pub fn run() -> ! {
     ) = init_gpu(&mut session, &seat_name);
     log::info!("Using GPU: {:?}", primary_gpu_path);
 
-    state.attach_renderer(&mut renderer);
-    state.init_dmabuf_global(
-        renderer.dmabuf_formats().into_iter().collect(),
+    super::common::attach_gles_renderer_and_protocols(
+        &mut state,
+        &mut renderer,
         Some(&egl_display),
     );
-    state.init_screencopy_manager();
     state.attach_wm(&mut wm);
 
     let cursor_manager = init_cursor_manager(&state.cursor_config);

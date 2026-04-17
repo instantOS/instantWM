@@ -6,7 +6,6 @@
 use std::process::exit;
 
 use smithay::backend::input::InputEvent;
-use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::LoopSignal;
@@ -33,12 +32,7 @@ pub fn run() -> ! {
     let (backend_init, winit_loop) =
         winit::init::<GlesRenderer>().expect("failed to init winit backend");
     let mut backend = Box::new(backend_init);
-    state.attach_renderer(backend.renderer());
-    state.init_dmabuf_global(
-        backend.renderer().dmabuf_formats().into_iter().collect(),
-        Some(backend.renderer().egl_context().display()),
-    );
-    state.init_screencopy_manager();
+    super::common::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
 
     let output_size = backend.window_size();
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
