@@ -49,6 +49,13 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
     // ── IPC listener fd source ──────────────────────────────────────────
     crate::runtime::register_ipc_source(&loop_handle, ipc_server);
 
+    // ── Internal status ping source ────────────────────────────────────
+    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
+    crate::bar::status::set_internal_status_ping(status_ping);
+    loop_handle
+        .insert_source(status_ping_source, |_, _, _| {})
+        .expect("failed to insert status ping source");
+
     // ── Animation timer (on-demand, not persistent) ─────────────────────
     let anim_guard = AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();

@@ -19,17 +19,14 @@ pub fn event_loop_tick(
     state: &WaylandState,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
 ) -> crate::runtime::TickResult {
-    let internal_status_handled = crate::bar::status::drain_internal_status_updates(wm);
-    let mut tick = crate::runtime::event_loop_tick_with_options(
+    crate::runtime::event_loop_tick_with_options(
         wm,
         ipc_server,
         crate::runtime::TickOptions {
             defer_layout_while_animations_active: true,
             animations_active: state.has_active_window_animations(),
         },
-    );
-    tick.ipc_handled |= internal_status_handled;
-    tick
+    )
 }
 
 /// Run compositor-space sync and animation progression in one place.

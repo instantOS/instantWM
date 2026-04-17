@@ -748,7 +748,14 @@ fn render_async_snapshot(
     let mut buffers = Vec::new();
     let mut monitor_updates = Vec::new();
 
-    for mon in request.monitors {
+    for mut mon in request.monitors {
+        if mon.is_selected_monitor
+            && mon.status_items.is_empty()
+            && let Some(text) = mon.status_text.as_deref()
+        {
+            mon.status_items = crate::bar::status::parse_status(text.as_bytes()).items;
+        }
+
         painter.set_font_size(mon.font_size);
         painter.begin(
             Scale::from(1.0),
@@ -845,7 +852,7 @@ pub fn render_bar_buffers(
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
     let snapshots =
-        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)));
+        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)), false);
     // Cache the systray width so status bar layout can account for it.
     core.globals_mut().bar_runtime.systray_width =
         crate::systray::wayland::get_wayland_systray_width_with_state(

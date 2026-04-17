@@ -45,16 +45,13 @@ pub fn event_loop_tick_with_options(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     options: TickOptions,
 ) -> TickResult {
-    if wm.bar.poll_async_status(&wm.g.bar_runtime.status_text) {
-        wm.bar.mark_dirty();
-    }
-
+    let status_handled = crate::bar::status::drain_internal_status_updates(wm);
     let ipc_handled = process_ipc_commands(ipc_server, wm);
     let work = process_pending_work(wm, options);
 
     draw_x11_bars_if_dirty(wm);
     TickResult {
-        ipc_handled,
+        ipc_handled: ipc_handled || status_handled,
         monitor_config_applied: work.monitor_config_applied,
         layout_applied: work.layout_applied,
         layout_deferred_for_animation: work.layout_deferred_for_animation,

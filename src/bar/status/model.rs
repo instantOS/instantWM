@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::AtomicBool;
 
 pub(crate) const TEXT_PADDING: i32 = 6;
 pub(super) const DEFAULT_SEPARATOR_BLOCK_WIDTH: i32 = 9;
-
-pub static CUSTOM_STATUS_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 pub(crate) enum StatusItem {
@@ -71,13 +68,6 @@ pub(crate) struct StatusClickTarget {
 pub(crate) struct ParsedStatus {
     pub items: Vec<StatusItem>,
     pub i3bar: Option<I3StatusLine>,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct StatusParseResult {
-    pub seq: u64,
-    pub text: String,
-    pub parsed: ParsedStatus,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

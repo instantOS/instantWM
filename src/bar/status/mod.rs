@@ -8,19 +8,20 @@ mod runtime;
 
 pub(crate) use command::{reload_status_command, spawn_default_status, spawn_status_command};
 pub(crate) use model::{
-    CUSTOM_STATUS_RECEIVED, I3Align, I3BarHeader, I3Block, I3ClickEvent, I3MinWidth, I3StatusLine,
-    ParsedStatus, StatusClickTarget, StatusItem, StatusParseResult, TEXT_PADDING,
+    I3Align, I3BarHeader, I3Block, I3ClickEvent, I3MinWidth, I3StatusLine, ParsedStatus,
+    StatusClickTarget, StatusItem, TEXT_PADDING,
 };
-pub(crate) use parse::{parse_i3bar_header, parse_i3bar_json, parse_status, parse_status_fallback};
+pub(crate) use parse::{parse_i3bar_header, parse_status, parse_status_fallback};
 pub(crate) use render::{draw_status_items, emit_i3bar_status_click};
 pub(crate) use runtime::{
     apply_status_update, drain_internal_status_updates, flush_i3bar_click_events,
-    request_status_parse, set_internal_status_ping, try_recv_status_parse_result,
+    set_internal_status_ping,
 };
 
 #[cfg(test)]
 mod tests {
-    use super::{I3Align, StatusItem, parse_i3bar_header, parse_i3bar_json, parse_status};
+    use super::parse::parse_i3bar_json;
+    use super::{I3Align, StatusItem, parse_i3bar_header, parse_status};
 
     #[test]
     fn parses_i3bar_frame_with_leading_comma() {

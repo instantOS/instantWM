@@ -84,6 +84,7 @@ pub(crate) fn build_monitor_snapshots(
         &crate::types::WaylandSystray,
         Option<&crate::types::WaylandSystrayMenu>,
     )>,
+    include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.globals().selected_monitor().num;
     let show_systray = core.globals().cfg.show_systray;
@@ -188,10 +189,14 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             None
         };
-        let status_items = status_text
-            .as_deref()
-            .map(|text| core.bar.status_items_for_text(text).to_vec())
-            .unwrap_or_default();
+        let status_items = if include_status_items {
+            status_text
+                .as_deref()
+                .map(|text| core.bar.status_items_for_text(text).to_vec())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
 
         let systray = if show_systray && is_selected_monitor {
             wayland_systray.map(|(items, menu)| SystraySnapshot {

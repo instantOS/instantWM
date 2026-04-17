@@ -1,6 +1,4 @@
-use super::{
-    CUSTOM_STATUS_RECEIVED, flush_i3bar_click_events, parse_i3bar_header, parse_i3bar_json,
-};
+use super::{flush_i3bar_click_events, parse::parse_i3bar_json, parse_i3bar_header};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -58,6 +56,20 @@ fn set_status_source(next: StatusSourceKind) -> Option<(Arc<AtomicBool>, Arc<Ato
     Some((stop, pid))
 }
 
+/// Stop the default status source if it is currently running.
+pub(crate) fn stop_default_source() {
+    let Ok(mut active) = status_source().lock() else {
+        return;
+    };
+    if active
+        .as_ref()
+        .is_some_and(|s| s.kind == StatusSourceKind::Default)
+        && let Some(source) = active.take()
+    {
+        source.stop();
+    }
+}
+
 fn default_status_text() -> String {
     use std::time::SystemTime;
 
@@ -83,8 +95,6 @@ pub(crate) fn spawn_default_status() {
         return;
     };
 
-    CUSTOM_STATUS_RECEIVED.store(false, Ordering::Relaxed);
-
     std::thread::spawn(move || {
         use std::thread;
         use std::time::Duration;
@@ -93,9 +103,6 @@ pub(crate) fn spawn_default_status() {
 
         loop {
             if stop.load(Ordering::Relaxed) {
-                break;
-            }
-            if CUSTOM_STATUS_RECEIVED.load(Ordering::Relaxed) {
                 break;
             }
             super::runtime::send_status_update(&default_status_text());
@@ -108,8 +115,6 @@ pub(crate) fn spawn_status_command(cmd: &str) {
     let Some((stop, pid)) = set_status_source(StatusSourceKind::Command(cmd.to_string())) else {
         return;
     };
-
-    CUSTOM_STATUS_RECEIVED.store(false, Ordering::Relaxed);
 
     let cmd_str = cmd.to_string();
     std::thread::spawn(move || {

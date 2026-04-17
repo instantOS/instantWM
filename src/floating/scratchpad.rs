@@ -571,7 +571,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
 pub fn collect_scratchpad_info(g: &Globals) -> Vec<ScratchpadInfo> {
     g.clients
         .values()
-        .filter_map(|c| ScratchpadInfo::from_client(c))
+        .filter_map(ScratchpadInfo::from_client)
         .collect()
 }
 

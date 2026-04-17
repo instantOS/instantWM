@@ -56,7 +56,7 @@ pub fn draw_bar(
     };
 
     let mut painter = crate::bar::x11_painter::X11BarPainter::new(drw);
-    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
+    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None, true);
     let Some(snapshot) = snapshots
         .iter()
         .find(|snapshot| snapshot.monitor_id == mon_idx)
@@ -74,7 +74,7 @@ pub fn draw_bars_x11(
     systray: Option<&Systray>,
 ) {
     let monitor_ids: Vec<MonitorId> = core.globals().monitors_iter().map(|(i, _)| i).collect();
-    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None);
+    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None, true);
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots
             .iter()

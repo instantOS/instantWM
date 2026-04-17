@@ -32,13 +32,9 @@ pub struct BarState {
     pub layout_symbol_width: i32,
     /// Per-monitor hit-test geometry built during bar rendering.
     hit_cache: Vec<MonitorHitCache>,
-    /// Cached parsed status commands for unchanged status text.
     status_cache_text: String,
     status_cache: status::ParsedStatus,
-    status_cache_complete: bool,
-    status_cache_seq: u64,
-    status_requested_text: String,
-    status_requested_seq: u64,
+    status_cache_parsed: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -173,81 +169,29 @@ impl BarState {
         self.hit_cache[monitor_id] = hit;
     }
 
-    fn request_status_parse_if_needed(&mut self, text: &str) {
-        if text.is_empty()
-            || self.status_requested_text.as_str() == text
-            || (self.status_cache_text.as_str() == text && self.status_cache_complete)
-        {
-            return;
-        }
-
-        self.status_requested_text.clear();
-        self.status_requested_text.push_str(text);
-        self.status_requested_seq = status::request_status_parse(text);
-    }
-
-    pub fn request_async_status_parse(&mut self, text: &str) {
-        self.request_status_parse_if_needed(text);
-    }
-
     pub fn prepare_status_for_render(&mut self, text: &str) {
         self.status_cache_text.clear();
         self.status_cache_text.push_str(text);
-        self.status_cache = status::parse_status(text.as_bytes());
-        self.status_cache_complete = true;
-        self.status_requested_text.clear();
-        self.status_requested_text.push_str(text);
-        self.status_requested_seq = 0;
-        self.status_cache_seq = 0;
+        self.status_cache = status::parse_status_fallback(text);
+        self.status_cache_parsed = false;
     }
 
-    pub fn poll_async_status(&mut self, current_text: &str) -> bool {
-        let mut changed = false;
-
-        while let Some(result) = status::try_recv_status_parse_result() {
-            if result.text.as_str() != current_text || result.seq < self.status_requested_seq {
-                continue;
-            }
-
-            self.status_cache_text = result.text;
-            self.status_cache = result.parsed;
-            self.status_cache_complete = true;
-            self.status_cache_seq = result.seq;
-            changed = true;
+    fn ensure_status_cached(&mut self, text: &str) {
+        if self.status_cache_text.as_str() != text || !self.status_cache_parsed {
+            self.status_cache_text.clear();
+            self.status_cache_text.push_str(text);
+            self.status_cache = status::parse_status(text.as_bytes());
+            self.status_cache_parsed = true;
         }
-
-        changed
     }
 
     pub(crate) fn status_items_for_text(&mut self, text: &str) -> &[status::StatusItem] {
-        self.poll_async_status(text);
-
-        if self.status_cache_text.as_str() != text {
-            self.status_cache_text.clear();
-            self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status_fallback(text);
-            self.status_cache_complete = false;
-            self.request_status_parse_if_needed(text);
-        } else if !self.status_cache_complete {
-            self.request_status_parse_if_needed(text);
-        }
-
+        self.ensure_status_cached(text);
         self.status_cache.items.as_slice()
     }
 
     pub(crate) fn parsed_status_for_text(&mut self, text: &str) -> &status::ParsedStatus {
-        self.poll_async_status(text);
-
-        if self.status_cache_text.as_str() != text {
-            self.status_cache_text.clear();
-            self.status_cache_text.push_str(text);
-            self.status_cache = status::parse_status_fallback(text);
-            self.status_cache_complete = false;
-            self.request_status_parse_if_needed(text);
-        } else if !self.status_cache_complete {
-            self.request_status_parse_if_needed(text);
-        }
-
+        self.ensure_status_cached(text);
         &self.status_cache
     }
 }
@@ -311,6 +255,24 @@ pub(crate) fn monitor_has_real_fullscreen(globals: &Globals, monitor: &Monitor) 
 
 pub(crate) fn monitor_bar_visible(globals: &Globals, monitor: &Monitor) -> bool {
     monitor.shows_bar() && !monitor_has_real_fullscreen(globals, monitor)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BarState;
+    use crate::bar::status::StatusItem;
+
+    #[test]
+    fn prepared_status_is_parsed_on_first_cache_read() {
+        let text = r#"[{"full_text":"cpu","name":"cpu"}]"#;
+        let mut bar = BarState::default();
+
+        bar.prepare_status_for_render(text);
+
+        let parsed = bar.parsed_status_for_text(text);
+        assert!(parsed.i3bar.is_some());
+        assert!(matches!(parsed.items.first(), Some(StatusItem::I3Block(_))));
+    }
 }
 
 pub fn update_hover(
