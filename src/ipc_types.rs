@@ -361,7 +361,7 @@ impl WindowState {
         Self {
             floating: c.is_floating,
             fullscreen: c.is_fullscreen,
-            fake_fullscreen: c.isfakefullscreen,
+            fake_fullscreen: c.is_fake_fullscreen,
             sticky: c.is_sticky,
             hidden: c.is_hidden,
             urgent: c.is_urgent,

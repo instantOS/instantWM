@@ -48,11 +48,11 @@ pub struct Client {
     /// Whether the window should never receive focus.
     pub never_focus: bool,
     /// Old window state.
-    pub oldstate: i32,
+    pub old_state: i32,
     /// Whether the window is fullscreen.
     pub is_fullscreen: bool,
     /// Whether the window is in fake fullscreen mode.
-    pub isfakefullscreen: bool,
+    pub is_fake_fullscreen: bool,
     /// Whether the window is locked (can't be closed accidentally).
     pub is_locked: bool,
     /// Whether the window is sticky (visible on all tags).
@@ -179,7 +179,7 @@ impl Client {
     /// Check if the client is in true fullscreen mode (not fake fullscreen).
     #[inline]
     pub fn is_true_fullscreen(&self) -> bool {
-        self.is_fullscreen && !self.isfakefullscreen
+        self.is_fullscreen && !self.is_fake_fullscreen
     }
 
     /// Get the border width.

@@ -66,7 +66,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
             let is_visible = c.is_visible(selected_tags);
             let geo = c.geo;
             let (is_floating, is_fullscreen, is_fake_fullscreen) =
-                (c.is_floating, c.is_fullscreen, c.isfakefullscreen);
+                (c.is_floating, c.is_fullscreen, c.is_fake_fullscreen);
 
             operations.push((
                 win,

@@ -350,7 +350,7 @@ fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent:
     if let Some(client) = g.clients.get_mut(&w) {
         if !client.is_floating {
             client.is_floating = has_transient_parent || client.is_fixed_size;
-            client.oldstate = client.is_floating as i32;
+            client.old_state = client.is_floating as i32;
         }
         client.is_floating
     } else {

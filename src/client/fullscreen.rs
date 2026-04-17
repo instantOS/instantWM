@@ -47,9 +47,9 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         (
             c.is_fullscreen,
             c.is_floating,
-            c.isfakefullscreen,
+            c.is_fake_fullscreen,
             c.monitor_id,
-            c.oldstate,
+            c.old_state,
             c.old_geo,
         )
     });
@@ -70,7 +70,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = true;
-            c.oldstate = c.is_floating as i32;
+            c.old_state = c.is_floating as i32;
             c.save_border_width();
 
             if !is_fake_fs {
@@ -133,7 +133,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.is_fullscreen = false;
-            c.is_floating = c.oldstate != 0;
+            c.is_floating = c.old_state != 0;
             c.restore_border_width();
             restored_border = c.border_width.max(0) as u32;
         }
@@ -173,7 +173,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
         .map(|c| {
             (
                 c.is_fullscreen,
-                c.isfakefullscreen,
+                c.is_fake_fullscreen,
                 c.monitor_id,
                 c.old_border_width,
             )
@@ -216,10 +216,10 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
     if let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-        if client.is_fullscreen && !client.isfakefullscreen {
+        if client.is_fullscreen && !client.is_fake_fullscreen {
             client.border_width = old_border_width;
         }
-        client.isfakefullscreen = !client.isfakefullscreen;
+        client.is_fake_fullscreen = !client.is_fake_fullscreen;
     }
 }
 
@@ -229,7 +229,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
         WmCtx::Wayland(_) => {
             if let Some(win) = ctx.selected_client() {
                 if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                    client.isfakefullscreen = !client.isfakefullscreen;
+                    client.is_fake_fullscreen = !client.is_fake_fullscreen;
                 }
                 let selmon_id = ctx.core().globals().selected_monitor_id();
                 ctx.core_mut()
