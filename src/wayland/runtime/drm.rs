@@ -12,7 +12,6 @@ use smithay::reexports::calloop::{EventLoop, LoopHandle, LoopSignal};
 use smithay::reexports::drm::control::crtc;
 use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
-use smithay::reexports::wayland_server::Display;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
 use std::cell::RefCell;
@@ -22,18 +21,12 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
-use crate::backend::Backend as WmBackend;
 use crate::backend::BackendVrrSupport;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
-use crate::startup::autostart::run_autostart;
 use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
-use crate::wayland::common::{
-    ensure_dbus_session, init_wayland_globals, send_frame_callbacks, setup_wayland_socket,
-    spawn_wayland_smoke_window, spawn_xwayland,
-};
+use crate::wayland::common::send_frame_callbacks;
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
@@ -128,25 +121,15 @@ enum DrmRuntimeEvent {
 // Hours spent on this: ~3h
 pub fn run() -> ! {
     log::info!("Starting DRM/KMS backend");
-    ensure_dbus_session();
-
-    let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
-    if let Some(wayland) = wm.backend.wayland_data_mut() {
-        init_wayland_globals(&mut wm.g, wayland);
-    }
-
-    let event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("event loop");
+    let mut wm = super::common::create_wayland_wm_boxed();
+    let (event_loop, mut state) = super::common::new_wayland_event_loop_and_state();
     let loop_handle = event_loop.handle();
 
     let (mut session, notifier) = LibSeatSession::new().expect("libseat session");
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
-    let display: Display<WaylandState> = Display::new().expect("wayland display");
-    let mut state = WaylandState::new(display, &loop_handle);
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.backend.attach_state(&mut state);
-    }
+    super::common::attach_wayland_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
@@ -200,13 +183,7 @@ pub fn run() -> ! {
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
-    setup_wayland_socket(&loop_handle, &state);
-    spawn_xwayland(&state, &loop_handle);
-
-    // Initialize Wayland systray runtime - only applicable for Wayland backend
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
-    }
+    super::common::setup_wayland_listen_socket_xwayland_systray(&loop_handle, &state, &mut wm);
 
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
@@ -249,20 +226,7 @@ pub fn run() -> ! {
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
 
-    run_autostart();
-    spawn_wayland_smoke_window();
-
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
-
-    // Register IPC listener fd so the event loop wakes on incoming commands.
-    crate::runtime::register_ipc_source(&event_loop.handle(), &ipc_server);
-
-    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
-    crate::bar::status::set_internal_status_ping(status_ping);
-    event_loop
-        .handle()
-        .insert_source(status_ping_source, |_, _, _| {})
-        .expect("status ping source");
+    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle);
 
     // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");

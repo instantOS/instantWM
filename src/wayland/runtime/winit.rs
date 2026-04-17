@@ -9,42 +9,24 @@ use smithay::backend::input::InputEvent;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
-use smithay::reexports::calloop::{EventLoop, LoopSignal};
-use smithay::reexports::wayland_server::Display;
+use smithay::reexports::calloop::LoopSignal;
 
-use crate::backend::Backend as WmBackend;
-use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
-use crate::startup::autostart::run_autostart;
-use crate::wayland::common::{
-    ensure_dbus_session, init_wayland_globals, setup_wayland_socket, spawn_wayland_smoke_window,
-    spawn_xwayland,
-};
+use crate::wayland::common::sanitize_wayland_size;
 use crate::wayland::input::{
     apply_pending_warp, handle_keyboard, handle_pointer_axis, handle_pointer_button,
     handle_pointer_motion, motion_event_from_winit,
 };
 use crate::wayland::render::winit::render_frame;
-use crate::wm::Wm;
 
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
-    ensure_dbus_session();
-    let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
-    if let Some(wayland) = wm.backend.wayland_data_mut() {
-        init_wayland_globals(&mut wm.g, wayland);
-    }
-
-    let mut event_loop: EventLoop<WaylandState> = EventLoop::try_new().expect("wayland event loop");
+    let mut wm = super::common::create_wayland_wm_boxed();
+    let (mut event_loop, mut state) = super::common::new_wayland_event_loop_and_state();
     let loop_handle = event_loop.handle();
-
-    let display: Display<WaylandState> = Display::new().expect("wayland display");
-    let mut state = WaylandState::new(display, &loop_handle);
     state.attach_wm(&mut wm);
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.backend.attach_state(&mut state);
-    }
+    super::common::attach_wayland_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
@@ -59,8 +41,7 @@ pub fn run() -> ! {
     state.init_screencopy_manager();
 
     let output_size = backend.window_size();
-    let (initial_w, initial_h) =
-        crate::wayland::common::sanitize_wayland_size(output_size.w, output_size.h);
+    let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
     wm.g.cfg.screen_width = initial_w;
     wm.g.cfg.screen_height = initial_h;
     refresh_monitor_layout(&mut wm.ctx());
@@ -76,31 +57,15 @@ pub fn run() -> ! {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
-    setup_wayland_socket(&loop_handle, &state);
-    spawn_xwayland(&state, &loop_handle);
+    super::common::setup_wayland_listen_socket_xwayland_systray(&loop_handle, &state, &mut wm);
 
-    // Initialize Wayland systray runtime - only applicable for Wayland backend
-    if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
-    }
-
-    run_autostart();
-    spawn_wayland_smoke_window();
-    let mut ipc_server = crate::ipc::IpcServer::bind().ok();
-
-    crate::runtime::register_ipc_source(&loop_handle, &ipc_server);
+    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle);
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle
         .insert_source(render_ping_source, |_, _, _| {})
         .expect("render ping source");
     state.runtime.render_ping = Some(render_ping);
-
-    let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
-    crate::bar::status::set_internal_status_ping(status_ping);
-    loop_handle
-        .insert_source(status_ping_source, |_, _, _| {})
-        .expect("failed to insert status ping source");
 
     // ── Winit event source ──────────────────────────────────────────────
     // Insert the winit event loop as a calloop source so host window

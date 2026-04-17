@@ -1,5 +1,8 @@
 //! Shared utilities for all Wayland compositor backends.
 //!
+//! Runtime entry setup (WM + event loop + socket / autostart / IPC) lives in
+//! [`crate::wayland::runtime::common`].
+//!
 //! This module contains everything that is identical between the nested
 //! (winit) backend and the standalone DRM/KMS backend:
 //!
