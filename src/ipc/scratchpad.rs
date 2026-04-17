@@ -4,6 +4,7 @@ use crate::floating::scratchpad::{
 };
 use crate::ipc_types::{Response, ScratchpadCommand};
 use crate::types::WindowId;
+use crate::types::input::EdgeDirection;
 use crate::wm::Wm;
 
 pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Response {
@@ -53,8 +54,16 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             name,
             window_id,
             status,
+            direction,
         } => {
-            scratchpad_make(&mut wm.ctx(), &name, window_id.map(WindowId::from), status);
+            let dir = direction.as_deref().and_then(EdgeDirection::from_str_loose);
+            scratchpad_make(
+                &mut wm.ctx(),
+                &name,
+                window_id.map(WindowId::from),
+                dir,
+                status,
+            );
             Response::ok()
         }
         ScratchpadCommand::Delete { window_id } => {

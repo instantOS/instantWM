@@ -1,9 +1,8 @@
 //! Layout manager — the stateful half of the layout system.
 
 use crate::contexts::WmCtx;
-use crate::floating::save_floating_geometry;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Client, Monitor, MonitorId, Rect, WindowId};
+use crate::types::{Client, Monitor, MonitorId, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -86,7 +85,6 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     };
 
     apply_fullscreen(ctx, &monitor_after_layout);
-    place_overlay(ctx, &monitor_after_layout);
 }
 
 fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
@@ -158,31 +156,6 @@ fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
             .globals_mut()
             .monitors
             .set_monitor(monitor_id, m);
-    }
-}
-
-fn place_overlay(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
-    let overlay_win = monitor.overlay;
-    let work_rect = monitor.work_rect;
-
-    let win = match overlay_win {
-        Some(w) => w,
-        None => return,
-    };
-
-    let client_info = ctx.client(win).map(|c| (c.is_floating, c.border_width));
-
-    if let Some((is_floating, bw)) = client_info {
-        if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            save_floating_geometry(client);
-        }
-        let geo = Rect {
-            x: work_rect.x,
-            y: work_rect.y,
-            w: work_rect.w - 2 * bw,
-            h: work_rect.h - 2 * bw,
-        };
-        ctx.move_resize(win, geo, MoveResizeOptions::immediate());
     }
 }
 

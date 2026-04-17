@@ -196,6 +196,7 @@ pub enum ScratchpadCommand {
         name: String,
         window_id: Option<u32>,
         status: ScratchpadInitialStatus,
+        direction: Option<String>,
     },
     Delete {
         window_id: Option<u32>,

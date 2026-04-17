@@ -129,7 +129,11 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
 pub fn toggle_floating(ctx: &mut WmCtx) {
     let mon = ctx.core().globals().selected_monitor();
     let selected_window = match mon.sel {
-        Some(sel) if Some(sel) != mon.overlay => {
+        Some(sel)
+            if !ctx
+                .client(sel)
+                .is_some_and(|c| c.scratchpad_direction.is_some()) =>
+        {
             if let Some(c) = ctx.client(sel)
                 && c.is_true_fullscreen()
             {

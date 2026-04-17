@@ -518,11 +518,8 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: MonitorId) -> u32 {
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     let monitor_id = ctx.core.globals().clients.monitor_id(win);
 
-    // Clear overlay and fullscreen references.
+    // Clear fullscreen references.
     for mon in ctx.core.globals_mut().monitors_iter_all_mut() {
-        if mon.overlay == Some(win) {
-            mon.overlay = None;
-        }
         if mon.fullscreen == Some(win) {
             mon.fullscreen = None;
         }

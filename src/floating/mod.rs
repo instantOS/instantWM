@@ -8,13 +8,12 @@
 //! - [`movement`] — keyboard move, resize, center window, scale client
 //! - [`batch`]   — save/restore all floating positions, distribute clients
 //! - [`helpers`] — check_floating, visible_client, has_tiling_layout, apply_size
-//! - [`scratchpad`] — named floating windows that can be toggled visible/hidden
-//! - [`overlay`] — floating windows anchored to screen edges with animations
+//! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
+//!   with edge-anchored positioning support (overlay scratchpads)
 
 mod batch;
 mod helpers;
 mod movement;
-pub mod overlay;
 pub mod scratchpad;
 mod snap;
 mod state;
@@ -38,15 +37,11 @@ pub use state::{
     WindowMode, save_floating_geometry, set_window_mode, toggle_floating, toggle_maximized,
 };
 
-// ── overlay ───────────────────────────────────────────────────────────────────
-
-/// Create an overlay window.
-pub use overlay::{create_overlay, hide_overlay, set_overlay, set_overlay_mode, show_overlay};
-
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
-/// Make a window a scratchpad.
+/// Make a window a scratchpad (with optional edge-anchored positioning).
 pub use scratchpad::{
-    scratchpad_find, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
-    scratchpad_toggle, unhide_one,
+    overlay_create, overlay_toggle, scratchpad_find, scratchpad_hide_name, scratchpad_make,
+    scratchpad_show_name, scratchpad_toggle, scratchpad_unmake, set_scratchpad_direction,
+    unhide_one,
 };

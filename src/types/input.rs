@@ -304,24 +304,45 @@ pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDir
     }
 }
 
-/// The side of the screen from which the overlay window slides in/out.
+/// The screen edge where an edge-anchored scratchpad slides in/out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum OverlayMode {
-    /// Overlay slides down from the top edge (default).
+pub enum EdgeDirection {
+    /// Slides down from the top edge (default).
     #[default]
     Top,
-    /// Overlay slides in from the right edge.
+    /// Slides in from the right edge.
     Right,
-    /// Overlay slides up from the bottom edge.
+    /// Slides up from the bottom edge.
     Bottom,
-    /// Overlay slides in from the left edge.
+    /// Slides in from the left edge.
     Left,
 }
 
-impl OverlayMode {
-    /// Returns `true` for modes where the overlay is sized along the vertical axis.
+impl EdgeDirection {
+    /// Returns `true` for modes where the window is sized along the vertical axis.
     pub fn is_vertical(self) -> bool {
         matches!(self, Self::Top | Self::Bottom)
+    }
+
+    /// Lowercase name for serialization.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Top => "top",
+            Self::Right => "right",
+            Self::Bottom => "bottom",
+            Self::Left => "left",
+        }
+    }
+
+    /// Parse from a case-insensitive string.
+    pub fn from_str_loose(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "top" => Some(Self::Top),
+            "right" => Some(Self::Right),
+            "bottom" => Some(Self::Bottom),
+            "left" => Some(Self::Left),
+            _ => None,
+        }
     }
 }
 

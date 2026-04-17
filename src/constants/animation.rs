@@ -45,5 +45,5 @@ pub const WAYLAND_DEFAULT_ANIMATION_MILLIS: u64 = 90;
 /// Maximum tag number for view scrolling.
 pub const MAX_TAG_NUMBER: u32 = 9;
 
-/// Number of frames for overlay window animations.
+/// Number of frames for edge-anchored scratchpad animations.
 pub const OVERLAY_ANIMATION_FRAMES: i32 = 10;

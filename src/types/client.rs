@@ -65,6 +65,8 @@ pub struct Client {
     pub scratchpad_name: String,
     /// Tags to restore when unhiding from scratchpad.
     pub scratchpad_restore_tags: TagMask,
+    /// Edge direction for edge-anchored scratchpads (None for regular scratchpads).
+    pub scratchpad_direction: Option<crate::types::input::EdgeDirection>,
     /// Monitor this client is on.
     pub monitor_id: MonitorId,
     /// Window ID.

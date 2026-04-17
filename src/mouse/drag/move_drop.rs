@@ -113,21 +113,21 @@ pub struct MoveState {
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
-    let (sel, overlay, fullscreen) = {
+    let (sel, fullscreen) = {
         let g = ctx.core_mut().globals_mut();
         let mon = g.selected_monitor();
         let sel = mon.sel?;
-        (sel, mon.overlay, mon.fullscreen)
+        (sel, mon.fullscreen)
     };
     let c = ctx.core().client(sel)?;
     let is_true_fullscreen = c.is_true_fullscreen();
-    let is_overlay = Some(sel) == overlay;
+    let is_edge_scratchpad = c.scratchpad_direction.is_some();
     let is_fullscreen = Some(sel) == fullscreen;
 
     if is_true_fullscreen {
         return None;
     }
-    if is_overlay {
+    if is_edge_scratchpad {
         return None;
     }
     if is_fullscreen {

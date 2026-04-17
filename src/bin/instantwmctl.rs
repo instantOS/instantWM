@@ -35,6 +35,7 @@ mod tests {
                     name,
                     window_id: None,
                     status: ScratchpadInitialStatus::Shown,
+                    ..
                 }
             } if name == "term"
         ));
@@ -51,6 +52,7 @@ mod tests {
                     name,
                     window_id: None,
                     status: ScratchpadInitialStatus::Hidden,
+                    ..
                 }
             } if name == "term"
         ));
@@ -67,6 +69,7 @@ mod tests {
                     name,
                     window_id: None,
                     status: ScratchpadInitialStatus::Hidden,
+                    ..
                 }
             } if name == "instantwm_scratchpad"
         ));

@@ -2,8 +2,8 @@ use crate::actions::ActionMeta;
 use crate::client::{kill_client, shut_kill, toggle_fake_fullscreen_x11, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
-    center_window, create_overlay, distribute_clients, key_resize, scratchpad_find,
-    scratchpad_make, scratchpad_toggle, set_overlay, toggle_floating, toggle_maximized,
+    center_window, distribute_clients, key_resize, overlay_create, overlay_toggle, scratchpad_find,
+    scratchpad_make, scratchpad_toggle, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -22,7 +22,8 @@ use crate::toggles::{
     toggle_sticky, unhide_all,
 };
 use crate::types::{
-    HorizontalDirection, MonitorDirection, StackDirection, TagMask, ToggleAction, VerticalDirection,
+    EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, ToggleAction,
+    VerticalDirection,
 };
 use crate::util::spawn;
 
@@ -138,8 +139,12 @@ define_named_actions!(
     FocusMonNext => { name: "focus_mon_next", arg_example: None, doc: "focus next monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::NEXT); } },
     FollowMonPrev => { name: "follow_mon_prev", arg_example: None, doc: "move client to prev monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::PREV); } },
     FollowMonNext => { name: "follow_mon_next", arg_example: None, doc: "move client to next monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::NEXT); } },
-    SetOverlay => { name: "set_overlay", arg_example: None, doc: "set overlay", run: |ctx, _args| { set_overlay(ctx); } },
-    CreateOverlay => { name: "create_overlay", arg_example: None, doc: "create overlay from focused client", run: |ctx, _args| { if let Some(win) = ctx.selected_client() { create_overlay(ctx, win); } } },
+    OverlayToggle => { name: "overlay_toggle", arg_example: None, doc: "toggle overlay scratchpad visibility", run: |ctx, _args| { overlay_toggle(ctx); } },
+    OverlayCreate => { name: "overlay_create", arg_example: None, doc: "create overlay scratchpad from focused window", run: |ctx, _args| { overlay_create(ctx); } },
+    OverlayDirectionUp => { name: "overlay_direction_up", arg_example: None, doc: "set overlay direction to top", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Top); } },
+    OverlayDirectionDown => { name: "overlay_direction_down", arg_example: None, doc: "set overlay direction to bottom", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Bottom); } },
+    OverlayDirectionLeft => { name: "overlay_direction_left", arg_example: None, doc: "set overlay direction to left", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Left); } },
+    OverlayDirectionRight => { name: "overlay_direction_right", arg_example: None, doc: "set overlay direction to right", run: |ctx, _args| { overlay_set_direction(ctx, EdgeDirection::Right); } },
     ScratchpadToggle => {
         name: "scratchpad_toggle",
         arg_example: None,
@@ -149,7 +154,7 @@ define_named_actions!(
             if scratchpad_find(ctx.core().globals(), DEFAULT_NAME).is_some() {
                 scratchpad_toggle(ctx, Some(DEFAULT_NAME));
             } else {
-                scratchpad_make(ctx, DEFAULT_NAME, None, ScratchpadInitialStatus::Shown);
+                scratchpad_make(ctx, DEFAULT_NAME, None, None, ScratchpadInitialStatus::Shown);
             }
         }
     },
@@ -175,6 +180,14 @@ define_named_actions!(
     SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| parse_layout_kind_name(s)) { set_layout(ctx, name); } } },
     FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| parse_stack_direction_name(s)) { focus_stack(ctx, direction); } } }
 );
+
+fn overlay_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
+    use crate::floating::scratchpad::{scratchpad_find, set_scratchpad_direction};
+    const NAME: &str = "instantwm_overlay_scratch";
+    if let Some(win) = scratchpad_find(ctx.core().globals(), NAME) {
+        set_scratchpad_direction(ctx, win, dir);
+    }
+}
 
 #[cfg(test)]
 mod tests {

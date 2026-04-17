@@ -12,7 +12,6 @@ use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::Rect;
 use crate::types::input::Gesture;
-use crate::types::input::OverlayMode;
 use crate::types::tag_types::MonitorDirection;
 
 /// Persistent per-monitor client z-order.
@@ -120,10 +119,6 @@ pub struct Monitor {
     pub showbar: bool,
     /// Whether the bar is at the top.
     pub topbar: bool,
-    /// Overlay status.
-    pub overlaystatus: i32,
-    /// Overlay mode (which edge it slides from).
-    pub overlaymode: OverlayMode,
     /// Current gesture state.
     pub gesture: Gesture,
     /// Bar window handle.
@@ -150,8 +145,6 @@ pub struct Monitor {
     pub tag_tiled_focus_history: HashMap<u32, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
     pub pertag: HashMap<u32, PertagState>,
-    /// Overlay window.
-    pub overlay: Option<WindowId>,
     /// Persistent client z-order.
     pub z_order: ClientZOrder,
     /// Currently fullscreen client.
@@ -182,8 +175,6 @@ impl Default for Monitor {
             clientcount: 0,
             showbar: true,
             topbar: true,
-            overlaystatus: 0,
-            overlaymode: OverlayMode::default(),
             gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: 0,
@@ -195,7 +186,6 @@ impl Default for Monitor {
             tag_focus_history: HashMap::new(),
             tag_tiled_focus_history: HashMap::new(),
             pertag: HashMap::new(),
-            overlay: None,
             z_order: ClientZOrder::default(),
             fullscreen: None,
             name: String::new(),
@@ -214,7 +204,6 @@ impl Monitor {
             pertag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             clientcount: 0,
-            overlaymode: OverlayMode::Top,
             current_tag: Some(1),
             prev_tag: Some(1),
             tags: Vec::new(),

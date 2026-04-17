@@ -95,16 +95,3 @@ pub const RESIZE_WIDGET_WIDTH: i32 = 30;
 
 /// Width of sidebar in pixels.
 pub const SIDEBAR_WIDTH: i32 = 50;
-
-// =============================================================================
-// Overlay Constants
-// =============================================================================
-
-/// Width of overlay activation zone in pixels.
-pub const OVERLAY_ACTIVATION_ZONE: i32 = 20;
-
-/// X keep zone for overlay.
-pub const OVERLAY_KEEP_ZONE_X: i32 = 40;
-
-/// Y keep zone for overlay.
-pub const OVERLAY_KEEP_ZONE_Y: i32 = 30;

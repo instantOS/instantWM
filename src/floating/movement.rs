@@ -76,8 +76,10 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
-    let is_overlay = ctx.core().globals().selected_monitor().overlay == Some(win);
-    if is_overlay {
+    let is_edge_scratchpad = ctx
+        .client(win)
+        .is_some_and(|c| c.scratchpad_direction.is_some());
+    if is_edge_scratchpad {
         return;
     }
     let (geo, is_floating) = match ctx.client(win) {

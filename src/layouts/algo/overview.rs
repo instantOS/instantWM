@@ -76,9 +76,9 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         };
 
         let is_hidden = c.oldstate != 0;
-        let is_overlay = m.overlay == Some(win);
+        let is_edge_scratchpad = c.scratchpad_direction.is_some();
 
-        if is_hidden || is_overlay {
+        if is_hidden || is_edge_scratchpad {
             continue;
         }
 

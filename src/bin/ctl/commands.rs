@@ -137,6 +137,8 @@ pub enum ScratchpadAction {
         window_id: Option<u32>,
         #[arg(long, default_value = "hidden")]
         status: ScratchpadInitialStatus,
+        #[arg(long)]
+        direction: Option<String>,
     },
     Delete {
         #[arg(long, short = 'w')]
@@ -511,10 +513,12 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
                     name,
                     window_id,
                     status,
+                    direction,
                 } => ScratchpadCommand::Create {
                     name,
                     window_id,
                     status,
+                    direction,
                 },
                 ScratchpadAction::Delete { window_id } => ScratchpadCommand::Delete { window_id },
             };

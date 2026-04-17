@@ -4,7 +4,7 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::config::ModeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::floating::{
-    change_snap, reset_snap, save_floating_geometry, set_overlay_mode, toggle_floating, unhide_one,
+    change_snap, reset_snap, save_floating_geometry, toggle_floating, unhide_one,
 };
 use crate::focus::{direction_focus, focus_stack};
 
@@ -287,20 +287,14 @@ pub fn update_num_lock_mask_x11(
 }
 
 pub fn up_press(ctx: &mut WmCtx) {
-    let (selected_window, overlay_win, is_floating) = {
+    let (selected_window, is_floating) = {
         let mon = ctx.core().globals().selected_monitor();
         let sel = mon.sel;
-        let overlay = mon.overlay;
         let is_floating = sel.is_some_and(|w| ctx.core().globals().clients.is_floating(w));
-        (sel, overlay, is_floating)
+        (sel, is_floating)
     };
 
     if selected_window.is_none() {
-        return;
-    }
-
-    if selected_window == overlay_win {
-        set_overlay_mode(ctx, OverlayMode::Top);
         return;
     }
 
@@ -319,10 +313,9 @@ pub fn down_press(ctx: &mut WmCtx) {
         return;
     }
 
-    let (selected_window, overlay_win, snap_status, is_floating) = {
+    let (selected_window, snap_status, is_floating) = {
         let mon = ctx.core().globals().selected_monitor();
         let sel = mon.sel;
-        let overlay = mon.overlay;
         let (snap_status, is_floating) = sel
             .and_then(|w| {
                 ctx.core()
@@ -332,7 +325,7 @@ pub fn down_press(ctx: &mut WmCtx) {
                     .map(|c| (c.snap_status, c.is_floating))
             })
             .unwrap_or((SnapPosition::None, false));
-        (sel, overlay, snap_status, is_floating)
+        (sel, snap_status, is_floating)
     };
 
     if selected_window.is_none() {
@@ -343,11 +336,6 @@ pub fn down_press(ctx: &mut WmCtx) {
         if let Some(win) = selected_window {
             reset_snap(ctx, win);
         }
-        return;
-    }
-
-    if selected_window == overlay_win {
-        set_overlay_mode(ctx, OverlayMode::Bottom);
         return;
     }
 

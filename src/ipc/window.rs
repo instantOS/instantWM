@@ -50,6 +50,7 @@ fn build_scratchpad_info(
         height: Some(c.geo.h),
         floating: c.is_floating,
         fullscreen: c.is_fullscreen,
+        direction: c.scratchpad_direction.map(|d| d.as_str().to_string()),
     })
 }
 

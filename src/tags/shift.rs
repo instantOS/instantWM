@@ -7,7 +7,7 @@ use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
 use crate::tags::sticky::reset_sticky_win;
-use crate::types::{Direction, HorizontalDirection, OverlayMode, Rect, TagMask, WindowId};
+use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};
 
 pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
     shift_tag(ctx, dir.into(), 1);
@@ -15,7 +15,7 @@ pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
 }
 
 pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
-    let (win, current_tag, overlay_win, tagset, tagmask, animated) = {
+    let (win, current_tag, tagset, tagmask, animated) = {
         let mon = ctx.core().globals().selected_monitor();
         let Some(win) = mon.sel else {
             return;
@@ -26,23 +26,11 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         (
             win,
             current_tag,
-            mon.overlay,
             mon.selected_tags(),
             ctx.core().globals().tags.mask(),
             ctx.core().globals().behavior.animated,
         )
     };
-
-    if Some(win) == overlay_win {
-        let mode = match dir {
-            Direction::Left => OverlayMode::Left,
-            Direction::Right => OverlayMode::Right,
-            Direction::Up => OverlayMode::Top,
-            Direction::Down => OverlayMode::Bottom,
-        };
-        crate::floating::set_overlay_mode(ctx, mode);
-        return;
-    }
 
     if dir == Direction::Left && current_tag <= 1 {
         return;
