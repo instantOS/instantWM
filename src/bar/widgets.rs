@@ -215,15 +215,7 @@ pub(crate) fn draw_close_button(
 ) {
     let selmon = ctx.globals().selected_monitor();
     let close_hovered = selmon.gesture == Gesture::CloseButton;
-    let is_fullscreen = selmon
-        .sel
-        .and_then(|selected_window| {
-            ctx.globals()
-                .clients
-                .get(&selected_window)
-                .map(|sel_c| sel_c.mode.is_fullscreen() && sel_c.win == c.win)
-        })
-        .unwrap_or(false);
+    let is_fullscreen = c.mode.is_fullscreen();
 
     let mut scheme = ctx
         .globals()

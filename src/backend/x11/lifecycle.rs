@@ -290,7 +290,7 @@ fn configure_client_border(
         return;
     };
 
-    let border_width = if !client.mode.is_floating()
+    let border_width = if client.mode.is_tiling()
         && is_monocle
         && client.geo.w > mon_monitor_rect.w - 30
         && client.geo.h > mon_monitor_rect.h - 30 - bar_height

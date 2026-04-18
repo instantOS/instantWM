@@ -64,14 +64,14 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
             c.mode = c.mode.as_fullscreen();
             c.save_border_width();
-
-            if !mode.is_fake_fullscreen() {
-                // Remove the border.
-                c.border_width = 0;
-            }
         }
 
         if !mode.is_fake_fullscreen() {
+            // Remove the border, position and raise the window.
+            if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
+                c.border_width = 0;
+            }
+
             let mon_rect = ctx_x11
                 .core
                 .globals()
@@ -81,7 +81,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
 
             // Animate the expansion only for non-floating clients (floating
             // windows just snap into place immediately).
-            if !mode.is_floating() {
+            if mode.is_tiling() {
                 WmCtx::X11(ctx_x11.reborrow()).move_resize(
                     win,
                     mon_rect,

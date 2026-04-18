@@ -153,28 +153,29 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// only applied on X11, since Wayland geometry is driven by the compositor
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
-    // Read all the state we need through the backend-agnostic core.
     let maximized_win = ctx.core().globals().selected_monitor().maximized;
     let selected_window = ctx.selected_client();
     let animated = ctx.core().globals().behavior.animated;
 
     if let Some(win) = maximized_win {
         // --- Exit maximized state ---
-
-        let is_floating = ctx
+        let was_floating = ctx
             .core()
             .globals()
             .clients
             .get(&win)
-            .map(|c| c.mode.is_floating())
+            .map(|c| c.mode.base_mode() == BaseClientMode::Floating)
             .unwrap_or(false);
+
+        // Restore the mode (tiling or floating).
+        if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            c.mode = c.mode.restored();
+        }
 
         // For floating windows (or monitors with no tiling layout), restore
         // the saved pre-maximized geometry.
-        if is_floating || !super::helpers::has_tiling_layout(ctx.core()) {
+        if was_floating || !super::helpers::has_tiling_layout(ctx.core()) {
             restore_floating_geometry(ctx, win);
-            // On X11, nudge the window by 1 px so the server re-evaluates
-            // size hints and repaints the frame correctly.
             if let WmCtx::X11(x11) = ctx {
                 super::helpers::apply_size(x11, win);
             }
@@ -186,13 +187,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
             .maximized = None;
     } else {
         // --- Enter maximized state ---
-
         let Some(win) = selected_window else { return };
-
-        ctx.core_mut()
-            .globals_mut()
-            .selected_monitor_mut()
-            .maximized = Some(win);
 
         // Save floating geometry so we can restore it on toggle-off.
         if super::helpers::check_floating(ctx.core(), win)
@@ -200,6 +195,15 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
         {
             save_floating_geometry(client);
         }
+
+        if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            c.mode = c.mode.as_maximized();
+        }
+
+        ctx.core_mut()
+            .globals_mut()
+            .selected_monitor_mut()
+            .maximized = Some(win);
     }
 
     // Run the layout pass.  Disable animations temporarily so the

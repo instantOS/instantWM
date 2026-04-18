@@ -98,12 +98,9 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
                 .monitors_iter()
                 .any(|(_, m)| m.is_tiling_layout());
 
-            let should_position = match mode {
-                ClientMode::Floating | ClientMode::Maximized { .. } => true,
-                ClientMode::TrueFullscreen { .. } => false,
-                ClientMode::FakeFullscreen { .. } => true,
-                ClientMode::Tiling => !is_tiling,
-            };
+            let should_position = mode.is_free_positioned()
+                || mode.is_fake_fullscreen()
+                || (mode.is_tiling() && !is_tiling);
             if should_position {
                 let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
                 tmp_ctx.move_resize(

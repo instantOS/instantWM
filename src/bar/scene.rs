@@ -167,7 +167,7 @@ pub(crate) fn build_monitor_snapshots(
             let is_hover = gesture == Gesture::WinTitle(c.win);
             let scheme = core.globals().window_scheme(c, is_hover);
             let close_scheme = if is_selected_monitor && mon.sel == Some(c.win) {
-                let is_fullscreen = mon.sel == Some(c.win) && c.mode.is_fullscreen();
+                let is_fullscreen = c.mode.is_fullscreen();
                 Some(core.globals().close_button_scheme(
                     gesture == Gesture::CloseButton,
                     c.is_locked,
