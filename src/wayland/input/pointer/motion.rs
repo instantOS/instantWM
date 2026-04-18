@@ -436,6 +436,7 @@ fn update_hover_resize_state(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 AltCursor::Default,
             );
+            suppress_hover_focus = false;
         }
     }
 
