@@ -40,17 +40,3 @@ pub const REFRESH_RATE_LO: u32 = 120;
 
 /// X11 hardware keycode for the Escape key, used to abort hover-resize.
 pub const KEYCODE_ESCAPE: u8 = 9;
-
-// ── Resize-direction indices ──────────────────────────────────────────────────
-//
-// These index into whichever directional logic needs to identify which corner
-// or edge of a window is being dragged.
-
-pub const RESIZE_DIR_TOP_LEFT: i32 = 0;
-pub const RESIZE_DIR_TOP: i32 = 1;
-pub const RESIZE_DIR_TOP_RIGHT: i32 = 2;
-pub const RESIZE_DIR_RIGHT: i32 = 3;
-pub const RESIZE_DIR_BOTTOM_RIGHT: i32 = 4;
-pub const RESIZE_DIR_BOTTOM: i32 = 5;
-pub const RESIZE_DIR_BOTTOM_LEFT: i32 = 6;
-pub const RESIZE_DIR_LEFT: i32 = 7;
