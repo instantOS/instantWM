@@ -64,11 +64,7 @@ impl ImageCopyCaptureHandler for WaylandState {
             capture_dmabuf_constraints(renderer, render_node, Fourcc::Xrgb8888)
         };
 
-        let shm_formats = if dma.is_some() {
-            Vec::new()
-        } else {
-            vec![wl_shm::Format::Xrgb8888]
-        };
+        let shm_formats = vec![wl_shm::Format::Xrgb8888];
 
         Some(BufferConstraints {
             size,
