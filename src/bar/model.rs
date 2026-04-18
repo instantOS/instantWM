@@ -91,7 +91,7 @@ pub(crate) fn hit_test(
     }
 
     if local_x >= hit.layout_start && local_x < hit.layout_end {
-        return BarPosition::LtSymbol;
+        return BarPosition::LayoutSymbol;
     }
 
     if monitor.sel.is_none() && local_x < hit.shutdown_end {

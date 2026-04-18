@@ -888,7 +888,7 @@ impl Globals {
                 SchemeTag::Focus
             } else if m.selected_tags().contains(tag_num) {
                 SchemeTag::NoFocus
-            } else if m.showtags == 0 {
+            } else if !m.showtags {
                 SchemeTag::Filled
             } else {
                 SchemeTag::Inactive

@@ -14,10 +14,6 @@ fn toggled_bool(current: bool, action: ToggleAction) -> bool {
     next
 }
 
-fn showtags_from_visible(visible: bool) -> u32 {
-    if visible { 1 } else { 0 }
-}
-
 fn toggle_mode_name(current: &str, name: &str) -> String {
     if current == name {
         "default".to_string()
@@ -107,7 +103,7 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
         let selmon_id = ctx.core().globals().selected_monitor_id();
 
         let showtags = ctx.core().globals().selected_monitor().showtags;
-        let new_showtags = showtags_from_visible(toggled_bool(showtags != 0, action));
+        let new_showtags = toggled_bool(showtags, action);
 
         (selmon_id, new_showtags)
     };
@@ -193,7 +189,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
 #[cfg(test)]
 mod tests {
-    use super::{showtags_from_visible, toggle_mode_name, toggled_bool};
+    use super::{toggle_mode_name, toggled_bool};
     use crate::types::ToggleAction;
 
     #[test]
@@ -202,12 +198,6 @@ mod tests {
         assert!(toggled_bool(false, ToggleAction::Toggle));
         assert!(toggled_bool(false, ToggleAction::SetTrue));
         assert!(!toggled_bool(true, ToggleAction::SetFalse));
-    }
-
-    #[test]
-    fn showtags_from_visible_is_stable() {
-        assert_eq!(showtags_from_visible(true), 1);
-        assert_eq!(showtags_from_visible(false), 0);
     }
 
     #[test]

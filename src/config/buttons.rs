@@ -37,10 +37,10 @@ pub fn get_buttons() -> Vec<Button> {
     use BarPosition::*;
 
     vec![
-        btn!(LtSymbol, 0, button:MouseButton::Left => named(NamedAction::CycleLayoutPrev)),
-        btn!(LtSymbol, 0, button:MouseButton::Right => named(NamedAction::CycleLayoutNext)),
-        btn!(LtSymbol, 0, button:MouseButton::Middle => named(NamedAction::LayoutTile)),
-        btn!(LtSymbol, MODKEY, button:MouseButton::Left => named(NamedAction::EdgeScratchpadCreate)),
+        btn!(LayoutSymbol, 0, button:MouseButton::Left => named(NamedAction::CycleLayoutPrev)),
+        btn!(LayoutSymbol, 0, button:MouseButton::Right => named(NamedAction::CycleLayoutNext)),
+        btn!(LayoutSymbol, 0, button:MouseButton::Middle => named(NamedAction::LayoutTile)),
+        btn!(LayoutSymbol, MODKEY, button:MouseButton::Left => named(NamedAction::EdgeScratchpadCreate)),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Left => ButtonAction::WindowTitleMouseHandler),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Middle => ButtonAction::CloseClickedTitleWindow),
         btn!(WinTitle(WindowId(0)), 0, button:MouseButton::Right => ButtonAction::WindowTitleMouseHandler),

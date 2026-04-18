@@ -93,7 +93,7 @@ pub enum BarPosition {
     /// A tag indicator button. The inner value is the **0-based** tag index.
     Tag(usize),
     /// The layout symbol indicator (e.g. `[]=`).
-    LtSymbol,
+    LayoutSymbol,
     /// The shutdown/power button (shown when no client is selected).
     ShutDown,
     /// The title cell of a specific client window.

@@ -123,8 +123,8 @@ pub struct Monitor {
     pub gesture: Gesture,
     /// Bar window handle.
     pub bar_win: WindowId,
-    /// Which tags to show.
-    pub showtags: u32,
+    /// Whether to hide empty inactive tags from the bar.
+    pub showtags: bool,
     /// Previously selected single tag index.
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
@@ -175,7 +175,7 @@ impl Default for Monitor {
             topbar: true,
             gesture: Gesture::default(),
             bar_win: WindowId::default(),
-            showtags: 0,
+            showtags: false,
             prev_tag: None,
             tags: Vec::new(),
             clients: Vec::new(),
@@ -576,9 +576,9 @@ impl Monitor {
 
     /// Return true if the tag at `tag_index` should be hidden.
     ///
-    /// A tag is hidden when `showtags != 0` and it is neither occupied nor selected.
+    /// A tag is hidden when compact tag display is enabled and it is neither occupied nor selected.
     pub fn should_hide_tag(&self, tag_index: usize, occupied: TagMask) -> bool {
-        if self.showtags == 0 {
+        if !self.showtags {
             return false;
         }
         let tag_num = tag_index + 1;
