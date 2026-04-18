@@ -418,18 +418,18 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
                     let (root_x, root_y, win_x, win_y) =
                         query_pointer_on_win(&mut wm_ctx, win).unwrap_or((0, 0, 0, 0));
 
-                    let btn = MouseButton::from_u8(bp.detail).unwrap_or(MouseButton::Left);
+                    let Some(btn) = MouseButton::from_x11_detail(bp.detail) else {
+                        return false;
+                    };
                     wm_ctx.raise_client(win);
-                    match bp.detail {
-                        // Right-click → move
-                        3 => {
+                    match btn {
+                        MouseButton::Right => {
                             let mut wm_ctx_x11 = ctx.reborrow();
                             let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                             super::warp::warp_into(&mut wmctx, win);
                             crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                         }
-                        // Left-click
-                        1 => {
+                        MouseButton::Left => {
                             if is_at_top_middle_edge(&geo, root_x, root_y) {
                                 let mut wm_ctx_x11 = ctx.reborrow();
                                 let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());

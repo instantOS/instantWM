@@ -123,8 +123,7 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
             }
 
             let strip_border = info.mode.is_true_fullscreen()
-                || (info.mode.is_tiling()
-                    && ((clientcount == 1 && is_tiling) || is_monocle));
+                || (info.mode.is_tiling() && ((clientcount == 1 && is_tiling) || is_monocle));
 
             let new_border = if strip_border {
                 0

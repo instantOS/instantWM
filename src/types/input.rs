@@ -9,21 +9,21 @@ use crate::types::WindowId;
 pub enum MouseButton {
     /// Left mouse button.
     #[default]
-    Left = 1,
+    Left,
     /// Middle mouse button.
-    Middle = 2,
+    Middle,
     /// Right mouse button.
-    Right = 3,
+    Right,
     /// Scroll up.
-    ScrollUp = 4,
+    ScrollUp,
     /// Scroll down.
-    ScrollDown = 5,
+    ScrollDown,
 }
 
 impl MouseButton {
-    /// Convert from a u8 value.
-    pub fn from_u8(value: u8) -> Option<Self> {
-        match value {
+    /// Convert from an X11 button detail value.
+    pub fn from_x11_detail(detail: u8) -> Option<Self> {
+        match detail {
             1 => Some(Self::Left),
             2 => Some(Self::Middle),
             3 => Some(Self::Right),
@@ -33,9 +33,15 @@ impl MouseButton {
         }
     }
 
-    /// Convert to a u8 value.
-    pub fn as_u8(self) -> u8 {
-        self as u8
+    /// Convert to an X11 button detail value.
+    pub fn to_x11_detail(self) -> u8 {
+        match self {
+            Self::Left => 1,
+            Self::Middle => 2,
+            Self::Right => 3,
+            Self::ScrollUp => 4,
+            Self::ScrollDown => 5,
+        }
     }
 }
 

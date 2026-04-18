@@ -291,7 +291,7 @@ pub fn grab_buttons_x11(
             continue;
         }
 
-        let grab = (button.button.as_u8(), button.mask);
+        let grab = (button.button.to_x11_detail(), button.mask);
         if !grabs.contains(&grab) {
             grabs.push(grab);
         }

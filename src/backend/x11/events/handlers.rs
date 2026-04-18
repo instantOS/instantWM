@@ -107,7 +107,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let client_binding_matched = bar_pos == BarPosition::ClientWin
         && buttons_clone.iter().any(|button| {
             button.matches(bar_pos)
-                && button.button.as_u8() == e.detail
+                && button.button.to_x11_detail() == e.detail
                 && crate::util::clean_mask(button.mask, numlockmask) == clean_state
         });
 
@@ -132,7 +132,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         && let crate::globals::HoverResizeOffer::Resize(dir) = hover_offer
     {
         crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
-        let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
+        let btn = MouseButton::from_x11_detail(e.detail).unwrap_or(MouseButton::Left);
         let mut x11_ctx = ctx.reborrow();
         if btn == MouseButton::Right {
             crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
@@ -146,7 +146,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         return;
     };
 
-    if let Some(btn) = MouseButton::from_u8(e.detail) {
+    if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
         let target_window = ctx
             .core
             .globals()

@@ -196,7 +196,7 @@ pub fn mouse_drag_loop<F>(
 
                             // Now process the non-motion event we peeked.
                             if let x11rb::protocol::Event::ButtonRelease(br) = next_evt
-                                && br.detail == btn.as_u8()
+                                && br.detail == btn.to_x11_detail()
                             {
                                 pump_deferred_work(ctx);
                                 ungrab(ctx);
@@ -224,7 +224,7 @@ pub fn mouse_drag_loop<F>(
 
         let should_continue = match &event {
             x11rb::protocol::Event::ButtonRelease(br) => {
-                if br.detail == btn.as_u8() {
+                if br.detail == btn.to_x11_detail() {
                     false
                 } else {
                     on_event(ctx, &event)

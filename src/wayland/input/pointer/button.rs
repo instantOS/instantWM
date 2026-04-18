@@ -13,7 +13,7 @@ use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
 use crate::wayland::input::bar::{
-    dispatch_wayland_bar_click, update_wayland_bar_hit_state, wayland_button_to_wm_button,
+    dispatch_wayland_bar_click, update_wayland_bar_hit_state, wayland_button_to_mouse_button,
 };
 use crate::wayland::input::pointer::drag::{
     wayland_hover_resize_drag_begin, wayland_hover_resize_drag_finish,
@@ -31,7 +31,7 @@ pub fn handle_pointer_button<B: InputBackend>(
     let serial = SERIAL_COUNTER.next_serial();
     let root_x = pointer_location.x.round() as i32;
     let root_y = pointer_location.y.round() as i32;
-    let wm_button = wayland_button_to_wm_button(event.button_code()).and_then(MouseButton::from_u8);
+    let wm_button = wayland_button_to_mouse_button(event.button_code());
 
     // When the session is locked, just forward the raw button event to the lock surface.
     if state.is_locked() {

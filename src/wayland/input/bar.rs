@@ -21,10 +21,7 @@ pub fn dispatch_wayland_bar_click(
     root_y: i32,
     clean_state: u32,
 ) {
-    let Some(button_code) = wayland_button_to_wm_button(button_code) else {
-        return;
-    };
-    let Some(button) = MouseButton::from_u8(button_code) else {
+    let Some(button) = wayland_button_to_mouse_button(button_code) else {
         return;
     };
 
@@ -79,7 +76,13 @@ pub fn dispatch_wayland_bar_click(
 
     if pos == BarPosition::StatusText {
         let mut ctx = wm.ctx();
-        crate::bar::handle_status_text_click(&mut ctx, root_x, root_y, button_code, clean_state);
+        crate::bar::handle_status_text_click(
+            &mut ctx,
+            root_x,
+            root_y,
+            button.to_x11_detail(),
+            clean_state,
+        );
         return;
     }
 
@@ -143,11 +146,11 @@ const BTN_LEFT: u32 = 0x110;
 const BTN_MIDDLE: u32 = 0x112;
 const BTN_RIGHT: u32 = 0x111;
 
-pub fn wayland_button_to_wm_button(code: u32) -> Option<u8> {
+pub fn wayland_button_to_mouse_button(code: u32) -> Option<MouseButton> {
     match code {
-        BTN_LEFT => Some(1),
-        BTN_MIDDLE => Some(2),
-        BTN_RIGHT => Some(3),
+        BTN_LEFT => Some(MouseButton::Left),
+        BTN_MIDDLE => Some(MouseButton::Middle),
+        BTN_RIGHT => Some(MouseButton::Right),
         _ => None,
     }
 }
