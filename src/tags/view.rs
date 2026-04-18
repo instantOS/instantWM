@@ -41,20 +41,14 @@ fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId
             return None;
         }
 
+        let previous_current_tag = mon.current_tag_index();
         mon.sel_tags ^= 1;
         mon.set_selected_tags(new_mask);
 
-        let current_tag = mon.current_tag;
-        let all_tags = TagMask::all(mon.tags.len());
-        if new_mask == all_tags {
-            mon.prev_tag = current_tag;
-            mon.current_tag = None;
-        } else {
-            let new_tag = new_mask.first_tag();
-            if current_tag.is_none_or(|tag| !new_mask.contains(tag)) {
-                mon.prev_tag = current_tag;
-                mon.current_tag = new_tag;
-            }
+        if previous_current_tag != mon.current_tag_index()
+            && let Some(previous_current_tag) = previous_current_tag
+        {
+            mon.prev_tag = Some(previous_current_tag);
         }
     }
 
@@ -167,7 +161,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
 
 pub fn last_view(ctx: &mut WmCtx) {
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, prev_tag) = (mon.current_tag, mon.prev_tag);
+    let (current_tag, prev_tag) = (mon.current_tag_index(), mon.prev_tag);
 
     if current_tag == prev_tag {
         crate::focus::focus_last_client(ctx);
@@ -192,7 +186,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY));
 
     if tag_mask.is_scratchpad_only() {
-        let current_tag = ctx.core().globals().selected_monitor().current_tag;
+        let current_tag = ctx.core().globals().selected_monitor().current_tag_index();
         if let Some(mask) = current_tag.and_then(TagMask::single) {
             view_tags(ctx, mask);
         }
@@ -215,7 +209,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     let tagmask = ctx.core().globals().tags.mask();
     let newtag = mask & tagmask;
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, current_tagset) = (mon.current_tag, mon.selected_tags());
+    let (current_tag, current_tagset) = (mon.current_tag_index(), mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
     }
@@ -247,7 +241,6 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
     }
-    mon.current_tag = Some(target_idx);
     crate::focus::focus_soft(ctx, None);
     ctx.core_mut()
         .globals_mut()
@@ -283,7 +276,7 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
         let mon = ctx.core().globals().selected_monitor();
         (
             !mon.clients.is_empty(),
-            mon.current_tag,
+            mon.current_tag_index(),
             mon.current_layout(),
             ctx.core().globals().tags.count(),
         )
@@ -374,7 +367,7 @@ mod tests {
 }
 
 pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let current_tag = ctx.core().globals().selected_monitor().current_tag;
+    let current_tag = ctx.core().globals().selected_monitor().current_tag_index();
 
     match current_tag {
         None => win_view(ctx),
@@ -387,7 +380,7 @@ pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
     let mon = ctx.core().globals().selected_monitor();
-    let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
+    let (Some(current_tag), tagset) = (mon.current_tag_index(), mon.selected_tags()) else {
         return;
     };
 
@@ -405,7 +398,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
 /// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
     let mon = ctx.core().globals().selected_monitor();
-    let (Some(current_tag), tagset) = (mon.current_tag, mon.selected_tags()) else {
+    let (Some(current_tag), tagset) = (mon.current_tag_index(), mon.selected_tags()) else {
         return None;
     };
 

@@ -125,8 +125,6 @@ pub struct Monitor {
     pub bar_win: WindowId,
     /// Which tags to show.
     pub showtags: u32,
-    /// Current tag index when the selected view is a single tag.
-    pub current_tag: Option<usize>,
     /// Previously selected single tag index.
     pub prev_tag: Option<usize>,
     /// Tags owned by this monitor.
@@ -178,7 +176,6 @@ impl Default for Monitor {
             gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: 0,
-            current_tag: None,
             prev_tag: None,
             tags: Vec::new(),
             clients: Vec::new(),
@@ -204,7 +201,6 @@ impl Monitor {
             pertag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             clientcount: 0,
-            current_tag: Some(1),
             prev_tag: Some(1),
             tags: Vec::new(),
             monitor_id: MonitorId(0),
@@ -267,7 +263,12 @@ impl Monitor {
 
     #[inline]
     pub fn current_tag_index(&self) -> Option<usize> {
-        self.current_tag
+        let selected = self.selected_tags();
+        if selected.is_single() {
+            selected.first_tag()
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -277,7 +278,7 @@ impl Monitor {
 
     #[inline]
     pub fn is_all_tags_view(&self) -> bool {
-        self.current_tag.is_none()
+        self.selected_tags() == TagMask::all(self.tags.len())
     }
 
     /// Iterate the monitor's client list (focus order).
@@ -442,7 +443,7 @@ impl Monitor {
 
     /// Get the current tag name data for this monitor.
     pub fn current_tag(&self) -> Option<&TagNames> {
-        let idx = self.current_tag?;
+        let idx = self.current_tag_index()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&self.tags[idx - 1])
         } else {
@@ -452,7 +453,7 @@ impl Monitor {
 
     /// Get a mutable reference to the current tag name data.
     pub fn current_tag_mut(&mut self) -> Option<&mut TagNames> {
-        let idx = self.current_tag?;
+        let idx = self.current_tag_index()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&mut self.tags[idx - 1])
         } else {
@@ -591,7 +592,7 @@ impl Monitor {
     pub fn tag_index_for_slot(&self, slot: usize) -> usize {
         const MAX_BAR_SLOTS: usize = 9;
         if slot == MAX_BAR_SLOTS - 1
-            && let Some(current_tag) = self.current_tag
+            && let Some(current_tag) = self.current_tag_index()
             && current_tag > MAX_BAR_SLOTS
         {
             current_tag - 1
@@ -778,6 +779,38 @@ mod tests {
 
         assert_eq!(state.nmaster, 1);
         assert_eq!(state.mfact, 0.55);
+    }
+
+    #[test]
+    fn current_tag_index_is_derived_from_selected_tags() {
+        let mut monitor = Monitor::default();
+
+        monitor.set_selected_tags(TagMask::single(3).unwrap());
+        assert_eq!(monitor.current_tag_index(), Some(3));
+
+        monitor.set_selected_tags(
+            TagMask::single(2).unwrap_or(TagMask::EMPTY)
+                | TagMask::single(3).unwrap_or(TagMask::EMPTY),
+        );
+        assert_eq!(monitor.current_tag_index(), None);
+
+        monitor.set_selected_tags(TagMask::EMPTY);
+        assert_eq!(monitor.current_tag_index(), None);
+    }
+
+    #[test]
+    fn all_tags_view_is_derived_from_selected_mask() {
+        let mut monitor = Monitor::default();
+        monitor.tags = vec![TagNames::default(); 3];
+
+        monitor.set_selected_tags(TagMask::all(3));
+        assert!(monitor.is_all_tags_view());
+
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        assert!(!monitor.is_all_tags_view());
+
+        monitor.set_selected_tags(TagMask::single(1).unwrap() | TagMask::single(2).unwrap());
+        assert!(!monitor.is_all_tags_view());
     }
 
     #[test]

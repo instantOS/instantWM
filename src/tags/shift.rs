@@ -20,7 +20,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         let Some(win) = mon.sel else {
             return;
         };
-        let Some(current_tag) = mon.current_tag else {
+        let Some(current_tag) = mon.current_tag_index() else {
             return;
         };
         (
