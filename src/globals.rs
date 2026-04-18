@@ -160,13 +160,27 @@ pub struct TagDragState {
     pub button: MouseButton,
 }
 
+/// Whether the cursor is currently offering a hover-resize interaction.
+///
+/// This is the source of truth for hover-resize mode — the cursor icon is a
+/// side-effect, not the other way around.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum HoverResizeOffer {
+    #[default]
+    None,
+    /// Cursor is in the resize border zone of a floating window.
+    Resize(ResizeDirection),
+    /// Cursor is on the sidebar drag edge.
+    Sidebar,
+}
+
 /// Consolidated state for mouse/touch interactions.
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
     pub tag: TagDragState,
     pub interactive: DragInteraction,
     pub bar_active: bool,
-    pub resize_direction: Option<ResizeDirection>,
+    pub hover_offer: HoverResizeOffer,
 }
 
 /// A single keyboard layout with optional variant.

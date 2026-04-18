@@ -53,7 +53,7 @@ pub mod warp;
 // ── warp ──────────────────────────────────────────────────────────────────────
 
 pub use cursor::set_cursor_style;
-pub use warp::{reset_cursor, reset_cursor_x11};
+pub use warp::reset_cursor;
 
 // ── drag ──────────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,8 @@ pub use drag::{
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{
-    floating_to_tiled_hover, handle_floating_resize_hover, handle_sidebar_hover, hover_resize_mouse,
+    clear_hover_offer, floating_to_tiled_hover, handle_floating_resize_hover,
+    handle_sidebar_hover, hover_resize_mouse, set_hover_resize,
 };
 
 // ── resize ────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
 use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{AltCursor, BarPosition, Client, Gesture, MouseButton, Rect, WindowId};
+use crate::types::{BarPosition, Client, Gesture, MouseButton, Rect, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -43,7 +43,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.globals().cfg.buttons.clone();
-    let altcursor = ctx.core.globals().behavior.cursor_icon;
+    let hover_offer = ctx.core.globals().drag.hover_offer;
     let mut selmon_id = ctx.core.globals().selected_monitor_id();
     let focusfollowsmouse = ctx.core.globals().behavior.focus_follows_mouse;
 
@@ -129,9 +129,9 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     if bar_pos == BarPosition::Root
         && let Some(mon) = ctx.core.globals().monitor(selmon_id)
         && mon.sel.is_some()
-        && let AltCursor::Resize(dir) = altcursor
+        && let crate::globals::HoverResizeOffer::Resize(dir) = hover_offer
     {
-        crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
+        crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
         let btn = MouseButton::from_u8(e.detail).unwrap_or(MouseButton::Left);
         let mut x11_ctx = ctx.reborrow();
         if btn == MouseButton::Right {
@@ -471,11 +471,8 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             return;
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
-        if matches!(
-            ctx.core.globals().behavior.cursor_icon,
-            AltCursor::Resize(crate::types::ResizeDirection::Left)
-        ) {
-            crate::mouse::reset_cursor_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime);
+        if ctx.core.globals().drag.hover_offer == crate::globals::HoverResizeOffer::Sidebar {
+            crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
         }
         return;
     };

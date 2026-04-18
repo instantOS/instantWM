@@ -117,21 +117,10 @@ pub fn update_wayland_selected_resize_offer(
     root_y: i32,
 ) -> Option<WindowId> {
     let Some((win, dir, _)) = wayland_selected_resize_target_at(ctx, root_x, root_y) else {
-        if matches!(
-            ctx.core.globals().behavior.cursor_icon,
-            AltCursor::Resize(_)
-        ) {
-            set_cursor_style(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                AltCursor::Default,
-            );
-        }
+        crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
         return None;
     };
-    set_cursor_style(
-        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-        AltCursor::Resize(dir),
-    );
+    crate::mouse::set_hover_resize(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()), dir);
     Some(win)
 }
 

@@ -36,6 +36,41 @@ pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
     at_top && in_middle_third
 }
 
+// ── Hover-resize offer helpers ───────────────────────────────────────────────
+
+/// Activate a resize hover offer — sets both the source-of-truth field and the cursor icon.
+pub fn set_hover_resize(ctx: &mut WmCtx, dir: ResizeDirection) {
+    ctx.core_mut().globals_mut().drag.hover_offer = crate::globals::HoverResizeOffer::Resize(dir);
+    set_cursor_style(ctx, AltCursor::Resize(dir));
+}
+
+/// Activate a sidebar hover offer.
+pub fn set_hover_sidebar(ctx: &mut WmCtx) {
+    ctx.core_mut().globals_mut().drag.hover_offer = crate::globals::HoverResizeOffer::Sidebar;
+    set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
+}
+
+/// Clear any active hover offer and reset the cursor.
+pub fn clear_hover_offer(ctx: &mut WmCtx) {
+    if ctx.core().globals().drag.hover_offer != crate::globals::HoverResizeOffer::None {
+        ctx.core_mut().globals_mut().drag.hover_offer = crate::globals::HoverResizeOffer::None;
+        set_cursor_style(ctx, AltCursor::Default);
+    }
+}
+
+/// Returns `true` if any hover-resize offer is active.
+pub fn has_hover_offer(ctx: &WmCtx) -> bool {
+    ctx.core().globals().drag.hover_offer != crate::globals::HoverResizeOffer::None
+}
+
+/// Returns the resize direction if a resize hover offer is active.
+pub fn hover_resize_dir(ctx: &WmCtx) -> Option<ResizeDirection> {
+    match ctx.core().globals().drag.hover_offer {
+        crate::globals::HoverResizeOffer::Resize(dir) => Some(dir),
+        _ => None,
+    }
+}
+
 // ── Cursor helpers ───────────────────────────────────────────────────────────
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
@@ -238,7 +273,7 @@ pub fn handle_floating_resize_hover(
     do_focus: bool,
 ) -> bool {
     if let Some((win, dir)) = hover_resize_target_at(ctx, root_x, root_y) {
-        set_cursor_style(ctx, AltCursor::Resize(dir));
+        set_hover_resize(ctx, dir);
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
@@ -251,12 +286,7 @@ pub fn handle_floating_resize_hover(
         return true;
     }
 
-    if matches!(
-        ctx.core_mut().globals_mut().behavior.cursor_icon,
-        AltCursor::Resize(_)
-    ) {
-        set_cursor_style(ctx, AltCursor::Default);
-    }
+    clear_hover_offer(ctx);
     false
 }
 
@@ -270,21 +300,16 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     };
 
     if root_x > right_edge {
-        if !matches!(
-            ctx.core_mut().globals_mut().behavior.cursor_icon,
-            AltCursor::Resize(ResizeDirection::Left)
-        ) && root_y > min_y
+        if ctx.core().globals().drag.hover_offer != crate::globals::HoverResizeOffer::Sidebar
+            && root_y > min_y
         {
-            set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
+            set_hover_sidebar(ctx);
         }
         return true;
     }
 
-    if matches!(
-        ctx.core_mut().globals_mut().behavior.cursor_icon,
-        AltCursor::Resize(ResizeDirection::Left)
-    ) {
-        set_cursor_style(ctx, AltCursor::Default);
+    if ctx.core().globals().drag.hover_offer == crate::globals::HoverResizeOffer::Sidebar {
+        clear_hover_offer(ctx);
         return true;
     }
 
@@ -323,8 +348,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
     let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        crate::mouse::set_cursor_style(&mut wm_ctx, AltCursor::Default);
+        clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
     }
 
     true
@@ -508,8 +532,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtxX11) -> bool {
     let action_started = run_hover_resize_loop(ctx);
 
     if !action_started {
-        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        crate::mouse::set_cursor_style(&mut wm_ctx, AltCursor::Default);
+        clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
     }
 
     true
