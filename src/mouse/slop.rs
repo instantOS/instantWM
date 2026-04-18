@@ -103,7 +103,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         .globals()
         .clients
         .get(&c_win)
-        .map(|c| c.is_floating)
+        .map(|c| c.mode.is_floating())
         .unwrap_or(false);
 
     if !is_floating {

@@ -30,7 +30,7 @@ pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
     };
     client.old_geo = client.geo;
     client.geo = rect;
-    if client.is_floating {
+    if client.mode.is_floating() {
         client.float_geo = rect;
     }
 }
@@ -58,7 +58,7 @@ pub fn resolve_floating_placement(
     let Some(client) = globals.clients.get(&win) else {
         return requested;
     };
-    if !client.is_floating {
+    if !client.mode.is_floating() {
         return requested;
     }
 
@@ -136,7 +136,7 @@ pub fn sane_floating_spawn_rect(
     parent: Option<WindowId>,
 ) -> Option<Rect> {
     let client = globals.clients.get(&win)?;
-    if !client.is_floating {
+    if !client.mode.is_floating() {
         return None;
     }
 
@@ -187,7 +187,7 @@ pub fn apply_size_hints(
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
     let should_apply_hints = core.globals().cfg.resizehints != 0
-        || client.is_floating
+        || client.mode.is_floating()
         || is_floating_layout(core, monitor_id);
 
     // Phase 1: Ensure positive dimensions.
@@ -255,7 +255,7 @@ fn apply_icccm_size_hints_x11(
 ) {
     let needs_update = core
         .client(win)
-        .map(|c| c.size_hints_valid == 0)
+        .map(|c| !c.size_hints_valid)
         .unwrap_or(false);
 
     if needs_update {
@@ -321,7 +321,7 @@ mod tests {
         client.win = WindowId::from(1_u32);
         client.monitor_id = MonitorId(0);
         client.set_tag_mask(TagMask::single(1).unwrap());
-        client.is_floating = true;
+        client.mode = crate::types::ClientMode::Floating;
         client.border_width = border_width;
         client.geo = rect;
         client.float_geo = rect;

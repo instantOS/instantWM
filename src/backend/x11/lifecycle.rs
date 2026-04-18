@@ -45,7 +45,7 @@ use crate::types::MonitorId;
 use crate::focus::focus_soft;
 use crate::globals::Globals;
 use crate::layouts::arrange;
-use crate::types::{Client, Rect, WindowId};
+use crate::types::{Client, ClientMode, Rect, WindowId};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -151,7 +151,11 @@ fn assign_initial_monitor_and_tags(
     if let Some(launch_context) = launch_context {
         c.monitor_id = launch_context.monitor_id;
         c.set_tag_mask(launch_context.tags);
-        c.is_floating = launch_context.is_floating;
+        c.mode = if launch_context.is_floating {
+            ClientMode::Floating
+        } else {
+            ClientMode::Tiling
+        };
         return;
     }
     c.monitor_id = g.selected_monitor_id();
@@ -286,7 +290,7 @@ fn configure_client_border(
         return;
     };
 
-    let border_width = if !client.is_floating
+    let border_width = if !client.mode.is_floating()
         && is_monocle
         && client.geo.w > mon_monitor_rect.w - 30
         && client.geo.h > mon_monitor_rect.h - 30 - bar_height
@@ -348,11 +352,14 @@ fn subscribe_manage_events(x11: &X11BackendRef, w: WindowId) {
 
 fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent: bool) -> bool {
     if let Some(client) = g.clients.get_mut(&w) {
-        if !client.is_floating {
-            client.is_floating = has_transient_parent || client.is_fixed_size;
-            client.saved_floating = client.is_floating;
+        if !client.mode.is_floating() {
+            client.mode = if has_transient_parent || client.is_fixed_size {
+                ClientMode::Floating
+            } else {
+                ClientMode::Tiling
+            };
         }
-        client.is_floating
+        client.mode.is_floating()
     } else {
         false
     }
@@ -457,7 +464,7 @@ fn run_manage_animation(
     mon_monitor_rect: Rect,
     animated: bool,
 ) {
-    if !animated || c.is_fullscreen {
+    if !animated || c.mode.is_fullscreen() {
         return;
     }
 
@@ -518,12 +525,7 @@ pub fn initial_tags_for_monitor(g: &Globals, monitor_id: MonitorId) -> u32 {
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     let monitor_id = ctx.core.globals().clients.monitor_id(win);
 
-    // Clear fullscreen references.
-    for mon in ctx.core.globals_mut().monitors_iter_all_mut() {
-        if mon.fullscreen == Some(win) {
-            mon.fullscreen = None;
-        }
-    }
+    ctx.core.globals_mut().clear_maximized_for(win);
 
     {
         let g = &mut ctx.core.globals_mut();

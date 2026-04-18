@@ -109,7 +109,7 @@ pub fn select_client(g: &mut Globals, win: WindowId) {
     let is_tiled = g
         .clients
         .get(&win)
-        .is_some_and(|client| !client.is_floating);
+        .is_some_and(|client| client.mode.is_tiling());
     if let Some(mon) = g.monitor_mut(monitor_id) {
         mon.sel = Some(win);
         if is_tiled {

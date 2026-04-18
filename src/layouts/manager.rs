@@ -2,7 +2,7 @@
 
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Client, Monitor, MonitorId, WindowId};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -96,7 +96,7 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
         .into_iter()
         .filter(|&win| {
             ctx.client(win)
-                .is_some_and(|c| c.is_true_fullscreen() && c.is_visible(selected_tags))
+                .is_some_and(|c| c.mode.is_true_fullscreen() && c.is_visible(selected_tags))
         })
         .collect();
 
@@ -122,9 +122,9 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
                 return None;
             }
 
-            let strip_border = info.is_true_fullscreen()
-                || (!info.is_floating
-                    && !info.is_fullscreen
+            let strip_border = info.mode.is_true_fullscreen()
+                || (info.mode.is_tiling()
+                    && !info.mode.is_fullscreen()
                     && ((clientcount == 1 && is_tiling) || is_monocle));
 
             let new_border = if strip_border {
@@ -207,7 +207,7 @@ pub(crate) fn compute_monitor_z_order(
         .filter(|win| {
             clients
                 .get(win)
-                .is_some_and(|c| !c.is_floating && c.is_visible(selected_tags))
+                .is_some_and(|c| c.mode.is_tiling() && c.is_visible(selected_tags))
         });
 
     let mut tiled_stack = Vec::new();
@@ -217,12 +217,11 @@ pub(crate) fn compute_monitor_z_order(
         if let Some(c) = clients.get(&win)
             && c.is_visible(selected_tags)
         {
-            if c.is_true_fullscreen() {
-                fullscreen_stack.push(win);
-            } else if c.is_floating {
-                floating_stack.push(win);
-            } else {
-                tiled_stack.push(win);
+            match c.mode {
+                ClientMode::TrueFullscreen { .. } => fullscreen_stack.push(win),
+                ClientMode::Floating | ClientMode::Maximized { .. } => floating_stack.push(win),
+                ClientMode::Tiling => tiled_stack.push(win),
+                ClientMode::FakeFullscreen { .. } => {}
             }
         }
     }
@@ -451,8 +450,9 @@ mod tests {
             .into_iter()
             .map(|win| (win, visible_client(win)))
             .collect::<HashMap<_, _>>();
-        clients.get_mut(&WindowId(3)).unwrap().is_floating = true;
-        clients.get_mut(&WindowId(4)).unwrap().is_fullscreen = true;
+        clients.get_mut(&WindowId(3)).unwrap().mode = crate::types::ClientMode::Floating;
+        let fullscreen = clients.get_mut(&WindowId(4)).unwrap();
+        fullscreen.mode = fullscreen.mode.as_fullscreen();
 
         let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
 
@@ -478,7 +478,7 @@ mod tests {
             .into_iter()
             .map(|win| (win, visible_client(win)))
             .collect::<HashMap<_, _>>();
-        clients.get_mut(&WindowId(2)).unwrap().is_floating = true;
+        clients.get_mut(&WindowId(2)).unwrap().mode = crate::types::ClientMode::Floating;
 
         let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
 

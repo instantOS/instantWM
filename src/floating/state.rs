@@ -9,16 +9,6 @@ use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::types::*;
 
-/// Whether a window should be floating or tiled.
-#[derive(Clone, Copy, Default)]
-pub enum WindowMode {
-    #[default]
-    Tiled,
-    Floating,
-    /// Toggle between floating and tiled based on current state.
-    ToggleFloat,
-}
-
 /// Common helper for restoring border width when transitioning to floating.
 /// Returns the restored border width value.
 /// This is X11-specific since Wayland doesn't support border widths.
@@ -49,28 +39,11 @@ pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
 /// Set a window to floating or tiled mode.
 /// Returns true if the caller should animate (when going to floating mode).
 /// Handles border updates and geometry changes but NOT animation (callers handle that separately).
-pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool {
-    // Handle ToggleFloat by determining the actual target mode
-    let target_mode = match mode {
-        WindowMode::ToggleFloat => {
-            let (is_floating, is_fixed) = ctx
-                .client(win)
-                .map(|c| (c.is_floating, c.is_fixed_size))
-                .unwrap_or((false, false));
-            // If currently tiled, go floating; if floating, go tiled (unless fixed)
-            if !is_floating || is_fixed {
-                WindowMode::Floating
-            } else {
-                WindowMode::Tiled
-            }
-        }
-        other => other,
-    };
-
-    match target_mode {
-        WindowMode::Floating => {
+pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> bool {
+    match mode {
+        BaseClientMode::Floating => {
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                client.is_floating = true;
+                client.mode = ClientMode::Floating;
             }
 
             // Restore borders
@@ -96,10 +69,10 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             ctx.move_resize(win, saved_geo, MoveResizeOptions::hinted_immediate(false));
             true // Caller should animate
         }
-        WindowMode::Tiled => {
+        BaseClientMode::Tiling => {
             let client_count = ctx.core().globals().clients.len();
             let clear_border = if let Some(client) = ctx.client_mut(win) {
-                client.is_floating = false;
+                client.mode = ClientMode::Tiling;
                 client.float_geo = client.geo;
 
                 // Only clear border if this is the only client and not snapped
@@ -122,7 +95,6 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: WindowMode) -> bool
             }
             false // No animation needed for tiling
         }
-        WindowMode::ToggleFloat => unreachable!(), // Already handled above
     }
 }
 
@@ -131,7 +103,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let selected_window = match mon.sel {
         Some(sel) if !ctx.client(sel).is_some_and(|c| c.is_edge_scratchpad()) => {
             if let Some(c) = ctx.client(sel)
-                && c.is_true_fullscreen()
+                && c.mode.is_true_fullscreen()
             {
                 return;
             }
@@ -142,8 +114,16 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let Some(win) = selected_window else { return };
 
-    // ToggleFloat handles deriving current state and determining new state internally
-    let should_animate = set_window_mode(ctx, win, WindowMode::ToggleFloat);
+    let (is_floating, is_fixed) = ctx
+        .client(win)
+        .map(|c| (c.mode.is_floating(), c.is_fixed_size))
+        .unwrap_or((false, false));
+    let target_mode = if !is_floating || is_fixed {
+        BaseClientMode::Floating
+    } else {
+        BaseClientMode::Tiling
+    };
+    let should_animate = set_window_mode(ctx, win, target_mode);
 
     // Animate when going to floating mode
     if should_animate && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
@@ -163,9 +143,9 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 ///
 /// This is a WM-level zoom: the window expands to fill the work area without
 /// removing its border or setting `_NET_WM_STATE_FULLSCREEN`.  It is distinct
-/// from both real fullscreen (`is_fullscreen`) and fake fullscreen.
+/// from both real fullscreen and fake fullscreen.
 ///
-/// `mon.fullscreen` tracks which window (if any) is currently maximized this
+/// `mon.maximized` tracks which window (if any) is currently maximized this
 /// way.  Toggling on saves the window's floating geometry so it can be
 /// restored on toggle-off.
 ///
@@ -174,7 +154,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
     // Read all the state we need through the backend-agnostic core.
-    let maximized_win = ctx.core().globals().selected_monitor().fullscreen;
+    let maximized_win = ctx.core().globals().selected_monitor().maximized;
     let selected_window = ctx.selected_client();
     let animated = ctx.core().globals().behavior.animated;
 
@@ -186,7 +166,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
             .globals()
             .clients
             .get(&win)
-            .map(|c| c.is_floating)
+            .map(|c| c.mode.is_floating())
             .unwrap_or(false);
 
         // For floating windows (or monitors with no tiling layout), restore
@@ -203,7 +183,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
         ctx.core_mut()
             .globals_mut()
             .selected_monitor_mut()
-            .fullscreen = None;
+            .maximized = None;
     } else {
         // --- Enter maximized state ---
 
@@ -212,7 +192,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
         ctx.core_mut()
             .globals_mut()
             .selected_monitor_mut()
-            .fullscreen = Some(win);
+            .maximized = Some(win);
 
         // Save floating geometry so we can restore it on toggle-off.
         if super::helpers::check_floating(ctx.core(), win)
@@ -234,7 +214,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     }
 
     // Raise the newly maximized window above everything else.
-    if let Some(win) = ctx.core().globals().selected_monitor().fullscreen {
+    if let Some(win) = ctx.core().globals().selected_monitor().maximized {
         ctx.backend().raise_window_visual_only(win);
     }
 }

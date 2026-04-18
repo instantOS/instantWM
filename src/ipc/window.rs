@@ -91,7 +91,7 @@ fn resize_window(
     };
 
     let (current_monitor_id, is_floating) = match wm.g.clients.get(&win) {
-        Some(c) => (c.monitor_id, c.is_floating),
+        Some(c) => (c.monitor_id, c.mode.is_floating()),
         None => return Response::err("window not found"),
     };
     let target_monitor_id =
@@ -117,7 +117,7 @@ fn resize_window(
     }
 
     if !is_floating {
-        crate::floating::set_window_mode(&mut ctx, win, crate::floating::WindowMode::Floating);
+        crate::floating::set_window_mode(&mut ctx, win, crate::types::BaseClientMode::Floating);
         arrange(&mut ctx, Some(current_monitor_id));
     }
 

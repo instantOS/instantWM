@@ -2,7 +2,7 @@
 
 use crate::client::LaunchContext;
 use crate::globals::Globals;
-use crate::types::{MonitorRule, Rect, RuleFloat, SpecialNext, TagMask, WindowId};
+use crate::types::{ClientMode, MonitorRule, Rect, RuleFloat, SpecialNext, TagMask, WindowId};
 
 /// Properties used for rule matching.
 #[derive(Debug, Clone, Default)]
@@ -46,7 +46,11 @@ pub fn apply_rules(
             return;
         }
 
-        c.is_floating = launch_context.map(|ctx| ctx.is_floating).unwrap_or(false);
+        c.mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
+            ClientMode::Floating
+        } else {
+            ClientMode::Tiling
+        };
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
@@ -60,7 +64,7 @@ pub fn apply_rules(
         if let SpecialNext::Float = special_next
             && let Some(c) = g.clients.get_mut(&win)
         {
-            c.is_floating = true;
+            c.mode = ClientMode::Floating;
         }
         g.behavior.specialnext = SpecialNext::None;
     } else {
@@ -139,7 +143,7 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
     let existing_context = g.clients.get(&win).map(|c| LaunchContext {
         monitor_id: c.monitor_id,
         tags: c.tags,
-        is_floating: c.is_floating,
+        is_floating: c.mode.is_floating(),
     });
 
     apply_rules(g, win, props, existing_context);
@@ -190,10 +194,10 @@ fn apply_float_rule(
 
     match float_rule {
         RuleFloat::FloatCenter => {
-            client.is_floating = true;
+            client.mode = ClientMode::Floating;
         }
         RuleFloat::FloatFullscreen => {
-            client.is_floating = true;
+            client.mode = ClientMode::Floating;
             client.geo.w = monitor_rect.w;
             client.geo.h = work_rect.h;
             client.geo.x = monitor_rect.x;
@@ -202,16 +206,16 @@ fn apply_float_rule(
             }
         }
         RuleFloat::Scratchpad => {
-            client.is_floating = true;
+            client.mode = ClientMode::Floating;
         }
         RuleFloat::Float => {
-            client.is_floating = true;
+            client.mode = ClientMode::Floating;
             if showbar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }
         RuleFloat::Tiled => {
-            client.is_floating = false;
+            client.mode = ClientMode::Tiling;
         }
     }
 }
@@ -246,7 +250,7 @@ struct RuleStateSnapshot {
 fn rule_state_snapshot(g: &Globals, win: WindowId) -> Option<RuleStateSnapshot> {
     let c = g.clients.get(&win)?;
     Some(RuleStateSnapshot {
-        is_floating: c.is_floating,
+        is_floating: c.mode.is_floating(),
         is_sticky: c.is_sticky,
         monitor_id: c.monitor_id,
         tags: c.tags,
@@ -289,7 +293,7 @@ fn clamp_client_tags(
 mod tests {
     use super::{WindowProperties, handle_property_change};
     use crate::globals::Globals;
-    use crate::types::{Client, Monitor, MonitorId, TagMask, WindowId};
+    use crate::types::{Client, ClientMode, Monitor, MonitorId, TagMask, WindowId};
 
     #[test]
     fn property_change_preserves_existing_tags_without_matching_rule() {
@@ -329,7 +333,7 @@ mod tests {
         let win = WindowId(42);
         let client = Client {
             win,
-            is_floating: true,
+            mode: ClientMode::Floating,
             ..Default::default()
         };
         g.clients.insert(win, client);
@@ -344,7 +348,7 @@ mod tests {
         );
 
         let client = g.clients.get(&win).expect("client should still exist");
-        assert!(client.is_floating);
+        assert!(client.mode.is_floating());
     }
 
     #[test]
@@ -368,7 +372,7 @@ mod tests {
         let client = Client {
             win,
             monitor_id: MonitorId(0),
-            is_floating: true,
+            mode: ClientMode::Floating,
             ..Default::default()
         };
         g.clients.insert(win, client);
@@ -384,6 +388,6 @@ mod tests {
         );
 
         let client = g.clients.get(&win).expect("client should still exist");
-        assert!(!client.is_floating); // Should be tiling now
+        assert!(!client.mode.is_floating()); // Should be tiling now
     }
 }

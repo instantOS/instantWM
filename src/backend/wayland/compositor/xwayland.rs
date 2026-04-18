@@ -4,6 +4,7 @@ use smithay::{
 };
 
 use crate::client::FloatingPlacementKind;
+use crate::types::ClientMode;
 
 use super::{
     focus::KeyboardFocusTarget,
@@ -101,14 +102,18 @@ fn apply_xwayland_surface_policy(
         }
 
         if (transient_parent.is_some() || client.is_fixed_size || should_float_for_type)
-            && !client.is_floating
+            && !client.mode.is_floating()
         {
             client.float_geo = client.geo;
-            client.is_floating = true;
+            client.mode = ClientMode::Floating;
             changed_layout = true;
         }
 
-        client.is_fullscreen = surface.is_fullscreen();
+        if surface.is_fullscreen() {
+            client.mode = client.mode.as_fullscreen();
+        } else if client.mode.is_fullscreen() {
+            client.mode = client.mode.restored();
+        }
         client.is_hidden = surface.is_hidden();
 
         if preferred_border != client.border_width {
@@ -143,16 +148,6 @@ fn apply_xwayland_surface_policy(
             g.queue_layout_for_client(win);
         }
         state.request_space_sync();
-    }
-    if let Some(g) = state.globals_mut()
-        && let Some(mid) = g.clients.monitor_id(win)
-        && let Some(mon) = g.monitor_mut(mid)
-    {
-        if surface.is_fullscreen() {
-            mon.fullscreen = Some(win);
-        } else if mon.fullscreen == Some(win) {
-            mon.fullscreen = None;
-        }
     }
     transient_parent
 }
@@ -215,7 +210,7 @@ impl XwmHandler for WaylandState {
             if let Some(rect) = self.globals().and_then(|g| {
                 g.clients
                     .get(&win)
-                    .filter(|client| client.is_floating)
+                    .filter(|client| client.mode.is_floating())
                     .map(|c| c.geo)
             }) {
                 let resolved = self.globals_mut().map(|g| {
@@ -549,9 +544,13 @@ impl XwmHandler for WaylandState {
                     .and_then(|mid| ctx_wayland.core.globals().monitor(mid))
                     .map(|mon| mon.work_rect);
                 if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
-                    client.saved_floating = client.is_floating;
                     client.float_geo = client.geo;
-                    client.is_floating = true;
+                    client.mode = client.mode.as_maximized();
+                }
+                if let Some(mid) = ctx_wayland.core.globals().clients.monitor_id(win)
+                    && let Some(mon) = ctx_wayland.core.globals_mut().monitor_mut(mid)
+                {
+                    mon.maximized = Some(win);
                 }
                 if let Some(work_rect) = work_rect {
                     crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
@@ -583,8 +582,9 @@ impl XwmHandler for WaylandState {
                     .get(&win)
                     .map(|client| client.float_geo);
                 if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
-                    client.is_floating = client.saved_floating;
+                    client.mode = client.mode.restored();
                 }
+                ctx_wayland.core.globals_mut().clear_maximized_for(win);
                 if let Some(restore_rect) = restore_rect {
                     crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                         win,
@@ -606,19 +606,8 @@ impl XwmHandler for WaylandState {
         };
         let _ = window.set_fullscreen(true);
         if let Some(g) = self.globals_mut() {
-            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
             if let Some(client) = g.clients.get_mut(&win) {
-                client.is_fullscreen = true;
-            }
-            for (_id, mon) in g.monitors_iter_mut() {
-                if mon.fullscreen == Some(win) {
-                    mon.fullscreen = None;
-                }
-            }
-            if let Some(monitor_id) = monitor_id
-                && let Some(mon) = g.monitor_mut(monitor_id)
-            {
-                mon.fullscreen = Some(win);
+                client.mode = client.mode.as_fullscreen();
             }
             g.queue_layout_for_client(win);
         }
@@ -636,12 +625,7 @@ impl XwmHandler for WaylandState {
         let _ = window.set_fullscreen(false);
         if let Some(g) = self.globals_mut() {
             if let Some(client) = g.clients.get_mut(&win) {
-                client.is_fullscreen = false;
-            }
-            for (_id, mon) in g.monitors_iter_mut() {
-                if mon.fullscreen == Some(win) {
-                    mon.fullscreen = None;
-                }
+                client.mode = client.mode.restored();
             }
             g.queue_layout_for_client(win);
         }

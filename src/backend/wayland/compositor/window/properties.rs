@@ -272,7 +272,7 @@ impl WaylandState {
                 .get::<WindowIdMarker>()
                 .and_then(|marker| {
                     self.globals()
-                        .and_then(|g| g.clients.get(&marker.id).map(|c| c.is_fullscreen))
+                        .and_then(|g| g.clients.get(&marker.id).map(|c| c.mode.is_fullscreen()))
                 })
                 .unwrap_or(false);
             toplevel.with_pending_state(|state| {

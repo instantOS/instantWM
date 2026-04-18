@@ -83,7 +83,7 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
             content_size,
             is_visible,
             is_hidden: c.is_hidden,
-            is_floating: c.is_floating,
+            is_floating: c.mode.is_floating(),
             is_tiling_layout,
         });
     }

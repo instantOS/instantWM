@@ -161,7 +161,7 @@ fn collect_distribute_targets(
 
     let mut wins = Vec::new();
     for (c_win, c) in mon.iter_clients(globals.clients.map()) {
-        if c.is_floating
+        if c.mode.is_floating()
             && !c.is_fixed_size
             && c.tags.intersects(tag_set)
             && c.snap_status == SnapPosition::None

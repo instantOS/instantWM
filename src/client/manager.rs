@@ -71,7 +71,7 @@ impl ClientManager {
     }
 
     pub fn is_floating(&self, win: WindowId) -> bool {
-        self.clients.get(&win).is_some_and(|c| c.is_floating)
+        self.clients.get(&win).is_some_and(|c| c.mode.is_floating())
     }
 
     pub fn is_locked(&self, win: WindowId) -> bool {

@@ -14,7 +14,7 @@ use crate::client::rules::WindowProperties;
 use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Rect, WindowId};
+use crate::types::{ClientMode, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -144,9 +144,13 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
     {
-        client.is_floating = crate::client::x11_policy::should_float_for_x11_type(Some(
+        client.mode = if crate::client::x11_policy::should_float_for_x11_type(Some(
             smithay::xwayland::xwm::WmWindowType::Dialog,
-        ));
+        )) {
+            ClientMode::Floating
+        } else {
+            ClientMode::Tiling
+        };
     }
 }
 

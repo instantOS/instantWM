@@ -85,12 +85,12 @@ fn format_window_protocol(protocol: WindowProtocol) -> &'static str {
 
 fn format_window_state(state: &instantwm::ipc_types::WindowState) -> String {
     let mut parts = Vec::new();
-    if state.fullscreen {
-        parts.push("Fullscreen");
-    } else if state.floating {
-        parts.push("Floating");
-    } else {
-        parts.push("Normal");
+    match state.mode {
+        instantwm::types::ClientMode::Tiling => parts.push("Tiling"),
+        instantwm::types::ClientMode::Floating => parts.push("Floating"),
+        instantwm::types::ClientMode::TrueFullscreen { .. } => parts.push("Fullscreen"),
+        instantwm::types::ClientMode::FakeFullscreen { .. } => parts.push("FakeFullscreen"),
+        instantwm::types::ClientMode::Maximized { .. } => parts.push("Maximized"),
     }
     if state.sticky {
         parts.push("sticky");
@@ -224,11 +224,12 @@ fn format_scratchpad_list(scratchpads: &[ScratchpadInfo], json: bool) {
                     "-".to_string()
                 };
             let mut flags = Vec::new();
-            if sp.fullscreen {
-                flags.push("fullscreen");
-            }
-            if sp.floating {
-                flags.push("floating");
+            match sp.mode {
+                instantwm::types::ClientMode::TrueFullscreen { .. }
+                | instantwm::types::ClientMode::FakeFullscreen { .. } => flags.push("fullscreen"),
+                instantwm::types::ClientMode::Floating => flags.push("floating"),
+                instantwm::types::ClientMode::Tiling => flags.push("tiled"),
+                instantwm::types::ClientMode::Maximized { .. } => flags.push("maximized"),
             }
             println!(
                 "{:<12} {:<8} {:<8} {:<8} {:<20} {}",

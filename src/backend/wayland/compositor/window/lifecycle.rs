@@ -49,7 +49,7 @@ impl WaylandState {
                 .and_then(|g| {
                     let client = g.clients.get(&window_id)?;
                     let mon = g.monitor(client.monitor_id)?;
-                    if client.is_fullscreen || !self.animations_enabled() {
+                    if client.mode.is_fullscreen() || !self.animations_enabled() {
                         return None;
                     }
                     Some(WindowMoveMode::AnimateFrom {

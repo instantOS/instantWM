@@ -389,7 +389,7 @@ fn update_hover_resize_state(
 
     let selected_floating =
         wm.g.selected_win()
-            .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.is_floating)))
+            .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.mode.is_floating())))
             .is_some_and(|(_, is_floating)| is_floating);
     let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
 
@@ -419,9 +419,7 @@ fn update_hover_resize_state(
             );
             suppress_hover_focus = true;
         } else {
-            crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(
-                ctx.reborrow(),
-            ));
+            crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
         }
     }
 

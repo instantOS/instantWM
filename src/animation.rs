@@ -106,7 +106,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
         };
         if !client.is_visible(selected_tags)
             || client.is_visible(old_selected_tags)
-            || client.is_true_fullscreen()
+            || client.mode.is_true_fullscreen()
             || !client.geo.is_valid()
         {
             continue;

@@ -20,7 +20,7 @@
 //! - Clients retain their own width/height inside the cell (they are not
 //!   stretched); only their x/y origin is repositioned.
 //! - Floating clients have their float geometry saved before being moved.
-//! - Clients with stashed floating state (`saved_floating`) and edge scratchpads
+//! - Clients temporarily forced floating by another mode and edge scratchpads
 //!   are skipped entirely.
 //! - After placement every client is raised above the bar window so the
 //!   overview is fully visible even on monitors with topbar enabled.
@@ -76,17 +76,17 @@ pub fn overviewlayout(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             None => continue,
         };
 
-        let skip_saved_floating = c.saved_floating;
+        let skip_forced_floating = c.mode.is_fullscreen() || c.mode.is_maximized();
         let is_edge_scratchpad = c.is_edge_scratchpad();
 
-        if skip_saved_floating || is_edge_scratchpad {
+        if skip_forced_floating || is_edge_scratchpad {
             continue;
         }
 
         // Keep the client's own dimensions; only reposition it.
         let client_w = c.geo.w;
         let client_h = c.geo.h;
-        let is_floating = c.is_floating;
+        let is_floating = c.mode.is_floating();
 
         // Persist float geometry so restore works after leaving overview.
         if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {

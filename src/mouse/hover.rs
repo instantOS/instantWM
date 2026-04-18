@@ -122,7 +122,7 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
         if !c.is_visible(selected) {
             continue;
         }
-        if !c.is_floating && has_tiling {
+        if !c.mode.is_floating() && has_tiling {
             continue;
         }
         if c.geo.contains_resize_border_point(x, y, RESIZE_BORDER_ZONE) {
@@ -171,7 +171,7 @@ pub fn selected_hover_resize_target_at(
     if !c.is_visible(selected_tags) {
         return None;
     }
-    if !c.is_floating && has_tiling {
+    if !c.mode.is_floating() && has_tiling {
         return None;
     }
     if !c
@@ -209,7 +209,7 @@ fn find_tiled_win_at_point(
         if Some(w) == skip_win {
             continue;
         }
-        if !c.is_visible(selected) || c.is_floating {
+        if !c.is_visible(selected) || c.mode.is_floating() {
             continue;
         }
         // Check if the cursor is within the window's geometry (including border).
@@ -234,7 +234,7 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
         return false;
     };
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
-    if !c.is_floating && has_tiling {
+    if !c.mode.is_floating() && has_tiling {
         return false;
     }
 
@@ -254,7 +254,7 @@ fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
     let selected = mon.selected_tags();
 
     for (_w, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-        if c.is_visible(selected) && !c.is_floating && has_tiling {
+        if c.is_visible(selected) && !c.mode.is_floating() && has_tiling {
             return true;
         }
     }
@@ -484,7 +484,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtxX11) -> bool {
             .selected_monitor()
             .is_tiling_layout();
         let sel_geo = match wm_ctx.client(selected_window) {
-            Some(c) if c.is_floating || !is_tiling_layout => c.geo,
+            Some(c) if c.mode.is_floating() || !is_tiling_layout => c.geo,
             _ => return false,
         };
 
@@ -506,7 +506,7 @@ pub fn floating_to_tiled_hover(ctx: &mut WmCtxX11) -> bool {
             .globals()
             .clients
             .get(&hovered_win)
-            .map(|c| !c.is_floating)
+            .map(|c| !c.mode.is_floating())
             .unwrap_or(false);
         if !hovered_is_tiled {
             return false;

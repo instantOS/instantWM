@@ -95,7 +95,7 @@ fn wayland_selected_resize_target_at(
         return None;
     }
     let has_tiling = mon.is_tiling_layout();
-    if !c.is_floating && has_tiling {
+    if !c.mode.is_floating() && has_tiling {
         return None;
     }
     if !c

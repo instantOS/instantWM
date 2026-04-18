@@ -27,7 +27,7 @@ pub fn has_tiling_layout(core: &CoreCtx) -> bool {
 ///   floating-only layouts).
 pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
     if let Some(client) = core.client(win) {
-        if client.is_floating {
+        if client.mode.is_floating() {
             return true;
         }
         if !core.globals().selected_monitor().is_tiling_layout() {

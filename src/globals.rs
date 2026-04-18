@@ -553,6 +553,15 @@ impl Globals {
         self.monitors.iter_all_mut()
     }
 
+    /// Clear the maximized reference on any monitor that holds `win`.
+    pub fn clear_maximized_for(&mut self, win: WindowId) {
+        for mon in self.monitors_iter_all_mut() {
+            if mon.maximized == Some(win) {
+                mon.maximized = None;
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Client List Management (Attach/Detach)
     // -------------------------------------------------------------------------

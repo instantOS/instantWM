@@ -248,9 +248,8 @@ pub fn resolve_bar_position_at_root(
 pub(crate) fn monitor_has_real_fullscreen(globals: &Globals, monitor: &Monitor) -> bool {
     let selected_tags = monitor.selected_tags();
     monitor
-        .fullscreen
-        .and_then(|win| globals.clients.get(&win))
-        .is_some_and(|client| client.is_true_fullscreen() && client.is_visible(selected_tags))
+        .iter_clients(globals.clients.map())
+        .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
 }
 
 pub(crate) fn monitor_bar_visible(globals: &Globals, monitor: &Monitor) -> bool {

@@ -7,7 +7,7 @@ use crate::globals::Globals;
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
 use crate::types::input::EdgeDirection;
-use crate::types::{MonitorId, Rect, WindowId};
+use crate::types::{ClientMode, MonitorId, Rect, WindowId};
 use bincode::{Decode, Encode};
 
 const EDGE_MARGIN_X: i32 = 20;
@@ -142,8 +142,7 @@ pub struct ScratchpadInfo {
     pub y: Option<i32>,
     pub width: Option<i32>,
     pub height: Option<i32>,
-    pub floating: bool,
-    pub fullscreen: bool,
+    pub mode: crate::types::ClientMode,
     pub direction: Option<String>,
 }
 
@@ -161,8 +160,7 @@ impl ScratchpadInfo {
             y: Some(c.geo.y),
             width: Some(c.geo.w),
             height: Some(c.geo.h),
-            floating: c.is_floating,
-            fullscreen: c.is_fullscreen,
+            mode: c.mode,
             direction: c.scratchpad_direction.map(|d| d.as_str().to_string()),
         })
     }
@@ -190,7 +188,7 @@ fn selected_monitor_yoffset(ctx: &WmCtx<'_>, tags: crate::types::TagMask) -> i32
     let bar_height = ctx.core().globals().cfg.bar_height;
     let mut offset = if showbar { bar_height } else { 0 };
     for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
-        if c.tags.intersects(tags) && c.is_true_fullscreen() {
+        if c.tags.intersects(tags) && c.mode.is_true_fullscreen() {
             offset = 0;
             break;
         }
@@ -209,7 +207,7 @@ fn prepare_scratchpad_for_show(
     let tags = ctx.core().globals().selected_monitor().selected_tags();
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         client.is_sticky = true;
-        client.is_floating = true;
+        client.mode = ClientMode::Floating;
         if direction.is_some() {
             client.border_width = 0;
         }
@@ -326,8 +324,8 @@ pub fn scratchpad_make(
     client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     client.is_sticky = false;
 
-    if !client.is_floating {
-        client.is_floating = true;
+    if !client.mode.is_floating() {
+        client.mode = ClientMode::Floating;
     }
 
     if let Some(dir) = direction {
@@ -632,14 +630,11 @@ pub fn scratchpad_list(g: &Globals) -> String {
             "no monitor".to_string()
         };
 
-        let flags = if sp.fullscreen && sp.floating {
-            " fullscreen, floating"
-        } else if sp.fullscreen {
-            " fullscreen"
-        } else if sp.floating {
-            " floating"
-        } else {
-            ""
+        let flags = match sp.mode {
+            ClientMode::TrueFullscreen { .. } | ClientMode::FakeFullscreen { .. } => " fullscreen",
+            ClientMode::Floating => " floating",
+            ClientMode::Tiling => " tiled",
+            ClientMode::Maximized { .. } => " maximized",
         };
 
         out.push_str(&format!(
@@ -702,7 +697,9 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
         return;
     };
 
-    let is_fullscreen = ctx.client(selected).is_some_and(|c| c.is_true_fullscreen());
+    let is_fullscreen = ctx
+        .client(selected)
+        .is_some_and(|c| c.mode.is_true_fullscreen());
     if is_fullscreen {
         crate::floating::toggle_maximized(ctx);
     }

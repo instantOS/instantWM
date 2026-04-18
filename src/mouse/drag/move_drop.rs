@@ -6,7 +6,7 @@
 
 use crate::bar::bar_position_to_gesture;
 use crate::contexts::WmCtx;
-use crate::floating::{WindowMode, change_snap, reset_snap, set_window_mode};
+use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
@@ -113,16 +113,16 @@ pub struct MoveState {
 /// * calls `reset_snap` and returns `None` if the window is snapped (un-snap first)
 /// * restores a near-maximized floating window to its saved geometry
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
-    let (sel, fullscreen) = {
+    let (sel, maximized) = {
         let g = ctx.core_mut().globals_mut();
         let mon = g.selected_monitor();
         let sel = mon.sel?;
-        (sel, mon.fullscreen)
+        (sel, mon.maximized)
     };
     let c = ctx.core().client(sel)?;
-    let is_true_fullscreen = c.is_true_fullscreen();
+    let is_true_fullscreen = c.mode.is_true_fullscreen();
     let is_edge_scratchpad = c.is_edge_scratchpad();
-    let is_fullscreen = Some(sel) == fullscreen;
+    let is_maximized = Some(sel) == maximized;
 
     if is_true_fullscreen {
         return None;
@@ -130,7 +130,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     if is_edge_scratchpad {
         return None;
     }
-    if is_fullscreen {
+    if is_maximized {
         crate::floating::toggle_maximized(ctx);
         return None;
     }
@@ -281,7 +281,7 @@ pub fn on_motion(
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     let (mut is_floating, mut drag_geo) = match ctx.client(win) {
-        Some(c) => (c.is_floating, c.geo),
+        Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
 
@@ -351,7 +351,7 @@ fn maybe_promote_tiled_drag_to_floating(
     };
 
     // Flip isfloating + restore border — zero configure_window calls.
-    set_window_mode(ctx, win, WindowMode::Floating);
+    set_window_mode(ctx, win, BaseClientMode::Floating);
 
     // Re-tile the remaining windows (touches only the other clients).
     let selmon_id = ctx.core().globals().selected_monitor_id();
@@ -420,7 +420,7 @@ pub fn handle_bar_drop(
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
     let was_floating = match ctx.client(win) {
-        Some(c) => c.is_floating,
+        Some(c) => c.mode.is_floating(),
         None => return,
     };
 
@@ -440,8 +440,8 @@ pub fn handle_bar_drop(
         // set_window_mode does not touch focus.
 
         // Don't tile fullscreen windows
-        if !ctx.client(win).is_some_and(|c| c.is_true_fullscreen()) {
-            set_window_mode(ctx, win, WindowMode::Tiled);
+        if !ctx.client(win).is_some_and(|c| c.mode.is_true_fullscreen()) {
+            set_window_mode(ctx, win, BaseClientMode::Tiling);
         }
         crate::tags::client_tags::set_client_tag(
             ctx,
@@ -453,7 +453,7 @@ pub fn handle_bar_drop(
         // Use set_window_mode directly instead of toggle_floating() which
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
-        set_window_mode(ctx, win, WindowMode::Tiled);
+        set_window_mode(ctx, win, BaseClientMode::Tiling);
         let selmon_id = ctx.core().globals().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     } else {
@@ -518,7 +518,7 @@ pub fn apply_edge_drop(
         }
 
         if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            c.is_floating = false;
+            c.mode = ClientMode::Tiling;
         }
         let selmon_id = ctx.core().globals().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
@@ -567,14 +567,14 @@ pub fn promote_to_floating(
         .globals()
         .clients
         .get(&win)
-        .map(|c| (c.is_floating, c.geo))
+        .map(|c| (c.mode.is_floating(), c.geo))
         .unwrap_or((false, Rect::default()));
 
     if is_floating {
         return (geo, false);
     }
 
-    set_window_mode(ctx, win, WindowMode::Floating);
+    set_window_mode(ctx, win, BaseClientMode::Floating);
     let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 

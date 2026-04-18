@@ -322,7 +322,7 @@ pub fn down_press(ctx: &mut WmCtx) {
                     .globals()
                     .clients
                     .get(&w)
-                    .map(|c| (c.snap_status, c.is_floating))
+                    .map(|c| (c.snap_status, c.mode.is_floating()))
             })
             .unwrap_or((SnapPosition::None, false));
         (sel, snap_status, is_floating)

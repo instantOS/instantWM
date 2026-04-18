@@ -77,7 +77,7 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
 
     let target_is_tiled = target
         .and_then(|win| core.globals().clients.get(&win))
-        .is_some_and(|client| !client.is_floating);
+        .is_some_and(|client| !client.mode.is_floating());
 
     if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
@@ -412,7 +412,7 @@ fn should_hover_focus(core: &CoreCtx, hovered_win: Option<WindowId>, entering_ro
         .globals()
         .clients
         .get(&win)
-        .map(|c| c.is_floating)
+        .map(|c| c.mode.is_floating())
         .unwrap_or(false);
     let has_tiling = core.globals().selected_monitor().is_tiling_layout();
     if !core.globals().behavior.focus_follows_float_mouse

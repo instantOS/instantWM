@@ -53,7 +53,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         .globals()
         .clients
         .get(&win)
-        .map(|c| c.is_floating)
+        .map(|c| c.mode.is_floating())
         .unwrap_or(false);
 
     if is_floating {

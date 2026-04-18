@@ -30,7 +30,7 @@ pub fn title_drag_begin(
 ) -> bool {
     if btn == MouseButton::Right {
         let is_true_fullscreen = match ctx.client(win) {
-            Some(c) => c.is_true_fullscreen(),
+            Some(c) => c.mode.is_true_fullscreen(),
             None => return false,
         };
         if is_true_fullscreen {

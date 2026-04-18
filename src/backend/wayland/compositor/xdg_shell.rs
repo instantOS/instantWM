@@ -34,6 +34,7 @@ use smithay::{
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
+use crate::types::ClientMode;
 
 impl WaylandState {
     fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
@@ -66,9 +67,9 @@ impl WaylandState {
                 return;
             };
 
-            if wants_floating && !client.is_floating {
+            if wants_floating && !client.mode.is_floating() {
                 client.float_geo = client.geo;
-                client.is_floating = true;
+                client.mode = ClientMode::Floating;
                 g.queue_layout_for_client(win);
                 changed = true;
             }
@@ -388,7 +389,7 @@ impl XdgShellHandler for WaylandState {
                 let Some(client) = g.clients.get(&win) else {
                     return;
                 };
-                if !client.is_floating {
+                if !client.mode.is_floating() {
                     return;
                 }
                 let geo = client.geo;
@@ -437,20 +438,11 @@ impl XdgShellHandler for WaylandState {
         {
             let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
             if let Some(client) = g.clients.get_mut(&win) {
-                client.is_fullscreen = true;
-            }
-            for (_id, mon) in g.monitors_iter_mut() {
-                if mon.fullscreen == Some(win) {
-                    mon.fullscreen = None;
-                }
+                client.mode = client.mode.as_fullscreen();
             }
             g.queue_layout_for_client(win);
             request_space_sync = true;
-            if let Some(monitor_id) = monitor_id
-                && let Some(mon) = g.monitor_mut(monitor_id)
-            {
-                mon.fullscreen = Some(win);
-            }
+            let _ = monitor_id;
         }
         if request_space_sync {
             self.request_space_sync();
@@ -467,15 +459,10 @@ impl XdgShellHandler for WaylandState {
             && let Some(g) = self.globals_mut()
         {
             if let Some(client) = g.clients.get_mut(&win) {
-                client.is_fullscreen = false;
+                client.mode = client.mode.restored();
             }
             g.queue_layout_for_client(win);
             request_space_sync = true;
-            for (_id, mon) in g.monitors_iter_mut() {
-                if mon.fullscreen == Some(win) {
-                    mon.fullscreen = None;
-                }
-            }
         }
         if request_space_sync {
             self.request_space_sync();
@@ -491,18 +478,16 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
-            let is_currently_floating = g.clients.get(&win).map(|c| c.is_floating).unwrap_or(false);
-
             if let Some(client) = g.clients.get_mut(&win) {
-                if !is_currently_floating {
+                if !client.mode.is_floating() {
                     client.float_geo = client.geo;
                 }
-                client.is_floating = true;
+                client.mode = client.mode.as_maximized();
             }
             g.queue_layout_for_client(win);
             request_space_sync = true;
             if let Some(mon) = g.selected_monitor_mut_opt() {
-                mon.fullscreen = Some(win);
+                mon.maximized = Some(win);
             }
         }
         if request_space_sync {
@@ -520,14 +505,14 @@ impl XdgShellHandler for WaylandState {
             && let Some(g) = self.globals_mut()
         {
             if let Some(client) = g.clients.get_mut(&win) {
-                client.is_floating = false;
+                client.mode = client.mode.restored();
             }
             g.queue_layout_for_client(win);
             request_space_sync = true;
             if let Some(mon) = g.selected_monitor_mut_opt()
-                && mon.fullscreen == Some(win)
+                && mon.maximized == Some(win)
             {
-                mon.fullscreen = None;
+                mon.maximized = None;
             }
         }
         if request_space_sync {
@@ -588,7 +573,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 .map(|client| crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
-                    is_floating: client.is_floating,
+                    is_floating: client.mode.is_floating(),
                 })
                 .unwrap_or_else(|| crate::client::current_launch_context(g));
             let _ = token_data

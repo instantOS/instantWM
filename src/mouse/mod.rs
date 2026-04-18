@@ -65,8 +65,8 @@ pub use drag::{
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{
-    clear_hover_offer, floating_to_tiled_hover, handle_floating_resize_hover,
-    handle_sidebar_hover, hover_resize_mouse, set_hover_resize,
+    clear_hover_offer, floating_to_tiled_hover, handle_floating_resize_hover, handle_sidebar_hover,
+    hover_resize_mouse, set_hover_resize,
 };
 
 // ── resize ────────────────────────────────────────────────────────────────────

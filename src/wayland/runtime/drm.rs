@@ -689,7 +689,7 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
 
     visible_clients
         .pop()
-        .is_some_and(|(_, client)| client.is_true_fullscreen())
+        .is_some_and(|(_, client)| client.mode.is_true_fullscreen())
 }
 
 fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {

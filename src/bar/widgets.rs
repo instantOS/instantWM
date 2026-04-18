@@ -221,7 +221,7 @@ pub(crate) fn draw_close_button(
             ctx.globals()
                 .clients
                 .get(&selected_window)
-                .map(|sel_c| sel_c.is_fullscreen && sel_c.win == c.win)
+                .map(|sel_c| sel_c.mode.is_fullscreen() && sel_c.win == c.win)
         })
         .unwrap_or(false);
 

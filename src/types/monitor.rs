@@ -147,8 +147,8 @@ pub struct Monitor {
     pub pertag: HashMap<u32, PertagState>,
     /// Persistent client z-order.
     pub z_order: ClientZOrder,
-    /// Currently fullscreen client.
-    pub fullscreen: Option<WindowId>,
+    /// Currently maximized client.
+    pub maximized: Option<WindowId>,
     /// Monitor name (e.g., "DP-1", "HDMI-1").
     pub name: String,
 }
@@ -187,7 +187,7 @@ impl Default for Monitor {
             tag_tiled_focus_history: HashMap::new(),
             pertag: HashMap::new(),
             z_order: ClientZOrder::default(),
-            fullscreen: None,
+            maximized: None,
             name: String::new(),
         }
     }
@@ -253,7 +253,10 @@ impl Monitor {
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
         let mask = self.selected_tags().bits();
-        self.pertag.entry(mask).or_default()
+        let default_showbar = self.showbar;
+        self.pertag
+            .entry(mask)
+            .or_insert_with(|| PertagState::new(default_showbar))
     }
 
     /// Get the currently selected tags as a type-safe mask.
@@ -402,7 +405,7 @@ impl Monitor {
 
         for &win in self.clients.iter().skip(iter_start) {
             if let Some(c) = clients.get(&win)
-                && !c.is_floating
+                && c.mode.is_tiling()
                 && c.is_visible(selected)
             {
                 return Some(win);
@@ -421,7 +424,7 @@ impl Monitor {
         self.pertag
             .get(&mask.bits())
             .map(|s| s.showbar)
-            .unwrap_or(true)
+            .unwrap_or(self.showbar)
     }
 
     /// Returns layout state for the given tag mask (immutable lookup).
@@ -694,10 +697,16 @@ pub struct PertagState {
 
 impl Default for PertagState {
     fn default() -> Self {
+        Self::new(true)
+    }
+}
+
+impl PertagState {
+    pub fn new(showbar: bool) -> Self {
         Self {
             nmaster: 1,
             mfact: 0.55,
-            showbar: true,
+            showbar,
             layouts: TagLayouts::default(),
         }
     }
@@ -785,14 +794,14 @@ mod tests {
 
         let mut fullscreen = Client {
             win: WindowId(2),
-            is_fullscreen: true,
             ..Client::default()
         };
+        fullscreen.mode = fullscreen.mode.as_fullscreen();
         fullscreen.set_tag_mask(TagMask::single(1).unwrap());
 
         let mut floating = Client {
             win: WindowId(3),
-            is_floating: true,
+            mode: crate::types::ClientMode::Floating,
             ..Client::default()
         };
         floating.set_tag_mask(TagMask::single(1).unwrap());

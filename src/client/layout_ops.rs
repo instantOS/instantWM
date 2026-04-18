@@ -52,20 +52,20 @@ pub fn zoom(ctx: &mut WmCtx) {
     ctx.backend().raise_window_visual_only(win);
     ctx.backend().flush();
 
-    let (is_floating, monitor_id) = ctx
+    let (is_tiling_mode, monitor_id) = ctx
         .core()
         .globals()
         .clients
         .get(&win)
-        .map(|c| (c.is_floating, c.monitor_id))
-        .unwrap_or((true, crate::types::MonitorId(0)));
+        .map(|c| (c.mode.is_tiling(), c.monitor_id))
+        .unwrap_or((false, crate::types::MonitorId(0)));
 
     let Some(mon) = ctx.core().globals().monitor(monitor_id) else {
         return;
     };
 
     // Only meaningful in a tiling layout with a non-floating window.
-    if !mon.is_tiling_layout() || is_floating {
+    if !mon.is_tiling_layout() || !is_tiling_mode {
         return;
     }
 

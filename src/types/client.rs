@@ -10,6 +10,144 @@ use crate::types::core::MonitorId;
 use crate::types::geometry::{Rect, SizeHints};
 use crate::types::input::SnapPosition;
 
+/// Base mode to restore after temporary modes such as fullscreen or maximized.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum BaseClientMode {
+    #[default]
+    Tiling,
+    Floating,
+}
+
+/// Mutually exclusive client placement mode.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    bincode::Encode,
+    bincode::Decode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum ClientMode {
+    #[default]
+    Tiling,
+    Floating,
+    TrueFullscreen {
+        restore: BaseClientMode,
+    },
+    FakeFullscreen {
+        restore: BaseClientMode,
+    },
+    Maximized {
+        restore: BaseClientMode,
+    },
+}
+
+impl ClientMode {
+    #[inline]
+    pub fn is_fullscreen(self) -> bool {
+        matches!(
+            self,
+            Self::TrueFullscreen { .. } | Self::FakeFullscreen { .. }
+        )
+    }
+
+    #[inline]
+    pub fn is_true_fullscreen(self) -> bool {
+        matches!(self, Self::TrueFullscreen { .. })
+    }
+
+    #[inline]
+    pub fn is_fake_fullscreen(self) -> bool {
+        matches!(self, Self::FakeFullscreen { .. })
+    }
+
+    #[inline]
+    pub fn is_maximized(self) -> bool {
+        matches!(self, Self::Maximized { .. })
+    }
+
+    #[inline]
+    pub fn is_floating(self) -> bool {
+        matches!(self, Self::Floating)
+    }
+
+    #[inline]
+    pub fn is_tiling(self) -> bool {
+        matches!(self, Self::Tiling)
+    }
+
+    #[inline]
+    pub fn is_free_positioned(self) -> bool {
+        matches!(self, Self::Floating | Self::Maximized { .. })
+    }
+
+    #[inline]
+    pub fn restore_mode(self) -> Option<BaseClientMode> {
+        match self {
+            Self::Tiling | Self::Floating => None,
+            Self::TrueFullscreen { restore }
+            | Self::FakeFullscreen { restore }
+            | Self::Maximized { restore } => Some(restore),
+        }
+    }
+
+    #[inline]
+    pub fn base_mode(self) -> BaseClientMode {
+        match self {
+            Self::Tiling => BaseClientMode::Tiling,
+            Self::Floating => BaseClientMode::Floating,
+            Self::TrueFullscreen { restore }
+            | Self::FakeFullscreen { restore }
+            | Self::Maximized { restore } => restore,
+        }
+    }
+
+    #[inline]
+    pub fn as_fullscreen(self) -> Self {
+        Self::TrueFullscreen {
+            restore: self.base_mode(),
+        }
+    }
+
+    #[inline]
+    pub fn as_fake_fullscreen(self) -> Self {
+        Self::FakeFullscreen {
+            restore: self.base_mode(),
+        }
+    }
+
+    #[inline]
+    pub fn as_maximized(self) -> Self {
+        Self::Maximized {
+            restore: self.base_mode(),
+        }
+    }
+
+    #[inline]
+    pub fn restored(self) -> Self {
+        match self.restore_mode() {
+            Some(BaseClientMode::Tiling) => Self::Tiling,
+            Some(BaseClientMode::Floating) => Self::Floating,
+            None => self,
+        }
+    }
+}
+
 /// Represents a managed client window in the window manager.
 ///
 /// This struct contains all state for a window managed by instantWM,
@@ -32,7 +170,7 @@ pub struct Client {
     pub size_hints: SizeHints,
 
     /// Whether size hints are valid.
-    pub size_hints_valid: i32,
+    pub size_hints_valid: bool,
     /// Current border width.
     pub border_width: i32,
     /// Previous border width.
@@ -41,19 +179,12 @@ pub struct Client {
     pub tags: TagMask,
     /// Whether the window has fixed size.
     pub is_fixed_size: bool,
-    /// Whether the window is floating.
-    pub is_floating: bool,
+    /// Mutually exclusive placement mode.
+    pub mode: ClientMode,
     /// Whether the window has urgency hint.
     pub is_urgent: bool,
     /// Whether the window should never receive focus.
     pub never_focus: bool,
-    /// Stashed [`Client::is_floating`] while the WM forces floating (fullscreen,
-    /// xwayland maximize, etc.), restored when that mode ends.
-    pub saved_floating: bool,
-    /// Whether the window is fullscreen.
-    pub is_fullscreen: bool,
-    /// Whether the window is in fake fullscreen mode.
-    pub is_fake_fullscreen: bool,
     /// Whether the window is locked (can't be closed accidentally).
     pub is_locked: bool,
     /// Whether the window is sticky (visible on all tags).
@@ -161,26 +292,14 @@ impl Client {
     }
 
     /// Check if this client should be included in tiling calculations.
-    ///
-    /// Returns true if the client is:
-    /// - Not floating
-    /// - Not in true fullscreen mode
-    /// - Visible on the selected tags
-    /// - Not hidden
     #[inline]
     pub fn is_tiled(&self, selected_tags: TagMask) -> bool {
-        !self.is_floating && !self.is_true_fullscreen() && self.is_visible(selected_tags)
+        self.mode.is_tiling() && self.is_visible(selected_tags)
     }
 
     /// Clear the urgency flag for this client.
     pub fn clear_urgency(&mut self) {
         self.is_urgent = false;
-    }
-
-    /// Check if the client is in true fullscreen mode (not fake fullscreen).
-    #[inline]
-    pub fn is_true_fullscreen(&self) -> bool {
-        self.is_fullscreen && !self.is_fake_fullscreen
     }
 
     /// Get the border width.
@@ -224,7 +343,7 @@ impl Client {
     /// If the window is already floating, returns current geometry.
     /// Otherwise returns effective float geometry (saved float dims or current tiled dims).
     pub fn restore_geo_for_float(&self) -> Rect {
-        if self.is_floating {
+        if self.mode.is_floating() {
             self.geo
         } else {
             self.effective_float_geo()
@@ -278,8 +397,46 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::Client;
+    use super::{Client, ClientMode};
     use crate::types::{SCRATCHPAD_MASK, TagMask};
+
+    #[test]
+    fn fullscreen_restores_previous_tiling_mode() {
+        let mut client = Client::default();
+
+        client.mode = client.mode.as_fullscreen();
+        assert!(client.mode.is_true_fullscreen());
+        assert!(!client.mode.is_tiling());
+
+        client.mode = client.mode.restored();
+        assert_eq!(client.mode, ClientMode::Tiling);
+    }
+
+    #[test]
+    fn fullscreen_restores_previous_floating_mode() {
+        let mut client = Client::default();
+        client.mode = crate::types::ClientMode::Floating;
+
+        client.mode = client.mode.as_fullscreen();
+        assert!(client.mode.is_true_fullscreen());
+        assert!(!client.mode.is_floating());
+
+        client.mode = client.mode.restored();
+        assert_eq!(client.mode, ClientMode::Floating);
+    }
+
+    #[test]
+    fn maximized_restores_previous_regular_mode() {
+        let mut client = Client::default();
+        client.mode = crate::types::ClientMode::Floating;
+
+        client.mode = client.mode.as_maximized();
+        assert!(client.mode.is_maximized());
+        assert!(!client.mode.is_floating());
+
+        client.mode = client.mode.restored();
+        assert_eq!(client.mode, ClientMode::Floating);
+    }
 
     #[test]
     fn scratchpad_requires_scratchpad_tag() {

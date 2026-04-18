@@ -42,7 +42,7 @@ pub use title::{
 };
 
 use crate::contexts::WmCtx;
-use crate::floating::{WindowMode, set_window_mode};
+use crate::floating::set_window_mode;
 use crate::types::*;
 
 // Submodules
@@ -85,7 +85,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 return;
             };
             let (geo, is_floating) = match wl.core.client(win) {
-                Some(c) => (c.geo, c.is_floating),
+                Some(c) => (c.geo, c.mode.is_floating()),
                 None => return,
             };
 
@@ -94,7 +94,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 set_window_mode(
                     &mut WmCtx::Wayland(wl.reborrow()),
                     win,
-                    WindowMode::Floating,
+                    crate::types::BaseClientMode::Floating,
                 );
                 let selmon_id = wl.core.globals().selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));

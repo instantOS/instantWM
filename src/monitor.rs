@@ -287,7 +287,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         .globals()
         .clients
         .get(&win)
-        .map(|c| !c.is_floating)
+        .map(|c| !c.mode.is_floating())
         .unwrap_or(false);
     if needs_arrange {
         ctx.core_mut()
@@ -860,7 +860,7 @@ pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: VerticalDirecti
         .globals()
         .clients
         .get(&win)
-        .map(|c| c.is_floating)
+        .map(|c| c.mode.is_floating())
         .unwrap_or(false);
 
     if is_floating {

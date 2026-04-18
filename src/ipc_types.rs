@@ -344,10 +344,7 @@ impl GeometryInfo {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowState {
-    pub floating: bool,
-    pub fullscreen: bool,
-    #[serde(rename = "fake_fullscreen")]
-    pub fake_fullscreen: bool,
+    pub mode: crate::types::ClientMode,
     pub sticky: bool,
     pub hidden: bool,
     pub urgent: bool,
@@ -359,9 +356,7 @@ pub struct WindowState {
 impl WindowState {
     pub fn from_client(c: &crate::types::client::Client) -> Self {
         Self {
-            floating: c.is_floating,
-            fullscreen: c.is_fullscreen,
-            fake_fullscreen: c.is_fake_fullscreen,
+            mode: c.mode,
             sticky: c.is_sticky,
             hidden: c.is_hidden,
             urgent: c.is_urgent,
@@ -394,7 +389,7 @@ pub struct SizeHintsInfo {
 
 impl SizeHintsInfo {
     pub fn from_client(c: &crate::types::client::Client) -> Option<Self> {
-        if c.size_hints_valid <= 0 {
+        if !c.size_hints_valid {
             return None;
         }
         let h = &c.size_hints;
