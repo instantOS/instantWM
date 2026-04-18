@@ -436,13 +436,9 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
-            let monitor_id = g.clients.get(&win).map(|client| client.monitor_id);
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.mode = client.mode.as_fullscreen();
-            }
+            crate::client::mode::set_fullscreen(g, win, true);
             g.queue_layout_for_client(win);
             request_space_sync = true;
-            let _ = monitor_id;
         }
         if request_space_sync {
             self.request_space_sync();
@@ -458,9 +454,7 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.mode = client.mode.restored();
-            }
+            crate::client::mode::set_fullscreen(g, win, false);
             g.queue_layout_for_client(win);
             request_space_sync = true;
         }
@@ -478,17 +472,9 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
-            if let Some(client) = g.clients.get_mut(&win) {
-                if !client.mode.is_floating() {
-                    client.float_geo = client.geo;
-                }
-                client.mode = client.mode.as_maximized();
-            }
+            crate::client::mode::set_maximized(g, win, true);
             g.queue_layout_for_client(win);
             request_space_sync = true;
-            if let Some(mon) = g.selected_monitor_mut_opt() {
-                mon.maximized = Some(win);
-            }
         }
         if request_space_sync {
             self.request_space_sync();
@@ -504,16 +490,9 @@ impl XdgShellHandler for WaylandState {
         if let Some(win) = self.window_id_for_toplevel(&surface)
             && let Some(g) = self.globals_mut()
         {
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.mode = client.mode.restored();
-            }
+            crate::client::mode::set_maximized(g, win, false);
             g.queue_layout_for_client(win);
             request_space_sync = true;
-            if let Some(mon) = g.selected_monitor_mut_opt()
-                && mon.maximized == Some(win)
-            {
-                mon.maximized = None;
-            }
         }
         if request_space_sync {
             self.request_space_sync();

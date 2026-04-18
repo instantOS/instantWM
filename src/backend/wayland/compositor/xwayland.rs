@@ -543,15 +543,7 @@ impl XwmHandler for WaylandState {
                     .monitor_id(win)
                     .and_then(|mid| ctx_wayland.core.globals().monitor(mid))
                     .map(|mon| mon.work_rect);
-                if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
-                    client.float_geo = client.geo;
-                    client.mode = client.mode.as_maximized();
-                }
-                if let Some(mid) = ctx_wayland.core.globals().clients.monitor_id(win)
-                    && let Some(mon) = ctx_wayland.core.globals_mut().monitor_mut(mid)
-                {
-                    mon.maximized = Some(win);
-                }
+                crate::client::mode::set_maximized(ctx_wayland.core.globals_mut(), win, true);
                 if let Some(work_rect) = work_rect {
                     crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                         win,
@@ -581,11 +573,13 @@ impl XwmHandler for WaylandState {
                     .clients
                     .get(&win)
                     .map(|client| client.float_geo);
-                if let Some(client) = ctx_wayland.core.globals_mut().clients.get_mut(&win) {
-                    client.mode = client.mode.restored();
-                }
-                ctx_wayland.core.globals_mut().clear_maximized_for(win);
-                if let Some(restore_rect) = restore_rect {
+                let outcome =
+                    crate::client::mode::set_maximized(ctx_wayland.core.globals_mut(), win, false);
+                if let (
+                    Some(crate::client::mode::MaximizedOutcome::Exited { .. }),
+                    Some(restore_rect),
+                ) = (outcome, restore_rect)
+                {
                     crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                         win,
                         restore_rect,
@@ -606,9 +600,7 @@ impl XwmHandler for WaylandState {
         };
         let _ = window.set_fullscreen(true);
         if let Some(g) = self.globals_mut() {
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.mode = client.mode.as_fullscreen();
-            }
+            crate::client::mode::set_fullscreen(g, win, true);
             g.queue_layout_for_client(win);
         }
         self.request_space_sync();
@@ -624,9 +616,7 @@ impl XwmHandler for WaylandState {
         };
         let _ = window.set_fullscreen(false);
         if let Some(g) = self.globals_mut() {
-            if let Some(client) = g.clients.get_mut(&win) {
-                client.mode = client.mode.restored();
-            }
+            crate::client::mode::set_fullscreen(g, win, false);
             g.queue_layout_for_client(win);
         }
         self.request_space_sync();

@@ -61,17 +61,11 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         }
         write_net_wm_state_atoms(conn, x11_win, wm_state, &state_atoms);
 
-        if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-            c.mode = c.mode.as_fullscreen();
-            c.save_border_width();
-        }
+        let outcome = crate::client::mode::set_fullscreen(ctx_x11.core.globals_mut(), win, true);
 
-        if !mode.is_fake_fullscreen() {
-            // Remove the border, position and raise the window.
-            if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-                c.border_width = 0;
-            }
-
+        if let Some(crate::client::mode::FullscreenOutcome::Entered { was_floating }) = outcome
+            && !mode.is_fake_fullscreen()
+        {
             let mon_rect = ctx_x11
                 .core
                 .globals()
@@ -79,9 +73,7 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
 
-            // Animate the expansion only for non-floating clients (floating
-            // windows just snap into place immediately).
-            if mode.is_tiling() {
+            if !was_floating {
                 WmCtx::X11(ctx_x11.reborrow()).move_resize(
                     win,
                     mon_rect,
@@ -93,7 +85,6 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
                 .x11
                 .conn
                 .configure_window(x11_win, &ConfigureWindowAux::new().border_width(0));
-            // Position and raise the window.
             let _ = ctx_x11.x11.conn.configure_window(
                 x11_win,
                 &ConfigureWindowAux::new()
@@ -118,13 +109,13 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         state_atoms.retain(|&atom| atom != net_wm_fullscreen);
         write_net_wm_state_atoms(conn, x11_win, wm_state, &state_atoms);
 
-        let mut restored_border = 0;
+        let _outcome = crate::client::mode::set_fullscreen(ctx_x11.core.globals_mut(), win, false);
 
-        if let Some(c) = ctx_x11.core.globals_mut().clients.get_mut(&win) {
-            c.mode = c.mode.restored();
-            c.restore_border_width();
-            restored_border = c.border_width.max(0) as u32;
-        }
+        let restored_border = ctx_x11
+            .core
+            .client(win)
+            .map(|c| c.border_width.max(0) as u32)
+            .unwrap_or(0);
 
         let _ = ctx_x11.x11.conn.configure_window(
             x11_win,
@@ -132,7 +123,6 @@ pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen:
         );
 
         if !mode.is_fake_fullscreen() {
-            // Snap back to the geometry that was stored before going fullscreen.
             let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
             wmctx.move_resize(win, old_geo, MoveResizeOptions::immediate());
             arrange(&mut wmctx, Some(monitor_id));

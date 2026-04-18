@@ -9,6 +9,7 @@ jobs:
   build:
     name: Build release artifacts
     runs-on: self-hosted
+    timeout-minutes: 1440
     container:
       image: archlinux:latest
     env:
@@ -151,6 +152,7 @@ jobs:
   cross-compile:
     name: Cross-compile for ARM and musl targets
     runs-on: self-hosted
+    timeout-minutes: 1440
     container:
       image: ubuntu:24.04
     env:
@@ -295,6 +297,7 @@ jobs:
   pkgbuild:
     name: Build Arch package
     runs-on: self-hosted
+    timeout-minutes: 1440
     container:
       image: archlinux:latest
     needs: build

@@ -28,6 +28,7 @@ pub mod kill;
 pub mod layout_ops;
 pub mod lifecycle;
 pub mod manager;
+pub mod mode;
 pub mod rules;
 pub mod visibility;
 pub mod x11_policy;

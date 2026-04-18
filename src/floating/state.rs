@@ -157,53 +157,23 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     let selected_window = ctx.selected_client();
     let animated = ctx.core().globals().behavior.animated;
 
-    if let Some(win) = maximized_win {
-        // --- Exit maximized state ---
-        let was_floating = ctx
-            .core()
-            .globals()
-            .clients
-            .get(&win)
-            .map(|c| c.mode.base_mode() == BaseClientMode::Floating)
-            .unwrap_or(false);
+    let enter = maximized_win.is_none();
+    let win = if enter {
+        selected_window
+    } else {
+        maximized_win
+    };
+    let Some(win) = win else { return };
 
-        // Restore the mode (tiling or floating).
-        if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            c.mode = c.mode.restored();
-        }
+    let outcome = crate::client::mode::set_maximized(ctx.core_mut().globals_mut(), win, enter);
 
-        // For floating windows (or monitors with no tiling layout), restore
-        // the saved pre-maximized geometry.
-        if was_floating || !super::helpers::has_tiling_layout(ctx.core()) {
+    if let Some(crate::client::mode::MaximizedOutcome::Exited { base }) = outcome {
+        if base == BaseClientMode::Floating || !super::helpers::has_tiling_layout(ctx.core()) {
             restore_floating_geometry(ctx, win);
             if let WmCtx::X11(x11) = ctx {
                 super::helpers::apply_size(x11, win);
             }
         }
-
-        ctx.core_mut()
-            .globals_mut()
-            .selected_monitor_mut()
-            .maximized = None;
-    } else {
-        // --- Enter maximized state ---
-        let Some(win) = selected_window else { return };
-
-        // Save floating geometry so we can restore it on toggle-off.
-        if super::helpers::check_floating(ctx.core(), win)
-            && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win)
-        {
-            save_floating_geometry(client);
-        }
-
-        if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            c.mode = c.mode.as_maximized();
-        }
-
-        ctx.core_mut()
-            .globals_mut()
-            .selected_monitor_mut()
-            .maximized = Some(win);
     }
 
     // Run the layout pass.  Disable animations temporarily so the
@@ -218,7 +188,7 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     }
 
     // Raise the newly maximized window above everything else.
-    if let Some(win) = ctx.core().globals().selected_monitor().maximized {
+    if ctx.core().globals().selected_monitor().maximized == Some(win) {
         ctx.backend().raise_window_visual_only(win);
     }
 }
