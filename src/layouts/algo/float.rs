@@ -42,12 +42,6 @@ use crate::types::{Monitor, Rect, SnapPosition, WindowId};
 /// enforced and the window stack sorted.
 pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let selected = m.selected_tags();
-    // Disable animation for the duration of this arrange pass — floating
-    // windows should snap into their positions instantly.
-    let animation_was_on = ctx.core_mut().globals_mut().behavior.animated;
-    if animation_was_on {
-        ctx.core_mut().globals_mut().behavior.animated = false;
-    }
 
     // ── apply pending snap positions ──────────────────────────────────────
     // Collect targets first to avoid borrowing ctx/m/clients immutably while
@@ -68,11 +62,6 @@ pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     if let Some(selected_window) = m.sel {
         ctx.backend().raise_window_visual_only(selected_window);
         ctx.backend().flush();
-    }
-
-    // Restore animation flag.
-    if animation_was_on {
-        ctx.core_mut().globals_mut().behavior.animated = true;
     }
 }
 
