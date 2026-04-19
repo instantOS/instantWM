@@ -43,7 +43,6 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.globals().cfg.buttons.clone();
-    let hover_offer = ctx.core.globals().drag.hover_offer;
     let mut selmon_id = ctx.core.globals().selected_monitor_id();
     let focusfollowsmouse = ctx.core.globals().behavior.focus_follows_mouse;
 
@@ -129,20 +128,9 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     if bar_pos == BarPosition::Root
         && let Some(mon) = ctx.core.globals().monitor(selmon_id)
         && mon.sel.is_some()
-        && let Some(dir) = hover_offer.resize_direction()
+        && let Some(btn) = MouseButton::from_x11_detail(e.detail)
+        && crate::mouse::commit_x11_hover_offer(ctx, btn)
     {
-        crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
-        let btn = MouseButton::from_x11_detail(e.detail).unwrap_or(MouseButton::Left);
-        let mut x11_ctx = ctx.reborrow();
-        if btn == MouseButton::Right {
-            crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
-        } else if btn == MouseButton::Left {
-            if dir == crate::types::ResizeDirection::Top {
-                crate::backend::x11::mouse::move_mouse_x11(&mut x11_ctx, btn, None);
-            } else {
-                crate::mouse::resize_mouse_directional(&mut x11_ctx, Some(dir), btn);
-            }
-        }
         return;
     };
 
@@ -295,24 +283,24 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
-    //    (root or client), offer the resize cursor via hover_resize_mouse.
+    //    (root or client), offer the resize cursor via the hover-offer loop.
     if is_floating_sel {
         // Special case: transitioning from a floating selection to a tiled
         // client under the cursor should activate the resize offer on the
         // floating window until the user commits (clicks) or moves away.
         // This avoids the "nothing happens" feel when hovering onto a tiled
         // window while a floating window is selected.
-        if crate::mouse::floating_to_tiled_hover(ctx) {
+        if crate::mouse::handle_x11_floating_to_tiled_hover_offer(ctx) {
             return;
         }
         // Case 1: Entering root while sel is floating
         if entering_root {
-            if crate::mouse::hover_resize_mouse(ctx) {
+            if crate::mouse::run_x11_hover_resize_offer_loop(ctx) {
                 return;
             }
         // Case 2: Entering a different client while sel is floating
         } else if entering_client && Some(event_win) != selected_window {
-            let resized = crate::mouse::hover_resize_mouse(ctx);
+            let resized = crate::mouse::run_x11_hover_resize_offer_loop(ctx);
             if focusfollowsfloatmouse {
                 if resized {
                     return;
@@ -459,7 +447,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     };
 
     if root_y >= monitor_y + bar_height {
-        if crate::mouse::handle_floating_resize_hover(
+        if crate::mouse::update_floating_resize_offer_at(
             &mut WmCtx::X11(ctx.reborrow()),
             root_x,
             root_y,
@@ -467,7 +455,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         ) {
             return;
         }
-        if crate::mouse::handle_sidebar_hover(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
+        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
             return;
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));

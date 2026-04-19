@@ -160,37 +160,37 @@ pub struct TagDragState {
     pub button: MouseButton,
 }
 
-/// Whether the cursor is currently offering a hover-resize interaction.
+/// The pointer-owned interaction currently being offered before a click commits it.
 ///
-/// This is the source of truth for hover-resize mode — the cursor icon is a
+/// This is the source of truth for hover offers; the cursor icon is a
 /// side-effect, not the other way around.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum HoverResizeOffer {
+pub enum HoverOffer {
     #[default]
     None,
     /// Cursor is in the resize border zone of a floating window.
-    Resize(ResizeDirection),
+    Resize { win: WindowId, dir: ResizeDirection },
     /// Cursor is on the sidebar drag edge.
     Sidebar,
 }
 
-impl HoverResizeOffer {
-    /// Whether any hover-resize interaction is offered (not [`HoverResizeOffer::None`]).
+impl HoverOffer {
+    /// Whether any hover interaction is offered (not [`HoverOffer::None`]).
     #[inline]
     pub fn is_active(self) -> bool {
-        !matches!(self, HoverResizeOffer::None)
+        !matches!(self, HoverOffer::None)
     }
 
     #[inline]
     pub fn is_sidebar(self) -> bool {
-        matches!(self, HoverResizeOffer::Sidebar)
+        matches!(self, HoverOffer::Sidebar)
     }
 
-    /// The resize direction when this offer is a border resize; otherwise `None`.
+    /// The resize target and direction when this is a border-resize offer.
     #[inline]
-    pub fn resize_direction(self) -> Option<ResizeDirection> {
+    pub fn resize_target(self) -> Option<(WindowId, ResizeDirection)> {
         match self {
-            HoverResizeOffer::Resize(dir) => Some(dir),
+            HoverOffer::Resize { win, dir } => Some((win, dir)),
             _ => None,
         }
     }
@@ -202,12 +202,12 @@ pub struct DragState {
     pub tag: TagDragState,
     pub interactive: DragInteraction,
     pub bar_active: bool,
-    pub hover_offer: HoverResizeOffer,
+    pub hover_offer: HoverOffer,
 }
 
 impl DragState {
     #[inline]
-    pub fn set_hover_offer(&mut self, offer: HoverResizeOffer) {
+    pub fn set_hover_offer(&mut self, offer: HoverOffer) {
         self.hover_offer = offer;
     }
 
@@ -216,7 +216,7 @@ impl DragState {
         if !self.hover_offer.is_active() {
             return false;
         }
-        self.hover_offer = HoverResizeOffer::None;
+        self.hover_offer = HoverOffer::None;
         true
     }
 }

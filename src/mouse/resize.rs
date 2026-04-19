@@ -402,4 +402,4 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
 
     with_wm_ctx_x11(ctx, |ctx| handle_client_monitor_switch(ctx, win));
 }
-// `hover_resize_mouse` and `is_in_resize_border` live in `super::hover`.
+// Hover-offer loops live in `super::hover`.

@@ -8,15 +8,13 @@ use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::mouse::hover::selected_hover_resize_target_at;
-use crate::mouse::{clear_hover_offer, set_hover_resize};
+use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at};
 use crate::types::BarPosition;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wayland::input::bar::update_wayland_bar_hit_state;
 use crate::wayland::input::pointer::drag::{
-    update_wayland_selected_resize_offer, wayland_active_drag_window,
-    wayland_hover_resize_drag_motion,
+    wayland_active_drag_window, wayland_hover_resize_drag_motion,
 };
 use crate::wm::Wm;
 
@@ -400,22 +398,19 @@ fn update_hover_resize_state(
     };
 
     if !selected_floating {
-        let _ = update_wayland_selected_resize_offer(&mut ctx, root_x, root_y);
+        let _ =
+            update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y);
         return false;
     }
 
     let mut suppress_hover_focus = !hovered_is_selected;
-    let selected_offer = update_wayland_selected_resize_offer(&mut ctx, root_x, root_y).is_some();
+    let selected_offer =
+        update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y)
+            .is_some();
     if selected_offer {
         suppress_hover_focus = true;
     } else if !hovered_is_selected {
-        if let Some((_, dir)) = selected_hover_resize_target_at(&ctx.core, root_x, root_y) {
-            set_hover_resize(&mut WmCtx::Wayland(ctx.reborrow()), dir);
-            suppress_hover_focus = true;
-        } else {
-            clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
-            suppress_hover_focus = false;
-        }
+        suppress_hover_focus = false;
     }
 
     suppress_hover_focus

@@ -20,7 +20,7 @@
 //!   └─► events.rs dispatches to one of:
 //!         ├─ move_mouse                  (drag module)
 //!         ├─ resize_mouse                (resize module)
-//!         ├─ hover_resize_mouse          (hover module)
+//!         ├─ run_x11_hover_resize_offer_loop (hover module)
 //!         ├─ window_title_mouse_handler  (drag module)
 //!         ├─ drag_tag                    (drag module)
 //!         └─ gesture_mouse               (drag module)
@@ -65,13 +65,14 @@ pub use drag::{
 // ── hover ─────────────────────────────────────────────────────────────────────
 
 pub use hover::{
-    clear_hover_offer, floating_to_tiled_hover, handle_floating_resize_hover, handle_sidebar_hover,
-    hover_resize_mouse, set_hover_resize,
+    clear_hover_offer, commit_x11_hover_offer, handle_x11_floating_to_tiled_hover_offer,
+    run_x11_hover_resize_offer_loop, update_floating_resize_offer_at,
+    update_selected_resize_offer_at, update_sidebar_offer_at,
 };
 
 // ── resize ────────────────────────────────────────────────────────────────────
 
-pub use resize::{resize_aspect_mouse, resize_mouse_directional, resize_mouse_from_cursor};
+pub use resize::{resize_aspect_mouse, resize_mouse_from_cursor};
 
 // ── slop ─────────────────────────────────────────────────────────────────────
 

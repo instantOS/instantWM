@@ -64,7 +64,7 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
 
 /// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
 ///
-/// Used by [`crate::mouse::hover::hover_resize_mouse`] so that pressing
+/// Used by [`crate::mouse::hover::run_x11_hover_resize_offer_loop`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
 pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
     let cursor_index = cursor.to_x11_index();

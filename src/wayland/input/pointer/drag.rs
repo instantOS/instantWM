@@ -1,17 +1,12 @@
 //! Pointer drag handling (title drag, tag drag, resize drag).
 
-use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::mouse::{clear_hover_offer, set_hover_resize};
+use crate::contexts::WmCtxWayland;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
+use crate::mouse::hover::selected_hover_resize_target_at;
 use crate::mouse::set_cursor_style;
-use crate::types::{AltCursor, MouseButton, Rect, ResizeDirection, WindowId, get_resize_direction};
+use crate::types::{AltCursor, MouseButton, Rect, WindowId};
 use crate::wm::Wm;
-
-fn wayland_monitor_bar_visible(ctx: &crate::contexts::WmCtxWayland<'_>) -> bool {
-    let mon = ctx.core.globals().selected_monitor();
-    crate::bar::monitor_bar_visible(ctx.core.globals(), mon)
-}
 
 /// Get the active drag window (if any).
 pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
@@ -31,15 +26,17 @@ pub fn wayland_hover_resize_drag_begin(
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
-    let Some((win, dir, geo)) = wayland_selected_resize_target_at(ctx, root_x, root_y) else {
+    let Some(target) = selected_hover_resize_target_at(&ctx.core, root_x, root_y) else {
         return false;
     };
+    let win = target.win;
+    let geo = target.geo;
     let drag_type = if btn == MouseButton::Right
         || geo.is_at_top_middle_edge(root_x, root_y, RESIZE_BORDER_ZONE)
     {
         crate::globals::DragType::Move
     } else {
-        crate::globals::DragType::Resize(dir)
+        crate::globals::DragType::Resize(target.dir)
     };
     ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
         active: true,
@@ -77,52 +74,6 @@ pub fn wayland_hover_resize_drag_begin(
     let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
     crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_client(win);
     true
-}
-
-/// Get resize target at given coordinates.
-fn wayland_selected_resize_target_at(
-    ctx: &crate::contexts::WmCtxWayland<'_>,
-    root_x: i32,
-    root_y: i32,
-) -> Option<(WindowId, ResizeDirection, Rect)> {
-    let win = ctx.core.selected_client()?;
-    let mon = ctx.core.globals().selected_monitor();
-    if wayland_monitor_bar_visible(ctx) && root_y < mon.monitor_rect.y + mon.bar_height {
-        return None;
-    }
-    let selected_tags = mon.selected_tags();
-    let c = ctx.core.client(win)?;
-    if !c.is_visible(selected_tags) {
-        return None;
-    }
-    let has_tiling = mon.is_tiling_layout();
-    if !c.mode.is_floating() && has_tiling {
-        return None;
-    }
-    if !c
-        .geo
-        .contains_resize_border_point(root_x, root_y, RESIZE_BORDER_ZONE)
-    {
-        return None;
-    }
-    let hit_x = root_x - c.geo.x;
-    let hit_y = root_y - c.geo.y;
-    let dir = get_resize_direction(c.geo.w, c.geo.h, hit_x, hit_y);
-    Some((win, dir, c.geo))
-}
-
-/// Update resize direction for selected window.
-pub fn update_wayland_selected_resize_offer(
-    ctx: &mut WmCtxWayland<'_>,
-    root_x: i32,
-    root_y: i32,
-) -> Option<WindowId> {
-    let Some((win, dir, _)) = wayland_selected_resize_target_at(ctx, root_x, root_y) else {
-        clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
-        return None;
-    };
-    set_hover_resize(&mut WmCtx::Wayland(ctx.reborrow()), dir);
-    Some(win)
 }
 
 /// Update bar hover gesture highlighting during a Wayland move drag.
