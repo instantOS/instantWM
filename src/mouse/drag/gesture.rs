@@ -52,9 +52,9 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
     }
 
     let cmd = if root_y < last_y {
-        &["/usr/share/instantassist/utils/p.sh", "+"][..]
+        &["ins", "assist", "volume", "+"][..]
     } else {
-        &["/usr/share/instantassist/utils/p.sh", "-"][..]
+        &["ins", "assist", "volume", "-"][..]
     };
     crate::util::spawn(ctx, cmd);
     ctx.core_mut().globals_mut().drag.gesture.last_y = root_y;

@@ -13,32 +13,32 @@ pub mod defaults {
 
 /// Volume and brightness controls.
 pub mod media {
-    pub const P: &[&str] = &["/usr/share/instantassist/utils/p.sh"];
-    pub const B: &[&str] = &["/usr/share/instantassist/utils/b.sh"];
+    pub const P: &[&str] = &["ins", "assist", "volume"];
+    pub const B: &[&str] = &["ins", "assist", "bright"];
 
     pub fn up_vol() -> &'static [&'static str] {
-        &["/usr/share/instantassist/utils/p.sh", "+"]
+        &["ins", "assist", "volume", "+"]
     }
     pub fn down_vol() -> &'static [&'static str] {
-        &["/usr/share/instantassist/utils/p.sh", "-"]
+        &["ins", "assist", "volume", "-"]
     }
     pub fn mute_vol() -> &'static [&'static str] {
-        &["/usr/share/instantassist/utils/p.sh", "m"]
+        &["ins", "assist", "volume", "mute"]
     }
     pub fn up_bright() -> &'static [&'static str] {
-        &["/usr/share/instantassist/utils/b.sh", "+"]
+        &["ins", "assist", "bright", "+"]
     }
     pub fn down_bright() -> &'static [&'static str] {
-        &["/usr/share/instantassist/utils/b.sh", "-"]
+        &["ins", "assist", "bright", "-"]
     }
 }
 
 /// Screenshot utilities.
 pub mod scrot {
-    pub const S: &[&str] = &["/usr/share/instantassist/assists/s/s.sh"];
-    pub const M: &[&str] = &["/usr/share/instantassist/assists/s/m.sh"];
-    pub const C: &[&str] = &["/usr/share/instantassist/assists/s/c.sh"];
-    pub const F: &[&str] = &["/usr/share/instantassist/assists/s/f.sh"];
+    pub const S: &[&str] = &["ins", "assist", "run", "sp"];
+    pub const M: &[&str] = &["ins", "assist", "run", "sm"];
+    pub const C: &[&str] = &["ins", "assist", "run", "sc"];
+    pub const F: &[&str] = &["ins", "assist", "run", "sf"];
 }
 
 /// Rofi window switcher (for iswitch-style window switching).
