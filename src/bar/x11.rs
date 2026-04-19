@@ -17,7 +17,7 @@ pub fn update_status(
 
     draw_bar(core, x11_runtime, None, selmon_idx);
 
-    crate::systray::update_systray(core, x11, x11_runtime, systray);
+    crate::systray::x11::update_systray(core, x11, x11_runtime, systray);
 }
 
 pub fn draw_bar(
@@ -41,7 +41,7 @@ pub fn draw_bar(
 
     if core.globals().cfg.show_systray {
         core.globals_mut().bar_runtime.systray_width =
-            crate::systray::get_systray_width(core, systray) as i32;
+            crate::systray::x11::get_systray_width(core, systray) as i32;
     }
 
     let drw = {
@@ -102,7 +102,7 @@ pub fn draw_bars_x11(
 
         if core.globals().cfg.show_systray {
             core.globals_mut().bar_runtime.systray_width =
-                crate::systray::get_systray_width(core, systray) as i32;
+                crate::systray::x11::get_systray_width(core, systray) as i32;
         }
 
         let drw = {
@@ -155,7 +155,7 @@ pub fn resize_bar_win(
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
-        w = w.saturating_sub(crate::systray::get_systray_width(core, systray));
+        w = w.saturating_sub(crate::systray::x11::get_systray_width(core, systray));
     }
 
     let conn = x11.conn;
@@ -192,7 +192,7 @@ pub fn update_bars(
         if showsystray {
             systray_widths.insert(
                 selected_monitor_id,
-                crate::systray::get_systray_width(core, systray),
+                crate::systray::x11::get_systray_width(core, systray),
             );
         }
 

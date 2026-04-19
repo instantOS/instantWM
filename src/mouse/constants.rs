@@ -6,7 +6,7 @@
 pub const MIN_WINDOW_SIZE: i32 = 50;
 
 /// Pixel band around a floating window's border that triggers resize-cursor
-/// activation in [`crate::mouse::resize::is_in_resize_border`].
+/// activation in [`crate::mouse::hover::is_in_resize_border`].
 pub const RESIZE_BORDER_ZONE: i32 = 30;
 
 /// How many pixels the cursor must travel before a title-bar click is

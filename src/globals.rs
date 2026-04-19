@@ -174,6 +174,28 @@ pub enum HoverResizeOffer {
     Sidebar,
 }
 
+impl HoverResizeOffer {
+    /// Whether any hover-resize interaction is offered (not [`HoverResizeOffer::None`]).
+    #[inline]
+    pub fn is_active(self) -> bool {
+        !matches!(self, HoverResizeOffer::None)
+    }
+
+    #[inline]
+    pub fn is_sidebar(self) -> bool {
+        matches!(self, HoverResizeOffer::Sidebar)
+    }
+
+    /// The resize direction when this offer is a border resize; otherwise `None`.
+    #[inline]
+    pub fn resize_direction(self) -> Option<ResizeDirection> {
+        match self {
+            HoverResizeOffer::Resize(dir) => Some(dir),
+            _ => None,
+        }
+    }
+}
+
 /// Consolidated state for mouse/touch interactions.
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
@@ -181,6 +203,22 @@ pub struct DragState {
     pub interactive: DragInteraction,
     pub bar_active: bool,
     pub hover_offer: HoverResizeOffer,
+}
+
+impl DragState {
+    #[inline]
+    pub fn set_hover_offer(&mut self, offer: HoverResizeOffer) {
+        self.hover_offer = offer;
+    }
+
+    /// Clears an active hover offer. Returns `true` if the state changed.
+    pub fn clear_hover_offer(&mut self) -> bool {
+        if !self.hover_offer.is_active() {
+            return false;
+        }
+        self.hover_offer = HoverResizeOffer::None;
+        true
+    }
 }
 
 /// A single keyboard layout with optional variant.

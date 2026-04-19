@@ -13,7 +13,8 @@
 //! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::globals::HoverResizeOffer;
 // focus() is used via focus_soft() in this module
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -28,46 +29,33 @@ use super::resize::resize_mouse_directional;
 
 // ResizeDirection and get_resize_direction are now defined in types.rs
 
-/// Returns `true` when the cursor (in root coordinates) is on the top-middle
-/// edge of a window — used to distinguish a *move* from a *resize*.
-pub fn is_at_top_middle_edge(geo: &Rect, root_x: i32, root_y: i32) -> bool {
-    let at_top = root_y >= geo.y - RESIZE_BORDER_ZONE && root_y < geo.y + RESIZE_BORDER_ZONE;
-    let in_middle_third = root_x >= geo.x + geo.w / 3 && root_x <= geo.x + 2 * geo.w / 3;
-    at_top && in_middle_third
-}
-
 // ── Hover-resize offer helpers ───────────────────────────────────────────────
+//
+// Pure hover-offer state lives on [`crate::globals::HoverResizeOffer`] /
+// [`crate::globals::DragState`]; these functions apply the matching cursor.
 
 /// Activate a resize hover offer — sets both the source-of-truth field and the cursor icon.
 pub fn set_hover_resize(ctx: &mut WmCtx, dir: ResizeDirection) {
-    ctx.core_mut().globals_mut().drag.hover_offer = crate::globals::HoverResizeOffer::Resize(dir);
+    ctx.core_mut()
+        .globals_mut()
+        .drag
+        .set_hover_offer(HoverResizeOffer::Resize(dir));
     set_cursor_style(ctx, AltCursor::Resize(dir));
 }
 
 /// Activate a sidebar hover offer.
 pub fn set_hover_sidebar(ctx: &mut WmCtx) {
-    ctx.core_mut().globals_mut().drag.hover_offer = crate::globals::HoverResizeOffer::Sidebar;
+    ctx.core_mut()
+        .globals_mut()
+        .drag
+        .set_hover_offer(HoverResizeOffer::Sidebar);
     set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
 }
 
 /// Clear any active hover offer and reset the cursor.
 pub fn clear_hover_offer(ctx: &mut WmCtx) {
-    if ctx.core().globals().drag.hover_offer != crate::globals::HoverResizeOffer::None {
-        ctx.core_mut().globals_mut().drag.hover_offer = crate::globals::HoverResizeOffer::None;
+    if ctx.core_mut().globals_mut().drag.clear_hover_offer() {
         set_cursor_style(ctx, AltCursor::Default);
-    }
-}
-
-/// Returns `true` if any hover-resize offer is active.
-pub fn has_hover_offer(ctx: &WmCtx) -> bool {
-    ctx.core().globals().drag.hover_offer != crate::globals::HoverResizeOffer::None
-}
-
-/// Returns the resize direction if a resize hover offer is active.
-pub fn hover_resize_dir(ctx: &WmCtx) -> Option<ResizeDirection> {
-    match ctx.core().globals().drag.hover_offer {
-        crate::globals::HoverResizeOffer::Resize(dir) => Some(dir),
-        _ => None,
     }
 }
 
@@ -108,17 +96,17 @@ fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
 
 /// Find a visible floating window whose resize border zone contains (`x`, `y`).
 /// Returns `None` if the cursor is on the bar or no window matches.
-pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option<WindowId> {
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+pub fn find_floating_win_at_resize_border(core: &CoreCtx<'_>, x: i32, y: i32) -> Option<WindowId> {
+    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
 
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = core.globals().selected_monitor();
     let mask = mon.selected_tags();
     if mon.showbar_for_mask(mask) && y < mon.monitor_rect.y + mon.bar_height {
         return None;
     }
 
     let selected = mon.selected_tags();
-    for (w, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
+    for (w, c) in mon.iter_clients(core.globals().clients.map()) {
         if !c.is_visible(selected) {
             continue;
         }
@@ -134,13 +122,12 @@ pub fn find_floating_win_at_resize_border(ctx: &WmCtx, x: i32, y: i32) -> Option
 
 /// Return the floating window + direction currently targeted by hover-resize.
 pub fn hover_resize_target_at(
-    ctx: &WmCtx,
+    core: &CoreCtx<'_>,
     root_x: i32,
     root_y: i32,
 ) -> Option<(WindowId, ResizeDirection)> {
-    let win = find_floating_win_at_resize_border(ctx, root_x, root_y)?;
-    let dir = ctx
-        .core()
+    let win = find_floating_win_at_resize_border(core, root_x, root_y)?;
+    let dir = core
         .globals()
         .clients
         .get(&win)
@@ -154,13 +141,13 @@ pub fn hover_resize_target_at(
 }
 
 pub fn selected_hover_resize_target_at(
-    ctx: &WmCtx,
+    core: &CoreCtx<'_>,
     root_x: i32,
     root_y: i32,
 ) -> Option<(WindowId, ResizeDirection)> {
-    let win = ctx.selected_client()?;
-    let c = ctx.client(win)?;
-    let mon = ctx.core().globals().selected_monitor();
+    let win = core.selected_client()?;
+    let c = core.client(win)?;
+    let mon = core.globals().selected_monitor();
     let mask = mon.selected_tags();
     let bar_h = mon.bar_height.max(1);
     if mon.showbar_for_mask(mask) && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h {
@@ -193,19 +180,19 @@ pub fn selected_hover_resize_target_at(
 /// needed when a floating window is stacked on top: `query_pointer` would return
 /// the floating window, but we want the tiled window *behind* it.
 fn find_tiled_win_at_point(
-    ctx: &WmCtx,
+    core: &CoreCtx<'_>,
     x: i32,
     y: i32,
     skip_win: Option<WindowId>,
 ) -> Option<WindowId> {
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = core.globals().selected_monitor();
     let selected = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
     if !has_tiling {
         return None;
     }
 
-    for (w, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
+    for (w, c) in mon.iter_clients(core.globals().clients.map()) {
         if Some(w) == skip_win {
             continue;
         }
@@ -226,19 +213,19 @@ fn find_tiled_win_at_point(
 }
 
 /// Return `true` when (`x`, `y`) is in the resize-border zone of the selected floating window.
-pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
-    let Some(win) = ctx.selected_client() else {
+pub fn is_in_resize_border(core: &CoreCtx<'_>, x: i32, y: i32) -> bool {
+    let Some(win) = core.selected_client() else {
         return false;
     };
-    let Some(c) = ctx.client(win) else {
+    let Some(c) = core.client(win) else {
         return false;
     };
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
     if !c.mode.is_floating() && has_tiling {
         return false;
     }
 
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = core.globals().selected_monitor();
     let mask = mon.selected_tags();
     if mon.showbar_for_mask(mask) && y < mon.monitor_rect.y + mon.bar_height {
         return false;
@@ -247,13 +234,13 @@ pub fn is_in_resize_border(ctx: &WmCtx, x: i32, y: i32) -> bool {
 }
 
 /// Check whether any visible client on the current monitor is tiled.
-fn has_visible_tiled_client(ctx: &WmCtx) -> bool {
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+fn has_visible_tiled_client(core: &CoreCtx<'_>) -> bool {
+    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
 
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = core.globals().selected_monitor();
     let selected = mon.selected_tags();
 
-    for (_w, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
+    for (_w, c) in mon.iter_clients(core.globals().clients.map()) {
         if c.is_visible(selected) && !c.mode.is_floating() && has_tiling {
             return true;
         }
@@ -272,13 +259,13 @@ pub fn handle_floating_resize_hover(
     root_y: i32,
     do_focus: bool,
 ) -> bool {
-    if let Some((win, dir)) = hover_resize_target_at(ctx, root_x, root_y) {
+    if let Some((win, dir)) = hover_resize_target_at(ctx.core(), root_x, root_y) {
         set_hover_resize(ctx, dir);
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
         let should_focus =
-            do_focus && ctx.selected_client() != Some(win) && !has_visible_tiled_client(ctx);
+            do_focus && ctx.selected_client() != Some(win) && !has_visible_tiled_client(ctx.core());
 
         if should_focus {
             crate::focus::focus_soft(ctx, Some(win));
@@ -300,15 +287,13 @@ pub fn handle_sidebar_hover(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     };
 
     if root_x > right_edge {
-        if ctx.core().globals().drag.hover_offer != crate::globals::HoverResizeOffer::Sidebar
-            && root_y > min_y
-        {
+        if !ctx.core().globals().drag.hover_offer.is_sidebar() && root_y > min_y {
             set_hover_sidebar(ctx);
         }
         return true;
     }
 
-    if ctx.core().globals().drag.hover_offer == crate::globals::HoverResizeOffer::Sidebar {
+    if ctx.core().globals().drag.hover_offer.is_sidebar() {
         clear_hover_offer(ctx);
         return true;
     }
@@ -337,7 +322,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
         let Some((x, y)) = wm_ctx.pointer_location() else {
             return false;
         };
-        let in_border = is_in_resize_border(&wm_ctx, x, y);
+        let in_border = is_in_resize_border(wm_ctx.core(), x, y);
         if !in_border {
             return false;
         }
@@ -375,7 +360,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
                     let in_border = wm_ctx
                         .pointer_location()
-                        .map(|(x, y)| is_in_resize_border(&wm_ctx, x, y))
+                        .map(|(x, y)| is_in_resize_border(wm_ctx.core(), x, y))
                         .unwrap_or(false);
                     if !in_border {
                         let sel = wm_ctx.selected_client();
@@ -383,7 +368,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
                                 let (x, y) = wm_ctx.pointer_location()?;
-                                find_tiled_win_at_point(&wm_ctx, x, y, sel)
+                                find_tiled_win_at_point(wm_ctx.core(), x, y, sel)
                             });
                         if let Some(win) = target {
                             crate::focus::focus_soft(&mut wm_ctx, Some(win));
@@ -430,7 +415,7 @@ fn run_hover_resize_loop(ctx: &mut WmCtxX11) -> bool {
                             crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                         }
                         MouseButton::Left => {
-                            if is_at_top_middle_edge(&geo, root_x, root_y) {
+                            if geo.is_at_top_middle_edge(root_x, root_y, RESIZE_BORDER_ZONE) {
                                 let mut wm_ctx_x11 = ctx.reborrow();
                                 let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                                 super::warp::warp_into(&mut wmctx, win);

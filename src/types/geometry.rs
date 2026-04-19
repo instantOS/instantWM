@@ -329,6 +329,15 @@ impl Rect {
         }
         true
     }
+
+    /// `true` when (`root_x`, `root_y`) lies on the top-middle segment of the resize border
+    /// — used to treat a click as *move* rather than resize.
+    #[inline]
+    pub fn is_at_top_middle_edge(&self, root_x: i32, root_y: i32, border_zone: i32) -> bool {
+        let at_top = root_y >= self.y - border_zone && root_y < self.y + border_zone;
+        let in_middle_third = root_x >= self.x + self.w / 3 && root_x <= self.x + 2 * self.w / 3;
+        at_top && in_middle_third
+    }
 }
 
 #[cfg(test)]

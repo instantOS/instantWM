@@ -408,11 +408,7 @@ fn update_hover_resize_state(
     if selected_offer {
         suppress_hover_focus = true;
     } else if !hovered_is_selected {
-        if let Some((_, dir)) = selected_hover_resize_target_at(
-            &crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-            root_x,
-            root_y,
-        ) {
+        if let Some((_, dir)) = selected_hover_resize_target_at(&ctx.core, root_x, root_y) {
             crate::mouse::set_hover_resize(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 dir,

@@ -34,7 +34,7 @@ pub fn wayland_hover_resize_drag_begin(
         return false;
     };
     let drag_type = if btn == MouseButton::Right
-        || crate::mouse::hover::is_at_top_middle_edge(&geo, root_x, root_y)
+        || geo.is_at_top_middle_edge(root_x, root_y, RESIZE_BORDER_ZONE)
     {
         crate::globals::DragType::Move
     } else {
