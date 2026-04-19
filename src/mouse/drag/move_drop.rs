@@ -6,6 +6,7 @@
 
 use crate::bar::bar_position_to_gesture;
 use crate::contexts::WmCtx;
+use crate::globals::Globals;
 use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
@@ -20,22 +21,29 @@ use crate::mouse::monitor::handle_client_monitor_switch;
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
-    snap_window_to_monitor_edges(ctx, c.win, c.geo.w, c.geo.h, new_x, new_y);
+    snap_window_to_monitor_edges(
+        ctx.core().globals(),
+        c.win,
+        c.geo.w,
+        c.geo.h,
+        new_x,
+        new_y,
+    );
 }
 
 pub fn snap_window_to_monitor_edges(
-    ctx: &WmCtx,
+    g: &Globals,
     win: WindowId,
     w: i32,
     h: i32,
     new_x: &mut i32,
     new_y: &mut i32,
 ) {
-    let snap = ctx.core().globals().cfg.snap;
-    let mon = ctx.core().globals().selected_monitor();
-    let bw = ctx
-        .core()
-        .client(win)
+    let snap = g.cfg.snap;
+    let mon = g.selected_monitor();
+    let bw = g
+        .clients
+        .get(&win)
         .map(|client| client.border_width.max(0))
         .unwrap_or(0);
     let width = w + bw * 2;
@@ -55,8 +63,8 @@ pub fn snap_window_to_monitor_edges(
 }
 
 /// Returns edge snap position based on cursor position.
-pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
-    let mon = ctx.core().globals().selected_monitor();
+pub fn check_edge_snap(g: &Globals, x: i32, y: i32) -> Option<SnapPosition> {
+    let mon = g.selected_monitor();
     let mask = mon.selected_tags();
 
     if x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && x > mon.monitor_rect.x - 1 {
@@ -80,8 +88,8 @@ pub fn check_edge_snap(ctx: &WmCtx, x: i32, y: i32) -> Option<SnapPosition> {
 }
 
 /// Returns `true` when `(x, y)` (root-space) is inside the bar of `selmon`.
-pub fn point_is_on_bar(ctx: &WmCtx, x: i32, y: i32) -> bool {
-    let mon = ctx.core().globals().selected_monitor();
+pub fn point_is_on_bar(g: &Globals, x: i32, y: i32) -> bool {
+    let mon = g.selected_monitor();
     let mask = mon.selected_tags();
     mon.showbar_for_mask(mask)
         && y >= mon.bar_y
@@ -194,7 +202,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 /// Tracks enter/leave transitions via `state.cursor_on_bar` so the bar is only
 /// redrawn when something changes.  Returns `true` while the cursor is on the bar.
 pub fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut MoveState) -> bool {
-    let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
+    let on_bar = point_is_on_bar(ctx.core().globals(), ptr_x, ptr_y);
 
     let selmon_id = ctx.core().globals().selected_monitor_id();
 
@@ -227,7 +235,7 @@ pub fn update_bar_hover(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32, state: &mut Mov
 /// Sets `bar_active` and the gesture highlight when the cursor enters the bar,
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, ptr_x: i32, ptr_y: i32) -> bool {
-    let on_bar = point_is_on_bar(ctx, ptr_x, ptr_y);
+    let on_bar = point_is_on_bar(ctx.core().globals(), ptr_x, ptr_y);
     let selmon_id = ctx.core().globals().selected_monitor_id();
     let was_on_bar = ctx.core().globals().drag.bar_active;
 
@@ -264,7 +272,7 @@ pub fn on_motion(
     state: &mut MoveState,
 ) {
     state.cursor_on_bar = update_bar_hover(ctx, root_x, root_y, state);
-    state.edge_snap_indicator = check_edge_snap(ctx, root_x, root_y);
+    state.edge_snap_indicator = check_edge_snap(ctx.core().globals(), root_x, root_y);
 
     let mut new_x = state.grab_start_rect.x + (event_x - state.start_x);
     let mut new_y = state.grab_start_rect.y + (event_y - state.start_y);
@@ -406,7 +414,7 @@ pub fn handle_bar_drop(
     let Some((ptr_x, ptr_y)) = pointer_override.or_else(|| ctx.pointer_location()) else {
         return;
     };
-    if !point_is_on_bar(ctx, ptr_x, ptr_y) {
+    if !point_is_on_bar(ctx.core().globals(), ptr_x, ptr_y) {
         return;
     }
 
@@ -549,7 +557,8 @@ pub fn complete_move_drop(
     pointer_override: Option<(i32, i32)>,
 ) {
     let pointer = pointer_override.or_else(|| ctx.pointer_location());
-    let edge = edge_hint.or_else(|| pointer.and_then(|(x, y)| check_edge_snap(ctx, x, y)));
+    let edge = edge_hint
+        .or_else(|| pointer.and_then(|(x, y)| check_edge_snap(ctx.core().globals(), x, y)));
     let handled_edge = pointer
         .map(|(_x, y)| apply_edge_drop(ctx, win, edge, y))
         .unwrap_or(false);

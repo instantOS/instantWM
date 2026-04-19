@@ -118,17 +118,14 @@ pub fn wayland_hover_resize_drag_motion(
                 new_y = mon.bar_y + mon.bar_height;
             }
 
-            {
-                let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-                crate::mouse::drag::snap_window_to_monitor_edges(
-                    &wm_ctx,
-                    drag.win,
-                    drag.win_start_geo.w.max(1),
-                    drag.win_start_geo.h.max(1),
-                    &mut new_x,
-                    &mut new_y,
-                );
-            }
+            crate::mouse::drag::snap_window_to_monitor_edges(
+                ctx.core.globals(),
+                drag.win,
+                drag.win_start_geo.w.max(1),
+                drag.win_start_geo.h.max(1),
+                &mut new_x,
+                &mut new_y,
+            );
             crate::contexts::WmCtx::Wayland(ctx.reborrow()).move_resize(
                 drag.win,
                 Rect {

@@ -166,8 +166,8 @@ impl ScratchpadInfo {
     }
 }
 
-fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> Option<WindowId> {
-    window_id.or_else(|| ctx.core().selected_client())
+fn selected_or_explicit_window(g: &Globals, window_id: Option<WindowId>) -> Option<WindowId> {
+    window_id.or_else(|| g.selected_win())
 }
 
 fn attach_client_to_monitor_top(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {
@@ -182,12 +182,12 @@ fn attach_client_to_monitor_top(g: &mut Globals, win: WindowId, monitor_id: Moni
     g.attach_z_order_top(win);
 }
 
-fn selected_monitor_yoffset(ctx: &WmCtx<'_>, tags: crate::types::TagMask) -> i32 {
-    let mon = ctx.core().globals().selected_monitor();
+fn selected_monitor_yoffset(g: &Globals, tags: crate::types::TagMask) -> i32 {
+    let mon = g.selected_monitor();
     let showbar = mon.showbar_for_mask(tags);
-    let bar_height = ctx.core().globals().cfg.bar_height;
+    let bar_height = g.cfg.bar_height;
     let mut offset = if showbar { bar_height } else { 0 };
-    for (_win, c) in mon.iter_clients(ctx.core().globals().clients.map()) {
+    for (_win, c) in mon.iter_clients(g.clients.map()) {
         if c.tags.intersects(tags) && c.mode.is_true_fullscreen() {
             offset = 0;
             break;
@@ -288,7 +288,7 @@ pub fn scratchpad_make(
         return;
     }
 
-    let target = selected_or_explicit_window(ctx, window_id);
+    let target = selected_or_explicit_window(ctx.core().globals(), window_id);
     let Some(selected_window) = target else {
         return;
     };
@@ -347,7 +347,7 @@ pub fn scratchpad_make(
 }
 
 pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
-    let target = selected_or_explicit_window(ctx, window_id);
+    let target = selected_or_explicit_window(ctx.core().globals(), window_id);
     let Some(selected_window) = target else {
         return;
     };
@@ -409,7 +409,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     let tags = prepare_scratchpad_for_show(ctx, found, current_mon, direction);
 
     if let Some(dir) = direction {
-        let yoffset = selected_monitor_yoffset(ctx, tags);
+        let yoffset = selected_monitor_yoffset(ctx.core().globals(), tags);
         let (mon_rect, mon_ww, client_rect) = {
             let mon = ctx.core().globals().monitor(current_mon).unwrap();
             let client = ctx.core().client(found).unwrap();

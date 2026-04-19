@@ -110,11 +110,11 @@ fn resize_window(
         h: height,
     };
 
-    let mut ctx = wm.ctx();
-
-    if !is_valid_window_size_rect(&ctx, &rect, win) {
+    if !is_valid_window_size_rect(&wm.g, &rect, win) {
         return Response::err("invalid target geometry");
     }
+
+    let mut ctx = wm.ctx();
 
     if !is_floating {
         crate::floating::set_window_mode(&mut ctx, win, crate::types::BaseClientMode::Floating);

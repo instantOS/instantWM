@@ -5,6 +5,7 @@ use crate::constants::animation::{
     DISTANCE_THRESHOLD, FRAME_SLEEP_MICROS, X11_ANIM_FULL_THRESHOLD, X11_ANIM_REDUCE_THRESHOLD,
 };
 use crate::contexts::WmCtx;
+use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -94,25 +95,18 @@ pub(crate) enum GeometryApplyMode {
     VisualOnly,
 }
 
-fn current_client_rect(ctx: &WmCtx<'_>, win: WindowId) -> Option<Rect> {
-    ctx.core()
-        .globals()
-        .clients
+fn current_client_rect(g: &Globals, win: WindowId) -> Option<Rect> {
+    g.clients
         .get(&win)
         .map(|c| if c.geo.is_valid() { c.geo } else { c.old_geo })
 }
 
-fn monitor_size_for_client(ctx: &WmCtx<'_>, win: WindowId) -> (i32, i32) {
-    ctx.core()
-        .globals()
-        .clients
+fn monitor_size_for_client(g: &Globals, win: WindowId) -> (i32, i32) {
+    g.clients
         .get(&win)
-        .and_then(|c| ctx.core().globals().monitors.get(c.monitor_id))
+        .and_then(|c| g.monitors.get(c.monitor_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
-        .unwrap_or((
-            ctx.core().globals().cfg.screen_width,
-            ctx.core().globals().cfg.screen_height,
-        ))
+        .unwrap_or((g.cfg.screen_width, g.cfg.screen_height))
 }
 
 fn final_rect_for_target(target: Rect, mon_w: i32, mon_h: i32) -> Rect {
@@ -249,7 +243,7 @@ pub(crate) fn move_resize(
         return;
     }
 
-    let (mon_w, mon_h) = monitor_size_for_client(ctx, win);
+    let (mon_w, mon_h) = monitor_size_for_client(ctx.core().globals(), win);
     let final_rect = final_rect_for_target(target, mon_w, mon_h);
 
     match options.mode {
@@ -263,7 +257,7 @@ pub(crate) fn move_resize(
             crate::animation::cancel_animation(ctx, win);
 
             let from = match options.mode {
-                MoveResizeMode::AnimateTo => current_client_rect(ctx, win),
+                MoveResizeMode::AnimateTo => current_client_rect(ctx.core().globals(), win),
                 MoveResizeMode::Immediate => unreachable!(),
                 MoveResizeMode::AnimateFrom(from) => Some(from),
             };

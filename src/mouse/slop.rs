@@ -19,6 +19,7 @@
 //! ```
 
 use crate::contexts::WmCtx;
+use crate::globals::Globals;
 use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::monitor::handle_monitor_switch;
@@ -64,14 +65,14 @@ pub fn parse_slop_output(output: &str) -> Option<Rect> {
 /// * At least one dimension differs by more than 20 px from the current
 ///   geometry (prevents no-op resizes).
 pub fn is_valid_window_size(
-    ctx: &WmCtx,
+    g: &Globals,
     x: i32,
     y: i32,
     width: i32,
     height: i32,
     c_win: WindowId,
 ) -> bool {
-    let Some(c) = ctx.core().client(c_win) else {
+    let Some(c) = g.clients.get(&c_win) else {
         return false;
     };
 
@@ -86,8 +87,8 @@ pub fn is_valid_window_size(
 }
 
 /// Rect-typed convenience wrapper around [`is_valid_window_size`].
-pub fn is_valid_window_size_rect(ctx: &WmCtx, rect: &Rect, c_win: WindowId) -> bool {
-    is_valid_window_size(ctx, rect.x, rect.y, rect.w, rect.h, c_win)
+pub fn is_valid_window_size_rect(g: &Globals, rect: &Rect, c_win: WindowId) -> bool {
+    is_valid_window_size(g, rect.x, rect.y, rect.w, rect.h, c_win)
 }
 
 // ── Window resize helpers ─────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
         return;
     };
 
-    if !is_valid_window_size_rect(ctx, &rect, win) {
+    if !is_valid_window_size_rect(ctx.core().globals(), &rect, win) {
         return;
     }
 
