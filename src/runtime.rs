@@ -161,19 +161,24 @@ pub fn spawn_status_bar(wm: &Wm) {
     }
 }
 
-/// Late startup sequence shared by all backends.
+/// Run autostart, user-defined `exec_once` and `exec` commands.
 ///
-/// Runs autostart, binds the IPC socket, and spawns the status bar.
-/// Each backend calls this before entering its event loop.
-pub fn late_init(wm: &Wm) -> Option<crate::ipc::IpcServer> {
+/// Called by each backend during startup. The Wayland backends call this
+/// from [`wayland_autostart_ipc_status_ping`], while X11 calls it from
+/// [`late_init_x11`].
+pub fn run_startup_commands(wm: &Wm) {
     crate::startup::autostart::run_autostart();
-    let ipc_server = crate::ipc::IpcServer::bind().ok();
-    spawn_status_bar(wm);
-
-    // Run user-defined startup commands from config.
     crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec_once);
     crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec);
+}
 
+/// X11 late startup sequence.
+///
+/// Runs startup commands, binds the IPC socket, and spawns the status bar.
+pub fn late_init_x11(wm: &Wm) -> Option<crate::ipc::IpcServer> {
+    run_startup_commands(wm);
+    let ipc_server = crate::ipc::IpcServer::bind().ok();
+    spawn_status_bar(wm);
     ipc_server
 }
 
