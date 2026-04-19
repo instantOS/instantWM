@@ -71,7 +71,7 @@ pub fn is_valid_window_size(
     height: i32,
     c_win: WindowId,
 ) -> bool {
-    let Some(c) = ctx.client(c_win) else {
+    let Some(c) = ctx.core().client(c_win) else {
         return false;
     };
 
@@ -129,7 +129,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(win) = ctx.selected_client() else {
+    let Some(win) = ctx.core().selected_client() else {
         return;
     };
 

@@ -95,7 +95,8 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
     let fullscreen_windows: Vec<_> = clients
         .into_iter()
         .filter(|&win| {
-            ctx.client(win)
+            ctx.core()
+                .client(win)
                 .is_some_and(|c| c.mode.is_true_fullscreen() && c.is_visible(selected_tags))
         })
         .collect();
@@ -116,7 +117,7 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
         .clients
         .iter()
         .filter_map(|&win| {
-            let info = ctx.client(win)?;
+            let info = ctx.core().client(win)?;
             let is_visible = info.is_visible(selected_tags);
             if !is_visible {
                 return None;

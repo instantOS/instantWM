@@ -67,10 +67,10 @@ fn compute_axis_resize(
 }
 
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
-    let Some(win) = ctx.selected_client() else {
+    let Some(win) = ctx.core().selected_client() else {
         return;
     };
-    let is_blocked = match ctx.client(win) {
+    let is_blocked = match ctx.core().client(win) {
         Some(c) => c.mode.is_true_fullscreen(),
         None => return,
     };
@@ -82,7 +82,11 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
-    let Some((geo, is_floating)) = ctx.client(win).map(|c| (c.geo, c.mode.is_floating())) else {
+    let Some((geo, is_floating)) = ctx
+        .core()
+        .client(win)
+        .map(|c| (c.geo, c.mode.is_floating()))
+    else {
         return;
     };
 

@@ -417,7 +417,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
         set_client_state(&ctx_x11.x11, ctx_x11.x11_runtime, w, WM_STATE_NORMAL);
     }
-    if let Some(selected_window) = ctx.selected_client()
+    if let Some(selected_window) = ctx.core().selected_client()
         && let WmCtx::X11(ctx_x11) = ctx
     {
         let mut core = ctx_x11.core.reborrow();

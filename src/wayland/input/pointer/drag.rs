@@ -26,7 +26,7 @@ pub fn wayland_hover_resize_drag_begin(
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
-    let Some(target) = selected_hover_resize_target_at(&ctx.core, root_x, root_y) else {
+    let Some(target) = selected_hover_resize_target_at(ctx.core.globals(), root_x, root_y) else {
         return false;
     };
     let win = target.win;

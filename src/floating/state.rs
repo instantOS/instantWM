@@ -71,7 +71,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
         }
         BaseClientMode::Tiling => {
             let client_count = ctx.core().globals().clients.len();
-            let clear_border = if let Some(client) = ctx.client_mut(win) {
+            let clear_border = if let Some(client) = ctx.core_mut().client_mut(win) {
                 client.mode = ClientMode::Tiling;
                 client.float_geo = client.geo;
 
@@ -101,8 +101,13 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
 pub fn toggle_floating(ctx: &mut WmCtx) {
     let mon = ctx.core().globals().selected_monitor();
     let selected_window = match mon.sel {
-        Some(sel) if !ctx.client(sel).is_some_and(|c| c.is_edge_scratchpad()) => {
-            if let Some(c) = ctx.client(sel)
+        Some(sel)
+            if !ctx
+                .core()
+                .client(sel)
+                .is_some_and(|c| c.is_edge_scratchpad()) =>
+        {
+            if let Some(c) = ctx.core().client(sel)
                 && c.mode.is_true_fullscreen()
             {
                 return;
@@ -115,6 +120,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let Some(win) = selected_window else { return };
 
     let (is_floating, is_fixed) = ctx
+        .core()
         .client(win)
         .map(|c| (c.mode.is_floating(), c.is_fixed_size))
         .unwrap_or((false, false));
@@ -154,7 +160,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
     let maximized_win = ctx.core().globals().selected_monitor().maximized;
-    let selected_window = ctx.selected_client();
+    let selected_window = ctx.core().selected_client();
     let animated = ctx.core().globals().behavior.animated;
 
     let enter = maximized_win.is_none();

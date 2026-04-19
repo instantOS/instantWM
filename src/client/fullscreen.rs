@@ -204,7 +204,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(ctx_x11) => toggle_fake_fullscreen_x11(ctx_x11),
         WmCtx::Wayland(_) => {
-            if let Some(win) = ctx.selected_client() {
+            if let Some(win) = ctx.core().selected_client() {
                 if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                     if client.mode.is_fake_fullscreen() {
                         client.mode = client.mode.restored();

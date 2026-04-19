@@ -63,7 +63,7 @@ pub(crate) fn configure_spawn_command(
     command.env("DESKTOP_STARTUP_ID", &startup_id);
 
     if let WmCtx::Wayland(wl) = ctx {
-        let selected_window = ctx.selected_client();
+        let selected_window = ctx.core().selected_client();
         if let Some(token) = wl.wayland.backend.with_state(|state| {
             let source_surface = selected_window.and_then(|win| {
                 state

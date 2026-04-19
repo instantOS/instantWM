@@ -26,7 +26,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     let (selected_window, has_multiple_mons) = {
         (
-            ctx.selected_client(),
+            ctx.core().selected_client(),
             ctx.core().globals().monitors.len() > 1,
         )
     };

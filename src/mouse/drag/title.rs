@@ -29,7 +29,7 @@ pub fn title_drag_begin(
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
-        let is_true_fullscreen = match ctx.client(win) {
+        let is_true_fullscreen = match ctx.core().client(win) {
             Some(c) => c.mode.is_true_fullscreen(),
             None => return false,
         };
@@ -39,8 +39,8 @@ pub fn title_drag_begin(
         crate::focus::focus_soft(ctx, Some(win));
     }
 
-    let sel = ctx.selected_client();
-    let (win_start_geo, drop_restore_geo) = match ctx.client(win) {
+    let sel = ctx.core().selected_client();
+    let (win_start_geo, drop_restore_geo) = match ctx.core().client(win) {
         Some(c) => {
             let restore = c.restore_geo_for_float();
             (c.geo, restore)
@@ -83,7 +83,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let dir =
             crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
-        let bw = match ctx.client(win) {
+        let bw = match ctx.core().client(win) {
             Some(c) => c.border_width,
             None => return true,
         };

@@ -36,7 +36,7 @@ use x11rb::protocol::xproto::{ConnectionExt, Window};
 /// `close` request (Wayland), falling back to `XKillClient` on X11
 /// if the protocol is not supported.
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
-    let Some(client) = ctx.client(win) else {
+    let Some(client) = ctx.core().client(win) else {
         return;
     };
 
@@ -73,7 +73,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
     let has_clients = !ctx.core().globals().selected_monitor().clients.is_empty();
 
     if has_clients {
-        if let Some(win) = ctx.selected_client() {
+        if let Some(win) = ctx.core().selected_client() {
             kill_client(ctx, win);
         }
     } else {

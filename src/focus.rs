@@ -679,7 +679,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
     let last_win = last_client_win;
 
-    let last_client = match ctx.client(last_win) {
+    let last_client = match ctx.core().client(last_win) {
         Some(c) => c.clone(),
         None => return,
     };
@@ -703,7 +703,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
             .set_selected_monitor(last_mon_id);
     }
 
-    if let Some(cur) = ctx.selected_client() {
+    if let Some(cur) = ctx.core().selected_client() {
         ctx.core_mut().focus.last_client = cur;
     }
 

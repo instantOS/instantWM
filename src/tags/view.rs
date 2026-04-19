@@ -136,7 +136,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
         let clients = ctx.core().globals().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx.client(win)
+            if let Some(c) = ctx.core().client(win)
                 && c.tags.intersects(next_mask)
             {
                 found = true;
@@ -174,7 +174,7 @@ pub fn last_view(ctx: &mut WmCtx) {
 }
 
 pub fn win_view(ctx: &mut WmCtx) {
-    let Some(win) = ctx.selected_client() else {
+    let Some(win) = ctx.core().selected_client() else {
         return;
     };
 
@@ -249,7 +249,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn follow_view(ctx: &mut WmCtx) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
-    let selected_window = ctx.selected_client();
+    let selected_window = ctx.core().selected_client();
     let Some(win) = selected_window else { return };
 
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;

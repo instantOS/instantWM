@@ -167,7 +167,7 @@ impl ScratchpadInfo {
 }
 
 fn selected_or_explicit_window(ctx: &WmCtx<'_>, window_id: Option<WindowId>) -> Option<WindowId> {
-    window_id.or_else(|| ctx.selected_client())
+    window_id.or_else(|| ctx.core().selected_client())
 }
 
 fn attach_client_to_monitor_top(g: &mut Globals, win: WindowId, monitor_id: MonitorId) {
@@ -303,7 +303,7 @@ pub fn scratchpad_make(
         (mon.work_rect.w, mon.work_rect.h)
     };
 
-    let Some(client) = ctx.client_mut(selected_window) else {
+    let Some(client) = ctx.core_mut().client_mut(selected_window) else {
         return;
     };
 
@@ -354,7 +354,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
 
     let monitor_tags = ctx.core().globals().selected_monitor().selected_tags();
 
-    let Some(client) = ctx.client(selected_window) else {
+    let Some(client) = ctx.core().client(selected_window) else {
         return;
     };
     if !client.is_scratchpad() {
@@ -365,7 +365,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let had_direction = client.scratchpad_direction.is_some();
 
     let mut was_hidden = false;
-    if let Some(client) = ctx.client_mut(selected_window) {
+    if let Some(client) = ctx.core_mut().client_mut(selected_window) {
         was_hidden = client.is_hidden;
         client.set_tag_mask(if !restore_tags.is_empty() {
             restore_tags
@@ -412,7 +412,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         let yoffset = selected_monitor_yoffset(ctx, tags);
         let (mon_rect, mon_ww, client_rect) = {
             let mon = ctx.core().globals().monitor(current_mon).unwrap();
-            let client = ctx.client(found).unwrap();
+            let client = ctx.core().client(found).unwrap();
             (mon.monitor_rect, mon.work_rect.w, client.geo)
         };
 
@@ -514,7 +514,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
 
     let (geo, mon_rect) = {
         let mon = ctx.core().globals().selected_monitor();
-        let Some(client) = ctx.client(found) else {
+        let Some(client) = ctx.core().client(found) else {
             return;
         };
         if !client.is_sticky {
@@ -523,7 +523,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         (client.geo, mon.monitor_rect)
     };
 
-    if let Some(client) = ctx.client_mut(found) {
+    if let Some(client) = ctx.core_mut().client_mut(found) {
         client.is_sticky = false;
         client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     }
@@ -563,7 +563,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let Some(client) = ctx.client(found) else {
+    let Some(client) = ctx.core().client(found) else {
         return;
     };
     let is_sticky = client.is_sticky;
@@ -660,14 +660,14 @@ pub fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
 }
 
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
-    let was_sticky = ctx.client(win).is_some_and(|c| c.is_sticky);
+    let was_sticky = ctx.core().client(win).is_some_and(|c| c.is_sticky);
 
     let (mon_ww, mon_wh) = {
         let mon = ctx.core().globals().selected_monitor();
         (mon.work_rect.w, mon.work_rect.h)
     };
 
-    if let Some(client) = ctx.client_mut(win) {
+    if let Some(client) = ctx.core_mut().client_mut(win) {
         client.scratchpad_direction = Some(direction);
         if direction.is_vertical() {
             client.geo.h = mon_wh / 3;
@@ -678,6 +678,7 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
 
     if was_sticky {
         let name = ctx
+            .core()
             .client(win)
             .map(|c| c.scratchpad_name.clone())
             .unwrap_or_default();
@@ -693,11 +694,12 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
         scratchpad_unmake(ctx, Some(existing));
     }
 
-    let Some(selected) = ctx.selected_client() else {
+    let Some(selected) = ctx.core().selected_client() else {
         return;
     };
 
     let is_fullscreen = ctx
+        .core()
         .client(selected)
         .is_some_and(|c| c.mode.is_true_fullscreen());
     if is_fullscreen {

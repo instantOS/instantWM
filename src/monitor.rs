@@ -238,7 +238,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     }
 
     let (is_scratchpad, target_tags) = {
-        let client = match ctx.client(win) {
+        let client = match ctx.core().client(win) {
             Some(c) => c,
             None => return,
         };
@@ -695,7 +695,7 @@ fn scaled_monitor_ui_metrics(globals: &crate::globals::Globals, scale: f64) -> (
 // -----------------------------------------------------------------------------
 
 fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    let Some(client) = ctx.client(win) else {
+    let Some(client) = ctx.core().client(win) else {
         return;
     };
     if !client.is_scratchpad() || client.is_sticky {

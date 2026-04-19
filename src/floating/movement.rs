@@ -6,7 +6,7 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo, border_width) = match ctx.client(win) {
+    let (is_floating, geo, border_width) = match ctx.core().client(win) {
         Some(c) => (c.mode.is_floating(), c.geo, c.border_width),
         None => return,
     };
@@ -45,7 +45,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo) = match ctx.client(win) {
+    let (is_floating, geo) = match ctx.core().client(win) {
         Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
@@ -76,10 +76,14 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
-    if ctx.client(win).is_some_and(|c| c.is_edge_scratchpad()) {
+    if ctx
+        .core()
+        .client(win)
+        .is_some_and(|c| c.is_edge_scratchpad())
+    {
         return;
     }
-    let (geo, is_floating) = match ctx.client(win) {
+    let (geo, is_floating) = match ctx.core().client(win) {
         Some(c) => (c.geo, c.mode.is_floating()),
         None => return,
     };

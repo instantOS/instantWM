@@ -110,10 +110,6 @@ impl<'a> WmCtxX11<'a> {
         }
     }
 
-    pub fn selected_client(&self) -> Option<WindowId> {
-        self.core.selected_client()
-    }
-
     pub fn x11_runtime(&self) -> &X11RuntimeConfig {
         self.x11_runtime
     }
@@ -194,18 +190,6 @@ impl<'a> WmCtx<'a> {
             WmCtx::X11(ctx) => &mut ctx.core,
             WmCtx::Wayland(ctx) => &mut ctx.core,
         }
-    }
-
-    pub fn selected_client(&self) -> Option<WindowId> {
-        self.core().selected_client()
-    }
-
-    pub fn client(&self, win: WindowId) -> Option<&Client> {
-        self.core().client(win)
-    }
-
-    pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
-        self.core_mut().client_mut(win)
     }
 
     pub fn quit(&mut self) {
@@ -355,7 +339,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        let Some(c) = self.client(win).cloned() else {
+        let Some(c) = self.core().client(win).cloned() else {
             return;
         };
 

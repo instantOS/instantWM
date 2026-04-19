@@ -275,7 +275,7 @@ pub(crate) fn move_resize(
             }
 
             if from == final_rect {
-                if ctx.client(win).is_some_and(|c| c.geo != final_rect) {
+                if ctx.core().client(win).is_some_and(|c| c.geo != final_rect) {
                     ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 }
                 return;

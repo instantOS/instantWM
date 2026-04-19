@@ -34,6 +34,7 @@ pub fn snap_window_to_monitor_edges(
     let snap = ctx.core().globals().cfg.snap;
     let mon = ctx.core().globals().selected_monitor();
     let bw = ctx
+        .core()
         .client(win)
         .map(|client| client.border_width.max(0))
         .unwrap_or(0);
@@ -139,7 +140,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     crate::layouts::sync_monitor_z_order(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = match ctx.client(selected_window) {
+    let is_snapped = match ctx.core().client(selected_window) {
         Some(c) => c.snap_status != SnapPosition::None,
         None => return None,
     };
@@ -279,7 +280,7 @@ pub fn on_motion(
 
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
-    let (mut is_floating, mut drag_geo) = match ctx.client(win) {
+    let (mut is_floating, mut drag_geo) = match ctx.core().client(win) {
         Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
@@ -298,7 +299,7 @@ pub fn on_motion(
     );
 
     if !has_tiling || is_floating {
-        if let Some(client) = ctx.client(win).cloned() {
+        if let Some(client) = ctx.core().client(win).cloned() {
             snap_to_monitor_edges(ctx, &client, &mut new_x, &mut new_y);
         }
         ctx.move_resize(
@@ -418,7 +419,7 @@ pub fn handle_bar_drop(
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = match ctx.client(win) {
+    let was_floating = match ctx.core().client(win) {
         Some(c) => c.mode.is_floating(),
         None => return,
     };
@@ -439,7 +440,11 @@ pub fn handle_bar_drop(
         // set_window_mode does not touch focus.
 
         // Don't tile fullscreen windows
-        if !ctx.client(win).is_some_and(|c| c.mode.is_true_fullscreen()) {
+        if !ctx
+            .core()
+            .client(win)
+            .is_some_and(|c| c.mode.is_true_fullscreen())
+        {
             set_window_mode(ctx, win, BaseClientMode::Tiling);
         }
         crate::tags::client_tags::set_client_tag(

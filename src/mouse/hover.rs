@@ -15,8 +15,8 @@
 //! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 //! | [`run_x11_hover_resize_offer_loop`]           | `enter_notify`, etc. | Modal loop: wait for click near border     |
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::globals::HoverOffer;
+use crate::contexts::{WmCtx, WmCtxX11};
+use crate::globals::{Globals, HoverOffer};
 // focus() is used via focus_soft() in this module
 use crate::types::*;
 use x11rb::connection::Connection;
@@ -75,11 +75,11 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
     let move_from_top_middle = {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         clear_hover_offer(&mut wm_ctx);
-        if wm_ctx.selected_client() != Some(win) {
+        if wm_ctx.core().selected_client() != Some(win) {
             crate::focus::focus_soft(&mut wm_ctx, Some(win));
         }
 
-        let Some(c) = wm_ctx.client(win) else {
+        let Some(c) = wm_ctx.core().client(win) else {
             return false;
         };
         wm_ctx
@@ -98,13 +98,13 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
 }
 
 fn resize_target_for_window(
-    core: &CoreCtx<'_>,
+    globals: &Globals,
     win: WindowId,
     root_x: i32,
     root_y: i32,
 ) -> Option<HoverResizeTarget> {
-    let c = core.client(win)?;
-    let mon = core.globals().selected_monitor();
+    let c = globals.clients.get(&win)?;
+    let mon = globals.selected_monitor();
     let selected_tags = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
 
@@ -130,9 +130,9 @@ fn resize_target_for_window(
     })
 }
 
-fn pointer_in_bar(core: &CoreCtx<'_>, root_y: i32) -> bool {
-    let mon = core.globals().selected_monitor();
-    crate::bar::monitor_bar_visible(core.globals(), mon)
+fn pointer_in_bar(globals: &Globals, root_y: i32) -> bool {
+    let mon = globals.selected_monitor();
+    crate::bar::monitor_bar_visible(globals, mon)
         && root_y >= mon.bar_y
         && root_y < mon.bar_y + mon.bar_height.max(1)
 }
@@ -141,7 +141,7 @@ fn pointer_in_bar(core: &CoreCtx<'_>, root_y: i32) -> bool {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let Some(c) = ctx.client(win) else {
+    let Some(c) = ctx.core().client(win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -174,28 +174,28 @@ fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
 
 /// Return the floating window + direction currently targeted by hover-resize.
 fn hover_resize_target_at(
-    core: &CoreCtx<'_>,
+    globals: &Globals,
     root_x: i32,
     root_y: i32,
 ) -> Option<HoverResizeTarget> {
-    if pointer_in_bar(core, root_y) {
+    if pointer_in_bar(globals, root_y) {
         return None;
     }
-    let mon = core.globals().selected_monitor();
-    mon.iter_clients(core.globals().clients.map())
-        .find_map(|(win, _)| resize_target_for_window(core, win, root_x, root_y))
+    let mon = globals.selected_monitor();
+    mon.iter_clients(globals.clients.map())
+        .find_map(|(win, _)| resize_target_for_window(globals, win, root_x, root_y))
 }
 
 pub fn selected_hover_resize_target_at(
-    core: &CoreCtx<'_>,
+    globals: &Globals,
     root_x: i32,
     root_y: i32,
 ) -> Option<HoverResizeTarget> {
-    let win = core.selected_client()?;
-    if pointer_in_bar(core, root_y) {
+    let win = globals.selected_win()?;
+    if pointer_in_bar(globals, root_y) {
         return None;
     }
-    resize_target_for_window(core, win, root_x, root_y)
+    resize_target_for_window(globals, win, root_x, root_y)
 }
 
 /// Find a visible tiled window at point (`x`, `y`), skipping `skip_win`.
@@ -205,19 +205,19 @@ pub fn selected_hover_resize_target_at(
 /// needed when a floating window is stacked on top: `query_pointer` would return
 /// the floating window, but we want the tiled window *behind* it.
 fn find_tiled_win_at_point(
-    core: &CoreCtx<'_>,
+    globals: &Globals,
     x: i32,
     y: i32,
     skip_win: Option<WindowId>,
 ) -> Option<WindowId> {
-    let mon = core.globals().selected_monitor();
+    let mon = globals.selected_monitor();
     let selected = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
     if !has_tiling {
         return None;
     }
 
-    for (w, c) in mon.iter_clients(core.globals().clients.map()) {
+    for (w, c) in mon.iter_clients(globals.clients.map()) {
         if Some(w) == skip_win {
             continue;
         }
@@ -225,11 +225,11 @@ fn find_tiled_win_at_point(
             continue;
         }
         // Check if the cursor is within the window's geometry (including border).
-        let bw = c.border_width;
-        if x >= c.geo.x - bw
-            && x <= c.geo.x + c.geo.w + bw
-            && y >= c.geo.y - bw
-            && y <= c.geo.y + c.geo.h + bw
+        let border_width = c.border_width;
+        if x >= c.geo.x - border_width
+            && x <= c.geo.x + c.geo.w + border_width
+            && y >= c.geo.y - border_width
+            && y <= c.geo.y + c.geo.h + border_width
         {
             return Some(w);
         }
@@ -238,13 +238,13 @@ fn find_tiled_win_at_point(
 }
 
 /// Check whether any visible client on the current monitor is tiled.
-fn has_visible_tiled_client(core: &CoreCtx<'_>) -> bool {
-    let has_tiling = core.globals().selected_monitor().is_tiling_layout();
-    let mon = core.globals().selected_monitor();
+fn has_visible_tiled_client(globals: &Globals) -> bool {
+    let has_tiling = globals.selected_monitor().is_tiling_layout();
+    let mon = globals.selected_monitor();
     let selected = mon.selected_tags();
     has_tiling
         && mon
-            .iter_clients(core.globals().clients.map())
+            .iter_clients(globals.clients.map())
             .any(|(_, c)| c.is_visible(selected) && !c.mode.is_floating())
 }
 
@@ -260,14 +260,14 @@ pub fn update_floating_resize_offer_at(
     root_y: i32,
     do_focus: bool,
 ) -> bool {
-    if let Some(target) = hover_resize_target_at(ctx.core(), root_x, root_y) {
+    if let Some(target) = hover_resize_target_at(ctx.core().globals(), root_x, root_y) {
         offer_hover_resize(ctx, target);
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
         let should_focus = do_focus
             && ctx.core().selected_client() != Some(target.win)
-            && !has_visible_tiled_client(ctx.core());
+            && !has_visible_tiled_client(ctx.core().globals());
 
         if should_focus {
             crate::focus::focus_soft(ctx, Some(target.win));
@@ -287,7 +287,7 @@ pub fn update_selected_resize_offer_at(
     root_x: i32,
     root_y: i32,
 ) -> Option<WindowId> {
-    let Some(target) = selected_hover_resize_target_at(ctx.core(), root_x, root_y) else {
+    let Some(target) = selected_hover_resize_target_at(ctx.core().globals(), root_x, root_y) else {
         clear_hover_offer(ctx);
         return None;
     };
@@ -344,7 +344,7 @@ pub fn run_x11_hover_resize_offer_loop(ctx: &mut WmCtxX11) -> bool {
         let Some((x, y)) = wm_ctx.pointer_location() else {
             return false;
         };
-        let Some(target) = selected_hover_resize_target_at(wm_ctx.core(), x, y) else {
+        let Some(target) = selected_hover_resize_target_at(wm_ctx.core().globals(), x, y) else {
             return false;
         };
 
@@ -382,16 +382,16 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                     let in_resize_border = wm_ctx
                         .pointer_location()
                         .map(|(x, y)| {
-                            selected_hover_resize_target_at(wm_ctx.core(), x, y).is_some()
+                            selected_hover_resize_target_at(wm_ctx.core().globals(), x, y).is_some()
                         })
                         .unwrap_or(false);
                     if !in_resize_border {
-                        let sel = wm_ctx.selected_client();
+                        let sel = wm_ctx.core().selected_client();
                         let target = get_cursor_client_win(&mut wm_ctx)
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
                                 let (x, y) = wm_ctx.pointer_location()?;
-                                find_tiled_win_at_point(wm_ctx.core(), x, y, sel)
+                                find_tiled_win_at_point(wm_ctx.core().globals(), x, y, sel)
                             });
                         if let Some(win) = target {
                             crate::focus::focus_soft(&mut wm_ctx, Some(win));
@@ -412,11 +412,11 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                     action_started = true;
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
 
-                    let Some(win) = wm_ctx.selected_client() else {
+                    let Some(win) = wm_ctx.core().selected_client() else {
                         return false;
                     };
                     let (geo, w, h) = {
-                        let Some(c) = wm_ctx.client(win) else {
+                        let Some(c) = wm_ctx.core().client(win) else {
                             return false;
                         };
                         (c.geo, c.geo.w, c.geo.h)
@@ -482,7 +482,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
 
         // Selected window must be floating in a tiling layout
-        let selected_window = match wm_ctx.selected_client() {
+        let selected_window = match wm_ctx.core().selected_client() {
             Some(w) => w,
             None => return false,
         };
@@ -491,7 +491,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             .globals()
             .selected_monitor()
             .is_tiling_layout();
-        let sel_geo = match wm_ctx.client(selected_window) {
+        let sel_geo = match wm_ctx.core().client(selected_window) {
             Some(c) if c.mode.is_floating() || !is_tiling_layout => c.geo,
             _ => return false,
         };

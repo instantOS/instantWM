@@ -291,7 +291,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 
     // Raise the window if it is the focused one (Maximized only).
     if snap_status == SnapPosition::Maximized {
-        let is_sel = ctx.selected_client() == Some(win);
+        let is_sel = ctx.core.selected_client() == Some(win);
         if is_sel {
             let conn = ctx.x11.conn;
             let x11_win: Window = win.into();
@@ -311,7 +311,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
-    let (is_floating, snap_status) = match ctx.client(win) {
+    let (is_floating, snap_status) = match ctx.core().client(win) {
         Some(c) => (c.mode.is_floating(), c.snap_status),
         None => return,
     };

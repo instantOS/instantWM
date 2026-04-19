@@ -188,7 +188,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
-    let scratchpad_name = ctx.client(win).and_then(|c| {
+    let scratchpad_name = ctx.core().client(win).and_then(|c| {
         if c.is_scratchpad() {
             Some(c.scratchpad_name.clone())
         } else {
