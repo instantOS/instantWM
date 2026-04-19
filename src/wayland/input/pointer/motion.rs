@@ -8,7 +8,7 @@ use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at};
+use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at, update_sidebar_offer_at};
 use crate::types::BarPosition;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
@@ -175,13 +175,24 @@ pub fn dispatch_pointer_motion(
         return;
     }
 
+    // Cheap shared sidebar hover path: monitor lookup + rectangle test, no
+    // client scans and no button binding dispatch on motion.
+    if !wm.g.drag.any_drag_active() {
+        let ctx = wm.ctx();
+        if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
+            && update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y)
+        {
+            return;
+        }
+    }
+
     // Phase 5: Update hover resize state for floating windows
     let suppress_hover_focus = update_hover_resize_state(
         wm,
         root_x,
         root_y,
         hovered_win,
-        active_drag_window.is_none(),
+        active_drag_window.is_none() && !wm.g.drag.any_drag_active(),
     );
 
     // Phase 6: Update pointer focus based on drag state
@@ -238,8 +249,7 @@ fn compute_bar_hit(
         // 4-pixel guard band below the bar: pointer must move this many pixels
         // past the bar bottom before a window drag is allowed to start.
         let guard_h = 4;
-        let drag_active =
-            active_drag_window.is_some() || wm.g.drag.interactive.active || wm.g.drag.tag.active;
+        let drag_active = active_drag_window.is_some() || wm.g.drag.any_drag_active();
         let in_bar = bar_visible && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
         let in_guard = bar_visible
             && !drag_active
@@ -351,7 +361,7 @@ fn handle_bar_motion(
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
-    let is_drag = wm.g.drag.interactive.active || wm.g.drag.tag.active;
+    let is_drag = wm.g.drag.any_drag_active();
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
@@ -461,6 +471,11 @@ fn handle_wm_drag_motion(
     if wm.g.drag.interactive.active {
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
+    }
+
+    if wm.g.drag.gesture.active {
+        let mut ctx = wm.ctx();
+        crate::mouse::update_sidebar_gesture(&mut ctx, root_y);
     }
 }
 

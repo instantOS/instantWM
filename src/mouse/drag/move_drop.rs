@@ -6,9 +6,9 @@
 
 use crate::bar::bar_position_to_gesture;
 use crate::contexts::WmCtx;
-use crate::globals::Globals;
 use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
 use crate::types::SnapPosition;
@@ -21,14 +21,7 @@ use crate::mouse::monitor::handle_client_monitor_switch;
 
 /// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
 pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
-    snap_window_to_monitor_edges(
-        ctx.core().globals(),
-        c.win,
-        c.geo.w,
-        c.geo.h,
-        new_x,
-        new_y,
-    );
+    snap_window_to_monitor_edges(ctx.core().globals(), c.win, c.geo.w, c.geo.h, new_x, new_y);
 }
 
 pub fn snap_window_to_monitor_edges(

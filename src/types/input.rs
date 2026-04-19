@@ -2,7 +2,7 @@
 //!
 //! Types for mouse, keyboard, and gesture handling.
 
-use crate::types::WindowId;
+use crate::types::{MonitorId, Rect, WindowId};
 
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -45,6 +45,13 @@ impl MouseButton {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SidebarTarget {
+    pub monitor_id: MonitorId,
+    pub edge: EdgeDirection,
+    pub rect: Rect,
+}
+
 /// Alternative cursor states for special operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AltCursor {
@@ -77,15 +84,9 @@ impl AltCursor {
     }
 }
 
-/// Describes precisely what the mouse cursor is positioned over in the bar,
-/// or what area of the screen was clicked outside the bar.
+/// Describes precisely what the mouse cursor is positioned over in the bar.
 ///
-/// This is the single source of truth for all click dispatch. `Button` actions
-/// receive the full `BarPosition` so they can access the exact target (e.g.
-/// which tag index, which window) without any separate lookup.
-///
-/// For clicks outside the bar (`ClientWin`, `SideBar`), the non-bar variants
-/// are used and bar-specific data (tag index, window) is not applicable.
+/// Non-bar targets are represented by [`crate::types::ButtonTarget`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BarPosition {
     /// The start-menu icon at the left edge of the bar.
@@ -108,11 +109,7 @@ pub enum BarPosition {
     SystrayItem(usize),
     /// A Wayland systray popup-menu item by index.
     SystrayMenuItem(usize),
-    /// A client window (outside the bar entirely).
-    ClientWin,
-    /// The sidebar activation zone.
-    SideBar,
-    /// An unoccupied area of the bar or the root window.
+    /// An unoccupied area of the bar.
     #[default]
     Root,
 }

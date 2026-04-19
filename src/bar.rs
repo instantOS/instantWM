@@ -221,12 +221,7 @@ pub fn resolve_bar_position_at_root(
     root_y: i32,
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
-    let rect = Rect {
-        x: root_x,
-        y: root_y,
-        w: 1,
-        h: 1,
-    };
+    let rect = crate::mouse::pointer::point_rect(root_x, root_y);
     let monitor_id = crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &rect)?;
     if sync_selected_monitor && monitor_id != core.globals().selected_monitor_id() {
         core.globals_mut().set_selected_monitor(monitor_id);
@@ -348,7 +343,7 @@ pub fn handle_status_text_click(
 
 pub fn dispatch_configured_button(
     ctx: &mut WmCtx,
-    pos: BarPosition,
+    target: ButtonTarget,
     window: Option<WindowId>,
     btn: MouseButton,
     root_x: i32,
@@ -358,7 +353,7 @@ pub fn dispatch_configured_button(
 ) {
     let buttons = ctx.core().globals().cfg.buttons.clone();
     for b in &buttons {
-        if !b.matches(pos) || b.button != btn {
+        if !b.matches(target) || b.button != btn {
             continue;
         }
         if crate::util::clean_mask(b.mask, numlockmask) != clean_state {
@@ -368,7 +363,7 @@ pub fn dispatch_configured_button(
             ctx,
             &b.action,
             ButtonArg {
-                pos,
+                target,
                 window,
                 btn: b.button,
                 rx: root_x,

@@ -17,7 +17,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::client::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
-use crate::types::BarPosition;
+use crate::types::ButtonTarget;
 use crate::types::WindowId;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -284,7 +284,7 @@ pub fn grab_buttons_x11(
     }
 
     for button in &core.globals().cfg.buttons {
-        if !button.matches(BarPosition::ClientWin) {
+        if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }
         if focused && button.mask == 0 {

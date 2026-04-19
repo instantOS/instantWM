@@ -12,9 +12,7 @@ use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{
-    dispatch_wayland_bar_click, update_wayland_bar_hit_state, wayland_button_to_mouse_button,
-};
+use crate::wayland::input::bar::{dispatch_wayland_bar_click, wayland_button_to_mouse_button};
 use crate::wayland::input::pointer::drag::{
     wayland_hover_resize_drag_begin, wayland_hover_resize_drag_finish,
 };
@@ -47,13 +45,43 @@ pub fn handle_pointer_button<B: InputBackend>(
     }
 
     if event.state() == smithay::backend::input::ButtonState::Pressed {
-        // Bar interactions must short-circuit the generic surface click path.
-        if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
+        let clicked_win = find_hovered_window(wm, state, pointer_location);
+        let pointer_region = {
+            let mut ctx = wm.ctx();
+            crate::mouse::pointer::button_region_at(ctx.core_mut(), root_x, root_y, clicked_win)
+        };
+
+        // Bar clicks have their own status/systray handling and must not fall
+        // through to generic surface focus.
+        if let crate::mouse::pointer::PointerRegion::Bar { pos, .. } = pointer_region {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
             dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
+            pointer_handle.frame(state);
+            return;
+        }
+
+        // Sidebar is WM-owned but not a bar target.
+        if matches!(
+            pointer_region,
+            crate::mouse::pointer::PointerRegion::Sidebar(_)
+        ) {
+            if let Some(btn) = wm_button {
+                let clean_state = crate::util::clean_mask(
+                    modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
+                    0,
+                );
+                let _ = dispatch_wayland_pointer_button(
+                    wm,
+                    pointer_region,
+                    btn,
+                    root_x,
+                    root_y,
+                    clean_state,
+                );
+            }
             pointer_handle.frame(state);
             return;
         }
@@ -66,9 +94,6 @@ pub fn handle_pointer_button<B: InputBackend>(
                 return;
             }
         }
-
-        // Resolve the window directly under the pointer via Smithay's surface hit-test.
-        let clicked_win = find_hovered_window(wm, state, pointer_location);
 
         // Update focus before dispatching client button bindings.
         if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location)
@@ -104,8 +129,14 @@ pub fn handle_pointer_button<B: InputBackend>(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
-            consumed =
-                dispatch_wayland_client_button(wm, clicked_win, btn, root_x, root_y, clean_state);
+            consumed = dispatch_wayland_pointer_button(
+                wm,
+                pointer_region,
+                btn,
+                root_x,
+                root_y,
+                clean_state,
+            );
         }
 
         if !consumed {
@@ -167,7 +198,8 @@ pub fn handle_pointer_button<B: InputBackend>(
         let released_btn = wm_button;
         let is_wm_drag = (wm.g.drag.interactive.active
             && released_btn == Some(wm.g.drag.interactive.button))
-            || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button));
+            || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button))
+            || (wm.g.drag.gesture.active && released_btn == Some(wm.g.drag.gesture.button));
 
         if !is_wm_drag {
             let button = smithay::input::pointer::ButtonEvent {
@@ -188,6 +220,13 @@ pub fn handle_pointer_button<B: InputBackend>(
         if wm.g.drag.interactive.active && released_btn == Some(wm.g.drag.interactive.button) {
             let mut ctx = wm.ctx();
             crate::mouse::title_drag_finish(&mut ctx);
+        }
+
+        if wm.g.drag.gesture.active
+            && let Some(btn) = released_btn
+        {
+            let mut ctx = wm.ctx();
+            let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, btn);
         }
     }
 
@@ -237,17 +276,22 @@ fn find_hovered_window_for_surface(
 }
 
 /// Dispatch client button event.
-fn dispatch_wayland_client_button(
+fn dispatch_wayland_pointer_button(
     wm: &mut Wm,
-    clicked_win: Option<crate::types::WindowId>,
+    region: crate::mouse::pointer::PointerRegion,
     btn: MouseButton,
     root_x: i32,
     root_y: i32,
     clean_state: u32,
 ) -> bool {
+    let clicked_win = match region {
+        crate::mouse::pointer::PointerRegion::Client(win) => Some(win),
+        _ => None,
+    };
+    let target = region.to_button_target();
     let buttons = wm.g.cfg.buttons.clone();
     for b in &buttons {
-        if !b.matches(crate::types::BarPosition::ClientWin) || b.button != btn {
+        if !b.matches(target) || b.button != btn {
             continue;
         }
         if crate::util::clean_mask(b.mask, 0) != clean_state {
@@ -258,7 +302,7 @@ fn dispatch_wayland_client_button(
             &mut ctx,
             &b.action,
             crate::types::ButtonArg {
-                pos: crate::types::BarPosition::ClientWin,
+                target,
                 window: clicked_win,
                 btn: b.button,
                 rx: root_x,

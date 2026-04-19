@@ -19,9 +19,9 @@
 //! ```
 
 use crate::contexts::WmCtx;
-use crate::globals::Globals;
 use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
 

@@ -3,15 +3,23 @@
 use super::keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 use crate::actions::{ButtonAction, NamedAction, argv};
 use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu};
-use crate::types::{BarPosition, Button, MouseButton, WindowId};
+use crate::types::{BarPosition, Button, ButtonTarget, MouseButton, WindowId};
 
 const MS: u32 = MODKEY | SHIFT;
 const MC: u32 = MODKEY | CONTROL;
 
 macro_rules! btn {
-    ($target:expr, $mask:expr, button:$btn:expr => $action:expr) => {
+    (screen:$target:expr, $mask:expr, button:$btn:expr => $action:expr) => {
         Button {
             target: $target,
+            mask: $mask,
+            button: $btn,
+            action: $action,
+        }
+    };
+    ($target:expr, $mask:expr, button:$btn:expr => $action:expr) => {
+        Button {
+            target: ButtonTarget::Bar($target),
             mask: $mask,
             button: $btn,
             action: $action,
@@ -35,6 +43,7 @@ fn named_args(action: NamedAction, args: &[&str]) -> ButtonAction {
 
 pub fn get_buttons() -> Vec<Button> {
     use BarPosition::*;
+    use ButtonTarget::{ClientWin, Root, SideBar};
 
     vec![
         btn!(LayoutSymbol, 0, button:MouseButton::Left => named(NamedAction::CycleLayoutPrev)),
@@ -73,25 +82,25 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), MOD1, button:MouseButton::Left => ButtonAction::FollowSelectedClientClickedTag),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp => named(NamedAction::ShiftViewLeft)),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => named(NamedAction::ShiftViewRight)),
-        btn!(Root, 0, button:MouseButton::Left => named_args(NamedAction::Spawn, defaults::APPMENU)),
-        btn!(Root, 0, button:MouseButton::Middle => named_args(NamedAction::Spawn, menu::RUN)),
-        btn!(Root, 0, button:MouseButton::Right => named_args(NamedAction::Spawn, menu::SMART)),
-        btn!(Root, 0, button:MouseButton::ScrollUp => ButtonAction::HideEdgeScratchpad),
-        btn!(Root, 0, button:MouseButton::ScrollDown => ButtonAction::ShowEdgeScratchpad),
-        btn!(Root, MODKEY, button:MouseButton::Left => named(NamedAction::EdgeScratchpadToggle)),
-        btn!(Root, MODKEY, button:MouseButton::Right => named_args(NamedAction::Spawn, &["instantnotify"])),
-        btn!(ClientWin, MODKEY, button:MouseButton::Left => ButtonAction::ClientMoveDrag),
-        btn!(ClientWin, MODKEY, button:MouseButton::Middle => ButtonAction::ToggleFloatingSelected),
-        btn!(ClientWin, MODKEY, button:MouseButton::Right => ButtonAction::ResizeMouseFromCursor),
-        btn!(ClientWin, MODKEY | MOD1, button:MouseButton::Right => ButtonAction::ResizeMouseFromCursor),
-        btn!(ClientWin, MS, button:MouseButton::Right => ButtonAction::ResizeSelectedAspect),
+        btn!(screen:Root, 0, button:MouseButton::Left => named_args(NamedAction::Spawn, defaults::APPMENU)),
+        btn!(screen:Root, 0, button:MouseButton::Middle => named_args(NamedAction::Spawn, menu::RUN)),
+        btn!(screen:Root, 0, button:MouseButton::Right => named_args(NamedAction::Spawn, menu::SMART)),
+        btn!(screen:Root, 0, button:MouseButton::ScrollUp => ButtonAction::HideEdgeScratchpad),
+        btn!(screen:Root, 0, button:MouseButton::ScrollDown => ButtonAction::ShowEdgeScratchpad),
+        btn!(screen:Root, MODKEY, button:MouseButton::Left => named(NamedAction::EdgeScratchpadToggle)),
+        btn!(screen:Root, MODKEY, button:MouseButton::Right => named_args(NamedAction::Spawn, &["instantnotify"])),
+        btn!(screen:ClientWin, MODKEY, button:MouseButton::Left => ButtonAction::ClientMoveDrag),
+        btn!(screen:ClientWin, MODKEY, button:MouseButton::Middle => ButtonAction::ToggleFloatingSelected),
+        btn!(screen:ClientWin, MODKEY, button:MouseButton::Right => ButtonAction::ResizeMouseFromCursor),
+        btn!(screen:ClientWin, MODKEY | MOD1, button:MouseButton::Right => ButtonAction::ResizeMouseFromCursor),
+        btn!(screen:ClientWin, MS, button:MouseButton::Right => ButtonAction::ResizeSelectedAspect),
         btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Left => ButtonAction::KillSelectedClient),
         btn!(CloseButton(WindowId(0)), 0, button:MouseButton::Right => ButtonAction::ToggleLockSelectedClient),
         btn!(ResizeWidget(WindowId(0)), 0, button:MouseButton::Left => named(NamedAction::DrawWindow)),
         btn!(ShutDown, 0, button:MouseButton::Left => named_args(NamedAction::Spawn, &["instantshutdown"])),
         btn!(ShutDown, 0, button:MouseButton::Middle => named_args(NamedAction::Spawn, &["instantlock", "-o"])),
         btn!(ShutDown, 0, button:MouseButton::Right => named_args(NamedAction::Spawn, &[".config/instantos/default/lockscreen"])),
-        btn!(SideBar, 0, button:MouseButton::Left => ButtonAction::GestureMouse),
+        btn!(screen:SideBar, 0, button:MouseButton::Left => ButtonAction::SidebarGestureBegin),
         btn!(StartMenu, 0, button:MouseButton::Left => named_args(NamedAction::Spawn, &["instantstartmenu"])),
         btn!(StartMenu, 0, button:MouseButton::Right => named_args(NamedAction::Spawn, &["quickmenu"])),
         btn!(StartMenu, SHIFT, button:MouseButton::Left => named(NamedAction::TogglePrefix)),

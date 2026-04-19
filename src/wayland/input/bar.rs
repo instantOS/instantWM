@@ -124,7 +124,7 @@ fn dispatch_wayland_bar_button(
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
     crate::bar::dispatch_configured_button(
         &mut wm_ctx,
-        pos,
+        ButtonTarget::Bar(pos),
         None,
         btn,
         root_x,

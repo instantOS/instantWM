@@ -296,20 +296,12 @@ pub fn update_selected_resize_offer_at(
 }
 
 pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    let (right_edge, min_y) = {
-        let mon = ctx.core().globals().selected_monitor();
-        (
-            mon.monitor_rect.x + mon.monitor_rect.w - SIDEBAR_WIDTH,
-            mon.bar_height + 60,
-        )
-    };
-
-    if root_x > right_edge {
-        if !ctx.core().globals().drag.hover_offer.is_sidebar() && root_y > min_y {
+    if let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), root_x, root_y) {
+        if ctx.core().globals().drag.hover_offer != HoverOffer::Sidebar(target) {
             ctx.core_mut()
                 .globals_mut()
                 .drag
-                .set_hover_offer(HoverOffer::Sidebar);
+                .set_hover_offer(HoverOffer::Sidebar(target));
             set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
         }
         return true;

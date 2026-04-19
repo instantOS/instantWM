@@ -22,6 +22,9 @@ fn set_x11_root_cursor_by_index(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
 }
 
 pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
+    if ctx.core().globals().behavior.requested_cursor == style {
+        return;
+    }
     ctx.core_mut().globals_mut().behavior.requested_cursor = style;
     match ctx {
         WmCtx::X11(x11) => {

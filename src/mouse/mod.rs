@@ -23,7 +23,7 @@
 //!         ├─ run_x11_hover_resize_offer_loop (hover module)
 //!         ├─ window_title_mouse_handler  (drag module)
 //!         ├─ drag_tag                    (drag module)
-//!         └─ gesture_mouse               (drag module)
+//!         └─ sidebar_gesture_begin       (drag module)
 //! ```
 //!
 //! All drag/resize functions follow the same skeleton:
@@ -44,6 +44,7 @@ mod cursor;
 pub mod drag;
 pub mod hover;
 pub mod monitor;
+pub mod pointer;
 pub mod resize;
 pub mod slop;
 pub mod warp;
@@ -58,8 +59,9 @@ pub use warp::reset_cursor;
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    begin_keyboard_move, drag_tag, drag_tag_finish, drag_tag_motion, gesture_mouse,
-    title_drag_finish, title_drag_motion, window_title_mouse_handler,
+    begin_keyboard_move, drag_tag, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture,
+    sidebar_gesture_begin, title_drag_finish, title_drag_motion, update_sidebar_gesture,
+    window_title_mouse_handler,
 };
 
 // ── hover ─────────────────────────────────────────────────────────────────────

@@ -160,18 +160,26 @@ pub struct TagDragState {
     pub button: MouseButton,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct GestureInteraction {
+    pub active: bool,
+    pub button: MouseButton,
+    pub monitor_id: MonitorId,
+    pub last_y: i32,
+}
+
 /// The pointer-owned interaction currently being offered before a click commits it.
 ///
 /// This is the source of truth for hover offers; the cursor icon is a
 /// side-effect, not the other way around.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub enum HoverOffer {
     #[default]
     None,
     /// Cursor is in the resize border zone of a floating window.
     Resize { win: WindowId, dir: ResizeDirection },
     /// Cursor is on the sidebar drag edge.
-    Sidebar,
+    Sidebar(SidebarTarget),
 }
 
 impl HoverOffer {
@@ -183,7 +191,7 @@ impl HoverOffer {
 
     #[inline]
     pub fn is_sidebar(self) -> bool {
-        matches!(self, HoverOffer::Sidebar)
+        matches!(self, HoverOffer::Sidebar(_))
     }
 
     /// The resize target and direction when this is a border-resize offer.
@@ -201,11 +209,17 @@ impl HoverOffer {
 pub struct DragState {
     pub tag: TagDragState,
     pub interactive: DragInteraction,
+    pub gesture: GestureInteraction,
     pub bar_active: bool,
     pub hover_offer: HoverOffer,
 }
 
 impl DragState {
+    #[inline]
+    pub fn any_drag_active(&self) -> bool {
+        self.interactive.active || self.tag.active || self.gesture.active
+    }
+
     #[inline]
     pub fn set_hover_offer(&mut self, offer: HoverOffer) {
         self.hover_offer = offer;

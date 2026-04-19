@@ -5,7 +5,9 @@ use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
 use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::types::{BarPosition, Client, ClientMode, Gesture, MouseButton, Rect, WindowId};
+use crate::types::{
+    BarPosition, ButtonTarget, Client, ClientMode, Gesture, MouseButton, Rect, WindowId,
+};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -58,12 +60,14 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), clicked_mon);
     };
 
-    // Determine the full bar position — this carries the exact target
-    // (tag index, window handle, etc.) through to the button action.
-    let bar_pos: BarPosition;
+    let target_window = ctx
+        .core
+        .globals()
+        .clients
+        .contains_key(&event_win)
+        .then_some(event_win);
 
-    if ctx.core.globals().clients.contains_key(&event_win) {
-        bar_pos = BarPosition::ClientWin;
+    if target_window.is_some() {
         // Only focus on button press if it's NOT a simple left/middle/right click
         // (e.g., for scroll wheel or other buttons). Simple clicks should not
         // change focus or raise windows - the user explicitly wants to interact
@@ -75,37 +79,32 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
-    } else if let Some(mon) = ctx.core.globals().monitor(selmon_id) {
-        if event_win == mon.bar_win {
-            let local_x = e.event_x as i32;
-            let position = mon.bar_position_at_x(&ctx.core, local_x);
-
-            if position == BarPosition::StatusText {
-                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                crate::bar::handle_status_text_click(
-                    &mut wm_ctx,
-                    e.root_x as i32,
-                    e.root_y as i32,
-                    e.detail,
-                    crate::util::clean_mask(e.state.into(), numlockmask),
-                );
-                return;
-            }
-
-            bar_pos = position;
-        } else if (e.root_x as i32) > mon.monitor_rect.x + mon.monitor_rect.w - 50 {
-            bar_pos = BarPosition::SideBar;
-        } else {
-            bar_pos = BarPosition::Root;
-        }
-    } else {
-        bar_pos = BarPosition::Root;
     };
 
+    let region = crate::mouse::pointer::button_region_at(
+        &mut ctx.core,
+        e.root_x as i32,
+        e.root_y as i32,
+        target_window,
+    );
+    let button_target = region.to_button_target();
+
     let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
-    let client_binding_matched = bar_pos == BarPosition::ClientWin
+    if button_target == ButtonTarget::Bar(BarPosition::StatusText) {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        crate::bar::handle_status_text_click(
+            &mut wm_ctx,
+            e.root_x as i32,
+            e.root_y as i32,
+            e.detail,
+            clean_state,
+        );
+        return;
+    }
+
+    let client_binding_matched = button_target == ButtonTarget::ClientWin
         && buttons_clone.iter().any(|button| {
-            button.matches(bar_pos)
+            button.matches(button_target)
                 && button.button.to_x11_detail() == e.detail
                 && crate::util::clean_mask(button.mask, numlockmask) == clean_state
         });
@@ -125,7 +124,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     );
     let _ = conn.flush();
 
-    if bar_pos == BarPosition::Root
+    if button_target == ButtonTarget::Root
         && let Some(mon) = ctx.core.globals().monitor(selmon_id)
         && mon.sel.is_some()
         && let Some(btn) = MouseButton::from_x11_detail(e.detail)
@@ -135,15 +134,9 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     };
 
     if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
-        let target_window = ctx
-            .core
-            .globals()
-            .clients
-            .contains_key(&event_win)
-            .then_some(event_win);
         crate::bar::dispatch_configured_button(
             &mut WmCtx::X11(ctx.reborrow()),
-            bar_pos,
+            button_target,
             target_window,
             btn,
             e.root_x as i32,
@@ -459,9 +452,6 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             return;
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
-        if ctx.core.globals().drag.hover_offer.is_sidebar() {
-            crate::mouse::clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
-        }
         return;
     };
 

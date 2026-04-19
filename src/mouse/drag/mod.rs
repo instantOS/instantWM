@@ -7,13 +7,13 @@
 //! - [`tag`] — Tag bar drag: [`drag_tag_begin`], [`drag_tag_motion`], [`drag_tag_finish`]
 //! - [`title`] — Title bar click/drag: [`title_drag_begin`], [`title_drag_motion`],
 //!   [`title_drag_finish`], [`window_title_mouse_handler`]
-//! - [`gesture`] — Root-window gestures: [`gesture_mouse`]
+//! - [`gesture`] — Sidebar gestures: [`sidebar_gesture_begin`]
 //!
 //! | Function                            | Description                                               |
 //! |-------------------------------------|-----------------------------------------------------------|
 //! | [`begin_keyboard_move`]             | Keyboard-initiated window drag (works on X11 and Wayland) |
 //! | [`crate::backend::x11::mouse::move_mouse_x11`] | Drag the focused window to a new position (X11 only) |
-//! | [`gesture_mouse`]                   | Vertical-swipe gesture recogniser on the root window      |
+//! | [`sidebar_gesture_begin`]           | Vertical-swipe gesture recogniser on the sidebar edge     |
 //! | [`drag_tag`]                        | Drag across the tag bar to switch/move tags               |
 //! | [`window_title_mouse_handler`]      | Left-click/drag on a window title bar entry               |
 //!
@@ -31,7 +31,7 @@
 //! ```
 
 // Re-export from submodules
-pub use gesture::gesture_mouse;
+pub use gesture::{finish_sidebar_gesture, sidebar_gesture_begin, update_sidebar_gesture};
 pub use move_drop::{
     MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
     snap_window_to_monitor_edges, update_bar_hover_simple,

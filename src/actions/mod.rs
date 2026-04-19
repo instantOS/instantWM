@@ -54,7 +54,7 @@ pub enum ButtonAction {
     ResizeSelectedAspect,
     KillSelectedClient,
     ToggleLockSelectedClient,
-    GestureMouse,
+    SidebarGestureBegin,
     ReorderSelected {
         up: bool,
     },
