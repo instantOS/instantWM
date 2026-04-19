@@ -13,7 +13,7 @@
 //! | [`fibonacci`] | `spiral`, `dwindle`, `fibonacci`              |
 //! | [`three_column`] | `three_column`                              |
 //! | [`overview`]  | `overviewlayout`                              |
-//! | [`float`]     | `float_left`, `apply_snap_for_window`, `save_floating` |
+//! | [`float`]     | `floating`, `apply_snap_for_window` |
 
 mod fibonacci;
 mod float;
@@ -46,4 +46,4 @@ pub use three_column::three_column;
 pub use overview::overviewlayout;
 
 // ── floating / snap ──────────────────────────────────────────────────────────
-pub use float::{apply_snap_for_window, float_left};
+pub use float::{apply_snap_for_window, floating};

@@ -20,11 +20,9 @@
 //! Grid      "#"    square grid
 //! Floating  "-"    free floating (no tiling)
 //! Monocle  "[M]"   fullscreen stack (monocle)
-//! Vert     "|||"   vertical floating (no tiling)
 //! Deck     "H[]"   master + stacked deck
 //! Overview  "O"    bird's-eye overview of all clients
 //! Bstack   "TTT"   bottom-stack (horizontal master row)
-//! Horiz    "==="   horizontal floating (no tiling)
 //! ```
 //!
 //! ## Public API surface
@@ -68,16 +66,12 @@ pub enum LayoutKind {
     Floating,
     /// Monocle layout (`[M]`).
     Monocle,
-    /// Vertical floating layout (`|||`).
-    Vert,
     /// Deck layout (`H[]`).
     Deck,
     /// Overview layout (`O`).
     Overview,
     /// Bottom-stack layout (`TTT`).
     Bstack,
-    /// Horizontal floating layout (`===`).
-    Horiz,
 }
 
 impl LayoutKind {
@@ -91,11 +85,9 @@ impl LayoutKind {
             Self::Grid => "#",
             Self::Floating => "-",
             Self::Monocle => "[M]",
-            Self::Vert => "|||",
             Self::Deck => "H[]",
             Self::Overview => "O",
             Self::Bstack => "TTT",
-            Self::Horiz => "===",
         }
     }
 
@@ -103,13 +95,11 @@ impl LayoutKind {
         match self {
             Self::Tile => algo::tile(ctx, m),
             Self::Grid => algo::grid(ctx, m),
-            Self::Floating => algo::float_left(ctx, m),
+            Self::Floating => algo::floating(ctx, m),
             Self::Monocle => algo::monocle(ctx, m),
-            Self::Vert => algo::float_left(ctx, m),
             Self::Deck => algo::deck(ctx, m),
             Self::Overview => algo::overviewlayout(ctx, m),
             Self::Bstack => algo::bottom_stack(ctx, m),
-            Self::Horiz => algo::float_left(ctx, m),
         }
     }
 
@@ -134,11 +124,9 @@ impl LayoutKind {
             Self::Grid,
             Self::Floating,
             Self::Monocle,
-            Self::Vert,
             Self::Deck,
             Self::Overview,
             Self::Bstack,
-            Self::Horiz,
         ]
     }
 }
@@ -152,11 +140,9 @@ impl FromStr for LayoutKind {
             "grid" => Ok(Self::Grid),
             "float" | "floating" => Ok(Self::Floating),
             "monocle" => Ok(Self::Monocle),
-            "vert" | "vertical" => Ok(Self::Vert),
             "deck" => Ok(Self::Deck),
             "overview" => Ok(Self::Overview),
             "bstack" | "bottomstack" => Ok(Self::Bstack),
-            "horiz" | "horizontal" => Ok(Self::Horiz),
             _ => Err(()),
         }
     }

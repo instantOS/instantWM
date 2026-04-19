@@ -3,16 +3,16 @@
 //! ## Overview
 //!
 //! In the floating layout every client is responsible for its own position.
-//! The role of [`float_left`] is therefore minimal: it temporarily disables
-//! animation, applies any pending *snap positions* (e.g. half-screen left,
-//! quarter top-right) to clients that have one set, syncs the window z-order in
-//! the correct order, and raises the selected client to the top.
+//! The role of [`floating`] is therefore minimal: it applies any pending
+//! *snap positions* (e.g. half-screen left, quarter top-right) to clients that
+//! have one set, syncs the window z-order in the correct order, and raises the
+//! selected client to the top.
 //!
 //! ## Snap positions
 //!
 //! A snap position is stored on each client as a [`SnapPosition`] enum
 //! variant.  When a floating client is dragged to a screen edge the WM sets
-//! `client.snap_status`; [`float_left`] then calls [`apply_snap_for_window`] to
+//! `client.snap_status`; [`floating`] then calls [`apply_snap_for_window`] to
 //! compute and apply the corresponding geometry.
 //!
 //! ```text
@@ -31,16 +31,14 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect, SnapPosition, WindowId};
 
-// ── float_left ─────────────────────────────────────────────────────────────────
+// ── floating ─────────────────────────────────────────────────────────────────
 
 /// Floating layout arrange function.
 ///
-/// Called by the [`FloatingLayout`](crate::layouts::FloatingLayout),
-/// [`VertLayout`](crate::layouts::VertLayout), and
-/// [`HorizLayout`](crate::layouts::HorizLayout) impls — all of which leave
-/// clients at their self-managed positions but still need snap geometry
-/// enforced and the window stack sorted.
-pub fn float_left(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+/// Called by the [`Floating`](crate::layouts::LayoutKind::Floating) layout
+/// — leaves clients at their self-managed positions but still needs snap
+/// geometry enforced and the window stack sorted.
+pub fn floating(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let selected = m.selected_tags();
 
     // ── apply pending snap positions ──────────────────────────────────────
