@@ -34,11 +34,11 @@ pub mod media {
 }
 
 /// Screenshot utilities.
-pub mod scrot {
-    pub const S: &[&str] = &["ins", "assist", "run", "sp"];
-    pub const M: &[&str] = &["ins", "assist", "run", "sm"];
-    pub const C: &[&str] = &["ins", "assist", "run", "sc"];
-    pub const F: &[&str] = &["ins", "assist", "run", "sf"];
+pub mod screenshot {
+    pub const AREA: &[&str] = &["ins", "assist", "run", "sp"];
+    pub const FULL: &[&str] = &["ins", "assist", "run", "sm"];
+    pub const CLIPBOARD: &[&str] = &["ins", "assist", "run", "sc"];
+    pub const FULL_CLIPBOARD: &[&str] = &["ins", "assist", "run", "sf"];
 }
 
 /// Rofi window switcher (for iswitch-style window switching).

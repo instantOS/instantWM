@@ -1,7 +1,7 @@
 //! Keyboard bindings: normal keys (`get_keys`) and prefix-mode keys (`get_desktop_keybinds`).
 
 use crate::actions::{KeyAction, NamedAction, argv};
-use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, scrot};
+use crate::config::commands_common::{ROFI_WINDOW_SWITCH, defaults, media, menu, screenshot};
 use crate::types::Key;
 
 use super::keysyms::*;
@@ -136,10 +136,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_DEAD_CIRCUMFLEX => named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
         key!(MODKEY | CONTROL, XK_L => named_args(NamedAction::Spawn, defaults::LOCKSCREEN)),
         key!(MODKEY | SHIFT, XK_ESCAPE => named_args(NamedAction::Spawn, defaults::SYSTEMMONITOR)),
-        key!(MODKEY, XK_PRINT => named_args(NamedAction::Spawn, scrot::S)),
-        key!(MODKEY | SHIFT, XK_PRINT => named_args(NamedAction::Spawn, scrot::M)),
-        key!(MODKEY | CONTROL, XK_PRINT => named_args(NamedAction::Spawn, scrot::C)),
-        key!(MODKEY | MOD1, XK_PRINT => named_args(NamedAction::Spawn, scrot::F)),
+        key!(MODKEY, XK_PRINT => named_args(NamedAction::Spawn, screenshot::AREA)),
+        key!(MODKEY | SHIFT, XK_PRINT => named_args(NamedAction::Spawn, screenshot::FULL)),
+        key!(MODKEY | CONTROL, XK_PRINT => named_args(NamedAction::Spawn, screenshot::CLIPBOARD)),
+        key!(MODKEY | MOD1, XK_PRINT => named_args(NamedAction::Spawn, screenshot::FULL_CLIPBOARD)),
         key!(0, XF86XK_MON_BRIGHTNESS_UP => named_args(NamedAction::Spawn, media::up_bright())),
         key!(0, XF86XK_MON_BRIGHTNESS_DOWN => named_args(NamedAction::Spawn, media::down_bright())),
         key!(0, XF86XK_AUDIO_LOWER_VOLUME => named_args(NamedAction::Spawn, media::down_vol())),

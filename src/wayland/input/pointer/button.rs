@@ -96,7 +96,8 @@ pub fn handle_pointer_button<B: InputBackend>(
         }
 
         // Update focus before dispatching client button bindings.
-        if let Some((layer_surface, location)) = state.layer_surface_under_pointer(pointer_location)
+        let on_layer_surface = if let Some((layer_surface, location)) =
+            state.layer_surface_under_pointer(pointer_location)
         {
             keyboard_handle.set_focus(
                 state,
@@ -114,17 +115,23 @@ pub fn handle_pointer_button<B: InputBackend>(
             };
             pointer_handle.motion(state, focus, &motion);
             pointer_handle.frame(state);
+            true
         } else if let Some(win) = clicked_win {
             let mut ctx = wm.ctx();
             crate::focus::select_monitor_for_client(&mut ctx, win);
             crate::focus::focus_soft(&mut ctx, Some(win));
+            false
         } else {
             let mut ctx = wm.ctx();
             crate::focus::focus_soft(&mut ctx, None);
-        }
+            false
+        };
 
+        // When a non-WM layer surface (notification, launcher like fuzzel) is
+        // under the pointer, forward the click to that surface and skip WM
+        // button bindings so we don't treat it as a root-window click.
         let mut consumed = false;
-        if let Some(btn) = wm_button {
+        if !on_layer_surface && let Some(btn) = wm_button {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
