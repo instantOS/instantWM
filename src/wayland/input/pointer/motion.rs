@@ -420,6 +420,7 @@ fn update_hover_resize_state(
             suppress_hover_focus = true;
         } else {
             crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
+            suppress_hover_focus = false;
         }
     }
 
