@@ -27,6 +27,9 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
         reload_wayland(&mut wm.g, data, &cfg);
     }
 
+    // Re-run `exec` commands (but not `exec_once`) on reload.
+    crate::startup::autostart::run_exec_commands(&cfg.exec);
+
     Ok(())
 }
 

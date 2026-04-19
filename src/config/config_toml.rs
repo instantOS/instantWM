@@ -59,6 +59,12 @@ pub struct ThemeConfig {
     /// Bar height in logical pixels. 0 = auto (derive from font metrics).
     #[serde(default)]
     pub bar_height: u32,
+    /// Commands to execute once at startup (like sway `exec` / Hyprland `exec-once`).
+    #[serde(default)]
+    pub exec_once: Vec<String>,
+    /// Commands to execute at startup and on every config reload (like sway `exec_always`).
+    #[serde(default)]
+    pub exec: Vec<String>,
 }
 
 impl Default for ThemeConfig {
@@ -77,6 +83,8 @@ impl Default for ThemeConfig {
             cursor: CursorConfig::default(),
             rules: Vec::new(),
             bar_height: 0,
+            exec_once: Vec::new(),
+            exec: Vec::new(),
         }
     }
 }

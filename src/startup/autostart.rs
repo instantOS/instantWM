@@ -27,3 +27,25 @@ pub fn run_autostart() {
         }
     }
 }
+
+/// Spawn a list of commands via `sh -c`, detached from the WM process.
+pub fn run_exec_commands(commands: &[String]) {
+    for cmd in commands {
+        if cmd.trim().is_empty() {
+            continue;
+        }
+        match Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(_) => {}
+            Err(e) => {
+                eprintln!("instantwm: exec failed for '{}': {}", cmd, e);
+            }
+        }
+    }
+}

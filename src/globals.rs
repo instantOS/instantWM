@@ -63,6 +63,12 @@ pub struct RuntimeConfig {
 
     // Cursor configuration
     pub cursor: crate::config::config_toml::CursorConfig,
+
+    // Exec commands
+    /// Commands to execute once at startup.
+    pub exec_once: Vec<String>,
+    /// Commands to execute at startup and on every config reload.
+    pub exec: Vec<String>,
 }
 
 impl Default for RuntimeConfig {
@@ -101,6 +107,8 @@ impl Default for RuntimeConfig {
             monitors: std::collections::HashMap::new(),
             status_command: None,
             cursor: crate::config::config_toml::CursorConfig::default(),
+            exec_once: Vec::new(),
+            exec: Vec::new(),
         }
     }
 }
@@ -807,6 +815,8 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.external_commands = cfg.external_commands.clone();
     g.cfg.status_command = cfg.status_command.clone();
     g.cfg.cursor = cfg.cursor.clone();
+    g.cfg.exec_once = cfg.exec_once.clone();
+    g.cfg.exec = cfg.exec.clone();
 
     // Initialize keyboard layout state from config
     let mut layouts: Vec<KeyboardLayout> = cfg

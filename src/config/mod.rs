@@ -200,6 +200,12 @@ pub struct Config {
     pub monitors: std::collections::HashMap<String, config_toml::MonitorConfig>,
     pub status_command: Option<String>,
     pub cursor: config_toml::CursorConfig,
+
+    // --- Exec commands ---
+    /// Commands to execute once at startup.
+    pub exec_once: Vec<String>,
+    /// Commands to execute at startup and on every config reload.
+    pub exec: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -335,5 +341,9 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         monitors: theme.monitors.clone(),
         status_command: theme.status_command.clone(),
         cursor: theme.cursor.clone(),
+
+        // --- Exec commands ---
+        exec_once: theme.exec_once.clone(),
+        exec: theme.exec.clone(),
     }
 }

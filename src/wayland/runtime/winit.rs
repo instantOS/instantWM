@@ -53,7 +53,7 @@ pub fn run() -> ! {
 
     super::common::setup_wayland_listen_socket_xwayland_systray(&loop_handle, &state, &mut wm);
 
-    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle);
+    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle, &wm);
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle

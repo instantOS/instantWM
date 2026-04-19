@@ -79,6 +79,7 @@ pub fn setup_wayland_listen_socket_xwayland_systray(
 /// Autostart, optional smoke window, IPC listener registration, and status-bar ping source.
 pub fn wayland_autostart_ipc_status_ping(
     loop_handle: &LoopHandle<'static, WaylandState>,
+    wm: &crate::wm::Wm,
 ) -> Option<crate::ipc::IpcServer> {
     crate::startup::autostart::run_autostart();
     crate::wayland::common::spawn_wayland_smoke_window();
@@ -89,6 +90,11 @@ pub fn wayland_autostart_ipc_status_ping(
     loop_handle
         .insert_source(status_ping_source, |_, _, _| {})
         .expect("failed to insert status ping source");
+
+    // Run user-defined startup commands from config.
+    crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec_once);
+    crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec);
+
     ipc_server
 }
 

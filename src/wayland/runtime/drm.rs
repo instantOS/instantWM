@@ -224,7 +224,7 @@ pub fn run() -> ! {
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
 
-    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle);
+    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle, &wm);
 
     // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");

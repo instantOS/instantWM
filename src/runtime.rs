@@ -169,6 +169,11 @@ pub fn late_init(wm: &Wm) -> Option<crate::ipc::IpcServer> {
     crate::startup::autostart::run_autostart();
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     spawn_status_bar(wm);
+
+    // Run user-defined startup commands from config.
+    crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec_once);
+    crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec);
+
     ipc_server
 }
 
