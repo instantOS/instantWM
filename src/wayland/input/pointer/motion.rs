@@ -7,8 +7,9 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
-use crate::contexts::WmCtxWayland;
+use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::mouse::hover::selected_hover_resize_target_at;
+use crate::mouse::{clear_hover_offer, set_hover_resize};
 use crate::types::BarPosition;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
@@ -358,7 +359,7 @@ fn handle_bar_motion(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return true;
         };
-        crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
+        clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
         let focus = pointer_focus
             .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
         let serial = SERIAL_COUNTER.next_serial();
@@ -409,13 +410,10 @@ fn update_hover_resize_state(
         suppress_hover_focus = true;
     } else if !hovered_is_selected {
         if let Some((_, dir)) = selected_hover_resize_target_at(&ctx.core, root_x, root_y) {
-            crate::mouse::set_hover_resize(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                dir,
-            );
+            set_hover_resize(&mut WmCtx::Wayland(ctx.reborrow()), dir);
             suppress_hover_focus = true;
         } else {
-            crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
+            clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
             suppress_hover_focus = false;
         }
     }

@@ -10,7 +10,7 @@
 //!
 //! | Function                          | Called from          | Purpose                                     |
 //! |-----------------------------------|----------------------|---------------------------------------------|
-//! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize cursor and `altcursor`      |
+//! | [`handle_floating_resize_hover`]  | `motion_notify`      | Set/reset resize offer and cursor feedback   |
 //! | [`hover_resize_mouse`]            | `enter_notify`, etc. | Modal grab loop: wait for click near border  |
 
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
@@ -250,8 +250,8 @@ fn has_visible_tiled_client(core: &CoreCtx<'_>) -> bool {
 
 // ── Motion-notify hook ───────────────────────────────────────────────────────
 
-/// Sets the resize cursor and `altcursor` when the pointer is in a floating
-/// window's border zone; resets both when it leaves.  Returns `true` when the
+/// Sets the resize offer and cursor feedback when the pointer is in a floating
+/// window's border zone; resets both when it leaves. Returns `true` when the
 /// event is consumed.
 pub fn handle_floating_resize_hover(
     ctx: &mut WmCtx,
@@ -264,8 +264,9 @@ pub fn handle_floating_resize_hover(
         // Only focus when: do_focus requested AND no visible tiled clients.
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
-        let should_focus =
-            do_focus && ctx.selected_client() != Some(win) && !has_visible_tiled_client(ctx.core());
+        let should_focus = do_focus
+            && ctx.core().selected_client() != Some(win)
+            && !has_visible_tiled_client(ctx.core());
 
         if should_focus {
             crate::focus::focus_soft(ctx, Some(win));
@@ -327,7 +328,7 @@ pub fn hover_resize_mouse(ctx: &mut WmCtxX11) -> bool {
             return false;
         }
 
-        crate::mouse::handle_floating_resize_hover(&mut wm_ctx, x, y, false);
+        handle_floating_resize_hover(&mut wm_ctx, x, y, false);
     };
 
     let action_started = run_hover_resize_loop(ctx);

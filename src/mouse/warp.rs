@@ -66,15 +66,16 @@ pub fn warp_to_focus(ctx: &mut WmCtx) {
 
 // ── Cursor reset ──────────────────────────────────────────────────────────────
 
-/// Restore the root window's default (arrow) cursor and clear `altcursor`.
+/// Restore the root window's default (arrow) cursor and clear the requested
+/// WM cursor presentation.
 ///
 /// Call this after a modal grab ends so the cursor reverts to normal even
 /// if the pointer is not over any client window.
 pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
-    if core.globals().behavior.cursor_icon == AltCursor::Default {
+    if core.globals().behavior.requested_cursor == AltCursor::Default {
         return;
     }
-    core.globals_mut().behavior.cursor_icon = AltCursor::Default;
+    core.globals_mut().behavior.requested_cursor = AltCursor::Default;
 
     let cursor_idx = AltCursor::Default.to_x11_index();
     if let Some(ref cursor) = x11_runtime.cursors[cursor_idx] {

@@ -1,6 +1,7 @@
 //! Pointer drag handling (title drag, tag drag, resize drag).
 
-use crate::contexts::WmCtxWayland;
+use crate::contexts::{WmCtx, WmCtxWayland};
+use crate::mouse::{clear_hover_offer, set_hover_resize};
 use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::set_cursor_style;
@@ -117,10 +118,10 @@ pub fn update_wayland_selected_resize_offer(
     root_y: i32,
 ) -> Option<WindowId> {
     let Some((win, dir, _)) = wayland_selected_resize_target_at(ctx, root_x, root_y) else {
-        crate::mouse::clear_hover_offer(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()));
+        clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
         return None;
     };
-    crate::mouse::set_hover_resize(&mut crate::contexts::WmCtx::Wayland(ctx.reborrow()), dir);
+    set_hover_resize(&mut WmCtx::Wayland(ctx.reborrow()), dir);
     Some(win)
 }
 
