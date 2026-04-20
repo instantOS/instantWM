@@ -56,10 +56,11 @@ impl Default for TextRasterizer {
 
 impl TextRasterizer {
     pub(super) fn set_font_size(&mut self, font_size: f32) {
-        if font_size.is_finite() && font_size > 0.0 {
-            if self.font_size.to_bits() != font_size.to_bits() {
-                self.font_size = font_size;
-            }
+        if font_size.is_finite()
+            && font_size > 0.0
+            && self.font_size.to_bits() != font_size.to_bits()
+        {
+            self.font_size = font_size;
         }
     }
 

@@ -92,15 +92,15 @@ impl WaylandState {
             }
 
             // Surface hit test (actual Wayland surface tree).
-            if surface_hit.is_none() {
-                if let Some(loc) = self.space.element_location(window) {
-                    let geo_offset = window.geometry().loc;
-                    let surface_origin = loc - geo_offset;
-                    if let Some(result) = window
-                        .surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
-                    {
-                        surface_hit = Some((result.0, result.1 + surface_origin, win_id));
-                    }
+            if surface_hit.is_none()
+                && let Some(loc) = self.space.element_location(window)
+            {
+                let geo_offset = window.geometry().loc;
+                let surface_origin = loc - geo_offset;
+                if let Some(result) =
+                    window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
+                {
+                    surface_hit = Some((result.0, result.1 + surface_origin, win_id));
                 }
             }
 
