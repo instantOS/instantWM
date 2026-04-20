@@ -81,15 +81,15 @@ pub fn button_region_at(
         return PointerRegion::Bar { monitor_id, pos };
     }
 
+    if let Some(win) = clicked_win {
+        return PointerRegion::Client(win);
+    }
+
     if let Some(target) = sidebar_target_at(core, root_x, root_y) {
         if target.monitor_id != core.globals().selected_monitor_id() {
             core.globals_mut().set_selected_monitor(target.monitor_id);
         }
         return PointerRegion::Sidebar(target);
-    }
-
-    if let Some(win) = clicked_win {
-        return PointerRegion::Client(win);
     }
 
     let monitor_id = crate::types::find_monitor_by_rect(

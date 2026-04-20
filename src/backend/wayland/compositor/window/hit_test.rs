@@ -6,7 +6,136 @@ use crate::types::WindowId;
 
 use super::classify::WindowType;
 
+/// Result of a single-pass pointer hit test, resolving both the Wayland
+/// surface focus and the WM logical window in one traversal.
+pub struct PointerContents {
+    /// The Wayland surface that should receive pointer events.
+    pub surface: Option<(
+        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        Point<i32, Logical>,
+    )>,
+    /// The WM-logical window under the pointer (uses outer geometry including
+    /// borders, so it can differ from the surface hit).
+    pub hovered_win: Option<WindowId>,
+}
+
 impl WaylandState {
+    /// Single-pass hit test for pointer motion: layers first, then windows.
+    ///
+    /// Returns both the surface focus and the logical hovered window in one
+    /// traversal, avoiding repeated `windows_in_z_order()` allocations.
+    pub fn contents_under_pointer(&self, point: Point<f64, Logical>) -> PointerContents {
+        // Layer surfaces take priority over all windows.
+        if let Some((surface, loc)) = self.layer_surface_under_pointer(point) {
+            // Try to resolve a WindowId from the layer surface.
+            let hovered_win = self.window_id_from_surface(&surface);
+            return PointerContents {
+                surface: Some((surface, loc)),
+                hovered_win,
+            };
+        }
+
+        // Single window pass: find both the logical window and surface hit.
+        use smithay::desktop::WindowSurfaceType;
+        let root_x = point.x.round() as i32;
+        let root_y = point.y.round() as i32;
+        let globals = match self.globals() {
+            Some(g) => g,
+            None => {
+                return PointerContents {
+                    surface: None,
+                    hovered_win: None,
+                };
+            }
+        };
+
+        let mut logical_win: Option<WindowId> = None;
+        let mut surface_hit: Option<(
+            smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+            Point<i32, Logical>,
+            WindowId,
+        )> = None;
+
+        for (window, typ) in self.windows_in_z_order() {
+            let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
+                continue;
+            };
+
+            // Logical hit test (WM geometry including borders).
+            if logical_win.is_none() {
+                let is_logical_hit = if matches!(
+                    typ,
+                    WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
+                ) {
+                    if let Some(loc) = self.space.element_location(window) {
+                        let geo = window.geometry();
+                        let rel = loc + geo.loc;
+                        root_x >= rel.x
+                            && root_x < rel.x + geo.size.w
+                            && root_y >= rel.y
+                            && root_y < rel.y + geo.size.h
+                    } else {
+                        false
+                    }
+                } else if let Some(c) = globals.clients.get(&win_id) {
+                    let bw = c.border_width;
+                    root_x >= c.geo.x
+                        && root_x < c.geo.x + c.geo.w + 2 * bw
+                        && root_y >= c.geo.y
+                        && root_y < c.geo.y + c.geo.h + 2 * bw
+                } else {
+                    false
+                };
+                if is_logical_hit {
+                    logical_win = Some(win_id);
+                }
+            }
+
+            // Surface hit test (actual Wayland surface tree).
+            if surface_hit.is_none() {
+                if let Some(loc) = self.space.element_location(window) {
+                    let geo_offset = window.geometry().loc;
+                    let surface_origin = loc - geo_offset;
+                    if let Some(result) = window
+                        .surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
+                    {
+                        surface_hit = Some((result.0, result.1 + surface_origin, win_id));
+                    }
+                }
+            }
+
+            // Both found — no need to continue.
+            if logical_win.is_some() && surface_hit.is_some() {
+                break;
+            }
+        }
+
+        // If the surface hit belongs to a different window than the logical
+        // hit, suppress the surface focus to prevent event fallthrough.
+        let surface = match (&logical_win, &surface_hit) {
+            (Some(logical), Some((_, _, surface_win))) if logical != surface_win => None,
+            _ => surface_hit.map(|(s, loc, _)| (s, loc)),
+        };
+
+        PointerContents {
+            surface,
+            hovered_win: logical_win,
+        }
+    }
+
+    /// Resolve a WindowId from a surface via its data map.
+    fn window_id_from_surface(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<WindowId> {
+        use smithay::wayland::compositor::with_states;
+        with_states(surface, |states| {
+            states
+                .data_map
+                .get::<WindowIdMarker>()
+                .map(|marker| marker.id)
+        })
+    }
     /// Get the layer surface under a given point.
     pub fn layer_surface_under_pointer(
         &self,

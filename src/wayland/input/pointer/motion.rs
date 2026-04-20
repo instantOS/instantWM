@@ -177,12 +177,21 @@ pub fn dispatch_pointer_motion(
 
     // Cheap shared sidebar hover path: monitor lookup + rectangle test, no
     // client scans and no button binding dispatch on motion.
+    // Only check when no window is under the cursor — a window covering the
+    // sidebar area must receive events normally.
     if !wm.g.drag.any_drag_active() {
-        let ctx = wm.ctx();
-        if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-            && update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y)
-        {
-            return;
+        if hovered_win.is_none() {
+            let ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
+                && update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y)
+            {
+                return;
+            }
+        } else if wm.g.drag.hover_offer.is_sidebar() {
+            let ctx = wm.ctx();
+            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+                clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
+            }
         }
     }
 
@@ -261,8 +270,11 @@ fn compute_bar_hit(
 }
 
 /// Resolve pointer focus and hovered window based on bar hit state.
+///
+/// Uses a single-pass hit test (`contents_under_pointer`) to avoid repeated
+/// window-list allocations and layer-surface scans on every motion event.
 fn resolve_pointer_focus(
-    wm: &Wm,
+    _wm: &Wm,
     state: &WaylandState,
     in_bar_band: bool,
     in_bar_guard_band: bool,
@@ -281,35 +293,16 @@ fn resolve_pointer_focus(
         return (pointer_focus, None);
     }
 
-    let mut pointer_focus = if in_bar_band || in_bar_guard_band {
-        state.layer_surface_under_pointer(pointer_location)
-    } else {
-        state
-            .layer_surface_under_pointer(pointer_location)
-            .or_else(|| state.surface_under_pointer(pointer_location))
-    };
-
-    let hovered_win = if in_bar_band || in_bar_guard_band {
-        None
-    } else if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
-        find_hovered_window_for_surface(wm, &surface)
-    } else {
-        state.logical_window_under_pointer(pointer_location)
-    };
-
-    // If the logical window differs from the surface Smithay found,
-    // clear pointer focus so events don't fall through to the background.
-    if !in_bar_band
-        && !in_bar_guard_band
-        && let Some(logical) = hovered_win
-        && let Some((surf, _)) = &pointer_focus
-        && let Some(actual_win) = find_hovered_window_for_surface(wm, surf)
-        && actual_win != logical
-    {
-        pointer_focus = None;
+    // In the bar or guard band, only layer surfaces matter (no window hit testing).
+    if in_bar_band || in_bar_guard_band {
+        let pointer_focus = state.layer_surface_under_pointer(pointer_location);
+        return (pointer_focus, None);
     }
 
-    (pointer_focus, hovered_win)
+    // Single-pass hit test: layers → windows, resolving both surface and
+    // logical window in one traversal.
+    let contents = state.contents_under_pointer(pointer_location);
+    (contents.surface, contents.hovered_win)
 }
 
 /// Handle resize drag motion. Returns true if handled (early return).
@@ -477,30 +470,4 @@ fn handle_wm_drag_motion(
         let mut ctx = wm.ctx();
         crate::mouse::update_sidebar_gesture(&mut ctx, root_y);
     }
-}
-
-/// Find the hovered window for a given surface.
-fn find_hovered_window_for_surface(
-    wm: &Wm,
-    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) -> Option<crate::types::WindowId> {
-    use smithay::wayland::compositor::with_states;
-
-    if let Some(win) = with_states(surface, |states| {
-        states
-            .data_map
-            .get::<crate::backend::wayland::compositor::WindowIdMarker>()
-            .map(|marker| marker.id)
-    }) {
-        return Some(win);
-    }
-
-    let backend = match &wm.backend {
-        crate::backend::Backend::Wayland(data) => &data.backend,
-        _ => return None,
-    };
-
-    backend
-        .with_state(|state| state.window_id_for_surface(surface))
-        .flatten()
 }
