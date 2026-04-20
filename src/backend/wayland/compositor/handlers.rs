@@ -5,7 +5,7 @@ use smithay::{
     reexports::wayland_server::Client,
     wayland::{
         buffer::BufferHandler,
-        compositor::{CompositorHandler, get_parent, is_sync_subsurface},
+        compositor::{CompositorHandler, SurfaceAttributes, get_parent, is_sync_subsurface},
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
         seat::WaylandFocus,
@@ -43,10 +43,7 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        // Surface commits must drive redraws in the DRM backend; otherwise
-        // removing the vblank self-redraw loop stalls client updates until
-        // some unrelated input/layout path dirties the outputs.
-        self.request_render();
+        let visual_commit = surface_commit_affects_render(surface);
         on_commit_buffer_handler::<Self>(surface);
 
         // Check if this commit is from a pending toplevel that has finally
@@ -78,6 +75,9 @@ impl CompositorHandler for WaylandState {
 
         // Skip sync subsurfaces - they don't receive their own commits
         if is_sync_subsurface(surface) {
+            if visual_commit {
+                self.request_render();
+            }
             return;
         }
 
@@ -89,6 +89,9 @@ impl CompositorHandler for WaylandState {
 
         // Only call on_commit for the root surface, not for subsurfaces
         if surface != &root {
+            if visual_commit {
+                self.request_render();
+            }
             return;
         }
 
@@ -109,7 +112,25 @@ impl CompositorHandler for WaylandState {
         }
 
         super::layer_shell::handle_layer_commit(self, surface);
+
+        // Buffer/damage commits must drive redraws in the DRM backend.
+        // Frame-callback-only commits are intentionally ignored here; rendering
+        // those can create an idle feedback loop where clients commit only to
+        // receive another frame callback.
+        if visual_commit {
+            self.request_render();
+        }
     }
+}
+
+fn surface_commit_affects_render(
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> bool {
+    smithay::wayland::compositor::with_states(surface, |states| {
+        let mut guard = states.cached_state.get::<SurfaceAttributes>();
+        let attrs = guard.current();
+        attrs.buffer.is_some() || attrs.buffer_delta.is_some() || !attrs.damage.is_empty()
+    })
 }
 
 impl ShmHandler for WaylandState {
