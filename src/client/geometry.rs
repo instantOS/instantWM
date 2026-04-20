@@ -240,6 +240,10 @@ fn clamp_position_to_bounds(
 
 /// Check if the client's monitor is using a floating layout.
 fn is_floating_layout(core: &CoreCtx, monitor_id: crate::types::MonitorId) -> bool {
+    if crate::overview::is_active_on_monitor(core, monitor_id) {
+        return false;
+    }
+
     core.globals()
         .monitors
         .get(monitor_id)

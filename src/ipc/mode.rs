@@ -3,6 +3,19 @@ use crate::ipc_types::{ModeCommand, ModeInfo, Response};
 use crate::keyboard::grab_keys_x11;
 use crate::wm::Wm;
 
+fn apply_mode_change(wm: &mut Wm, next_mode: String) {
+    let previous_mode = wm.g.behavior.current_mode.clone();
+    if previous_mode == next_mode {
+        return;
+    }
+
+    wm.g.behavior.current_mode = next_mode.clone();
+    {
+        let mut ctx = wm.ctx();
+        crate::overview::handle_mode_transition(&mut ctx, &previous_mode, &next_mode);
+    }
+}
+
 pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
     match cmd {
         ModeCommand::List => {
@@ -25,10 +38,13 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::ModeList(mode_list)
         }
         ModeCommand::Set(name) => {
-            if !wm.g.cfg.modes.contains_key(&name) && name != "default" {
+            if !wm.g.cfg.modes.contains_key(&name)
+                && name != "default"
+                && !crate::overview::is_mode_name(&name)
+            {
                 return Response::err(format!("Mode '{}' not found", name));
             }
-            wm.g.behavior.current_mode = name.clone();
+            apply_mode_change(wm, name.clone());
 
             if let WmCtx::X11(x11) = wm.ctx() {
                 grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
@@ -38,7 +54,10 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::Message(format!("Switched to mode '{}'", name))
         }
         ModeCommand::Toggle(name) => {
-            if !wm.g.cfg.modes.contains_key(&name) && name != "default" {
+            if !wm.g.cfg.modes.contains_key(&name)
+                && name != "default"
+                && !crate::overview::is_mode_name(&name)
+            {
                 return Response::err(format!("Mode '{}' not found", name));
             }
 
@@ -48,7 +67,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
                 name
             };
 
-            wm.g.behavior.current_mode = new_mode.clone();
+            apply_mode_change(wm, new_mode.clone());
 
             if let WmCtx::X11(x11) = wm.ctx() {
                 grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);

@@ -19,9 +19,7 @@ pub use bar::get_tag_width;
 
 pub use naming::{name_tag, reset_name_tag};
 
-pub use view::{
-    follow_view, last_view, shift_view, toggle_fullscreen_overview, toggle_overview, win_view,
-};
+pub use view::{cancel_overview, follow_view, last_view, shift_view, toggle_overview, win_view};
 
 // Re-export TagMask for convenience
 

@@ -143,6 +143,8 @@ pub struct Monitor {
     pub tag_tiled_focus_history: HashMap<u32, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
     pub pertag: HashMap<u32, PertagState>,
+    /// Tag mask to restore when leaving overview mode.
+    pub overview_restore_tags: Option<TagMask>,
     /// Persistent client z-order.
     pub z_order: ClientZOrder,
     /// Currently maximized client.
@@ -183,6 +185,7 @@ impl Default for Monitor {
             tag_focus_history: HashMap::new(),
             tag_tiled_focus_history: HashMap::new(),
             pertag: HashMap::new(),
+            overview_restore_tags: None,
             z_order: ClientZOrder::default(),
             maximized: None,
             name: String::new(),

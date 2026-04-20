@@ -133,6 +133,11 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
+    if crate::overview::is_mode_name(name)
+        && !ctx.core().globals().selected_monitor().clients.is_empty()
+    {
+        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
+    }
     let mode = toggle_mode_name(ctx.current_mode(), name);
     ctx.set_current_mode(mode);
     if let WmCtx::X11(x11) = ctx {

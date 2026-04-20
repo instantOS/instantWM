@@ -202,7 +202,12 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = m.layouts_for_mask(m.selected_tags()).symbol();
+        let symbol =
+            if crate::overview::is_active(core) && core.globals().selected_monitor_id() == m.id() {
+                "OVR"
+            } else {
+                m.layouts_for_mask(m.selected_tags()).symbol()
+            };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
     width + core.globals().cfg.horizontal_padding
@@ -309,6 +314,13 @@ pub fn handle_status_text_click(
     button_code: u8,
     clean_state: u32,
 ) {
+    if crate::overview::is_active(ctx.core()) {
+        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
+        ctx.reset_mode();
+        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+        return;
+    }
+
     let mode = ctx.current_mode();
     if !mode.is_empty() && mode != "default" {
         ctx.reset_mode();

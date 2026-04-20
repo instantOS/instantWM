@@ -30,6 +30,9 @@ pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
         if client.mode.is_floating() {
             return true;
         }
+        if crate::overview::is_active(core) {
+            return false;
+        }
         if !core.globals().selected_monitor().is_tiling_layout() {
             return true;
         }

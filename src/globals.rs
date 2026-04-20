@@ -381,6 +381,8 @@ pub struct WmBehavior {
     pub specialnext: SpecialNext,
     /// Current active mode (sway-like modes).
     pub current_mode: String,
+    /// True when leaving overview mode should jump to the selected window's tag.
+    pub overview_accept_selection_on_exit: bool,
 }
 
 impl Default for WmBehavior {
@@ -393,6 +395,7 @@ impl Default for WmBehavior {
             double_draw: false,
             specialnext: SpecialNext::None,
             current_mode: "default".to_string(),
+            overview_accept_selection_on_exit: false,
         }
     }
 }

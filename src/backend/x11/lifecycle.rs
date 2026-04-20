@@ -271,7 +271,7 @@ fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
     let monitor_id = g.clients.monitor_id(w);
     monitor_id
         .and_then(|mid| g.monitor(mid))
-        .map(|mon| !mon.is_tiling_layout())
+        .map(|mon| mon.is_monocle_layout())
         .unwrap_or(false)
 }
 

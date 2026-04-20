@@ -36,6 +36,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         && cleaned
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
+        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
         ctx.request_bar_update(None);
         return true;
@@ -345,7 +346,7 @@ pub fn down_press(ctx: &mut WmCtx) {
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
+    let is_overview = crate::overview::is_active(ctx.core());
 
     if is_overview {
         direction_focus(ctx, VerticalDirection::Up.into());
@@ -374,7 +375,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
+    let is_overview = crate::overview::is_active(ctx.core());
 
     if is_overview {
         direction_focus(ctx, VerticalDirection::Down.into());
@@ -394,6 +395,10 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn space_toggle(ctx: &mut WmCtx) {
+    if crate::overview::is_active(ctx.core()) {
+        return;
+    }
+
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {

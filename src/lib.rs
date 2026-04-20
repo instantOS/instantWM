@@ -24,6 +24,7 @@ mod keyboard_layout;
 pub mod layouts;
 mod monitor;
 mod mouse;
+mod overview;
 pub mod reload;
 mod runtime;
 pub mod startup;

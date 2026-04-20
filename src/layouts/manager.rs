@@ -142,6 +142,17 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+    if crate::overview::is_active_on_monitor(ctx.core(), monitor_id)
+        && let Some(mut m) = ctx.core().globals().monitor(monitor_id).cloned()
+    {
+        crate::overview::arrange(ctx, &mut m);
+        ctx.core_mut()
+            .globals_mut()
+            .monitors
+            .set_monitor(monitor_id, m);
+        return;
+    }
+
     let layout = ctx
         .core()
         .globals()
@@ -161,12 +172,13 @@ fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update(Some(monitor_id));
 
+    if crate::overview::is_active_on_monitor(ctx.core(), monitor_id) {
+        return;
+    }
+
     let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
         return;
     };
-    if monitor.current_layout().is_overview() {
-        return;
-    }
 
     let selected_window = match monitor.sel {
         Some(win) => win,
@@ -192,10 +204,6 @@ pub(crate) fn compute_monitor_z_order(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
 ) -> Option<Vec<WindowId>> {
-    if monitor.current_layout().is_overview() {
-        return None;
-    }
-
     let selected_window = monitor.sel?;
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
@@ -304,18 +312,7 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     } else {
         current_idx - 1
     };
-    let final_layout = if all_layouts[candidate].is_overview() {
-        let final_idx = if forward {
-            (candidate + 1) % layouts_len
-        } else if candidate == 0 {
-            layouts_len - 1
-        } else {
-            candidate - 1
-        };
-        all_layouts[final_idx]
-    } else {
-        all_layouts[candidate]
-    };
+    let final_layout = all_layouts[candidate];
     set_layout(ctx, final_layout);
 }
 

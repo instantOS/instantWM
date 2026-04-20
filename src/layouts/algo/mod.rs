@@ -9,17 +9,15 @@
 //! | [`tile`]      | `tile`                                        |
 //! | [`monocle`]   | `monocle`                                     |
 //! | [`grid`]      | `grid`, `horizgrid`, `gaplessgrid`            |
-//! | [`stack`]     | `deck`, `bstack`, `bstackhoriz`               |
+//! | [`stack`]     | `deck`, `bottom_stack`, `bstackhoriz`         |
 //! | [`fibonacci`] | `spiral`, `dwindle`, `fibonacci`              |
 //! | [`three_column`] | `three_column`                              |
-//! | [`overview`]  | `overviewlayout`                              |
 //! | [`float`]     | `floating`, `apply_snap_for_window` |
 
 mod fibonacci;
 mod float;
 mod grid;
 mod monocle;
-mod overview;
 mod stack;
 mod three_column;
 pub(super) mod tile;
@@ -41,9 +39,6 @@ pub use fibonacci::{dwindle, fibonacci, spiral};
 
 // ── three-column ─────────────────────────────────────────────────────────────
 pub use three_column::three_column;
-
-// ── overview ─────────────────────────────────────────────────────────────────
-pub use overview::overviewlayout;
 
 // ── floating / snap ──────────────────────────────────────────────────────────
 pub use float::{apply_snap_for_window, floating};

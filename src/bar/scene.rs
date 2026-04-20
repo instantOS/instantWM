@@ -93,7 +93,9 @@ pub(crate) fn build_monitor_snapshots(
         crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts);
     let drag_bar_active = core.globals().drag.bar_active;
     let current_mode = core.globals().behavior.current_mode.clone();
-    let status_text = if !current_mode.is_empty() && current_mode != "default" {
+    let status_text = if crate::overview::is_mode_name(&current_mode) {
+        Some("mode: overview".to_string())
+    } else if !current_mode.is_empty() && current_mode != "default" {
         let mode_display = core
             .globals()
             .cfg
@@ -221,7 +223,13 @@ pub(crate) fn build_monitor_snapshots(
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: mon.layouts_for_mask(selected_tags).symbol().to_string(),
+            layout_symbol: if crate::overview::is_active(core)
+                && core.globals().selected_monitor_id() == mon.id()
+            {
+                "OVR".to_string()
+            } else {
+                mon.layouts_for_mask(selected_tags).symbol().to_string()
+            },
             tags,
             show_shutdown: mon.sel.is_none(),
             titles,

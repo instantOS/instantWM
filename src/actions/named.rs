@@ -15,7 +15,7 @@ use crate::layouts::{
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow, reorder_client};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
-    follow_view, last_view, move_client, quit, shift_tag, shift_view, toggle_fullscreen_overview,
+    cancel_overview, follow_view, last_view, move_client, quit, shift_tag, shift_view,
     toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -34,6 +34,8 @@ fn parse_layout_kind_name(name: &str) -> Option<LayoutKind> {
         "float" | "floating" => LayoutKind::Floating,
         "monocle" => LayoutKind::Monocle,
         "grid" => LayoutKind::Grid,
+        "deck" => LayoutKind::Deck,
+        "bottomstack" => LayoutKind::BottomStack,
         _ => return None,
     })
 }
@@ -105,6 +107,8 @@ define_named_actions!(
     LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Floating); } },
     LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "set monocle layout (fullscreen)", run: |ctx, _args| { set_layout(ctx, LayoutKind::Monocle); } },
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "set grid layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Grid); } },
+    LayoutDeck => { name: "layout_deck", arg_example: None, doc: "set deck layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Deck); } },
+    LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BottomStack); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncNmaster => { name: "inc_nmaster", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_nmaster_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
@@ -135,7 +139,7 @@ define_named_actions!(
     ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::view::view_tags(ctx, TagMask::ALL_BITS); } },
     TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.core().selected_client() { crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); } } },
     ToggleOverview => { name: "toggle_overview", arg_example: None, doc: "toggle overview mode", run: |ctx, _args| { toggle_overview(ctx, TagMask::ALL_BITS); } },
-    ToggleFullscreenOverview => { name: "toggle_fullscreen_overview", arg_example: None, doc: "toggle fullscreen overview", run: |ctx, _args| { toggle_fullscreen_overview(ctx, TagMask::ALL_BITS); } },
+    CancelOverview => { name: "cancel_overview", arg_example: None, doc: "leave overview and restore previous view", run: |ctx, _args| { cancel_overview(ctx, TagMask::ALL_BITS); } },
     FocusMonPrev => { name: "focus_mon_prev", arg_example: None, doc: "focus previous monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::PREV); } },
     FocusMonNext => { name: "focus_mon_next", arg_example: None, doc: "focus next monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::NEXT); } },
     FollowMonPrev => { name: "follow_mon_prev", arg_example: None, doc: "move client to prev monitor and follow", run: |ctx, _args| { move_to_monitor_and_follow(ctx, MonitorDirection::PREV); } },

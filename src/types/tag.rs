@@ -121,11 +121,6 @@ impl TagLayouts {
         self.get_layout().is_monocle()
     }
 
-    /// Returns true if the current layout is an overview layout.
-    pub fn is_overview(self) -> bool {
-        self.get_layout().is_overview()
-    }
-
     /// Get the symbol of the current layout.
     pub fn symbol(self) -> &'static str {
         self.get_layout().symbol()

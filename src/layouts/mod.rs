@@ -21,8 +21,7 @@
 //! Floating  "-"    free floating (no tiling)
 //! Monocle  "[M]"   fullscreen stack (monocle)
 //! Deck     "H[]"   master + stacked deck
-//! Overview  "O"    bird's-eye overview of all clients
-//! Bstack   "TTT"   bottom-stack (horizontal master row)
+//! BottomStack "TTT" bottom-stack (horizontal master row)
 //! ```
 //!
 //! ## Public API surface
@@ -68,10 +67,8 @@ pub enum LayoutKind {
     Monocle,
     /// Deck layout (`H[]`).
     Deck,
-    /// Overview layout (`O`).
-    Overview,
     /// Bottom-stack layout (`TTT`).
-    Bstack,
+    BottomStack,
 }
 
 impl LayoutKind {
@@ -86,8 +83,7 @@ impl LayoutKind {
             Self::Floating => "-",
             Self::Monocle => "[M]",
             Self::Deck => "H[]",
-            Self::Overview => "O",
-            Self::Bstack => "TTT",
+            Self::BottomStack => "TTT",
         }
     }
 
@@ -98,24 +94,19 @@ impl LayoutKind {
             Self::Floating => algo::floating(ctx, m),
             Self::Monocle => algo::monocle(ctx, m),
             Self::Deck => algo::deck(ctx, m),
-            Self::Overview => algo::overviewlayout(ctx, m),
-            Self::Bstack => algo::bottom_stack(ctx, m),
+            Self::BottomStack => algo::bottom_stack(ctx, m),
         }
     }
 
     pub fn is_tiling(self) -> bool {
         matches!(
             self,
-            Self::Tile | Self::Grid | Self::Monocle | Self::Deck | Self::Bstack
+            Self::Tile | Self::Grid | Self::Monocle | Self::Deck | Self::BottomStack
         )
     }
 
     pub fn is_monocle(self) -> bool {
         matches!(self, Self::Monocle)
-    }
-
-    pub fn is_overview(self) -> bool {
-        matches!(self, Self::Overview)
     }
 
     pub fn all() -> &'static [LayoutKind] {
@@ -125,8 +116,7 @@ impl LayoutKind {
             Self::Floating,
             Self::Monocle,
             Self::Deck,
-            Self::Overview,
-            Self::Bstack,
+            Self::BottomStack,
         ]
     }
 }
@@ -141,8 +131,7 @@ impl FromStr for LayoutKind {
             "float" | "floating" => Ok(Self::Floating),
             "monocle" => Ok(Self::Monocle),
             "deck" => Ok(Self::Deck),
-            "overview" => Ok(Self::Overview),
-            "bstack" | "bottomstack" => Ok(Self::Bstack),
+            "bottomstack" => Ok(Self::BottomStack),
             _ => Err(()),
         }
     }

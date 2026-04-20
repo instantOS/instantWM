@@ -1,8 +1,6 @@
 //! View (workspace) navigation.
 
 use crate::contexts::WmCtx;
-// focus() is used via focus_soft() in this module
-use crate::layouts::LayoutKind;
 use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
@@ -197,13 +195,6 @@ pub fn win_view(ctx: &mut WmCtx) {
     crate::focus::focus_soft(ctx, Some(win));
 }
 
-fn overview_shortcut_targets_focused_window(
-    current_tag: Option<usize>,
-    layout: LayoutKind,
-) -> bool {
-    current_tag.is_none() || layout.is_overview()
-}
-
 pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
     let tagmask = ctx.core().globals().tags.mask();
@@ -272,66 +263,35 @@ pub fn follow_view(ctx: &mut WmCtx) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let (has_clients, current_tag, current_layout, num_tags) = {
-        let mon = ctx.core().globals().selected_monitor();
-        (
-            !mon.clients.is_empty(),
-            mon.current_tag_index(),
-            mon.current_layout(),
-            ctx.core().globals().tags.count(),
-        )
-    };
-
-    if !has_clients {
-        if overview_shortcut_targets_focused_window(current_tag, current_layout) {
-            last_view(ctx);
-        }
+    if crate::overview::is_active(ctx.core()) {
+        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = true);
+        ctx.reset_mode();
+        ctx.request_bar_update(None);
         return;
     }
 
-    if overview_shortcut_targets_focused_window(current_tag, current_layout) {
-        crate::floating::restore_all_floating(
-            ctx,
-            Some(ctx.core().globals().selected_monitor_id()),
-        );
-        win_view(ctx);
-    } else {
-        let selmon_id = ctx.core().globals().selected_monitor_id();
-        crate::floating::save_all_floating(ctx, Some(selmon_id));
-        let all_tags = TagMask::all(num_tags);
-        view_tags(ctx, all_tags);
+    if ctx.core().globals().selected_monitor().clients.is_empty() {
+        return;
     }
+
+    ctx.set_current_mode(crate::overview::OVERVIEW_MODE_NAME.to_string());
+    ctx.request_bar_update(None);
+}
+
+pub fn cancel_overview(ctx: &mut WmCtx, _mask: TagMask) {
+    if !crate::overview::is_active(ctx.core()) {
+        return;
+    }
+
+    ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
+    ctx.reset_mode();
+    ctx.request_bar_update(None);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{adjacent_scroll_mask, overview_shortcut_targets_focused_window};
-    use crate::layouts::LayoutKind;
+    use super::adjacent_scroll_mask;
     use crate::types::{HorizontalDirection, TagMask};
-
-    #[test]
-    fn overview_shortcut_targets_focused_window_for_tag_zero() {
-        assert!(overview_shortcut_targets_focused_window(
-            None,
-            LayoutKind::Tile
-        ));
-    }
-
-    #[test]
-    fn overview_shortcut_targets_focused_window_for_overview_layout() {
-        assert!(overview_shortcut_targets_focused_window(
-            Some(3),
-            LayoutKind::Overview
-        ));
-    }
-
-    #[test]
-    fn overview_shortcut_enters_overview_from_normal_tag_layouts() {
-        assert!(!overview_shortcut_targets_focused_window(
-            Some(3),
-            LayoutKind::Grid
-        ));
-    }
 
     #[test]
     fn adjacent_scroll_mask_moves_left_and_right() {
@@ -363,18 +323,6 @@ mod tests {
             ),
             None
         );
-    }
-}
-
-pub fn toggle_fullscreen_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    let current_tag = ctx.core().globals().selected_monitor().current_tag_index();
-
-    match current_tag {
-        None => win_view(ctx),
-        Some(_) => {
-            let num_tags = ctx.core().globals().tags.count();
-            view_tags(ctx, TagMask::all(num_tags))
-        }
     }
 }
 

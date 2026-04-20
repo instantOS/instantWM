@@ -43,6 +43,13 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
+    if crate::overview::is_active(ctx.core()) {
+        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = true);
+        ctx.reset_mode();
+        ctx.request_bar_update(None);
+        return;
+    }
+
     let Some(win) = ctx.core().selected_client() else {
         return;
     };

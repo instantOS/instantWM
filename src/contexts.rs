@@ -401,7 +401,14 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<String>) {
-        self.core_mut().globals_mut().behavior.current_mode = mode.into();
+        let next_mode = mode.into();
+        let previous_mode = self.core().globals().behavior.current_mode.clone();
+        if previous_mode == next_mode {
+            return;
+        }
+
+        self.core_mut().globals_mut().behavior.current_mode = next_mode.clone();
+        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode);
     }
 
     pub fn reset_mode(&mut self) {

@@ -552,7 +552,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_overview = !ctx.core().globals().selected_monitor().is_tiling_layout();
+    let is_overview = crate::overview::is_active(ctx.core());
 
     if is_overview {
         return;
