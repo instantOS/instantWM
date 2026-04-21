@@ -107,8 +107,8 @@ jobs:
               tag_version="${GITHUB_REF_NAME#instantwm-v}"
               ;;
             *)
-              echo "Unsupported tag format: $GITHUB_REF_NAME" >&2
-              exit 1
+              echo "No tag ref detected (ref: $GITHUB_REF_NAME), using Cargo.toml version"
+              tag_version=""
               ;;
           esac
           if [[ -n "$tag_version" && "$tag_version" != "$version" ]]; then
