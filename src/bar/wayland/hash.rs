@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 use crate::bar::paint::BarScheme;
 use crate::bar::scene;
@@ -65,7 +66,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
             item.path.hash(hasher);
             item.icon_w.hash(hasher);
             item.icon_h.hash(hasher);
-            item.icon_rgba.hash(hasher);
+            hash_arc_identity(hasher, &item.icon_rgba);
         }
         systray.menu.is_some().hash(hasher);
         if let Some(menu) = &systray.menu {
@@ -147,6 +148,17 @@ fn hash_status_items(hasher: &mut DefaultHasher, items: &[crate::bar::status::St
             }
         }
     }
+}
+
+/// Hash an `Arc<[u8]>` by pointer identity instead of contents.
+///
+/// Cloning an `Arc` preserves the data pointer, and the systray replaces the
+/// `Arc` with a freshly-allocated one whenever the icon pixels change, so
+/// pointer identity is a reliable change-detection proxy that avoids hashing
+/// potentially hundreds of KB of pixel data on every frame.
+fn hash_arc_identity(hasher: &mut DefaultHasher, arc: &Arc<[u8]>) {
+    Arc::as_ptr(arc).hash(hasher);
+    arc.len().hash(hasher);
 }
 
 fn hash_i3_align(hasher: &mut DefaultHasher, align: crate::bar::status::I3Align) {
