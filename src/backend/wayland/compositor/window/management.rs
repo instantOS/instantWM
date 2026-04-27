@@ -7,25 +7,19 @@ impl WaylandState {
     /// Re-map an already-mapped element without changing its relative z-order.
     ///
     /// Smithay's `map_element` updates the location but also raises the element.
-    /// Layout code uses remaps for geometry changes, so preserve the previous
-    /// stacking order here to keep overlap semantics controlled by WM z-order sync.
+    /// Layout code uses remaps for geometry changes, so we use `relocate_element`
+    /// (which leaves stacking and active state untouched) for already-mapped
+    /// elements and fall back to `map_element` for the first mapping.
     pub(crate) fn remap_element_preserving_z_order(
         &mut self,
         element: &smithay::desktop::Window,
         location: Point<i32, smithay::utils::Logical>,
         activate: bool,
     ) {
-        let previous_order: Vec<_> = self.space.elements().cloned().collect();
-        let was_mapped = previous_order.iter().any(|mapped| mapped == element);
-
-        self.space.map_element(element.clone(), location, activate);
-
-        if !was_mapped {
-            return;
-        }
-
-        for mapped in previous_order {
-            self.space.raise_element(&mapped, false);
+        if self.space.element_location(element).is_some() {
+            self.space.relocate_element(element, location);
+        } else {
+            self.space.map_element(element.clone(), location, activate);
         }
     }
 

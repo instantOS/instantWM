@@ -800,7 +800,7 @@ fn collect_presentation_feedback(
     let surface_flags =
         |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
          _: &smithay::wayland::compositor::SurfaceData| {
-            surface_presentation_feedback_flags_from_states(surface, render_states)
+            surface_presentation_feedback_flags_from_states(surface, None, render_states)
         };
 
     if state.is_locked() {

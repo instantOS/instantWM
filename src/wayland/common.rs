@@ -699,6 +699,7 @@ pub fn update_primary_scanout_output(
                     surface,
                     output,
                     data,
+                    None,
                     render_states,
                     default_primary_scanout_output_compare,
                 );
@@ -722,6 +723,7 @@ pub fn update_primary_scanout_output(
                 surface,
                 output,
                 data,
+                None,
                 render_states,
                 default_primary_scanout_output_compare,
             );
@@ -735,6 +737,7 @@ pub fn update_primary_scanout_output(
                 surface,
                 output,
                 data,
+                None,
                 render_states,
                 default_primary_scanout_output_compare,
             );
