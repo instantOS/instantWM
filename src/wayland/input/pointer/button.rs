@@ -17,6 +17,51 @@ use crate::wayland::input::pointer::drag::{
     wayland_hover_resize_drag_begin, wayland_hover_resize_drag_finish,
 };
 
+/// Internal helper for handling pointer button from raw values.
+pub fn handle_pointer_button_raw(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer: &PointerHandle<WaylandState>,
+    keyboard: &KeyboardHandle<WaylandState>,
+    button: u32,
+    btn_state: ButtonState,
+    time: u32,
+    pointer_location: Point<f64, smithay::utils::Logical>,
+) {
+    let serial = SERIAL_COUNTER.next_serial();
+    let root = RootPoint::new(
+        pointer_location.x.round() as i32,
+        pointer_location.y.round() as i32,
+    );
+    let wm_button = wayland_button_to_mouse_button(button);
+
+    let button = ButtonPress {
+        serial,
+        time,
+        button_code: button,
+        state: btn_state,
+        root,
+        wm_button,
+        pointer_location,
+    };
+
+    if state.is_locked() {
+        forward_button(state, pointer, button);
+        pointer.frame(state);
+        return;
+    }
+
+    let handled = match button.state {
+        ButtonState::Pressed => handle_button_press(wm, state, pointer, keyboard, button),
+        ButtonState::Released => handle_button_release(wm, state, pointer, keyboard, button),
+    };
+    if handled {
+        return;
+    }
+
+    pointer.frame(state);
+}
+
 /// Handle pointer button events.
 pub fn handle_pointer_button<B: InputBackend>(
     wm: &mut Wm,

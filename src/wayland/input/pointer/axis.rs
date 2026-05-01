@@ -7,6 +7,7 @@ use smithay::utils::Point;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::types::Point as RootPoint;
+use crate::util::clean_mask;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
@@ -27,6 +28,51 @@ fn resolve_scroll_factor(
         }
     }
     1.0
+}
+
+/// Internal helper for handling pointer axis from raw values.
+pub fn handle_pointer_axis_raw(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer: &PointerHandle<WaylandState>,
+    keyboard: &KeyboardHandle<WaylandState>,
+    source: smithay::backend::input::AxisSource,
+    horizontal: f64,
+    vertical: f64,
+    time: u32,
+    pointer_location: Point<f64, smithay::utils::Logical>,
+) {
+    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let horizontal = horizontal * scroll_factor;
+    let vertical = vertical * scroll_factor;
+
+    let root = RootPoint::new(
+        pointer_location.x.round() as i32,
+        pointer_location.y.round() as i32,
+    );
+
+    // Check if the pointer is in the bar area; if so, dispatch bar scroll.
+    let delta = vertical; // bar scroll uses vertical axis
+    if delta.abs() > f64::EPSILON {
+        if let Some(pos) = update_wayland_bar_hit_state(wm, root, true) {
+            let clean_state = clean_mask(modifiers_to_x11_mask(&keyboard.modifier_state()), 0);
+            handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
+            pointer.frame(state);
+            return;
+        }
+    }
+
+    update_wayland_bar_hit_state(wm, root, false);
+
+    let mut frame = smithay::input::pointer::AxisFrame::new(time).source(source);
+    if horizontal.abs() >= f64::EPSILON {
+        frame = frame.value(smithay::backend::input::Axis::Horizontal, horizontal);
+    }
+    if vertical.abs() >= f64::EPSILON {
+        frame = frame.value(smithay::backend::input::Axis::Vertical, vertical);
+    }
+    pointer.axis(state, frame);
+    pointer.frame(state);
 }
 
 /// Handle pointer axis (scroll) events.

@@ -197,13 +197,17 @@ pub fn run() -> ! {
             let total_w = shared_layout.total_width;
             let total_h = shared_layout.total_height;
 
-            let any_input = state
-                .with_wm_mut_unified(|wm, state| {
-                    crate::wayland::input::drm::dispatch_libinput_event(
-                        event, state, wm, total_w, total_h,
-                    )
-                })
-                .unwrap_or(false);
+            // SAFETY: calloop source callback runs synchronously within
+            // event_loop.dispatch(); the &mut Wm borrow in the main body
+            // has not yet resumed.
+            let any_input = if let Some(wm_ptr) = (unsafe { state.wm_mut_ptr() }) {
+                let wm = unsafe { &mut *wm_ptr };
+                crate::wayland::input::drm::dispatch_libinput_event(
+                    event, state, wm, total_w, total_h,
+                )
+            } else {
+                false
+            };
 
             if any_input {
                 state.notify_activity();
@@ -585,7 +589,7 @@ fn process_commit_redraws(state: &mut WaylandState, loop_state: &mut DrmLoopStat
 fn process_common_tick(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     wm: &mut Wm,
-    state: &WaylandState,
+    state: &mut WaylandState,
     loop_state: &mut DrmLoopState,
 ) {
     let tick = super::common::event_loop_tick(wm, state, ipc_server);

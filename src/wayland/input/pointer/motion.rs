@@ -8,6 +8,7 @@ use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Point, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus;
 
+use crate::backend::wayland::compositor::window::hit_test::PointerContents;
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at, update_sidebar_offer_at};
@@ -109,14 +110,30 @@ pub fn motion_event_from_winit(
     }
 }
 
-use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
+use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
 
-use crate::backend::wayland::compositor::window::hit_test::PointerContents;
+/// Internal helper for handling pointer motion from raw values.
+pub fn handle_pointer_motion_raw(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer: &PointerHandle<WaylandState>,
+    keyboard: &KeyboardHandle<WaylandState>,
+    focus: Option<(PointerFocusTarget, Point<f64, smithay::utils::Logical>)>,
+    time: u32,
+) {
+    let hit_test = PointerContents {
+        surface: focus.and_then(|(_target, loc)| {
+            // Extract WlSurface from PointerFocusTarget
+            match _target {
+                PointerFocusTarget::WlSurface(s) => Some((s, loc.to_i32_round())),
+                _ => None,
+            }
+        }),
+        hovered_win: None,
+    };
+    dispatch_pointer_motion(wm, state, pointer, keyboard, hit_test, time);
+}
 
-/// Handle pointer motion from any source (absolute, relative, or warp).
-///
-/// This is the single entry point for all pointer motion. The motion source
-/// is abstracted via the `MotionEvent` type.
 pub fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
@@ -346,11 +363,7 @@ pub fn dispatch_pointer_motion(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Compute whether the pointer is in the bar area or guard band below it.
-fn compute_bar_hit(
-    wm: &Wm,
-    root_x: i32,
-    root_y: i32,
-) -> (bool, bool) {
+fn compute_bar_hit(wm: &Wm, root_x: i32, root_y: i32) -> (bool, bool) {
     crate::types::find_monitor_by_rect(
         wm.g.monitors.monitors(),
         &Rect {

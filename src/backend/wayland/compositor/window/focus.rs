@@ -7,16 +7,15 @@ use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
 
+use crate::backend::wayland::commands::WmCommand;
+
 impl WaylandState {
-    /// Apply a compositor-side focus/raise request to both WM state and the
-    /// Smithay seat.
-    pub(crate) fn activate_and_raise_window(&mut self, window: WindowId) {
-        if let Some(g) = self.globals_mut() {
-            crate::client::select_client(g, window);
-            g.raise_client_in_z_order(window);
-        }
-        self.set_focus(window);
-        self.raise_window_visual_only(window);
+    /// Request the WM to activate and raise a window.
+    ///
+    /// This is an asynchronous request that goes through the WM command queue
+    /// to avoid deadlocks from nested lock acquisition during Smithay events.
+    pub(crate) fn activate_and_raise_window(&self, window: WindowId) {
+        self.push_command(WmCommand::FocusWindow(window));
     }
 
     /// Apply keyboard focus to a window on the Smithay seat.
@@ -183,42 +182,7 @@ impl WaylandState {
 
     /// Restore seat focus after an overlay (e.g., dmenu) is closed, or
     /// after a window was destroyed and `mon.sel` was cleared.
-    ///
-    /// If `mon.sel` is valid and alive, applies seat focus to it.
-    /// If `mon.sel` is `None` or stale, walks the monitor stack to find
-    /// the next visible window and updates `mon.sel` before focusing.
-    pub(crate) fn restore_focus_after_overlay(&mut self) {
-        // First, try mon.sel as-is.
-        let valid_sel = self.globals().and_then(|g| g.selected_win()).filter(|&w| {
-            self.window_index.contains_key(&w)
-                && self.window_index.get(&w).is_some_and(|win| win.alive())
-        });
-
-        if let Some(win) = valid_sel {
-            // mon.sel is valid — just apply seat focus.
-            self.set_focus(win);
-            return;
-        }
-
-        // mon.sel is None or stale.  Walk the stack to find the next
-        // visible window and update mon.sel.
-        let recovered = if let Some(g) = self.globals_mut() {
-            let sel_mon_id = g.selected_monitor_id();
-            let next = g
-                .monitor(sel_mon_id)
-                .and_then(|m| m.first_visible_client(g.clients.map()));
-            if let Some(mon) = g.monitor_mut(sel_mon_id) {
-                mon.sel = next;
-            }
-            next
-        } else {
-            None
-        };
-
-        if let Some(win) = recovered {
-            self.set_focus(win);
-        } else {
-            self.clear_seat_focus();
-        }
+    pub(crate) fn restore_focus_after_overlay(&self) {
+        self.push_command(crate::backend::wayland::commands::WmCommand::RestoreFocus);
     }
 }

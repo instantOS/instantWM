@@ -61,7 +61,24 @@ impl CompositorHandler for WaylandState {
                 .unwrap_or(false);
             if has_buffer {
                 let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
-                let _ = self.map_new_toplevel(toplevel);
+                let window_id = self.setup_smithay_window(toplevel);
+
+                let properties = self.window_properties(window_id);
+                let initial_geo = self.find_window(window_id).map(|w| {
+                    let g = w.geometry();
+                    crate::types::Rect::new(g.loc.x, g.loc.y, g.size.w, g.size.h)
+                });
+
+                self.push_command(crate::backend::wayland::commands::WmCommand::MapWindow {
+                    win: window_id,
+                    properties,
+                    initial_geo,
+                    launch_pid: None,
+                    launch_startup_id: None,
+                    x11_hints: None,
+                    x11_size_hints: None,
+                    parent: None,
+                });
             }
         }
 

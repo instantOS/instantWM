@@ -50,6 +50,7 @@
 //! need a Wayland-native renderer path (layer-shell surface or custom
 //! rendering).
 
+pub mod commands;
 pub mod compositor;
 
 use crate::backend::{BackendOps, WindowProtocol};

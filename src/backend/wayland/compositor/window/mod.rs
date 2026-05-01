@@ -57,22 +57,13 @@ impl WaylandState {
         let new_w = committed.size.w.max(1);
         let new_h = committed.size.h.max(1);
 
-        let Some(g) = self.globals_mut() else {
-            return;
-        };
-        let Some(client) = g.clients.get(&window) else {
-            return;
-        };
-        if client.geo.w == new_w && client.geo.h == new_h {
-            return;
-        }
-        let rect = crate::types::Rect {
-            x: client.geo.x,
-            y: client.geo.y,
-            w: new_w,
-            h: new_h,
-        };
-        crate::client::sync_client_geometry(g, window, rect);
+        self.push_command(
+            crate::backend::wayland::commands::WmCommand::UpdateWindowSize {
+                win: window,
+                w: new_w,
+                h: new_h,
+            },
+        );
     }
 
     /// Request the compositor to warp the pointer to `(x, y)` in logical

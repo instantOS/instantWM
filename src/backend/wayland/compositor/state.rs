@@ -158,12 +158,8 @@ pub struct WaylandState {
 
     // -- Internal state --
     pub(super) next_window_id: u32,
-    /// Back-reference to the main WM state.
-    ///
-    /// This is a raw pointer because `Wm` owns the `Backend`, which in turn
-    /// wants to reference `WaylandState`. Since `WaylandState` is owned by
-    /// the event loop, a standard `Rc/RefCell` cycle would be difficult
-    /// to manage and performantly access from Smithay's handlers.
+    /// Read-only back-reference to the main WM state for queries.
+    /// Mutations must go through the command_queue.
     wm: Option<NonNull<Wm>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
     pub(super) active_resizes: HashSet<WindowId>,
@@ -178,6 +174,8 @@ pub struct WaylandState {
     pub pending_warp: Option<Point<f64, Logical>>,
     /// Backend-local runtime state that is not part of protocol or desktop state.
     pub runtime: WaylandRuntimeState,
+    /// Queue of commands to be processed by the core WM.
+    pub(crate) command_queue: std::cell::RefCell<Vec<super::super::commands::WmCommand>>,
 }
 
 /// Tracks the current session lock state.
@@ -369,6 +367,7 @@ impl WaylandState {
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
             runtime: WaylandRuntimeState::default(),
+            command_queue: std::cell::RefCell::new(Vec::new()),
         }
     }
 
@@ -448,23 +447,22 @@ impl WaylandState {
         self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
     }
 
+    /// Get a mutable pointer to the WM for calloop source callbacks.
+    ///
+    /// # Safety
+    /// The returned pointer is valid only for the duration of the calloop
+    /// dispatch. Callers must ensure no other `&mut Wm` reference is live.
+    /// This is safe in practice because calloop sources run synchronously
+    /// during `event_loop.dispatch()`, within the event loop body's
+    /// `&mut Wm` borrow scope.
     #[inline]
-    pub(super) fn globals_mut(&mut self) -> Option<&mut Globals> {
-        self.wm
-            .map(|mut p: NonNull<Wm>| unsafe { &mut p.as_mut().g })
+    pub(crate) unsafe fn wm_mut_ptr(&self) -> Option<*mut Wm> {
+        self.wm.map(|p| p.as_ptr())
     }
 
-    /// Execute a closure with a mutable reference to the WM and WaylandState.
-    /// This is a specialized helper to avoid double-borrowing when we need
-    /// to pass `&mut WaylandState` to a function that also needs `&mut Wm`.
-    pub fn with_wm_mut_unified<T>(
-        &mut self,
-        f: impl FnOnce(&mut Wm, &mut WaylandState) -> T,
-    ) -> Option<T> {
-        self.wm.map(|mut p| {
-            let wm = unsafe { p.as_mut() };
-            f(wm, self)
-        })
+    /// Push a command to the WM command queue.
+    pub fn push_command(&self, command: super::super::commands::WmCommand) {
+        self.command_queue.borrow_mut().push(command);
     }
 
     /// Sync the Smithay space from the Globals state.
@@ -478,11 +476,7 @@ impl WaylandState {
         for win in dead_windows {
             // Use the method from window.rs
             self.remove_window_tracking(win);
-            if let Some(g) = self.globals_mut() {
-                g.detach(win);
-                g.detach_z_order(win);
-                g.clients.remove(&win);
-            }
+            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
         }
 
         // Purge surfaces whose underlying resource is gone, so the HashSet
@@ -552,9 +546,7 @@ impl WaylandState {
 
     #[inline]
     pub fn request_bar_redraw(&mut self) {
-        let _ = self.with_wm_mut_unified(|wm, _state| {
-            wm.bar.mark_dirty();
-        });
+        self.push_command(super::super::commands::WmCommand::RequestBarRedraw);
         self.request_render();
     }
 

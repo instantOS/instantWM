@@ -19,11 +19,11 @@ use smithay::{
             data_device::{
                 DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
             },
-            primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
             ext_data_control::{
                 DataControlHandler as ExtDataControlHandler,
                 DataControlState as ExtDataControlState,
             },
+            primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
             wlr_data_control::{
                 DataControlHandler as WlrDataControlHandler,
                 DataControlState as WlrDataControlState,
@@ -37,10 +37,9 @@ use smithay::{
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
-use crate::types::ClientMode;
 
 impl WaylandState {
-    fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
+    pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
         if surface.parent().is_some() {
             return true;
         }
@@ -61,28 +60,12 @@ impl WaylandState {
         let Some(win) = self.window_id_for_toplevel(surface) else {
             return;
         };
-        let mut changed = false;
-        {
-            let Some(g) = self.globals_mut() else {
-                return;
-            };
-            let Some(client) = g.clients.get_mut(&win) else {
-                return;
-            };
 
-            if wants_floating && !client.mode.is_floating() {
-                client.float_geo = client.geo;
-                client.mode = ClientMode::Floating;
-                g.queue_layout_for_client(win);
-                changed = true;
-            }
-            if wants_floating {
-                g.raise_client_in_z_order(win);
-            }
-        }
-        if changed || (wants_floating && has_parent) {
+        if wants_floating {
             self.raise_window_visual_only(win);
-            self.request_space_sync();
+            if has_parent {
+                self.request_space_sync();
+            }
         }
     }
 }
@@ -277,10 +260,8 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
-        let props = self.window_properties(win);
-        if let Some(g) = self.globals_mut() {
-            crate::client::handle_property_change(g, win, &props);
-        }
+        let properties = self.window_properties(win);
+        self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
         self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
         self.request_bar_redraw();
@@ -290,10 +271,8 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
-        let props = self.window_properties(win);
-        if let Some(g) = self.globals_mut() {
-            crate::client::handle_property_change(g, win, &props);
-        }
+        let properties = self.window_properties(win);
+        self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
         self.apply_xdg_toplevel_floating_policy(&surface);
         self.update_foreign_toplevel(win);
         self.request_bar_redraw();
@@ -325,16 +304,7 @@ impl XdgShellHandler for WaylandState {
             return;
         };
         self.remove_window_tracking(win);
-        {
-            let Some(g) = self.globals_mut() else {
-                return;
-            };
-            g.detach(win);
-            g.detach_z_order(win);
-            g.clients.remove(&win);
-            g.queue_layout_for_all_monitors();
-        }
-        self.request_space_sync();
+        self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
 
         // Recover mon.sel if it was cleared by detach_z_order, then re-apply seat focus.
         self.restore_focus_after_overlay();
@@ -444,16 +414,11 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        let mut request_space_sync = false;
-        if let Some(win) = self.window_id_for_toplevel(&surface)
-            && let Some(g) = self.globals_mut()
-        {
-            crate::client::mode::set_fullscreen(g, win, true);
-            g.queue_layout_for_client(win);
-            request_space_sync = true;
-        }
-        if request_space_sync {
-            self.request_space_sync();
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            self.push_command(super::super::commands::WmCommand::SetFullscreen {
+                win,
+                fullscreen: true,
+            });
         }
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
@@ -462,16 +427,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        let mut request_space_sync = false;
-        if let Some(win) = self.window_id_for_toplevel(&surface)
-            && let Some(g) = self.globals_mut()
-        {
-            crate::client::mode::set_fullscreen(g, win, false);
-            g.queue_layout_for_client(win);
-            request_space_sync = true;
-        }
-        if request_space_sync {
-            self.request_space_sync();
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            self.push_command(super::super::commands::WmCommand::SetFullscreen {
+                win,
+                fullscreen: false,
+            });
         }
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
@@ -480,16 +440,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        let mut request_space_sync = false;
-        if let Some(win) = self.window_id_for_toplevel(&surface)
-            && let Some(g) = self.globals_mut()
-        {
-            crate::client::mode::set_maximized(g, win, true);
-            g.queue_layout_for_client(win);
-            request_space_sync = true;
-        }
-        if request_space_sync {
-            self.request_space_sync();
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            self.push_command(super::super::commands::WmCommand::SetMaximized {
+                win,
+                maximized: true,
+            });
         }
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
@@ -498,16 +453,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        let mut request_space_sync = false;
-        if let Some(win) = self.window_id_for_toplevel(&surface)
-            && let Some(g) = self.globals_mut()
-        {
-            crate::client::mode::set_maximized(g, win, false);
-            g.queue_layout_for_client(win);
-            request_space_sync = true;
-        }
-        if request_space_sync {
-            self.request_space_sync();
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            self.push_command(super::super::commands::WmCommand::SetMaximized {
+                win,
+                maximized: false,
+            });
         }
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
@@ -585,10 +535,6 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .get::<crate::client::LaunchContext>()
             .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
-            // Check whether the window is already visible on its monitor's
-            // currently selected tags.  When it is, we focus it immediately.
-            // When it is not (i.e. it lives on a different tag), we mark it
-            // as urgent so the bar highlights the tag without stealing focus.
             let is_currently_visible = self
                 .globals()
                 .and_then(|g| {
@@ -598,37 +544,15 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 })
                 .unwrap_or(false);
 
-            let activated = self.with_wm_mut_unified(|wm, _state| {
-                let mut ctx = wm.ctx();
-                if is_currently_visible {
-                    crate::focus::activate_client(&mut ctx, win)
-                } else {
-                    // Mark as urgent so the bar shows the indicator.
-                    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                        client.is_urgent = true;
-                    }
-                    true
-                }
-            });
-
-            // Re-render the bar so urgency (or the new focus) becomes visible.
+            self.push_command(super::super::commands::WmCommand::ActivateWindow(win));
             self.request_bar_redraw();
 
-            if activated == Some(true) {
-                log::debug!(
-                    "xdg_activation: activated window {:?} (visible={}, app_id: {:?})",
-                    win,
-                    is_currently_visible,
-                    token_data.app_id
-                );
-            } else {
-                log::warn!(
-                    "xdg_activation: failed to activate window {:?} (app_id: {:?})",
-                    win,
-                    token_data.app_id
-                );
-            }
-            return;
+            log::debug!(
+                "xdg_activation: requested activation for window {:?} (visible={}, app_id: {:?})",
+                win,
+                is_currently_visible,
+                token_data.app_id
+            );
         }
 
         if let Some(context) = launch_context {

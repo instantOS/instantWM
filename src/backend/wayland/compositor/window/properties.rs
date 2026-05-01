@@ -4,8 +4,8 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::backend::wayland::compositor::WaylandState;
-use crate::backend::wayland::compositor::state::{PendingLaunchContextMarker, WindowIdMarker};
-use crate::types::{Rect, WindowId};
+use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::types::WindowId;
 
 impl WaylandState {
     pub(crate) const MIN_WL_DIM: i32 = 64;
@@ -118,90 +118,28 @@ impl WaylandState {
             return;
         }
 
-        let props = self.window_properties(window);
-        let x11_launch_ids = self
+        let properties = self.window_properties(window);
+        let x11_info = self
             .find_window(window)
             .and_then(|element| element.x11_surface())
             .map(|x11| (x11.pid(), x11.startup_id()));
-        let launch_context = x11_launch_ids
-            .and_then(|(pid, startup_id)| {
-                self.globals_mut()
-                    .and_then(|g| crate::client::take_pending_launch(g, pid, startup_id.as_deref()))
-            })
-            .or_else(|| {
-                self.find_window(window)
-                    .and_then(|element| element.wl_surface())
-                    .and_then(|wl_surface| {
-                        smithay::wayland::compositor::with_states(&wl_surface, |states| {
-                            states
-                                .data_map
-                                .get::<PendingLaunchContextMarker>()
-                                .map(|marker| marker.context)
-                        })
-                    })
-            });
 
-        // Use the actual committed window geometry when available so that
-        // floating placement runs against the real size, not an oversized
-        // work-rect placeholder that defeats off-screen detection.
-        let actual_geo = self
+        let initial_geo = self
             .find_window(window)
             .map(|element| element.geometry())
-            .filter(|geo| geo.size.w > 0 && geo.size.h > 0);
+            .filter(|geo| geo.size.w > 0 && geo.size.h > 0)
+            .map(|geo| crate::types::Rect::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h));
 
-        let Some(g) = self.globals_mut() else {
-            return;
-        };
-        let monitor_id = launch_context
-            .map(|ctx| ctx.monitor_id)
-            .unwrap_or_else(|| g.selected_monitor_id());
-        let geo = if let Some(actual) = actual_geo {
-            Rect {
-                x: 0,
-                y: 0,
-                w: actual.size.w.max(Self::MIN_WL_DIM),
-                h: actual.size.h.max(Self::MIN_WL_DIM),
-            }
-        } else {
-            let (base_w, base_h) = g
-                .monitor(monitor_id)
-                .map(|m| {
-                    (
-                        m.work_rect.w.max(Self::MIN_WL_DIM),
-                        m.work_rect.h.max(Self::MIN_WL_DIM),
-                    )
-                })
-                .unwrap_or((
-                    g.cfg.screen_width.max(Self::MIN_WL_DIM),
-                    g.cfg.screen_height.max(Self::MIN_WL_DIM),
-                ));
-            Rect {
-                x: 0,
-                y: 0,
-                w: base_w,
-                h: base_h,
-            }
-        };
-
-        let mut c = crate::types::Client::default();
-        c.win = window;
-        c.geo = geo;
-        c.old_geo = geo;
-        c.float_geo = geo;
-        c.border_width = g.cfg.border_width_px;
-        c.old_border_width = g.cfg.border_width_px;
-        c.monitor_id = monitor_id;
-        c.set_tag_mask(
-            launch_context
-                .map(|ctx| ctx.tags)
-                .unwrap_or_else(|| crate::client::initial_tags_for_monitor(g, c.monitor_id)),
-        );
-
-        g.clients.insert(window, c);
-        crate::client::apply_rules(g, window, &props, launch_context);
-
-        g.attach(window);
-        g.attach_z_order_top(window);
+        self.push_command(crate::backend::wayland::commands::WmCommand::MapWindow {
+            win: window,
+            properties,
+            initial_geo,
+            launch_pid: x11_info.as_ref().and_then(|i| i.0),
+            launch_startup_id: x11_info.and_then(|i| i.1),
+            x11_hints: None,
+            x11_size_hints: None,
+            parent: None,
+        });
     }
 
     /// Get the window ID for a toplevel surface.
@@ -243,7 +181,7 @@ impl WaylandState {
 
             // A window owns a surface if it's anywhere in its subsurface or popup tree.
             // Using a large negative offset for surface_under is not reliable.
-            // Instead, we check if the surface is part of this window's surface hierarchy.
+            // Instead, we check if the surface's states data map contains our window id.
             let mut owns_surface = false;
             window.with_surfaces(|s, _| {
                 if s == surface {

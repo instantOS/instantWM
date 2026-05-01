@@ -5,18 +5,16 @@
 
 use std::process::exit;
 
-use smithay::backend::input::InputEvent;
+use smithay::backend::input::{Event, InputEvent};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::LoopSignal;
 
+use crate::backend::wayland::commands::WmCommand;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
 use crate::wayland::common::sanitize_wayland_size;
-use crate::wayland::input::{
-    apply_pending_warp, handle_keyboard, handle_pointer_axis, handle_pointer_button,
-    handle_pointer_motion, motion_event_from_winit,
-};
+use crate::wayland::input::{apply_pending_warp, handle_keyboard};
 use crate::wayland::render::winit::render_frame;
 
 /// Run the winit (nested) Wayland compositor.
@@ -66,7 +64,6 @@ pub fn run() -> ! {
     // events (input, resize, close) wake the event loop immediately
     // instead of requiring periodic polling.
     let kb = keyboard_handle.clone();
-    let ptr = pointer_handle.clone();
     loop_handle
         .insert_source(winit_loop, move |event, _, state| match event {
             WinitEvent::Resized { size, .. } => {
@@ -74,7 +71,7 @@ pub fn run() -> ! {
                 state.runtime.pending_winit_resize = Some((size.w, size.h));
             }
             WinitEvent::Input(event) => {
-                dispatch_winit_input(state, &kb, &ptr, event);
+                dispatch_winit_input(state, &kb, event);
             }
             WinitEvent::CloseRequested => {
                 state.runtime.winit_close_requested = true;
@@ -149,31 +146,56 @@ pub fn run() -> ! {
     exit(0);
 }
 
-/// Dispatch a winit input event using the WM back-reference in WaylandState.
+/// Dispatch a winit input event, pushing commands for deferred processing.
 fn dispatch_winit_input(
     state: &mut WaylandState,
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
-    pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
     event: InputEvent<smithay::backend::winit::WinitInput>,
 ) {
+    use smithay::backend::input::{AbsolutePositionEvent, PointerAxisEvent, PointerButtonEvent};
+
     state.notify_activity();
-    state.with_wm_mut_unified(|wm, state| match event {
+    match event {
         InputEvent::Keyboard { event } => {
-            handle_keyboard(wm, state, keyboard_handle, event);
+            // Keyboard events need synchronous WM access for keybindings.
+            // SAFETY: the calloop source callback runs synchronously within
+            // event_loop.dispatch(); the &mut Wm borrow in the main body has
+            // not yet resumed.
+            if let Some(wm_ptr) = (unsafe { state.wm_mut_ptr() }) {
+                let wm = unsafe { &mut *wm_ptr };
+                handle_keyboard(wm, state, keyboard_handle, event);
+            }
         }
         InputEvent::PointerMotionAbsolute { event: motion } => {
             let size = state.runtime.winit_window_size;
-            let motion_event = motion_event_from_winit(motion, size);
-            handle_pointer_motion(wm, state, pointer_handle, keyboard_handle, motion_event);
+            let x = motion.x_transformed(size.w);
+            let y = motion.y_transformed(size.h);
+            state.runtime.pointer_location = smithay::utils::Point::from((x, y));
+            state.push_command(WmCommand::PointerMotion {
+                time_msec: motion.time_msec(),
+            });
         }
         InputEvent::PointerButton { event: btn } => {
-            let loc = state.runtime.pointer_location;
-            handle_pointer_button(wm, state, pointer_handle, keyboard_handle, btn, loc);
+            state.push_command(WmCommand::PointerButton {
+                button: btn.button_code(),
+                state: btn.state(),
+                time_msec: btn.time_msec(),
+            });
         }
         InputEvent::PointerAxis { event: axis } => {
-            let loc = state.runtime.pointer_location;
-            handle_pointer_axis(wm, state, pointer_handle, keyboard_handle, axis, loc);
+            let horizontal = axis
+                .amount(smithay::backend::input::Axis::Horizontal)
+                .unwrap_or(0.0);
+            let vertical = axis
+                .amount(smithay::backend::input::Axis::Vertical)
+                .unwrap_or(0.0);
+            state.push_command(WmCommand::PointerAxis {
+                source: axis.source(),
+                horizontal,
+                vertical,
+                time_msec: axis.time_msec(),
+            });
         }
         _ => {}
-    });
+    }
 }

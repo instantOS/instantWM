@@ -39,16 +39,17 @@ mod xdg_shell;
 mod xwayland;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
-pub use state::{WaylandClientState, WaylandState, WindowIdMarker};
+pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
     delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
     delegate_ext_data_control, delegate_idle_inhibit, delegate_idle_notify,
     delegate_image_capture_source, delegate_image_copy_capture, delegate_layer_shell,
-    delegate_output, delegate_output_capture_source, delegate_pointer_constraints, delegate_pointer_gestures,
-    delegate_presentation, delegate_primary_selection, delegate_relative_pointer, delegate_seat, delegate_session_lock,
-    delegate_shm, delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration,
-    delegate_xdg_shell, delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
+    delegate_output, delegate_output_capture_source, delegate_pointer_constraints,
+    delegate_pointer_gestures, delegate_presentation, delegate_primary_selection,
+    delegate_relative_pointer, delegate_seat, delegate_session_lock, delegate_shm,
+    delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
+    delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------

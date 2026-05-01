@@ -2,17 +2,19 @@ use log::debug;
 use smithay::desktop::Window;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
-use std::time::Duration;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
-use crate::backend::wayland::compositor::window::animations::WindowMoveMode;
-use crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS;
 use crate::types::WindowId;
 
 impl WaylandState {
-    /// Map a new toplevel surface (from XDG shell).
-    pub fn map_new_toplevel(&mut self, surface: ToplevelSurface) -> WindowId {
+    /// Initial Smithay-side setup for a new toplevel surface.
+    ///
+    /// This creates the Smithay `Window`, assigns it a WM-internal `WindowId`,
+    /// maps it into the `Space` at (0,0), and registers it in the index.
+    /// The caller is responsible for pushing a `MapWindow` command to the
+    /// WM queue to perform management (rules, layout, animations).
+    pub fn setup_smithay_window(&mut self, surface: ToplevelSurface) -> WindowId {
         let window = Window::new_wayland_window(surface);
         let window_id = self.alloc_window_id();
         let _ = window
@@ -22,91 +24,13 @@ impl WaylandState {
                 is_overlay: false,
             });
 
+        // Map at (0,0) initially. The WM will move it during the layout pass.
         self.space.map_element(window.clone(), (0, 0), false);
         self.window_index.insert(window_id, window.clone());
-        // Refresh the Window's internal geometry cache so that
-        // ensure_client_for_window can read the actual committed size
-        // instead of a stale/default value. Without this, element.geometry()
-        // returns the pre-on_commit dimensions and the client is created
-        // with the full work-rect size, defeating floating placement.
+
+        // Refresh the Window's internal geometry cache.
         window.on_commit();
-        self.ensure_client_for_window(window_id);
-        if let Some(toplevel) = window.toplevel() {
-            self.apply_xdg_toplevel_floating_policy(toplevel);
-        }
-        // Resolve the XDG parent surface to a WindowId so floating dialogs
-        // can be centered on their parent instead of spawning at (0,0).
-        let parent_window_id = window
-            .toplevel()
-            .and_then(|tl| tl.parent())
-            .and_then(|parent_surface| self.window_id_for_surface(&parent_surface));
-        if let Some(rect) = self
-            .globals()
-            .and_then(|g| crate::client::sane_floating_spawn_rect(g, window_id, parent_window_id))
-        {
-            let mode = self
-                .globals()
-                .and_then(|g| {
-                    let client = g.clients.get(&window_id)?;
-                    let mon = g.monitor(client.monitor_id)?;
-                    if client.mode.is_fullscreen() || !self.animations_enabled() {
-                        return None;
-                    }
-                    Some(WindowMoveMode::AnimateFrom {
-                        from: crate::types::Rect {
-                            x: rect.x,
-                            y: mon.monitor_rect.y - rect.h - client.border_width * 2,
-                            w: rect.w,
-                            h: rect.h,
-                        },
-                        duration: Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
-                    })
-                })
-                .unwrap_or_else(|| self.default_window_move_mode());
-            if let Some(g) = self.globals_mut() {
-                crate::client::sync_client_geometry(g, window_id, rect);
-            }
-            self.set_window_target_rect(window_id, rect, mode);
-        }
 
-        if let Some(title) = self.window_title(window_id)
-            && let Some(g) = self.globals_mut()
-            && let Some(client) = g.clients.get_mut(&window_id)
-        {
-            client.name = title;
-        }
-
-        if window.toplevel().is_some() {
-            let (w, h) = self
-                .globals()
-                .and_then(|g| g.clients.get(&window_id).map(|c| (c.geo.w, c.geo.h)))
-                .unwrap_or((Self::MIN_WL_DIM, Self::MIN_WL_DIM));
-            let target = (w.max(Self::MIN_WL_DIM), h.max(Self::MIN_WL_DIM));
-            let size =
-                smithay::utils::Size::<i32, smithay::utils::Logical>::new(target.0, target.1);
-            self.send_toplevel_configure(&window, Some(size));
-            // Do not seed `last_configured_size` from this provisional map-time
-            // configure. The first post-manage layout pass must still get a
-            // chance to send the compositor's authoritative size, even if it
-            // ends up matching this initial target.
-        }
-        if let Some(g) = self.globals_mut() {
-            g.queue_layout_for_client(window_id);
-        }
-        self.request_space_sync();
-        let should_focus = self
-            .globals()
-            .and_then(|g| {
-                g.clients.get(&window_id).and_then(|client| {
-                    client
-                        .monitor(g)
-                        .map(|mon| client.is_visible(mon.selected_tags()))
-                })
-            })
-            .unwrap_or(false);
-        if should_focus {
-            self.activate_and_raise_window(window_id);
-        }
         self.create_foreign_toplevel(window_id);
         window_id
     }
@@ -183,10 +107,7 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
-        if let Some(g) = self.globals_mut() {
-            g.queue_layout_for_all_monitors();
-        }
-        self.request_space_sync();
+        self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
     }
 
     /// Close a window.
