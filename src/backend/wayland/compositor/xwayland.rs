@@ -4,7 +4,7 @@ use smithay::{
 };
 
 use crate::client::FloatingPlacementKind;
-use crate::types::ClientMode;
+use crate::types::{ClientMode, MouseButton, Point, ResizeDirection, WindowId};
 
 use super::{
     focus::KeyboardFocusTarget,
@@ -32,6 +32,143 @@ pub(super) fn focus_overlay_if_launcher(
             Some(KeyboardFocusTarget::Window(element.clone())),
             serial,
         );
+    }
+}
+
+/// Map a Smithay XWayland resize edge to a [`ResizeDirection`].
+pub(super) fn xwayland_resize_edge_to_direction(
+    edge: smithay::xwayland::xwm::ResizeEdge,
+) -> ResizeDirection {
+    use smithay::xwayland::xwm::ResizeEdge as E;
+    match edge {
+        E::Top => ResizeDirection::Top,
+        E::Bottom => ResizeDirection::Bottom,
+        E::Left => ResizeDirection::Left,
+        E::Right => ResizeDirection::Right,
+        E::TopLeft => ResizeDirection::TopLeft,
+        E::TopRight => ResizeDirection::TopRight,
+        E::BottomLeft => ResizeDirection::BottomLeft,
+        E::BottomRight => ResizeDirection::BottomRight,
+    }
+}
+
+/// Map an `xdg_toplevel` resize edge to a [`ResizeDirection`].
+///
+/// Returns `None` for `xdg_toplevel::ResizeEdge::None` or any unknown
+/// future variant.
+pub(super) fn xdg_resize_edge_to_direction(
+    edge: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+) -> Option<ResizeDirection> {
+    use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge as E;
+    Some(match edge {
+        E::Top => ResizeDirection::Top,
+        E::Bottom => ResizeDirection::Bottom,
+        E::Left => ResizeDirection::Left,
+        E::Right => ResizeDirection::Right,
+        E::TopLeft => ResizeDirection::TopLeft,
+        E::TopRight => ResizeDirection::TopRight,
+        E::BottomLeft => ResizeDirection::BottomLeft,
+        E::BottomRight => ResizeDirection::BottomRight,
+        _ => return None,
+    })
+}
+
+/// Begin an interactive move drag triggered by a client request
+/// (`_NET_WM_MOVERESIZE` move on X11, `xdg_toplevel.move` on Wayland).
+///
+/// The drag is started in the same "pre-threshold" state as a title bar
+/// click: `active = true`, `dragging = false`. The next pointer motion
+/// event will exceed the threshold and promote it to an actual drag via
+/// the existing title-drag motion handler.
+pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
+    state.activate_and_raise_window(win);
+    let pointer = state.pointer.current_location();
+    let root = Point::new(pointer.x.round() as i32, pointer.y.round() as i32);
+    let Some(g) = state.globals_mut() else {
+        return;
+    };
+    if g.drag.interactive.active {
+        return;
+    }
+    let Some(client) = g.clients.get(&win) else {
+        return;
+    };
+    if !client.mode.is_floating() {
+        return;
+    }
+    let geo = client.geo;
+    let sel = g.selected_win();
+    let was_hidden = client.is_hidden;
+    g.drag.interactive = crate::globals::DragInteraction {
+        active: true,
+        win,
+        button: MouseButton::Left,
+        dragging: false,
+        drag_type: crate::globals::DragType::Move,
+        was_focused: sel == Some(win),
+        was_hidden,
+        start_point: root,
+        win_start_geo: geo,
+        drop_restore_geo: geo,
+        last_root_point: root,
+        suppress_click_action: true,
+    };
+}
+
+/// Begin an interactive resize drag triggered by a client request
+/// (`_NET_WM_MOVERESIZE` resize on X11, `xdg_toplevel.resize` on Wayland).
+///
+/// Unlike app-initiated move, the user is already actively grabbing a
+/// resize handle, so this skips the click-vs-drag threshold and engages
+/// the resize immediately (`dragging = true`). The unified
+/// [`crate::wayland::input::pointer::drag::wayland_hover_resize_drag_motion`]
+/// handler then drives the resize from subsequent pointer motion events.
+pub(super) fn begin_app_resize_drag(
+    state: &mut WaylandState,
+    win: WindowId,
+    dir: ResizeDirection,
+) {
+    state.activate_and_raise_window(win);
+    let pointer = state.pointer.current_location();
+    let root = Point::new(pointer.x.round() as i32, pointer.y.round() as i32);
+    let started = {
+        let Some(g) = state.globals_mut() else {
+            return;
+        };
+        if g.drag.interactive.active {
+            return;
+        }
+        let Some(client) = g.clients.get(&win) else {
+            return;
+        };
+        if !client.mode.is_floating() {
+            return;
+        }
+        let geo = client.geo;
+        let sel = g.selected_win();
+        let was_hidden = client.is_hidden;
+        g.drag.interactive = crate::globals::DragInteraction {
+            active: true,
+            win,
+            button: MouseButton::Left,
+            dragging: true,
+            drag_type: crate::globals::DragType::Resize(dir),
+            was_focused: sel == Some(win),
+            was_hidden,
+            start_point: root,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: root,
+            suppress_click_action: true,
+        };
+        true
+    };
+    if started {
+        state.begin_interactive_resize(win);
+        state.with_wm_mut_unified(|wm, _state| {
+            let mut ctx = wm.ctx();
+            crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Resize(dir));
+        });
     }
 }
 
@@ -655,10 +792,15 @@ impl XwmHandler for WaylandState {
     fn resize_request(
         &mut self,
         _xwm: smithay::xwayland::xwm::XwmId,
-        _window: smithay::xwayland::X11Surface,
+        window: smithay::xwayland::X11Surface,
         _button: u32,
-        _resize_edge: smithay::xwayland::xwm::ResizeEdge,
+        resize_edge: smithay::xwayland::xwm::ResizeEdge,
     ) {
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        let dir = xwayland_resize_edge_to_direction(resize_edge);
+        begin_app_resize_drag(self, win, dir);
     }
 
     fn move_request(
@@ -667,9 +809,10 @@ impl XwmHandler for WaylandState {
         window: smithay::xwayland::X11Surface,
         _button: u32,
     ) {
-        if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.activate_and_raise_window(win);
-        }
+        let Some(win) = self.window_id_for_x11_surface(&window) else {
+            return;
+        };
+        begin_app_move_drag(self, win);
     }
 
     fn disconnected(&mut self, _xwm: smithay::xwayland::xwm::XwmId) {

@@ -34,7 +34,7 @@ use smithay::{
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
-use crate::types::{ClientMode, Point};
+use crate::types::ClientMode;
 
 impl WaylandState {
     fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
@@ -377,42 +377,10 @@ impl XdgShellHandler for WaylandState {
         _seat: wl_seat::WlSeat,
         _serial: smithay::utils::Serial,
     ) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.activate_and_raise_window(win);
-            let pointer = self.pointer.current_location();
-            let root_x = pointer.x.round() as i32;
-            let root_y = pointer.y.round() as i32;
-            if let Some(g) = self.globals_mut() {
-                if g.drag.interactive.active {
-                    return;
-                }
-                let Some(client) = g.clients.get(&win) else {
-                    return;
-                };
-                if !client.mode.is_floating() {
-                    return;
-                }
-                let geo = client.geo;
-                let sel = g.selected_win();
-                let was_hidden = client.is_hidden;
-                let root = Point::new(root_x, root_y);
-                g.drag.interactive = crate::globals::DragInteraction {
-                    active: true,
-                    win,
-                    button: crate::types::MouseButton::Left,
-                    dragging: false,
-                    drag_type: crate::globals::DragType::Move,
-                    was_focused: sel == Some(win),
-                    was_hidden,
-                    start_point: root,
-                    win_start_geo: geo,
-                    drop_restore_geo: geo,
-                    last_root_point: root,
-                    suppress_click_action: true,
-                    ..Default::default()
-                };
-            }
-        }
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        super::xwayland::begin_app_move_drag(self, win);
     }
 
     fn resize_request(
@@ -420,11 +388,18 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         _seat: wl_seat::WlSeat,
         _serial: smithay::utils::Serial,
-        _edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+        edges: smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     ) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        let Some(dir) = super::xwayland::xdg_resize_edge_to_direction(edges) else {
+            // ResizeEdge::None or unknown edge — fall back to focusing the
+            // window so the client at least knows we acknowledged it.
             self.activate_and_raise_window(win);
-        }
+            return;
+        };
+        super::xwayland::begin_app_resize_drag(self, win, dir);
     }
 
     fn fullscreen_request(
