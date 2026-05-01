@@ -20,7 +20,7 @@ pub fn handle_keyboard<B: InputBackend>(
 ) {
     let serial = SERIAL_COUNTER.next_serial();
     // When the session is locked, all input must go to the lock surface.
-    let wm_shortcuts_allowed = if state.is_locked() {
+    let mut wm_shortcuts_allowed = if state.is_locked() {
         false
     } else {
         match keyboard_handle.current_focus() {
@@ -46,6 +46,11 @@ pub fn handle_keyboard<B: InputBackend>(
             Some(KeyboardFocusTarget::Popup(_)) => false,
         }
     };
+
+    // Also suppress shortcuts if the keyboard is grabbed (e.g. XWayland keyboard grab)
+    if keyboard_handle.is_grabbed() {
+        wm_shortcuts_allowed = false;
+    }
     let key_code = event.key_code();
     let key_state = event.state();
     keyboard_handle.input(

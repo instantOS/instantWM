@@ -124,7 +124,7 @@ impl WaylandState {
     }
 
     /// Resolve a WindowId from a surface via its data map.
-    fn window_id_from_surface(
+    pub(crate) fn window_id_from_surface(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<WindowId> {

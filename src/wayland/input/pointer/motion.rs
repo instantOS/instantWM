@@ -29,7 +29,13 @@ pub enum MotionEvent {
     /// Absolute position (winit backend, tablets, touch screens)
     Absolute { x: f64, y: f64, time_msec: u32 },
     /// Relative delta (libinput mouse)
-    Relative { dx: f64, dy: f64, time_msec: u32 },
+    Relative {
+        dx: f64,
+        dy: f64,
+        dx_unaccel: f64,
+        dy_unaccel: f64,
+        time_msec: u32,
+    },
 }
 
 impl MotionEvent {
@@ -66,6 +72,8 @@ pub fn motion_event_from_libinput_relative<B: InputBackend>(
     MotionEvent::Relative {
         dx: event.delta_x(),
         dy: event.delta_y(),
+        dx_unaccel: event.delta_x_unaccel(),
+        dy_unaccel: event.delta_y_unaccel(),
         time_msec: event.time_msec(),
     }
 }
@@ -99,6 +107,10 @@ pub fn motion_event_from_winit(
     }
 }
 
+use smithay::wayland::pointer_constraints::{with_pointer_constraint, PointerConstraint};
+
+use crate::backend::wayland::compositor::window::hit_test::PointerContents;
+
 /// Handle pointer motion from any source (absolute, relative, or warp).
 ///
 /// This is the single entry point for all pointer motion. The motion source
@@ -113,15 +125,90 @@ pub fn handle_pointer_motion(
     let output_width = wm.g.cfg.screen_width;
     let output_height = wm.g.cfg.screen_height;
 
-    // Compute and update pointer location
-    state.runtime.pointer_location =
+    let mut pointer_locked = false;
+    let mut pointer_confined = false;
+
+    // Compute potential new location to perform a hit test
+    let potential_location =
         event.compute_location(state.runtime.pointer_location, output_width, output_height);
+
+    // Get current surface focus and its relative location
+    let hit_test = state.contents_under_pointer(potential_location);
+
+    // Phase 0: Check for pointer constraints
+    if let Some((surface, _)) = &hit_test.surface {
+        with_pointer_constraint(surface, pointer_handle, |constraint| {
+            if let Some(constraint) = constraint && constraint.is_active() {
+                match &*constraint {
+                    PointerConstraint::Locked(_) => {
+                        pointer_locked = true;
+                    }
+                    PointerConstraint::Confined(_) => {
+                        pointer_confined = true;
+                    }
+                }
+            }
+        });
+    }
+
+    // Always emit relative motion if this is a relative event
+    if let MotionEvent::Relative {
+        dx,
+        dy,
+        dx_unaccel,
+        dy_unaccel,
+        time_msec,
+    } = event
+    {
+        let rel_event = smithay::input::pointer::RelativeMotionEvent {
+            delta: (dx, dy).into(),
+            delta_unaccel: (dx_unaccel, dy_unaccel).into(),
+            utime: time_msec as u64,
+        };
+        let focus = hit_test
+            .surface
+            .as_ref()
+            .map(|(s, loc)| (PointerFocusTarget::WlSurface(s.clone()), loc.to_f64()));
+        pointer_handle.relative_motion(state, focus, &rel_event);
+    }
+
+    // If locked, we don't update absolute pointer location or send motion events
+    if pointer_locked {
+        pointer_handle.frame(state);
+        return;
+    }
+
+    // Compute new location
+    let mut final_location = potential_location;
+
+    // If confined, clamp to the surface bounds
+    if pointer_confined {
+        if let Some((surface, surface_loc)) = &hit_test.surface {
+            // Get surface size (logical). We use the window geometry if this surface
+            // belongs to a managed window.
+            let size = state
+                .window_id_from_surface(surface)
+                .and_then(|win_id| state.find_window(win_id))
+                .map(|win| win.geometry().size);
+
+            if let Some(size) = size {
+                let rel_x = (final_location.x - surface_loc.x as f64).clamp(0.0, size.w as f64);
+                let rel_y = (final_location.y - surface_loc.y as f64).clamp(0.0, size.h as f64);
+                final_location.x = surface_loc.x as f64 + rel_x;
+                final_location.y = surface_loc.y as f64 + rel_y;
+            }
+        }
+    }
+
+    state.runtime.pointer_location = final_location;
+
     // Dispatch to focus/drag handling logic
     dispatch_pointer_motion(
         wm,
         state,
         pointer_handle,
         keyboard_handle,
+        hit_test,
         event.time_msec(),
     );
 }
@@ -132,6 +219,7 @@ pub fn dispatch_pointer_motion(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
+    hit_test: PointerContents,
     time_msec: u32,
 ) {
     let pointer_location = state.runtime.pointer_location;
@@ -146,7 +234,7 @@ pub fn dispatch_pointer_motion(
 
     // Phase 2: Resolve pointer focus and hovered window
     let (pointer_focus, hovered_win) =
-        resolve_pointer_focus(wm, state, in_bar_band, in_bar_guard_band);
+        resolve_pointer_focus_from_hit(state, hit_test, in_bar_band, in_bar_guard_band);
 
     // Phase 3: Handle resize drag motion (early return path)
     let ctx = wm.ctx();
