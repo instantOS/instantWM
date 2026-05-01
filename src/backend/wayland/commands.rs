@@ -7,6 +7,19 @@
 
 use crate::types::WindowId;
 
+/// Parameters for mapping a new window into the WM.
+#[derive(Debug)]
+pub struct MapWindowParams {
+    pub win: WindowId,
+    pub properties: crate::client::WindowProperties,
+    pub initial_geo: Option<crate::types::Rect>,
+    pub launch_pid: Option<u32>,
+    pub launch_startup_id: Option<String>,
+    pub x11_hints: Option<x11rb::properties::WmHints>,
+    pub x11_size_hints: Option<x11rb::properties::WmSizeHints>,
+    pub parent: Option<WindowId>,
+}
+
 /// Commands sent from the Wayland compositor to the core Window Manager.
 #[derive(Debug)]
 pub enum WmCommand {
@@ -15,16 +28,7 @@ pub enum WmCommand {
     /// Raise a window in the Z-order.
     RaiseWindow(WindowId),
     /// Map a new window that was just created.
-    MapWindow {
-        win: WindowId,
-        properties: crate::client::WindowProperties,
-        initial_geo: Option<crate::types::Rect>,
-        launch_pid: Option<u32>,
-        launch_startup_id: Option<String>,
-        x11_hints: Option<x11rb::properties::WmHints>,
-        x11_size_hints: Option<x11rb::properties::WmSizeHints>,
-        parent: Option<WindowId>,
-    },
+    MapWindow(MapWindowParams),
     /// Unmap/destroy a window.
     UnmapWindow(WindowId),
     /// Stop managing a window (e.g. it was closed).

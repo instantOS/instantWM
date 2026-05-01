@@ -131,16 +131,18 @@ impl WaylandState {
             .filter(|geo| geo.size.w > 0 && geo.size.h > 0)
             .map(|geo| crate::types::Rect::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h));
 
-        self.push_command(crate::backend::wayland::commands::WmCommand::MapWindow {
-            win: window,
-            properties,
-            initial_geo,
-            launch_pid: x11_info.as_ref().and_then(|i| i.0),
-            launch_startup_id: x11_info.and_then(|i| i.1),
-            x11_hints: None,
-            x11_size_hints: None,
-            parent: None,
-        });
+        self.push_command(crate::backend::wayland::commands::WmCommand::MapWindow(
+            crate::backend::wayland::commands::MapWindowParams {
+                win: window,
+                properties,
+                initial_geo,
+                launch_pid: x11_info.as_ref().and_then(|i| i.0),
+                launch_startup_id: x11_info.and_then(|i| i.1),
+                x11_hints: None,
+                x11_size_hints: None,
+                parent: None,
+            },
+        ));
     }
 
     /// Get the window ID for a toplevel surface.

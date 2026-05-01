@@ -214,16 +214,18 @@ impl XwmHandler for WaylandState {
             h: geo.size.h.max(1),
         });
 
-        self.push_command(super::super::commands::WmCommand::MapWindow {
-            win,
-            properties,
-            initial_geo,
-            launch_pid: window.pid(),
-            launch_startup_id: window.startup_id(),
-            x11_hints: window.hints(),
-            x11_size_hints: window.size_hints(),
-            parent,
-        });
+        self.push_command(super::super::commands::WmCommand::MapWindow(
+            super::super::commands::MapWindowParams {
+                win,
+                properties,
+                initial_geo,
+                launch_pid: window.pid(),
+                launch_startup_id: window.startup_id(),
+                x11_hints: window.hints(),
+                x11_size_hints: window.size_hints(),
+                parent,
+            },
+        ));
 
         self.create_foreign_toplevel(win);
         self.activate_and_raise_window(win);
