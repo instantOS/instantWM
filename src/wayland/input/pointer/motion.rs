@@ -142,7 +142,7 @@ pub fn dispatch_pointer_motion(
     let active_drag_window = wayland_active_drag_window(wm);
 
     // Phase 1: Compute bar/guard band hit detection
-    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root_x, root_y, active_drag_window);
+    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root_x, root_y);
 
     // Phase 2: Resolve pointer focus and hovered window
     let (pointer_focus, hovered_win) =
@@ -204,7 +204,7 @@ pub fn dispatch_pointer_motion(
         root_x,
         root_y,
         hovered_win,
-        active_drag_window.is_none() && !wm.g.drag.any_drag_active(),
+        !wm.g.drag.any_drag_active(),
     );
 
     // Phase 6: Update pointer focus based on drag state
@@ -243,7 +243,6 @@ fn compute_bar_hit(
     wm: &Wm,
     root_x: i32,
     root_y: i32,
-    active_drag_window: Option<crate::types::WindowId>,
 ) -> (bool, bool) {
     crate::types::find_monitor_by_rect(
         wm.g.monitors.monitors(),
@@ -261,7 +260,7 @@ fn compute_bar_hit(
         // 4-pixel guard band below the bar: pointer must move this many pixels
         // past the bar bottom before a window drag is allowed to start.
         let guard_h = 4;
-        let drag_active = active_drag_window.is_some() || wm.g.drag.any_drag_active();
+        let drag_active = wm.g.drag.any_drag_active();
         let in_bar = bar_visible && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
         let in_guard = bar_visible
             && !drag_active
@@ -465,24 +464,20 @@ fn handle_wm_drag_motion(
     root_x: i32,
     root_y: i32,
 ) {
-    if wm.g.drag.tag.active {
-        let mut ctx = wm.ctx();
+    let mut ctx = wm.ctx();
+    if ctx.core().globals().drag.tag.active {
         if !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y) {
             let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
             crate::mouse::drag_tag_finish(&mut ctx, mod_state);
         }
     }
-
-    if wm.g.drag.interactive.active {
-        let mut ctx = wm.ctx();
+    if ctx.core().globals().drag.interactive.active {
         crate::mouse::title_drag_motion(
             &mut ctx,
             crate::types::geometry::Point::new(root_x, root_y),
         );
     }
-
-    if wm.g.drag.gesture.active {
-        let mut ctx = wm.ctx();
+    if ctx.core().globals().drag.gesture.active {
         crate::mouse::update_sidebar_gesture(&mut ctx, root_y);
     }
 }
