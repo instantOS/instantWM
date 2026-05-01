@@ -90,8 +90,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         crate::bar::handle_status_text_click(
             &mut wm_ctx,
-            e.root_x as i32,
-            e.root_y as i32,
+            crate::types::Point::new(e.root_x as i32, e.root_y as i32),
             e.detail,
             clean_state,
         );
@@ -136,8 +135,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 target: button_target,
                 window: target_window,
                 button: btn,
-                root_x: e.root_x as i32,
-                root_y: e.root_y as i32,
+                root: crate::types::Point::new(e.root_x as i32, e.root_y as i32),
                 clean_state,
             },
             numlockmask,

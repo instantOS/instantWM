@@ -160,17 +160,17 @@ fn render_snapshot(
         painter.set_font_size(mon.font_size);
         painter.begin(
             Scale::from(1.0),
-            mon.origin_x,
-            mon.origin_y,
-            mon.width,
-            mon.height,
+            mon.rect.x,
+            mon.rect.y,
+            mon.rect.w,
+            mon.rect.h,
         );
         let output = scene::render_monitor_snapshot(&mon, painter);
-        let bar_height = mon.height;
+        let bar_height = mon.rect.h;
         let tray_layout = mon
             .systray
             .as_ref()
-            .map(|s| scene::worker_systray_layout(s, mon.width, bar_height.max(1)));
+            .map(|s| scene::worker_systray_layout(s, mon.rect.w, bar_height.max(1)));
         if let (Some(systray), Some(layout)) = (&mon.systray, &tray_layout) {
             systray::draw_snapshot(painter, systray, layout, bar_height);
         }

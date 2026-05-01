@@ -16,8 +16,7 @@ pub fn handle_wayland_bar_click(
     wm: &mut Wm,
     pos: BarPosition,
     button_code: u32,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     clean_state: u32,
 ) {
     let Some(button) = wayland_button_to_mouse_button(button_code) else {
@@ -40,7 +39,7 @@ pub fn handle_wayland_bar_click(
                     .get(idx)
                     .map(|it| (it.service.clone(), it.path.clone()));
                 if let Some((service, path)) = target {
-                    runtime.dispatch_click_item(service, path, button, root_x, root_y);
+                    runtime.dispatch_click_item(service, path, button, root);
                 }
             }
             data.wayland_systray_menu = None;
@@ -75,13 +74,7 @@ pub fn handle_wayland_bar_click(
 
     if pos == BarPosition::StatusText {
         let mut ctx = wm.ctx();
-        crate::bar::handle_status_text_click(
-            &mut ctx,
-            root_x,
-            root_y,
-            button.to_x11_detail(),
-            clean_state,
-        );
+        crate::bar::handle_status_text_click(&mut ctx, root, button.to_x11_detail(), clean_state);
         return;
     }
 
@@ -89,15 +82,14 @@ pub fn handle_wayland_bar_click(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    run_wayland_bar_bindings(wayland_ctx, pos, button, root_x, root_y, clean_state);
+    run_wayland_bar_bindings(wayland_ctx, pos, button, root, clean_state);
 }
 
 pub fn handle_wayland_bar_scroll(
     wm: &mut Wm,
     pos: BarPosition,
     delta: f64,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     clean_state: u32,
 ) {
     let button = if delta > 0.0 {
@@ -109,15 +101,14 @@ pub fn handle_wayland_bar_scroll(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    run_wayland_bar_bindings(wayland_ctx, pos, button, root_x, root_y, clean_state);
+    run_wayland_bar_bindings(wayland_ctx, pos, button, root, clean_state);
 }
 
 fn run_wayland_bar_bindings(
     ctx: &mut WmCtxWayland<'_>,
     pos: BarPosition,
     btn: MouseButton,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     clean_state: u32,
 ) {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
@@ -127,8 +118,7 @@ fn run_wayland_bar_bindings(
             target: ButtonTarget::Bar(pos),
             window: None,
             button: btn,
-            root_x,
-            root_y,
+            root,
             clean_state,
         },
         0,

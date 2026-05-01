@@ -2,15 +2,14 @@
 
 use crate::actions::execute_button_action;
 use crate::contexts::WmCtx;
-use crate::types::{ButtonArg, ButtonTarget, MouseButton, WindowId};
+use crate::types::{ButtonArg, ButtonTarget, MouseButton, Point, WindowId};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ButtonBindingEvent {
     pub target: ButtonTarget,
     pub window: Option<WindowId>,
     pub button: MouseButton,
-    pub root_x: i32,
-    pub root_y: i32,
+    pub root: Point,
     pub clean_state: u32,
 }
 
@@ -51,8 +50,7 @@ fn run_matching(
                 target: event.target,
                 window: event.window,
                 btn: binding.button,
-                rx: event.root_x,
-                ry: event.root_y,
+                root: event.root,
             },
         );
         matched = true;

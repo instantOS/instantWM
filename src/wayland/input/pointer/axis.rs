@@ -70,15 +70,16 @@ pub fn handle_pointer_axis<B: InputBackend>(
         .amount_v120(smithay::backend::input::Axis::Vertical)
         .or_else(|| event.amount(smithay::backend::input::Axis::Vertical));
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0) {
-        let root_x = pointer_location.x.round() as i32;
-        let root_y = pointer_location.y.round() as i32;
-        let root = RootPoint::new(root_x, root_y);
+        let root = RootPoint::new(
+            pointer_location.x.round() as i32,
+            pointer_location.y.round() as i32,
+        );
         if let Some(pos) = update_wayland_bar_hit_state(wm, root, true) {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
-            handle_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);
+            handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
         }
     }
 

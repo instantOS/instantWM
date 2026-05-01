@@ -4,7 +4,6 @@ pub mod paint;
 mod renderer;
 pub(crate) mod scene;
 pub mod status;
-pub(crate) mod theme;
 pub mod wayland;
 mod widgets;
 pub mod x11;
@@ -305,13 +304,7 @@ pub fn update_hover(
     Some(pos)
 }
 
-pub fn handle_status_text_click(
-    ctx: &mut WmCtx,
-    root_x: i32,
-    root_y: i32,
-    button_code: u8,
-    clean_state: u32,
-) {
+pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
     if crate::overview::is_active(ctx.core()) {
         ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
@@ -327,7 +320,7 @@ pub fn handle_status_text_click(
     }
 
     let selected_monitor = ctx.core().globals().selected_monitor().clone();
-    let local_x = root_x - selected_monitor.work_rect.x;
+    let local_x = root.x - selected_monitor.work_rect.x;
     let status_text = ctx.core().globals().bar_runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
@@ -344,7 +337,7 @@ pub fn handle_status_text_click(
         &parsed,
         click_targets,
         local_x,
-        root_y - selected_monitor.bar_y,
+        root.y - selected_monitor.bar_y,
         button_code,
         ctx.core().globals().cfg.bar_height,
         clean_state,

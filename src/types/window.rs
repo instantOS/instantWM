@@ -3,6 +3,7 @@
 //! Types for keyboard bindings, mouse buttons, and X commands.
 
 use crate::actions::{ButtonAction, KeyAction};
+use crate::types::Point;
 use crate::types::input::{BarPosition, MouseButton};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -36,8 +37,7 @@ pub struct ButtonArg {
     pub target: ButtonTarget,
     pub window: Option<WindowId>,
     pub btn: MouseButton,
-    pub rx: i32,
-    pub ry: i32,
+    pub root: Point,
 }
 
 impl ButtonArg {

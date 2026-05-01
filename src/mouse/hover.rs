@@ -17,10 +17,11 @@
 
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::globals::{Globals, HoverOffer};
-// focus() is used via focus_soft() in this module
-use crate::types::*;
+use crate::types::{
+    AltCursor, MouseButton, Point, Rect, ResizeDirection, WindowId, get_resize_direction,
+};
 use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
+use x11rb::protocol::xproto::{ConnectionExt, Window};
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::set_cursor_style;
@@ -84,7 +85,7 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
         };
         wm_ctx
             .pointer_location()
-            .map(|p| c.geo.is_at_top_middle_edge(p.x, p.y, RESIZE_BORDER_ZONE))
+            .map(|p| c.geo.is_at_top_middle_edge(p, RESIZE_BORDER_ZONE))
             .unwrap_or(dir == ResizeDirection::Top)
     };
 
@@ -116,7 +117,7 @@ fn resize_target_for_window(
     }
     if !c
         .geo
-        .contains_resize_border_point(root_x, root_y, RESIZE_BORDER_ZONE)
+        .contains_resize_border_point(Point::new(root_x, root_y), RESIZE_BORDER_ZONE)
     {
         return None;
     }
@@ -188,14 +189,13 @@ fn hover_resize_target_at(
 
 pub fn selected_hover_resize_target_at(
     globals: &Globals,
-    root_x: i32,
-    root_y: i32,
+    position: Point,
 ) -> Option<HoverResizeTarget> {
     let win = globals.selected_win()?;
-    if pointer_in_bar(globals, root_y) {
+    if pointer_in_bar(globals, position.y) {
         return None;
     }
-    resize_target_for_window(globals, win, root_x, root_y)
+    resize_target_for_window(globals, win, position.x, position.y)
 }
 
 /// Find a visible tiled window at point (`x`, `y`), skipping `skip_win`.
@@ -282,12 +282,8 @@ pub fn update_floating_resize_offer_at(
 /// Update the resize offer for the currently selected window.
 ///
 /// This is the backend-neutral hover-resize path used by Wayland motion events.
-pub fn update_selected_resize_offer_at(
-    ctx: &mut WmCtx,
-    root_x: i32,
-    root_y: i32,
-) -> Option<WindowId> {
-    let Some(target) = selected_hover_resize_target_at(ctx.core().globals(), root_x, root_y) else {
+pub fn update_selected_resize_offer_at(ctx: &mut WmCtx, position: Point) -> Option<WindowId> {
+    let Some(target) = selected_hover_resize_target_at(ctx.core().globals(), position) else {
         clear_hover_offer(ctx);
         return None;
     };
@@ -362,8 +358,7 @@ pub fn run_x11_hover_resize_offer_loop(ctx: &mut WmCtxX11) -> X11HoverResizeOffe
         let Some(ptr) = wm_ctx.pointer_location() else {
             return X11HoverResizeOfferResult::NotOffered;
         };
-        let Some(target) = selected_hover_resize_target_at(wm_ctx.core().globals(), ptr.x, ptr.y)
-        else {
+        let Some(target) = selected_hover_resize_target_at(wm_ctx.core().globals(), ptr) else {
             return X11HoverResizeOfferResult::NotOffered;
         };
 
@@ -402,8 +397,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                     let in_resize_border = wm_ctx
                         .pointer_location()
                         .map(|p| {
-                            selected_hover_resize_target_at(wm_ctx.core().globals(), p.x, p.y)
-                                .is_some()
+                            selected_hover_resize_target_at(wm_ctx.core().globals(), p).is_some()
                         })
                         .unwrap_or(false);
                     if !in_resize_border {
@@ -459,7 +453,10 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                             crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
                         }
                         MouseButton::Left => {
-                            if geo.is_at_top_middle_edge(root_x, root_y, RESIZE_BORDER_ZONE) {
+                            if geo.is_at_top_middle_edge(
+                                Point::new(root_x, root_y),
+                                RESIZE_BORDER_ZONE,
+                            ) {
                                 let mut wm_ctx_x11 = ctx.reborrow();
                                 let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                                 super::warp::warp_into(&mut wmctx, win);
@@ -546,7 +543,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
         };
 
         // If cursor is already outside the resize border, just focus the tiled window
-        if !sel_geo.contains_resize_border_point(ptr.x, ptr.y, RESIZE_BORDER_ZONE) {
+        if !sel_geo.contains_resize_border_point(ptr, RESIZE_BORDER_ZONE) {
             crate::focus::focus_soft(&mut wm_ctx, Some(hovered_win));
             return true;
         }

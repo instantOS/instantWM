@@ -22,10 +22,10 @@ pub(super) fn render_key(
 
 fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBarSnapshot) {
     snapshot.monitor_id.index().hash(hasher);
-    snapshot.origin_x.hash(hasher);
-    snapshot.origin_y.hash(hasher);
-    snapshot.width.hash(hasher);
-    snapshot.height.hash(hasher);
+    snapshot.rect.x.hash(hasher);
+    snapshot.rect.y.hash(hasher);
+    snapshot.rect.w.hash(hasher);
+    snapshot.rect.h.hash(hasher);
     snapshot.font_size.to_bits().hash(hasher);
     snapshot.is_selected_monitor.hash(hasher);
     hash_scheme(hasher, &snapshot.status_scheme);

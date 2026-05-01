@@ -9,7 +9,7 @@ use zbus::zvariant::{OwnedValue, Value};
 
 use crate::contexts::CoreCtx;
 use crate::types::{
-    Monitor, MouseButton, Rect, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
+    Monitor, MouseButton, Point, Rect, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
     WaylandSystrayMenuItem,
 };
 
@@ -127,20 +127,17 @@ enum SystrayCmd {
     Activate {
         service: String,
         path: String,
-        x: i32,
-        y: i32,
+        position: Point,
     },
     SecondaryActivate {
         service: String,
         path: String,
-        x: i32,
-        y: i32,
+        position: Point,
     },
     ContextMenu {
         service: String,
         path: String,
-        x: i32,
-        y: i32,
+        position: Point,
     },
     MenuClick {
         service: String,
@@ -237,27 +234,23 @@ impl WaylandSystrayRuntime {
         service: String,
         path: String,
         button: MouseButton,
-        root_x: i32,
-        root_y: i32,
+        position: Point,
     ) {
         let cmd = match button {
             MouseButton::Left => SystrayCmd::Activate {
                 service,
                 path,
-                x: root_x,
-                y: root_y,
+                position,
             },
             MouseButton::Middle => SystrayCmd::SecondaryActivate {
                 service,
                 path,
-                x: root_x,
-                y: root_y,
+                position,
             },
             MouseButton::Right => SystrayCmd::ContextMenu {
                 service,
                 path,
-                x: root_x,
-                y: root_y,
+                position,
             },
             _ => return,
         };
@@ -536,27 +529,24 @@ fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd, evt_tx: &Sender<SystrayEvt>)
         SystrayCmd::Activate {
             service,
             path,
-            x,
-            y,
+            position,
         } => {
-            let _ = call_item_method(conn, &service, &path, "Activate", &(x, y));
+            let _ = call_item_method(conn, &service, &path, "Activate", position);
         }
         SystrayCmd::SecondaryActivate {
             service,
             path,
-            x,
-            y,
+            position,
         } => {
-            let _ = call_item_method(conn, &service, &path, "SecondaryActivate", &(x, y));
+            let _ = call_item_method(conn, &service, &path, "SecondaryActivate", position);
         }
         SystrayCmd::ContextMenu {
             service,
             path,
-            x,
-            y,
+            position,
         } => {
-            let _ = open_menu_from_item(conn, &service, &path, x, y, evt_tx);
-            let _ = call_item_method(conn, &service, &path, "ContextMenu", &(x, y));
+            let _ = open_menu_from_item(conn, &service, &path, position, evt_tx);
+            let _ = call_item_method(conn, &service, &path, "ContextMenu", position);
         }
         SystrayCmd::MenuClick { service, path, id } => {
             let _ = call_menu_event(conn, &service, &path, id);
@@ -570,10 +560,10 @@ fn call_item_method(
     service: &str,
     path: &str,
     method: &str,
-    body: &(i32, i32),
+    position: Point,
 ) -> zbus::Result<()> {
     let proxy = Proxy::new(conn, service, path, ITEM_IFACE)?;
-    let _: () = proxy.call(method, body)?;
+    let _: () = proxy.call(method, &(position.x, position.y))?;
     Ok(())
 }
 
@@ -718,8 +708,7 @@ fn open_menu_from_item(
     conn: &Connection,
     service: &str,
     path: &str,
-    _x: i32,
-    _y: i32,
+    _position: Point,
     evt_tx: &Sender<SystrayEvt>,
 ) -> zbus::Result<()> {
     let menu_path: String = Proxy::new(conn, service, path, ITEM_IFACE)?

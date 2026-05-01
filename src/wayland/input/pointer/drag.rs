@@ -19,35 +19,33 @@ pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
 /// Begin hover resize drag if applicable.
 pub fn wayland_hover_resize_drag_begin(
     ctx: &mut WmCtxWayland<'_>,
-    root_x: i32,
-    root_y: i32,
+    position: Point,
     btn: MouseButton,
 ) -> bool {
     if btn != MouseButton::Left && btn != MouseButton::Right {
         return false;
     }
-    let Some(target) = selected_hover_resize_target_at(ctx.core.globals(), root_x, root_y) else {
+    let Some(target) = selected_hover_resize_target_at(ctx.core.globals(), position) else {
         return false;
     };
     let win = target.win;
     let geo = target.geo;
-    let drag_type = if btn == MouseButton::Right
-        || geo.is_at_top_middle_edge(root_x, root_y, RESIZE_BORDER_ZONE)
-    {
-        crate::globals::DragType::Move
-    } else {
-        crate::globals::DragType::Resize(target.dir)
-    };
+    let drag_type =
+        if btn == MouseButton::Right || geo.is_at_top_middle_edge(position, RESIZE_BORDER_ZONE) {
+            crate::globals::DragType::Move
+        } else {
+            crate::globals::DragType::Resize(target.dir)
+        };
     ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
         active: true,
         win,
         button: btn,
         dragging: true,
         drag_type,
-        start_point: Point::new(root_x, root_y),
+        start_point: position,
         win_start_geo: geo,
         drop_restore_geo: geo,
-        last_root_point: Point::new(root_x, root_y),
+        last_root_point: position,
         ..Default::default()
     };
     if matches!(drag_type, crate::globals::DragType::Resize(_)) {

@@ -95,7 +95,7 @@ pub fn execute_button_action(
             let Some(crate::types::BarPosition::WinTitle(win)) = arg.bar_position() else {
                 return;
             };
-            window_title_mouse_handler(ctx, win, arg.btn, crate::types::Point::new(arg.rx, arg.ry));
+            window_title_mouse_handler(ctx, win, arg.btn, arg.root);
         }
         ButtonAction::CloseClickedTitleWindow => {
             let Some(crate::types::BarPosition::WinTitle(win)) = arg.bar_position() else {
@@ -106,7 +106,7 @@ pub fn execute_button_action(
         ButtonAction::DragTagBegin => match ctx {
             WmCtx::X11(ctx_x11) => {
                 if let Some(pos) = arg.bar_position() {
-                    drag_tag(ctx_x11, pos, arg.btn, arg.rx);
+                    drag_tag(ctx_x11, pos, arg.btn, arg.root.x);
                 }
             }
             WmCtx::Wayland(_) => {
@@ -155,13 +155,7 @@ pub fn execute_button_action(
             WmCtx::Wayland(_) => {
                 if let Some(win) = button_target_client(ctx.core(), &arg) {
                     crate::focus::focus_soft(ctx, Some(win));
-                    crate::mouse::drag::title_drag_begin(
-                        ctx,
-                        win,
-                        arg.btn,
-                        crate::types::Point::new(arg.rx, arg.ry),
-                        false,
-                    );
+                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.root, false);
                 }
             }
         },

@@ -11,8 +11,6 @@ use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::tags::{move_client, shift_tag};
-use crate::types::SnapPosition;
-use crate::types::geometry::Rect;
 use crate::types::*;
 
 use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};

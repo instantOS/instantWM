@@ -284,12 +284,12 @@ fn draw_i3_block(
     let mut fg = block
         .color
         .as_deref()
-        .and_then(crate::bar::theme::rgba_from_config)
+        .and_then(crate::bar::color::rgba_from_hex)
         .unwrap_or(base_scheme.fg);
     let mut bg = block
         .background
         .as_deref()
-        .and_then(crate::bar::theme::rgba_from_config)
+        .and_then(crate::bar::color::rgba_from_hex)
         .unwrap_or(base_scheme.bg);
     let mut detail = base_scheme.detail;
 
@@ -327,7 +327,7 @@ fn draw_i3_block(
     let border_color = block
         .border
         .as_deref()
-        .and_then(crate::bar::theme::rgba_from_config)
+        .and_then(crate::bar::color::rgba_from_hex)
         .unwrap_or(block_scheme.detail);
 
     let border_scheme = crate::bar::paint::BarScheme {

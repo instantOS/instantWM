@@ -355,26 +355,30 @@ impl Rect {
     /// rectangle. Points inside the rectangle content are not considered part
     /// of the resize border.
     #[inline]
-    pub fn contains_resize_border_point(&self, x: i32, y: i32, border_zone: i32) -> bool {
-        if x > self.x && x < self.x + self.w && y > self.y && y < self.y + self.h {
+    pub fn contains_resize_border_point(&self, point: Point, border_zone: i32) -> bool {
+        if point.x > self.x
+            && point.x < self.x + self.w
+            && point.y > self.y
+            && point.y < self.y + self.h
+        {
             return false;
         }
-        if y < self.y - border_zone
-            || x < self.x - border_zone
-            || y > self.y + self.h + border_zone
-            || x > self.x + self.w + border_zone
+        if point.y < self.y - border_zone
+            || point.x < self.x - border_zone
+            || point.y > self.y + self.h + border_zone
+            || point.x > self.x + self.w + border_zone
         {
             return false;
         }
         true
     }
 
-    /// `true` when (`root_x`, `root_y`) lies on the top-middle segment of the resize border
+    /// `true` when `point` lies on the top-middle segment of the resize border
     /// — used to treat a click as *move* rather than resize.
     #[inline]
-    pub fn is_at_top_middle_edge(&self, root_x: i32, root_y: i32, border_zone: i32) -> bool {
-        let at_top = root_y >= self.y - border_zone && root_y < self.y + border_zone;
-        let in_middle_third = root_x >= self.x + self.w / 3 && root_x <= self.x + 2 * self.w / 3;
+    pub fn is_at_top_middle_edge(&self, point: Point, border_zone: i32) -> bool {
+        let at_top = point.y >= self.y - border_zone && point.y < self.y + border_zone;
+        let in_middle_third = point.x >= self.x + self.w / 3 && point.x <= self.x + 2 * self.w / 3;
         at_top && in_middle_third
     }
 }

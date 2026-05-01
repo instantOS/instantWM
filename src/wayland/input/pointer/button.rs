@@ -27,8 +27,10 @@ pub fn handle_pointer_button<B: InputBackend>(
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let root_x = pointer_location.x.round() as i32;
-    let root_y = pointer_location.y.round() as i32;
+    let root = RootPoint::new(
+        pointer_location.x.round() as i32,
+        pointer_location.y.round() as i32,
+    );
     let wm_button = wayland_button_to_mouse_button(event.button_code());
 
     let button = ButtonPress {
@@ -36,8 +38,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         time: event.time_msec(),
         button_code: event.button_code(),
         state: event.state(),
-        root_x,
-        root_y,
+        root,
         wm_button,
         pointer_location,
     };
@@ -73,16 +74,9 @@ struct ButtonPress {
     time: u32,
     button_code: u32,
     state: ButtonState,
-    root_x: i32,
-    root_y: i32,
+    root: RootPoint,
     wm_button: Option<MouseButton>,
     pointer_location: Point<f64, smithay::utils::Logical>,
-}
-
-impl ButtonPress {
-    fn root(self) -> RootPoint {
-        RootPoint::new(self.root_x, self.root_y)
-    }
 }
 
 fn forward_button(
@@ -115,7 +109,7 @@ fn handle_button_press(
     let clicked_win = find_hovered_window(wm, state, button.pointer_location);
     let pointer_region = {
         let mut ctx = wm.ctx();
-        crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root(), clicked_win)
+        crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root, clicked_win)
     };
 
     match pointer_region {
@@ -124,8 +118,7 @@ fn handle_button_press(
                 wm,
                 pos,
                 button.button_code,
-                button.root_x,
-                button.root_y,
+                button.root,
                 clean_modifier_state(keyboard_handle),
             );
             pointer_handle.frame(state);
@@ -137,8 +130,7 @@ fn handle_button_press(
                     wm,
                     pointer_region,
                     btn,
-                    button.root_x,
-                    button.root_y,
+                    button.root,
                     clean_modifier_state(keyboard_handle),
                 );
             }
@@ -167,15 +159,14 @@ fn handle_button_press(
                 wm,
                 pointer_region,
                 btn,
-                button.root_x,
-                button.root_y,
+                button.root,
                 clean_modifier_state(keyboard_handle),
             )
         });
 
     if !consumed {
         forward_button(state, pointer_handle, button);
-        close_wayland_systray_menu_if_outside(wm, state, button.root_x);
+        close_wayland_systray_menu_if_outside(wm, state, button.root.x);
     }
 
     false
@@ -187,7 +178,7 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     };
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        wayland_hover_resize_drag_begin(&mut ctx, button.root_x, button.root_y, btn)
+        wayland_hover_resize_drag_begin(&mut ctx, button.root, btn)
     } else {
         false
     }
@@ -358,8 +349,7 @@ fn consume_wayland_pointer_binding(
     wm: &mut Wm,
     region: PointerRegion,
     btn: MouseButton,
-    root_x: i32,
-    root_y: i32,
+    root: RootPoint,
     clean_state: u32,
 ) -> bool {
     let clicked_win = match region {
@@ -374,8 +364,7 @@ fn consume_wayland_pointer_binding(
             target,
             window: clicked_win,
             button: btn,
-            root_x,
-            root_y,
+            root,
             clean_state,
         },
         0,

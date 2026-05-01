@@ -404,15 +404,19 @@ fn update_hover_resize_state(
     };
 
     if !selected_floating {
-        let _ =
-            update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y);
+        let _ = update_selected_resize_offer_at(
+            &mut WmCtx::Wayland(ctx.reborrow()),
+            RootPoint::new(root_x, root_y),
+        );
         return false;
     }
 
     let mut suppress_hover_focus = !hovered_is_selected;
-    let selected_offer =
-        update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y)
-            .is_some();
+    let selected_offer = update_selected_resize_offer_at(
+        &mut WmCtx::Wayland(ctx.reborrow()),
+        RootPoint::new(root_x, root_y),
+    )
+    .is_some();
     if selected_offer {
         suppress_hover_focus = true;
     } else if !hovered_is_selected {

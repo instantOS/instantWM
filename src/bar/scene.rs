@@ -37,10 +37,7 @@ pub(crate) struct SystraySnapshot {
 #[derive(Clone)]
 pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
-    pub origin_x: i32,
-    pub origin_y: i32,
-    pub width: i32,
-    pub height: i32,
+    pub rect: Rect,
     pub font_size: f32,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
@@ -213,10 +210,7 @@ pub(crate) fn build_monitor_snapshots(
 
         snapshots.push(MonitorBarSnapshot {
             monitor_id: mon.id(),
-            origin_x: mon.work_rect.x,
-            origin_y: mon.bar_y,
-            width: mon.work_rect.w,
-            height: mon.bar_height,
+            rect: Rect::new(mon.work_rect.x, mon.bar_y, mon.work_rect.w, mon.bar_height),
             font_size,
             is_selected_monitor,
             status_scheme: core.globals().status_scheme(),
@@ -417,11 +411,11 @@ fn render_monitor_snapshot_base(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
-    let bar_height = snapshot.height;
+    let bar_height = snapshot.rect.h;
     let tray_layout = snapshot
         .systray
         .as_ref()
-        .map(|s| worker_systray_layout(s, snapshot.width, bar_height.max(1)));
+        .map(|s| worker_systray_layout(s, snapshot.rect.w, bar_height.max(1)));
     let systray_width = if snapshot.is_selected_monitor {
         tray_layout.as_ref().map(|l| l.tray_total_w).unwrap_or(0)
     } else {
@@ -430,7 +424,7 @@ fn render_monitor_snapshot_base(
 
     let mut hit = crate::bar::MonitorHitCache::default();
     let mut temp_mon = Monitor::default();
-    temp_mon.work_rect.w = snapshot.width;
+    temp_mon.work_rect.w = snapshot.rect.w;
 
     let (status_start_x, status_width, status_click_targets) =
         if snapshot.is_selected_monitor && !snapshot.status_items.is_empty() {
@@ -503,13 +497,13 @@ fn render_monitor_snapshot_base(
     let title_end_x = if snapshot.is_selected_monitor && status_width > 0 {
         status_start_x
     } else {
-        snapshot.width - systray_width
+        snapshot.rect.w - systray_width
     };
     let title_width = (title_end_x - x).max(0);
     hit.status_hit_x = if snapshot.is_selected_monitor && status_width > 0 {
         status_start_x
     } else {
-        snapshot.width - systray_width
+        snapshot.rect.w - systray_width
     };
 
     let mut activeoffset = 0u32;
