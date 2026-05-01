@@ -1,3 +1,5 @@
+use std::os::unix::io::OwnedFd;
+
 use smithay::{
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
@@ -13,10 +15,11 @@ use smithay::{
         compositor,
         seat::WaylandFocus,
         selection::{
-            SelectionHandler,
+            SelectionHandler, SelectionSource, SelectionTarget,
             data_device::{
                 DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
             },
+            primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
             ext_data_control::{
                 DataControlHandler as ExtDataControlHandler,
                 DataControlState as ExtDataControlState,
@@ -125,11 +128,45 @@ impl SeatHandler for WaylandState {
 
 impl SelectionHandler for WaylandState {
     type SelectionUserData = ();
+
+    fn new_selection(
+        &mut self,
+        ty: SelectionTarget,
+        source: Option<SelectionSource>,
+        _seat: smithay::input::Seat<Self>,
+    ) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.new_selection(ty, source.map(|s| s.mime_types())) {
+                log::warn!("Failed to notify XWayland of new selection: {:?}", err);
+            }
+        }
+    }
+
+    fn send_selection(
+        &mut self,
+        ty: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+        _seat: smithay::input::Seat<Self>,
+        _user_data: &Self::SelectionUserData,
+    ) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
+                log::warn!("Failed to send selection to XWayland: {:?}", err);
+            }
+        }
+    }
 }
 
 impl DataDeviceHandler for WaylandState {
     fn data_device_state(&mut self) -> &mut DataDeviceState {
         &mut self.data_device_state
+    }
+}
+
+impl PrimarySelectionHandler for WaylandState {
+    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
+        &mut self.primary_selection_state
     }
 }
 

@@ -2,12 +2,13 @@ use smithay::{
     backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::PopupKind,
-    reexports::wayland_server::Client,
+    reexports::wayland_server::{Client, Resource},
     wayland::{
         buffer::BufferHandler,
         compositor::{CompositorHandler, SurfaceAttributes, get_parent, is_sync_subsurface},
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
+        pointer_constraints::{with_pointer_constraint, PointerConstraintsHandler},
         seat::WaylandFocus,
         shm::ShmHandler,
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
@@ -234,5 +235,36 @@ impl smithay::wayland::idle_notify::IdleNotifierHandler for WaylandState {
         &mut self,
     ) -> &mut smithay::wayland::idle_notify::IdleNotifierState<Self> {
         &mut self.idle_notify_manager_state
+    }
+}
+
+impl PointerConstraintsHandler for WaylandState {
+    fn new_constraint(
+        &mut self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
+    ) {
+        if let Some(focus) = pointer.current_focus() {
+            let same_client = focus
+                .wl_surface()
+                .and_then(|s| s.client())
+                .is_some_and(|c| surface.client().as_ref() == Some(&c));
+
+            if same_client {
+                with_pointer_constraint(surface, pointer, |constraint| {
+                    if let Some(constraint) = constraint {
+                        constraint.activate();
+                    }
+                });
+            }
+        }
+    }
+
+    fn cursor_position_hint(
+        &mut self,
+        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        _pointer: &smithay::input::pointer::PointerHandle<Self>,
+        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+    ) {
     }
 }

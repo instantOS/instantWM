@@ -64,10 +64,13 @@ impl WaylandState {
         }
 
         // Check X11 surface properties
-        if let Some(x11) = window.x11_surface()
-            && super::x11::is_launcher_x11_surface(x11)
-        {
-            return WindowType::Launcher;
+        if let Some(x11) = window.x11_surface() {
+            if super::x11::is_launcher_x11_surface(x11) {
+                return WindowType::Launcher;
+            }
+            if x11.is_above() {
+                return WindowType::Overlay;
+            }
         }
 
         WindowType::Normal

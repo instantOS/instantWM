@@ -1,7 +1,9 @@
 use smithay::{
     utils::SERIAL_COUNTER,
+    wayland::selection::SelectionTarget,
     xwayland::{X11Surface, XwmHandler, xwm::WmWindowProperty},
 };
+use std::os::unix::io::OwnedFd;
 
 use crate::client::FloatingPlacementKind;
 use crate::types::{ClientMode, MouseButton, Point, ResizeDirection, WindowId};
@@ -238,7 +240,10 @@ fn apply_xwayland_surface_policy(
             client.set_tag_mask(tags);
         }
 
-        if (transient_parent.is_some() || client.is_fixed_size || should_float_for_type)
+        if (transient_parent.is_some()
+            || client.is_fixed_size
+            || should_float_for_type
+            || surface.is_above())
             && !client.mode.is_floating()
         {
             client.float_geo = client.geo;
@@ -813,6 +818,101 @@ impl XwmHandler for WaylandState {
             return;
         };
         begin_app_move_drag(self, win);
+    }
+
+    fn active_window_request(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        window: smithay::xwayland::X11Surface,
+        _serial: u32,
+        _parent: Option<smithay::xwayland::X11Surface>,
+    ) {
+        if let Some(win) = self.window_id_for_x11_surface(&window) {
+            self.activate_and_raise_window(win);
+        }
+    }
+
+    fn allow_selection_access(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        _selection: SelectionTarget,
+    ) -> bool {
+        true
+    }
+
+    fn send_selection(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        selection: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+    ) {
+        use smithay::wayland::selection::data_device::request_data_device_client_selection;
+        use smithay::wayland::selection::primary_selection::request_primary_client_selection;
+        let seat = self.seat.clone();
+        match selection {
+            SelectionTarget::Clipboard => {
+                if let Err(err) = request_data_device_client_selection(&seat, mime_type, fd) {
+                    log::warn!(
+                        "Failed to request current wayland clipboard for XWayland: {:?}",
+                        err
+                    );
+                }
+            }
+            SelectionTarget::Primary => {
+                if let Err(err) = request_primary_client_selection(&seat, mime_type, fd) {
+                    log::warn!(
+                        "Failed to request current wayland primary selection for XWayland: {:?}",
+                        err
+                    );
+                }
+            }
+        }
+    }
+
+    fn new_selection(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        selection: SelectionTarget,
+        mime_types: Vec<String>,
+    ) {
+        use smithay::wayland::selection::data_device::set_data_device_selection;
+        use smithay::wayland::selection::primary_selection::set_primary_selection;
+        let seat = self.seat.clone();
+        match selection {
+            SelectionTarget::Clipboard => {
+                set_data_device_selection(&self.display_handle, &seat, mime_types, ());
+            }
+            SelectionTarget::Primary => {
+                set_primary_selection(&self.display_handle, &seat, mime_types, ());
+            }
+        }
+    }
+
+    fn cleared_selection(
+        &mut self,
+        _xwm: smithay::xwayland::xwm::XwmId,
+        selection: SelectionTarget,
+    ) {
+        use smithay::wayland::selection::data_device::{
+            clear_data_device_selection, current_data_device_selection_userdata,
+        };
+        use smithay::wayland::selection::primary_selection::{
+            clear_primary_selection, current_primary_selection_userdata,
+        };
+        let seat = self.seat.clone();
+        match selection {
+            SelectionTarget::Clipboard => {
+                if current_data_device_selection_userdata(&seat).is_some() {
+                    clear_data_device_selection(&self.display_handle, &seat);
+                }
+            }
+            SelectionTarget::Primary => {
+                if current_primary_selection_userdata(&seat).is_some() {
+                    clear_primary_selection(&self.display_handle, &seat);
+                }
+            }
+        }
     }
 
     fn disconnected(&mut self, _xwm: smithay::xwayland::xwm::XwmId) {

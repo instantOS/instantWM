@@ -1,5 +1,6 @@
 use smithay::utils::IsAlive;
 use smithay::utils::SERIAL_COUNTER;
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::focus::KeyboardFocusTarget;
@@ -82,6 +83,33 @@ impl WaylandState {
                     "set_focus: no keyboard seat available for window {:?}",
                     window
                 );
+            }
+
+            // Re-activate pointer constraints if they exist for this window.
+            // This ensures games (including those using subsurfaces) regain
+            // mouse locks after being Alt-Tabbed.
+            if let Some(surface) = new_window.wl_surface() {
+                let pointer = self.seat.get_pointer();
+                if let Some(pointer) = pointer {
+                    // Walk the entire surface tree to handle constraints on subsurfaces.
+                    smithay::wayland::compositor::with_surface_tree_downward(
+                        surface.as_ref(),
+                        (),
+                        |_, _, _| smithay::wayland::compositor::TraversalAction::DoChildren(()),
+                        |s, _, _| {
+                            smithay::wayland::pointer_constraints::with_pointer_constraint(
+                                s,
+                                &pointer,
+                                |constraint| {
+                                    if let Some(constraint) = constraint {
+                                        constraint.activate();
+                                    }
+                                },
+                            );
+                        },
+                        |_, _, _| true,
+                    );
+                }
             }
         }
     }

@@ -30,12 +30,14 @@ use smithay::{
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
         image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
         output::OutputManagerState,
+        pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
         presentation::PresentationState,
         relative_pointer::RelativePointerManagerState,
         selection::{
             data_device::DataDeviceState,
             ext_data_control::DataControlState as ExtDataControlState,
+            primary_selection::PrimarySelectionState,
             wlr_data_control::DataControlState as WlrDataControlState,
         },
         session_lock::{LockSurface, SessionLockManagerState},
@@ -113,6 +115,7 @@ pub struct WaylandState {
     pub output_manager_state: OutputManagerState,
     pub presentation_state: PresentationState,
     pub data_device_state: DataDeviceState,
+    pub primary_selection_state: PrimarySelectionState,
     pub ext_data_control_state: ExtDataControlState,
     pub wlr_data_control_state: WlrDataControlState,
     pub xwayland_shell_state: XWaylandShellState,
@@ -125,6 +128,7 @@ pub struct WaylandState {
     pub output_capture_source_state: OutputCaptureSourceState,
     pub image_copy_capture_state: ImageCopyCaptureState,
     pub pointer_gestures_state: PointerGesturesState,
+    pub pointer_constraints_state: PointerConstraintsState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
@@ -284,6 +288,7 @@ impl WaylandState {
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let presentation_state = PresentationState::new::<Self>(&dh, libc::CLOCK_MONOTONIC as u32);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
+        let primary_selection_state = PrimarySelectionState::new::<Self>(&dh);
         let ext_data_control_state = ExtDataControlState::new::<Self, _>(&dh, None, |_| true);
         let wlr_data_control_state = WlrDataControlState::new::<Self, _>(&dh, None, |_| true);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
@@ -295,6 +300,7 @@ impl WaylandState {
         let output_capture_source_state = OutputCaptureSourceState::new::<Self>(&dh);
         let image_copy_capture_state = ImageCopyCaptureState::new::<Self>(&dh);
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
+        let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
@@ -322,6 +328,7 @@ impl WaylandState {
             output_manager_state,
             presentation_state,
             data_device_state,
+            primary_selection_state,
             ext_data_control_state,
             wlr_data_control_state,
             xwayland_shell_state,
@@ -334,6 +341,7 @@ impl WaylandState {
             output_capture_source_state,
             image_copy_capture_state,
             pointer_gestures_state,
+            pointer_constraints_state,
             relative_pointer_manager_state,
             viewporter_state,
             idle_inhibit_manager_state,
