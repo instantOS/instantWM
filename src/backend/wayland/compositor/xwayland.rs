@@ -180,8 +180,9 @@ pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
     let keyboard_handle = state.seat.get_keyboard();
     if let (Some(pointer), Some(keyboard)) = (pointer_handle, keyboard_handle) {
         state.with_wm_mut_unified(|wm, state| {
+            let hit_test = state.contents_under_pointer(state.runtime.pointer_location);
             crate::wayland::input::pointer::motion::dispatch_pointer_motion(
-                wm, state, &pointer, &keyboard,
+                wm, state, &pointer, &keyboard, hit_test,
                 0, // time doesn't strictly matter for forced update
             );
         });

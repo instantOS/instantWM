@@ -92,23 +92,30 @@ impl WaylandState {
                 let pointer = self.seat.get_pointer();
                 if let Some(pointer) = pointer {
                     // Walk the entire surface tree to handle constraints on subsurfaces.
+                    // We collect the surfaces first to avoid potential deadlocks from
+                    // nested surface/constraint lock acquisition.
+                    let mut surfaces = Vec::new();
                     smithay::wayland::compositor::with_surface_tree_downward(
                         surface.as_ref(),
                         (),
                         |_, _, _| smithay::wayland::compositor::TraversalAction::DoChildren(()),
                         |s, _, _| {
-                            smithay::wayland::pointer_constraints::with_pointer_constraint(
-                                s,
-                                &pointer,
-                                |constraint| {
-                                    if let Some(constraint) = constraint {
-                                        constraint.activate();
-                                    }
-                                },
-                            );
+                            surfaces.push(s.clone());
                         },
                         |_, _, _| true,
                     );
+
+                    for s in surfaces {
+                        smithay::wayland::pointer_constraints::with_pointer_constraint(
+                            &s,
+                            &pointer,
+                            |constraint| {
+                                if let Some(constraint) = constraint {
+                                    constraint.activate();
+                                }
+                            },
+                        );
+                    }
                 }
             }
         }

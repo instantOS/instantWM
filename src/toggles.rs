@@ -99,7 +99,7 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
-    let (selmon_id, new_showtags) = {
+    let (_selmon_id, new_showtags) = {
         let selmon_id = ctx.core().globals().selected_monitor_id();
 
         let showtags = ctx.core().globals().selected_monitor().showtags;

@@ -4,7 +4,9 @@
 use smithay::backend::input::{AbsolutePositionEvent, InputBackend, PointerMotionEvent};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
+use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Point, SERIAL_COUNTER};
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
@@ -138,13 +140,30 @@ pub fn handle_pointer_motion(
     // Phase 0: Check for pointer constraints
     if let Some((surface, _)) = &hit_test.surface {
         with_pointer_constraint(surface, pointer_handle, |constraint| {
-            if let Some(constraint) = constraint && constraint.is_active() {
-                match &*constraint {
-                    PointerConstraint::Locked(_) => {
-                        pointer_locked = true;
+            if let Some(constraint) = constraint {
+                if !constraint.is_active() {
+                    // If the client has focus but the constraint is inactive,
+                    // try to activate it now. This handles the case where a
+                    // client requests a constraint while already having focus.
+                    if let Some(focus) = pointer_handle.current_focus() {
+                        let same_client = focus
+                            .wl_surface()
+                            .and_then(|s| s.client())
+                            .is_some_and(|c| surface.client().as_ref() == Some(&c));
+                        if same_client {
+                            constraint.activate();
+                        }
                     }
-                    PointerConstraint::Confined(_) => {
-                        pointer_confined = true;
+                }
+
+                if constraint.is_active() {
+                    match &*constraint {
+                        PointerConstraint::Locked(_) => {
+                            pointer_locked = true;
+                        }
+                        PointerConstraint::Confined(_) => {
+                            pointer_confined = true;
+                        }
                     }
                 }
             }
@@ -363,9 +382,9 @@ fn compute_bar_hit(
 ///
 /// Uses a single-pass hit test (`contents_under_pointer`) to avoid repeated
 /// window-list allocations and layer-surface scans on every motion event.
-fn resolve_pointer_focus(
-    _wm: &Wm,
+fn resolve_pointer_focus_from_hit(
     state: &WaylandState,
+    contents: PointerContents,
     in_bar_band: bool,
     in_bar_guard_band: bool,
 ) -> (
@@ -389,9 +408,6 @@ fn resolve_pointer_focus(
         return (pointer_focus, None);
     }
 
-    // Single-pass hit test: layers → windows, resolving both surface and
-    // logical window in one traversal.
-    let contents = state.contents_under_pointer(pointer_location);
     (contents.surface, contents.hovered_win)
 }
 
