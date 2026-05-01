@@ -672,7 +672,7 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     let Some(mon) = wm.g.monitors_iter_all().find(|m| m.name == output_name) else {
         return false;
     };
-    if crate::overview::is_mode_name(&wm.g.behavior.current_mode)
+    if wm.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
         && wm.g.selected_monitor_id() == mon.id()
     {
         return false;

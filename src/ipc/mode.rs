@@ -40,7 +40,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
         ModeCommand::Set(name) => {
             if !wm.g.cfg.modes.contains_key(&name)
                 && name != "default"
-                && !crate::overview::is_mode_name(&name)
+                && name != crate::overview::OVERVIEW_MODE_NAME
             {
                 return Response::err(format!("Mode '{}' not found", name));
             }
@@ -56,7 +56,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
         ModeCommand::Toggle(name) => {
             if !wm.g.cfg.modes.contains_key(&name)
                 && name != "default"
-                && !crate::overview::is_mode_name(&name)
+                && name != crate::overview::OVERVIEW_MODE_NAME
             {
                 return Response::err(format!("Mode '{}' not found", name));
             }

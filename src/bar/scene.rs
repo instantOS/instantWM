@@ -93,7 +93,7 @@ pub(crate) fn build_monitor_snapshots(
         crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts);
     let drag_bar_active = core.globals().drag.bar_active;
     let current_mode = core.globals().behavior.current_mode.clone();
-    let status_text = if crate::overview::is_mode_name(&current_mode) {
+    let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {
         Some("mode: overview".to_string())
     } else if !current_mode.is_empty() && current_mode != "default" {
         let mode_display = core

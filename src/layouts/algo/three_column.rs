@@ -72,7 +72,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let master_bw = ctx
         .core()
         .client(first_win)
-        .map(|c| BORDER_MULTIPLIER * c.border_width())
+        .map(|c| BORDER_MULTIPLIER * c.border_width)
         .unwrap_or(0);
 
     let master_x = if tiled_client_count < 3 {
@@ -142,7 +142,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
             let border_width = ctx
                 .core()
                 .client(win)
-                .map(|c| c.border_width())
+                .map(|c| c.border_width)
                 .unwrap_or(0);
 
             let window_height = if stack_position + 1 == right_column_client_count {
@@ -195,7 +195,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
             let border_width = ctx
                 .core()
                 .client(win)
-                .map(|c| c.border_width())
+                .map(|c| c.border_width)
                 .unwrap_or(0);
 
             let window_height = if stack_position + 1 == left_column_client_count {

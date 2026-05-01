@@ -108,7 +108,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
             continue;
         }
 
-        let border_width = c.border_width();
+        let border_width = c.border_width;
 
         // Split the remaining rect starting from the second client.
         if i > 0 {

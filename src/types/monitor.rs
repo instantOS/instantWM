@@ -356,7 +356,7 @@ impl Monitor {
                 }
                 Some(TiledClientInfo {
                     win,
-                    border_width: c.border_width(),
+                    border_width: c.border_width,
                     total_height: c.total_height(),
                     total_width: c.total_width(),
                 })

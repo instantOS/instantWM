@@ -206,12 +206,6 @@ pub struct Client {
 }
 
 impl Client {
-    /// Check whether this client still carries scratchpad metadata.
-    #[inline]
-    pub fn has_scratchpad_identity(&self) -> bool {
-        !self.scratchpad_name.is_empty()
-    }
-
     /// Calculate total width including borders.
     pub fn total_width(&self) -> i32 {
         self.geo.total_width(self.border_width)
@@ -243,7 +237,7 @@ impl Client {
 
     /// Check if this client is a scratchpad window.
     pub fn is_scratchpad(&self) -> bool {
-        self.has_scratchpad_identity()
+        !self.scratchpad_name.is_empty()
             && (self.tags.is_scratchpad_only() || self.is_hidden || self.is_sticky)
     }
 
@@ -267,7 +261,7 @@ impl Client {
 
     /// Keep scratchpad metadata consistent with the current tag assignment.
     pub fn sync_scratchpad_state(&mut self) {
-        if self.has_scratchpad_identity()
+        if !self.scratchpad_name.is_empty()
             && !self.tags.is_scratchpad_only()
             && !self.is_hidden
             && !self.is_sticky
@@ -319,12 +313,6 @@ impl Client {
     /// Clear the urgency flag for this client.
     pub fn clear_urgency(&mut self) {
         self.is_urgent = false;
-    }
-
-    /// Get the border width.
-    #[inline]
-    pub fn border_width(&self) -> i32 {
-        self.border_width
     }
 
     /// Resolve the monitor this client currently belongs to.

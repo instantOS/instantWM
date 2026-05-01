@@ -116,7 +116,7 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             continue;
         }
 
-        let border_width = c.border_width();
+        let border_width = c.border_width;
 
         let cell_x = m.work_rect.x + (i / rows) * cell_width;
         let cell_y = m.work_rect.y + (i % rows) * cell_height;

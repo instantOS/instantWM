@@ -50,7 +50,7 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             continue;
         }
 
-        let border_width = c.border_width();
+        let border_width = c.border_width;
 
         // Only animate the currently selected window; snap everything else
         // immediately so there are no ghost windows flying around.

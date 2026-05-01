@@ -24,7 +24,7 @@ pub(crate) fn draw_status_bar(
 ) -> (i32, i32, Vec<StatusClickTarget>) {
     let mode = ctx.globals().behavior.current_mode.clone();
     let stext_owned: String;
-    let stext = if crate::overview::is_mode_name(&mode) {
+    let stext = if mode == crate::overview::OVERVIEW_MODE_NAME {
         stext_owned = "mode: overview".to_string();
         stext_owned.as_str()
     } else if !mode.is_empty() && mode != "default" {

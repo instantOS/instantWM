@@ -111,7 +111,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
         {
             continue;
         }
-        animation_targets.push((win, client.geo, client.border_width()));
+        animation_targets.push((win, client.geo, client.border_width));
     }
 
     for (win, target, border_width) in animation_targets {
