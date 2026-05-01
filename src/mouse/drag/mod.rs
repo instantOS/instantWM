@@ -81,7 +81,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
         WmCtx::Wayland(wl) => {
             // Wayland: arm the hover-resize state in move mode so that calloop
             // motion/release events drive the drag asynchronously.
-            let Some((root_x, root_y)) = wl.wayland.backend.pointer_location() else {
+            let Some(root) = wl.wayland.backend.pointer_location() else {
                 return;
             };
             let (geo, is_floating) = match wl.core.client(win) {
@@ -91,7 +91,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
 
             // Ensure the window is floating so the move makes sense.
             if !is_floating {
-                set_window_mode(
+                let _ = set_window_mode(
                     &mut WmCtx::Wayland(wl.reborrow()),
                     win,
                     crate::types::BaseClientMode::Floating,
@@ -106,12 +106,10 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 button: MouseButton::Left,
                 dragging: true,
                 drag_type: crate::globals::DragType::Move,
-                start_x: root_x,
-                start_y: root_y,
+                start_point: root,
                 win_start_geo: geo,
                 drop_restore_geo: geo,
-                last_root_x: root_x,
-                last_root_y: root_y,
+                last_root_point: root,
                 ..Default::default()
             };
             crate::mouse::set_cursor_style(

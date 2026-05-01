@@ -5,7 +5,7 @@
 //! rare compared with motion events.
 
 use crate::contexts::CoreCtx;
-use crate::types::{BarPosition, EdgeDirection, MonitorId, Rect, SidebarTarget, WindowId};
+use crate::types::{BarPosition, EdgeDirection, MonitorId, Point, Rect, SidebarTarget, WindowId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PointerRegion {
@@ -32,8 +32,8 @@ impl PointerRegion {
 }
 
 #[inline]
-pub(crate) fn point_rect(root_x: i32, root_y: i32) -> Rect {
-    Rect::new(root_x, root_y, 1, 1)
+pub(crate) fn point_rect(root: Point) -> Rect {
+    Rect::new(root.x, root.y, 1, 1)
 }
 
 #[inline]
@@ -53,31 +53,25 @@ pub fn right_sidebar_rect(monitor_rect: Rect, bar_height: i32) -> Rect {
 }
 
 /// Cheap sidebar-only hit test for pointer motion.
-pub fn sidebar_target_at(core: &CoreCtx<'_>, root_x: i32, root_y: i32) -> Option<SidebarTarget> {
-    let monitor_id = crate::types::find_monitor_by_rect(
-        core.globals().monitors.monitors(),
-        &point_rect(root_x, root_y),
-    )?;
+pub fn sidebar_target_at(core: &CoreCtx<'_>, root: Point) -> Option<SidebarTarget> {
+    let monitor_id =
+        crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &point_rect(root))?;
     let mon = core.globals().monitor(monitor_id)?;
     let rect = right_sidebar_rect(mon.monitor_rect, mon.bar_height);
-    rect.contains_point(root_x, root_y)
-        .then_some(SidebarTarget {
-            monitor_id,
-            edge: EdgeDirection::Right,
-            rect,
-        })
+    rect.contains_point(root).then_some(SidebarTarget {
+        monitor_id,
+        edge: EdgeDirection::Right,
+        rect,
+    })
 }
 
 /// Full click classification shared by X11 and Wayland button handlers.
 pub fn button_region_at(
     core: &mut CoreCtx<'_>,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     clicked_win: Option<WindowId>,
 ) -> PointerRegion {
-    if let Some((monitor_id, pos)) =
-        crate::bar::resolve_bar_position_at_root(core, root_x, root_y, true)
-    {
+    if let Some((monitor_id, pos)) = crate::bar::resolve_bar_position_at_root(core, root, true) {
         return PointerRegion::Bar { monitor_id, pos };
     }
 
@@ -85,18 +79,16 @@ pub fn button_region_at(
         return PointerRegion::Client(win);
     }
 
-    if let Some(target) = sidebar_target_at(core, root_x, root_y) {
+    if let Some(target) = sidebar_target_at(core, root) {
         if target.monitor_id != core.globals().selected_monitor_id() {
             core.globals_mut().set_selected_monitor(target.monitor_id);
         }
         return PointerRegion::Sidebar(target);
     }
 
-    let monitor_id = crate::types::find_monitor_by_rect(
-        core.globals().monitors.monitors(),
-        &point_rect(root_x, root_y),
-    )
-    .unwrap_or_else(|| core.globals().selected_monitor_id());
+    let monitor_id =
+        crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &point_rect(root))
+            .unwrap_or_else(|| core.globals().selected_monitor_id());
     if monitor_id != core.globals().selected_monitor_id() {
         core.globals_mut().set_selected_monitor(monitor_id);
     }

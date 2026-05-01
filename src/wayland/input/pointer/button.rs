@@ -8,7 +8,7 @@ use smithay::utils::{Point, SERIAL_COUNTER};
 use crate::backend::Backend;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
 use crate::mouse::pointer::PointerRegion;
-use crate::types::MouseButton;
+use crate::types::{MouseButton, Point as RootPoint};
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
@@ -79,6 +79,12 @@ struct ButtonPress {
     pointer_location: Point<f64, smithay::utils::Logical>,
 }
 
+impl ButtonPress {
+    fn root(self) -> RootPoint {
+        RootPoint::new(self.root_x, self.root_y)
+    }
+}
+
 fn forward_button(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
@@ -109,12 +115,7 @@ fn handle_button_press(
     let clicked_win = find_hovered_window(wm, state, button.pointer_location);
     let pointer_region = {
         let mut ctx = wm.ctx();
-        crate::mouse::pointer::button_region_at(
-            ctx.core_mut(),
-            button.root_x,
-            button.root_y,
-            clicked_win,
-        )
+        crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root(), clicked_win)
     };
 
     match pointer_region {

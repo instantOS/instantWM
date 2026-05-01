@@ -53,7 +53,7 @@
 pub mod compositor;
 
 use crate::backend::{BackendOps, WindowProtocol};
-use crate::types::{Rect, WindowId};
+use crate::types::{Point, Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
 ///
@@ -117,10 +117,10 @@ impl WaylandBackend {
             .flatten()
     }
 
-    pub fn pointer_location(&self) -> Option<(i32, i32)> {
+    pub fn pointer_location(&self) -> Option<Point> {
         self.with_state(|state: &mut WaylandState| {
             let loc = state.pointer.current_location();
-            (loc.x.round() as i32, loc.y.round() as i32)
+            Point::new(loc.x.round() as i32, loc.y.round() as i32)
         })
     }
 
@@ -200,10 +200,10 @@ impl BackendOps for WaylandBackend {
         let _ = self.with_state(WaylandState::flush);
     }
 
-    fn pointer_location(&self) -> Option<(i32, i32)> {
+    fn pointer_location(&self) -> Option<Point> {
         self.with_state(|state: &mut WaylandState| {
             let loc = state.pointer.current_location();
-            (loc.x.round() as i32, loc.y.round() as i32)
+            Point::new(loc.x.round() as i32, loc.y.round() as i32)
         })
     }
 

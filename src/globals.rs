@@ -132,10 +132,8 @@ pub struct DragInteraction {
     pub dragging: bool,
     pub drag_type: DragType,
     pub win_start_geo: Rect,
-    pub start_x: i32,
-    pub start_y: i32,
-    pub last_root_x: i32,
-    pub last_root_y: i32,
+    pub start_point: Point,
+    pub last_root_point: Point,
     /// Geometry to restore when the window is re-tiled (e.g. dropped on
     /// the bar).  For windows that were already floating this equals
     /// `win_start_geo`; for tiled windows promoted during the drag it

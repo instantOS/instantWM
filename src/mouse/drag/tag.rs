@@ -24,7 +24,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => 1u32 << (idx as u32),
         _ => {
-            let ptr_x = ctx.pointer_location().map(|(x, _)| x).unwrap_or(0);
+            let ptr_x = ctx.pointer_location().map(|p| p.x).unwrap_or(0);
             let core = ctx.core();
             core.globals()
                 .monitors

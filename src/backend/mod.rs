@@ -11,7 +11,7 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 use bincode::{Decode, Encode};
 
 #[derive(
@@ -71,7 +71,7 @@ pub trait BackendOps {
     ///
     /// Returns `None` if the pointer position cannot be determined
     /// (e.g., no pointer device available).
-    fn pointer_location(&self) -> Option<(i32, i32)>;
+    fn pointer_location(&self) -> Option<Point>;
 
     /// Warp pointer to (x, y) in root coordinates.
     fn warp_pointer(&self, x: f64, y: f64);
@@ -317,7 +317,7 @@ impl BackendOps for BackendRef<'_> {
         }
     }
 
-    fn pointer_location(&self) -> Option<(i32, i32)> {
+    fn pointer_location(&self) -> Option<Point> {
         match self {
             BackendRef::X11(x11) => x11.pointer_location(),
             BackendRef::Wayland(wayland) => wayland.pointer_location(),

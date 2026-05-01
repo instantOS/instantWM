@@ -11,6 +11,7 @@ use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::drag::move_drop::promote_to_floating;
 use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
+use crate::types::geometry::Point;
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -24,8 +25,7 @@ pub fn title_drag_begin(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
-    click_root_x: i32,
-    click_root_y: i32,
+    click_root: Point,
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
@@ -53,12 +53,10 @@ pub fn title_drag_begin(
         button: btn,
         was_focused: sel == Some(win),
         was_hidden: ctx.core_mut().globals_mut().clients.is_hidden(win),
-        start_x: click_root_x,
-        start_y: click_root_y,
+        start_point: click_root,
         win_start_geo,
         drop_restore_geo,
-        last_root_x: click_root_x,
-        last_root_y: click_root_y,
+        last_root_point: click_root,
         dragging: false,
         suppress_click_action,
         drag_type: crate::globals::DragType::Move,
@@ -67,10 +65,10 @@ pub fn title_drag_begin(
 }
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
-fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    let (win, btn, start_x, start_y) = {
+fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
+    let (win, btn, start_point) = {
         let drag = &ctx.core().globals().drag.interactive;
-        (drag.win, drag.button, drag.start_x, drag.start_y)
+        (drag.win, drag.button, drag.start_point)
     };
     let is_right_click = btn == MouseButton::Right;
 
@@ -78,8 +76,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         // Right-click: promote to floating, set up resize mode, warp cursor.
         let (current_geo, _) = promote_to_floating(ctx, win, None);
 
-        let hit_x = start_x - current_geo.x;
-        let hit_y = start_y - current_geo.y;
+        let hit_x = start_point.x - current_geo.x;
+        let hit_y = start_point.y - current_geo.y;
         let dir =
             crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
@@ -90,6 +88,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
         let warp_x = current_geo.x + x_off;
         let warp_y = current_geo.y + y_off;
+        let warp_point = Point::new(warp_x, warp_y);
 
         if let WmCtx::Wayland(wl) = ctx {
             wl.wayland
@@ -102,10 +101,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
                 dragging: true,
                 drag_type: crate::globals::DragType::Resize(dir),
                 win_start_geo: current_geo,
-                start_x: warp_x,
-                start_y: warp_y,
-                last_root_x: warp_x,
-                last_root_y: warp_y,
+                start_point: warp_point,
+                last_root_point: warp_point,
                 drop_restore_geo: current_geo,
                 ..Default::default()
             };
@@ -116,29 +113,28 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 
     // Left-click: promote to floating (centering under pointer if newly floated),
     // and keep title drag active so calloop drives it.
-    let (current_geo, anchor_rebased) = promote_to_floating(ctx, win, Some((root_x, root_y)));
+    let (current_geo, anchor_rebased) = promote_to_floating(ctx, win, Some(root));
 
     if anchor_rebased {
         ctx.core_mut().globals_mut().drag.interactive.win_start_geo = current_geo;
-        ctx.core_mut().globals_mut().drag.interactive.start_x = root_x;
-        ctx.core_mut().globals_mut().drag.interactive.start_y = root_y;
+        ctx.core_mut().globals_mut().drag.interactive.start_point = root;
     } else {
         warp::warp_into(ctx, win);
-        let ptr = ctx.pointer_location().unwrap_or((root_x, root_y));
+        let ptr = ctx.pointer_location().unwrap_or(root);
         let pad = warp::WARP_INTO_PADDING;
         let clamped_x = ptr
-            .0
+            .x
             .clamp(current_geo.x + pad, current_geo.x + current_geo.w - pad);
         let clamped_y = ptr
-            .1
+            .y
             .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
-        ctx.core_mut().globals_mut().drag.interactive.start_x = clamped_x;
-        ctx.core_mut().globals_mut().drag.interactive.start_y = clamped_y;
+        ctx.core_mut().globals_mut().drag.interactive.start_point =
+            Point::new(clamped_x, clamped_y);
     }
 
     set_cursor_style(ctx, AltCursor::Move);
     ctx.core_mut().globals_mut().drag.interactive.dragging = true;
-    title_drag_motion(ctx, root_x, root_y)
+    title_drag_motion(ctx, root)
 }
 
 /// Process a pointer motion event during an active title drag.
@@ -146,12 +142,15 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
 /// Returns `true` if the drag threshold was exceeded and the drag action
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed.
-pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     if !ctx.core().globals().drag.interactive.active {
         return false;
     }
-    ctx.core_mut().globals_mut().drag.interactive.last_root_x = root_x;
-    ctx.core_mut().globals_mut().drag.interactive.last_root_y = root_y;
+    ctx.core_mut()
+        .globals_mut()
+        .drag
+        .interactive
+        .last_root_point = root;
 
     if ctx.core().globals().drag.interactive.dragging {
         // Once dragging is active the unified handler
@@ -160,9 +159,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     }
 
     let td = &ctx.core_mut().globals_mut().drag.interactive;
-    if (root_x - td.start_x).abs() <= DRAG_THRESHOLD
-        && (root_y - td.start_y).abs() <= DRAG_THRESHOLD
-    {
+    if root.manhattan_distance(&td.start_point) <= DRAG_THRESHOLD {
         return false;
     }
 
@@ -180,7 +177,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
     ctx.raise_client(win);
 
     if ctx.is_wayland() {
-        return title_drag_start_wayland(ctx, root_x, root_y);
+        return title_drag_start_wayland(ctx, root);
     }
 
     // X11 specific start logic
@@ -282,10 +279,9 @@ pub fn window_title_mouse_handler(
     ctx: &mut WmCtx,
     win: WindowId,
     btn: MouseButton,
-    click_root_x: i32,
-    click_root_y: i32,
+    click_root: Point,
 ) {
-    if !title_drag_begin(ctx, win, btn, click_root_x, click_root_y, false) {
+    if !title_drag_begin(ctx, win, btn, click_root, false) {
         return;
     }
 
@@ -299,7 +295,10 @@ pub fn window_title_mouse_handler(
             mouse_drag_loop(ctx_x11, btn, cursor, false, |ctx, event| {
                 if let x11rb::protocol::Event::MotionNotify(m) = event {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    if title_drag_motion(&mut wm_ctx, m.event_x as i32, m.event_y as i32) {
+                    if title_drag_motion(
+                        &mut wm_ctx,
+                        Point::new(m.event_x as i32, m.event_y as i32),
+                    ) {
                         return false;
                     }
                 }
@@ -317,11 +316,6 @@ pub fn window_title_mouse_handler(
 /// This is currently an alias for [`window_title_mouse_handler`] since both
 /// left and right clicks are handled by the same function with different
 /// behaviors based on the button.
-pub fn window_title_mouse_handler_right(
-    ctx: &mut WmCtx,
-    win: WindowId,
-    click_root_x: i32,
-    click_root_y: i32,
-) {
-    window_title_mouse_handler(ctx, win, MouseButton::Right, click_root_x, click_root_y);
+pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: WindowId, click_root: Point) {
+    window_title_mouse_handler(ctx, win, MouseButton::Right, click_root);
 }

@@ -12,7 +12,7 @@ use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::globals::Globals;
-use crate::types::{Client, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{Client, Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
     g: &'a mut Globals,
@@ -231,7 +231,7 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn pointer_location(&self) -> Option<(i32, i32)> {
+    pub fn pointer_location(&self) -> Option<Point> {
         self.backend().pointer_location()
     }
 
@@ -343,19 +343,19 @@ impl<'a> WmCtx<'a> {
             return;
         };
 
-        let Some((ptr_x, ptr_y)) = self.pointer_location() else {
+        let Some(ptr) = self.pointer_location() else {
             return;
         };
 
         // Skip if already inside the window (including border).
-        let in_window = c.geo.contains_point(ptr_x, ptr_y)
-            || (ptr_x > c.geo.x - c.border_width
-                && ptr_y > c.geo.y - c.border_width
-                && ptr_x < c.geo.x + c.geo.w + c.border_width * 2
-                && ptr_y < c.geo.y + c.geo.h + c.border_width * 2);
+        let in_window = c.geo.contains_point(ptr)
+            || (ptr.x > c.geo.x - c.border_width
+                && ptr.y > c.geo.y - c.border_width
+                && ptr.x < c.geo.x + c.geo.w + c.border_width * 2
+                && ptr.y < c.geo.y + c.geo.h + c.border_width * 2);
 
         let on_bar = c.monitor(self.core().globals()).is_some_and(|mon| {
-            (ptr_y > mon.bar_y && ptr_y < mon.bar_y + bar_height) || (mon.topbar && ptr_y == 0)
+            (ptr.y > mon.bar_y && ptr.y < mon.bar_y + bar_height) || (mon.topbar && ptr.y == 0)
         });
 
         if in_window || on_bar {

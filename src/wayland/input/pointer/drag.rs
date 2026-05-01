@@ -5,7 +5,7 @@ use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::hover::selected_hover_resize_target_at;
 use crate::mouse::set_cursor_style;
-use crate::types::{AltCursor, MouseButton, Rect, WindowId};
+use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
 use crate::wm::Wm;
 
 /// Get the active drag window (if any).
@@ -44,12 +44,10 @@ pub fn wayland_hover_resize_drag_begin(
         button: btn,
         dragging: true,
         drag_type,
-        start_x: root_x,
-        start_y: root_y,
+        start_point: Point::new(root_x, root_y),
         win_start_geo: geo,
         drop_restore_geo: geo,
-        last_root_x: root_x,
-        last_root_y: root_y,
+        last_root_point: Point::new(root_x, root_y),
         ..Default::default()
     };
     if matches!(drag_type, crate::globals::DragType::Resize(_)) {
@@ -83,7 +81,7 @@ fn update_wayland_move_bar_hover(
     root_y: i32,
 ) -> bool {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root_x, root_y)
+    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, Point::new(root_x, root_y))
 }
 
 /// Handle interactive drag motion (move or resize) on Wayland.
@@ -101,15 +99,14 @@ pub fn wayland_hover_resize_drag_motion(
         return false;
     }
     let drag = ctx.core.globals().drag.interactive.clone();
-    ctx.core.globals_mut().drag.interactive.last_root_x = root_x;
-    ctx.core.globals_mut().drag.interactive.last_root_y = root_y;
+    ctx.core.globals_mut().drag.interactive.last_root_point = Point::new(root_x, root_y);
 
     match drag.drag_type {
         crate::globals::DragType::Move => {
             let on_bar = update_wayland_move_bar_hover(ctx, root_x, root_y);
 
-            let mut new_x = drag.win_start_geo.x + (root_x - drag.start_x);
-            let mut new_y = drag.win_start_geo.y + (root_y - drag.start_y);
+            let mut new_x = drag.win_start_geo.x + (root_x - drag.start_point.x);
+            let mut new_y = drag.win_start_geo.y + (root_y - drag.start_point.y);
 
             // While hovering over the bar, keep the window just below it.
             if on_bar {
@@ -207,7 +204,7 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
                 drag.win,
                 drag.drop_restore_geo,
                 None,
-                Some((drag.last_root_x, drag.last_root_y)),
+                Some(drag.last_root_point),
             );
             crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(
                 ctx.reborrow(),

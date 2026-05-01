@@ -109,19 +109,40 @@ pub fn event_loop_tick(
     )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[must_use]
+pub enum AnimationTick {
+    Idle,
+    SpaceSynced,
+    AnimationAdvanced,
+    SpaceSyncedAndAnimationAdvanced,
+}
+
+impl AnimationTick {
+    pub fn needs_redraw(self) -> bool {
+        !matches!(self, AnimationTick::Idle)
+    }
+}
+
 /// Run compositor-space sync and animation progression in one place.
-///
-/// Returns `true` when either the space was synchronized or at least one
-/// animation tick was processed.
-pub fn process_window_animations(state: &mut WaylandState) -> bool {
-    let mut changed = false;
-    if state.take_space_sync_pending() {
+pub fn process_window_animations(state: &mut WaylandState) -> AnimationTick {
+    let space_synced = if state.take_space_sync_pending() {
         state.sync_space_from_globals();
-        changed = true;
-    }
-    if state.has_active_window_animations() {
+        true
+    } else {
+        false
+    };
+    let animation_advanced = if state.has_active_window_animations() {
         state.tick_window_animations();
-        changed = true;
+        true
+    } else {
+        false
+    };
+
+    match (space_synced, animation_advanced) {
+        (false, false) => AnimationTick::Idle,
+        (true, false) => AnimationTick::SpaceSynced,
+        (false, true) => AnimationTick::AnimationAdvanced,
+        (true, true) => AnimationTick::SpaceSyncedAndAnimationAdvanced,
     }
-    changed
 }

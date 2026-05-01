@@ -5,12 +5,11 @@ use crate::wm::Wm;
 
 pub fn update_wayland_bar_hit_state(
     wm: &mut Wm,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     reset_start_menu: bool,
 ) -> Option<BarPosition> {
     let mut ctx = wm.ctx();
-    crate::bar::update_hover(&mut ctx, root_x, root_y, reset_start_menu, true)
+    crate::bar::update_hover(&mut ctx, root, reset_start_menu, true)
 }
 
 pub fn handle_wayland_bar_click(

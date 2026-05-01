@@ -10,7 +10,7 @@ use crate::types::TagLayouts;
 use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
-use crate::types::geometry::Rect;
+use crate::types::geometry::{Point, Rect};
 use crate::types::input::Gesture;
 use crate::types::tag_types::MonitorDirection;
 
@@ -300,8 +300,8 @@ impl Monitor {
     }
 
     /// Check if a point is within this monitor's work area.
-    pub fn contains_point(&self, x: i32, y: i32) -> bool {
-        self.work_rect.contains_point(x, y)
+    pub fn contains_point(&self, point: Point) -> bool {
+        self.work_rect.contains_point(point)
     }
 
     /// Calculate the intersection area between a rectangle and this monitor's work area.
@@ -314,7 +314,7 @@ impl Monitor {
     }
 
     /// Get the center point of this monitor's work area.
-    pub fn center(&self) -> (i32, i32) {
+    pub fn center(&self) -> crate::types::Point {
         self.work_rect.center()
     }
 

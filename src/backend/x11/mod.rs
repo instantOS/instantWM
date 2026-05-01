@@ -16,7 +16,7 @@ use crate::backend::x11::draw::{Cursor, Drw};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::color::{BorderScheme, StatusScheme};
-use crate::types::{Rect, WindowId};
+use crate::types::{Point, Rect, WindowId};
 
 #[derive(Clone, Copy)]
 pub struct XlibDisplay(pub *mut c_void);
@@ -259,10 +259,10 @@ impl BackendOps for X11BackendRef<'_> {
         let _ = self.conn.flush();
     }
 
-    fn pointer_location(&self) -> Option<(i32, i32)> {
+    fn pointer_location(&self) -> Option<Point> {
         let root = self.conn.setup().roots[self.screen_num].root;
         let reply = self.conn.query_pointer(root).ok()?.reply().ok()?;
-        Some((reply.root_x as i32, reply.root_y as i32))
+        Some(Point::new(reply.root_x as i32, reply.root_y as i32))
     }
 
     fn warp_pointer(&self, x: f64, y: f64) {

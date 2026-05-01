@@ -36,10 +36,33 @@ pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[must_use]
+pub enum WindowModeChange {
+    MissingClient,
+    ChangedToFloating { restored_geometry: bool },
+    ChangedToTiling,
+}
+
+impl WindowModeChange {
+    pub fn should_animate_float_restore(self) -> bool {
+        matches!(
+            self,
+            WindowModeChange::ChangedToFloating {
+                restored_geometry: true
+            }
+        )
+    }
+}
+
 /// Set a window to floating or tiled mode.
-/// Returns true if the caller should animate (when going to floating mode).
-/// Handles border updates and geometry changes but NOT animation (callers handle that separately).
-pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> bool {
+///
+/// Handles border updates and geometry changes but not caller-owned animation.
+pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> WindowModeChange {
+    if !ctx.core().globals().clients.contains_key(&win) {
+        return WindowModeChange::MissingClient;
+    }
+
     match mode {
         BaseClientMode::Floating => {
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
@@ -64,10 +87,14 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
             // Apply saved float geometry
             let saved_geo = ctx.core().globals().clients.effective_float_geo(win);
             let Some(saved_geo) = saved_geo else {
-                return false;
+                return WindowModeChange::ChangedToFloating {
+                    restored_geometry: false,
+                };
             };
             ctx.move_resize(win, saved_geo, MoveResizeOptions::hinted_immediate(false));
-            true // Caller should animate
+            WindowModeChange::ChangedToFloating {
+                restored_geometry: true,
+            }
         }
         BaseClientMode::Tiling => {
             let client_count = ctx.core().globals().clients.len();
@@ -93,7 +120,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
             if clear_border && let WmCtx::X11(x11) = ctx {
                 x11.x11.set_border_width(win, 0);
             }
-            false // No animation needed for tiling
+            WindowModeChange::ChangedToTiling
         }
     }
 }
@@ -129,10 +156,11 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     } else {
         BaseClientMode::Tiling
     };
-    let should_animate = set_window_mode(ctx, win, target_mode);
+    let mode_change = set_window_mode(ctx, win, target_mode);
 
     // Animate when going to floating mode
-    if should_animate && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
+    if mode_change.should_animate_float_restore()
+        && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
     {
         ctx.move_resize(
             win,

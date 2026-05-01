@@ -4,7 +4,7 @@ use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::mouse::drag::{
     MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
 };
-use crate::types::{AltCursor, MouseButton, Rect, WindowId};
+use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
 use x11rb::protocol::xproto::ConnectionExt;
 
 /// X11-only synchronous window move implementation.
@@ -21,7 +21,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     };
 
     let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let Some((start_x, start_y)) = wm_ctx.pointer_location() else {
+    let Some(start) = wm_ctx.pointer_location() else {
         return;
     };
 
@@ -32,8 +32,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         .unwrap_or_default();
 
     let mut state = MoveState {
-        start_x,
-        start_y,
+        start_point: start,
         grab_start_rect,
         cursor_on_bar: false,
         edge_snap_indicator: None,
@@ -45,10 +44,8 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
             on_motion(
                 &mut wm_ctx,
                 win,
-                m.event_x as i32,
-                m.event_y as i32,
-                m.root_x as i32,
-                m.root_y as i32,
+                Point::new(m.event_x as i32, m.event_y as i32),
+                Point::new(m.root_x as i32, m.root_y as i32),
                 &mut state,
             );
         }

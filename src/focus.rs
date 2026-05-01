@@ -369,7 +369,7 @@ pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
     entering_root: bool,
-    pointer_pos: Option<(i32, i32)>,
+    pointer_pos: Option<Point>,
 ) {
     if !ctx.core().globals().behavior.focus_follows_mouse {
         return;
@@ -382,8 +382,8 @@ pub fn hover_focus_target(
         // After switching monitors, continue with the hovered window so both
         // backends share the same "focus what's under the pointer" behavior.
     } else if hovered_win.is_none()
-        && let Some((x, y)) = pointer_pos
-        && select_monitor_at_pointer(ctx, (x, y))
+        && let Some(pointer_pos) = pointer_pos
+        && select_monitor_at_pointer(ctx, pointer_pos)
     {
         return;
     }
@@ -498,10 +498,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
     true
 }
 
-pub fn select_monitor_at_pointer(
-    ctx: &mut crate::contexts::WmCtx,
-    pointer_pos: (i32, i32),
-) -> bool {
+pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: Point) -> bool {
     let Some(new_mon_id) = ctx
         .core()
         .globals()
@@ -513,57 +510,12 @@ pub fn select_monitor_at_pointer(
     select_monitor(ctx, new_mon_id)
 }
 
-/// Focus a client in the given direction.
-///
-/// This function uses dependency injection by accepting explicit parameters
-/// instead of accessing global state directly.
-///
-/// # Arguments
-/// * `monitors` - Slice of all monitors
-/// * `sel_mon_id` - Currently selected monitor ID
-/// * `clients` - Reference to all clients
-/// * `direction` - Direction to search for a client
-/// * `focus_fn` - Function to call with the target window
-pub fn focus_direction<F>(core: &CoreCtx, direction: Direction, focus_fn: F)
-where
-    F: FnOnce(Option<WindowId>),
-{
-    let mon = core.globals().selected_monitor();
-
-    let selected = mon.selected_tag_mask();
-
-    let Some(source_win) = mon.sel else {
-        focus_fn(None);
-        return;
-    };
-
-    let Some(source_client) = core.client(source_win) else {
-        focus_fn(None);
-        return;
-    };
-
-    let (source_center_x, source_center_y) = source_client.geo.center();
-
-    let candidates = get_directional_candidates(
-        &mon.clients,
-        core.globals().clients.map(),
-        selected,
-        source_win,
-        source_center_x,
-        source_center_y,
-        direction,
-    );
-
-    focus_fn(candidates);
-}
-
 fn get_directional_candidates(
     clients: &[WindowId],
     globals_map: &std::collections::HashMap<WindowId, Client>,
     selected_tags: TagMask,
     source_win: WindowId,
-    source_center_x: i32,
-    source_center_y: i32,
+    source_center: crate::types::Point,
     direction: Direction,
 ) -> Option<WindowId> {
     let mut out_client: Option<WindowId> = None;
@@ -574,25 +526,10 @@ fn get_directional_candidates(
             continue;
         }
 
-        let center_x = c.geo.x + c.geo.w / 2;
-        let center_y = c.geo.y + c.geo.h / 2;
+        let center = c.geo.center();
 
-        if is_client_in_direction(
-            c_win,
-            source_win,
-            center_x,
-            center_y,
-            source_center_x,
-            source_center_y,
-            direction,
-        ) {
-            let score = calculate_direction_score(
-                center_x,
-                center_y,
-                source_center_x,
-                source_center_y,
-                direction,
-            );
+        if is_client_in_direction(c_win, source_win, center, source_center, direction) {
+            let score = calculate_direction_score(center, source_center, direction);
             if score < min_score || min_score == 0 {
                 out_client = Some(c_win);
                 min_score = score;
@@ -606,10 +543,8 @@ fn get_directional_candidates(
 fn is_client_in_direction(
     c_win: WindowId,
     source_win: WindowId,
-    center_x: i32,
-    center_y: i32,
-    source_center_x: i32,
-    source_center_y: i32,
+    center: crate::types::Point,
+    source_center: crate::types::Point,
     direction: Direction,
 ) -> bool {
     if c_win == source_win {
@@ -617,35 +552,35 @@ fn is_client_in_direction(
     }
 
     match direction {
-        Direction::Up => center_y < source_center_y,
-        Direction::Down => center_y > source_center_y,
-        Direction::Left => center_x < source_center_x,
-        Direction::Right => center_x > source_center_x,
+        Direction::Up => center.y < source_center.y,
+        Direction::Down => center.y > source_center.y,
+        Direction::Left => center.x < source_center.x,
+        Direction::Right => center.x > source_center.x,
     }
 }
 
 fn calculate_direction_score(
-    center_x: i32,
-    center_y: i32,
-    source_center_x: i32,
-    source_center_y: i32,
+    center: crate::types::Point,
+    source_center: crate::types::Point,
     direction: Direction,
 ) -> i32 {
-    let dist_x = (source_center_x - center_x).abs();
-    let dist_y = (source_center_y - center_y).abs();
+    let dx = center.abs_diff_x(&source_center);
+    let dy = center.abs_diff_y(&source_center);
 
     match direction {
         Direction::Up | Direction::Down => {
-            if dist_x > dist_y {
+            if dx > dy {
                 return i32::MAX;
             }
-            dist_x + dist_y / 4
+            // Use weighted scoring to favor windows that are more vertically aligned.
+            dx + dy / 4
         }
         Direction::Left | Direction::Right => {
-            if dist_y > dist_x {
+            if dy > dx {
                 return i32::MAX;
             }
-            dist_y + dist_x / 4
+            // Use weighted scoring to favor windows that are more horizontally aligned.
+            dy + dx / 4
         }
     }
 }
@@ -658,7 +593,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
     let mon = core.globals().selected_monitor();
     let source_win = mon.sel?;
     let source_client = core.client(source_win)?;
-    let (source_center_x, source_center_y) = source_client.geo.center();
+    let source_center = source_client.geo.center();
 
     let selected = mon.selected_tag_mask();
 
@@ -667,8 +602,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
         core.globals().clients.map(),
         selected,
         source_win,
-        source_center_x,
-        source_center_y,
+        source_center,
         direction,
     )
 }

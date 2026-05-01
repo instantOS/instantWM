@@ -222,11 +222,10 @@ pub fn clear_hover(ctx: &mut WmCtx) {
 
 pub fn resolve_bar_position_at_root(
     core: &mut CoreCtx,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
-    let rect = crate::mouse::pointer::point_rect(root_x, root_y);
+    let rect = crate::mouse::pointer::point_rect(root);
     let monitor_id = crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &rect)?;
     if sync_selected_monitor && monitor_id != core.globals().selected_monitor_id() {
         core.globals_mut().set_selected_monitor(monitor_id);
@@ -235,13 +234,13 @@ pub fn resolve_bar_position_at_root(
     let mon = core.globals().monitor(monitor_id)?;
     let bar_h = core.globals().cfg.bar_height.max(1);
     let in_bar = monitor_bar_visible(core.globals(), mon)
-        && root_y >= mon.bar_y
-        && root_y < mon.bar_y + bar_h;
+        && root.y >= mon.bar_y
+        && root.y < mon.bar_y + bar_h;
     if !in_bar {
         return None;
     }
 
-    let local_x = root_x - mon.work_rect.x;
+    let local_x = root.x - mon.work_rect.x;
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
 }
 
@@ -276,13 +275,12 @@ mod tests {
 
 pub fn update_hover(
     ctx: &mut WmCtx,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
     reset_start_menu: bool,
     sync_selected_monitor: bool,
 ) -> Option<BarPosition> {
     let Some((monitor_id, pos)) =
-        resolve_bar_position_at_root(ctx.core_mut(), root_x, root_y, sync_selected_monitor)
+        resolve_bar_position_at_root(ctx.core_mut(), root, sync_selected_monitor)
     else {
         clear_hover(ctx);
         return None;

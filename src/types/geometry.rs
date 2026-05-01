@@ -83,6 +83,42 @@ impl MonitorPosition {
     }
 }
 
+/// A point representing a coordinate in 2D space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Point {
+    /// X coordinate.
+    pub x: i32,
+    /// Y coordinate.
+    pub y: i32,
+}
+
+impl Point {
+    /// Create a new point.
+    pub const fn new(x: i32, y: i32) -> Self {
+        Self { x, y }
+    }
+
+    /// Return the absolute difference between X coordinates.
+    pub fn abs_diff_x(&self, other: &Point) -> i32 {
+        (self.x - other.x).abs()
+    }
+
+    /// Return the absolute difference between Y coordinates.
+    pub fn abs_diff_y(&self, other: &Point) -> i32 {
+        (self.y - other.y).abs()
+    }
+
+    /// Calculate the Manhattan distance between this point and another.
+    pub fn manhattan_distance(&self, other: &Point) -> i32 {
+        self.abs_diff_x(other) + self.abs_diff_y(other)
+    }
+
+    /// Calculate a weighted distance used for directional focus scoring.
+    pub fn weighted_distance(&self, other: &Point, weight_x: i32, weight_y: i32) -> i32 {
+        self.abs_diff_x(other) * weight_x + self.abs_diff_y(other) * weight_y
+    }
+}
+
 /// A rectangle representing window geometry or screen areas.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rect {
@@ -111,8 +147,11 @@ impl Rect {
 
     /// Check if a point is contained within this rectangle.
     #[inline]
-    pub fn contains_point(&self, x: i32, y: i32) -> bool {
-        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
+    pub fn contains_point(&self, point: Point) -> bool {
+        point.x >= self.x
+            && point.x < self.x + self.w
+            && point.y >= self.y
+            && point.y < self.y + self.h
     }
 
     /// Check if this rectangle intersects with another.
@@ -196,8 +235,8 @@ impl Rect {
 
     /// Get the center point of this rectangle.
     #[inline]
-    pub fn center(&self) -> (i32, i32) {
-        (self.x + self.w / 2, self.y + self.h / 2)
+    pub fn center(&self) -> Point {
+        Point::new(self.x + self.w / 2, self.y + self.h / 2)
     }
 
     /// Calculate total width including borders.

@@ -41,6 +41,7 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
 
     let (mut tx, mut ty) = ctx
         .pointer_location()
+        .map(|p| (p.x, p.y))
         .unwrap_or((c.geo.x + c.geo.w / 2, c.geo.y + c.geo.h / 2));
 
     if tx < c.geo.x {

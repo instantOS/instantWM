@@ -117,7 +117,8 @@ fn resize_window(
     let mut ctx = wm.ctx();
 
     if !is_floating {
-        crate::floating::set_window_mode(&mut ctx, win, crate::types::BaseClientMode::Floating);
+        let _ =
+            crate::floating::set_window_mode(&mut ctx, win, crate::types::BaseClientMode::Floating);
         arrange(&mut ctx, Some(current_monitor_id));
     }
 

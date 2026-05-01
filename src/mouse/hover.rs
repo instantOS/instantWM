@@ -84,7 +84,7 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
         };
         wm_ctx
             .pointer_location()
-            .map(|(x, y)| c.geo.is_at_top_middle_edge(x, y, RESIZE_BORDER_ZONE))
+            .map(|p| c.geo.is_at_top_middle_edge(p.x, p.y, RESIZE_BORDER_ZONE))
             .unwrap_or(dir == ResizeDirection::Top)
     };
 
@@ -295,8 +295,22 @@ pub fn update_selected_resize_offer_at(
     Some(target.win)
 }
 
-pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
-    if let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), root_x, root_y) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[must_use]
+pub enum SidebarOfferUpdate {
+    None,
+    Active,
+    Cleared,
+}
+
+impl SidebarOfferUpdate {
+    pub fn affects_pointer_handling(self) -> bool {
+        !matches!(self, SidebarOfferUpdate::None)
+    }
+}
+
+pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root: crate::types::Point) -> SidebarOfferUpdate {
+    if let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), root) {
         if ctx.core().globals().drag.hover_offer != HoverOffer::Sidebar(target) {
             ctx.core_mut()
                 .globals_mut()
@@ -304,15 +318,15 @@ pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> boo
                 .set_hover_offer(HoverOffer::Sidebar(target));
             set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
         }
-        return true;
+        return SidebarOfferUpdate::Active;
     }
 
     if ctx.core().globals().drag.hover_offer.is_sidebar() {
         clear_hover_offer(ctx);
-        return true;
+        return SidebarOfferUpdate::Cleared;
     }
 
-    false
+    SidebarOfferUpdate::None
 }
 
 // ── Modal hover-resize loop ──────────────────────────────────────────────────
@@ -328,16 +342,29 @@ pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> boo
 /// | Cursor leaves    | Abort                                          |
 /// | Button release   | Abort (spurious release from prior click)      |
 ///
-/// Returns `true` if the function entered its loop (caller should skip normal
-/// focus/event handling), `false` if the cursor was not in a resize border.
-pub fn run_x11_hover_resize_offer_loop(ctx: &mut WmCtxX11) -> bool {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[must_use]
+pub enum X11HoverResizeOfferResult {
+    NotOffered,
+    OfferedWithoutAction,
+    StartedAction,
+}
+
+impl X11HoverResizeOfferResult {
+    pub fn consumed_event(self) -> bool {
+        !matches!(self, X11HoverResizeOfferResult::NotOffered)
+    }
+}
+
+pub fn run_x11_hover_resize_offer_loop(ctx: &mut WmCtxX11) -> X11HoverResizeOfferResult {
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        let Some((x, y)) = wm_ctx.pointer_location() else {
-            return false;
+        let Some(ptr) = wm_ctx.pointer_location() else {
+            return X11HoverResizeOfferResult::NotOffered;
         };
-        let Some(target) = selected_hover_resize_target_at(wm_ctx.core().globals(), x, y) else {
-            return false;
+        let Some(target) = selected_hover_resize_target_at(wm_ctx.core().globals(), ptr.x, ptr.y)
+        else {
+            return X11HoverResizeOfferResult::NotOffered;
         };
 
         offer_hover_resize(&mut wm_ctx, target);
@@ -347,9 +374,10 @@ pub fn run_x11_hover_resize_offer_loop(ctx: &mut WmCtxX11) -> bool {
 
     if !action_started {
         clear_hover_offer(&mut WmCtx::X11(ctx.reborrow()));
+        return X11HoverResizeOfferResult::OfferedWithoutAction;
     }
 
-    true
+    X11HoverResizeOfferResult::StartedAction
 }
 
 /// Shared modal grab loop for hover-resize operations.
@@ -373,8 +401,9 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
                     let in_resize_border = wm_ctx
                         .pointer_location()
-                        .map(|(x, y)| {
-                            selected_hover_resize_target_at(wm_ctx.core().globals(), x, y).is_some()
+                        .map(|p| {
+                            selected_hover_resize_target_at(wm_ctx.core().globals(), p.x, p.y)
+                                .is_some()
                         })
                         .unwrap_or(false);
                     if !in_resize_border {
@@ -382,8 +411,8 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                         let target = get_cursor_client_win(&mut wm_ctx)
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
-                                let (x, y) = wm_ctx.pointer_location()?;
-                                find_tiled_win_at_point(wm_ctx.core().globals(), x, y, sel)
+                                let p = wm_ctx.pointer_location()?;
+                                find_tiled_win_at_point(wm_ctx.core().globals(), p.x, p.y, sel)
                             });
                         if let Some(win) = target {
                             crate::focus::focus_soft(&mut wm_ctx, Some(win));
@@ -512,21 +541,21 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             return false;
         }
 
-        let Some((x, y)) = wm_ctx.pointer_location() else {
+        let Some(ptr) = wm_ctx.pointer_location() else {
             return false;
         };
 
         // If cursor is already outside the resize border, just focus the tiled window
-        if !sel_geo.contains_resize_border_point(x, y, RESIZE_BORDER_ZONE) {
+        if !sel_geo.contains_resize_border_point(ptr.x, ptr.y, RESIZE_BORDER_ZONE) {
             crate::focus::focus_soft(&mut wm_ctx, Some(hovered_win));
             return true;
         }
 
         // Activate resize cursor and enter the grab loop
-        update_floating_resize_offer_at(&mut wm_ctx, x, y, false);
+        update_floating_resize_offer_at(&mut wm_ctx, ptr.x, ptr.y, false);
 
         // Return the coordinates for the loop
-        (x, y)
+        (ptr.x, ptr.y)
     };
 
     let action_started = run_x11_hover_offer_grab_loop(ctx);

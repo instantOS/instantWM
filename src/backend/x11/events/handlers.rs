@@ -6,7 +6,7 @@ use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
-    BarPosition, ButtonTarget, Client, ClientMode, Gesture, MouseButton, Rect, WindowId,
+    BarPosition, ButtonTarget, Client, ClientMode, Gesture, MouseButton, Point, Rect, WindowId,
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -81,12 +81,8 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         }
     };
 
-    let region = crate::mouse::pointer::button_region_at(
-        &mut ctx.core,
-        e.root_x as i32,
-        e.root_y as i32,
-        target_window,
-    );
+    let root = Point::new(e.root_x as i32, e.root_y as i32);
+    let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
     let button_target = region.to_button_target();
 
     let clean_state = crate::util::clean_mask(e.state.into(), numlockmask);
@@ -290,14 +286,14 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         }
         // Case 1: Entering root while sel is floating
         if entering_root {
-            if crate::mouse::run_x11_hover_resize_offer_loop(ctx) {
+            if crate::mouse::run_x11_hover_resize_offer_loop(ctx).consumed_event() {
                 return;
             }
         // Case 2: Entering a different client while sel is floating
         } else if entering_client && Some(event_win) != selected_window {
-            let resized = crate::mouse::run_x11_hover_resize_offer_loop(ctx);
+            let resize_offer_result = crate::mouse::run_x11_hover_resize_offer_loop(ctx);
             if focusfollowsfloatmouse {
-                if resized {
+                if resize_offer_result.consumed_event() {
                     return;
                 }
                 if let Some(newc) = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
@@ -330,7 +326,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         &mut WmCtx::X11(ctx.reborrow()),
         topmost_win_under_cursor,
         entering_root,
-        Some((e.root_x as i32, e.root_y as i32)),
+        Some(Point::new(e.root_x as i32, e.root_y as i32)),
     );
 }
 
@@ -425,7 +421,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     if ctx.core.globals().behavior.focus_follows_mouse
         && crate::focus::select_monitor_at_pointer(
             &mut WmCtx::X11(ctx.reborrow()),
-            (root_x, root_y),
+            Point::new(root_x, root_y),
         )
     {
         return;
@@ -450,7 +446,12 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         ) {
             return;
         }
-        if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root_x, root_y) {
+        if crate::mouse::update_sidebar_offer_at(
+            &mut WmCtx::X11(ctx.reborrow()),
+            Point::new(root_x, root_y),
+        )
+        .affects_pointer_handling()
+        {
             return;
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
@@ -462,8 +463,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     let pos = crate::bar::update_hover(
         &mut WmCtx::X11(ctx.reborrow()),
-        root_x,
-        root_y,
+        Point::new(root_x, root_y),
         false,
         false,
     );

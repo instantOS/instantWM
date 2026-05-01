@@ -34,7 +34,7 @@ use smithay::{
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
-use crate::types::ClientMode;
+use crate::types::{ClientMode, Point};
 
 impl WaylandState {
     fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
@@ -395,6 +395,7 @@ impl XdgShellHandler for WaylandState {
                 let geo = client.geo;
                 let sel = g.selected_win();
                 let was_hidden = client.is_hidden;
+                let root = Point::new(root_x, root_y);
                 g.drag.interactive = crate::globals::DragInteraction {
                     active: true,
                     win,
@@ -403,13 +404,12 @@ impl XdgShellHandler for WaylandState {
                     drag_type: crate::globals::DragType::Move,
                     was_focused: sel == Some(win),
                     was_hidden,
-                    start_x: root_x,
-                    start_y: root_y,
+                    start_point: root,
                     win_start_geo: geo,
                     drop_restore_geo: geo,
-                    last_root_x: root_x,
-                    last_root_y: root_y,
+                    last_root_point: root,
                     suppress_click_action: true,
+                    ..Default::default()
                 };
             }
         }

@@ -111,7 +111,7 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             wm.g.pending.input_config = false;
 
-            let changed = super::common::process_window_animations(state);
+            let animation_tick = super::common::process_window_animations(state);
 
             // ── 3. Arm animation timer if needed ────────────────────────
             anim_guard.ensure_armed(
@@ -137,7 +137,7 @@ pub fn run() -> ! {
                 start_time,
             );
 
-            if changed {
+            if animation_tick.needs_redraw() {
                 state.request_render();
             }
 

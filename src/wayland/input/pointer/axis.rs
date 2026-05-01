@@ -6,6 +6,7 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::Point;
 
 use crate::backend::wayland::compositor::WaylandState;
+use crate::types::Point as RootPoint;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
@@ -71,7 +72,8 @@ pub fn handle_pointer_axis<B: InputBackend>(
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0) {
         let root_x = pointer_location.x.round() as i32;
         let root_y = pointer_location.y.round() as i32;
-        if let Some(pos) = update_wayland_bar_hit_state(wm, root_x, root_y, true) {
+        let root = RootPoint::new(root_x, root_y);
+        if let Some(pos) = update_wayland_bar_hit_state(wm, root, true) {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,

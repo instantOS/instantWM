@@ -17,17 +17,17 @@ pub fn sidebar_gesture_begin(ctx: &mut WmCtx, btn: MouseButton) {
 }
 
 pub fn begin_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) {
-    let Some((x, y)) = ctx.pointer_location() else {
+    let Some(ptr) = ctx.pointer_location() else {
         return;
     };
-    let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), x, y) else {
+    let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), ptr) else {
         return;
     };
     ctx.core_mut().globals_mut().drag.gesture = crate::globals::GestureInteraction {
         active: true,
         button: btn,
         monitor_id: target.monitor_id,
-        last_y: y,
+        last_y: ptr.y,
     };
     crate::mouse::set_cursor_style(ctx, AltCursor::Move);
 }

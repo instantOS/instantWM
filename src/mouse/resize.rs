@@ -78,7 +78,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     }
 
-    let Some((ptr_x, ptr_y)) = ctx.pointer_location() else {
+    let Some(ptr) = ctx.pointer_location() else {
         return;
     };
 
@@ -101,8 +101,8 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
             return;
         };
 
-        let hit_x = ptr_x - new_geo.x;
-        let hit_y = ptr_y - new_geo.y;
+        let hit_x = ptr.x - new_geo.x;
+        let hit_y = ptr.y - new_geo.y;
         let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
 
         match ctx {
@@ -116,8 +116,8 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     }
 
-    let hit_x = ptr_x - geo.x;
-    let hit_y = ptr_y - geo.y;
+    let hit_x = ptr.x - geo.x;
+    let hit_y = ptr.y - geo.y;
     let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
 
     match ctx {
@@ -162,18 +162,17 @@ fn begin_wayland_super_resize(
         .backend
         .warp_pointer(warp_x as f64, warp_y as f64);
 
+    let root = Point::new(warp_x, warp_y);
     wl.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
         active: true,
         win,
         button: btn,
         dragging: true,
         drag_type: crate::globals::DragType::Resize(dir),
-        start_x: warp_x,
-        start_y: warp_y,
+        start_point: root,
         win_start_geo: geo,
         drop_restore_geo: geo,
-        last_root_x: warp_x,
-        last_root_y: warp_y,
+        last_root_point: root,
         ..Default::default()
     };
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
@@ -306,7 +305,7 @@ pub fn resize_mouse_directional(
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
 pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
-    let Some((ptr_x, ptr_y)) = ctx.pointer_location() else {
+    let Some(ptr) = ctx.pointer_location() else {
         return;
     };
 
@@ -314,8 +313,8 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    let hit_x = ptr_x - geo.x;
-    let hit_y = ptr_y - geo.y;
+    let hit_x = ptr.x - geo.x;
+    let hit_y = ptr.y - geo.y;
     let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
 
     match ctx {

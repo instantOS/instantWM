@@ -151,10 +151,10 @@ impl MonitorManager {
         self.find_id_by_rect(rect).and_then(|id| self.get(id))
     }
 
-    pub fn find_monitor_at_pointer(&self, ptr: (i32, i32)) -> Option<MonitorId> {
+    pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
         let rect = Rect {
-            x: ptr.0,
-            y: ptr.1,
+            x: ptr.x,
+            y: ptr.y,
             w: 1,
             h: 1,
         };

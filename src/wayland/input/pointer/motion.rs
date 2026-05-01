@@ -10,6 +10,7 @@ use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at, update_sidebar_offer_at};
 use crate::types::BarPosition;
+use crate::types::Point as RootPoint;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wayland::input::bar::update_wayland_bar_hit_state;
@@ -162,7 +163,8 @@ pub fn dispatch_pointer_motion(
     }
 
     // Phase 4: Handle bar interaction (early return path)
-    let bar_pos = update_wayland_bar_hit_state(wm, root_x, root_y, false);
+    let root = RootPoint::new(root_x, root_y);
+    let bar_pos = update_wayland_bar_hit_state(wm, root, false);
     if handle_bar_motion(
         wm,
         state,
@@ -183,7 +185,8 @@ pub fn dispatch_pointer_motion(
         if hovered_win.is_none() {
             let ctx = wm.ctx();
             if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-                && update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root_x, root_y)
+                && update_sidebar_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root)
+                    .affects_pointer_handling()
             {
                 return;
             }
@@ -442,7 +445,12 @@ fn update_pointer_focus(
             return;
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
-        crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false, Some((root_x, root_y)));
+        crate::focus::hover_focus_target(
+            &mut wm_ctx,
+            hovered_win,
+            false,
+            Some(RootPoint::new(root_x, root_y)),
+        );
     }
 }
 
@@ -463,7 +471,10 @@ fn handle_wm_drag_motion(
 
     if wm.g.drag.interactive.active {
         let mut ctx = wm.ctx();
-        crate::mouse::title_drag_motion(&mut ctx, root_x, root_y);
+        crate::mouse::title_drag_motion(
+            &mut ctx,
+            crate::types::geometry::Point::new(root_x, root_y),
+        );
     }
 
     if wm.g.drag.gesture.active {
