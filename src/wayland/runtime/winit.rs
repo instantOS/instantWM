@@ -161,7 +161,7 @@ fn dispatch_winit_input(
             // SAFETY: the calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body has
             // not yet resumed.
-            if let Some(wm_ptr) = (unsafe { state.wm_mut_ptr() }) {
+            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 handle_keyboard(wm, state, keyboard_handle, event);
             }

@@ -15,11 +15,6 @@ pub mod pointer;
 
 // Re-export public APIs
 pub use keyboard::handle_keyboard;
-pub use pointer::{
-    handle_pointer_axis, handle_pointer_button, handle_pointer_motion,
-    motion_event_from_libinput_absolute, motion_event_from_libinput_relative,
-    motion_event_from_winit,
-};
 
 use crate::monitor::refresh_monitor_layout;
 use crate::wm::Wm;

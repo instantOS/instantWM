@@ -53,13 +53,13 @@ pub fn handle_pointer_axis_raw(
 
     // Check if the pointer is in the bar area; if so, dispatch bar scroll.
     let delta = vertical; // bar scroll uses vertical axis
-    if delta.abs() > f64::EPSILON {
-        if let Some(pos) = update_wayland_bar_hit_state(wm, root, true) {
-            let clean_state = clean_mask(modifiers_to_x11_mask(&keyboard.modifier_state()), 0);
-            handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
-            pointer.frame(state);
-            return;
-        }
+    if delta.abs() > f64::EPSILON
+        && let Some(pos) = update_wayland_bar_hit_state(wm, root, true)
+    {
+        let clean_state = clean_mask(modifiers_to_x11_mask(&keyboard.modifier_state()), 0);
+        handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
+        pointer.frame(state);
+        return;
     }
 
     update_wayland_bar_hit_state(wm, root, false);

@@ -119,14 +119,15 @@ impl WaylandState {
         }
 
         let properties = self.window_properties(window);
-        let x11_info = self
-            .find_window(window)
-            .and_then(|element| element.x11_surface())
+        let element = self.find_window(window);
+
+        let x11_info = element
+            .as_ref()
+            .and_then(|e| e.x11_surface())
             .map(|x11| (x11.pid(), x11.startup_id()));
 
-        let initial_geo = self
-            .find_window(window)
-            .map(|element| element.geometry())
+        let initial_geo = element
+            .map(|e| e.geometry())
             .filter(|geo| geo.size.w > 0 && geo.size.h > 0)
             .map(|geo| crate::types::Rect::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h));
 

@@ -15,7 +15,6 @@ use smithay::input::pointer::{
     GesturePinchUpdateEvent, GestureSwipeBeginEvent, GestureSwipeEndEvent, GestureSwipeUpdateEvent,
 };
 
-use smithay::reexports::input::{Event as LibinputRawEvent, event};
 use smithay::utils::SERIAL_COUNTER;
 
 use crate::backend::wayland::compositor::WaylandState;

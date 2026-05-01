@@ -218,21 +218,19 @@ pub fn handle_pointer_motion(
     let mut final_location = potential_location;
 
     // If confined, clamp to the surface bounds
-    if pointer_confined {
-        if let Some((surface, surface_loc)) = &hit_test.surface {
-            // Get surface size (logical). We use the window geometry if this surface
-            // belongs to a managed window.
-            let size = state
-                .window_id_from_surface(surface)
-                .and_then(|win_id| state.find_window(win_id))
-                .map(|win| win.geometry().size);
+    if pointer_confined && let Some((surface, surface_loc)) = &hit_test.surface {
+        // Get surface size (logical). We use the window geometry if this surface
+        // belongs to a managed window.
+        let size = state
+            .window_id_from_surface(surface)
+            .and_then(|win_id| state.find_window(win_id))
+            .map(|win| win.geometry().size);
 
-            if let Some(size) = size {
-                let rel_x = (final_location.x - surface_loc.x as f64).clamp(0.0, size.w as f64);
-                let rel_y = (final_location.y - surface_loc.y as f64).clamp(0.0, size.h as f64);
-                final_location.x = surface_loc.x as f64 + rel_x;
-                final_location.y = surface_loc.y as f64 + rel_y;
-            }
+        if let Some(size) = size {
+            let rel_x = (final_location.x - surface_loc.x as f64).clamp(0.0, size.w as f64);
+            let rel_y = (final_location.y - surface_loc.y as f64).clamp(0.0, size.h as f64);
+            final_location.x = surface_loc.x as f64 + rel_x;
+            final_location.y = surface_loc.y as f64 + rel_y;
         }
     }
 
@@ -582,11 +580,11 @@ fn handle_wm_drag_motion(
     root_y: i32,
 ) {
     let mut ctx = wm.ctx();
-    if ctx.core().globals().drag.tag.active {
-        if !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y) {
-            let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
-            crate::mouse::drag_tag_finish(&mut ctx, mod_state);
-        }
+    if ctx.core().globals().drag.tag.active
+        && !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y)
+    {
+        let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+        crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
     if ctx.core().globals().drag.interactive.active {
         crate::mouse::title_drag_motion(

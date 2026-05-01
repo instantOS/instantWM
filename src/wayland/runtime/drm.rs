@@ -200,7 +200,7 @@ pub fn run() -> ! {
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
             // has not yet resumed.
-            let any_input = if let Some(wm_ptr) = (unsafe { state.wm_mut_ptr() }) {
+            let any_input = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 crate::wayland::input::drm::dispatch_libinput_event(
                     event, state, wm, total_w, total_h,

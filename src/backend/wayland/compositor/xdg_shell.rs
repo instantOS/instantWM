@@ -39,6 +39,17 @@ use smithay::{
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
 
 impl WaylandState {
+    fn on_surface_metadata_changed(&mut self, surface: ToplevelSurface) {
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        let properties = self.window_properties(win);
+        self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
+        self.apply_xdg_toplevel_floating_policy(&surface);
+        self.update_foreign_toplevel(win);
+        self.request_bar_redraw();
+    }
+
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
         if surface.parent().is_some() {
             return true;
@@ -118,10 +129,10 @@ impl SelectionHandler for WaylandState {
         source: Option<SelectionSource>,
         _seat: smithay::input::Seat<Self>,
     ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.new_selection(ty, source.map(|s| s.mime_types())) {
-                log::warn!("Failed to notify XWayland of new selection: {:?}", err);
-            }
+        if let Some(xwm) = self.xwm.as_mut()
+            && let Err(err) = xwm.new_selection(ty, source.map(|s| s.mime_types()))
+        {
+            log::warn!("Failed to notify XWayland of new selection: {:?}", err);
         }
     }
 
@@ -133,10 +144,10 @@ impl SelectionHandler for WaylandState {
         _seat: smithay::input::Seat<Self>,
         _user_data: &Self::SelectionUserData,
     ) {
-        if let Some(xwm) = self.xwm.as_mut() {
-            if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
-                log::warn!("Failed to send selection to XWayland: {:?}", err);
-            }
+        if let Some(xwm) = self.xwm.as_mut()
+            && let Err(err) = xwm.send_selection(ty, mime_type, fd)
+        {
+            log::warn!("Failed to send selection to XWayland: {:?}", err);
         }
     }
 }
@@ -257,25 +268,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn title_changed(&mut self, surface: ToplevelSurface) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
-            return;
-        };
-        let properties = self.window_properties(win);
-        self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
-        self.apply_xdg_toplevel_floating_policy(&surface);
-        self.update_foreign_toplevel(win);
-        self.request_bar_redraw();
+        self.on_surface_metadata_changed(surface);
     }
 
     fn app_id_changed(&mut self, surface: ToplevelSurface) {
-        let Some(win) = self.window_id_for_toplevel(&surface) else {
-            return;
-        };
-        let properties = self.window_properties(win);
-        self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
-        self.apply_xdg_toplevel_floating_policy(&surface);
-        self.update_foreign_toplevel(win);
-        self.request_bar_redraw();
+        self.on_surface_metadata_changed(surface);
     }
 
     fn parent_changed(&mut self, surface: ToplevelSurface) {
