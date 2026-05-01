@@ -29,7 +29,7 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
 
     let tagwidth = get_tag_width(ctx.core());
     ctx.core_mut().globals_mut().tags.width = tagwidth;
-    ctx.request_bar_update(None);
+    ctx.request_bar_update();
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
@@ -94,8 +94,8 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    ctx.request_bar_update(Some(selmon_id));
+    let _selmon_id = ctx.core().globals().selected_monitor_id();
+    ctx.request_bar_update();
 }
 
 pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
@@ -113,7 +113,7 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let tagwidth = get_tag_width(ctx.core());
     ctx.core_mut().globals_mut().tags.width = tagwidth;
 
-    ctx.request_bar_update(Some(selmon_id));
+    ctx.request_bar_update();
 }
 
 pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
@@ -143,8 +143,8 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
     if let WmCtx::X11(x11) = ctx {
         crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
     }
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    ctx.request_bar_update(Some(selmon_id));
+    let _selmon_id = ctx.core().globals().selected_monitor_id();
+    ctx.request_bar_update();
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
@@ -179,7 +179,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
             x11.core.bar.mark_dirty();
         }
         WmCtx::Wayland(_) => {
-            ctx.request_bar_update(Some(selmon_idx));
+            ctx.request_bar_update();
         }
     }
 

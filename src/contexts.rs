@@ -381,14 +381,12 @@ impl<'a> WmCtx<'a> {
     ///
     /// - X11: marks the bar dirty; the normal calloop tick redraws it.
     /// - Wayland: marks bar cache as dirty; next frame re-renders.
-    pub fn request_bar_update(&mut self, monitor_id: Option<crate::types::MonitorId>) {
+    pub fn request_bar_update(&mut self) {
         match self {
             WmCtx::X11(ctx_x11) => {
-                let _ = monitor_id;
                 ctx_x11.core.bar.mark_dirty();
             }
             WmCtx::Wayland(ctx_wayland) => {
-                let _ = monitor_id;
                 if !ctx_wayland.wayland.backend.request_bar_redraw() {
                     ctx_wayland.core.bar.mark_dirty();
                 }

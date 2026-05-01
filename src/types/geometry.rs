@@ -343,6 +343,17 @@ impl Rect {
         self.h = self.h.max(min_h);
     }
 
+    /// Return a new Rect with size clamped to fit within (max_w, max_h) and minimum 1x1.
+    #[inline]
+    pub fn clamped_to_monitor(&self, max_w: i32, max_h: i32) -> Rect {
+        Rect {
+            x: self.x,
+            y: self.y,
+            w: self.w.clamp(1, max_w),
+            h: self.h.clamp(1, max_h),
+        }
+    }
+
     /// Check if this rect differs from another.
     #[inline]
     pub fn differs_from(&self, other: &Rect) -> bool {

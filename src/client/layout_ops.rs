@@ -46,7 +46,7 @@ pub fn zoom(ctx: &mut WmCtx) {
     if crate::overview::is_active(ctx.core()) {
         ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = true);
         ctx.reset_mode();
-        ctx.request_bar_update(None);
+        ctx.request_bar_update();
         return;
     }
 

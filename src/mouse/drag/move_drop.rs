@@ -194,7 +194,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ctx.core().globals(), root);
 
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let _selmon_id = ctx.core().globals().selected_monitor_id();
 
     if on_bar {
         let new_gesture = {
@@ -209,12 +209,12 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
         if !state.cursor_on_bar || gesture_changed {
             ctx.core_mut().globals_mut().drag.bar_active = true;
             ctx.core_mut().globals_mut().selected_monitor_mut().gesture = new_gesture;
-            ctx.request_bar_update(Some(selmon_id));
+            ctx.request_bar_update();
         }
     } else if state.cursor_on_bar {
         ctx.core_mut().globals_mut().drag.bar_active = false;
         ctx.core_mut().globals_mut().selected_monitor_mut().gesture = Gesture::None;
-        ctx.request_bar_update(Some(selmon_id));
+        ctx.request_bar_update();
     }
 
     on_bar
@@ -226,7 +226,7 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     let on_bar = point_is_on_bar(ctx.core().globals(), root);
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let _selmon_id = ctx.core().globals().selected_monitor_id();
     let was_on_bar = ctx.core().globals().drag.bar_active;
 
     if on_bar {
@@ -240,12 +240,12 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
         if !was_on_bar || gesture_changed {
             ctx.core_mut().globals_mut().drag.bar_active = true;
             ctx.core_mut().globals_mut().selected_monitor_mut().gesture = new_gesture;
-            ctx.request_bar_update(Some(selmon_id));
+            ctx.request_bar_update();
         }
     } else if was_on_bar {
         ctx.core_mut().globals_mut().drag.bar_active = false;
         ctx.core_mut().globals_mut().selected_monitor_mut().gesture = Gesture::None;
-        ctx.request_bar_update(Some(selmon_id));
+        ctx.request_bar_update();
     }
 
     on_bar
@@ -367,9 +367,9 @@ fn maybe_promote_tiled_drag_to_floating(
 /// Called once the drag loop exits so that hover state is always cleaned up.
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.core_mut().globals_mut().drag.bar_active = false;
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let _selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.core_mut().globals_mut().selected_monitor_mut().gesture = Gesture::None;
-    ctx.request_bar_update(Some(selmon_id));
+    ctx.request_bar_update();
 }
 
 /// Handle a drop onto the bar: tile the window, optionally moving it to the

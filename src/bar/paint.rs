@@ -45,12 +45,4 @@ pub trait BarPainter {
         invert: bool,
         detail_height: i32,
     ) -> i32;
-
-    fn fill_rect(&mut self, bounds: Rect) {
-        self.rect(bounds, true, false);
-    }
-
-    fn clear_rect(&mut self, bounds: Rect) {
-        self.rect(bounds, true, true);
-    }
 }

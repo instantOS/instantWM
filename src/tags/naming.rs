@@ -45,7 +45,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 
     let tagwidth = get_tag_width(ctx.core());
     ctx.core_mut().globals_mut().tags.width = tagwidth;
-    ctx.request_bar_update(None);
+    ctx.request_bar_update();
 }
 
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.) on all monitors.
@@ -61,7 +61,7 @@ pub fn reset_name_tag(ctx: &mut WmCtx) {
 
     let tagwidth = get_tag_width(ctx.core());
     ctx.core_mut().globals_mut().tags.width = tagwidth;
-    ctx.request_bar_update(None);
+    ctx.request_bar_update();
 }
 
 /// Return the default display name for tag index `i` (0-based).

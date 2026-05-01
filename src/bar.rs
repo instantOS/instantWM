@@ -215,7 +215,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core().globals().selected_monitor().gesture != Gesture::None {
         reset_bar_common(ctx.core_mut());
-        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+        ctx.request_bar_update();
     }
 }
 
@@ -278,7 +278,7 @@ pub fn update_hover(
     reset_start_menu: bool,
     sync_selected_monitor: bool,
 ) -> Option<BarPosition> {
-    let Some((monitor_id, pos)) =
+    let Some((_monitor_id, pos)) =
         resolve_bar_position_at_root(ctx.core_mut(), root, sync_selected_monitor)
     else {
         clear_hover(ctx);
@@ -287,7 +287,7 @@ pub fn update_hover(
 
     if reset_start_menu && pos == BarPosition::StartMenu {
         reset_bar_common(ctx.core_mut());
-        ctx.request_bar_update(Some(monitor_id));
+        ctx.request_bar_update();
     }
 
     let old_gesture = ctx.core().globals().selected_monitor().gesture;
@@ -298,7 +298,7 @@ pub fn update_hover(
     };
     if old_gesture != gesture {
         ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
-        ctx.request_bar_update(Some(monitor_id));
+        ctx.request_bar_update();
     }
 
     Some(pos)
@@ -308,14 +308,14 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     if crate::overview::is_active(ctx.core()) {
         ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
-        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+        ctx.request_bar_update();
         return;
     }
 
     let mode = ctx.current_mode();
     if !mode.is_empty() && mode != "default" {
         ctx.reset_mode();
-        ctx.request_bar_update(Some(ctx.core().globals().selected_monitor_id()));
+        ctx.request_bar_update();
         return;
     }
 

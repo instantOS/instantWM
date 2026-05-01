@@ -4,53 +4,7 @@ use crate::types::*;
 
 const DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
-const STARTMENU_ICON_SIZE: i32 = 14;
-const STARTMENU_ICON_INNER: i32 = 6;
 
-pub(crate) fn draw_startmenu_icon(
-    ctx: &CoreCtx,
-    bar_height: i32,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) {
-    let icon_offset = (bar_height - CLOSE_BUTTON_WIDTH) / 2;
-    let startmenu_invert = ctx.globals().selected_monitor().gesture == Gesture::StartMenu;
-
-    let startmenu_size = ctx.globals().cfg.startmenusize;
-    let scheme = ctx.globals().status_scheme();
-
-    painter.set_scheme(scheme);
-
-    painter.rect(
-        Rect::new(0, 0, startmenu_size, bar_height),
-        true,
-        !startmenu_invert,
-    );
-    painter.rect(
-        Rect::new(5, icon_offset, STARTMENU_ICON_SIZE, STARTMENU_ICON_SIZE),
-        true,
-        startmenu_invert,
-    );
-    painter.rect(
-        Rect::new(
-            9,
-            icon_offset + 4,
-            STARTMENU_ICON_INNER,
-            STARTMENU_ICON_INNER,
-        ),
-        true,
-        !startmenu_invert,
-    );
-    painter.rect(
-        Rect::new(
-            19,
-            icon_offset + STARTMENU_ICON_SIZE,
-            STARTMENU_ICON_INNER,
-            STARTMENU_ICON_INNER,
-        ),
-        true,
-        startmenu_invert,
-    );
-}
 pub(crate) fn draw_tag_indicators(
     ctx: &mut CoreCtx,
     m: &Monitor,

@@ -175,7 +175,7 @@ fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 }
 
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    ctx.request_bar_update(Some(monitor_id));
+    ctx.request_bar_update();
 
     let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
         return;

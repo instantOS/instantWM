@@ -266,7 +266,7 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
     if crate::overview::is_active(ctx.core()) {
         ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = true);
         ctx.reset_mode();
-        ctx.request_bar_update(None);
+        ctx.request_bar_update();
         return;
     }
 
@@ -275,7 +275,7 @@ pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
     }
 
     ctx.set_current_mode(crate::overview::OVERVIEW_MODE_NAME.to_string());
-    ctx.request_bar_update(None);
+    ctx.request_bar_update();
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx, _mask: TagMask) {
@@ -285,7 +285,7 @@ pub fn cancel_overview(ctx: &mut WmCtx, _mask: TagMask) {
 
     ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
     ctx.reset_mode();
-    ctx.request_bar_update(None);
+    ctx.request_bar_update();
 }
 
 #[cfg(test)]

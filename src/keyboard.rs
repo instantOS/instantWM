@@ -36,7 +36,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     {
         ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
-        ctx.request_bar_update(None);
+        ctx.request_bar_update();
         return true;
     }
 
@@ -57,7 +57,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         execute_key_action(ctx, &action);
         if transient {
             ctx.reset_mode();
-            ctx.request_bar_update(None);
+            ctx.request_bar_update();
         }
         true
     } else {

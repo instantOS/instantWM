@@ -109,15 +109,6 @@ fn monitor_size_for_client(g: &Globals, win: WindowId) -> (i32, i32) {
         .unwrap_or((g.cfg.screen_width, g.cfg.screen_height))
 }
 
-fn final_rect_for_target(target: Rect, mon_w: i32, mon_h: i32) -> Rect {
-    Rect {
-        x: target.x,
-        y: target.y,
-        w: target.w.min(mon_w).max(1),
-        h: target.h.min(mon_h).max(1),
-    }
-}
-
 fn animation_duration(frames: i32) -> Duration {
     Duration::from_micros(FRAME_SLEEP_MICROS * frames.max(0) as u64)
 }
@@ -244,7 +235,7 @@ pub(crate) fn move_resize(
     }
 
     let (mon_w, mon_h) = monitor_size_for_client(ctx.core().globals(), win);
-    let final_rect = final_rect_for_target(target, mon_w, mon_h);
+    let final_rect = target.clamped_to_monitor(mon_w, mon_h);
 
     match options.mode {
         MoveResizeMode::Immediate => {

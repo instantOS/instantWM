@@ -68,7 +68,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     };
     set_cursor_style(ctx, AltCursor::Move);
     ctx.core_mut().globals_mut().drag.bar_active = true;
-    ctx.request_bar_update(Some(selmon_id));
+    ctx.request_bar_update();
     true
 }
 
@@ -117,7 +117,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         if let Some(mon) = ctx.core_mut().globals_mut().monitors.get_mut(selmon_id) {
             mon.gesture = new_gesture;
         }
-        ctx.request_bar_update(Some(selmon_id));
+        ctx.request_bar_update();
     }
     true
 }
@@ -176,7 +176,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         mon.gesture = Gesture::None;
     }
     set_cursor_style(ctx, AltCursor::Default);
-    ctx.request_bar_update(Some(selmon_id));
+    ctx.request_bar_update();
 }
 
 /// Drag across the tag bar to switch the view or move/follow a window to a tag.
