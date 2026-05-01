@@ -5,6 +5,7 @@
 
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRenderElement};
+use smithay::desktop::PopupManager;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::globals::Globals;
@@ -137,6 +138,40 @@ fn build_occluders(windows: &[WindowBorderInfo]) -> Vec<Rect> {
         .collect()
 }
 
+/// Collects bounding rectangles of all currently-mapped xdg popups in
+/// compositor coordinates.
+///
+/// Popups (e.g. right-click menus) are emitted by smithay alongside their
+/// parent toplevel in the same render bucket as window surfaces, which sits
+/// below the WM's border bucket. Without explicit occlusion, borders would
+/// paint over popups that extend past their parent window. We treat every
+/// popup as an occluder for every border so popups appear on top.
+fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
+    let mut occluders = Vec::new();
+    for window in state.space.elements() {
+        let Some(toplevel) = window.toplevel() else {
+            continue;
+        };
+        let Some(space_loc) = state.space.element_location(window) else {
+            continue;
+        };
+        let window_geo = window.geometry();
+        for (popup, popup_offset) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
+            let popup_geo = popup.geometry();
+            if popup_geo.size.w <= 0 || popup_geo.size.h <= 0 {
+                continue;
+            }
+            occluders.push(Rect::new(
+                space_loc.x + window_geo.loc.x + popup_offset.x,
+                space_loc.y + window_geo.loc.y + popup_offset.y,
+                popup_geo.size.w,
+                popup_geo.size.h,
+            ));
+        }
+    }
+    occluders
+}
+
 /// Renders border elements for all visible windows.
 pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidColorRenderElement> {
     let windows = collect_window_info(g, state);
@@ -146,6 +181,8 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
 
     // Build occluders list (each window can occlude borders behind it)
     let occluders: Vec<Rect> = build_occluders(&windows);
+    // Popups always render above borders, so they occlude every border.
+    let popup_occluders: Vec<Rect> = build_popup_occluders(state);
 
     for (idx, window) in windows.iter().enumerate() {
         if !window.has_borders() {
@@ -165,6 +202,9 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
         // Subtract occluders from higher windows (windows in front)
         let higher_occluders = &occluders[idx + 1..];
         let visible_parts = apply_occluders(border_parts, higher_occluders);
+        // Subtract popup areas so right-click menus and similar overlays
+        // are not covered by borders.
+        let visible_parts = apply_occluders(visible_parts, &popup_occluders);
 
         // Get color based on focus state
         let is_focused = Some(window.id) == selected_win;
