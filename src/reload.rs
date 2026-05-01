@@ -35,7 +35,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
 
 fn normalize_current_mode(wm: &mut Wm) {
     if wm.g.behavior.current_mode == "default"
-        || crate::overview::is_mode_name(&wm.g.behavior.current_mode)
+        || wm.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
     {
         return;
     }

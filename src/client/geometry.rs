@@ -270,7 +270,7 @@ fn apply_icccm_size_hints_x11(
 ) {
     let needs_update = core
         .client(win)
-        .map(|c| !c.size_hints_valid)
+        .map(|c| !c.size_hints_dirty)
         .unwrap_or(false);
 
     if needs_update {

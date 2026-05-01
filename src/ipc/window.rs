@@ -2,7 +2,7 @@ use crate::backend::BackendOps;
 use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
-use crate::mouse::slop::is_valid_window_size_rect;
+use crate::mouse::slop::is_valid_window_size;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
@@ -110,7 +110,7 @@ fn resize_window(
         h: height,
     };
 
-    if !is_valid_window_size_rect(&wm.g, &rect, win) {
+    if !is_valid_window_size(&wm.g, &rect, win) {
         return Response::err("invalid target geometry");
     }
 

@@ -5,12 +5,8 @@ use crate::types::{Monitor, MonitorId, Rect, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
 
-pub fn is_mode_name(mode: &str) -> bool {
-    mode == OVERVIEW_MODE_NAME
-}
-
 pub fn is_active(core: &CoreCtx<'_>) -> bool {
-    is_mode_name(&core.globals().behavior.current_mode)
+    core.globals().behavior.current_mode == OVERVIEW_MODE_NAME
 }
 
 pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor_id: MonitorId) -> bool {
@@ -34,8 +30,8 @@ fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool 
 }
 
 pub fn handle_mode_transition(ctx: &mut WmCtx<'_>, previous_mode: &str, next_mode: &str) {
-    let entering_overview = !is_mode_name(previous_mode) && is_mode_name(next_mode);
-    let leaving_overview = is_mode_name(previous_mode) && !is_mode_name(next_mode);
+    let entering_overview = previous_mode != OVERVIEW_MODE_NAME && next_mode == OVERVIEW_MODE_NAME;
+    let leaving_overview = previous_mode == OVERVIEW_MODE_NAME && next_mode != OVERVIEW_MODE_NAME;
 
     if entering_overview {
         enter(ctx);

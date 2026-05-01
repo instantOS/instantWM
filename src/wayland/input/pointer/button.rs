@@ -1,13 +1,13 @@
 //! Pointer button handling.
 
-use crate::actions::execute_button_action;
-use smithay::backend::input::{InputBackend, PointerButtonEvent};
+use smithay::backend::input::{ButtonState, InputBackend, PointerButtonEvent};
 use smithay::input::keyboard::KeyboardHandle;
-use smithay::input::pointer::PointerHandle;
+use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::Backend;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
+use crate::mouse::pointer::PointerRegion;
 use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
@@ -31,210 +31,33 @@ pub fn handle_pointer_button<B: InputBackend>(
     let root_y = pointer_location.y.round() as i32;
     let wm_button = wayland_button_to_mouse_button(event.button_code());
 
-    // When the session is locked, just forward the raw button event to the lock surface.
+    let button = ButtonPress {
+        serial,
+        time: event.time_msec(),
+        button_code: event.button_code(),
+        state: event.state(),
+        root_x,
+        root_y,
+        wm_button,
+        pointer_location,
+    };
+
     if state.is_locked() {
-        let button = smithay::input::pointer::ButtonEvent {
-            serial,
-            time: event.time_msec(),
-            button: event.button_code(),
-            state: event.state(),
-        };
-        pointer_handle.button(state, &button);
+        forward_button(state, pointer_handle, button);
         pointer_handle.frame(state);
         return;
     }
 
-    if event.state() == smithay::backend::input::ButtonState::Pressed {
-        let clicked_win = find_hovered_window(wm, state, pointer_location);
-        let pointer_region = {
-            let mut ctx = wm.ctx();
-            crate::mouse::pointer::button_region_at(ctx.core_mut(), root_x, root_y, clicked_win)
-        };
-
-        // Bar clicks have their own status/systray handling and must not fall
-        // through to generic surface focus.
-        if let crate::mouse::pointer::PointerRegion::Bar { pos, .. } = pointer_region {
-            let clean_state = crate::util::clean_mask(
-                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                0,
-            );
-            dispatch_wayland_bar_click(wm, pos, event.button_code(), root_x, root_y, clean_state);
-            pointer_handle.frame(state);
-            return;
+    let handled = match button.state {
+        ButtonState::Pressed => {
+            handle_button_press(wm, state, pointer_handle, keyboard_handle, button)
         }
-
-        // Sidebar is WM-owned but not a bar target.
-        if matches!(
-            pointer_region,
-            crate::mouse::pointer::PointerRegion::Sidebar(_)
-        ) {
-            if let Some(btn) = wm_button {
-                let clean_state = crate::util::clean_mask(
-                    modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                    0,
-                );
-                let _ = dispatch_wayland_pointer_button(
-                    wm,
-                    pointer_region,
-                    btn,
-                    root_x,
-                    root_y,
-                    clean_state,
-                );
-            }
-            pointer_handle.frame(state);
-            return;
+        ButtonState::Released => {
+            handle_button_release(wm, state, pointer_handle, keyboard_handle, button)
         }
-
-        if let Some(btn) = wm_button {
-            let ctx = wm.ctx();
-            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-                && wayland_hover_resize_drag_begin(&mut ctx, root_x, root_y, btn)
-            {
-                return;
-            }
-        }
-
-        // Update focus before dispatching client button bindings.
-        let on_layer_surface = if let Some((layer_surface, location)) =
-            state.layer_surface_under_pointer(pointer_location)
-        {
-            keyboard_handle.set_focus(
-                state,
-                Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
-                serial,
-            );
-            let focus = Some((
-                PointerFocusTarget::WlSurface(layer_surface),
-                location.to_f64(),
-            ));
-            let motion = smithay::input::pointer::MotionEvent {
-                location: pointer_location,
-                serial,
-                time: event.time_msec(),
-            };
-            pointer_handle.motion(state, focus, &motion);
-            pointer_handle.frame(state);
-            true
-        } else if let Some(win) = clicked_win {
-            let mut ctx = wm.ctx();
-            crate::focus::select_monitor_for_client(&mut ctx, win);
-            crate::focus::focus_soft(&mut ctx, Some(win));
-            false
-        } else {
-            let mut ctx = wm.ctx();
-            crate::focus::focus_soft(&mut ctx, None);
-            false
-        };
-
-        // When a non-WM layer surface (notification, launcher like fuzzel) is
-        // under the pointer, forward the click to that surface and skip WM
-        // button bindings so we don't treat it as a root-window click.
-        let mut consumed = false;
-        if !on_layer_surface && let Some(btn) = wm_button {
-            let clean_state = crate::util::clean_mask(
-                modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
-                0,
-            );
-            consumed = dispatch_wayland_pointer_button(
-                wm,
-                pointer_region,
-                btn,
-                root_x,
-                root_y,
-                clean_state,
-            );
-        }
-
-        if !consumed {
-            let button = smithay::input::pointer::ButtonEvent {
-                serial,
-                time: event.time_msec(),
-                button: event.button_code(),
-                state: event.state(),
-            };
-            pointer_handle.button(state, &button);
-        }
-
-        let maybe_close = if !consumed {
-            let core = crate::contexts::CoreCtx::new(
-                &mut wm.g,
-                &mut wm.running,
-                &mut wm.bar,
-                &mut wm.focus,
-            );
-            let mon = core.globals().selected_monitor().clone();
-            let local_x = root_x - mon.work_rect.x;
-
-            // Check if we should close - only Wayland has systray menu
-
-            match &mut wm.backend {
-                Backend::Wayland(data) => {
-                    data.wayland_systray_menu.as_ref().is_some()
-                        && crate::systray::wayland::hit_test_wayland_systray_menu_item(
-                            &core,
-                            &data.wayland_systray,
-                            data.wayland_systray_menu.as_ref(),
-                            &mon,
-                            local_x,
-                        )
-                        .is_none()
-                }
-                Backend::X11(_) => false,
-            }
-        } else {
-            false
-        };
-        if maybe_close {
-            // Only Wayland has a systray menu to close
-            if let Backend::Wayland(data) = &mut wm.backend {
-                data.wayland_systray_menu = None;
-            }
-            state.request_bar_redraw();
-        }
-    } else if event.state() == smithay::backend::input::ButtonState::Released {
-        if let Some(btn) = wm_button {
-            let ctx = wm.ctx();
-            if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
-                && wayland_hover_resize_drag_finish(&mut ctx, btn)
-            {
-                return;
-            }
-        }
-
-        let released_btn = wm_button;
-        let is_wm_drag = (wm.g.drag.interactive.active
-            && released_btn == Some(wm.g.drag.interactive.button))
-            || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button))
-            || (wm.g.drag.gesture.active && released_btn == Some(wm.g.drag.gesture.button));
-
-        if !is_wm_drag {
-            let button = smithay::input::pointer::ButtonEvent {
-                serial,
-                time: event.time_msec(),
-                button: event.button_code(),
-                state: event.state(),
-            };
-            pointer_handle.button(state, &button);
-        }
-
-        if wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button) {
-            let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
-            let mut ctx = wm.ctx();
-            crate::mouse::drag_tag_finish(&mut ctx, mod_state);
-        }
-
-        if wm.g.drag.interactive.active && released_btn == Some(wm.g.drag.interactive.button) {
-            let mut ctx = wm.ctx();
-            crate::mouse::title_drag_finish(&mut ctx);
-        }
-
-        if wm.g.drag.gesture.active
-            && let Some(btn) = released_btn
-        {
-            let mut ctx = wm.ctx();
-            let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, btn);
-        }
+    };
+    if handled {
+        return;
     }
 
     pointer_handle.frame(state);
@@ -243,6 +66,254 @@ pub fn handle_pointer_button<B: InputBackend>(
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy)]
+struct ButtonPress {
+    serial: smithay::utils::Serial,
+    time: u32,
+    button_code: u32,
+    state: ButtonState,
+    root_x: i32,
+    root_y: i32,
+    wm_button: Option<MouseButton>,
+    pointer_location: Point<f64, smithay::utils::Logical>,
+}
+
+fn forward_button(
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    button: ButtonPress,
+) {
+    pointer_handle.button(
+        state,
+        &ButtonEvent {
+            serial: button.serial,
+            time: button.time,
+            button: button.button_code,
+            state: button.state,
+        },
+    );
+}
+
+fn clean_modifier_state(keyboard_handle: &KeyboardHandle<WaylandState>) -> u32 {
+    crate::util::clean_mask(modifiers_to_x11_mask(&keyboard_handle.modifier_state()), 0)
+}
+
+fn handle_button_press(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    button: ButtonPress,
+) -> bool {
+    let clicked_win = find_hovered_window(wm, state, button.pointer_location);
+    let pointer_region = {
+        let mut ctx = wm.ctx();
+        crate::mouse::pointer::button_region_at(
+            ctx.core_mut(),
+            button.root_x,
+            button.root_y,
+            clicked_win,
+        )
+    };
+
+    match pointer_region {
+        PointerRegion::Bar { pos, .. } => {
+            dispatch_wayland_bar_click(
+                wm,
+                pos,
+                button.button_code,
+                button.root_x,
+                button.root_y,
+                clean_modifier_state(keyboard_handle),
+            );
+            pointer_handle.frame(state);
+            return true;
+        }
+        PointerRegion::Sidebar(_) => {
+            if let Some(btn) = button.wm_button {
+                let _ = dispatch_wayland_pointer_button(
+                    wm,
+                    pointer_region,
+                    btn,
+                    button.root_x,
+                    button.root_y,
+                    clean_modifier_state(keyboard_handle),
+                );
+            }
+            pointer_handle.frame(state);
+            return true;
+        }
+        PointerRegion::Client(_) | PointerRegion::Root { .. } => {}
+    }
+
+    if begin_hover_resize_drag(wm, button) {
+        return true;
+    }
+
+    let on_layer_surface = focus_button_target(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        button,
+        clicked_win,
+    );
+
+    let consumed = !on_layer_surface
+        && button.wm_button.is_some_and(|btn| {
+            dispatch_wayland_pointer_button(
+                wm,
+                pointer_region,
+                btn,
+                button.root_x,
+                button.root_y,
+                clean_modifier_state(keyboard_handle),
+            )
+        });
+
+    if !consumed {
+        forward_button(state, pointer_handle, button);
+        close_wayland_systray_menu_if_outside(wm, state, button.root_x);
+    }
+
+    false
+}
+
+fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
+    let Some(btn) = button.wm_button else {
+        return false;
+    };
+    let ctx = wm.ctx();
+    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+        wayland_hover_resize_drag_begin(&mut ctx, button.root_x, button.root_y, btn)
+    } else {
+        false
+    }
+}
+
+fn focus_button_target(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    button: ButtonPress,
+    clicked_win: Option<crate::types::WindowId>,
+) -> bool {
+    if let Some((layer_surface, location)) =
+        state.layer_surface_under_pointer(button.pointer_location)
+    {
+        keyboard_handle.set_focus(
+            state,
+            Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
+            button.serial,
+        );
+        let focus = Some((
+            PointerFocusTarget::WlSurface(layer_surface),
+            location.to_f64(),
+        ));
+        let motion = MotionEvent {
+            location: button.pointer_location,
+            serial: button.serial,
+            time: button.time,
+        };
+        pointer_handle.motion(state, focus, &motion);
+        pointer_handle.frame(state);
+        return true;
+    }
+
+    let mut ctx = wm.ctx();
+    if let Some(win) = clicked_win {
+        crate::focus::select_monitor_for_client(&mut ctx, win);
+        crate::focus::focus_soft(&mut ctx, Some(win));
+    } else {
+        crate::focus::focus_soft(&mut ctx, None);
+    }
+    false
+}
+
+fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
+    let core =
+        crate::contexts::CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let mon = core.globals().selected_monitor().clone();
+    let local_x = root_x - mon.work_rect.x;
+
+    let should_close = match &mut wm.backend {
+        Backend::Wayland(data) => {
+            data.wayland_systray_menu.as_ref().is_some()
+                && crate::systray::wayland::hit_test_wayland_systray_menu_item(
+                    &core,
+                    &data.wayland_systray,
+                    data.wayland_systray_menu.as_ref(),
+                    &mon,
+                    local_x,
+                )
+                .is_none()
+        }
+        Backend::X11(_) => false,
+    };
+
+    if should_close {
+        if let Backend::Wayland(data) = &mut wm.backend {
+            data.wayland_systray_menu = None;
+        }
+        state.request_bar_redraw();
+    }
+}
+
+fn handle_button_release(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    button: ButtonPress,
+) -> bool {
+    if finish_hover_resize_drag(wm, button) {
+        return true;
+    }
+
+    if !is_wm_drag_release(wm, button.wm_button) {
+        forward_button(state, pointer_handle, button);
+    }
+
+    if wm.g.drag.tag.active && button.wm_button == Some(wm.g.drag.tag.button) {
+        let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
+        let mut ctx = wm.ctx();
+        crate::mouse::drag_tag_finish(&mut ctx, mod_state);
+    }
+
+    if wm.g.drag.interactive.active && button.wm_button == Some(wm.g.drag.interactive.button) {
+        let mut ctx = wm.ctx();
+        crate::mouse::title_drag_finish(&mut ctx);
+    }
+
+    if wm.g.drag.gesture.active
+        && let Some(btn) = button.wm_button
+    {
+        let mut ctx = wm.ctx();
+        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, btn);
+    }
+
+    false
+}
+
+fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
+    let Some(btn) = button.wm_button else {
+        return false;
+    };
+    let ctx = wm.ctx();
+    if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
+        wayland_hover_resize_drag_finish(&mut ctx, btn)
+    } else {
+        false
+    }
+}
+
+fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
+    (wm.g.drag.interactive.active && released_btn == Some(wm.g.drag.interactive.button))
+        || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button))
+        || (wm.g.drag.gesture.active && released_btn == Some(wm.g.drag.gesture.button))
+}
 
 /// Find the window under the pointer.
 pub fn find_hovered_window(
@@ -285,38 +356,26 @@ fn find_hovered_window_for_surface(
 /// Dispatch client button event.
 fn dispatch_wayland_pointer_button(
     wm: &mut Wm,
-    region: crate::mouse::pointer::PointerRegion,
+    region: PointerRegion,
     btn: MouseButton,
     root_x: i32,
     root_y: i32,
     clean_state: u32,
 ) -> bool {
     let clicked_win = match region {
-        crate::mouse::pointer::PointerRegion::Client(win) => Some(win),
+        PointerRegion::Client(win) => Some(win),
         _ => None,
     };
     let target = region.to_button_target();
-    let buttons = wm.g.cfg.buttons.clone();
-    for b in &buttons {
-        if !b.matches(target) || b.button != btn {
-            continue;
-        }
-        if crate::util::clean_mask(b.mask, 0) != clean_state {
-            continue;
-        }
-        let mut ctx = wm.ctx();
-        execute_button_action(
-            &mut ctx,
-            &b.action,
-            crate::types::ButtonArg {
-                target,
-                window: clicked_win,
-                btn: b.button,
-                rx: root_x,
-                ry: root_y,
-            },
-        );
-        return true;
-    }
-    false
+    let mut ctx = wm.ctx();
+    crate::bar::dispatch_first_configured_button(
+        &mut ctx,
+        target,
+        clicked_win,
+        btn,
+        root_x,
+        root_y,
+        clean_state,
+        0,
+    )
 }

@@ -389,7 +389,7 @@ pub struct SizeHintsInfo {
 
 impl SizeHintsInfo {
     pub fn from_client(c: &crate::types::client::Client) -> Option<Self> {
-        if !c.size_hints_valid {
+        if !c.size_hints_dirty {
             return None;
         }
         let h = &c.size_hints;

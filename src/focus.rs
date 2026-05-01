@@ -443,6 +443,7 @@ pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
     }
 }
 
+//TODO: document what this returns
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
     if ctx.core().globals().monitors.is_empty() {
         return false;

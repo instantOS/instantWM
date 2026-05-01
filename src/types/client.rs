@@ -170,7 +170,7 @@ pub struct Client {
     pub size_hints: SizeHints,
 
     /// Whether size hints are valid.
-    pub size_hints_valid: bool,
+    pub size_hints_dirty: bool,
     /// Current border width.
     pub border_width: i32,
     /// Previous border width.

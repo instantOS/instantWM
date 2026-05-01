@@ -492,7 +492,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
                 if let Some(c) = ctx.core.globals_mut().clients.get_mut(&event_win) {
-                    c.size_hints_valid = false;
+                    c.size_hints_dirty = false;
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {

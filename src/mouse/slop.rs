@@ -54,43 +54,17 @@ pub fn parse_slop_output(output: &str) -> Option<Rect> {
 
 // ── Geometry validation ───────────────────────────────────────────────────────
 
-/// Return `true` when `(x, y, width, height)` describes a rectangle that is
-/// large enough to be a useful window size *and* meaningfully different from
-/// the window's current geometry.
+/// Return `true` when `rect` describes a rectangle that is large enough to be a
+/// useful window size *and* meaningfully different from the window's current
+/// geometry.
 ///
 /// The checks performed are:
-/// * `width`  and `height` both exceed [`MIN_WINDOW_SIZE`].
+/// * `width` and `height` both exceed [`MIN_WINDOW_SIZE`].
 /// * `x` and `y` are within [`SLOP_MARGIN`] pixels of the monitor boundary
 ///   (i.e. not wildly off-screen).
 /// * At least one dimension differs by more than 20 px from the current
 ///   geometry (prevents no-op resizes).
-pub fn is_valid_window_size(
-    g: &Globals,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    c_win: WindowId,
-) -> bool {
-    let Some(c) = g.clients.get(&c_win) else {
-        return false;
-    };
-
-    c.accepts_distinct_rect(
-        Rect {
-            x,
-            y,
-            w: width,
-            h: height,
-        },
-        MIN_WINDOW_SIZE,
-        SLOP_MARGIN,
-        20,
-    )
-}
-
-/// Rect-typed convenience wrapper around [`is_valid_window_size`].
-pub fn is_valid_window_size_rect(g: &Globals, rect: &Rect, c_win: WindowId) -> bool {
+pub fn is_valid_window_size(g: &Globals, rect: &Rect, c_win: WindowId) -> bool {
     let Some(c) = g.clients.get(&c_win) else {
         return false;
     };
@@ -153,7 +127,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
         return;
     };
 
-    if !is_valid_window_size_rect(ctx.core().globals(), &rect, win) {
+    if !is_valid_window_size(ctx.core().globals(), &rect, win) {
         return;
     }
 

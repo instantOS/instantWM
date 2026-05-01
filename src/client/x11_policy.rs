@@ -57,7 +57,7 @@ pub fn apply_size_hints_to_client(client: &mut Client, hints: Option<WmSizeHints
     }
 
     client.is_fixed_size = client.size_hints.is_fixed();
-    client.size_hints_valid = true;
+    client.size_hints_dirty = true;
 }
 
 pub fn should_float_for_x11_type(window_type: Option<WmWindowType>) -> bool {

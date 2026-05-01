@@ -364,6 +364,54 @@ pub fn dispatch_configured_button(
     clean_state: u32,
     numlockmask: u32,
 ) {
+    dispatch_configured_buttons(
+        ctx,
+        target,
+        window,
+        btn,
+        root_x,
+        root_y,
+        clean_state,
+        numlockmask,
+        false,
+    );
+}
+
+pub fn dispatch_first_configured_button(
+    ctx: &mut WmCtx,
+    target: ButtonTarget,
+    window: Option<WindowId>,
+    btn: MouseButton,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+    numlockmask: u32,
+) -> bool {
+    dispatch_configured_buttons(
+        ctx,
+        target,
+        window,
+        btn,
+        root_x,
+        root_y,
+        clean_state,
+        numlockmask,
+        true,
+    )
+}
+
+fn dispatch_configured_buttons(
+    ctx: &mut WmCtx,
+    target: ButtonTarget,
+    window: Option<WindowId>,
+    btn: MouseButton,
+    root_x: i32,
+    root_y: i32,
+    clean_state: u32,
+    numlockmask: u32,
+    stop_after_first: bool,
+) -> bool {
+    let mut matched = false;
     let buttons = ctx.core().globals().cfg.buttons.clone();
     for b in &buttons {
         if !b.matches(target) || b.button != btn {
@@ -383,5 +431,10 @@ pub fn dispatch_configured_button(
                 ry: root_y,
             },
         );
+        matched = true;
+        if stop_after_first {
+            return true;
+        }
     }
+    matched
 }
