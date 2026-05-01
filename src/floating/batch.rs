@@ -16,7 +16,6 @@
 //! and are correctly restored when the user switches back.
 
 use crate::contexts::WmCtx;
-use crate::floating::state::save_floating_geometry;
 use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
@@ -37,7 +36,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
     let wins_to_save = collect_floating_wins(ctx.core().globals(), mid);
     for win in wins_to_save {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            save_floating_geometry(client);
+            client.save_floating_geometry();
         }
     }
 }

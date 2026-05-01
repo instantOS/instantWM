@@ -3,9 +3,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::config::ModeConfig;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
-use crate::floating::{
-    change_snap, reset_snap, save_floating_geometry, toggle_floating, unhide_one,
-};
+use crate::floating::{change_snap, reset_snap, toggle_floating, unhide_one};
 use crate::focus::{direction_focus, focus_stack};
 
 use crate::types::*;
@@ -422,7 +420,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             ctx.set_border(win, border_width);
 
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                save_floating_geometry(client);
+                client.save_floating_geometry();
                 client.snap_status = SnapPosition::Maximized;
             }
 

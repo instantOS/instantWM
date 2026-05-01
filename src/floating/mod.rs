@@ -33,7 +33,7 @@ pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-pub use state::{save_floating_geometry, set_window_mode, toggle_floating, toggle_maximized};
+pub use state::{set_window_mode, toggle_floating, toggle_maximized};
 
 // ── scratchpad ────────────────────────────────────────────────────────────────
 

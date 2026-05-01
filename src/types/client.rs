@@ -375,6 +375,10 @@ impl Client {
         }
     }
 
+    pub fn save_floating_geometry(&mut self) {
+        self.float_geo = self.geo;
+    }
+
     pub fn update_geometry(&mut self, rect: Rect) {
         self.old_geo = self.geo;
         self.geo = rect;

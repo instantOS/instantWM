@@ -4,7 +4,7 @@ use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::client::restore_border_width;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::types::*;
@@ -12,22 +12,11 @@ use crate::types::*;
 /// Common helper for restoring border width when transitioning to floating.
 /// Returns the restored border width value.
 /// This is X11-specific since Wayland doesn't support border widths.
-fn restore_client_border(core: &mut CoreCtx, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
-    if let Some(client) = core.globals_mut().clients.get_mut(&win) {
-        restore_border_width(client);
-    }
-    let restored_bw = core
-        .globals()
-        .clients
-        .get(&win)
-        .map(|c| c.border_width)
-        .unwrap_or(0);
-    x11.set_border_width(win, restored_bw);
-    restored_bw
-}
-
-pub fn save_floating_geometry(client: &mut Client) {
-    client.float_geo = client.geo;
+fn restore_client_border_x11(client: &mut Client, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
+    restore_border_width(client);
+    let restored_border_width = client.border_width;
+    x11.set_border_width(win, restored_border_width);
+    restored_border_width
 }
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
@@ -72,7 +61,9 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
             // Restore borders
             match ctx {
                 WmCtx::X11(x11) => {
-                    restore_client_border(&mut x11.core, &x11.x11, win);
+                    if let Some(client) = x11.core.globals_mut().clients.get_mut(&win) {
+                        restore_client_border_x11(client, &x11.x11, win);
+                    }
                     crate::backend::x11::floating::apply_floating_borderscheme(
                         &x11.x11,
                         win,

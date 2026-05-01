@@ -1,5 +1,5 @@
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::floating::{restore_all_floating, save_all_floating, save_floating_geometry};
+use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect, TagMask, WindowId};
 
@@ -170,7 +170,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     for (i, (win, width, height, is_floating)) in clients.iter().copied().enumerate() {
         if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            save_floating_geometry(client);
+            client.save_floating_geometry();
         }
 
         let row = i as i32 / gridwidth;
