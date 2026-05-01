@@ -123,21 +123,32 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
                 return None;
             }
 
-            let strip_border = info.mode.is_true_fullscreen()
-                || (info.mode.is_tiling() && ((clientcount == 1 && is_tiling) || is_monocle));
-
-            let new_border = if strip_border {
-                0
-            } else {
-                info.old_border_width
-            };
-            Some((win, new_border))
+            Some((
+                win,
+                border_width_for_layout_client(info, clientcount, is_tiling, is_monocle),
+            ))
         })
         .collect();
 
     // Apply border changes
     for (win, border) in border_changes {
         ctx.set_border(win, border);
+    }
+}
+
+fn border_width_for_layout_client(
+    client: &Client,
+    clientcount: u32,
+    is_tiling: bool,
+    is_monocle: bool,
+) -> i32 {
+    let strip_border = client.mode.is_true_fullscreen()
+        || (client.mode.is_tiling() && ((clientcount == 1 && is_tiling) || is_monocle));
+
+    if strip_border {
+        0
+    } else {
+        client.old_border_width
     }
 }
 

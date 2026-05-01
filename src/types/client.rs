@@ -222,6 +222,25 @@ impl Client {
         self.geo.total_height(self.border_width)
     }
 
+    /// Check whether a proposed geometry is large enough and meaningfully
+    /// different from the client's current geometry.
+    pub fn accepts_distinct_rect(
+        &self,
+        rect: Rect,
+        min_size: i32,
+        margin: i32,
+        min_delta: i32,
+    ) -> bool {
+        rect.w > min_size
+            && rect.h > min_size
+            && rect.x > -margin
+            && rect.y > -margin
+            && ((self.geo.w - rect.w).abs() > min_delta
+                || (self.geo.h - rect.h).abs() > min_delta
+                || (self.geo.x - rect.x).abs() > min_delta
+                || (self.geo.y - rect.y).abs() > min_delta)
+    }
+
     /// Check if this client is a scratchpad window.
     pub fn is_scratchpad(&self) -> bool {
         self.has_scratchpad_identity()

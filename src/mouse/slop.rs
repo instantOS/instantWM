@@ -76,19 +76,26 @@ pub fn is_valid_window_size(
         return false;
     };
 
-    width > MIN_WINDOW_SIZE
-        && height > MIN_WINDOW_SIZE
-        && x > -SLOP_MARGIN
-        && y > -SLOP_MARGIN
-        && ((c.geo.w - width).abs() > 20
-            || (c.geo.h - height).abs() > 20
-            || (c.geo.x - x).abs() > 20
-            || (c.geo.y - y).abs() > 20)
+    c.accepts_distinct_rect(
+        Rect {
+            x,
+            y,
+            w: width,
+            h: height,
+        },
+        MIN_WINDOW_SIZE,
+        SLOP_MARGIN,
+        20,
+    )
 }
 
 /// Rect-typed convenience wrapper around [`is_valid_window_size`].
 pub fn is_valid_window_size_rect(g: &Globals, rect: &Rect, c_win: WindowId) -> bool {
-    is_valid_window_size(g, rect.x, rect.y, rect.w, rect.h, c_win)
+    let Some(c) = g.clients.get(&c_win) else {
+        return false;
+    };
+
+    c.accepts_distinct_rect(*rect, MIN_WINDOW_SIZE, SLOP_MARGIN, 20)
 }
 
 // ── Window resize helpers ─────────────────────────────────────────────────────

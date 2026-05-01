@@ -16,7 +16,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
-use crate::types::{Rect, WindowId};
+use crate::types::{Client, Rect, WindowId};
 
 /// Record the resolved geometry of a managed client.
 ///
@@ -65,6 +65,18 @@ pub fn resolve_floating_placement(
     let Some(work_rect) = globals.monitor(client.monitor_id).map(|m| m.work_rect) else {
         return requested;
     };
+    let parent_rect = parent.and_then(|parent| globals.clients.get(&parent).map(|c| c.geo));
+
+    resolve_floating_placement_for_client(client, work_rect, requested, kind, parent_rect)
+}
+
+fn resolve_floating_placement_for_client(
+    client: &Client,
+    work_rect: Rect,
+    requested: Rect,
+    kind: FloatingPlacementKind,
+    parent_rect: Option<Rect>,
+) -> Rect {
     if !work_rect.is_valid() {
         return requested;
     }
@@ -85,8 +97,7 @@ pub fn resolve_floating_placement(
         fully_outside_x || fully_outside_y || (requested.x == 0 && requested.y == 0);
     let used_parent_position = if matches!(kind, FloatingPlacementKind::New)
         && needs_parent_placement
-        && let Some(parent_rect) =
-            parent.and_then(|parent| globals.clients.get(&parent).map(|c| c.geo))
+        && let Some(parent_rect) = parent_rect
     {
         rect.x = parent_rect.x + (parent_rect.w - rect.w) / 2;
         rect.y = parent_rect.y + (parent_rect.h - rect.h) / 2;

@@ -4,7 +4,7 @@ use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::properties::set_client_state;
 use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
-use crate::constants::animation::{DECORATIVE_SHOW_FRAME_COUNT, EMPHASIZED_FRAME_COUNT};
+use crate::constants::animation::DECORATIVE_SHOW_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::types::{ClientMode, Rect, WindowId};
@@ -214,9 +214,8 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
             WmCtx::X11(ctx_x11) => {
                 hide_x11(ctx_x11, win);
             }
-            WmCtx::Wayland(_) => {
-                ctx.backend().unmap_window(win);
-                ctx.backend().flush();
+            WmCtx::Wayland(ctx_wl) => {
+                hide_wayland(ctx_wl, win);
             }
         }
 
@@ -285,51 +284,22 @@ fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 /// and geometry preservation. Guards, focus, and arrange are handled by the
 /// caller.
 fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.client(win) {
-        Some(c) => c.geo,
-        None => return,
-    };
-    let bar_height = ctx.core.globals().cfg.bar_height;
-    let animated = ctx.core.globals().behavior.animated;
-
-    if animated {
-        // Animate the window sliding down toward the bar before unmapping.
-        WmCtx::X11(ctx.reborrow()).move_resize(
-            win,
-            Rect {
-                x,
-                y: bar_height - h + 40,
-                w,
-                h,
-            },
-            MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
-        );
-    }
-
     let root = ctx.x11_runtime.root;
     let x11_win: Window = win.into();
 
-    {
-        let _grab = crate::backend::x11::ServerGrab::new(ctx.x11.conn);
-        suppress_unmap_events(ctx.x11.conn, root, x11_win);
+    let _grab = crate::backend::x11::ServerGrab::new(ctx.x11.conn);
+    suppress_unmap_events(ctx.x11.conn, root, x11_win);
 
-        let _ = ctx.x11.conn.unmap_window(x11_win);
-        let _ = ctx.x11.conn.flush();
-        set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_ICONIC);
+    let _ = ctx.x11.conn.unmap_window(x11_win);
+    let _ = ctx.x11.conn.flush();
+    set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_ICONIC);
 
-        restore_event_masks(ctx.x11.conn, root, x11_win);
-    }
+    restore_event_masks(ctx.x11.conn, root, x11_win);
+}
 
-    // Keep the stored geometry intact so the window returns to the right place
-    // when shown again.
-    {
-        let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
-        tmp_ctx.move_resize(
-            win,
-            Rect { x, y, w, h },
-            MoveResizeOptions::hinted_immediate(false),
-        );
-    }
+fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
+    ctx.wayland.backend.unmap_window(win);
+    ctx.wayland.backend.flush();
 }
 
 // ---------------------------------------------------------------------------
