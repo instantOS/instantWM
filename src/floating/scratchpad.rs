@@ -7,7 +7,7 @@ use crate::globals::Globals;
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
 use crate::types::input::EdgeDirection;
-use crate::types::{ClientMode, MonitorId, Rect, WindowId};
+use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId, client::ScratchpadData};
 use bincode::{Decode, Encode};
 
 const EDGE_MARGIN_X: i32 = 20;
@@ -151,8 +151,9 @@ impl ScratchpadInfo {
         if !c.is_scratchpad() {
             return None;
         }
+        let sp = c.scratchpad.as_ref()?;
         Some(Self {
-            name: c.scratchpad_name.clone(),
+            name: sp.name.clone(),
             visible: c.is_sticky,
             window_id: Some(c.win.0),
             monitor: Some(c.monitor_id.index()),
@@ -161,7 +162,7 @@ impl ScratchpadInfo {
             width: Some(c.geo.w),
             height: Some(c.geo.h),
             mode: c.mode,
-            direction: c.scratchpad_direction.map(|d| d.as_str().to_string()),
+            direction: sp.direction.map(|d| d.as_str().to_string()),
         })
     }
 }
@@ -255,7 +256,7 @@ fn scratchpad_names(g: &Globals, visible: bool) -> Vec<String> {
     g.clients
         .values()
         .filter(|c| c.is_scratchpad() && c.is_sticky == visible)
-        .map(|c| c.scratchpad_name.clone())
+        .filter_map(|c| c.scratchpad.as_ref().map(|sp| sp.name.clone()))
         .collect()
 }
 
@@ -314,12 +315,15 @@ pub fn scratchpad_make(
         client.tags
     };
 
-    client.scratchpad_name = name.to_string();
-    client.scratchpad_direction = direction;
-
-    if !was_scratchpad {
-        client.scratchpad_restore_tags = old_tags;
-    }
+    client.scratchpad = Some(ScratchpadData {
+        name: name.to_string(),
+        restore_tags: if !was_scratchpad {
+            old_tags
+        } else {
+            TagMask::EMPTY
+        },
+        direction,
+    });
 
     client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     client.is_sticky = false;
@@ -360,9 +364,13 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     if !client.is_scratchpad() {
         return;
     }
-    let restore_tags = client.scratchpad_restore_tags;
+    let restore_tags = client
+        .scratchpad
+        .as_ref()
+        .map(|sp| sp.restore_tags)
+        .unwrap_or(TagMask::EMPTY);
     let monitor_id = client.monitor_id;
-    let had_direction = client.scratchpad_direction.is_some();
+    let had_direction = client.is_edge_scratchpad();
 
     let mut was_hidden = false;
     if let Some(client) = ctx.core_mut().client_mut(selected_window) {
@@ -376,7 +384,6 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
         if had_direction {
             client.border_width = client.old_border_width;
             client.is_locked = false;
-            client.scratchpad_direction = None;
         }
     }
 
@@ -397,7 +404,12 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         .globals()
         .clients
         .get(&found)
-        .map(|c| (c.is_sticky, c.scratchpad_direction))
+        .map(|c| {
+            (
+                c.is_sticky,
+                c.scratchpad.as_ref().and_then(|sp| sp.direction),
+            )
+        })
         .unwrap_or_default();
 
     if was_sticky {
@@ -477,12 +489,11 @@ pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
     let mut hidden_count = 0;
 
     for name in scratchpad_names {
-        let was_visible = ctx
-            .core()
-            .globals()
-            .clients
-            .values()
-            .any(|c| c.is_scratchpad() && c.scratchpad_name == name && c.is_sticky);
+        let was_visible = ctx.core().globals().clients.values().any(|c| {
+            c.is_scratchpad()
+                && c.scratchpad.as_ref().is_some_and(|sp| sp.name == name)
+                && c.is_sticky
+        });
         scratchpad_hide_name(ctx, &name);
         if was_visible {
             hidden_count += 1;
@@ -510,7 +521,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         .globals()
         .clients
         .get(&found)
-        .and_then(|c| c.scratchpad_direction);
+        .and_then(|c| c.scratchpad.as_ref().and_then(|sp| sp.direction));
 
     let (geo, mon_rect) = {
         let mon = ctx.core().globals().selected_monitor();
@@ -652,7 +663,7 @@ pub fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
     }
 
     for c in g.clients.values() {
-        if c.is_scratchpad() && c.scratchpad_name == name {
+        if c.is_scratchpad() && c.scratchpad.as_ref().is_some_and(|sp| sp.name == name) {
             return Some(c.win);
         }
     }
@@ -668,7 +679,9 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
     };
 
     if let Some(client) = ctx.core_mut().client_mut(win) {
-        client.scratchpad_direction = Some(direction);
+        if let Some(sp) = &mut client.scratchpad {
+            sp.set_direction(direction);
+        }
         if direction.is_vertical() {
             client.geo.h = mon_wh / 3;
         } else {
@@ -680,7 +693,7 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
         let name = ctx
             .core()
             .client(win)
-            .map(|c| c.scratchpad_name.clone())
+            .and_then(|c| c.scratchpad.as_ref().map(|sp| sp.name.clone()))
             .unwrap_or_default();
         if !name.is_empty() {
             scratchpad_hide_name(ctx, &name);

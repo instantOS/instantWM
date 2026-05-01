@@ -223,9 +223,7 @@ pub(crate) fn build_monitor_snapshots(
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: if crate::overview::is_active(core)
-                && core.globals().selected_monitor_id() == mon.id()
-            {
+            layout_symbol: if crate::overview::is_active_on_monitor(core, &mon) {
                 "OVR".to_string()
             } else {
                 mon.layouts_for_mask(selected_tags).symbol().to_string()

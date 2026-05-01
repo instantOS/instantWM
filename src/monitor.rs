@@ -702,7 +702,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         return;
     }
 
-    let sp_name = client.scratchpad_name.clone();
+    let sp_name = client.scratchpad.as_ref().unwrap().name.clone();
     let current_mon = ctx.core_mut().globals_mut().monitors.sel_idx();
 
     if let Some(selected_window) = ctx

@@ -134,14 +134,16 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     };
 
     if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
-        crate::bar::dispatch_configured_button(
+        crate::mouse::bindings::run_all(
             &mut WmCtx::X11(ctx.reborrow()),
-            button_target,
-            target_window,
-            btn,
-            e.root_x as i32,
-            e.root_y as i32,
-            clean_state,
+            crate::mouse::bindings::ButtonBindingEvent {
+                target: button_target,
+                window: target_window,
+                button: btn,
+                root_x: e.root_x as i32,
+                root_y: e.root_y as i32,
+                clean_state,
+            },
             numlockmask,
         );
     }

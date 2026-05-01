@@ -686,7 +686,8 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     };
 
     if last_client.is_scratchpad() {
-        let _ = crate::floating::scratchpad_show_name(ctx, &last_client.scratchpad_name);
+        let name = last_client.scratchpad.as_ref().unwrap().name.clone();
+        let _ = crate::floating::scratchpad_show_name(ctx, &name);
         return;
     }
 

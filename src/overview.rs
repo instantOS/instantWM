@@ -1,7 +1,7 @@
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::floating::{restore_all_floating, save_all_floating, save_floating_geometry};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Monitor, MonitorId, Rect, TagMask, WindowId};
+use crate::types::{Monitor, Rect, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
 
@@ -9,8 +9,8 @@ pub fn is_active(core: &CoreCtx<'_>) -> bool {
     core.globals().behavior.current_mode == OVERVIEW_MODE_NAME
 }
 
-pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor_id: MonitorId) -> bool {
-    is_active(core) && core.globals().selected_monitor_id() == monitor_id
+pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor: &Monitor) -> bool {
+    is_active(core) && core.globals().selected_monitor_id() == monitor.id()
 }
 
 fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool {

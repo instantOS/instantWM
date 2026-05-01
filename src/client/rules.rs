@@ -42,7 +42,7 @@ pub fn apply_rules(
         // we may see later title/app_id updates that re-run this function; do
         // not let those rule refreshes retag an existing scratchpad back into
         // a normal window.
-        if !c.scratchpad_name.is_empty() {
+        if c.scratchpad.is_some() {
             return;
         }
 
@@ -133,10 +133,7 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
         c.name = props.title.clone();
     }
 
-    if g.clients
-        .get(&win)
-        .is_some_and(|c| !c.scratchpad_name.is_empty())
-    {
+    if g.clients.get(&win).is_some_and(|c| c.scratchpad.is_some()) {
         return;
     }
 

@@ -39,6 +39,7 @@
 //! monitor::handle_client_monitor_switch(win)   // if applicable
 //! ```
 
+pub mod bindings;
 pub mod constants;
 mod cursor;
 pub mod drag;

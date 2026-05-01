@@ -12,7 +12,7 @@ use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{dispatch_wayland_bar_click, wayland_button_to_mouse_button};
+use crate::wayland::input::bar::{handle_wayland_bar_click, wayland_button_to_mouse_button};
 use crate::wayland::input::pointer::drag::{
     wayland_hover_resize_drag_begin, wayland_hover_resize_drag_finish,
 };
@@ -119,7 +119,7 @@ fn handle_button_press(
 
     match pointer_region {
         PointerRegion::Bar { pos, .. } => {
-            dispatch_wayland_bar_click(
+            handle_wayland_bar_click(
                 wm,
                 pos,
                 button.button_code,
@@ -132,7 +132,7 @@ fn handle_button_press(
         }
         PointerRegion::Sidebar(_) => {
             if let Some(btn) = button.wm_button {
-                let _ = dispatch_wayland_pointer_button(
+                let _ = consume_wayland_pointer_binding(
                     wm,
                     pointer_region,
                     btn,
@@ -162,7 +162,7 @@ fn handle_button_press(
 
     let consumed = !on_layer_surface
         && button.wm_button.is_some_and(|btn| {
-            dispatch_wayland_pointer_button(
+            consume_wayland_pointer_binding(
                 wm,
                 pointer_region,
                 btn,
@@ -353,8 +353,7 @@ fn find_hovered_window_for_surface(
         .flatten()
 }
 
-/// Dispatch client button event.
-fn dispatch_wayland_pointer_button(
+fn consume_wayland_pointer_binding(
     wm: &mut Wm,
     region: PointerRegion,
     btn: MouseButton,
@@ -368,14 +367,16 @@ fn dispatch_wayland_pointer_button(
     };
     let target = region.to_button_target();
     let mut ctx = wm.ctx();
-    crate::bar::dispatch_first_configured_button(
+    crate::mouse::bindings::consume_one(
         &mut ctx,
-        target,
-        clicked_win,
-        btn,
-        root_x,
-        root_y,
-        clean_state,
+        crate::mouse::bindings::ButtonBindingEvent {
+            target,
+            window: clicked_win,
+            button: btn,
+            root_x,
+            root_y,
+            clean_state,
+        },
         0,
     )
 }

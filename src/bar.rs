@@ -203,12 +203,11 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol =
-            if crate::overview::is_active(core) && core.globals().selected_monitor_id() == m.id() {
-                "OVR"
-            } else {
-                m.layouts_for_mask(m.selected_tags()).symbol()
-            };
+        let symbol = if crate::overview::is_active_on_monitor(core, m) {
+            "OVR"
+        } else {
+            m.layouts_for_mask(m.selected_tags()).symbol()
+        };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
     width + core.globals().cfg.horizontal_padding
@@ -329,8 +328,8 @@ pub fn handle_status_text_click(
         return;
     }
 
-    let selmon = ctx.core().globals().selected_monitor().clone();
-    let local_x = root_x - selmon.work_rect.x;
+    let selected_monitor = ctx.core().globals().selected_monitor().clone();
+    let local_x = root_x - selected_monitor.work_rect.x;
     let status_text = ctx.core().globals().bar_runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
@@ -340,101 +339,16 @@ pub fn handle_status_text_click(
     let click_targets = ctx
         .core()
         .bar
-        .monitor_hit_cache(selmon.id())
+        .monitor_hit_cache(selected_monitor.id())
         .map(|h| h.status_click_targets.as_slice())
         .unwrap_or(&[]);
     status::emit_i3bar_status_click(
         &parsed,
         click_targets,
         local_x,
-        root_y - selmon.bar_y,
+        root_y - selected_monitor.bar_y,
         button_code,
         ctx.core().globals().cfg.bar_height,
         clean_state,
     );
-}
-
-pub fn dispatch_configured_button(
-    ctx: &mut WmCtx,
-    target: ButtonTarget,
-    window: Option<WindowId>,
-    btn: MouseButton,
-    root_x: i32,
-    root_y: i32,
-    clean_state: u32,
-    numlockmask: u32,
-) {
-    dispatch_configured_buttons(
-        ctx,
-        target,
-        window,
-        btn,
-        root_x,
-        root_y,
-        clean_state,
-        numlockmask,
-        false,
-    );
-}
-
-pub fn dispatch_first_configured_button(
-    ctx: &mut WmCtx,
-    target: ButtonTarget,
-    window: Option<WindowId>,
-    btn: MouseButton,
-    root_x: i32,
-    root_y: i32,
-    clean_state: u32,
-    numlockmask: u32,
-) -> bool {
-    dispatch_configured_buttons(
-        ctx,
-        target,
-        window,
-        btn,
-        root_x,
-        root_y,
-        clean_state,
-        numlockmask,
-        true,
-    )
-}
-
-fn dispatch_configured_buttons(
-    ctx: &mut WmCtx,
-    target: ButtonTarget,
-    window: Option<WindowId>,
-    btn: MouseButton,
-    root_x: i32,
-    root_y: i32,
-    clean_state: u32,
-    numlockmask: u32,
-    stop_after_first: bool,
-) -> bool {
-    let mut matched = false;
-    let buttons = ctx.core().globals().cfg.buttons.clone();
-    for b in &buttons {
-        if !b.matches(target) || b.button != btn {
-            continue;
-        }
-        if crate::util::clean_mask(b.mask, numlockmask) != clean_state {
-            continue;
-        }
-        crate::actions::execute_button_action(
-            ctx,
-            &b.action,
-            ButtonArg {
-                target,
-                window,
-                btn: b.button,
-                rx: root_x,
-                ry: root_y,
-            },
-        );
-        matched = true;
-        if stop_after_first {
-            return true;
-        }
-    }
-    matched
 }

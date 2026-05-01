@@ -153,9 +153,11 @@ fn border_width_for_layout_client(
 }
 
 fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    if crate::overview::is_active_on_monitor(ctx.core(), monitor_id)
-        && let Some(mut m) = ctx.core().globals().monitor(monitor_id).cloned()
-    {
+    let Some(mut m) = ctx.core().globals().monitor(monitor_id).cloned() else {
+        return;
+    };
+
+    if crate::overview::is_active_on_monitor(ctx.core(), &m) {
         crate::overview::arrange(ctx, &mut m);
         ctx.core_mut()
             .globals_mut()
@@ -164,32 +166,24 @@ fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let layout = ctx
-        .core()
-        .globals()
-        .monitor(monitor_id)
-        .map(|m| m.current_layout());
-    if let Some(layout) = layout
-        && let Some(mut m) = ctx.core().globals().monitor(monitor_id).cloned()
-    {
-        layout.arrange(ctx, &mut m);
-        ctx.core_mut()
-            .globals_mut()
-            .monitors
-            .set_monitor(monitor_id, m);
-    }
+    let layout = m.current_layout();
+    layout.arrange(ctx, &mut m);
+    ctx.core_mut()
+        .globals_mut()
+        .monitors
+        .set_monitor(monitor_id, m);
 }
 
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update(Some(monitor_id));
 
-    if crate::overview::is_active_on_monitor(ctx.core(), monitor_id) {
-        return;
-    }
-
     let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
         return;
     };
+
+    if crate::overview::is_active_on_monitor(ctx.core(), monitor) {
+        return;
+    }
 
     let selected_window = match monitor.sel {
         Some(win) => win,

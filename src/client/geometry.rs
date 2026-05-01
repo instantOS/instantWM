@@ -16,7 +16,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
-use crate::types::{Client, Rect, WindowId};
+use crate::types::{Client, Monitor, Rect, WindowId};
 
 /// Record the resolved geometry of a managed client.
 ///
@@ -197,9 +197,10 @@ pub fn apply_size_hints(
     let old_geo = client.geo;
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
+    let monitor = core.globals().monitors.get(monitor_id);
     let should_apply_hints = core.globals().cfg.resizehints != 0
         || client.mode.is_floating()
-        || is_floating_layout(core, monitor_id);
+        || is_floating_layout(core, monitor);
 
     // Phase 1: Ensure positive dimensions.
     rect.w = rect.w.max(1);
@@ -209,7 +210,7 @@ pub fn apply_size_hints(
     clamp_position_to_bounds(
         core,
         rect,
-        monitor_id,
+        monitor.map(|m| m.work_rect),
         interact,
         old_geo.total_width(border_width),
         old_geo.total_height(border_width),
@@ -231,7 +232,7 @@ pub fn apply_size_hints(
 fn clamp_position_to_bounds(
     core: &CoreCtx,
     geo: &mut Rect,
-    monitor_id: crate::types::MonitorId,
+    work_rect: Option<Rect>,
     interact: bool,
     total_w: i32,
     total_h: i32,
@@ -244,22 +245,22 @@ fn clamp_position_to_bounds(
             core.globals().cfg.screen_height,
         );
         geo.clamp_position(&screen, total_w, total_h);
-    } else if let Some(wr) = core.globals().monitors.get(monitor_id).map(|m| m.work_rect) {
+    } else if let Some(wr) = work_rect {
         geo.clamp_position(&wr, total_w, total_h);
     }
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(core: &CoreCtx, monitor_id: crate::types::MonitorId) -> bool {
-    if crate::overview::is_active_on_monitor(core, monitor_id) {
+fn is_floating_layout(core: &CoreCtx, monitor: Option<&Monitor>) -> bool {
+    let Some(mon) = monitor else {
+        return true;
+    };
+
+    if crate::overview::is_active_on_monitor(core, mon) {
         return false;
     }
 
-    core.globals()
-        .monitors
-        .get(monitor_id)
-        .map(|mon| !mon.is_tiling_layout())
-        .unwrap_or(true)
+    !mon.is_tiling_layout()
 }
 
 fn apply_icccm_size_hints_x11(

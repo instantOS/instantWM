@@ -13,7 +13,7 @@ pub fn update_wayland_bar_hit_state(
     crate::bar::update_hover(&mut ctx, root_x, root_y, reset_start_menu, true)
 }
 
-pub fn dispatch_wayland_bar_click(
+pub fn handle_wayland_bar_click(
     wm: &mut Wm,
     pos: BarPosition,
     button_code: u32,
@@ -90,10 +90,10 @@ pub fn dispatch_wayland_bar_click(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    dispatch_wayland_bar_button(wayland_ctx, pos, button, root_x, root_y, clean_state);
+    run_wayland_bar_bindings(wayland_ctx, pos, button, root_x, root_y, clean_state);
 }
 
-pub fn dispatch_wayland_bar_scroll(
+pub fn handle_wayland_bar_scroll(
     wm: &mut Wm,
     pos: BarPosition,
     delta: f64,
@@ -110,10 +110,10 @@ pub fn dispatch_wayland_bar_scroll(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    dispatch_wayland_bar_button(wayland_ctx, pos, button, root_x, root_y, clean_state);
+    run_wayland_bar_bindings(wayland_ctx, pos, button, root_x, root_y, clean_state);
 }
 
-fn dispatch_wayland_bar_button(
+fn run_wayland_bar_bindings(
     ctx: &mut WmCtxWayland<'_>,
     pos: BarPosition,
     btn: MouseButton,
@@ -122,14 +122,16 @@ fn dispatch_wayland_bar_button(
     clean_state: u32,
 ) {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    crate::bar::dispatch_configured_button(
+    crate::mouse::bindings::run_all(
         &mut wm_ctx,
-        ButtonTarget::Bar(pos),
-        None,
-        btn,
-        root_x,
-        root_y,
-        clean_state,
+        crate::mouse::bindings::ButtonBindingEvent {
+            target: ButtonTarget::Bar(pos),
+            window: None,
+            button: btn,
+            root_x,
+            root_y,
+            clean_state,
+        },
         0,
     );
 }

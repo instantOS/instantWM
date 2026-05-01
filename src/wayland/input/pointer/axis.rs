@@ -9,7 +9,7 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{dispatch_wayland_bar_scroll, update_wayland_bar_hit_state};
+use crate::wayland::input::bar::{handle_wayland_bar_scroll, update_wayland_bar_hit_state};
 
 /// Resolve the effective scroll factor from input configuration.
 ///
@@ -76,7 +76,7 @@ pub fn handle_pointer_axis<B: InputBackend>(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
-            dispatch_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);
+            handle_wayland_bar_scroll(wm, pos, delta, root_x, root_y, clean_state);
         }
     }
 
