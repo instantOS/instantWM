@@ -63,7 +63,7 @@ pub fn enter(ctx: &mut WmCtx<'_>) {
     }
 
     save_all_floating(ctx, Some(selected_monitor_id));
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
@@ -87,7 +87,7 @@ pub fn exit_restore_previous_view(ctx: &mut WmCtx<'_>) {
         };
     }
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
@@ -120,9 +120,9 @@ pub fn exit_to_selected_window(ctx: &mut WmCtx<'_>) {
     }
 
     if let Some(win) = selected_window {
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus(ctx, Some(win));
     } else {
-        crate::focus::focus_soft(ctx, None);
+        crate::focus::focus(ctx, None);
     }
 
     ctx.core_mut()

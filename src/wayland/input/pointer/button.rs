@@ -262,9 +262,9 @@ fn focus_button_target(
     let mut ctx = wm.ctx();
     if let Some(win) = clicked_win {
         crate::focus::select_monitor_for_client(&mut ctx, win);
-        crate::focus::focus_soft(&mut ctx, Some(win));
+        crate::focus::focus(&mut ctx, Some(win));
     } else {
-        crate::focus::focus_soft(&mut ctx, None);
+        crate::focus::focus(&mut ctx, None);
     }
     false
 }

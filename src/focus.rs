@@ -307,7 +307,7 @@ pub(crate) fn focus_soft_x11(
 /// changed — syncs the affected monitor z-order so visuals stay in sync.
 /// This is critical for overlapping layouts (monocle, floating) where the
 /// focused window must be visually on top.
-pub fn focus_soft(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
+pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
     let outcome = match ctx {
         X11(x11_ctx) => {
@@ -389,7 +389,7 @@ pub fn hover_focus_target(
     }
 
     if should_hover_focus(ctx.core(), hovered_win, entering_root) {
-        focus_soft(ctx, hovered_win);
+        focus(ctx, hovered_win);
     }
 }
 
@@ -455,7 +455,7 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
     ctx.core_mut()
         .globals_mut()
         .set_selected_monitor(monitor_id);
-    focus_soft(ctx, None);
+    focus(ctx, None);
     true
 }
 
@@ -494,7 +494,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
         crate::tags::view::view_tags(ctx, target_tags);
     }
 
-    focus_soft(ctx, Some(win));
+    focus(ctx, Some(win));
     true
 }
 
@@ -644,7 +644,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
 
     crate::tags::view::view_tags(ctx, tags);
-    focus_soft(ctx, Some(last_win));
+    focus(ctx, Some(last_win));
 
     let monitor_id = ctx.core().globals().selected_monitor_id();
     ctx.core_mut()
@@ -715,12 +715,12 @@ fn get_stack_focus_target(core: &CoreCtx, direction: StackDirection) -> Option<W
 
 pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
     if let Some(target) = get_direction_focus_candidate(ctx.core(), direction) {
-        focus_soft(ctx, Some(target));
+        focus(ctx, Some(target));
     }
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     if let Some(target) = get_stack_focus_target(ctx.core(), direction) {
-        focus_soft(ctx, Some(target));
+        focus(ctx, Some(target));
     }
 }

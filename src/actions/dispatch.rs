@@ -52,7 +52,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
         }
         KeyAction::ToggleViewTag { tag_idx } => {
             if let Some(mask) = tag_mask_from_idx(*tag_idx) {
-                crate::tags::view::toggle_view_ctx(ctx, mask);
+                crate::tags::view::toggle_view(ctx, mask);
             }
         }
         KeyAction::SetClientTag { tag_idx } => {
@@ -66,7 +66,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
             if let Some(win) = ctx.core().selected_client()
                 && let Some(mask) = tag_mask_from_idx(*tag_idx)
             {
-                crate::tags::client_tags::follow_tag_ctx(ctx, win, mask);
+                crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
         }
         KeyAction::ToggleClientTag { tag_idx } => {
@@ -78,7 +78,7 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
         }
         KeyAction::SwapTags { tag_idx } => {
             if let Some(mask) = tag_mask_from_idx(*tag_idx) {
-                crate::tags::view::swap_tags_ctx(ctx, mask);
+                crate::tags::view::swap_tags(ctx, mask);
             }
         }
     }
@@ -141,27 +141,27 @@ pub fn execute_button_action(
                 && let Some(pos) = arg.bar_position()
                 && let Some(mask) = tag_mask_from_pos(pos)
             {
-                crate::tags::client_tags::follow_tag_ctx(ctx, win, mask);
+                crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
         }
         ButtonAction::ClientMoveDrag => match ctx {
             WmCtx::X11(ctx_x11) => {
                 if let Some(win) = button_target_client(&ctx_x11.core, &arg) {
                     let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-                    crate::focus::focus_soft(&mut wm_ctx, Some(win));
+                    crate::focus::focus(&mut wm_ctx, Some(win));
                 }
                 crate::backend::x11::mouse::move_mouse_x11(ctx_x11, arg.btn, None)
             }
             WmCtx::Wayland(_) => {
                 if let Some(win) = button_target_client(ctx.core(), &arg) {
-                    crate::focus::focus_soft(ctx, Some(win));
+                    crate::focus::focus(ctx, Some(win));
                     crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.root, false);
                 }
             }
         },
         ButtonAction::ResizeSelectedAspect => {
             if let Some(win) = button_target_client(ctx.core(), &arg) {
-                crate::focus::focus_soft(ctx, Some(win));
+                crate::focus::focus(ctx, Some(win));
                 resize_aspect_mouse(ctx, win, arg.btn);
             }
         }

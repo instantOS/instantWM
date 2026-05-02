@@ -1,7 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::env;
 pub mod autostart;
-mod locale;
 pub(crate) mod x11;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -48,10 +47,6 @@ pub fn run() {
         use crate::config::keybind_config::print_actions;
         print_actions(false);
         std::process::exit(0);
-    }
-
-    if locale::set_locale().is_err() {
-        eprintln!("warning: no locale support");
     }
 
     match cli.backend {

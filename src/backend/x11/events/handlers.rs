@@ -74,7 +74,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // with the window without changing stacking order.
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
+            crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
             if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(event_win) {
                 crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
@@ -733,7 +733,7 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if let Some(c) = ctx.core.client(win) {
         let monitor_id = c.monitor_id;
         crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
-        crate::focus::focus_soft(&mut WmCtx::X11(ctx.reborrow()), Some(win));
+        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(win));
         crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
     };
 }

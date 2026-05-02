@@ -25,8 +25,6 @@ pub use view::{cancel_overview, follow_view, last_view, shift_view, toggle_overv
 
 pub use shift::{move_client, shift_tag};
 
-pub use sticky::reset_sticky_win;
-
 pub use tag_mon_impl::send_to_monitor;
 
 pub fn quit() {

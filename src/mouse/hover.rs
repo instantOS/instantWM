@@ -77,7 +77,7 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         clear_hover_offer(&mut wm_ctx);
         if wm_ctx.core().selected_client() != Some(win) {
-            crate::focus::focus_soft(&mut wm_ctx, Some(win));
+            crate::focus::focus(&mut wm_ctx, Some(win));
         }
 
         let Some(c) = wm_ctx.core().client(win) else {
@@ -270,7 +270,7 @@ pub fn update_floating_resize_offer_at(
             && !has_visible_tiled_client(ctx.core().globals());
 
         if should_focus {
-            crate::focus::focus_soft(ctx, Some(target.win));
+            crate::focus::focus(ctx, Some(target.win));
         }
         return true;
     }
@@ -409,7 +409,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                                 find_tiled_win_at_point(wm_ctx.core().globals(), p.x, p.y, sel)
                             });
                         if let Some(win) = target {
-                            crate::focus::focus_soft(&mut wm_ctx, Some(win));
+                            crate::focus::focus(&mut wm_ctx, Some(win));
                         }
                         return false;
                     }
@@ -544,7 +544,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
 
         // If cursor is already outside the resize border, just focus the tiled window
         if !sel_geo.contains_resize_border_point(ptr, RESIZE_BORDER_ZONE) {
-            crate::focus::focus_soft(&mut wm_ctx, Some(hovered_win));
+            crate::focus::focus(&mut wm_ctx, Some(hovered_win));
             return true;
         }
 

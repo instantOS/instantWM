@@ -4,28 +4,18 @@
 //! such a client is moved to a specific tag (e.g. via a shift or monitor
 //! transfer) it must lose its sticky status so it stops following every view.
 
-use crate::contexts::CoreCtx;
-use crate::types::{TagMask, WindowId};
+use crate::types::Client;
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/// Wrapper that resets sticky status when you only have a window ID.
-///
-/// This is useful when you need to reset sticky status but only have the window ID
-/// and need to avoid borrow checker issues.
-pub fn reset_sticky_win(core: &mut CoreCtx, win: WindowId) {
-    // Extract data first to avoid borrow issues
-    let mon = core.globals().selected_monitor();
-    let target_tags = mon.current_tag_index().and_then(TagMask::single);
-
-    if let Some(client) = core.globals_mut().clients.get_mut(&win)
-        && client.is_sticky
-    {
-        client.is_sticky = false;
-        if let Some(tags) = target_tags {
-            client.set_tag_mask(tags);
+impl Client {
+    /// Resets sticky status for this client, moving it to the given tag.
+    pub fn reset_sticky(&mut self, target_tag: Option<usize>) {
+        if !self.is_sticky {
+            return;
+        }
+        self.is_sticky = false;
+        if let Some(tag) = target_tag {
+            let tags = crate::types::TagMask::single(tag).unwrap_or_default();
+            self.set_tag_mask(tags);
         }
     }
 }

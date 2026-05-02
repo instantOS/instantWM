@@ -451,7 +451,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         arrange_visible_scratchpad(ctx, found, was_hidden);
     }
 
-    crate::focus::focus_soft(ctx, Some(found));
+    crate::focus::focus(ctx, Some(found));
     ctx.backend().raise_window_visual_only(found);
 
     if focusfollowsmouse {

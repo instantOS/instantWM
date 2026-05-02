@@ -170,5 +170,5 @@ fn transfer_window_to_monitor(
     ctx.core_mut()
         .globals_mut()
         .set_selected_monitor(target_monitor);
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus(ctx, Some(win));
 }

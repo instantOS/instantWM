@@ -115,7 +115,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
         match command {
             WmCommand::FocusWindow(win) => {
                 let mut ctx = wm.ctx();
-                crate::focus::focus_soft(&mut ctx, Some(win));
+                crate::focus::focus(&mut ctx, Some(win));
             }
             WmCommand::RaiseWindow(win) => {
                 let mut ctx = wm.ctx();
@@ -277,7 +277,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::RestoreFocus => {
                 let mut ctx = wm.ctx();
-                crate::focus::focus_soft(&mut ctx, None);
+                crate::focus::focus(&mut ctx, None);
             }
         }
     }
@@ -440,7 +440,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     g.detach(win);
     g.detach_z_order(win);
     g.clients.remove(&win);
-    crate::focus::focus_soft(&mut ctx, None);
+    crate::focus::focus(&mut ctx, None);
 }
 
 fn handle_activate_window(wm: &mut Wm, win: crate::types::WindowId) {

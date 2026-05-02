@@ -42,7 +42,7 @@ use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::types::MonitorId;
 // focus() is used via focus_soft() in this module
-use crate::focus::focus_soft;
+use crate::focus::focus;
 use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, ClientMode, Rect, WindowId};
@@ -446,7 +446,7 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
         ctx.backend().map_window(w);
         ctx.backend().flush();
     }
-    focus_soft(ctx, None);
+    focus(ctx, None);
     c = ctx
         .core()
         .globals()
@@ -555,7 +555,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
 
     {
         let tmp = ctx.reborrow();
-        focus_soft(&mut WmCtx::X11(tmp), None);
+        focus(&mut WmCtx::X11(tmp), None);
     }
     update_client_list(&ctx.core, &ctx.x11, ctx.x11_runtime);
 

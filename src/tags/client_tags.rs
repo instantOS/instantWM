@@ -23,13 +23,13 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     if let WmCtx::X11(x11) = ctx {
         crate::backend::x11::set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
-pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
+pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
     let tagmask = ctx.core().globals().tags.mask();
     let effective_mask = mask & tagmask;
@@ -59,13 +59,13 @@ pub fn tag_all_ctx(ctx: &mut WmCtx, mask: TagMask) {
         }
     }
 
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
-pub fn follow_tag_ctx(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
+pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     set_client_tag(ctx, win, mask);
     crate::tags::view::view_tags(ctx, mask);
 }

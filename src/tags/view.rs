@@ -4,7 +4,7 @@ use crate::contexts::WmCtx;
 use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selmon_id);
@@ -68,7 +68,7 @@ pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
     finalize_view_change(ctx, selmon_id);
 }
 
-pub fn toggle_view_ctx(ctx: &mut WmCtx, mask: TagMask) {
+pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
     let tagmask = ctx.core().globals().tags.mask();
     let new_mask = ctx.core().globals().selected_monitor().selected_tags() ^ (mask & tagmask);
     if new_mask.is_empty() {
@@ -115,7 +115,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 
     // toggle_view XORs the mask in/out of the current tagset, which is
     // exactly add-if-absent / remove-if-present.
-    toggle_view_ctx(ctx, clicked_mask);
+    toggle_view(ctx, clicked_mask);
 }
 
 pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
@@ -192,10 +192,10 @@ pub fn win_view(ctx: &mut WmCtx) {
         view_tags(ctx, tag_mask);
     }
 
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus(ctx, Some(win));
 }
 
-pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
+pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
     let tagmask = ctx.core().globals().tags.mask();
     let newtag = mask & tagmask;
@@ -232,7 +232,7 @@ pub fn swap_tags_ctx(ctx: &mut WmCtx, mask: TagMask) {
     if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
     }
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selmon_id);
@@ -256,7 +256,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
     }
 
     view_tags(ctx, target_mask);
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus(ctx, Some(win));
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selmon_id);
@@ -352,6 +352,6 @@ pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Optio
 
     let new_mask = adjacent_scroll_mask(current_tag, tagset, dir)?;
     let selmon_id = commit_view_selection(ctx, new_mask)?;
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     Some(selmon_id)
 }

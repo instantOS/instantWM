@@ -36,7 +36,7 @@ pub fn title_drag_begin(
         if is_true_fullscreen {
             return false;
         }
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus(ctx, Some(win));
     }
 
     let sel = ctx.core().selected_client();
@@ -173,7 +173,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     if was_hidden {
         crate::client::show_window(ctx, win);
     }
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus(ctx, Some(win));
     ctx.raise_client(win);
 
     if ctx.is_wayland() {
@@ -250,18 +250,18 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
     if is_right_click {
         if was_hidden {
             crate::client::show_window(ctx, win);
-            crate::focus::focus_soft(ctx, Some(win));
+            crate::focus::focus(ctx, Some(win));
         }
         crate::client::zoom(ctx);
     } else if was_hidden {
         crate::client::show_window(ctx, win);
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus(ctx, Some(win));
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
         sync_monitor_z_order(ctx, selmon_id);
     } else if was_focused {
         crate::client::hide_for_user(ctx, win);
     } else {
-        crate::focus::focus_soft(ctx, Some(win));
+        crate::focus::focus(ctx, Some(win));
         let selmon_id = ctx.core_mut().globals_mut().selected_monitor_id();
         sync_monitor_z_order(ctx, selmon_id);
     }

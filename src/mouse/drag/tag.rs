@@ -159,14 +159,14 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                     crate::tags::client_tags::set_client_tag(ctx, win, tag_mask);
                 }
             } else if (modifier_state & ModMask::CONTROL.bits() as u32) != 0 {
-                crate::tags::client_tags::tag_all_ctx(ctx, tag_mask);
+                crate::tags::client_tags::tag_all(ctx, tag_mask);
             } else if let Some(win) = ctx
                 .core_mut()
                 .globals_mut()
                 .monitor(selmon_id)
                 .and_then(|m| m.sel)
             {
-                crate::tags::client_tags::follow_tag_ctx(ctx, win, tag_mask);
+                crate::tags::client_tags::follow_tag(ctx, win, tag_mask);
             }
         }
     }

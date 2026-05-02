@@ -6,7 +6,6 @@ use crate::contexts::WmCtx;
 use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
-use crate::tags::sticky::reset_sticky_win;
 use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};
 
 pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
@@ -43,12 +42,18 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    reset_sticky_win(ctx.core_mut(), win);
+    let target_tags = ctx.core().globals().selected_monitor().current_tag_index();
+
+    // Get mutable borrow for reset_sticky, then drop it
+    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        client.reset_sticky(target_tags);
+    }
 
     if animated {
         play_slide_animation(ctx, win, dir);
     }
 
+    // Re-borrow for tag mask update
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
         match dir {
             Direction::Left if current_tag > 1 => {
@@ -65,7 +70,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     }
 
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
-    crate::focus::focus_soft(ctx, None);
+    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);

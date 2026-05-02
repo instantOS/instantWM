@@ -6,7 +6,7 @@
 use crate::backend::x11::set_client_tag_prop;
 use crate::backend::{BackendOps, BackendOutputInfo, BackendVrrSupport};
 use crate::contexts::{WmCtx, WmCtxX11};
-use crate::focus::{focus_soft, unfocus_win};
+use crate::focus::{focus, unfocus_win};
 use crate::globals::Globals;
 use crate::globals::RuntimeConfig;
 use crate::types::*;
@@ -237,7 +237,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         return;
     }
 
-    let (is_scratchpad, target_tags) = {
+    let (is_scratchpad, target_tags, target_tag_idx) = {
         let client = match ctx.core().client(win) {
             Some(c) => c,
             None => return,
@@ -253,7 +253,13 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         } else {
             crate::types::TagMask::EMPTY
         };
-        (is_scratchpad, tags)
+        let target_tag_idx = ctx
+            .core()
+            .globals()
+            .monitors
+            .get(target_mon)
+            .and_then(|m| m.current_tag_index());
+        (is_scratchpad, tags, target_tag_idx)
     };
 
     if ctx.core_mut().globals_mut().clients.contains_key(&win) {
@@ -267,11 +273,8 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         client.monitor_id = target_mon;
         if !is_scratchpad {
             client.set_tag_mask(target_tags);
+            client.reset_sticky(target_tag_idx);
         }
-    }
-
-    if !is_scratchpad {
-        crate::tags::reset_sticky_win(ctx.core_mut(), win);
     }
 
     ctx.core_mut().globals_mut().attach(win);
@@ -280,7 +283,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
     }
 
-    focus_soft(ctx, None);
+    focus(ctx, None);
 
     let needs_arrange = ctx
         .core()
@@ -327,7 +330,7 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     }
 
     ctx.core_mut().globals_mut().monitors.set_sel_idx(target);
-    focus_soft(ctx, None);
+    focus(ctx, None);
 }
 
 pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
@@ -350,7 +353,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
     }
 
     ctx.core_mut().globals_mut().monitors.set_sel_idx(target);
-    focus_soft(ctx, None);
+    focus(ctx, None);
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
@@ -374,7 +377,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
             .set_sel_idx(monitor_id);
     }
 
-    focus_soft(ctx, Some(c_win));
+    focus(ctx, Some(c_win));
 
     if let WmCtx::X11(x11) = ctx {
         let x11_win: Window = c_win.into();
@@ -735,7 +738,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .monitors
         .set_sel_idx(current_mon);
 
-    focus_soft(ctx, None);
+    focus(ctx, None);
 }
 
 fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
@@ -894,7 +897,7 @@ pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: VerticalDirecti
         }
     }
 
-    focus_soft(ctx, Some(win));
+    focus(ctx, Some(win));
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selmon_id);

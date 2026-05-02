@@ -6,7 +6,7 @@
 
 use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
-use crate::focus::focus_soft;
+use crate::focus::focus;
 
 // ---------------------------------------------------------------------------
 // zoom
@@ -16,7 +16,7 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
     ctx.core_mut().globals_mut().detach(win);
     ctx.core_mut().globals_mut().attach(win);
     let monitor_id = ctx.core().globals().clients.monitor_id(win);
-    focus_soft(ctx, Some(win));
+    focus(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
         ctx.core_mut()

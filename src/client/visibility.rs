@@ -181,7 +181,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
     // (called inside arrange below) checks !is_hidden and calls map_window
     // itself, so the window reappears as a side-effect of the arrange pass.
 
-    crate::focus::focus_soft(ctx, Some(win));
+    crate::focus::focus(ctx, Some(win));
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(monitor_id);
@@ -233,7 +233,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         .globals()
         .monitor(monitor_id)
         .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win));
-    crate::focus::focus_soft(ctx, snext);
+    crate::focus::focus(ctx, snext);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(monitor_id);
