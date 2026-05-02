@@ -88,21 +88,9 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
             }
         }
         BaseClientMode::Tiling => {
-            let client_count = ctx.core().globals().clients.len();
+            let is_sole_client = ctx.core().globals().clients.len() <= 1;
             let clear_border = if let Some(client) = ctx.core_mut().client_mut(win) {
-                client.mode = ClientMode::Tiling;
-                client.float_geo = client.geo;
-
-                // Only clear border if this is the only client and not snapped
-                if client_count <= 1 && client.snap_status == SnapPosition::None {
-                    if client.border_width != 0 {
-                        client.old_border_width = client.border_width;
-                    }
-                    client.border_width = 0;
-                    true
-                } else {
-                    false
-                }
+                client.enter_tiling(is_sole_client)
             } else {
                 false
             };

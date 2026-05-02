@@ -51,24 +51,18 @@ pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
 pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) {
     let new_bw = width;
 
-    let geo = {
-        if let Some(client) = clients.get_mut(&win) {
-            let old_bw = client.border_width;
-            let d = old_bw - new_bw;
-            client.border_width = new_bw;
+    if let Some(client) = clients.get_mut(&win) {
+        let old_bw = client.border_width;
+        let d = old_bw - new_bw;
+        client.border_width = new_bw;
 
-            Rect {
-                x: client.geo.x,
-                y: client.geo.y,
-                w: client.geo.w + 2 * d,
-                h: client.geo.h + 2 * d,
-            }
-        } else {
-            return;
-        }
-    };
-
-    clients.update_geometry(win, geo);
+        client.update_geometry(Rect {
+            x: client.geo.x,
+            y: client.geo.y,
+            w: client.geo.w + 2 * d,
+            h: client.geo.h + 2 * d,
+        });
+    }
 }
 
 pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
@@ -117,18 +111,17 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
 }
 
 pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
-    let clients: Vec<WindowId> = ctx.core().globals().clients.keys().copied().collect();
+    let clients_to_unhide: Vec<WindowId> = ctx
+        .core()
+        .globals()
+        .clients
+        .iter()
+        .filter(|(_, c)| c.is_hidden && !c.is_scratchpad())
+        .map(|(win, _)| *win)
+        .collect();
 
-    for win in clients {
-        let should_unhide = ctx
-            .core()
-            .globals()
-            .clients
-            .get(&win)
-            .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
-        if should_unhide {
-            crate::client::show_window(ctx, win);
-        }
+    for win in clients_to_unhide {
+        crate::client::show_window(ctx, win);
     }
 }
 

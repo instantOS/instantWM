@@ -300,6 +300,17 @@ impl Client {
         self.sync_scratchpad_state();
     }
 
+    /// Clear sticky status when moving a scratchpad client to real tags.
+    ///
+    /// A client on the scratchpad tag should lose its sticky flag when it is
+    /// explicitly reassigned to a normal tag so that it stops following every
+    /// view after the move.
+    pub fn clear_sticky_if_scratchpad(&mut self) {
+        if self.tags.is_scratchpad_only() {
+            self.is_sticky = false;
+        }
+    }
+
     /// Check if the client is on the selected tags, ignoring hidden state.
     #[inline]
     pub fn is_on_selected_tags(&self, selected_tags: TagMask) -> bool {
@@ -382,6 +393,9 @@ impl Client {
     pub fn update_geometry(&mut self, rect: Rect) {
         self.old_geo = self.geo;
         self.geo = rect;
+        if self.mode.is_floating() {
+            self.float_geo = rect;
+        }
     }
 
     pub fn save_border_width(&mut self) {
@@ -394,6 +408,102 @@ impl Client {
         if self.old_border_width != 0 {
             self.border_width = self.old_border_width;
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Mode transitions
+    // -------------------------------------------------------------------------
+
+    /// Apply all client-local state changes required when a window enters tiling mode.
+    ///
+    /// Sets the mode to `Tiling`, saves the current geometry into `float_geo` so it
+    /// can be restored on the next float, and — when `is_sole_client` is true and the
+    /// window is not snapped — saves then zeroes the border width.
+    ///
+    /// Returns `true` when the border width was cleared (so the caller can forward the
+    /// change to the backend).
+    pub fn enter_tiling(&mut self, is_sole_client: bool) -> bool {
+        self.mode = ClientMode::Tiling;
+        self.float_geo = self.geo;
+        if is_sole_client && self.snap_status == SnapPosition::None {
+            self.save_border_width();
+            self.border_width = 0;
+            true
+        } else {
+            false
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Scratchpad state transitions
+    // -------------------------------------------------------------------------
+
+    /// Apply all client-local state changes required when making a window a scratchpad.
+    ///
+    /// Sets the scratchpad metadata, moves the client to the scratchpad tag, clears
+    /// sticky, ensures floating mode, and — for edge-anchored scratchpads — also
+    /// sizes the window, zeroes the border, and locks it.
+    pub fn apply_scratchpad_state(
+        &mut self,
+        name: &str,
+        direction: Option<EdgeDirection>,
+        restore_tags: TagMask,
+        mon_ww: i32,
+        mon_wh: i32,
+    ) {
+        self.scratchpad = Some(ScratchpadData {
+            name: name.to_string(),
+            restore_tags,
+            direction,
+        });
+        self.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
+        self.is_sticky = false;
+        if !self.mode.is_floating() {
+            self.mode = ClientMode::Floating;
+        }
+        if let Some(dir) = direction {
+            if dir.is_vertical() {
+                self.geo.h = mon_wh / 3;
+            } else {
+                self.geo.w = mon_ww / 3;
+            }
+            self.save_border_width();
+            self.border_width = 0;
+            self.is_locked = true;
+        }
+    }
+
+    /// Revert client-local state changes when removing scratchpad status.
+    ///
+    /// Assigns `restore_tags` (or the monitor's active tags when empty) and, for
+    /// edge-anchored scratchpads, also restores the saved border width and unlocks.
+    pub fn exit_scratchpad_state(&mut self, restore_tags: TagMask, had_direction: bool) {
+        self.set_tag_mask(restore_tags);
+        if had_direction {
+            self.border_width = self.old_border_width;
+            self.is_locked = false;
+        }
+    }
+
+    /// Apply client-local state required to reveal a scratchpad window.
+    ///
+    /// Marks the client sticky, ensures floating mode, optionally zeroes the border
+    /// for edge-anchored scratchpads, and updates the tag mask to the current tags.
+    pub fn show_as_scratchpad(&mut self, tags: TagMask, direction: Option<EdgeDirection>) {
+        self.is_sticky = true;
+        self.mode = ClientMode::Floating;
+        if direction.is_some() {
+            self.border_width = 0;
+        }
+        self.set_tag_mask(tags);
+    }
+
+    /// Apply client-local state required to hide a scratchpad window.
+    ///
+    /// Clears sticky and moves the client back to the scratchpad tag.
+    pub fn hide_as_scratchpad(&mut self) {
+        self.is_sticky = false;
+        self.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
     }
 
     pub fn set_tags(
@@ -410,10 +520,7 @@ impl Client {
             return;
         }
 
-        if self.tags.is_scratchpad_only() {
-            self.is_sticky = false;
-        }
-
+        self.clear_sticky_if_scratchpad();
         self.set_tag_mask(effective_mask);
 
         crate::backend::x11::set_client_tag_prop(core, x11, x11_runtime, self.win);

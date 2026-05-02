@@ -12,9 +12,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
     }
 
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        if client.tags.is_scratchpad_only() {
-            client.is_sticky = false;
-        }
+        client.clear_sticky_if_scratchpad();
         client.set_tag_mask(effective_mask);
     } else {
         return;
@@ -52,9 +50,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
     for win in clients_on_tag {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            if client.tags.is_scratchpad_only() {
-                client.is_sticky = false;
-            }
+            client.clear_sticky_if_scratchpad();
             client.set_tag_mask(effective_mask);
         }
     }

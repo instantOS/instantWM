@@ -25,13 +25,8 @@ use crate::types::{Client, Monitor, Rect, WindowId};
 /// now. Shared state lives here so backend callbacks do not each reinvent the
 /// `geo` / `old_geo` / `float_geo` update contract.
 pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
-    let Some(client) = globals.clients.get_mut(&win) else {
-        return;
-    };
-    client.old_geo = client.geo;
-    client.geo = rect;
-    if client.mode.is_floating() {
-        client.float_geo = rect;
+    if let Some(client) = globals.clients.get_mut(&win) {
+        client.update_geometry(rect);
     }
 }
 

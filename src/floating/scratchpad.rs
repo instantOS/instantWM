@@ -1,5 +1,4 @@
 use crate::backend::BackendOps;
-use crate::client::save_border_width;
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -7,7 +6,7 @@ use crate::globals::Globals;
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
 use crate::types::input::EdgeDirection;
-use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId, client::ScratchpadData};
+use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId};
 use bincode::{Decode, Encode};
 
 const EDGE_MARGIN_X: i32 = 20;
@@ -207,12 +206,7 @@ fn prepare_scratchpad_for_show(
 
     let tags = ctx.core().globals().selected_monitor().selected_tags();
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        client.is_sticky = true;
-        client.mode = ClientMode::Floating;
-        if direction.is_some() {
-            client.border_width = 0;
-        }
-        client.set_tag_mask(tags);
+        client.show_as_scratchpad(tags, direction);
     }
     tags
 }
@@ -309,39 +303,12 @@ pub fn scratchpad_make(
     };
 
     let was_scratchpad = client.is_scratchpad();
-    let old_tags = if was_scratchpad {
-        crate::types::TagMask::EMPTY
+    let restore_tags = if was_scratchpad {
+        TagMask::EMPTY
     } else {
         client.tags
     };
-
-    client.scratchpad = Some(ScratchpadData {
-        name: name.to_string(),
-        restore_tags: if !was_scratchpad {
-            old_tags
-        } else {
-            TagMask::EMPTY
-        },
-        direction,
-    });
-
-    client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
-    client.is_sticky = false;
-
-    if !client.mode.is_floating() {
-        client.mode = ClientMode::Floating;
-    }
-
-    if let Some(dir) = direction {
-        if dir.is_vertical() {
-            client.geo.h = mon_wh / 3;
-        } else {
-            client.geo.w = mon_ww / 3;
-        }
-        save_border_width(client);
-        client.border_width = 0;
-        client.is_locked = true;
-    }
+    client.apply_scratchpad_state(name, direction, restore_tags, mon_ww, mon_wh);
 
     crate::client::hide(ctx, selected_window);
 
@@ -372,19 +339,16 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     let monitor_id = client.monitor_id;
     let had_direction = client.is_edge_scratchpad();
 
+    let effective_tags = if restore_tags.is_empty() {
+        monitor_tags
+    } else {
+        restore_tags
+    };
+
     let mut was_hidden = false;
     if let Some(client) = ctx.core_mut().client_mut(selected_window) {
         was_hidden = client.is_hidden;
-        client.set_tag_mask(if !restore_tags.is_empty() {
-            restore_tags
-        } else {
-            monitor_tags
-        });
-
-        if had_direction {
-            client.border_width = client.old_border_width;
-            client.is_locked = false;
-        }
+        client.exit_scratchpad_state(effective_tags, had_direction);
     }
 
     if was_hidden {
@@ -535,8 +499,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
     };
 
     if let Some(client) = ctx.core_mut().client_mut(found) {
-        client.is_sticky = false;
-        client.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
+        client.hide_as_scratchpad();
     }
 
     if let Some(dir) = direction {

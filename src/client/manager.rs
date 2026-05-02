@@ -103,10 +103,4 @@ impl ClientManager {
     {
         self.client_list.retain(f);
     }
-
-    pub fn update_geometry(&mut self, win: WindowId, rect: crate::types::Rect) {
-        if let Some(client) = self.clients.get_mut(&win) {
-            client.update_geometry(rect);
-        }
-    }
 }
