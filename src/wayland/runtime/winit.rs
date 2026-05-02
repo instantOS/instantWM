@@ -183,16 +183,16 @@ fn dispatch_winit_input(
             });
         }
         InputEvent::PointerAxis { event: axis } => {
-            let horizontal = axis
-                .amount(smithay::backend::input::Axis::Horizontal)
-                .unwrap_or(0.0);
-            let vertical = axis
-                .amount(smithay::backend::input::Axis::Vertical)
-                .unwrap_or(0.0);
+            let horizontal_axis = smithay::backend::input::Axis::Horizontal;
+            let vertical_axis = smithay::backend::input::Axis::Vertical;
             state.push_command(WmCommand::PointerAxis {
                 source: axis.source(),
-                horizontal,
-                vertical,
+                horizontal: axis.amount(horizontal_axis),
+                vertical: axis.amount(vertical_axis),
+                horizontal_v120: axis.amount_v120(horizontal_axis),
+                vertical_v120: axis.amount_v120(vertical_axis),
+                horizontal_relative_direction: axis.relative_direction(horizontal_axis),
+                vertical_relative_direction: axis.relative_direction(vertical_axis),
                 time_msec: axis.time_msec(),
             });
         }

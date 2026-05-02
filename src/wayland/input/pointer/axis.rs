@@ -37,14 +37,16 @@ pub fn handle_pointer_axis_raw(
     pointer: &PointerHandle<WaylandState>,
     keyboard: &KeyboardHandle<WaylandState>,
     source: smithay::backend::input::AxisSource,
-    horizontal: f64,
-    vertical: f64,
+    horizontal: Option<f64>,
+    vertical: Option<f64>,
+    horizontal_v120: Option<f64>,
+    vertical_v120: Option<f64>,
+    horizontal_relative_direction: smithay::backend::input::AxisRelativeDirection,
+    vertical_relative_direction: smithay::backend::input::AxisRelativeDirection,
     time: u32,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
-    let horizontal = horizontal * scroll_factor;
-    let vertical = vertical * scroll_factor;
 
     let root = RootPoint::new(
         pointer_location.x.round() as i32,
@@ -52,27 +54,51 @@ pub fn handle_pointer_axis_raw(
     );
 
     // Check if the pointer is in the bar area; if so, dispatch bar scroll.
-    let delta = vertical; // bar scroll uses vertical axis
-    if delta.abs() > f64::EPSILON
+    let scroll_delta = vertical_v120.or(vertical);
+    if let Some(delta) = scroll_delta.filter(|d| *d != 0.0)
         && let Some(pos) = update_wayland_bar_hit_state(wm, root, true)
     {
         let clean_state = clean_mask(modifiers_to_x11_mask(&keyboard.modifier_state()), 0);
         handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
-        pointer.frame(state);
-        return;
     }
-
-    update_wayland_bar_hit_state(wm, root, false);
 
     let mut frame = smithay::input::pointer::AxisFrame::new(time).source(source);
-    if horizontal.abs() >= f64::EPSILON {
-        frame = frame.value(smithay::backend::input::Axis::Horizontal, horizontal);
+    let mut has_axis_content = false;
+
+    for (axis, amount, v120, relative_direction) in [
+        (
+            smithay::backend::input::Axis::Horizontal,
+            horizontal,
+            horizontal_v120,
+            horizontal_relative_direction,
+        ),
+        (
+            smithay::backend::input::Axis::Vertical,
+            vertical,
+            vertical_v120,
+            vertical_relative_direction,
+        ),
+    ] {
+        if let Some(amount) = amount {
+            if amount.abs() >= f64::EPSILON {
+                frame = frame.relative_direction(axis, relative_direction);
+                frame = frame.value(axis, amount * scroll_factor);
+                has_axis_content = true;
+                if let Some(steps) = v120 {
+                    frame = frame.v120(axis, (steps * scroll_factor) as i32);
+                }
+            } else if matches!(source, smithay::backend::input::AxisSource::Finger) {
+                // Finger scrolling must send axis_stop when libinput ends the sequence.
+                frame = frame.stop(axis);
+                has_axis_content = true;
+            }
+        }
     }
-    if vertical.abs() >= f64::EPSILON {
-        frame = frame.value(smithay::backend::input::Axis::Vertical, vertical);
+
+    if has_axis_content {
+        pointer.axis(state, frame);
+        pointer.frame(state);
     }
-    pointer.axis(state, frame);
-    pointer.frame(state);
 }
 
 /// Handle pointer axis (scroll) events.

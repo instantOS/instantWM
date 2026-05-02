@@ -142,12 +142,14 @@ pub fn dispatch_libinput_event(
             true
         }
         InputEvent::PointerAxis { event } => {
-            let horizontal = event.amount(Axis::Horizontal).unwrap_or(0.0);
-            let vertical = event.amount(Axis::Vertical).unwrap_or(0.0);
             state.push_command(WmCommand::PointerAxis {
                 source: event.source(),
-                horizontal,
-                vertical,
+                horizontal: event.amount(Axis::Horizontal),
+                vertical: event.amount(Axis::Vertical),
+                horizontal_v120: event.amount_v120(Axis::Horizontal),
+                vertical_v120: event.amount_v120(Axis::Vertical),
+                horizontal_relative_direction: event.relative_direction(Axis::Horizontal),
+                vertical_relative_direction: event.relative_direction(Axis::Vertical),
                 time_msec: event.time_msec(),
             });
             true

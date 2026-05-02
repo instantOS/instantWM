@@ -46,8 +46,12 @@ pub enum WmCommand {
     /// Pointer axis event.
     PointerAxis {
         source: smithay::backend::input::AxisSource,
-        horizontal: f64,
-        vertical: f64,
+        horizontal: Option<f64>,
+        vertical: Option<f64>,
+        horizontal_v120: Option<f64>,
+        vertical_v120: Option<f64>,
+        horizontal_relative_direction: smithay::backend::input::AxisRelativeDirection,
+        vertical_relative_direction: smithay::backend::input::AxisRelativeDirection,
         time_msec: u32,
     },
     /// Request an interactive move drag.

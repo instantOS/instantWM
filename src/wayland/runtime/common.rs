@@ -154,6 +154,10 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 source,
                 horizontal,
                 vertical,
+                horizontal_v120,
+                vertical_v120,
+                horizontal_relative_direction,
+                vertical_relative_direction,
                 time_msec,
             } => {
                 if let (Some(pointer), Some(keyboard)) =
@@ -161,7 +165,18 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 {
                     let loc = state.runtime.pointer_location;
                     crate::wayland::input::pointer::axis::handle_pointer_axis_raw(
-                        wm, state, &pointer, &keyboard, source, horizontal, vertical, time_msec,
+                        wm,
+                        state,
+                        &pointer,
+                        &keyboard,
+                        source,
+                        horizontal,
+                        vertical,
+                        horizontal_v120,
+                        vertical_v120,
+                        horizontal_relative_direction,
+                        vertical_relative_direction,
+                        time_msec,
                         loc,
                     );
                 }
