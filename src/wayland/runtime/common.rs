@@ -314,6 +314,7 @@ fn handle_map_window(
     client.win = win;
     client.name = properties.title.clone();
     client.border_width = g.cfg.border_width_px;
+    client.old_border_width = g.cfg.border_width_px;
 
     if let Some(lc) = launch_context {
         client.monitor_id = lc.monitor_id;
