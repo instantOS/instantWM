@@ -264,44 +264,7 @@ fn focus_generic(
     })
 }
 
-/// Set focus to a window, or to the root if None.
-///
-/// # Errors
-/// Returns an error if X11 operations fail (e.g., connection lost).
-pub fn focus_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
-    win: Option<WindowId>,
-) -> anyhow::Result<FocusOutcome> {
-    let mut backend = X11FocusBackend { x11, x11_runtime };
-    focus_generic(core, win, &mut backend)
-}
-
-/// Wayland focus implementation: pick a target window, update mon.sel,
-/// tell the backend, and redraw bars.
-pub fn focus_wayland(
-    core: &mut CoreCtx,
-    wayland: &WaylandCtx,
-    win: Option<WindowId>,
-) -> anyhow::Result<FocusOutcome> {
-    let mut backend = WaylandFocusBackend { wayland };
-    focus_generic(core, win, &mut backend)
-}
-
-/// Best-effort X11 focus helper for legacy call sites.
-pub(crate) fn focus_soft_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
-    win: Option<WindowId>,
-) {
-    if let Err(e) = focus_x11(core, x11, x11_runtime, win) {
-        log::warn!("focus_x11({:?}) failed: {}", win, e);
-    }
-}
-
-/// Best-effort focus - backend-agnostic entry point.
+/// Best-effort focus - the single public entry point for `WmCtx` holders.
 ///
 /// Updates `mon.sel`, backend seat focus, and — when the selection actually
 /// changed — syncs the affected monitor z-order so visuals stay in sync.
@@ -311,19 +274,26 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
     let outcome = match ctx {
         X11(x11_ctx) => {
-            match focus_x11(&mut x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime, win) {
+            let mut backend = X11FocusBackend {
+                x11: &x11_ctx.x11,
+                x11_runtime: x11_ctx.x11_runtime,
+            };
+            match focus_generic(&mut x11_ctx.core, win, &mut backend) {
                 Ok(o) => o,
                 Err(e) => {
-                    log::warn!("focus_soft X11({:?}) failed: {}", win, e);
+                    log::warn!("focus X11({:?}) failed: {}", win, e);
                     return;
                 }
             }
         }
         Wayland(wayland_ctx) => {
-            match focus_wayland(&mut wayland_ctx.core, &wayland_ctx.wayland, win) {
+            let mut backend = WaylandFocusBackend {
+                wayland: &wayland_ctx.wayland,
+            };
+            match focus_generic(&mut wayland_ctx.core, win, &mut backend) {
                 Ok(o) => o,
                 Err(e) => {
-                    log::warn!("focus_soft Wayland({:?}) failed: {}", win, e);
+                    log::warn!("focus Wayland({:?}) failed: {}", win, e);
                     return;
                 }
             }
@@ -331,6 +301,20 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     };
     if outcome.changed {
         crate::layouts::sync_monitor_z_order(ctx, outcome.monitor_id);
+    }
+}
+
+/// X11-only focus helper for call sites that hold disaggregated X11 types
+/// rather than a full `WmCtx` (e.g. inside `Client::set_tags`).
+pub(crate) fn focus_soft_x11(
+    core: &mut CoreCtx,
+    x11: &X11BackendRef,
+    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
+    win: Option<WindowId>,
+) {
+    let mut backend = X11FocusBackend { x11, x11_runtime };
+    if let Err(e) = focus_generic(core, win, &mut backend) {
+        log::warn!("focus_soft_x11({:?}) failed: {}", win, e);
     }
 }
 

@@ -1,6 +1,6 @@
 use crate::actions::{ButtonAction, KeyAction};
 use crate::client::{close_win, kill_client};
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
 };
@@ -203,13 +203,4 @@ pub fn execute_button_action(
         ButtonAction::ToggleFloatingSelected => toggle_floating(ctx),
         ButtonAction::ResizeMouseFromCursor => resize_mouse_from_cursor(ctx, arg.btn),
     }
-}
-
-pub fn execute_button_action_x11(
-    ctx: &mut WmCtxX11<'_>,
-    action: &ButtonAction,
-    arg: crate::types::ButtonArg,
-) {
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    execute_button_action(&mut wm_ctx, action, arg);
 }

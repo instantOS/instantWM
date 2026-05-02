@@ -372,7 +372,7 @@ fn handle_map_window(
     crate::client::apply_rules(g, win, &properties, launch_context);
 
     // Determine if the window should float based on compositor policy.
-    let should_float = element.as_ref().map_or(false, |e| {
+    let should_float = element.as_ref().is_some_and(|e| {
         if let Some(toplevel) = e.toplevel() {
             state.xdg_toplevel_wants_floating(toplevel)
         } else if let Some(x11) = e.x11_surface() {

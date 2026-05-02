@@ -253,8 +253,8 @@ pub fn handle_pointer_motion(
         return;
     }
 
-    let mut final_location = potential_location;
-    let mut final_hit = state.contents_under_pointer(final_location);
+    let final_location = potential_location;
+    let final_hit = state.contents_under_pointer(final_location);
 
     if constraint.confined
         && let Some((surface, surface_loc)) = &constraint.surface
@@ -277,6 +277,9 @@ pub fn handle_pointer_motion(
 
     state.runtime.pointer_location = final_location;
 
+    // Activate any pending constraints BEFORE dispatch so they're active for this event
+    activate_pointer_constraint_under(pointer_handle, final_hit.surface.as_ref(), final_location);
+
     dispatch_pointer_motion(
         wm,
         state,
@@ -285,10 +288,6 @@ pub fn handle_pointer_motion(
         final_hit,
         event.time_msec(),
     );
-
-    final_location = state.runtime.pointer_location;
-    final_hit = state.contents_under_pointer(final_location);
-    activate_pointer_constraint_under(pointer_handle, final_hit.surface.as_ref(), final_location);
 }
 
 /// Unified pointer motion: update WM hover focus, propagate to clients, handle drags.
@@ -599,7 +598,10 @@ fn update_pointer_focus(
             return;
         };
         if ctx.core.selected_client() != Some(lock_win) {
-            let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(lock_win));
+            crate::focus::focus(
+                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                Some(lock_win),
+            );
         }
     } else if !suppress_hover_focus {
         let ctx = wm.ctx();

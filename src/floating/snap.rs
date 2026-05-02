@@ -150,12 +150,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             apply_snap(ctx_x11, win, &rect);
             let wm_ctx = WmCtx::X11(ctx_x11.reborrow());
             wm_ctx.warp_pointer((rect.x + rect.w / 2) as f64, (rect.y + rect.h / 2) as f64);
-            crate::focus::focus_soft_x11(
-                &mut ctx_x11.core,
-                &ctx_x11.x11,
-                ctx_x11.x11_runtime,
-                Some(win),
-            );
+            crate::focus::focus(&mut WmCtx::X11(ctx_x11.reborrow()), Some(win));
         }
         WmCtx::Wayland(_) => {
             // Wayland: use generic snap geometry (no animation)

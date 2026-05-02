@@ -64,7 +64,7 @@ pub use focus::{
 };
 
 // -- Fullscreen --------------------------------------------------------------
-pub use fullscreen::{set_fullscreen_x11, toggle_fake_fullscreen_x11};
+pub use fullscreen::set_fullscreen_x11;
 
 pub fn save_border_width(client: &mut crate::types::Client) {
     client.save_border_width();

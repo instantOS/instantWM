@@ -182,7 +182,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.globals_mut().cfg.screen_height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
-    crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
+    crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
     ctx.core
         .globals_mut()
         .queue_layout_for_all_monitors_urgent();
@@ -300,12 +300,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                     ctx.x11_runtime.root,
                 ) && Some(newc) != selected_window
                 {
-                    crate::focus::focus_soft_x11(
-                        &mut ctx.core,
-                        &ctx.x11,
-                        ctx.x11_runtime,
-                        Some(newc),
-                    );
+                    crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(newc));
                 }
             }
             return;

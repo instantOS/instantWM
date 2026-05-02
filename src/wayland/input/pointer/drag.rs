@@ -67,7 +67,10 @@ pub fn wayland_hover_resize_drag_begin(
             );
         }
     }
-    let _ = crate::focus::focus_wayland(&mut ctx.core, &ctx.wayland, Some(win));
+    crate::focus::focus(
+        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+        Some(win),
+    );
     crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_client(win);
     true
 }

@@ -175,7 +175,7 @@ fn begin_wayland_super_resize(
         ..Default::default()
     };
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
-    let _ = crate::focus::focus_wayland(&mut wl.core, &wl.wayland, Some(win));
+    crate::focus::focus(&mut WmCtx::Wayland(wl.reborrow()), Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());
     wmctx.raise_client(win);
 }

@@ -90,7 +90,7 @@ fn wm_init(wm: &mut Wm) {
             ctx.systray.as_deref_mut(),
         );
         crate::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
-        crate::focus::focus_soft_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, None);
+        crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
     }
 }
 

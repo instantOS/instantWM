@@ -319,9 +319,14 @@ impl WaylandState {
 impl PointerConstraintsHandler for WaylandState {
     fn new_constraint(
         &mut self,
-        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        _pointer: &smithay::input::pointer::PointerHandle<Self>,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
     ) {
+        with_pointer_constraint(surface, pointer, |constraint| {
+            if let Some(constraint) = constraint {
+                constraint.activate();
+            }
+        });
     }
 
     fn cursor_position_hint(
