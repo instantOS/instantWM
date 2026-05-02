@@ -118,6 +118,7 @@ pub fn dispatch_libinput_event(
                 dx_unaccel: event.delta_x_unaccel(),
                 dy_unaccel: event.delta_y_unaccel(),
                 time_msec: event.time_msec(),
+                time_usec: event.time(),
             }));
             true
         }

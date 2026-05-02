@@ -124,19 +124,21 @@ pub enum CursorPresentation {
 
 /// Resolve effective cursor state shared by nested and DRM backends.
 ///
-/// WM icon overrides have priority over client-provided cursor images.
+/// WM icon overrides are only visual hints for compositor-driven interactions.
+/// A client-hidden cursor must remain hidden so relative pointer users, such as
+/// games running through XWayland, cannot be defeated by stale hover state.
 pub fn resolve_cursor_presentation(
     status: &CursorImageStatus,
     icon_override: Option<CursorIcon>,
     dnd_icon: Option<&WlSurface>,
 ) -> CursorPresentation {
-    let base = if let Some(icon) = icon_override {
-        CursorPresentation::Named(icon)
-    } else {
-        match status {
-            CursorImageStatus::Hidden => CursorPresentation::Hidden,
-            CursorImageStatus::Named(icon) => CursorPresentation::Named(*icon),
-            CursorImageStatus::Surface(surface) => {
+    let base = match status {
+        CursorImageStatus::Hidden => CursorPresentation::Hidden,
+        CursorImageStatus::Named(icon) => CursorPresentation::Named(icon_override.unwrap_or(*icon)),
+        CursorImageStatus::Surface(surface) => {
+            if let Some(icon) = icon_override {
+                CursorPresentation::Named(icon)
+            } else {
                 // Check if the cursor surface is still alive before using it.
                 // If the surface is dead, fall back to the default cursor icon.
                 if !smithay::utils::IsAlive::alive(surface) {
@@ -175,6 +177,38 @@ pub fn resolve_cursor_presentation(
     }
 
     base
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::input::pointer::{CursorIcon, CursorImageStatus};
+
+    use super::{CursorPresentation, resolve_cursor_presentation};
+
+    #[test]
+    fn hidden_cursor_status_wins_over_wm_icon_override() {
+        let presentation = resolve_cursor_presentation(
+            &CursorImageStatus::Hidden,
+            Some(CursorIcon::Grabbing),
+            None,
+        );
+
+        assert!(matches!(presentation, CursorPresentation::Hidden));
+    }
+
+    #[test]
+    fn wm_icon_override_still_applies_to_named_cursor_status() {
+        let presentation = resolve_cursor_presentation(
+            &CursorImageStatus::Named(CursorIcon::Default),
+            Some(CursorIcon::Grabbing),
+            None,
+        );
+
+        assert!(matches!(
+            presentation,
+            CursorPresentation::Named(CursorIcon::Grabbing)
+        ));
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

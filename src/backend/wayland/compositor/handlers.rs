@@ -5,10 +5,12 @@ use smithay::{
     reexports::wayland_server::Client,
     wayland::{
         buffer::BufferHandler,
-        compositor::{CompositorHandler, SurfaceAttributes, get_parent, is_sync_subsurface},
+        compositor::{
+            CompositorHandler, SurfaceAttributes, TraversalAction, get_parent, is_sync_subsurface,
+        },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         output::OutputHandler,
-        pointer_constraints::PointerConstraintsHandler,
+        pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
         seat::WaylandFocus,
         shm::ShmHandler,
         xwayland_keyboard_grab::XWaylandKeyboardGrabHandler,
@@ -257,6 +259,63 @@ impl smithay::wayland::idle_notify::IdleNotifierHandler for WaylandState {
     }
 }
 
+impl WaylandState {
+    fn root_surface_for(
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> smithay::reexports::wayland_server::protocol::wl_surface::WlSurface {
+        let mut root = surface.clone();
+        while let Some(parent) = get_parent(&root) {
+            root = parent;
+        }
+        root
+    }
+
+    fn pointer_constraint_surface_origin(
+        &self,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> Option<smithay::utils::Point<f64, smithay::utils::Logical>> {
+        use smithay::backend::renderer::utils::RendererSurfaceStateUserData;
+
+        let requested_root = Self::root_surface_for(surface);
+        self.space.elements().find_map(|window| {
+            let window_root = window.wl_surface()?;
+            if window_root.as_ref() != &requested_root {
+                return None;
+            }
+
+            let loc = self.space.element_location(window).unwrap_or_default();
+            let surface_origin = loc - window.geometry().loc;
+            let found = std::cell::RefCell::new(None);
+            smithay::wayland::compositor::with_surface_tree_downward(
+                window_root.as_ref(),
+                surface_origin,
+                |_, states, parent_loc: &smithay::utils::Point<i32, smithay::utils::Logical>| {
+                    let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                    let Some(surface_view) = data.and_then(|d| d.lock().ok()?.view()) else {
+                        return TraversalAction::SkipChildren;
+                    };
+                    TraversalAction::DoChildren(*parent_loc + surface_view.offset)
+                },
+                |candidate,
+                 states,
+                 parent_loc: &smithay::utils::Point<i32, smithay::utils::Logical>| {
+                    let data = states.data_map.get::<RendererSurfaceStateUserData>();
+                    let Some(surface_view) = data.and_then(|d| d.lock().ok()?.view()) else {
+                        return;
+                    };
+                    let candidate_loc = *parent_loc + surface_view.offset;
+                    if candidate == surface {
+                        *found.borrow_mut() = Some(candidate_loc.to_f64());
+                    }
+                },
+                |_, _, _| found.borrow().is_none(),
+            );
+
+            found.into_inner()
+        })
+    }
+}
+
 impl PointerConstraintsHandler for WaylandState {
     fn new_constraint(
         &mut self,
@@ -267,9 +326,22 @@ impl PointerConstraintsHandler for WaylandState {
 
     fn cursor_position_hint(
         &mut self,
-        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        _pointer: &smithay::input::pointer::PointerHandle<Self>,
-        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
     ) {
+        let active = with_pointer_constraint(surface, pointer, |constraint| {
+            constraint.is_some_and(|constraint| constraint.is_active())
+        });
+        if !active {
+            return;
+        }
+
+        let Some(origin) = self.pointer_constraint_surface_origin(surface) else {
+            return;
+        };
+        let target = origin + location;
+        pointer.set_location(target);
+        self.runtime.pointer_location = target;
     }
 }

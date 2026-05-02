@@ -20,6 +20,7 @@ pub enum PointerMotionCommand {
         dx_unaccel: f64,
         dy_unaccel: f64,
         time_msec: u32,
+        time_usec: u64,
     },
     Absolute {
         x: f64,

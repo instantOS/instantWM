@@ -154,7 +154,9 @@ fn dispatch_winit_input(
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     event: InputEvent<smithay::backend::winit::WinitInput>,
 ) {
-    use smithay::backend::input::{AbsolutePositionEvent, PointerAxisEvent, PointerButtonEvent};
+    use smithay::backend::input::{
+        AbsolutePositionEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
+    };
 
     state.notify_activity();
     match event {
@@ -176,6 +178,17 @@ fn dispatch_winit_input(
                 x,
                 y,
                 time_msec: motion.time_msec(),
+            }));
+        }
+        InputEvent::PointerMotion { event: motion } => {
+            use smithay::backend::winit::WinitInput;
+            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
+                dx: PointerMotionEvent::<WinitInput>::delta_x(&motion),
+                dy: PointerMotionEvent::<WinitInput>::delta_y(&motion),
+                dx_unaccel: PointerMotionEvent::<WinitInput>::delta_x_unaccel(&motion),
+                dy_unaccel: PointerMotionEvent::<WinitInput>::delta_y_unaccel(&motion),
+                time_msec: Event::<WinitInput>::time_msec(&motion),
+                time_usec: Event::<WinitInput>::time(&motion),
             }));
         }
         InputEvent::PointerButton { event: btn } => {

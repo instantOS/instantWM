@@ -151,7 +151,11 @@ impl WaylandBackend {
 
     pub fn set_cursor_icon_override(&self, icon: Option<smithay::input::pointer::CursorIcon>) {
         let _ = self.with_state(|state: &mut WaylandState| {
+            if state.cursor_icon_override == icon {
+                return;
+            }
             state.cursor_icon_override = icon;
+            state.request_render();
         });
     }
 
