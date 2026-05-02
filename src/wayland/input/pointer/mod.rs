@@ -10,11 +10,3 @@ pub mod axis;
 pub mod button;
 pub mod drag;
 pub mod motion;
-
-// Re-export for convenience
-pub use axis::handle_pointer_axis;
-pub use button::handle_pointer_button;
-pub use motion::{
-    handle_pointer_motion, motion_event_from_libinput_absolute,
-    motion_event_from_libinput_relative, motion_event_from_winit,
-};

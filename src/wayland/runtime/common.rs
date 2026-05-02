@@ -126,13 +126,12 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::UnmapWindow(_) => {}
             WmCommand::UnmanageWindow(win) => handle_unmanage_window(wm, win),
             WmCommand::ActivateWindow(win) => handle_activate_window(wm, win),
-            WmCommand::PointerMotion { time_msec } => {
+            WmCommand::PointerMotion(motion) => {
                 if let (Some(pointer), Some(keyboard)) =
                     (state.seat.get_pointer(), state.seat.get_keyboard())
                 {
-                    let hit_test = state.contents_under_pointer(state.runtime.pointer_location);
-                    crate::wayland::input::pointer::motion::dispatch_pointer_motion(
-                        wm, state, &pointer, &keyboard, hit_test, time_msec,
+                    crate::wayland::input::pointer::motion::process_pointer_motion_command(
+                        wm, state, &pointer, &keyboard, motion,
                     );
                 }
             }

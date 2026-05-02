@@ -101,7 +101,9 @@ pub(super) fn begin_app_resize_drag(state: &mut WaylandState, win: WindowId, dir
 
 /// Trigger a pointer focus update to ensure hover state is correct.
 pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
-    state.push_command(super::super::commands::WmCommand::PointerMotion { time_msec: 0 });
+    state.push_command(super::super::commands::WmCommand::PointerMotion(
+        super::super::commands::PointerMotionCommand::Refresh { time_msec: 0 },
+    ));
 }
 
 fn sync_xwayland_surface_metadata(

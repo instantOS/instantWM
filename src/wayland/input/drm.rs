@@ -94,7 +94,7 @@ pub fn dispatch_libinput_event(
 ) -> bool {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
-    use crate::backend::wayland::commands::WmCommand;
+    use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
@@ -112,25 +112,23 @@ pub fn dispatch_libinput_event(
             true
         }
         InputEvent::PointerMotion { event } => {
-            let dx = event.delta_x();
-            let dy = event.delta_y();
-            let current = state.runtime.pointer_location;
-            state.runtime.pointer_location = smithay::utils::Point::from((
-                (current.x + dx).clamp(0.0, total_w as f64),
-                (current.y + dy).clamp(0.0, total_h as f64),
-            ));
-            state.push_command(WmCommand::PointerMotion {
+            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
+                dx: event.delta_x(),
+                dy: event.delta_y(),
+                dx_unaccel: event.delta_x_unaccel(),
+                dy_unaccel: event.delta_y_unaccel(),
                 time_msec: event.time_msec(),
-            });
+            }));
             true
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let x = event.x_transformed(total_w);
             let y = event.y_transformed(total_h);
-            state.runtime.pointer_location = smithay::utils::Point::from((x, y));
-            state.push_command(WmCommand::PointerMotion {
+            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
+                x,
+                y,
                 time_msec: event.time_msec(),
-            });
+            }));
             true
         }
         InputEvent::PointerButton { event } => {

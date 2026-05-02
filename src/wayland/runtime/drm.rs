@@ -450,7 +450,9 @@ fn run_event_loop(
                 move |state| state.has_active_window_animations(),
             );
 
-            process_cursor_warp(state, &pointer_handle, loop_state);
+            if let Some(keyboard_handle) = state.seat.get_keyboard() {
+                process_cursor_warp(wm, state, &pointer_handle, &keyboard_handle, loop_state);
+            }
 
             render_outputs(
                 wm,
@@ -608,11 +610,13 @@ fn process_animations(state: &mut WaylandState, loop_state: &mut DrmLoopState) {
 
 /// Apply compositor-side cursor warp.
 fn process_cursor_warp(
+    wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &smithay::input::pointer::PointerHandle<WaylandState>,
+    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     loop_state: &mut DrmLoopState,
 ) {
-    if apply_pending_warp(state, pointer_handle) {
+    if apply_pending_warp(wm, state, pointer_handle, keyboard_handle) {
         loop_state.mark_all_dirty();
     }
 }

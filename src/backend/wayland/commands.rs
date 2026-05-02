@@ -7,6 +7,35 @@
 
 use crate::types::WindowId;
 
+/// Pointer motion data queued from backend input sources.
+///
+/// Backends must not update compositor pointer location before this command is
+/// processed. Wayland pointer constraints can only be applied correctly when
+/// the original motion and the current pointer location are evaluated together.
+#[derive(Debug)]
+pub enum PointerMotionCommand {
+    Relative {
+        dx: f64,
+        dy: f64,
+        dx_unaccel: f64,
+        dy_unaccel: f64,
+        time_msec: u32,
+    },
+    Absolute {
+        x: f64,
+        y: f64,
+        time_msec: u32,
+    },
+    Warp {
+        x: f64,
+        y: f64,
+        time_msec: u32,
+    },
+    Refresh {
+        time_msec: u32,
+    },
+}
+
 /// Parameters for mapping a new window into the WM.
 #[derive(Debug)]
 pub struct MapWindowParams {
@@ -36,7 +65,7 @@ pub enum WmCommand {
     /// Request to activate a window (e.g. from xdg-activation).
     ActivateWindow(WindowId),
     /// Pointer motion event.
-    PointerMotion { time_msec: u32 },
+    PointerMotion(PointerMotionCommand),
     /// Pointer button event.
     PointerButton {
         button: u32,

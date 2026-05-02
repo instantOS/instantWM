@@ -20,7 +20,7 @@ use crate::monitor::refresh_monitor_layout;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
-use smithay::utils::{SERIAL_COUNTER, Transform};
+use smithay::utils::Transform;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pending warp — compositor-side cursor teleport
@@ -41,35 +41,33 @@ use smithay::utils::{SERIAL_COUNTER, Transform};
 /// Returns `true` when a warp was applied (callers may wish to mark output
 /// dirty so the new cursor position is painted immediately).
 pub fn apply_pending_warp(
+    wm: &mut Wm,
     state: &mut crate::backend::wayland::compositor::WaylandState,
     pointer_handle: &smithay::input::pointer::PointerHandle<
         crate::backend::wayland::compositor::WaylandState,
     >,
+    keyboard_handle: &smithay::input::keyboard::KeyboardHandle<
+        crate::backend::wayland::compositor::WaylandState,
+    >,
 ) -> bool {
-    use crate::backend::wayland::compositor::PointerFocusTarget;
     use smithay::utils::{Clock, Monotonic};
 
     let Some(target) = state.take_pending_warp() else {
         return false;
     };
 
-    state.runtime.pointer_location = target;
-
-    let focus = state
-        .layer_surface_under_pointer(target)
-        .or_else(|| state.surface_under_pointer(target))
-        .map(|(surface, loc)| (PointerFocusTarget::WlSurface(surface), loc.to_f64()));
-
-    let serial = SERIAL_COUNTER.next_serial();
     let time_msec = Clock::<Monotonic>::new().now().as_millis();
-    let motion = smithay::input::pointer::MotionEvent {
-        location: target,
-        serial,
-        time: time_msec,
-    };
-
-    pointer_handle.motion(state, focus, &motion);
-    pointer_handle.frame(state);
+    crate::wayland::input::pointer::motion::process_pointer_motion_command(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        crate::backend::wayland::commands::PointerMotionCommand::Warp {
+            x: target.x,
+            y: target.y,
+            time_msec,
+        },
+    );
 
     true
 }

@@ -1,13 +1,13 @@
-#![allow(clippy::type_complexity)]
 //! Pointer motion handling.
 
-use smithay::backend::input::{AbsolutePositionEvent, InputBackend, PointerMotionEvent};
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
 use smithay::reexports::wayland_server::Resource;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Point, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus;
 
+use crate::backend::wayland::commands::PointerMotionCommand;
 use crate::backend::wayland::compositor::window::hit_test::PointerContents;
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
@@ -68,70 +68,125 @@ impl MotionEvent {
     }
 }
 
-/// Construct a `MotionEvent` from a libinput relative motion event.
-pub fn motion_event_from_libinput_relative<B: InputBackend>(
-    event: impl PointerMotionEvent<B>,
-) -> MotionEvent {
-    MotionEvent::Relative {
-        dx: event.delta_x(),
-        dy: event.delta_y(),
-        dx_unaccel: event.delta_x_unaccel(),
-        dy_unaccel: event.delta_y_unaccel(),
-        time_msec: event.time_msec(),
-    }
-}
-
-/// Construct a `MotionEvent` from a libinput absolute motion event.
-pub fn motion_event_from_libinput_absolute<B: InputBackend>(
-    event: impl AbsolutePositionEvent<B>,
-    output_width: i32,
-    output_height: i32,
-) -> MotionEvent {
-    let x = event.x_transformed(output_width);
-    let y = event.y_transformed(output_height);
-    MotionEvent::Absolute {
-        x,
-        y,
-        time_msec: event.time_msec(),
-    }
-}
-
-/// Construct a `MotionEvent` from a winit event.
-pub fn motion_event_from_winit(
-    event: impl smithay::backend::input::AbsolutePositionEvent<smithay::backend::winit::WinitInput>,
-    size: smithay::utils::Size<i32, smithay::utils::Physical>,
-) -> MotionEvent {
-    let x = event.x_transformed(size.w);
-    let y = event.y_transformed(size.h);
-    MotionEvent::Absolute {
-        x,
-        y,
-        time_msec: event.time_msec(),
+/// Process a queued backend pointer command through the single Wayland pointer
+/// transaction path.
+pub fn process_pointer_motion_command(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    command: PointerMotionCommand,
+) {
+    match command {
+        PointerMotionCommand::Relative {
+            dx,
+            dy,
+            dx_unaccel,
+            dy_unaccel,
+            time_msec,
+        } => handle_pointer_motion(
+            wm,
+            state,
+            pointer_handle,
+            keyboard_handle,
+            MotionEvent::Relative {
+                dx,
+                dy,
+                dx_unaccel,
+                dy_unaccel,
+                time_msec,
+            },
+        ),
+        PointerMotionCommand::Absolute { x, y, time_msec }
+        | PointerMotionCommand::Warp { x, y, time_msec } => {
+            handle_pointer_motion(
+                wm,
+                state,
+                pointer_handle,
+                keyboard_handle,
+                MotionEvent::Absolute { x, y, time_msec },
+            );
+        }
+        PointerMotionCommand::Refresh { time_msec } => {
+            let location = state.runtime.pointer_location;
+            handle_pointer_motion(
+                wm,
+                state,
+                pointer_handle,
+                keyboard_handle,
+                MotionEvent::Absolute {
+                    x: location.x,
+                    y: location.y,
+                    time_msec,
+                },
+            );
+        }
     }
 }
 
 use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
 
-/// Internal helper for handling pointer motion from raw values.
-pub fn handle_pointer_motion_raw(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    pointer: &PointerHandle<WaylandState>,
-    keyboard: &KeyboardHandle<WaylandState>,
-    focus: Option<(PointerFocusTarget, Point<f64, smithay::utils::Logical>)>,
-    time: u32,
-) {
-    let hit_test = PointerContents {
-        surface: focus.and_then(|(_target, loc)| {
-            // Extract WlSurface from PointerFocusTarget
-            match _target {
-                PointerFocusTarget::WlSurface(s) => Some((s, loc.to_i32_round())),
-                _ => None,
+type PointerSurfaceFocus = (WlSurface, Point<i32, smithay::utils::Logical>);
+
+#[derive(Default)]
+struct PointerConstraintState {
+    locked: bool,
+    confined: bool,
+    surface: Option<PointerSurfaceFocus>,
+}
+
+fn resolve_pointer_constraint(
+    pointer_handle: &PointerHandle<WaylandState>,
+    current_surface: Option<&PointerSurfaceFocus>,
+    candidate_surface: Option<&PointerSurfaceFocus>,
+) -> PointerConstraintState {
+    let mut resolved = PointerConstraintState::default();
+    for surface_focus in current_surface.into_iter().chain(candidate_surface) {
+        let (surface, loc) = surface_focus;
+        let mut active_kind = None;
+        with_pointer_constraint(surface, pointer_handle, |constraint| {
+            let Some(constraint) = constraint else {
+                return;
+            };
+            if !constraint.is_active()
+                && pointer_handle.current_focus().is_some_and(|focus| {
+                    focus
+                        .wl_surface()
+                        .and_then(|s| s.client())
+                        .is_some_and(|client| surface.client().as_ref() == Some(&client))
+                })
+            {
+                constraint.activate();
             }
-        }),
-        hovered_win: None,
-    };
-    dispatch_pointer_motion(wm, state, pointer, keyboard, hit_test, time);
+
+            if constraint.is_active() {
+                active_kind = Some(match &*constraint {
+                    PointerConstraint::Locked(_) => PointerConstraintKind::Locked,
+                    PointerConstraint::Confined(_) => PointerConstraintKind::Confined,
+                });
+            }
+        });
+
+        match active_kind {
+            Some(PointerConstraintKind::Locked) => {
+                resolved.locked = true;
+                resolved.surface = Some((surface.clone(), *loc));
+                break;
+            }
+            Some(PointerConstraintKind::Confined) => {
+                resolved.confined = true;
+                resolved.surface = Some((surface.clone(), *loc));
+            }
+            None => {}
+        }
+    }
+    resolved
+}
+
+#[derive(Clone, Copy)]
+enum PointerConstraintKind {
+    Locked,
+    Confined,
 }
 
 pub fn handle_pointer_motion(
@@ -144,50 +199,20 @@ pub fn handle_pointer_motion(
     let output_width = wm.g.cfg.screen_width;
     let output_height = wm.g.cfg.screen_height;
 
-    let mut pointer_locked = false;
-    let mut pointer_confined = false;
+    let current_location = state.runtime.pointer_location;
 
-    // Compute potential new location to perform a hit test
-    let potential_location =
-        event.compute_location(state.runtime.pointer_location, output_width, output_height);
+    let potential_location = event.compute_location(current_location, output_width, output_height);
 
-    // Get current surface focus and its relative location
-    let hit_test = state.contents_under_pointer(potential_location);
+    let current_hit = state.contents_under_pointer(current_location);
+    let potential_hit = state.contents_under_pointer(potential_location);
+    let constraint = resolve_pointer_constraint(
+        pointer_handle,
+        current_hit.surface.as_ref(),
+        potential_hit.surface.as_ref(),
+    );
 
-    // Phase 0: Check for pointer constraints
-    if let Some((surface, _)) = &hit_test.surface {
-        with_pointer_constraint(surface, pointer_handle, |constraint| {
-            if let Some(constraint) = constraint {
-                if !constraint.is_active() {
-                    // If the client has focus but the constraint is inactive,
-                    // try to activate it now. This handles the case where a
-                    // client requests a constraint while already having focus.
-                    if let Some(focus) = pointer_handle.current_focus() {
-                        let same_client = focus
-                            .wl_surface()
-                            .and_then(|s| s.client())
-                            .is_some_and(|c| surface.client().as_ref() == Some(&c));
-                        if same_client {
-                            constraint.activate();
-                        }
-                    }
-                }
-
-                if constraint.is_active() {
-                    match &*constraint {
-                        PointerConstraint::Locked(_) => {
-                            pointer_locked = true;
-                        }
-                        PointerConstraint::Confined(_) => {
-                            pointer_confined = true;
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    // Always emit relative motion if this is a relative event
+    // Always emit relative motion if this is a relative event. Locked pointers
+    // consume only this relative stream and do not advance absolute location.
     if let MotionEvent::Relative {
         dx,
         dy,
@@ -201,26 +226,24 @@ pub fn handle_pointer_motion(
             delta_unaccel: (dx_unaccel, dy_unaccel).into(),
             utime: time_msec as u64,
         };
-        let focus = hit_test
+        let focus = constraint
             .surface
             .as_ref()
+            .or(potential_hit.surface.as_ref())
             .map(|(s, loc)| (PointerFocusTarget::WlSurface(s.clone()), loc.to_f64()));
         pointer_handle.relative_motion(state, focus, &rel_event);
     }
 
-    // If locked, we don't update absolute pointer location or send motion events
-    if pointer_locked {
+    if constraint.locked {
         pointer_handle.frame(state);
         return;
     }
 
-    // Compute new location
     let mut final_location = potential_location;
 
-    // If confined, clamp to the surface bounds
-    if pointer_confined && let Some((surface, surface_loc)) = &hit_test.surface {
-        // Get surface size (logical). We use the window geometry if this surface
-        // belongs to a managed window.
+    if constraint.confined
+        && let Some((surface, surface_loc)) = &constraint.surface
+    {
         let size = state
             .window_id_from_surface(surface)
             .and_then(|win_id| state.find_window(win_id))
@@ -235,8 +258,8 @@ pub fn handle_pointer_motion(
     }
 
     state.runtime.pointer_location = final_location;
+    let hit_test = state.contents_under_pointer(final_location);
 
-    // Dispatch to focus/drag handling logic
     dispatch_pointer_motion(
         wm,
         state,

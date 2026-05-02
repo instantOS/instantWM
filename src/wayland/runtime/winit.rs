@@ -10,7 +10,7 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::LoopSignal;
 
-use crate::backend::wayland::commands::WmCommand;
+use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
 use crate::wayland::common::sanitize_wayland_size;
@@ -123,7 +123,9 @@ pub fn run() -> ! {
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
-            apply_pending_warp(state, &pointer_handle);
+            if let Some(keyboard_handle) = state.seat.get_keyboard() {
+                apply_pending_warp(&mut wm, state, &pointer_handle, &keyboard_handle);
+            }
 
             render_frame(
                 &mut wm,
@@ -170,10 +172,11 @@ fn dispatch_winit_input(
             let size = state.runtime.winit_window_size;
             let x = motion.x_transformed(size.w);
             let y = motion.y_transformed(size.h);
-            state.runtime.pointer_location = smithay::utils::Point::from((x, y));
-            state.push_command(WmCommand::PointerMotion {
+            state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Absolute {
+                x,
+                y,
                 time_msec: motion.time_msec(),
-            });
+            }));
         }
         InputEvent::PointerButton { event: btn } => {
             state.push_command(WmCommand::PointerButton {
