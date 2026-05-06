@@ -82,9 +82,9 @@ impl TextRasterizer {
             let mut fs = self.font_system.borrow_mut();
             let metrics = Metrics::new(font_size, font_size);
             let mut buffer = Buffer::new(&mut fs, metrics);
-            buffer.set_size(&mut fs, None, None);
-            buffer.set_wrap(&mut fs, Wrap::None);
-            buffer.set_text(&mut fs, text, Attrs::new(), Shaping::Advanced);
+            buffer.set_size(None, None);
+            buffer.set_wrap(Wrap::None);
+            buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
             buffer.shape_until_scroll(&mut fs, false);
             let width = buffer
                 .layout_runs()
@@ -139,9 +139,9 @@ impl TextRasterizer {
                 let mut fs = self.font_system.borrow_mut();
                 let metrics = Metrics::new(font_size, h as f32);
                 let mut buffer = Buffer::new(&mut fs, metrics);
-                buffer.set_size(&mut fs, Some(w as f32), Some(h as f32));
-                buffer.set_wrap(&mut fs, Wrap::None);
-                buffer.set_text(&mut fs, text, Attrs::new(), Shaping::Advanced);
+                buffer.set_size(Some(w as f32), Some(h as f32));
+                buffer.set_wrap(Wrap::None);
+                buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
                 buffer.shape_until_scroll(&mut fs, false);
                 if cache.len() > TEXT_CACHE_LIMIT {
                     cache.clear();
@@ -152,8 +152,8 @@ impl TextRasterizer {
 
         let mut fs = self.font_system.borrow_mut();
         let mut sc = self.swash_cache.borrow_mut();
-        let cache = self.render_cache.borrow();
-        let Some(cached) = cache.get(&key) else {
+        let mut cache = self.render_cache.borrow_mut();
+        let Some(cached) = cache.get_mut(&key) else {
             return;
         };
 
