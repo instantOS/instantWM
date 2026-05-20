@@ -270,7 +270,7 @@ impl WaylandState {
         root
     }
 
-    pub(crate) fn pointer_constraint_surface_origin(
+    fn pointer_constraint_surface_origin(
         &self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) -> Option<smithay::utils::Point<f64, smithay::utils::Logical>> {
@@ -285,7 +285,6 @@ impl WaylandState {
 
             let loc = self.space.element_location(window).unwrap_or_default();
             let surface_origin = loc - window.geometry().loc;
-
             let found = std::cell::RefCell::new(None);
             smithay::wayland::compositor::with_surface_tree_downward(
                 window_root.as_ref(),
@@ -315,56 +314,6 @@ impl WaylandState {
             found.into_inner()
         })
     }
-
-    fn try_activate_pointer_constraint(
-        &mut self,
-        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        pointer: &smithay::input::pointer::PointerHandle<Self>,
-    ) {
-        let focused_surface = pointer
-            .current_focus()
-            .and_then(|target| target.wl_surface().map(|s| s.into_owned()));
-        let pointer_location = self.runtime.pointer_location;
-        let surface_origin = self.pointer_constraint_surface_origin(surface);
-
-        let focus_matches = focused_surface.as_ref().is_some_and(|focused| {
-            Self::root_surface_for(focused) == Self::root_surface_for(surface)
-        });
-
-        log::debug!(
-            "try_activate_pointer_constraint: \
-             focus_matches={focus_matches} pointer_loc={pointer_location:?} surface_origin={surface_origin:?}",
-        );
-
-        if !focus_matches {
-            return;
-        }
-
-        with_pointer_constraint(surface, pointer, |constraint| {
-            let Some(constraint) = constraint else {
-                log::debug!("try_activate_pointer_constraint: no constraint for surface");
-                return;
-            };
-            if constraint.is_active() {
-                log::debug!("try_activate_pointer_constraint: already active");
-                return;
-            }
-            let in_region = constraint.region().is_none_or(|region| {
-                let Some(origin) = surface_origin else {
-                    return false;
-                };
-                region.contains((pointer_location - origin).to_i32_round())
-            });
-            log::debug!(
-                "try_activate_pointer_constraint: in_region={in_region} has_region={hr}",
-                hr = constraint.region().is_some()
-            );
-            if in_region {
-                constraint.activate();
-                log::debug!("try_activate_pointer_constraint: activated");
-            }
-        });
-    }
 }
 
 impl PointerConstraintsHandler for WaylandState {
@@ -373,23 +322,31 @@ impl PointerConstraintsHandler for WaylandState {
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
         pointer: &smithay::input::pointer::PointerHandle<Self>,
     ) {
-        log::debug!("PointerConstraintsHandler::new_constraint called");
-        self.try_activate_pointer_constraint(surface, pointer);
+        with_pointer_constraint(surface, pointer, |constraint| {
+            if let Some(constraint) = constraint {
+                constraint.activate();
+            }
+        });
     }
 
     fn cursor_position_hint(
         &mut self,
-        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        _pointer: &smithay::input::pointer::PointerHandle<Self>,
-        _location: smithay::utils::Point<f64, smithay::utils::Logical>,
+        surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        pointer: &smithay::input::pointer::PointerHandle<Self>,
+        location: smithay::utils::Point<f64, smithay::utils::Logical>,
     ) {
-        // The cursor position hint is purely informational while a lock is
-        // active and is meant to be consulted when the lock is released so
-        // the compositor can place the real cursor where the client was
-        // drawing its own. Warping the actual pointer here would cause the
-        // server cursor to follow the client's hint every commit and would
-        // destroy the pre-lock cursor location, so we do nothing on commit.
-        // Smithay stores the hint on the LockedPointer automatically; it is
-        // applied on unlock by `apply_locked_pointer_hint_on_unlock`.
+        let active = with_pointer_constraint(surface, pointer, |constraint| {
+            constraint.is_some_and(|constraint| constraint.is_active())
+        });
+        if !active {
+            return;
+        }
+
+        let Some(origin) = self.pointer_constraint_surface_origin(surface) else {
+            return;
+        };
+        let target = origin + location;
+        pointer.set_location(target);
+        self.runtime.pointer_location = target;
     }
 }
