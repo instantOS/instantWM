@@ -208,6 +208,117 @@ impl DndFocus<WaylandState> for PointerFocusTarget {
     }
 }
 
+enum WindowKeyboardTarget<'a> {
+    XWayland(&'a smithay::xwayland::X11Surface),
+    Wayland(Cow<'a, WlSurface>),
+}
+
+impl<'a> WindowKeyboardTarget<'a> {
+    fn for_window(window: &'a Window) -> Option<Self> {
+        // XWayland keyboard focus must go through X11Surface, not only
+        // the backing wl_surface. Smithay's X11Surface KeyboardTarget
+        // sends X11 SetInputFocus / WM_TAKE_FOCUS side effects.
+        if let Some(x11) = window.x11_surface() {
+            Some(Self::XWayland(x11))
+        } else {
+            window.wl_surface().map(Self::Wayland)
+        }
+    }
+
+    fn enter(
+        self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+        keys: Vec<KeysymHandle<'_>>,
+        serial: Serial,
+    ) {
+        match self {
+            Self::XWayland(x11) => {
+                smithay::input::keyboard::KeyboardTarget::enter(x11, seat, data, keys, serial);
+            }
+            Self::Wayland(surface) => {
+                smithay::input::keyboard::KeyboardTarget::enter(
+                    surface.as_ref(),
+                    seat,
+                    data,
+                    keys,
+                    serial,
+                );
+            }
+        }
+    }
+
+    fn leave(self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial) {
+        match self {
+            Self::XWayland(x11) => {
+                smithay::input::keyboard::KeyboardTarget::leave(x11, seat, data, serial);
+            }
+            Self::Wayland(surface) => {
+                smithay::input::keyboard::KeyboardTarget::leave(
+                    surface.as_ref(),
+                    seat,
+                    data,
+                    serial,
+                );
+            }
+        }
+    }
+
+    fn key(
+        self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+        key: KeysymHandle<'_>,
+        state: KeyState,
+        serial: Serial,
+        time: u32,
+    ) {
+        match self {
+            Self::XWayland(x11) => {
+                smithay::input::keyboard::KeyboardTarget::key(
+                    x11, seat, data, key, state, serial, time,
+                );
+            }
+            Self::Wayland(surface) => {
+                smithay::input::keyboard::KeyboardTarget::key(
+                    surface.as_ref(),
+                    seat,
+                    data,
+                    key,
+                    state,
+                    serial,
+                    time,
+                );
+            }
+        }
+    }
+
+    fn modifiers(
+        self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+        modifiers: ModifiersState,
+        serial: Serial,
+    ) {
+        match self {
+            Self::XWayland(x11) => {
+                smithay::input::keyboard::KeyboardTarget::modifiers(
+                    x11, seat, data, modifiers, serial,
+                );
+            }
+            Self::Wayland(surface) => {
+                smithay::input::keyboard::KeyboardTarget::modifiers(
+                    surface.as_ref(),
+                    seat,
+                    data,
+                    modifiers,
+                    serial,
+                );
+            }
+        }
+    }
+}
+
 // -- KeyboardTarget implementation --
 
 impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTarget {
@@ -220,16 +331,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(x11) = w.x11_surface() {
-                    smithay::input::keyboard::KeyboardTarget::enter(x11, seat, data, keys, serial);
-                } else if let Some(surface) = w.wl_surface() {
-                    smithay::input::keyboard::KeyboardTarget::enter(
-                        surface.as_ref(),
-                        seat,
-                        data,
-                        keys,
-                        serial,
-                    );
+                if let Some(target) = WindowKeyboardTarget::for_window(w) {
+                    target.enter(seat, data, keys, serial);
                 }
             }
             KeyboardFocusTarget::WlSurface(surface) => {
@@ -250,15 +353,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(x11) = w.x11_surface() {
-                    smithay::input::keyboard::KeyboardTarget::leave(x11, seat, data, serial);
-                } else if let Some(surface) = w.wl_surface() {
-                    smithay::input::keyboard::KeyboardTarget::leave(
-                        surface.as_ref(),
-                        seat,
-                        data,
-                        serial,
-                    );
+                if let Some(target) = WindowKeyboardTarget::for_window(w) {
+                    target.leave(seat, data, serial);
                 }
             }
             KeyboardFocusTarget::WlSurface(surface) => {
@@ -281,20 +377,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(x11) = w.x11_surface() {
-                    smithay::input::keyboard::KeyboardTarget::key(
-                        x11, seat, data, key, state, serial, time,
-                    );
-                } else if let Some(surface) = w.wl_surface() {
-                    smithay::input::keyboard::KeyboardTarget::key(
-                        surface.as_ref(),
-                        seat,
-                        data,
-                        key,
-                        state,
-                        serial,
-                        time,
-                    );
+                if let Some(target) = WindowKeyboardTarget::for_window(w) {
+                    target.key(seat, data, key, state, serial, time);
                 }
             }
             KeyboardFocusTarget::WlSurface(surface) => {
@@ -325,18 +409,8 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(x11) = w.x11_surface() {
-                    smithay::input::keyboard::KeyboardTarget::modifiers(
-                        x11, seat, data, modifiers, serial,
-                    );
-                } else if let Some(surface) = w.wl_surface() {
-                    smithay::input::keyboard::KeyboardTarget::modifiers(
-                        surface.as_ref(),
-                        seat,
-                        data,
-                        modifiers,
-                        serial,
-                    );
+                if let Some(target) = WindowKeyboardTarget::for_window(w) {
+                    target.modifiers(seat, data, modifiers, serial);
                 }
             }
             KeyboardFocusTarget::WlSurface(surface) => {
