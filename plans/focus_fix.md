@@ -40,84 +40,76 @@ making this class of bug harder to reintroduce.
 
 ## Plan
 
-### 1. Introduce protocol-aware managed window handles
+### 1. Keep Smithay `Window` as the window abstraction
 
-Create a local abstraction that keeps common window identity separate from the
-protocol-specific handle:
+Do not add a second broad `ManagedWindow` wrapper for this problem. Smithay's
+`desktop::Window` already preserves the protocol-specific object internally:
 
-```rust
-pub enum ManagedWindowKind {
-    Wayland {
-        window: smithay::desktop::Window,
-    },
-    XWayland {
-        window: smithay::desktop::Window,
-        x11: smithay::xwayland::X11Surface,
-    },
-}
+- `Window::x11_surface()` exposes the `X11Surface`.
+- `Window::wl_surface()` exposes the backing Wayland surface.
+- `Window::set_activated()` already dispatches by protocol.
 
-pub struct ManagedWindow {
-    pub id: WindowId,
-    pub kind: ManagedWindowKind,
-}
-```
+The bug was not that the XWayland data was missing. The bug was that a
+protocol-sensitive path chose the generic backing `wl_surface` when it needed
+the `X11Surface` keyboard target.
 
-This does not need to replace Smithay `Window` in `Space`. Smithay `Window` can
-remain the rendering/layout object. The new wrapper should be the semantic
-object used by focus, input routing, activation, configure, and policy code.
+Adding another full window wrapper would duplicate Smithay's abstraction and
+increase the amount of state future maintainers need to reason about. The
+better fix is to make operation-specific routing explicit where the operation
+has protocol side effects.
 
-### 2. Add intent-specific accessors
+### 2. Add intent-specific helpers on or near focus/input code
 
-Avoid generic helpers at call sites where the intended operation matters.
-Prefer methods with names that encode the protocol contract:
+Avoid direct `Window::wl_surface()` calls at call sites where the intended
+operation matters. Prefer small helpers with names that encode the protocol
+contract:
 
 ```rust
-impl ManagedWindow {
-    fn root_wl_surface(&self) -> Option<WlSurface>;
-    fn keyboard_focus_target(&self) -> KeyboardFocusTarget;
-    fn pointer_focus_target_at(&self, point: Point<f64, Logical>) -> Option<PointerFocusTarget>;
-    fn set_activated(&self, active: bool) -> bool;
-    fn configure(&self, rect: Rectangle<i32, Logical>);
-    fn close(&self);
-}
+fn keyboard_focus_target_for(window: &Window) -> KeyboardFocusTarget;
+fn root_wl_surface_for_tree_identity(window: &Window) -> Option<WlSurface>;
+fn pointer_focus_target_at(window: &Window, point: Point<f64, Logical>) -> Option<PointerFocusTarget>;
 ```
 
-The important rule: `root_wl_surface()` is for tree identity, rendering,
-constraints, and hit testing. It is not automatically the keyboard focus target.
+The important rule: the root `wl_surface` is for tree identity, rendering,
+constraints, hit testing, and pointer delivery. It is not automatically the
+keyboard focus target.
 
-### 3. Split focus target variants by protocol
+These helpers should be deliberately narrow. If Smithay already dispatches an
+operation correctly, such as `Window::set_activated()`, keep using Smithay
+directly rather than wrapping it.
 
-Replace the protocol-erased variant:
+### 3. Centralize keyboard focus routing by protocol
+
+Keep using Smithay's protocol-preserving `Window` wrapper:
 
 ```rust
 KeyboardFocusTarget::Window(Window)
 ```
 
-with protocol-aware variants:
+Inside the `KeyboardTarget` implementation, resolve the actual keyboard target
+through one local helper. The invariant must be local and obvious:
 
 ```rust
-pub enum KeyboardFocusTarget {
-    WaylandWindow(Window),
-    XWaylandWindow(X11Surface),
-    WlSurface(WlSurface),
-    Popup(PopupKind),
+if let Some(x11) = window.x11_surface() {
+    KeyboardTarget::enter(x11, ...);
+} else if let Some(surface) = window.wl_surface() {
+    KeyboardTarget::enter(surface.as_ref(), ...);
 }
 ```
 
-This makes the keyboard focus implementation straightforward and reviewable:
+This avoids reinventing Smithay's `Window` abstraction while still preventing
+keyboard focus from silently taking the wrong route. Splitting
+`KeyboardFocusTarget::Window` into protocol-specific variants should only be
+reconsidered if the centralized helper proves too easy to bypass.
 
-- `WaylandWindow` forwards to the Wayland surface path.
-- `XWaylandWindow` forwards to `X11Surface`, preserving X11 focus side effects.
-- `WlSurface` remains for layer surfaces and explicit raw Wayland targets.
-- `Popup` remains popup-specific.
-
-### 4. Do the same audit for pointer focus, activation, and configure
+### 4. Audit other protocol-sensitive operations without preemptive wrappers
 
 Keyboard focus was the confirmed bug, but the same abstraction risk exists
 elsewhere. Audit these operations:
 
 - `KeyboardTarget` dispatch
 - `PointerTarget` dispatch
+- `DndFocus` dispatch
 - `set_activated`
 - configure/resize
 - close requests
@@ -133,7 +125,13 @@ For each operation, decide whether the semantic target is:
 - the `X11Surface`
 - a protocol-specific shell object
 
-Then encode that decision in helper names and types.
+Then encode that decision only where it is not already correctly handled by
+Smithay. Do not wrap for the sake of wrapping.
+
+The same pattern applies to drag-and-drop: Smithay has a distinct `DndFocus`
+implementation for `X11Surface` to bridge XDND. A `PointerFocusTarget::Window`
+must therefore route DND through `X11Surface` for XWayland windows, while
+ordinary pointer events can still use the backing `wl_surface`.
 
 ### 5. Add diagnostics at protocol boundaries
 
@@ -174,11 +172,14 @@ constraint behavior to compensate for an upstream focus/input routing problem.
 ## Migration strategy
 
 1. Keep the current narrow `X11Surface` keyboard-target fix.
-2. Introduce protocol-aware helper methods without changing behavior.
-3. Convert focus code to use those helpers.
-4. Convert activation/configure/close paths.
+2. Add a comment/invariant near `KeyboardFocusTarget` explaining why XWayland
+   keyboard focus must route through `X11Surface`.
+3. Centralize the `Window` to actual-keyboard-target decision in one helper.
+4. Add targeted helper methods only for protocol-sensitive paths that currently
+   need direct branching.
 5. Convert pointer routing only after focus behavior is covered by probes.
-6. Remove direct `Window::wl_surface()` use from protocol-sensitive code.
+6. Remove direct `Window::wl_surface()` use from protocol-sensitive code where
+   the operation is not actually about Wayland surface identity.
 
 Direct `Window::wl_surface()` use should remain acceptable in rendering,
 surface-tree traversal, and hit testing, where the operation really is about
