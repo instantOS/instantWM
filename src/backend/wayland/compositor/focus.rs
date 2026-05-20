@@ -220,7 +220,9 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(surface) = w.wl_surface() {
+                if let Some(x11) = w.x11_surface() {
+                    smithay::input::keyboard::KeyboardTarget::enter(x11, seat, data, keys, serial);
+                } else if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::enter(
                         surface.as_ref(),
                         seat,
@@ -248,7 +250,9 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     fn leave(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, serial: Serial) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(surface) = w.wl_surface() {
+                if let Some(x11) = w.x11_surface() {
+                    smithay::input::keyboard::KeyboardTarget::leave(x11, seat, data, serial);
+                } else if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::leave(
                         surface.as_ref(),
                         seat,
@@ -277,7 +281,11 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(surface) = w.wl_surface() {
+                if let Some(x11) = w.x11_surface() {
+                    smithay::input::keyboard::KeyboardTarget::key(
+                        x11, seat, data, key, state, serial, time,
+                    );
+                } else if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::key(
                         surface.as_ref(),
                         seat,
@@ -317,7 +325,11 @@ impl smithay::input::keyboard::KeyboardTarget<WaylandState> for KeyboardFocusTar
     ) {
         match self {
             KeyboardFocusTarget::Window(w) => {
-                if let Some(surface) = w.wl_surface() {
+                if let Some(x11) = w.x11_surface() {
+                    smithay::input::keyboard::KeyboardTarget::modifiers(
+                        x11, seat, data, modifiers, serial,
+                    );
+                } else if let Some(surface) = w.wl_surface() {
                     smithay::input::keyboard::KeyboardTarget::modifiers(
                         surface.as_ref(),
                         seat,
