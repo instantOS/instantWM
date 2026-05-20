@@ -9,7 +9,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
 
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    normalize_current_mode(&mut wm.g);
+    wm.g.normalize_current_mode();
     wm.g.queue_monitor_config_apply();
     wm.g.queue_input_config_apply();
     wm.bar.mark_dirty();
@@ -31,18 +31,6 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     crate::startup::autostart::run_exec_commands(&cfg.exec);
 
     Ok(())
-}
-
-fn normalize_current_mode(g: &mut crate::globals::Globals) {
-    if g.behavior.current_mode == "default"
-        || g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-    {
-        return;
-    }
-
-    if !g.cfg.bindings.modes.contains_key(&g.behavior.current_mode) {
-        g.behavior.current_mode = "default".to_string();
-    }
 }
 
 fn reload_wayland(
@@ -115,7 +103,7 @@ mod tests {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
         wm.g.behavior.current_mode = "resize".to_string();
 
-        normalize_current_mode(&mut wm.g);
+        wm.g.normalize_current_mode();
 
         assert_eq!(wm.g.behavior.current_mode, "default");
     }
@@ -129,7 +117,7 @@ mod tests {
             .modes
             .insert("resize".to_string(), ModeConfig::default());
 
-        normalize_current_mode(&mut wm.g);
+        wm.g.normalize_current_mode();
 
         assert_eq!(wm.g.behavior.current_mode, "resize");
     }

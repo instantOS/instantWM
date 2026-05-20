@@ -1106,4 +1106,17 @@ impl Globals {
             detail: colors.detail,
         }
     }
+
+    /// Reset `current_mode` to `"default"` if it refers to a mode that no longer exists.
+    pub fn normalize_current_mode(&mut self) {
+        if self.behavior.current_mode == "default"
+            || self.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
+        {
+            return;
+        }
+
+        if !self.cfg.bindings.modes.contains_key(&self.behavior.current_mode) {
+            self.behavior.current_mode = "default".to_string();
+        }
+    }
 }
