@@ -258,7 +258,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
             .globals()
             .monitors
             .get(target_mon)
-            .and_then(|m| m.current_tag_index());
+            .and_then(|m| m.current_tag_number());
         (is_scratchpad, tags, target_tag_idx)
     };
 

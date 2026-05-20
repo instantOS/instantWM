@@ -505,7 +505,7 @@ fn run_manage_animation(
 /// visible on its target monitor.
 pub fn initial_tags_for_monitor(g: &Globals, monitor_id: MonitorId) -> u32 {
     g.monitor(monitor_id)
-        .map(|m| m.selected_tags_bits())
+        .map(|m| m.selected_tags().bits())
         .filter(|tags| *tags != 0)
         .unwrap_or(1)
 }

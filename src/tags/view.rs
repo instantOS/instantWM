@@ -10,15 +10,12 @@ fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
-fn adjacent_scroll_mask(
-    current_tag: usize,
-    tagset: TagMask,
-    dir: HorizontalDirection,
-) -> Option<TagMask> {
+fn adjacent_scroll_mask(tagset: TagMask, dir: HorizontalDirection) -> Option<TagMask> {
     if !tagset.is_single() {
         return None;
     }
 
+    let current_tag = tagset.first_tag()?;
     let max_tag = crate::constants::animation::MAX_TAG_NUMBER as usize;
     let next_tag = match dir {
         HorizontalDirection::Left if current_tag > 1 => current_tag - 1,
@@ -39,11 +36,11 @@ fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId
             return None;
         }
 
-        let previous_current_tag = mon.current_tag_index();
+        let previous_current_tag = mon.current_tag_number();
         mon.sel_tags ^= 1;
         mon.set_selected_tags(new_mask);
 
-        if previous_current_tag != mon.current_tag_index()
+        if previous_current_tag != mon.current_tag_number()
             && let Some(previous_current_tag) = previous_current_tag
         {
             mon.prev_tag = Some(previous_current_tag);
@@ -159,7 +156,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
 
 pub fn last_view(ctx: &mut WmCtx) {
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, prev_tag) = (mon.current_tag_index(), mon.prev_tag);
+    let (current_tag, prev_tag) = (mon.current_tag_number(), mon.prev_tag);
 
     if current_tag == prev_tag {
         crate::focus::focus_last_client(ctx);
@@ -184,7 +181,7 @@ pub fn win_view(ctx: &mut WmCtx) {
         .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY));
 
     if tag_mask.is_scratchpad_only() {
-        let current_tag = ctx.core().globals().selected_monitor().current_tag_index();
+        let current_tag = ctx.core().globals().selected_monitor().current_tag_number();
         if let Some(mask) = current_tag.and_then(TagMask::single) {
             view_tags(ctx, mask);
         }
@@ -200,7 +197,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let tagmask = ctx.core().globals().tags.mask();
     let newtag = mask & tagmask;
     let mon = ctx.core().globals().selected_monitor();
-    let (current_tag, current_tagset) = (mon.current_tag_index(), mon.selected_tags());
+    let (current_tag, current_tagset) = (mon.current_tag_number(), mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
     }
@@ -269,14 +266,13 @@ mod tests {
 
     #[test]
     fn adjacent_scroll_mask_moves_left_and_right() {
-        let current = 3;
-        let tagset = TagMask::single(current).unwrap_or(TagMask::EMPTY);
+        let tagset = TagMask::single(3).unwrap_or(TagMask::EMPTY);
         assert_eq!(
-            adjacent_scroll_mask(current, tagset, HorizontalDirection::Left),
+            adjacent_scroll_mask(tagset, HorizontalDirection::Left),
             TagMask::single(2)
         );
         assert_eq!(
-            adjacent_scroll_mask(current, tagset, HorizontalDirection::Right),
+            adjacent_scroll_mask(tagset, HorizontalDirection::Right),
             TagMask::single(4)
         );
     }
@@ -285,13 +281,9 @@ mod tests {
     fn adjacent_scroll_mask_requires_single_tag_and_bounds() {
         let multi = TagMask::single(2).unwrap_or(TagMask::EMPTY)
             | TagMask::single(3).unwrap_or(TagMask::EMPTY);
-        assert_eq!(
-            adjacent_scroll_mask(2, multi, HorizontalDirection::Left),
-            None
-        );
+        assert_eq!(adjacent_scroll_mask(multi, HorizontalDirection::Left), None);
         assert_eq!(
             adjacent_scroll_mask(
-                1,
                 TagMask::single(1).unwrap_or(TagMask::EMPTY),
                 HorizontalDirection::Left
             ),
@@ -301,12 +293,9 @@ mod tests {
 }
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let mon = ctx.core().globals().selected_monitor();
-    let (Some(current_tag), tagset) = (mon.current_tag_index(), mon.selected_tags()) else {
-        return;
-    };
+    let tagset = ctx.core().globals().selected_monitor().selected_tags();
 
-    let Some(new_mask) = adjacent_scroll_mask(current_tag, tagset, dir) else {
+    let Some(new_mask) = adjacent_scroll_mask(tagset, dir) else {
         return;
     };
 
@@ -319,12 +308,9 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
 /// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
-    let mon = ctx.core().globals().selected_monitor();
-    let (Some(current_tag), tagset) = (mon.current_tag_index(), mon.selected_tags()) else {
-        return None;
-    };
+    let tagset = ctx.core().globals().selected_monitor().selected_tags();
 
-    let new_mask = adjacent_scroll_mask(current_tag, tagset, dir)?;
+    let new_mask = adjacent_scroll_mask(tagset, dir)?;
     let selmon_id = commit_view_selection(ctx, new_mask)?;
     crate::focus::focus(ctx, None);
     Some(selmon_id)

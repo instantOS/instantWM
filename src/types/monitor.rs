@@ -237,12 +237,6 @@ impl Monitor {
         self.tag_set[self.sel_tags as usize] = mask;
     }
 
-    /// Get the currently selected tags for this monitor as raw bits.
-    #[inline]
-    pub fn selected_tags_bits(&self) -> u32 {
-        self.tag_set[self.sel_tags as usize].bits()
-    }
-
     /// Set the currently selected tags for this monitor from raw bits.
     #[inline]
     pub fn set_selected_tags_bits(&mut self, mask: u32) {
@@ -258,14 +252,8 @@ impl Monitor {
             .or_insert_with(|| PertagState::new(default_showbar))
     }
 
-    /// Get the currently selected tags as a type-safe mask.
     #[inline]
-    pub fn selected_tag_mask(&self) -> TagMask {
-        self.selected_tags()
-    }
-
-    #[inline]
-    pub fn current_tag_index(&self) -> Option<usize> {
+    pub fn current_tag_number(&self) -> Option<usize> {
         let selected = self.selected_tags();
         if selected.is_single() {
             selected.first_tag()
@@ -446,7 +434,7 @@ impl Monitor {
 
     /// Get the current tag name data for this monitor.
     pub fn current_tag(&self) -> Option<&TagNames> {
-        let idx = self.current_tag_index()?;
+        let idx = self.current_tag_number()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&self.tags[idx - 1])
         } else {
@@ -456,7 +444,7 @@ impl Monitor {
 
     /// Get a mutable reference to the current tag name data.
     pub fn current_tag_mut(&mut self) -> Option<&mut TagNames> {
-        let idx = self.current_tag_index()?;
+        let idx = self.current_tag_number()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&mut self.tags[idx - 1])
         } else {
@@ -595,7 +583,7 @@ impl Monitor {
     pub fn tag_index_for_slot(&self, slot: usize) -> usize {
         const MAX_BAR_SLOTS: usize = 9;
         if slot == MAX_BAR_SLOTS - 1
-            && let Some(current_tag) = self.current_tag_index()
+            && let Some(current_tag) = self.current_tag_number()
             && current_tag > MAX_BAR_SLOTS
         {
             current_tag - 1
@@ -789,16 +777,16 @@ mod tests {
         let mut monitor = Monitor::default();
 
         monitor.set_selected_tags(TagMask::single(3).unwrap());
-        assert_eq!(monitor.current_tag_index(), Some(3));
+        assert_eq!(monitor.current_tag_number(), Some(3));
 
         monitor.set_selected_tags(
             TagMask::single(2).unwrap_or(TagMask::EMPTY)
                 | TagMask::single(3).unwrap_or(TagMask::EMPTY),
         );
-        assert_eq!(monitor.current_tag_index(), None);
+        assert_eq!(monitor.current_tag_number(), None);
 
         monitor.set_selected_tags(TagMask::EMPTY);
-        assert_eq!(monitor.current_tag_index(), None);
+        assert_eq!(monitor.current_tag_number(), None);
     }
 
     #[test]

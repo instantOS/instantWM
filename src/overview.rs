@@ -23,15 +23,11 @@ impl OverviewState {
 }
 
 pub fn is_active(core: &CoreCtx<'_>) -> bool {
-    core.globals()
-        .selected_monitor()
-        .overview_state
-        .is_some()
+    core.globals().selected_monitor().overview_state.is_some()
 }
 
 pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor: &Monitor) -> bool {
-    monitor.overview_state.is_some()
-        && core.globals().selected_monitor_id() == monitor.id()
+    monitor.overview_state.is_some() && core.globals().selected_monitor_id() == monitor.id()
 }
 
 fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool {
@@ -39,10 +35,10 @@ fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool 
         return false;
     }
 
-    let previous_current_tag = mon.current_tag_index();
+    let previous_current_tag = mon.current_tag_number();
     mon.sel_tags ^= 1;
     mon.set_selected_tags(new_mask);
-    if previous_current_tag != mon.current_tag_index()
+    if previous_current_tag != mon.current_tag_number()
         && let Some(previous_current_tag) = previous_current_tag
     {
         mon.prev_tag = Some(previous_current_tag);
@@ -61,8 +57,12 @@ pub fn handle_mode_transition(ctx: &mut WmCtx<'_>, previous_mode: &str, next_mod
     }
 }
 
+/// Exit overview mode with a specific [`ExitMode`].
+///
+/// Bypasses `WmCtx::set_current_mode` to avoid threading `ExitMode` through
+/// the general mode system. If `set_current_mode` ever gains side effects,
+/// this path must be updated to match.
 pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
-    let _previous_mode = ctx.core().globals().behavior.current_mode.clone();
     ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
     exit(ctx, mode);
 }
@@ -124,7 +124,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 
             restore_all_floating(ctx, Some(selected_monitor_id));
 
-            let target_mask = selected_tags.or(Some(restore_mask).filter(|m| !m.is_empty()));
+            let target_mask = selected_tags.or(Some(restore_mask));
             if let Some(mask) = target_mask
                 && !mask.is_empty()
             {

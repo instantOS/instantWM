@@ -123,6 +123,10 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
     let mode = toggle_mode_name(ctx.current_mode(), name);
+    // Overview exit is handled by `exit_overview` (which updates
+    // `current_mode` directly) rather than `set_current_mode` to avoid
+    // calling `handle_mode_transition` a second time — the exit logic
+    // runs inside `exit_overview` itself.
     if name == crate::overview::OVERVIEW_MODE_NAME && mode == "default" {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
     } else {
