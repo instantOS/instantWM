@@ -19,63 +19,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Initialise pacman
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinux
-          pacman -Syu --noconfirm
       - name: Install build dependencies
-        run: |
-          pacman -S --noconfirm --needed \
-            base-devel \
-            rust \
-            pkgconf \
-            git \
-            cmake \
-            jq \
-            pacman-contrib \
-            fzf \
-            xorg-server \
-            xorg-server-xvfb \
-            libx11 \
-            libxext \
-            libxrandr \
-            libxinerama \
-            libxcb \
-            libxkbcommon \
-            libxcursor \
-            libxdamage \
-            libxfixes \
-            libxi \
-            libxres \
-            libxtst \
-            libxss \
-            libxvmc \
-            libxxf86vm \
-            libxcomposite \
-            libxrender \
-            libxt \
-            libxmu \
-            libxpm \
-            libxaw \
-            fontconfig \
-            freetype2 \
-            libxft \
-            libdrm \
-            wayland \
-            wayland-protocols \
-            libinput \
-            seatd \
-            egl-wayland \
-            mesa \
-            libglvnd \
-            libevdev \
-            libwacom \
-            systemd \
-            dbus \
-            libliftoff \
-            libdisplay-info \
-            scdoc
+        run: bash scripts/ci/install-deps-arch.sh
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
       - name: Create build user
@@ -165,51 +110,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Install dependencies
+      - name: Install build dependencies
+        run: bash scripts/ci/install-deps-ubuntu.sh --cross
+      - name: Install Rust toolchain
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            build-essential curl ca-certificates pkg-config \
-            gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            musl-tools \
-            unzip \
-            libx11-dev \
-            libxext-dev \
-            libxrandr-dev \
-            libxinerama-dev \
-            libxcb-dev \
-            libxkbcommon-dev \
-            libxcursor-dev \
-            libxdamage-dev \
-            libxfixes-dev \
-            libxi-dev \
-            libxres-dev \
-            libxtst-dev \
-            libxss-dev \
-            libxvmc-dev \
-            libxxf86vm-dev \
-            libxcomposite-dev \
-            libxrender-dev \
-            libxt-dev \
-            libxmu-dev \
-            libxpm-dev \
-            libxaw-dev \
-            libfontconfig1-dev \
-            libfreetype-dev \
-            libdrm-dev \
-            libgbm-dev \
-            libwayland-dev \
-            wayland-protocols \
-            libinput-dev \
-            libseat-dev \
-            libegl-dev \
-            libgl-dev \
-            libevdev-dev \
-            libwacom-dev \
-            libdbus-1-dev \
-            libliftoff-dev \
-            libdisplay-info-dev
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Add Rust cross-compilation targets
@@ -302,66 +206,16 @@ jobs:
       image: archlinux:latest
     needs: build
     steps:
-      - name: Initialise pacman
+      - name: Initialise pacman and install git
         run: |
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syu --noconfirm
-      - name: Install build dependencies
-        run: |
-          pacman -S --noconfirm --needed \
-            base-devel \
-            rust \
-            pkgconf \
-            git \
-            cmake \
-            pacman-contrib \
-            fzf \
-            jq \
-            sudo \
-            xorg-server \
-            xorg-server-xvfb \
-            libx11 \
-            libxext \
-            libxrandr \
-            libxinerama \
-            libxcb \
-            libxkbcommon \
-            libxcursor \
-            libxdamage \
-            libxfixes \
-            libxi \
-            libxres \
-            libxtst \
-            libxss \
-            libxvmc \
-            libxxf86vm \
-            libxcomposite \
-            libxrender \
-            libxt \
-            libxmu \
-            libxpm \
-            libxaw \
-            fontconfig \
-            freetype2 \
-            libxft \
-            libdrm \
-            wayland \
-            wayland-protocols \
-            libinput \
-            seatd \
-            egl-wayland \
-            mesa \
-            libglvnd \
-            libevdev \
-            libwacom \
-            systemd \
-            dbus \
-            libliftoff \
-            libdisplay-info \
-            scdoc
+          pacman -S --noconfirm --needed git
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: bash scripts/ci/install-deps-arch.sh
       - name: Extract version
         id: vars
         run: |
@@ -409,47 +263,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            dpkg-dev \
-            libx11-dev \
-            libxext-dev \
-            libxrandr-dev \
-            libxinerama-dev \
-            libxcb-dev \
-            libxkbcommon-dev \
-            libxcursor-dev \
-            libxdamage-dev \
-            libxfixes-dev \
-            libxi-dev \
-            libxres-dev \
-            libxtst-dev \
-            libxss-dev \
-            libxvmc-dev \
-            libxxf86vm-dev \
-            libxcomposite-dev \
-            libxrender-dev \
-            libxt-dev \
-            libxmu-dev \
-            libxpm-dev \
-            libxaw-dev \
-            libfontconfig1-dev \
-            libfreetype-dev \
-            libdrm-dev \
-            libgbm-dev \
-            libwayland-dev \
-            wayland-protocols \
-            libinput-dev \
-            libseat-dev \
-            libegl-dev \
-            libgl-dev \
-            libevdev-dev \
-            libwacom-dev \
-            libdbus-1-dev \
-            libliftoff-dev \
-            libdisplay-info-dev
+          bash scripts/ci/install-deps-ubuntu.sh
+          apt-get install -y --no-install-recommends dpkg-dev
       - name: Extract version
         id: vars
         run: |
