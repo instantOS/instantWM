@@ -238,7 +238,7 @@ fn read_u32_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> O
 }
 
 fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
-    let borderpx = g.cfg.border_width_px;
+    let borderpx = g.cfg.window.border_width_px;
     if let Some(client) = g.clients.get_mut(&w) {
         client.border_width = borderpx;
         client.old_border_width = borderpx;
@@ -284,7 +284,7 @@ fn configure_client_border(
     mon_monitor_rect: Rect,
     is_monocle: bool,
 ) {
-    let bar_height = g.cfg.bar_height;
+    let bar_height = g.cfg.bar.height;
 
     let Some(client) = g.clients.get_mut(&w) else {
         return;
@@ -385,7 +385,7 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
         .get(&w)
         .map(|client| {
             (
-                ctx.core().globals().cfg.screen_width,
+                ctx.core().globals().cfg.display.width,
                 client.geo.x,
                 client.geo.y,
                 client.geo.w,

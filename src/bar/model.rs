@@ -69,7 +69,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.globals().cfg.show_systray && is_selected_monitor {
+    if core.globals().cfg.systray.show && is_selected_monitor {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {
@@ -149,7 +149,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.globals().cfg.show_systray && is_selmon {
+    let systray_w = if core.globals().cfg.systray.show && is_selmon {
         core.globals().bar_runtime.systray_width
     } else {
         0

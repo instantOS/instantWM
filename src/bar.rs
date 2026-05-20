@@ -209,7 +209,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
-    width + core.globals().cfg.horizontal_padding
+    width + core.globals().cfg.bar.horizontal_padding
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
@@ -231,7 +231,7 @@ pub fn resolve_bar_position_at_root(
     }
 
     let mon = core.globals().monitor(monitor_id)?;
-    let bar_h = core.globals().cfg.bar_height.max(1);
+    let bar_h = core.globals().cfg.bar.height.max(1);
     let in_bar = monitor_bar_visible(core.globals(), mon)
         && root.y >= mon.bar_y
         && root.y < mon.bar_y + bar_h;
@@ -339,7 +339,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         local_x,
         root.y - selected_monitor.bar_y,
         button_code,
-        ctx.core().globals().cfg.bar_height,
+        ctx.core().globals().cfg.bar.height,
         clean_state,
     );
 }

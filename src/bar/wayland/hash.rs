@@ -11,8 +11,8 @@ pub(super) fn render_key(
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
-    core.globals().cfg.show_bar.hash(&mut hasher);
-    core.globals().cfg.show_systray.hash(&mut hasher);
+    core.globals().cfg.bar.show.hash(&mut hasher);
+    core.globals().cfg.systray.show.hash(&mut hasher);
     wayland_systray_menu.is_some().hash(&mut hasher);
     for snapshot in snapshots {
         hash_monitor_snapshot(&mut hasher, snapshot);

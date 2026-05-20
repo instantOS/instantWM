@@ -250,21 +250,21 @@ pub fn apply_bar_metrics(
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
     // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
     // rounded up) when the user has not explicitly set bar_height in config.
-    g.cfg.bar_height = if cfg.bar_height > 0 {
+    g.cfg.bar.height = if cfg.bar_height > 0 {
         cfg.bar_height.max(min_bar_height)
     } else {
         (font_height + 12).max(min_bar_height)
     };
-    g.cfg.horizontal_padding = font_height;
+    g.cfg.bar.horizontal_padding = font_height;
 }
 
 pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
     let cfg = init_config(crate::backend::BackendKind::Wayland);
-    g.cfg.screen_width = 1280;
-    g.cfg.screen_height = 800;
+    g.cfg.display.width = 1280;
+    g.cfg.display.height = 800;
     crate::globals::apply_config(g, &cfg);
     crate::globals::apply_tags_config(g, &cfg);
-    g.cfg.show_bar = true;
+    g.cfg.bar.show = true;
 
     apply_bar_metrics(g, wayland, &cfg);
 
@@ -493,7 +493,7 @@ pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandState,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    if !wm.g.cfg.show_bar {
+    if !wm.g.cfg.bar.show {
         return Vec::new();
     }
 

@@ -34,7 +34,7 @@ fn run_matching(
     policy: MatchPolicy,
 ) -> bool {
     let mut matched = false;
-    let buttons = ctx.core().globals().cfg.buttons.clone();
+    let buttons = ctx.core().globals().cfg.bindings.buttons.clone();
     for binding in &buttons {
         if !binding.matches(event.target) || binding.button != event.button {
             continue;

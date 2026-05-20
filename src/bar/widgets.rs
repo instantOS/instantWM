@@ -14,7 +14,7 @@ pub(crate) fn draw_tag_indicators(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
-    let horizontal_padding = ctx.globals().cfg.horizontal_padding;
+    let horizontal_padding = ctx.globals().cfg.bar.horizontal_padding;
     let lpad = (horizontal_padding / 2) as u32;
     let bar_dragging = ctx.globals().drag.bar_active;
 
@@ -74,7 +74,7 @@ pub(crate) fn draw_layout_indicator(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
-    let horizontal_padding = ctx.globals().cfg.horizontal_padding;
+    let horizontal_padding = ctx.globals().cfg.bar.horizontal_padding;
     let ltsymbol = if crate::overview::is_active_on_monitor(ctx, m) {
         "OVR".to_string()
     } else {
@@ -227,7 +227,7 @@ fn draw_window_title(
     let lpad = if text_w < width - 64 {
         ((width - text_w) as f32 * 0.5) as i32
     } else {
-        ctx.globals().cfg.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
+        ctx.globals().cfg.bar.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
     };
 
     painter.text(

@@ -211,8 +211,8 @@ pub fn handle_pointer_motion(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     event: MotionEvent,
 ) {
-    let output_width = wm.g.cfg.screen_width;
-    let output_height = wm.g.cfg.screen_height;
+    let output_width = wm.g.cfg.display.width;
+    let output_height = wm.g.cfg.display.height;
 
     let current_location = state.runtime.pointer_location;
 

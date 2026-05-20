@@ -55,9 +55,9 @@ pub fn apply_rules(
     }
 
     let special_next = g.behavior.specialnext;
-    let rules = g.cfg.rules.clone();
+    let rules = g.cfg.bindings.rules.clone();
     let tag_mask = g.tags.mask();
-    let bar_height = g.cfg.bar_height;
+    let bar_height = g.cfg.bar.height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if special_next != SpecialNext::None {
@@ -356,7 +356,7 @@ mod tests {
         let mut g = Globals::default();
         g.monitors.push(Monitor::new_with_values(true, true)); // Add a monitor
 
-        g.cfg.rules = vec![Rule {
+        g.cfg.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("test")),
             instance: None,
             title: None,

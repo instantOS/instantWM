@@ -193,7 +193,7 @@ pub fn apply_size_hints(
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
     let monitor = core.globals().monitors.get(monitor_id);
-    let should_apply_hints = core.globals().cfg.resizehints != 0
+    let should_apply_hints = core.globals().cfg.window.resizehints != 0
         || client.mode.is_floating()
         || is_floating_layout(core, monitor);
 
@@ -212,7 +212,7 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = core.globals().cfg.bar_height;
+    let bar_height = core.globals().cfg.bar.height;
     rect.enforce_minimum(bar_height, bar_height);
 
     // Phase 4: Apply ICCCM size hints (X11 only).
@@ -236,8 +236,8 @@ fn clamp_position_to_bounds(
         let screen = Rect::new(
             0,
             0,
-            core.globals().cfg.screen_width,
-            core.globals().cfg.screen_height,
+            core.globals().cfg.display.width,
+            core.globals().cfg.display.height,
         );
         geo.clamp_position(&screen, total_w, total_h);
     } else if let Some(wr) = work_rect {

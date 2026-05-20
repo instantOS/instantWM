@@ -217,12 +217,12 @@ pub fn set_urgent_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, ur
 }
 
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    if ctx.core.globals().cfg.decorhints == 0 {
+    if ctx.core.globals().cfg.window.decorhints == 0 {
         return;
     }
 
     let motif_atom = ctx.x11_runtime.motifatom;
-    let borderpx = ctx.core.globals().cfg.border_width_px;
+    let borderpx = ctx.core.globals().cfg.window.border_width_px;
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 

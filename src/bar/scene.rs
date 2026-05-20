@@ -84,10 +84,10 @@ pub(crate) fn build_monitor_snapshots(
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.globals().selected_monitor().num;
-    let show_systray = core.globals().cfg.show_systray;
-    let systray_spacing = core.globals().cfg.systray_spacing;
+    let show_systray = core.globals().cfg.systray.show;
+    let systray_spacing = core.globals().cfg.systray.spacing;
     let base_font_size =
-        crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts);
+        crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts.fonts);
     let drag_bar_active = core.globals().drag.bar_active;
     let current_mode = core.globals().behavior.current_mode.clone();
     let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {
@@ -96,6 +96,7 @@ pub(crate) fn build_monitor_snapshots(
         let mode_display = core
             .globals()
             .cfg
+            .bindings
             .modes
             .get(&current_mode)
             .and_then(|m| m.description.as_ref())

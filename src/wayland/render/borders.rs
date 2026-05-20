@@ -176,7 +176,7 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
 pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidColorRenderElement> {
     let windows = collect_window_info(g, state);
     let selected_win = g.selected_win();
-    let colors = &g.cfg.bordercolors;
+    let colors = &g.cfg.colors.border;
     let mut elements = Vec::new();
 
     // Build occluders list (each window can occlude borders behind it)

@@ -31,6 +31,7 @@ pub(crate) fn draw_status_bar(
         let mode_display = ctx
             .globals()
             .cfg
+            .bindings
             .modes
             .get(&mode)
             .and_then(|m| m.description.as_ref())

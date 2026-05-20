@@ -283,7 +283,7 @@ pub fn grab_buttons_x11(
         grabs.extend([(1, 0), (3, 0)]);
     }
 
-    for button in &core.globals().cfg.buttons {
+    for button in &core.globals().cfg.bindings.buttons {
         if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }

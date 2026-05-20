@@ -17,7 +17,7 @@ use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 
 use crate::mouse::monitor::handle_client_monitor_switch;
 
-/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
+/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.window.snap_threshold` pixels.
 pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
     snap_window_to_monitor_edges(ctx.core().globals(), c.win, c.geo.w, c.geo.h, new_x, new_y);
 }
@@ -30,7 +30,7 @@ pub fn snap_window_to_monitor_edges(
     new_x: &mut i32,
     new_y: &mut i32,
 ) {
-    let snap = g.cfg.snap;
+    let snap = g.cfg.window.snap_threshold;
     let mon = g.selected_monitor();
     let bw = g
         .clients
@@ -315,7 +315,7 @@ fn maybe_promote_tiled_drag_to_floating(
     is_floating: &mut bool,
     drag_geo: &mut Rect,
 ) {
-    let snap = ctx.core().globals().cfg.snap;
+    let snap = ctx.core().globals().cfg.window.snap_threshold;
     if *is_floating
         || !has_tiling
         || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)

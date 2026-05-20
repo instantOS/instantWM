@@ -19,7 +19,7 @@ fn apply_mode_change(wm: &mut Wm, next_mode: String) {
 pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
     match cmd {
         ModeCommand::List => {
-            let modes = &wm.g.cfg.modes;
+            let modes = &wm.g.cfg.bindings.modes;
             let current_mode = &wm.g.behavior.current_mode;
 
             if modes.is_empty() {
@@ -38,7 +38,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::ModeList(mode_list)
         }
         ModeCommand::Set(name) => {
-            if !wm.g.cfg.modes.contains_key(&name)
+            if !wm.g.cfg.bindings.modes.contains_key(&name)
                 && name != "default"
                 && name != crate::overview::OVERVIEW_MODE_NAME
             {
@@ -54,7 +54,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::Message(format!("Switched to mode '{}'", name))
         }
         ModeCommand::Toggle(name) => {
-            if !wm.g.cfg.modes.contains_key(&name)
+            if !wm.g.cfg.bindings.modes.contains_key(&name)
                 && name != "default"
                 && name != crate::overview::OVERVIEW_MODE_NAME
             {

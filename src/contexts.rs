@@ -328,7 +328,7 @@ impl<'a> WmCtx<'a> {
     /// the pointer handle and the external `pointer_location` variable are
     /// both updated atomically.
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
-        let bar_height = self.core().globals().cfg.bar_height;
+        let bar_height = self.core().globals().cfg.bar.height;
 
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {

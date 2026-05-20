@@ -34,8 +34,8 @@ pub fn run() -> ! {
 
     let output_size = backend.window_size();
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
-    wm.g.cfg.screen_width = initial_w;
-    wm.g.cfg.screen_height = initial_h;
+    wm.g.cfg.display.width = initial_w;
+    wm.g.cfg.display.height = initial_h;
     refresh_monitor_layout(&mut wm.ctx());
 
     // Store initial window size for the calloop source callback.

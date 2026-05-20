@@ -44,7 +44,7 @@ fn send_xembed_event(
 pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
-    let buttons_clone = ctx.core.globals().cfg.buttons.clone();
+    let buttons_clone = ctx.core.globals().cfg.bindings.buttons.clone();
     let mut selmon_id = ctx.core.globals().selected_monitor_id();
     let focusfollowsmouse = ctx.core.globals().behavior.focus_follows_mouse;
 
@@ -145,7 +145,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
 /// Handle incoming X11 client messages.
 pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
-    let showsystray = ctx.core.globals().cfg.show_systray;
+    let showsystray = ctx.core.globals().cfg.systray.show;
     let systray_win = ctx.systray.as_ref().map(|s| s.win).unwrap_or_default();
     let net_system_tray_op = ctx.x11_runtime.netatom.system_tray_op;
     let net_wm_state = ctx.x11_runtime.netatom.wm_state;
@@ -178,8 +178,8 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
         return;
     };
 
-    ctx.core.globals_mut().cfg.screen_width = e.width as i32;
-    ctx.core.globals_mut().cfg.screen_height = e.height as i32;
+    ctx.core.globals_mut().cfg.display.width = e.width as i32;
+    ctx.core.globals_mut().cfg.display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
@@ -400,7 +400,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             selmon.pertag_state().showbar
         };
         let in_bar =
-            showbar && root_y >= bar_y && root_y < bar_y + ctx.core.globals().cfg.bar_height;
+            showbar && root_y >= bar_y && root_y < bar_y + ctx.core.globals().cfg.bar.height;
         if !in_bar && gesture != Gesture::None {
             crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         }
@@ -425,7 +425,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         let mon = ctx.core.globals().selected_monitor();
         (
             mon.monitor_rect.y,
-            ctx.core.globals().cfg.bar_height,
+            ctx.core.globals().cfg.bar.height,
             mon.gesture,
         )
     };

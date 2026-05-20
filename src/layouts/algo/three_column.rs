@@ -113,7 +113,7 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let right_column_client_count = stack_client_count.div_ceil(2);
     let left_column_client_count = stack_client_count / 2;
 
-    let bar_height = ctx.core_mut().globals_mut().cfg.bar_height;
+    let bar_height = ctx.core_mut().globals_mut().cfg.bar.height;
 
     // Right column (even indices in stack: 0, 2, 4...)
     if right_column_client_count > 0 {

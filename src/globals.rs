@@ -6,102 +6,152 @@ use crate::types::*;
 use std::collections::BTreeSet;
 use std::collections::VecDeque;
 
-/// Runtime configuration - values loaded from config
-/// These are set during initialization and updated on reload
-#[derive(Clone)]
-pub struct RuntimeConfig {
-    // Screen/Display info
-    pub screen_width: i32,
-    pub screen_height: i32,
+// ---------------------------------------------------------------------------
+// Sub-structs for RuntimeConfig
+// ---------------------------------------------------------------------------
 
-    // Window manager configuration
+/// Display/screen dimensions.
+#[derive(Clone, Default)]
+pub struct DisplayConfig {
+    pub width: i32,
+    pub height: i32,
+}
+
+/// Window behaviour settings.
+#[derive(Clone)]
+pub struct WindowConfig {
     pub border_width_px: i32,
-    pub snap: i32,
-    pub startmenusize: i32,
+    pub snap_threshold: i32,
     pub resizehints: i32,
     pub decorhints: i32,
+}
+
+impl Default for WindowConfig {
+    fn default() -> Self {
+        Self {
+            border_width_px: 1,
+            snap_threshold: 32,
+            resizehints: 1,
+            decorhints: 0,
+        }
+    }
+}
+
+/// Tiling layout parameters (initial values; per-monitor state lives elsewhere).
+#[derive(Clone)]
+pub struct LayoutConfig {
     pub mfact: f32,
     pub nmaster: i32,
-    pub show_bar: bool,
-    pub top_bar: bool,
-    pub bar_height: i32,
-    pub show_systray: bool,
-    pub systray_pinning: usize,
-    pub systray_spacing: i32,
+}
 
-    // Raw color values for config (parsed at load time)
-    pub window_colors: WindowColorConfigs,
-    pub closebuttoncolors: CloseButtonColorConfigs,
-    pub bordercolors: BorderColorConfig,
-    pub statusbarcolors: StatusColorConfig,
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            mfact: 0.55,
+            nmaster: 1,
+        }
+    }
+}
 
-    // Bindings
+/// Status bar settings.
+#[derive(Clone)]
+pub struct BarConfig {
+    pub show: bool,
+    pub top: bool,
+    pub height: i32,
+    pub horizontal_padding: i32,
+    pub startmenu_size: i32,
+}
+
+impl Default for BarConfig {
+    fn default() -> Self {
+        Self {
+            show: true,
+            top: true,
+            height: 0,
+            horizontal_padding: 0,
+            startmenu_size: 0,
+        }
+    }
+}
+
+/// System tray settings.
+#[derive(Clone)]
+pub struct SystrayConfig {
+    pub show: bool,
+    pub pinning: usize,
+    pub spacing: i32,
+}
+
+impl Default for SystrayConfig {
+    fn default() -> Self {
+        Self {
+            show: true,
+            pinning: 0,
+            spacing: 2,
+        }
+    }
+}
+
+/// Colour schemes for various UI elements.
+#[derive(Clone, Default)]
+pub struct ColorConfig {
+    pub window: WindowColorConfigs,
+    pub close_button: CloseButtonColorConfigs,
+    pub border: BorderColorConfig,
+    pub status_bar: StatusColorConfig,
+}
+
+/// Keybindings, mouse buttons, modes, and client rules.
+#[derive(Clone, Default)]
+pub struct BindingConfig {
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
     pub modes: std::collections::HashMap<String, ModeConfig>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
+}
 
+/// Font configuration.
+#[derive(Clone, Default)]
+pub struct FontConfig {
     pub fonts: Vec<String>,
     pub config_font: String,
+}
 
-    // External commands
+/// Runtime configuration - composed from sub-structs.
+pub struct RuntimeConfig {
+    pub display: DisplayConfig,
+    pub window: WindowConfig,
+    pub layout: LayoutConfig,
+    pub bar: BarConfig,
+    pub systray: SystrayConfig,
+    pub colors: ColorConfig,
+    pub bindings: BindingConfig,
+    pub fonts: FontConfig,
     pub external_commands: ExternalCommands,
-
-    pub horizontal_padding: i32,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::monitor::TagNames>,
-
-    // Input configuration
     pub input: std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
-
-    // Monitor configuration
     pub monitors: std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
-
-    // Status command
     pub status_command: Option<String>,
-
-    // Cursor configuration
     pub cursor: crate::config::config_toml::CursorConfig,
-
-    // Exec commands
-    /// Commands to execute once at startup.
     pub exec_once: Vec<String>,
-    /// Commands to execute at startup and on every config reload.
     pub exec: Vec<String>,
 }
 
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            screen_width: 0,
-            screen_height: 0,
-            border_width_px: 1,
-            snap: 32,
-            startmenusize: 0,
-            resizehints: 1,
-            decorhints: 0,
-            mfact: 0.55,
-            nmaster: 1,
-            show_bar: true,
-            top_bar: true,
-            bar_height: 0,
-            show_systray: true,
-            systray_pinning: 0,
-            systray_spacing: 2,
-            window_colors: WindowColorConfigs::default(),
-            closebuttoncolors: CloseButtonColorConfigs::default(),
-            bordercolors: BorderColorConfig::default(),
-            statusbarcolors: StatusColorConfig::default(),
-            keys: Vec::new(),
-            desktop_keybinds: Vec::new(),
-            modes: std::collections::HashMap::new(),
-            buttons: Vec::new(),
-            rules: Vec::new(),
-            fonts: Vec::new(),
-            config_font: String::new(),
+            display: DisplayConfig::default(),
+            window: WindowConfig::default(),
+            layout: LayoutConfig::default(),
+            bar: BarConfig::default(),
+            systray: SystrayConfig::default(),
+            colors: ColorConfig::default(),
+            bindings: BindingConfig::default(),
+            fonts: FontConfig::default(),
             external_commands: crate::config::commands::default_commands(),
-            horizontal_padding: 0,
             tag_template: Vec::new(),
             input: std::collections::HashMap::new(),
             monitors: std::collections::HashMap::new(),
@@ -109,6 +159,29 @@ impl Default for RuntimeConfig {
             cursor: crate::config::config_toml::CursorConfig::default(),
             exec_once: Vec::new(),
             exec: Vec::new(),
+        }
+    }
+}
+
+impl Clone for RuntimeConfig {
+    fn clone(&self) -> Self {
+        Self {
+            display: self.display.clone(),
+            window: self.window.clone(),
+            layout: self.layout.clone(),
+            bar: self.bar.clone(),
+            systray: self.systray.clone(),
+            colors: self.colors.clone(),
+            bindings: self.bindings.clone(),
+            fonts: self.fonts.clone(),
+            external_commands: self.external_commands.clone(),
+            tag_template: self.tag_template.clone(),
+            input: self.input.clone(),
+            monitors: self.monitors.clone(),
+            status_command: self.status_command.clone(),
+            cursor: self.cursor.clone(),
+            exec_once: self.exec_once.clone(),
+            exec: self.exec.clone(),
         }
     }
 }
@@ -786,33 +859,33 @@ impl Default for Globals {
 
 /// Apply config values to the given `Globals` instance.
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
-    g.cfg.border_width_px = cfg.borderpx;
+    g.cfg.window.border_width_px = cfg.borderpx;
     g.cfg.input = cfg.input.clone();
     g.cfg.monitors = cfg.monitors.clone();
-    g.cfg.snap = cfg.snap_threshold;
-    g.cfg.startmenusize = cfg.startmenu_size;
-    g.cfg.systray_pinning = cfg.systraypinning;
-    g.cfg.systray_spacing = cfg.systrayspacing;
-    g.cfg.show_systray = cfg.show_systray;
-    g.cfg.show_bar = cfg.showbar;
-    g.cfg.top_bar = cfg.topbar;
-    g.cfg.bar_height = cfg.bar_height;
-    g.cfg.resizehints = cfg.resize_hints;
-    g.cfg.decorhints = cfg.decorhints;
-    g.cfg.mfact = cfg.mfact;
-    g.cfg.nmaster = cfg.nmaster;
+    g.cfg.window.snap_threshold = cfg.snap_threshold;
+    g.cfg.bar.startmenu_size = cfg.startmenu_size;
+    g.cfg.systray.pinning = cfg.systraypinning;
+    g.cfg.systray.spacing = cfg.systrayspacing;
+    g.cfg.systray.show = cfg.show_systray;
+    g.cfg.bar.show = cfg.showbar;
+    g.cfg.bar.top = cfg.topbar;
+    g.cfg.bar.height = cfg.bar_height;
+    g.cfg.window.resizehints = cfg.resize_hints;
+    g.cfg.window.decorhints = cfg.decorhints;
+    g.cfg.layout.mfact = cfg.mfact;
+    g.cfg.layout.nmaster = cfg.nmaster;
 
-    g.cfg.window_colors = cfg.window_colors.clone();
-    g.cfg.closebuttoncolors = cfg.closebuttoncolors.clone();
-    g.cfg.bordercolors = cfg.border_colors;
-    g.cfg.statusbarcolors = cfg.statusbarcolors;
+    g.cfg.colors.window = cfg.window_colors.clone();
+    g.cfg.colors.close_button = cfg.closebuttoncolors.clone();
+    g.cfg.colors.border = cfg.border_colors;
+    g.cfg.colors.status_bar = cfg.statusbarcolors;
 
-    g.cfg.keys = cfg.keys.clone();
-    g.cfg.desktop_keybinds = cfg.desktop_keybinds.clone();
-    g.cfg.modes = cfg.modes.clone();
-    g.cfg.buttons = cfg.buttons.clone();
-    g.cfg.rules = cfg.rules.clone();
-    g.cfg.fonts = cfg.fonts.clone();
+    g.cfg.bindings.keys = cfg.keys.clone();
+    g.cfg.bindings.desktop_keybinds = cfg.desktop_keybinds.clone();
+    g.cfg.bindings.modes = cfg.modes.clone();
+    g.cfg.bindings.buttons = cfg.buttons.clone();
+    g.cfg.bindings.rules = cfg.rules.clone();
+    g.cfg.fonts.fonts = cfg.fonts.clone();
     g.cfg.external_commands = cfg.external_commands.clone();
     g.cfg.status_command = cfg.status_command.clone();
     g.cfg.cursor = cfg.cursor.clone();
@@ -903,7 +976,7 @@ pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
 impl Globals {
     /// Get the status bar color scheme.
     pub fn status_scheme(&self) -> crate::bar::paint::BarScheme {
-        let c = &self.cfg.statusbarcolors;
+        let c = &self.cfg.colors.status_bar;
         crate::bar::paint::BarScheme {
             fg: c.fg,
             bg: c.bg,
@@ -1011,7 +1084,7 @@ impl Globals {
             SchemeWin::Normal
         };
 
-        let colors = self.cfg.window_colors.colors_for(
+        let colors = self.cfg.colors.window.colors_for(
             if is_hover {
                 SchemeHover::Hover
             } else {
@@ -1043,7 +1116,7 @@ impl Globals {
             SchemeClose::Normal
         };
 
-        let colors = self.cfg.closebuttoncolors.colors_for(
+        let colors = self.cfg.colors.close_button.colors_for(
             if is_hover {
                 SchemeHover::Hover
             } else {

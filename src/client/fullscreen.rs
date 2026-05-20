@@ -154,7 +154,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.
     if mode.is_fake_fullscreen() {
-        let borderpx = ctx_x11.core.globals().cfg.border_width_px;
+        let borderpx = ctx_x11.core.globals().cfg.window.border_width_px;
 
         let mon_rect = ctx_x11
             .core
