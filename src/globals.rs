@@ -1115,7 +1115,12 @@ impl Globals {
             return;
         }
 
-        if !self.cfg.bindings.modes.contains_key(&self.behavior.current_mode) {
+        if !self
+            .cfg
+            .bindings
+            .modes
+            .contains_key(&self.behavior.current_mode)
+        {
             self.behavior.current_mode = "default".to_string();
         }
     }
