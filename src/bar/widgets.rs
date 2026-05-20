@@ -22,17 +22,17 @@ pub(crate) fn draw_tag_indicators(
 
     let selmon_gesture = ctx.globals().selected_monitor().gesture;
 
-    for t in &tags {
+    for tag in &tags {
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
-        let is_hover = selmon_gesture == Gesture::Tag(t.slot);
+        let is_hover = selmon_gesture == Gesture::Tag(tag.slot);
 
-        let text_w = painter.text_width(t.label);
+        let text_w = painter.text_width(tag.label);
         let width = (text_w + horizontal_padding).max(horizontal_padding);
-        ctx.bar.cache_tag_width(t.slot, width);
+        ctx.bar.cache_tag_width(tag.slot, width);
 
-        let scheme = ctx
-            .globals()
-            .tag_scheme(m, t.tag_index as u32, occupied_tags, urg, is_hover);
+        let scheme =
+            ctx.globals()
+                .tag_scheme(m, tag.tag_index as u32, occupied_tags, urg, is_hover);
 
         let mut draw_scheme = scheme;
         if is_hover && bar_dragging {
@@ -49,8 +49,8 @@ pub(crate) fn draw_tag_indicators(
         x = painter.text(
             Rect::new(x, 0, width, bar_height),
             lpad as i32,
-            t.label,
-            urg.contains(t.tag_index + 1),
+            tag.label,
+            urg.contains(tag.tag_index + 1),
             detail_height,
         );
 
@@ -58,7 +58,7 @@ pub(crate) fn draw_tag_indicators(
             hit.tag_ranges.push(TagHitRange {
                 start: x - width,
                 end: x,
-                tag_index: t.tag_index,
+                tag_index: tag.tag_index,
             });
         }
     }

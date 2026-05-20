@@ -135,7 +135,7 @@ pub fn reset_bar_x11(
     _x11_runtime: &mut X11RuntimeConfig,
     _systray: Option<&Systray>,
 ) {
-    crate::bar::renderer::reset_bar_common(core);
+    crate::bar::renderer::reset_bar_common(core.globals_mut());
     core.bar.mark_dirty();
 }
 

@@ -214,7 +214,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
 
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core().globals().selected_monitor().gesture != Gesture::None {
-        reset_bar_common(ctx.core_mut());
+        reset_bar_common(ctx.core_mut().globals_mut());
         ctx.request_bar_update();
     }
 }
@@ -286,7 +286,7 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        reset_bar_common(ctx.core_mut());
+        reset_bar_common(ctx.core_mut().globals_mut());
         ctx.request_bar_update();
     }
 

@@ -1,6 +1,7 @@
 use crate::bar::paint::BarPainter;
 use crate::bar::scene::MonitorBarSnapshot;
 use crate::contexts::CoreCtx;
+use crate::globals::Globals;
 use crate::types::{Gesture, MonitorId};
 
 pub(crate) fn draw_bar_snapshot(
@@ -38,11 +39,10 @@ pub(crate) fn draw_bar_snapshot(
     core.bar.recursion_exit();
 }
 
-pub fn reset_bar_common(core: &mut CoreCtx) {
-    let selmon = core.globals().selected_monitor();
-    if selmon.gesture == Gesture::None {
+pub fn reset_bar_common(globals: &mut Globals) {
+    if globals.selected_monitor().gesture == Gesture::None {
         return;
     }
 
-    core.globals_mut().selected_monitor_mut().gesture = Gesture::None;
+    globals.selected_monitor_mut().gesture = Gesture::None;
 }
