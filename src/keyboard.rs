@@ -34,7 +34,6 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         && cleaned
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
         ctx.request_bar_update();
         return true;

@@ -31,9 +31,9 @@ use crate::types::*;
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
 pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
-    let Some(mid) = monitor_id else { return };
+    let Some(mon_id) = monitor_id else { return };
 
-    let wins_to_save = collect_floating_wins(ctx.core().globals(), mid);
+    let wins_to_save = collect_floating_wins(ctx.core().globals(), mon_id);
     for win in wins_to_save {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             client.save_floating_geometry();

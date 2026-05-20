@@ -306,7 +306,6 @@ pub fn update_hover(
 
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
     if crate::overview::is_active(ctx.core()) {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
         ctx.request_bar_update();
         return;

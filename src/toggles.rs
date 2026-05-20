@@ -122,13 +122,12 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
-    if name == crate::overview::OVERVIEW_MODE_NAME
-        && !ctx.core().globals().selected_monitor().clients.is_empty()
-    {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
-    }
     let mode = toggle_mode_name(ctx.current_mode(), name);
-    ctx.set_current_mode(mode);
+    if name == crate::overview::OVERVIEW_MODE_NAME && mode == "default" {
+        crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
+    } else {
+        ctx.set_current_mode(mode);
+    }
     if let WmCtx::X11(x11) = ctx {
         crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
     }

@@ -262,32 +262,6 @@ pub fn follow_view(ctx: &mut WmCtx) {
         .queue_layout_for_monitor_urgent(selmon_id);
 }
 
-pub fn toggle_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    if crate::overview::is_active(ctx.core()) {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = true);
-        ctx.reset_mode();
-        ctx.request_bar_update();
-        return;
-    }
-
-    if ctx.core().globals().selected_monitor().clients.is_empty() {
-        return;
-    }
-
-    ctx.set_current_mode(crate::overview::OVERVIEW_MODE_NAME.to_string());
-    ctx.request_bar_update();
-}
-
-pub fn cancel_overview(ctx: &mut WmCtx, _mask: TagMask) {
-    if !crate::overview::is_active(ctx.core()) {
-        return;
-    }
-
-    ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
-    ctx.reset_mode();
-    ctx.request_bar_update();
-}
-
 #[cfg(test)]
 mod tests {
     use super::adjacent_scroll_mask;
