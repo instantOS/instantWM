@@ -5,12 +5,13 @@ use smithay::{
     desktop::{PopupKind, Window},
     input::{
         Seat,
-        dnd::{DndFocus, Source},
+        dnd::{DndFocus, OfferData, Source},
         keyboard::{KeysymHandle, ModifiersState},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{IsAlive, Serial},
     wayland::{seat::WaylandFocus, selection::data_device::WlOfferData},
+    xwayland::xwm::XwmOfferData,
 };
 
 use super::WaylandState;
@@ -121,8 +122,36 @@ impl PointerFocusTarget {
     }
 }
 
+pub enum WindowDndOfferData<S: Source> {
+    XWayland(XwmOfferData<S>),
+    Wayland(WlOfferData<S>),
+}
+
+impl<S: Source> OfferData for WindowDndOfferData<S> {
+    fn disable(&self) {
+        match self {
+            Self::XWayland(data) => data.disable(),
+            Self::Wayland(data) => data.disable(),
+        }
+    }
+
+    fn drop(&self) {
+        match self {
+            Self::XWayland(data) => data.drop(),
+            Self::Wayland(data) => data.drop(),
+        }
+    }
+
+    fn validated(&self) -> bool {
+        match self {
+            Self::XWayland(data) => data.validated(),
+            Self::Wayland(data) => data.validated(),
+        }
+    }
+}
+
 impl DndFocus<WaylandState> for PointerFocusTarget {
-    type OfferData<S: Source> = WlOfferData<S>;
+    type OfferData<S: Source> = WindowDndOfferData<S>;
 
     fn enter<S: Source>(
         &self,
@@ -134,14 +163,34 @@ impl DndFocus<WaylandState> for PointerFocusTarget {
         serial: &Serial,
     ) -> Option<Self::OfferData<S>> {
         match self {
-            PointerFocusTarget::Window(window) => window.wl_surface().and_then(|surface| {
-                DndFocus::enter(surface.as_ref(), data, dh, source, seat, location, serial)
-            }),
+            PointerFocusTarget::Window(window) => {
+                if let Some(x11) = window.x11_surface() {
+                    DndFocus::enter(x11, data, dh, source, seat, location, serial)
+                        .map(WindowDndOfferData::XWayland)
+                } else {
+                    window
+                        .wl_surface()
+                        .and_then(|surface| {
+                            DndFocus::enter(
+                                surface.as_ref(),
+                                data,
+                                dh,
+                                source,
+                                seat,
+                                location,
+                                serial,
+                            )
+                        })
+                        .map(WindowDndOfferData::Wayland)
+                }
+            }
             PointerFocusTarget::WlSurface(surface) => {
                 DndFocus::enter(surface, data, dh, source, seat, location, serial)
+                    .map(WindowDndOfferData::Wayland)
             }
             PointerFocusTarget::Popup(popup) => {
                 DndFocus::enter(popup.wl_surface(), data, dh, source, seat, location, serial)
+                    .map(WindowDndOfferData::Wayland)
             }
         }
     }
@@ -156,15 +205,40 @@ impl DndFocus<WaylandState> for PointerFocusTarget {
     ) {
         match self {
             PointerFocusTarget::Window(window) => {
-                if let Some(surface) = window.wl_surface() {
-                    DndFocus::motion(surface.as_ref(), data, offer, seat, location, time);
+                if let Some(x11) = window.x11_surface() {
+                    let x11_offer = match offer {
+                        Some(WindowDndOfferData::XWayland(offer)) => Some(offer),
+                        _ => None,
+                    };
+                    DndFocus::motion(x11, data, x11_offer, seat, location, time);
+                } else if let Some(surface) = window.wl_surface() {
+                    let wayland_offer = match offer {
+                        Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                        _ => None,
+                    };
+                    DndFocus::motion(surface.as_ref(), data, wayland_offer, seat, location, time);
                 }
             }
             PointerFocusTarget::WlSurface(surface) => {
-                DndFocus::motion(surface, data, offer, seat, location, time)
+                let wayland_offer = match offer {
+                    Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                    _ => None,
+                };
+                DndFocus::motion(surface, data, wayland_offer, seat, location, time)
             }
             PointerFocusTarget::Popup(popup) => {
-                DndFocus::motion(popup.wl_surface(), data, offer, seat, location, time)
+                let wayland_offer = match offer {
+                    Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                    _ => None,
+                };
+                DndFocus::motion(
+                    popup.wl_surface(),
+                    data,
+                    wayland_offer,
+                    seat,
+                    location,
+                    time,
+                )
             }
         }
     }
@@ -177,13 +251,33 @@ impl DndFocus<WaylandState> for PointerFocusTarget {
     ) {
         match self {
             PointerFocusTarget::Window(window) => {
-                if let Some(surface) = window.wl_surface() {
-                    DndFocus::leave(surface.as_ref(), data, offer, seat);
+                if let Some(x11) = window.x11_surface() {
+                    let x11_offer = match offer {
+                        Some(WindowDndOfferData::XWayland(offer)) => Some(offer),
+                        _ => None,
+                    };
+                    DndFocus::leave(x11, data, x11_offer, seat);
+                } else if let Some(surface) = window.wl_surface() {
+                    let wayland_offer = match offer {
+                        Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                        _ => None,
+                    };
+                    DndFocus::leave(surface.as_ref(), data, wayland_offer, seat);
                 }
             }
-            PointerFocusTarget::WlSurface(surface) => DndFocus::leave(surface, data, offer, seat),
+            PointerFocusTarget::WlSurface(surface) => {
+                let wayland_offer = match offer {
+                    Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                    _ => None,
+                };
+                DndFocus::leave(surface, data, wayland_offer, seat)
+            }
             PointerFocusTarget::Popup(popup) => {
-                DndFocus::leave(popup.wl_surface(), data, offer, seat)
+                let wayland_offer = match offer {
+                    Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                    _ => None,
+                };
+                DndFocus::leave(popup.wl_surface(), data, wayland_offer, seat)
             }
         }
     }
@@ -196,13 +290,33 @@ impl DndFocus<WaylandState> for PointerFocusTarget {
     ) {
         match self {
             PointerFocusTarget::Window(window) => {
-                if let Some(surface) = window.wl_surface() {
-                    DndFocus::drop(surface.as_ref(), data, offer, seat);
+                if let Some(x11) = window.x11_surface() {
+                    let x11_offer = match offer {
+                        Some(WindowDndOfferData::XWayland(offer)) => Some(offer),
+                        _ => None,
+                    };
+                    DndFocus::drop(x11, data, x11_offer, seat);
+                } else if let Some(surface) = window.wl_surface() {
+                    let wayland_offer = match offer {
+                        Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                        _ => None,
+                    };
+                    DndFocus::drop(surface.as_ref(), data, wayland_offer, seat);
                 }
             }
-            PointerFocusTarget::WlSurface(surface) => DndFocus::drop(surface, data, offer, seat),
+            PointerFocusTarget::WlSurface(surface) => {
+                let wayland_offer = match offer {
+                    Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                    _ => None,
+                };
+                DndFocus::drop(surface, data, wayland_offer, seat)
+            }
             PointerFocusTarget::Popup(popup) => {
-                DndFocus::drop(popup.wl_surface(), data, offer, seat)
+                let wayland_offer = match offer {
+                    Some(WindowDndOfferData::Wayland(offer)) => Some(offer),
+                    _ => None,
+                };
+                DndFocus::drop(popup.wl_surface(), data, wayland_offer, seat)
             }
         }
     }
