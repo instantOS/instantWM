@@ -14,6 +14,7 @@ const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 #[derive(Clone)]
 pub(crate) struct TagCellSnapshot {
     pub slot: usize,
+    pub tag_index: usize,
     pub label: String,
     pub scheme: BarScheme,
 }
@@ -152,6 +153,7 @@ pub(crate) fn build_monitor_snapshots(
             }
             tags.push(TagCellSnapshot {
                 slot: tag.slot,
+                tag_index: tag.tag_index,
                 label: tag.label.to_string(),
                 scheme,
             });
@@ -471,7 +473,7 @@ fn render_monitor_snapshot_base(
         hit.tag_ranges.push(crate::bar::TagHitRange {
             start: x - width,
             end: x,
-            tag_index: tag.slot,
+            tag_index: tag.tag_index,
         });
     }
 
