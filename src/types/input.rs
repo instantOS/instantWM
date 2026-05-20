@@ -2,6 +2,8 @@
 //!
 //! Types for mouse, keyboard, and gesture handling.
 
+use std::str::FromStr;
+
 use crate::types::{MonitorId, Rect, TagMask, WindowId};
 
 /// Mouse buttons recognized by the window manager.
@@ -467,8 +469,25 @@ pub enum StackDirection {
 }
 
 impl StackDirection {
+    /// Parse a direction from a string name (aliases accepted).
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::from_str(name).ok()
+    }
+
     /// Returns true if this is the Next direction.
     pub fn is_forward(self) -> bool {
         matches!(self, Self::Next)
+    }
+}
+
+impl FromStr for StackDirection {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "next" | "down" | "forward" => Ok(Self::Next),
+            "prev" | "previous" | "up" | "backward" => Ok(Self::Previous),
+            _ => Err(()),
+        }
     }
 }

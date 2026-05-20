@@ -29,26 +29,6 @@ use crate::types::{
 };
 use crate::util::spawn;
 
-fn parse_layout_kind_name(name: &str) -> Option<LayoutKind> {
-    Some(match name.to_ascii_lowercase().as_str() {
-        "tile" | "tiling" => LayoutKind::Tile,
-        "float" | "floating" => LayoutKind::Floating,
-        "monocle" => LayoutKind::Monocle,
-        "grid" => LayoutKind::Grid,
-        "deck" => LayoutKind::Deck,
-        "bottomstack" => LayoutKind::BottomStack,
-        _ => return None,
-    })
-}
-
-fn parse_stack_direction_name(name: &str) -> Option<StackDirection> {
-    Some(match name.to_ascii_lowercase().as_str() {
-        "next" | "down" | "forward" => StackDirection::Next,
-        "prev" | "previous" | "up" | "backward" => StackDirection::Previous,
-        _ => return None,
-    })
-}
-
 macro_rules! define_named_actions {
     ($(
         $variant:ident => {
@@ -185,8 +165,8 @@ define_named_actions!(
     KeyboardLayout => { name: "keyboard_layout", arg_example: Some("us(intl)"), doc: "set keyboard layout", run: |ctx, args| { if let Some(name) = args.first() { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name); } } },
     SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { if let Some(name) = args.first() { ctx.set_current_mode(name.clone()); ctx.request_bar_update(); } } },
     Spawn => { name: "spawn", arg_example: Some("kitty"), doc: "spawn command", run: |ctx, args| { spawn(ctx, args); } },
-    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| parse_layout_kind_name(s)) { set_layout(ctx, name); } } },
-    FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| parse_stack_direction_name(s)) { focus_stack(ctx, direction); } } }
+    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| LayoutKind::from_name(s)) { set_layout(ctx, name); } } },
+    FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| StackDirection::from_name(s)) { focus_stack(ctx, direction); } } }
 );
 
 fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
@@ -197,33 +177,31 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        NamedAction, parse_layout_kind_name, parse_named_action, parse_stack_direction_name,
-    };
+    use super::{NamedAction, parse_named_action};
     use crate::layouts::LayoutKind;
     use crate::types::StackDirection;
 
     #[test]
-    fn parse_layout_kind_name_accepts_aliases() {
-        assert_eq!(parse_layout_kind_name("tile"), Some(LayoutKind::Tile));
+    fn layout_kind_from_name_accepts_aliases() {
+        assert_eq!(LayoutKind::from_name("tile"), Some(LayoutKind::Tile));
         assert_eq!(
-            parse_layout_kind_name("floating"),
+            LayoutKind::from_name("floating"),
             Some(LayoutKind::Floating)
         );
-        assert_eq!(parse_layout_kind_name("bad"), None);
+        assert_eq!(LayoutKind::from_name("bad"), None);
     }
 
     #[test]
-    fn parse_stack_direction_name_accepts_aliases() {
+    fn stack_direction_from_name_accepts_aliases() {
         assert_eq!(
-            parse_stack_direction_name("next"),
+            StackDirection::from_name("next"),
             Some(StackDirection::Next)
         );
         assert_eq!(
-            parse_stack_direction_name("backward"),
+            StackDirection::from_name("backward"),
             Some(StackDirection::Previous)
         );
-        assert_eq!(parse_stack_direction_name("bad"), None);
+        assert_eq!(StackDirection::from_name("bad"), None);
     }
 
     #[test]
