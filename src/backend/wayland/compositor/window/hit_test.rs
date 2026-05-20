@@ -53,16 +53,16 @@ impl WaylandState {
         let mut surface_hit: Option<(
             smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
             Point<i32, Logical>,
-            WindowId,
+            Option<WindowId>,
         )> = None;
 
         for (window, typ) in self.windows_in_z_order() {
-            let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
-                continue;
-            };
+            let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
 
             // Logical hit test (WM geometry including borders).
-            if logical_win.is_none() {
+            if logical_win.is_none()
+                && let Some(win_id) = win_id
+            {
                 let is_logical_hit = if matches!(
                     typ,
                     WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
@@ -92,6 +92,11 @@ impl WaylandState {
             }
 
             // Surface hit test (actual Wayland surface tree).
+            //
+            // Some XWayland override-redirect overlays (dmenu/rofi-style
+            // menus) are deliberately mapped into the Smithay space without a
+            // WM WindowId. They still need pointer focus so clicks can be
+            // delivered to their surface.
             if surface_hit.is_none()
                 && let Some(loc) = self.space.element_location(window)
             {
@@ -113,7 +118,7 @@ impl WaylandState {
         // If the surface hit belongs to a different window than the logical
         // hit, suppress the surface focus to prevent event fallthrough.
         let surface = match (&logical_win, &surface_hit) {
-            (Some(logical), Some((_, _, surface_win))) if logical != surface_win => None,
+            (Some(logical), Some((_, _, Some(surface_win)))) if logical != surface_win => None,
             _ => surface_hit.map(|(s, loc, _)| (s, loc)),
         };
 
