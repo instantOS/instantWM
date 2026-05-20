@@ -92,8 +92,9 @@ mod tests {
 
     #[test]
     fn scratchpad_show_defaults_name_when_omitted() {
-        let cmd: IpcCommand =
-            Cli::parse_from(["instantwmctl", "scratchpad", "show"]).command.into();
+        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "scratchpad", "show"])
+            .command
+            .into();
 
         assert!(matches!(
             cmd,
@@ -104,8 +105,9 @@ mod tests {
 
     #[test]
     fn scratchpad_hide_defaults_name_when_omitted() {
-        let cmd: IpcCommand =
-            Cli::parse_from(["instantwmctl", "scratchpad", "hide"]).command.into();
+        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "scratchpad", "hide"])
+            .command
+            .into();
 
         assert!(matches!(
             cmd,
@@ -116,8 +118,9 @@ mod tests {
 
     #[test]
     fn parses_window_info_command() {
-        let cmd: IpcCommand =
-            Cli::parse_from(["instantwmctl", "window", "info", "42"]).command.into();
+        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "window", "info", "42"])
+            .command
+            .into();
 
         assert!(matches!(
             cmd,

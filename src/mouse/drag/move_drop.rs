@@ -4,7 +4,6 @@
 //! This module contains the core logic for moving windows with the mouse,
 //! including bar hover handling, edge snapping, and drop completion.
 
-use crate::bar::hit_test;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;

@@ -335,260 +335,265 @@ pub struct Cli {
 impl From<CommandKind> for IpcCommand {
     fn from(command: CommandKind) -> Self {
         match command {
-        CommandKind::Action {
-            name,
-            args,
-            list: _,
-        } => {
-            let name = name.expect("action name required (use --list to see available actions)");
-            IpcCommand::RunAction { name, args }
-        }
-        CommandKind::Status => IpcCommand::Status,
-        CommandKind::Reload => IpcCommand::Reload,
-        CommandKind::Monitor { action } => {
-            let cmd = match action {
-                MonitorAction::List { window_id: _ } => MonitorCommand::List,
-                MonitorAction::Switch { index } => MonitorCommand::Switch { index },
-                MonitorAction::Next { count } => MonitorCommand::Next { count },
-                MonitorAction::Prev { count } => MonitorCommand::Prev { count },
-                MonitorAction::Set {
-                    identifier,
-                    res,
-                    rate,
-                    pos,
-                    scale,
-                    transform,
-                    vrr,
-                    enable,
-                    disable,
-                } => {
-                    let enable_val = if enable {
-                        Some(true)
-                    } else if disable {
-                        Some(false)
-                    } else {
-                        None
-                    };
-                    MonitorCommand::Set {
+            CommandKind::Action {
+                name,
+                args,
+                list: _,
+            } => {
+                let name =
+                    name.expect("action name required (use --list to see available actions)");
+                IpcCommand::RunAction { name, args }
+            }
+            CommandKind::Status => IpcCommand::Status,
+            CommandKind::Reload => IpcCommand::Reload,
+            CommandKind::Monitor { action } => {
+                let cmd = match action {
+                    MonitorAction::List { window_id: _ } => MonitorCommand::List,
+                    MonitorAction::Switch { index } => MonitorCommand::Switch { index },
+                    MonitorAction::Next { count } => MonitorCommand::Next { count },
+                    MonitorAction::Prev { count } => MonitorCommand::Prev { count },
+                    MonitorAction::Set {
                         identifier,
-                        resolution: res,
-                        refresh_rate: rate,
-                        position: pos,
+                        res,
+                        rate,
+                        pos,
                         scale,
                         transform,
-                        enable: enable_val,
                         vrr,
-                    }
-                }
-                MonitorAction::Modes { identifier } => MonitorCommand::Modes {
-                    identifier: Some(identifier),
-                },
-                MonitorAction::Dpms { state } => {
-                    let enable = match state.to_lowercase().as_str() {
-                        "on" | "enable" | "enabled" => true,
-                        "off" | "disable" | "disabled" => false,
-                        _ => {
-                            eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-                            std::process::exit(1);
+                        enable,
+                        disable,
+                    } => {
+                        let enable_val = if enable {
+                            Some(true)
+                        } else if disable {
+                            Some(false)
+                        } else {
+                            None
+                        };
+                        MonitorCommand::Set {
+                            identifier,
+                            resolution: res,
+                            refresh_rate: rate,
+                            position: pos,
+                            scale,
+                            transform,
+                            enable: enable_val,
+                            vrr,
                         }
-                    };
-                    MonitorCommand::Set {
-                        identifier: "focused".to_string(),
-                        resolution: None,
-                        refresh_rate: None,
-                        position: None,
-                        scale: None,
-                        transform: None,
-                        enable: Some(enable),
-                        vrr: None,
                     }
-                }
-            };
-            IpcCommand::Monitor(cmd)
-        }
-        CommandKind::Window { action } => {
-            let cmd = match action {
-                WindowAction::List { window_id } => WindowCommand::List(window_id),
-                WindowAction::Info { window_id } => WindowCommand::Info(window_id),
-                WindowAction::Resize {
-                    window_id,
-                    monitor,
-                    x,
-                    y,
-                    width,
-                    height,
-                } => WindowCommand::Resize {
-                    window_id,
-                    monitor,
-                    x,
-                    y,
-                    width,
-                    height,
-                },
-                WindowAction::Close { window_id } => WindowCommand::Close(window_id),
-            };
-            IpcCommand::Window(cmd)
-        }
-        CommandKind::Tag { action } => {
-            let cmd = match action {
-                TagAction::View { number } => TagCommand::View(number.unwrap_or(2)),
-                TagAction::Name { name } => TagCommand::Name(name),
-                TagAction::Reset => TagCommand::ResetNames,
-            };
-            IpcCommand::Tag(cmd)
-        }
-        CommandKind::Toggle { action } => {
-            let cmd = match action {
-                ToggleAction::Animated { action } => ToggleCommand::Animated(action),
-                ToggleAction::FocusFollowsMouse { action } => {
-                    ToggleCommand::FocusFollowsMouse(action)
-                }
-                ToggleAction::FocusFollowsFloatMouse { action } => {
-                    ToggleCommand::FocusFollowsFloatMouse(action)
-                }
-                ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
-                ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
-            };
-            IpcCommand::Toggle(cmd)
-        }
-        CommandKind::Spawn { command } => IpcCommand::Spawn(command.join(" ")),
-        CommandKind::WarpFocus => IpcCommand::WarpFocus,
-        CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
-        CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
-        CommandKind::Layout { name } => IpcCommand::Layout(name),
-        CommandKind::Border { width } => IpcCommand::Border(width),
-        CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
-        CommandKind::Keyboard { action } => {
-            let cmd = match action {
-                KeyboardAction::List { all } => {
-                    if all {
-                        KeyboardCommand::ListAll
-                    } else {
-                        KeyboardCommand::List
+                    MonitorAction::Modes { identifier } => MonitorCommand::Modes {
+                        identifier: Some(identifier),
+                    },
+                    MonitorAction::Dpms { state } => {
+                        let enable = match state.to_lowercase().as_str() {
+                            "on" | "enable" | "enabled" => true,
+                            "off" | "disable" | "disabled" => false,
+                            _ => {
+                                eprintln!("instantwmctl: invalid dpms state (expected on/off)");
+                                std::process::exit(1);
+                            }
+                        };
+                        MonitorCommand::Set {
+                            identifier: "focused".to_string(),
+                            resolution: None,
+                            refresh_rate: None,
+                            position: None,
+                            scale: None,
+                            transform: None,
+                            enable: Some(enable),
+                            vrr: None,
+                        }
                     }
-                }
-                KeyboardAction::Status => KeyboardCommand::Status,
-                KeyboardAction::Next => KeyboardCommand::Next,
-                KeyboardAction::Prev => KeyboardCommand::Prev,
-                KeyboardAction::Set { layouts } => {
-                    let keyboard_layouts: Vec<KeyboardLayout> = layouts
-                        .into_iter()
-                        .map(KeyboardLayoutArg::from)
-                        .map(KeyboardLayout::from)
-                        .collect();
-                    KeyboardCommand::Set(keyboard_layouts)
-                }
-                KeyboardAction::Add { name } => {
-                    let arg = KeyboardLayoutArg::from(name);
-                    KeyboardCommand::Add(KeyboardLayout::from(arg))
-                }
-                KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
-                KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
-            };
-            IpcCommand::Keyboard(cmd)
-        }
-        CommandKind::Scratchpad { action } => {
-            let cmd = match action {
-                ScratchpadAction::List { window_id: _ } => ScratchpadCommand::List,
-                ScratchpadAction::Status { name } => ScratchpadCommand::Status(name),
-                ScratchpadAction::Show { name, all } => {
-                    if all {
-                        ScratchpadCommand::ShowAll
-                    } else {
-                        ScratchpadCommand::Show(Some(
-                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
-                        ))
+                };
+                IpcCommand::Monitor(cmd)
+            }
+            CommandKind::Window { action } => {
+                let cmd = match action {
+                    WindowAction::List { window_id } => WindowCommand::List(window_id),
+                    WindowAction::Info { window_id } => WindowCommand::Info(window_id),
+                    WindowAction::Resize {
+                        window_id,
+                        monitor,
+                        x,
+                        y,
+                        width,
+                        height,
+                    } => WindowCommand::Resize {
+                        window_id,
+                        monitor,
+                        x,
+                        y,
+                        width,
+                        height,
+                    },
+                    WindowAction::Close { window_id } => WindowCommand::Close(window_id),
+                };
+                IpcCommand::Window(cmd)
+            }
+            CommandKind::Tag { action } => {
+                let cmd = match action {
+                    TagAction::View { number } => TagCommand::View(number.unwrap_or(2)),
+                    TagAction::Name { name } => TagCommand::Name(name),
+                    TagAction::Reset => TagCommand::ResetNames,
+                };
+                IpcCommand::Tag(cmd)
+            }
+            CommandKind::Toggle { action } => {
+                let cmd = match action {
+                    ToggleAction::Animated { action } => ToggleCommand::Animated(action),
+                    ToggleAction::FocusFollowsMouse { action } => {
+                        ToggleCommand::FocusFollowsMouse(action)
                     }
-                }
-                ScratchpadAction::Hide { name, all } => {
-                    if all {
-                        ScratchpadCommand::HideAll
-                    } else {
-                        ScratchpadCommand::Hide(Some(
-                            name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
-                        ))
+                    ToggleAction::FocusFollowsFloatMouse { action } => {
+                        ToggleCommand::FocusFollowsFloatMouse(action)
                     }
-                }
-                ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
-                ScratchpadAction::Create {
-                    name,
-                    window_id,
-                    status,
-                    direction,
-                } => ScratchpadCommand::Create {
-                    name,
-                    window_id,
-                    status,
-                    direction,
-                },
-                ScratchpadAction::Delete { window_id } => ScratchpadCommand::Delete { window_id },
-            };
-            IpcCommand::Scratchpad(cmd)
+                    ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
+                    ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
+                };
+                IpcCommand::Toggle(cmd)
+            }
+            CommandKind::Spawn { command } => IpcCommand::Spawn(command.join(" ")),
+            CommandKind::WarpFocus => IpcCommand::WarpFocus,
+            CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
+            CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
+            CommandKind::Layout { name } => IpcCommand::Layout(name),
+            CommandKind::Border { width } => IpcCommand::Border(width),
+            CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
+            CommandKind::Keyboard { action } => {
+                let cmd = match action {
+                    KeyboardAction::List { all } => {
+                        if all {
+                            KeyboardCommand::ListAll
+                        } else {
+                            KeyboardCommand::List
+                        }
+                    }
+                    KeyboardAction::Status => KeyboardCommand::Status,
+                    KeyboardAction::Next => KeyboardCommand::Next,
+                    KeyboardAction::Prev => KeyboardCommand::Prev,
+                    KeyboardAction::Set { layouts } => {
+                        let keyboard_layouts: Vec<KeyboardLayout> = layouts
+                            .into_iter()
+                            .map(KeyboardLayoutArg::from)
+                            .map(KeyboardLayout::from)
+                            .collect();
+                        KeyboardCommand::Set(keyboard_layouts)
+                    }
+                    KeyboardAction::Add { name } => {
+                        let arg = KeyboardLayoutArg::from(name);
+                        KeyboardCommand::Add(KeyboardLayout::from(arg))
+                    }
+                    KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
+                    KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
+                };
+                IpcCommand::Keyboard(cmd)
+            }
+            CommandKind::Scratchpad { action } => {
+                let cmd = match action {
+                    ScratchpadAction::List { window_id: _ } => ScratchpadCommand::List,
+                    ScratchpadAction::Status { name } => ScratchpadCommand::Status(name),
+                    ScratchpadAction::Show { name, all } => {
+                        if all {
+                            ScratchpadCommand::ShowAll
+                        } else {
+                            ScratchpadCommand::Show(Some(
+                                name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                            ))
+                        }
+                    }
+                    ScratchpadAction::Hide { name, all } => {
+                        if all {
+                            ScratchpadCommand::HideAll
+                        } else {
+                            ScratchpadCommand::Hide(Some(
+                                name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                            ))
+                        }
+                    }
+                    ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
+                    ScratchpadAction::Create {
+                        name,
+                        window_id,
+                        status,
+                        direction,
+                    } => ScratchpadCommand::Create {
+                        name,
+                        window_id,
+                        status,
+                        direction,
+                    },
+                    ScratchpadAction::Delete { window_id } => {
+                        ScratchpadCommand::Delete { window_id }
+                    }
+                };
+                IpcCommand::Scratchpad(cmd)
+            }
+            CommandKind::Mouse { action } => {
+                let cmd = match action {
+                    InputAction::List { identifier } => InputCommand::List(identifier),
+                    InputAction::Devices => InputCommand::Devices,
+                    InputAction::Speed { identifier, value } => {
+                        InputCommand::PointerAccel { identifier, value }
+                    }
+                    InputAction::AccelProfile {
+                        identifier,
+                        profile,
+                    } => InputCommand::AccelProfile {
+                        identifier,
+                        profile,
+                    },
+                    InputAction::Tap { identifier, state } => InputCommand::Tap {
+                        identifier,
+                        enabled: state == "enabled" || state == "on",
+                    },
+                    InputAction::NaturalScroll { identifier, state } => {
+                        InputCommand::NaturalScroll {
+                            identifier,
+                            enabled: state == "enabled" || state == "on",
+                        }
+                    }
+                    InputAction::ScrollFactor { identifier, value } => {
+                        InputCommand::ScrollFactor { identifier, value }
+                    }
+                    InputAction::LeftHanded { identifier, state } => InputCommand::LeftHanded {
+                        identifier,
+                        enabled: state == "enabled" || state == "on",
+                    },
+                };
+                IpcCommand::Input(cmd)
+            }
+            CommandKind::Mode { action } => {
+                let cmd = match action {
+                    ModeAction::List => ModeCommand::List,
+                    ModeAction::Set { name } => ModeCommand::Set(name),
+                    ModeAction::Toggle { name } => ModeCommand::Toggle(name),
+                };
+                IpcCommand::Mode(cmd)
+            }
+            CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
+            CommandKind::Dpms { identifier, state } => {
+                let enable = match state.to_lowercase().as_str() {
+                    "on" | "enable" | "enabled" => true,
+                    "off" | "disable" | "disabled" => false,
+                    _ => {
+                        eprintln!("instantwmctl: invalid dpms state (expected on/off)");
+                        std::process::exit(1);
+                    }
+                };
+                IpcCommand::Monitor(MonitorCommand::Set {
+                    identifier,
+                    resolution: None,
+                    refresh_rate: None,
+                    position: None,
+                    scale: None,
+                    transform: None,
+                    enable: Some(enable),
+                    vrr: None,
+                })
+            }
+            CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
+            CommandKind::Config { .. } => unreachable!("config is handled locally"),
+            CommandKind::Quit => IpcCommand::Quit,
         }
-        CommandKind::Mouse { action } => {
-            let cmd = match action {
-                InputAction::List { identifier } => InputCommand::List(identifier),
-                InputAction::Devices => InputCommand::Devices,
-                InputAction::Speed { identifier, value } => {
-                    InputCommand::PointerAccel { identifier, value }
-                }
-                InputAction::AccelProfile {
-                    identifier,
-                    profile,
-                } => InputCommand::AccelProfile {
-                    identifier,
-                    profile,
-                },
-                InputAction::Tap { identifier, state } => InputCommand::Tap {
-                    identifier,
-                    enabled: state == "enabled" || state == "on",
-                },
-                InputAction::NaturalScroll { identifier, state } => InputCommand::NaturalScroll {
-                    identifier,
-                    enabled: state == "enabled" || state == "on",
-                },
-                InputAction::ScrollFactor { identifier, value } => {
-                    InputCommand::ScrollFactor { identifier, value }
-                }
-                InputAction::LeftHanded { identifier, state } => InputCommand::LeftHanded {
-                    identifier,
-                    enabled: state == "enabled" || state == "on",
-                },
-            };
-            IpcCommand::Input(cmd)
-        }
-        CommandKind::Mode { action } => {
-            let cmd = match action {
-                ModeAction::List => ModeCommand::List,
-                ModeAction::Set { name } => ModeCommand::Set(name),
-                ModeAction::Toggle { name } => ModeCommand::Toggle(name),
-            };
-            IpcCommand::Mode(cmd)
-        }
-        CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
-        CommandKind::Dpms { identifier, state } => {
-            let enable = match state.to_lowercase().as_str() {
-                "on" | "enable" | "enabled" => true,
-                "off" | "disable" | "disabled" => false,
-                _ => {
-                    eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-                    std::process::exit(1);
-                }
-            };
-            IpcCommand::Monitor(MonitorCommand::Set {
-                identifier,
-                resolution: None,
-                refresh_rate: None,
-                position: None,
-                scale: None,
-                transform: None,
-                enable: Some(enable),
-                vrr: None,
-            })
-        }
-        CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
-        CommandKind::Config { .. } => unreachable!("config is handled locally"),
-        CommandKind::Quit => IpcCommand::Quit,
     }
-}
 }

@@ -4,7 +4,6 @@
 //! windows between tags.
 
 use crate::backend::x11::grab::mouse_drag_loop;
-use crate::bar::hit_test;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::cursor::set_cursor_style;
 use crate::types::*;
