@@ -148,7 +148,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         };
 
         if let BarPosition::Tag(tag_idx) = position {
-            let tag_mask = TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY);
+            let tag_mask = TagMask::from_index(tag_idx).unwrap_or(TagMask::EMPTY);
             if (modifier_state & ModMask::SHIFT.bits() as u32) != 0 {
                 if let Some(win) = ctx
                     .core_mut()

@@ -15,13 +15,9 @@ use crate::types::VerticalDirection;
 
 use super::named::execute_named_action;
 
-fn tag_mask_from_idx(tag_idx: usize) -> Option<TagMask> {
-    TagMask::single(tag_idx + 1)
-}
-
 fn tag_mask_from_pos(pos: crate::types::BarPosition) -> Option<TagMask> {
     match pos {
-        crate::types::BarPosition::Tag(idx) => tag_mask_from_idx(idx),
+        crate::types::BarPosition::Tag(idx) => TagMask::from_index(idx),
         _ => None,
     }
 }
@@ -46,38 +42,38 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
     match action {
         KeyAction::Named { action, args } => execute_named_action(ctx, *action, args),
         KeyAction::ViewTag { tag_idx } => {
-            if let Some(mask) = tag_mask_from_idx(*tag_idx) {
+            if let Some(mask) = TagMask::from_index(*tag_idx) {
                 crate::tags::view::view_tags(ctx, mask);
             }
         }
         KeyAction::ToggleViewTag { tag_idx } => {
-            if let Some(mask) = tag_mask_from_idx(*tag_idx) {
+            if let Some(mask) = TagMask::from_index(*tag_idx) {
                 crate::tags::view::toggle_view(ctx, mask);
             }
         }
         KeyAction::SetClientTag { tag_idx } => {
             if let Some(win) = ctx.core().selected_client()
-                && let Some(mask) = tag_mask_from_idx(*tag_idx)
+                && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         KeyAction::FollowClientTag { tag_idx } => {
             if let Some(win) = ctx.core().selected_client()
-                && let Some(mask) = tag_mask_from_idx(*tag_idx)
+                && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
         }
         KeyAction::ToggleClientTag { tag_idx } => {
             if let Some(win) = ctx.core().selected_client()
-                && let Some(mask) = tag_mask_from_idx(*tag_idx)
+                && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
         KeyAction::SwapTags { tag_idx } => {
-            if let Some(mask) = tag_mask_from_idx(*tag_idx) {
+            if let Some(mask) = TagMask::from_index(*tag_idx) {
                 crate::tags::view::swap_tags(ctx, mask);
             }
         }

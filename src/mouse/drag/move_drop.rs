@@ -437,7 +437,7 @@ pub fn handle_bar_drop(
         crate::tags::client_tags::set_client_tag(
             ctx,
             win,
-            TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
+            TagMask::from_index(tag_idx).unwrap_or(TagMask::EMPTY),
         );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.

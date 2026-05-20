@@ -94,8 +94,8 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
 /// * If the tag is **already** in the current view, remove it (toggle off).
 /// * If the tag is **not** in the current view, add it (toggle on).
 pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
-    // BarPosition uses 0-based indices; TagMask::single() takes 1-based.
-    let clicked_mask = match TagMask::single(tag_idx + 1) {
+    // BarPosition uses 0-based indices; TagMask::from_index() handles the conversion.
+    let clicked_mask = match TagMask::from_index(tag_idx) {
         Some(m) => m,
         None => return,
     };
