@@ -2,7 +2,7 @@
 //!
 //! Types for mouse, keyboard, and gesture handling.
 
-use crate::types::{MonitorId, Rect, WindowId};
+use crate::types::{MonitorId, Rect, TagMask, WindowId};
 
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -112,6 +112,18 @@ pub enum BarPosition {
     /// An unoccupied area of the bar.
     #[default]
     Root,
+}
+
+impl BarPosition {
+    /// Convert this position to a tag mask if it represents a tag button.
+    ///
+    /// Returns `None` for non-tag positions.
+    pub fn to_tag_mask(&self) -> Option<TagMask> {
+        match self {
+            Self::Tag(idx) => TagMask::from_index(*idx),
+            _ => None,
+        }
+    }
 }
 
 /// Describes which interactive bar region the cursor is hovering over.

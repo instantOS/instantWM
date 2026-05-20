@@ -15,13 +15,6 @@ use crate::types::VerticalDirection;
 
 use super::named::execute_named_action;
 
-fn tag_mask_from_pos(pos: crate::types::BarPosition) -> Option<TagMask> {
-    match pos {
-        crate::types::BarPosition::Tag(idx) => TagMask::from_index(idx),
-        _ => None,
-    }
-}
-
 fn button_target_client(
     core: &CoreCtx<'_>,
     arg: &crate::types::ButtonArg,
@@ -118,24 +111,21 @@ pub fn execute_button_action(
         }
         ButtonAction::SetSelectedClientClickedTag => {
             if let Some(win) = ctx.core().selected_client()
-                && let Some(pos) = arg.bar_position()
-                && let Some(mask) = tag_mask_from_pos(pos)
+                && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         ButtonAction::ToggleSelectedClientClickedTag => {
             if let Some(win) = ctx.core().selected_client()
-                && let Some(pos) = arg.bar_position()
-                && let Some(mask) = tag_mask_from_pos(pos)
+                && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
         ButtonAction::FollowSelectedClientClickedTag => {
             if let Some(win) = ctx.core().selected_client()
-                && let Some(pos) = arg.bar_position()
-                && let Some(mask) = tag_mask_from_pos(pos)
+                && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
