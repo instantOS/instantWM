@@ -9,9 +9,9 @@ use crate::client::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
 };
-use crate::client::fullscreen::set_fullscreen_x11;
 use crate::client::rules::WindowProperties;
 use crate::client::rules::apply_rules as apply_rules_generic;
+use crate::client::set_fullscreen;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::types::{ClientMode, Rect, WindowId};
@@ -138,7 +138,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let atom_dialog = ctx_x11.x11_runtime.netatom.wm_window_type_dialog;
 
     if state.contains(&atom_fullscreen) {
-        set_fullscreen_x11(ctx_x11, win, true);
+        set_fullscreen(&mut WmCtx::X11(ctx_x11.reborrow()), win, true);
     }
 
     if wtype.contains(&atom_dialog)

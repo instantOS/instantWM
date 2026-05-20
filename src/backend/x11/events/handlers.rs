@@ -712,9 +712,9 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
         .unwrap_or(false);
 
     match action {
-        0 => crate::client::set_fullscreen_x11(ctx, win, false),
-        1 => crate::client::set_fullscreen_x11(ctx, win, true),
-        2 => crate::client::set_fullscreen_x11(ctx, win, !is_fullscreen),
+        0 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, false),
+        1 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, true),
+        2 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, !is_fullscreen),
         _ => {}
     }
 }

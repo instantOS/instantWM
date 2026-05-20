@@ -35,100 +35,136 @@ use x11rb::protocol::xproto::*;
 // Real fullscreen
 // ---------------------------------------------------------------------------
 
-/// Enter or exit fullscreen for `win`.
-pub fn set_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, fullscreen: bool) {
-    let x11_win: Window = win.into();
-    let conn = ctx_x11.x11.conn;
-    let wm_state = ctx_x11.x11_runtime.netatom.wm_state;
-    let net_wm_fullscreen = ctx_x11.x11_runtime.netatom.wm_fullscreen;
-
-    // Snapshot what we need before taking a mutable borrow.
-    let client_snapshot = ctx_x11
-        .core
-        .client(win)
+/// Backend‑agnostic entry point: enter or exit real fullscreen for `win`.
+///
+/// Handles shared state (mode, layout, z‑order) and delegates X11‑specific
+/// protocol work (atoms, `configure_window`) inline.
+///
+/// For the Wayland backend the compositor owns the fullscreen geometry and
+/// stacking, so this function just updates the mode and queues a layout.
+pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
+    let snapshot = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&win)
         .map(|c| (c.mode, c.monitor_id, c.old_geo));
-
-    let Some((mode, monitor_id, old_geo)) = client_snapshot else {
+    let Some((mode, monitor_id, old_geo)) = snapshot else {
         return;
     };
 
     if fullscreen && !mode.is_fullscreen() {
         // ---- Enter fullscreen -----------------------------------------------
 
-        let mut state_atoms = get_atom_props(conn, x11_win, wm_state);
-        if !state_atoms.contains(&net_wm_fullscreen) {
-            state_atoms.push(net_wm_fullscreen);
+        // Backend-specific: signal the application.
+        if let WmCtx::X11(ctx_x11) = ctx {
+            let x11_win: Window = win.into();
+            let mut state = get_atom_props(
+                ctx_x11.x11.conn,
+                x11_win,
+                ctx_x11.x11_runtime.netatom.wm_state,
+            );
+            let fullscreen_atom = ctx_x11.x11_runtime.netatom.wm_fullscreen;
+            if !state.contains(&fullscreen_atom) {
+                state.push(fullscreen_atom);
+            }
+            write_net_wm_state_atoms(
+                ctx_x11.x11.conn,
+                x11_win,
+                ctx_x11.x11_runtime.netatom.wm_state,
+                &state,
+            );
         }
-        write_net_wm_state_atoms(conn, x11_win, wm_state, &state_atoms);
 
-        let outcome = crate::client::mode::set_fullscreen(ctx_x11.core.globals_mut(), win, true);
+        // Shared: save border width, flip client mode.
+        let outcome = crate::client::mode::set_fullscreen(ctx.core_mut().globals_mut(), win, true);
 
         if let Some(crate::client::mode::FullscreenOutcome::Entered { was_floating }) = outcome
             && !mode.is_fake_fullscreen()
         {
-            let mon_rect = ctx_x11
-                .core
+            let mon_rect = ctx
+                .core()
                 .globals()
                 .monitor(monitor_id)
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
 
             if !was_floating {
-                WmCtx::X11(ctx_x11.reborrow()).move_resize(
+                ctx.move_resize(
                     win,
                     mon_rect,
                     MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
                 );
             }
 
-            let _ = ctx_x11
-                .x11
-                .conn
-                .configure_window(x11_win, &ConfigureWindowAux::new().border_width(0));
-            let _ = ctx_x11.x11.conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new()
-                    .x(mon_rect.x)
-                    .y(mon_rect.y)
-                    .width(mon_rect.w as u32)
-                    .height(mon_rect.h as u32),
-            );
-            let _ = ctx_x11.x11.conn.configure_window(
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = ctx_x11.x11.conn.flush();
+            // Backend-specific: remove border, enforce geometry, raise.
+            if let WmCtx::X11(ctx_x11) = ctx {
+                let x11_win: Window = win.into();
+                let _ = ctx_x11
+                    .x11
+                    .conn
+                    .configure_window(x11_win, &ConfigureWindowAux::new().border_width(0));
+                let _ = ctx_x11.x11.conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new()
+                        .x(mon_rect.x)
+                        .y(mon_rect.y)
+                        .width(mon_rect.w as u32)
+                        .height(mon_rect.h as u32),
+                );
+                let _ = ctx_x11.x11.conn.configure_window(
+                    x11_win,
+                    &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
+                );
+                let _ = ctx_x11.x11.conn.flush();
+            }
         }
 
-        let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
-        sync_monitor_z_order(&mut wmctx, monitor_id);
+        // Shared: raise the fullscreened window in the monitor z-order.
+        sync_monitor_z_order(ctx, monitor_id);
     } else if !fullscreen && mode.is_fullscreen() {
         // ---- Exit fullscreen ------------------------------------------------
 
-        let mut state_atoms = get_atom_props(conn, x11_win, wm_state);
-        state_atoms.retain(|&atom| atom != net_wm_fullscreen);
-        write_net_wm_state_atoms(conn, x11_win, wm_state, &state_atoms);
+        // Backend-specific: clear the fullscreen signal.
+        if let WmCtx::X11(ctx_x11) = ctx {
+            let x11_win: Window = win.into();
+            let mut state = get_atom_props(
+                ctx_x11.x11.conn,
+                x11_win,
+                ctx_x11.x11_runtime.netatom.wm_state,
+            );
+            state.retain(|&a| a != ctx_x11.x11_runtime.netatom.wm_fullscreen);
+            write_net_wm_state_atoms(
+                ctx_x11.x11.conn,
+                x11_win,
+                ctx_x11.x11_runtime.netatom.wm_state,
+                &state,
+            );
+        }
 
-        let _outcome = crate::client::mode::set_fullscreen(ctx_x11.core.globals_mut(), win, false);
+        // Shared: restore client mode and border width.
+        crate::client::mode::set_fullscreen(ctx.core_mut().globals_mut(), win, false);
 
-        let restored_border = ctx_x11
-            .core
-            .client(win)
-            .map(|c| c.border_width.max(0) as u32)
-            .unwrap_or(0);
+        // Backend-specific: reinstate the X11 border.
+        if let WmCtx::X11(ctx_x11) = ctx {
+            let x11_win: Window = win.into();
+            let restored_border = ctx_x11
+                .core
+                .client(win)
+                .map(|c| c.border_width.max(0) as u32)
+                .unwrap_or(0);
+            let _ = ctx_x11.x11.conn.configure_window(
+                x11_win,
+                &ConfigureWindowAux::new().border_width(restored_border),
+            );
+        }
 
-        let _ = ctx_x11.x11.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new().border_width(restored_border),
-        );
-
+        // Shared: restore old geometry and re-layout.
         if !mode.is_fake_fullscreen() {
-            let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
-            wmctx.move_resize(win, old_geo, MoveResizeOptions::immediate());
-            arrange(&mut wmctx, Some(monitor_id));
+            ctx.move_resize(win, old_geo, MoveResizeOptions::immediate());
+            arrange(ctx, Some(monitor_id));
         } else {
-            let mut wmctx = WmCtx::X11(ctx_x11.reborrow());
-            sync_monitor_z_order(&mut wmctx, monitor_id);
+            sync_monitor_z_order(ctx, monitor_id);
         }
     }
 }
