@@ -19,7 +19,7 @@ pub fn handle_wayland_bar_click(
     root: Point,
     clean_state: u32,
 ) {
-    let Some(button) = wayland_button_to_mouse_button(button_code) else {
+    let Some(button) = MouseButton::from_wayland_code(button_code) else {
         return;
     };
 
@@ -123,25 +123,4 @@ fn run_wayland_bar_bindings(
         },
         0,
     );
-}
-
-/// Linux evdev button codes (from `<linux/input-event-codes.h>`).
-///
-/// BTN_LEFT   = 0x110 — primary mouse button.
-/// BTN_RIGHT  = 0x111 — secondary mouse button.
-/// BTN_MIDDLE = 0x112 — middle / scroll-wheel click.
-///
-/// The WM uses 1-indexed button numbers matching the X11 convention so that
-/// the same button-binding table works on both backends.
-const BTN_LEFT: u32 = 0x110;
-const BTN_MIDDLE: u32 = 0x112;
-const BTN_RIGHT: u32 = 0x111;
-
-pub fn wayland_button_to_mouse_button(code: u32) -> Option<MouseButton> {
-    match code {
-        BTN_LEFT => Some(MouseButton::Left),
-        BTN_MIDDLE => Some(MouseButton::Middle),
-        BTN_RIGHT => Some(MouseButton::Right),
-        _ => None,
-    }
 }

@@ -40,6 +40,13 @@ impl TagMask {
     /// Mask representing only the scratchpad tag.
     pub const SCRATCHPAD: Self = Self(SCRATCHPAD_MASK);
 
+    /// Create a mask representing a single tag from a 0-based index.
+    ///
+    /// Returns `None` if the index exceeds `MAX_TAGS`.
+    pub fn from_index(tag_idx: usize) -> Option<Self> {
+        Self::single(tag_idx + 1)
+    }
+
     /// Create a mask representing a single tag (1-indexed).
     ///
     /// Returns `None` if the tag index is 0 or exceeds `MAX_TAGS`.

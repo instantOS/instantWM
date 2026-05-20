@@ -7,7 +7,7 @@ use crate::bar::scene;
 use crate::contexts::CoreCtx;
 
 use super::WaylandBarPainter;
-use super::buffer::{RawBarBuffer, raw_to_bar_buffer};
+use super::buffer::RawBarBuffer;
 use super::systray;
 
 #[derive(Clone)]
@@ -129,7 +129,7 @@ pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
         return;
     };
 
-    painter.cached_buffers = result.buffers.iter().map(raw_to_bar_buffer).collect();
+    painter.cached_buffers = result.buffers.iter().map(|b| b.into()).collect();
     painter.cached_key = result.key;
 
     for update in result.monitor_updates {

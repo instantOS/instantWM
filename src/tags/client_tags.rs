@@ -35,7 +35,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let current_tag = ctx.core().globals().selected_monitor().current_tag_index();
+    let current_tag = ctx.core().globals().selected_monitor().current_tag_number();
     let Some(current_tag) = current_tag else {
         return;
     };

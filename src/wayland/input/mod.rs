@@ -113,8 +113,8 @@ pub fn handle_resize(
     state.space.map_output(output, output_loc);
     layer_map_for_output(output).arrange();
 
-    wm.g.cfg.screen_width = safe_w;
-    wm.g.cfg.screen_height = safe_h;
+    wm.g.cfg.display.width = safe_w;
+    wm.g.cfg.display.height = safe_h;
     refresh_monitor_layout(&mut wm.ctx());
     wm.g.queue_layout_for_all_monitors_urgent();
     state.request_space_sync();

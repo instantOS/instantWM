@@ -328,7 +328,7 @@ impl<'a> WmCtx<'a> {
     /// the pointer handle and the external `pointer_location` variable are
     /// both updated atomically.
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
-        let bar_height = self.core().globals().cfg.bar_height;
+        let bar_height = self.core().globals().cfg.bar.height;
 
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
@@ -355,7 +355,7 @@ impl<'a> WmCtx<'a> {
                 && ptr.y < c.geo.y + c.geo.h + c.border_width * 2);
 
         let on_bar = c.monitor(self.core().globals()).is_some_and(|mon| {
-            (ptr.y > mon.bar_y && ptr.y < mon.bar_y + bar_height) || (mon.topbar && ptr.y == 0)
+            (ptr.y > mon.bar_y && ptr.y < mon.bar_y + bar_height) || (mon.top_bar && ptr.y == 0)
         });
 
         if in_window || on_bar {

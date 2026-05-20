@@ -14,6 +14,7 @@ const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
 #[derive(Clone)]
 pub(crate) struct TagCellSnapshot {
     pub slot: usize,
+    pub tag_index: usize,
     pub label: String,
     pub scheme: BarScheme,
 }
@@ -84,10 +85,10 @@ pub(crate) fn build_monitor_snapshots(
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.globals().selected_monitor().num;
-    let show_systray = core.globals().cfg.show_systray;
-    let systray_spacing = core.globals().cfg.systray_spacing;
+    let show_systray = core.globals().cfg.systray.show;
+    let systray_spacing = core.globals().cfg.systray.spacing;
     let base_font_size =
-        crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts);
+        crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts.fonts);
     let drag_bar_active = core.globals().drag.bar_active;
     let current_mode = core.globals().behavior.current_mode.clone();
     let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {
@@ -96,6 +97,7 @@ pub(crate) fn build_monitor_snapshots(
         let mode_display = core
             .globals()
             .cfg
+            .bindings
             .modes
             .get(&current_mode)
             .and_then(|m| m.description.as_ref())
@@ -137,7 +139,7 @@ pub(crate) fn build_monitor_snapshots(
             Gesture::None
         };
         let mut tags = Vec::new();
-        for tag in crate::tags::bar::visible_tags_ctx(core, &mon, stats.occupied_tags) {
+        for tag in crate::tags::bar::visible_tags(core, &mon, stats.occupied_tags) {
             let is_hover = gesture == Gesture::Tag(tag.slot);
             let mut scheme = core.globals().tag_scheme(
                 &mon,
@@ -151,6 +153,7 @@ pub(crate) fn build_monitor_snapshots(
             }
             tags.push(TagCellSnapshot {
                 slot: tag.slot,
+                tag_index: tag.tag_index,
                 label: tag.label.to_string(),
                 scheme,
             });
@@ -470,7 +473,7 @@ fn render_monitor_snapshot_base(
         hit.tag_ranges.push(crate::bar::TagHitRange {
             start: x - width,
             end: x,
-            tag_index: tag.slot,
+            tag_index: tag.tag_index,
         });
     }
 

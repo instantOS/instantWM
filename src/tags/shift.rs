@@ -19,7 +19,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         let Some(win) = mon.sel else {
             return;
         };
-        let Some(current_tag) = mon.current_tag_index() else {
+        let Some(current_tag) = mon.current_tag_number() else {
             return;
         };
         (
@@ -42,7 +42,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let target_tags = ctx.core().globals().selected_monitor().current_tag_index();
+    let target_tags = ctx.core().globals().selected_monitor().current_tag_number();
 
     // Get mutable borrow for reset_sticky, then drop it
     if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {

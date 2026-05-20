@@ -40,7 +40,7 @@ fn normalize_current_mode(g: &mut crate::globals::Globals) {
         return;
     }
 
-    if !g.cfg.modes.contains_key(&g.behavior.current_mode) {
+    if !g.cfg.bindings.modes.contains_key(&g.behavior.current_mode) {
         g.behavior.current_mode = "default".to_string();
     }
 }
@@ -99,14 +99,14 @@ mod tests {
         reload_config(&mut wm).unwrap();
 
         assert!(
-            wm.g.cfg.bar_height > 0,
+            wm.g.cfg.bar.height > 0,
             "bar_height should be computed from font metrics, got {}",
-            wm.g.cfg.bar_height
+            wm.g.cfg.bar.height
         );
         assert!(
-            wm.g.cfg.horizontal_padding > 0,
+            wm.g.cfg.bar.horizontal_padding > 0,
             "horizontal_padding should be set from font height, got {}",
-            wm.g.cfg.horizontal_padding
+            wm.g.cfg.bar.horizontal_padding
         );
     }
 
@@ -125,6 +125,7 @@ mod tests {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
         wm.g.behavior.current_mode = "resize".to_string();
         wm.g.cfg
+            .bindings
             .modes
             .insert("resize".to_string(), ModeConfig::default());
 

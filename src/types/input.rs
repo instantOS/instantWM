@@ -2,7 +2,9 @@
 //!
 //! Types for mouse, keyboard, and gesture handling.
 
-use crate::types::{MonitorId, Rect, WindowId};
+use std::str::FromStr;
+
+use crate::types::{MonitorId, Rect, TagMask, WindowId};
 
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -29,6 +31,16 @@ impl MouseButton {
             3 => Some(Self::Right),
             4 => Some(Self::ScrollUp),
             5 => Some(Self::ScrollDown),
+            _ => None,
+        }
+    }
+
+    /// Convert from a Wayland button code (Linux input event codes).
+    pub fn from_wayland_code(code: u32) -> Option<Self> {
+        match code {
+            0x110 => Some(Self::Left),
+            0x112 => Some(Self::Middle),
+            0x111 => Some(Self::Right),
             _ => None,
         }
     }
@@ -114,6 +126,29 @@ pub enum BarPosition {
     Root,
 }
 
+impl BarPosition {
+    /// Convert this position to a tag mask if it represents a tag button.
+    ///
+    /// Returns `None` for non-tag positions.
+    pub fn to_tag_mask(&self) -> Option<TagMask> {
+        match self {
+            Self::Tag(idx) => TagMask::from_index(*idx),
+            _ => None,
+        }
+    }
+
+    /// Map this position to the `Gesture` used for hover highlighting.
+    pub fn to_gesture(self) -> Gesture {
+        match self {
+            Self::StartMenu => Gesture::StartMenu,
+            Self::Tag(idx) => Gesture::Tag(idx),
+            Self::CloseButton(_) => Gesture::CloseButton,
+            Self::WinTitle(w) => Gesture::WinTitle(w),
+            _ => Gesture::None,
+        }
+    }
+}
+
 /// Describes which interactive bar region the cursor is hovering over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Gesture {
@@ -186,6 +221,24 @@ pub enum SnapPosition {
     TopLeft,
     /// Maximized.
     Maximized,
+}
+
+impl SnapPosition {
+    /// Convert this snap position to a numeric index for matrix lookup.
+    pub fn to_index(self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::Top => 1,
+            Self::TopRight => 2,
+            Self::Right => 3,
+            Self::BottomRight => 4,
+            Self::Bottom => 5,
+            Self::BottomLeft => 6,
+            Self::Left => 7,
+            Self::TopLeft => 8,
+            Self::Maximized => 9,
+        }
+    }
 }
 
 /// Direction for window resize operations.
@@ -455,8 +508,25 @@ pub enum StackDirection {
 }
 
 impl StackDirection {
+    /// Parse a direction from a string name (aliases accepted).
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::from_str(name).ok()
+    }
+
     /// Returns true if this is the Next direction.
     pub fn is_forward(self) -> bool {
         matches!(self, Self::Next)
+    }
+}
+
+impl FromStr for StackDirection {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "next" | "down" | "forward" => Ok(Self::Next),
+            "prev" | "previous" | "up" | "backward" => Ok(Self::Previous),
+            _ => Err(()),
+        }
     }
 }

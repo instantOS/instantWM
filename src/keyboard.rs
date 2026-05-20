@@ -34,16 +34,20 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         && cleaned
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
         ctx.request_bar_update();
         return true;
     }
 
     let (action, transient) = resolve_key_action(
-        ctx.core().globals().cfg.keys.as_slice(),
-        ctx.core().globals().cfg.desktop_keybinds.as_slice(),
-        &ctx.core().globals().cfg.modes,
+        ctx.core().globals().cfg.bindings.keys.as_slice(),
+        ctx.core()
+            .globals()
+            .cfg
+            .bindings
+            .desktop_keybinds
+            .as_slice(),
+        &ctx.core().globals().cfg.bindings.modes,
         ctx.core().selected_client(),
         &current_mode,
         keysym,
@@ -165,9 +169,9 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
     let conn = x11.conn;
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
-    let keys = core.globals().cfg.keys.as_slice();
-    let desktop_keybinds = core.globals().cfg.desktop_keybinds.as_slice();
-    let modes = &core.globals().cfg.modes;
+    let keys = core.globals().cfg.bindings.keys.as_slice();
+    let desktop_keybinds = core.globals().cfg.bindings.desktop_keybinds.as_slice();
+    let modes = &core.globals().cfg.bindings.modes;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
@@ -416,7 +420,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snap_status != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            let border_width = ctx.core().globals().cfg.border_width_px;
+            let border_width = ctx.core().globals().cfg.window.border_width_px;
             ctx.set_border(win, border_width);
 
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {

@@ -270,7 +270,7 @@ pub fn get_wayland_systray_width_with_state(
     wayland_systray: &WaylandSystray,
     bar_height: i32,
 ) -> i32 {
-    if !core.globals().cfg.show_systray {
+    if !core.globals().cfg.systray.show {
         return 0;
     }
     let items = &wayland_systray.items;
@@ -278,7 +278,7 @@ pub fn get_wayland_systray_width_with_state(
         return 0;
     }
     let icon_h = bar_height.max(1);
-    let spacing = core.globals().cfg.systray_spacing.max(0);
+    let spacing = core.globals().cfg.systray.spacing.max(0);
     let mut width = spacing;
     for item in items {
         let iw = scale_icon_width(item.icon_w, item.icon_h, icon_h);
@@ -600,7 +600,7 @@ fn systray_layout(
     mon: &Monitor,
 ) -> SystrayLayout {
     let icon_h = mon.bar_height.max(1);
-    let spacing = core.globals().cfg.systray_spacing.max(0);
+    let spacing = core.globals().cfg.systray.spacing.max(0);
     let mut tray_total_w = 0;
     if !wayland_systray.items.is_empty() {
         tray_total_w = spacing;

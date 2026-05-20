@@ -34,12 +34,12 @@ pub fn draw_bar(
         return;
     }
     let work_rect_w = monitor.work_rect.w;
-    let bar_height = core.globals().cfg.bar_height;
+    let bar_height = core.globals().cfg.bar.height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
 
-    if core.globals().cfg.show_systray {
+    if core.globals().cfg.systray.show {
         core.globals_mut().bar_runtime.systray_width =
             crate::systray::x11::get_systray_width(core, systray) as i32;
     }
@@ -95,12 +95,12 @@ pub fn draw_bars_x11(
             Some(m) => m.work_rect.w,
             None => continue,
         };
-        let bar_height = core.globals().cfg.bar_height;
+        let bar_height = core.globals().cfg.bar.height;
         if work_rect_w <= 0 || bar_height <= 0 {
             continue;
         }
 
-        if core.globals().cfg.show_systray {
+        if core.globals().cfg.systray.show {
             core.globals_mut().bar_runtime.systray_width =
                 crate::systray::x11::get_systray_width(core, systray) as i32;
         }
@@ -135,7 +135,7 @@ pub fn reset_bar_x11(
     _x11_runtime: &mut X11RuntimeConfig,
     _systray: Option<&Systray>,
 ) {
-    crate::bar::renderer::reset_bar_common(core);
+    crate::bar::renderer::reset_bar_common(core.globals_mut());
     core.bar.mark_dirty();
 }
 
@@ -149,8 +149,8 @@ pub fn resize_bar_win(
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
-    let bar_height = core.globals().cfg.bar_height;
-    let showsystray = core.globals().cfg.show_systray;
+    let bar_height = core.globals().cfg.bar.height;
+    let showsystray = core.globals().cfg.systray.show;
     let is_selmon = core.globals().selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
@@ -179,9 +179,9 @@ pub fn update_bars(
     use crate::bar::color::rgba_to_u32;
 
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = core.globals().cfg.bar_height;
-        let showsystray = core.globals().cfg.show_systray;
-        let status_bg = rgba_to_u32(core.globals().cfg.statusbarcolors.bg);
+        let bar_height = core.globals().cfg.bar.height;
+        let showsystray = core.globals().cfg.systray.show;
+        let status_bg = rgba_to_u32(core.globals().cfg.colors.status_bar.bg);
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
         let selected_monitor_id = core.globals().selected_monitor_id();

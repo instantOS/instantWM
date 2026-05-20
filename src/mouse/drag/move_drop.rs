@@ -4,7 +4,6 @@
 //! This module contains the core logic for moving windows with the mouse,
 //! including bar hover handling, edge snapping, and drop completion.
 
-use crate::bar::bar_position_to_gesture;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
@@ -17,7 +16,7 @@ use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 
 use crate::mouse::monitor::handle_client_monitor_switch;
 
-/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.snap` pixels.
+/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.cfg.window.snap_threshold` pixels.
 pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
     snap_window_to_monitor_edges(ctx.core().globals(), c.win, c.geo.w, c.geo.h, new_x, new_y);
 }
@@ -30,7 +29,7 @@ pub fn snap_window_to_monitor_edges(
     new_x: &mut i32,
     new_y: &mut i32,
 ) {
-    let snap = g.cfg.snap;
+    let snap = g.cfg.window.snap_threshold;
     let mon = g.selected_monitor();
     let bw = g
         .clients
@@ -201,7 +200,7 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
             let core = ctx.core();
             let mon = core.globals().selected_monitor();
             let local_x = root.x - mon.work_rect.x;
-            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+            mon.bar_position_at_x(core, local_x).to_gesture()
         };
 
         let gesture_changed = ctx.core().globals().selected_monitor().gesture != new_gesture;
@@ -234,7 +233,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
             let core = ctx.core();
             let mon = core.globals().selected_monitor();
             let local_x = root.x - mon.work_rect.x;
-            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+            mon.bar_position_at_x(core, local_x).to_gesture()
         };
         let gesture_changed = ctx.core().globals().selected_monitor().gesture != new_gesture;
         if !was_on_bar || gesture_changed {
@@ -315,7 +314,7 @@ fn maybe_promote_tiled_drag_to_floating(
     is_floating: &mut bool,
     drag_geo: &mut Rect,
 ) {
-    let snap = ctx.core().globals().cfg.snap;
+    let snap = ctx.core().globals().cfg.window.snap_threshold;
     if *is_floating
         || !has_tiling
         || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)
@@ -437,7 +436,7 @@ pub fn handle_bar_drop(
         crate::tags::client_tags::set_client_tag(
             ctx,
             win,
-            TagMask::single(tag_idx + 1).unwrap_or(TagMask::EMPTY),
+            TagMask::from_index(tag_idx).unwrap_or(TagMask::EMPTY),
         );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.

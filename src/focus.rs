@@ -41,7 +41,7 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
 
     let sel_mon_id = core.globals().selected_monitor_id();
     let mon = core.globals().selected_monitor();
-    let selected = mon.selected_tag_mask();
+    let selected = mon.selected_tags();
     let current_sel = mon.sel;
 
     // Use the requested window if it's visible, otherwise walk the stack
@@ -579,7 +579,7 @@ fn get_direction_focus_candidate(core: &CoreCtx, direction: Direction) -> Option
     let source_client = core.client(source_win)?;
     let source_center = source_client.geo.center();
 
-    let selected = mon.selected_tag_mask();
+    let selected = mon.selected_tags();
 
     get_directional_candidates(
         &mon.clients,
@@ -657,7 +657,7 @@ fn get_visible_stack(
     clients: &std::collections::HashMap<WindowId, Client>,
 ) -> Vec<WindowId> {
     let mut stack = Vec::new();
-    let selected = mon.selected_tag_mask();
+    let selected = mon.selected_tags();
 
     for (c_win, c) in mon.iter_clients(clients) {
         if c.is_visible(selected) {

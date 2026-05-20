@@ -27,18 +27,20 @@ impl Clone for BarBuffer {
     }
 }
 
-pub(super) fn raw_to_bar_buffer(raw: &RawBarBuffer) -> BarBuffer {
-    let buffer = MemoryRenderBuffer::from_slice(
-        &raw.pixels,
-        Fourcc::Argb8888,
-        (raw.width, raw.height),
-        1,
-        Transform::Normal,
-        None,
-    );
-    BarBuffer {
-        buffer,
-        x: raw.x,
-        y: raw.y,
+impl From<&RawBarBuffer> for BarBuffer {
+    fn from(raw: &RawBarBuffer) -> Self {
+        let buffer = MemoryRenderBuffer::from_slice(
+            &raw.pixels,
+            Fourcc::Argb8888,
+            (raw.width, raw.height),
+            1,
+            Transform::Normal,
+            None,
+        );
+        BarBuffer {
+            buffer,
+            x: raw.x,
+            y: raw.y,
+        }
     }
 }

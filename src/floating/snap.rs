@@ -97,23 +97,6 @@ static SNAP_MATRIX: [[SnapPosition; 4]; 10] = [
     ], // Maximized
 ];
 
-// ── SnapPosition ↔ index helpers ───────────────────────────────────────────────
-
-fn snap_pos_to_index(s: SnapPosition) -> usize {
-    match s {
-        SnapPosition::None => 0,
-        SnapPosition::Top => 1,
-        SnapPosition::TopRight => 2,
-        SnapPosition::Right => 3,
-        SnapPosition::BottomRight => 4,
-        SnapPosition::Bottom => 5,
-        SnapPosition::BottomLeft => 6,
-        SnapPosition::Left => 7,
-        SnapPosition::TopLeft => 8,
-        SnapPosition::Maximized => 9,
-    }
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Navigate the snap graph in `direction` and apply the resulting snap position.
@@ -127,7 +110,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 
             // Save geometry before entering snap for the first time.
             let new_snap = {
-                let row = snap_pos_to_index(status);
+                let row = status.to_index();
                 let col = direction.snap_matrix_index();
                 SNAP_MATRIX[row][col]
             };
@@ -179,7 +162,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
         let showbar = m.showbar_for_mask(m.selected_tags());
         let mony = m.monitor_rect.y
             + if showbar {
-                ctx.core.globals().cfg.bar_height
+                ctx.core.globals().cfg.bar.height
             } else {
                 0
             };

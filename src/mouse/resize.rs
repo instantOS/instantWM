@@ -247,7 +247,7 @@ pub fn resize_mouse_directional(
                     affects_bottom,
                 );
 
-                let snap = ctx.core.globals().cfg.snap;
+                let snap = ctx.core.globals().cfg.window.snap_threshold;
 
                 let should_toggle = if let Some(client) = ctx.core.client(win) {
                     let has_tiling = ctx.core.globals().selected_monitor().is_tiling_layout();

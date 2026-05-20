@@ -5,12 +5,29 @@ use crate::types::{Monitor, Rect, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExitMode {
+    RestorePrevious,
+    ToSelectedWindow,
+}
+
+#[derive(Debug, Clone)]
+pub struct OverviewState {
+    restore_tags: TagMask,
+}
+
+impl OverviewState {
+    pub fn new(restore_tags: TagMask) -> Self {
+        Self { restore_tags }
+    }
+}
+
 pub fn is_active(core: &CoreCtx<'_>) -> bool {
-    core.globals().behavior.current_mode == OVERVIEW_MODE_NAME
+    core.globals().selected_monitor().overview_state.is_some()
 }
 
 pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor: &Monitor) -> bool {
-    is_active(core) && core.globals().selected_monitor_id() == monitor.id()
+    monitor.overview_state.is_some() && core.globals().selected_monitor_id() == monitor.id()
 }
 
 fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool {
@@ -18,10 +35,10 @@ fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool 
         return false;
     }
 
-    let previous_current_tag = mon.current_tag_index();
+    let previous_current_tag = mon.current_tag_number();
     mon.sel_tags ^= 1;
     mon.set_selected_tags(new_mask);
-    if previous_current_tag != mon.current_tag_index()
+    if previous_current_tag != mon.current_tag_number()
         && let Some(previous_current_tag) = previous_current_tag
     {
         mon.prev_tag = Some(previous_current_tag);
@@ -36,30 +53,32 @@ pub fn handle_mode_transition(ctx: &mut WmCtx<'_>, previous_mode: &str, next_mod
     if entering_overview {
         enter(ctx);
     } else if leaving_overview {
-        let accept_selection = ctx
-            .core()
-            .globals()
-            .behavior
-            .overview_accept_selection_on_exit;
-        if accept_selection {
-            exit_to_selected_window(ctx);
-        } else {
-            exit_restore_previous_view(ctx);
-        }
-        ctx.with_behavior_mut(|b| b.overview_accept_selection_on_exit = false);
+        exit(ctx, ExitMode::RestorePrevious);
     }
 }
 
-pub fn enter(ctx: &mut WmCtx<'_>) {
+/// Exit overview mode with a specific [`ExitMode`].
+///
+/// Bypasses `WmCtx::set_current_mode` to avoid threading `ExitMode` through
+/// the general mode system. If `set_current_mode` ever gains side effects,
+/// this path must be updated to match.
+pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
+    ctx.core_mut().globals_mut().behavior.current_mode = "default".to_string();
+    exit(ctx, mode);
+}
+
+fn enter(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     let all_tags = TagMask::all(ctx.core().globals().tags.count());
 
     {
         let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        if mon.overview_restore_tags.is_none() {
-            mon.overview_restore_tags = Some(mon.selected_tags());
+        if mon.overview_state.is_some() {
+            return;
         }
+        let restore_tags = mon.selected_tags();
         let _ = set_selected_tags_with_history(mon, all_tags);
+        mon.overview_state = Some(OverviewState::new(restore_tags));
     }
 
     save_all_floating(ctx, Some(selected_monitor_id));
@@ -69,65 +88,87 @@ pub fn enter(ctx: &mut WmCtx<'_>) {
         .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 
-pub fn exit_restore_previous_view(ctx: &mut WmCtx<'_>) {
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
-    let restore_mask = {
+fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
+    let state = {
         let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        mon.overview_restore_tags.take()
+        mon.overview_state.take()
     };
 
-    restore_all_floating(ctx, Some(selected_monitor_id));
+    let Some(state) = state else { return };
 
-    if let Some(mask) = restore_mask
-        && !mask.is_empty()
-    {
-        let _ = {
-            let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-            set_selected_tags_with_history(mon, mask)
-        };
+    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+
+    match mode {
+        ExitMode::RestorePrevious => {
+            let restore_mask = state.restore_tags;
+            restore_all_floating(ctx, Some(selected_monitor_id));
+
+            if !restore_mask.is_empty() {
+                let _ = {
+                    let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
+                    set_selected_tags_with_history(mon, restore_mask)
+                };
+            }
+
+            crate::focus::focus(ctx, None);
+        }
+        ExitMode::ToSelectedWindow => {
+            let selected_window = ctx.core().selected_client();
+            let selected_tags = selected_window.and_then(|win| {
+                ctx.core()
+                    .client(win)
+                    .map(|c| c.tags.without_scratchpad())
+                    .filter(|tags| !tags.is_empty())
+            });
+            let restore_mask = state.restore_tags;
+
+            restore_all_floating(ctx, Some(selected_monitor_id));
+
+            let target_mask = selected_tags.or(Some(restore_mask));
+            if let Some(mask) = target_mask
+                && !mask.is_empty()
+            {
+                let _ = {
+                    let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
+                    set_selected_tags_with_history(mon, mask)
+                };
+            }
+
+            if let Some(win) = selected_window {
+                crate::focus::focus(ctx, Some(win));
+            } else {
+                crate::focus::focus(ctx, None);
+            }
+        }
     }
 
-    crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 
-pub fn exit_to_selected_window(ctx: &mut WmCtx<'_>) {
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
-    let selected_window = ctx.core().selected_client();
-    let selected_tags = selected_window.and_then(|win| {
-        ctx.core()
-            .client(win)
-            .map(|c| c.tags.without_scratchpad())
-            .filter(|tags| !tags.is_empty())
-    });
-    let restore_mask = {
-        let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        mon.overview_restore_tags.take()
-    };
-
-    restore_all_floating(ctx, Some(selected_monitor_id));
-
-    let target_mask = selected_tags.or(restore_mask);
-    if let Some(mask) = target_mask
-        && !mask.is_empty()
-    {
-        let _ = {
-            let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-            set_selected_tags_with_history(mon, mask)
-        };
+pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
+    if is_active(ctx.core()) {
+        exit_overview(ctx, ExitMode::ToSelectedWindow);
+        ctx.request_bar_update();
+        return;
     }
 
-    if let Some(win) = selected_window {
-        crate::focus::focus(ctx, Some(win));
-    } else {
-        crate::focus::focus(ctx, None);
+    if ctx.core().globals().selected_monitor().clients.is_empty() {
+        return;
     }
 
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selected_monitor_id);
+    ctx.set_current_mode(OVERVIEW_MODE_NAME.to_string());
+    ctx.request_bar_update();
+}
+
+pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
+    if !is_active(ctx.core()) {
+        return;
+    }
+
+    ctx.reset_mode();
+    ctx.request_bar_update();
 }
 
 /// Arrange the selected monitor in overview mode.

@@ -53,7 +53,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
     apply_border_widths(ctx, &monitor_before_layout);
     {
-        let bar_height = ctx.core().globals().cfg.bar_height;
+        let bar_height = ctx.core().globals().cfg.bar.height;
         let mon = ctx
             .core_mut()
             .globals_mut()

@@ -14,25 +14,25 @@ pub(crate) fn draw_tag_indicators(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
-    let horizontal_padding = ctx.globals().cfg.horizontal_padding;
+    let horizontal_padding = ctx.globals().cfg.bar.horizontal_padding;
     let lpad = (horizontal_padding / 2) as u32;
     let bar_dragging = ctx.globals().drag.bar_active;
 
-    let tags = crate::tags::bar::visible_tags_ctx(ctx, m, occupied_tags);
+    let tags = crate::tags::bar::visible_tags(ctx, m, occupied_tags);
 
     let selmon_gesture = ctx.globals().selected_monitor().gesture;
 
-    for t in &tags {
+    for tag in &tags {
         // A tag cell is hovered when the current gesture is Tag(slot) for this cell's slot.
-        let is_hover = selmon_gesture == Gesture::Tag(t.slot);
+        let is_hover = selmon_gesture == Gesture::Tag(tag.slot);
 
-        let text_w = painter.text_width(t.label);
+        let text_w = painter.text_width(tag.label);
         let width = (text_w + horizontal_padding).max(horizontal_padding);
-        ctx.bar.cache_tag_width(t.slot, width);
+        ctx.bar.cache_tag_width(tag.slot, width);
 
-        let scheme = ctx
-            .globals()
-            .tag_scheme(m, t.tag_index as u32, occupied_tags, urg, is_hover);
+        let scheme =
+            ctx.globals()
+                .tag_scheme(m, tag.tag_index as u32, occupied_tags, urg, is_hover);
 
         let mut draw_scheme = scheme;
         if is_hover && bar_dragging {
@@ -49,8 +49,8 @@ pub(crate) fn draw_tag_indicators(
         x = painter.text(
             Rect::new(x, 0, width, bar_height),
             lpad as i32,
-            t.label,
-            urg.contains(t.tag_index + 1),
+            tag.label,
+            urg.contains(tag.tag_index + 1),
             detail_height,
         );
 
@@ -58,7 +58,7 @@ pub(crate) fn draw_tag_indicators(
             hit.tag_ranges.push(TagHitRange {
                 start: x - width,
                 end: x,
-                tag_index: t.tag_index,
+                tag_index: tag.tag_index,
             });
         }
     }
@@ -74,7 +74,7 @@ pub(crate) fn draw_layout_indicator(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> i32 {
-    let horizontal_padding = ctx.globals().cfg.horizontal_padding;
+    let horizontal_padding = ctx.globals().cfg.bar.horizontal_padding;
     let ltsymbol = if crate::overview::is_active_on_monitor(ctx, m) {
         "OVR".to_string()
     } else {
@@ -227,7 +227,7 @@ fn draw_window_title(
     let lpad = if text_w < width - 64 {
         ((width - text_w) as f32 * 0.5) as i32
     } else {
-        ctx.globals().cfg.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
+        ctx.globals().cfg.bar.horizontal_padding / 2 + if width >= 32 { 20 } else { 0 }
     };
 
     painter.text(

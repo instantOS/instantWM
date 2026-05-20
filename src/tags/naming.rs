@@ -43,8 +43,8 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         }
     }
 
-    let tagwidth = get_tag_width(ctx.core());
-    ctx.core_mut().globals_mut().tags.width = tagwidth;
+    let tag_width = get_tag_width(ctx.core());
+    ctx.core_mut().globals_mut().tags.width = tag_width;
     ctx.request_bar_update();
 }
 

@@ -31,9 +31,9 @@ use crate::types::*;
 /// Pair with [`restore_all_floating`] to round-trip positions across a layout
 /// change (e.g. entering / leaving overview mode).
 pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
-    let Some(mid) = monitor_id else { return };
+    let Some(mon_id) = monitor_id else { return };
 
-    let wins_to_save = collect_floating_wins(ctx.core().globals(), mid);
+    let wins_to_save = collect_floating_wins(ctx.core().globals(), mon_id);
     for win in wins_to_save {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             client.save_floating_geometry();
@@ -71,7 +71,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> V
         // Skip tags that have a tiling layout — only purely-floating tags matter.
         let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
         let tag_is_floating = mon
-            .pertag
+            .per_tag
             .get(&tag_mask.bits())
             .map(|s| !s.layouts.is_tiling())
             .unwrap_or(false);

@@ -42,19 +42,6 @@ impl ClientBarStats {
     }
 }
 
-/// Map a `BarPosition` to the `Gesture` used for hover highlighting.
-pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
-    match pos {
-        BarPosition::StartMenu => Gesture::StartMenu,
-        BarPosition::Tag(idx) => Gesture::Tag(idx),
-        BarPosition::CloseButton(_) => Gesture::CloseButton,
-        BarPosition::WinTitle(w) => Gesture::WinTitle(w),
-        BarPosition::SystrayItem(_) => Gesture::None,
-        BarPosition::SystrayMenuItem(_) => Gesture::None,
-        _ => Gesture::None,
-    }
-}
-
 /// Walk a `MonitorHitCache` to resolve a local-x coordinate into a `BarPosition`.
 /// This is the single source of truth for hit-testing; both the cached and the
 /// fallback paths go through here.
@@ -69,7 +56,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.globals().cfg.show_systray && is_selected_monitor {
+    if core.globals().cfg.systray.show && is_selected_monitor {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {
@@ -125,21 +112,23 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     use crate::bar::get_layout_symbol_width;
 
     let is_selmon = core.globals().selected_monitor().num == mon.num;
-    let tag_end = get_tag_width(core);
     let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
     let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
+    let occupied = mon.occupied_tags(core.globals().clients.map());
+    let visible = crate::tags::bar::visible_tags(core, mon, occupied);
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
     let mut acc = mon.startmenu_size;
-    for (slot, &w) in core.bar.tag_widths.iter().enumerate() {
+    for tag in &visible {
         tag_ranges.push(TagHitRange {
             start: acc,
-            end: acc + w,
-            tag_index: slot,
+            end: acc + tag.width,
+            tag_index: tag.tag_index,
         });
-        acc += w;
+        acc += tag.width;
     }
+    let tag_end = acc;
 
     // ── Layout symbol ─────────────────────────────────────────────────────
     let layout_start = tag_end;
@@ -149,7 +138,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.globals().cfg.show_systray && is_selmon {
+    let systray_w = if core.globals().cfg.systray.show && is_selmon {
         core.globals().bar_runtime.systray_width
     } else {
         0

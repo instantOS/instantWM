@@ -9,7 +9,7 @@ mod widgets;
 pub mod x11;
 mod x11_painter;
 
-pub use model::bar_position_to_gesture;
+pub(crate) use model::hit_test;
 pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 
@@ -209,12 +209,12 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
-    width + core.globals().cfg.horizontal_padding
+    width + core.globals().cfg.bar.horizontal_padding
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core().globals().selected_monitor().gesture != Gesture::None {
-        reset_bar_common(ctx.core_mut());
+        reset_bar_common(ctx.core_mut().globals_mut());
         ctx.request_bar_update();
     }
 }
@@ -231,7 +231,7 @@ pub fn resolve_bar_position_at_root(
     }
 
     let mon = core.globals().monitor(monitor_id)?;
-    let bar_h = core.globals().cfg.bar_height.max(1);
+    let bar_h = core.globals().cfg.bar.height.max(1);
     let in_bar = monitor_bar_visible(core.globals(), mon)
         && root.y >= mon.bar_y
         && root.y < mon.bar_y + bar_h;
@@ -286,7 +286,7 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        reset_bar_common(ctx.core_mut());
+        reset_bar_common(ctx.core_mut().globals_mut());
         ctx.request_bar_update();
     }
 
@@ -294,7 +294,7 @@ pub fn update_hover(
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
-        bar_position_to_gesture(pos)
+        pos.to_gesture()
     };
     if old_gesture != gesture {
         ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
@@ -306,7 +306,6 @@ pub fn update_hover(
 
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
     if crate::overview::is_active(ctx.core()) {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
         ctx.reset_mode();
         ctx.request_bar_update();
         return;
@@ -339,7 +338,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         local_x,
         root.y - selected_monitor.bar_y,
         button_code,
-        ctx.core().globals().cfg.bar_height,
+        ctx.core().globals().cfg.bar.height,
         clean_state,
     );
 }

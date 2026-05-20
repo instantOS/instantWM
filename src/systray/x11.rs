@@ -16,7 +16,7 @@ const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
-    if !core.globals().cfg.show_systray {
+    if !core.globals().cfg.systray.show {
         return 1;
     }
 
@@ -24,13 +24,13 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
     if let Some(systray) = systray {
         for &icon_win in &systray.icons {
             if let Some(c) = core.client(icon_win) {
-                w += c.geo.w as u32 + core.globals().cfg.systray_spacing as u32;
+                w += c.geo.w as u32 + core.globals().cfg.systray.spacing as u32;
             }
         }
     }
 
     if w > 0 {
-        w + core.globals().cfg.systray_spacing as u32
+        w + core.globals().cfg.systray.spacing as u32
     } else {
         1
     }
@@ -38,7 +38,7 @@ pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
 
 /// Remove systray icon using dependency injection.
 pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, icon_win: WindowId) {
-    if !core.globals().cfg.show_systray {
+    if !core.globals().cfg.systray.show {
         return;
     }
 
@@ -57,7 +57,7 @@ pub fn update_systray_icon_geom(
     w: i32,
     h: i32,
 ) {
-    let bar_height = core.globals().cfg.bar_height;
+    let bar_height = core.globals().cfg.bar.height;
 
     let (geo_x, geo_y) = core
         .globals()
@@ -107,7 +107,7 @@ pub fn update_systray_icon_state(
     icon_win: WindowId,
     ev: &PropertyNotifyEvent,
 ) {
-    if !core.globals().cfg.show_systray {
+    if !core.globals().cfg.systray.show {
         return;
     }
 
@@ -186,7 +186,7 @@ pub fn update_systray(
     x11_runtime: &X11RuntimeConfig,
     mut systray: Option<&mut Systray>,
 ) {
-    if !core.globals().cfg.show_systray {
+    if !core.globals().cfg.systray.show {
         return;
     }
 
@@ -220,7 +220,7 @@ pub fn update_systray(
 
     if !systray_exists {
         let root = x11_runtime.root;
-        let bar_height = core.globals().cfg.bar_height;
+        let bar_height = core.globals().cfg.bar.height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
@@ -312,8 +312,8 @@ pub fn update_systray(
         None => return,
     };
 
-    let bar_height = core.globals().cfg.bar_height;
-    let systrayspacing = core.globals().cfg.systray_spacing;
+    let bar_height = core.globals().cfg.bar.height;
+    let systrayspacing = core.globals().cfg.systray.spacing;
     let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, i32, i32)> = icons
@@ -399,7 +399,7 @@ pub fn win_to_systray_icon(
     systray: Option<&Systray>,
     win: WindowId,
 ) -> Option<WindowId> {
-    if !core.globals().cfg.show_systray {
+    if !core.globals().cfg.systray.show {
         return None;
     }
 
@@ -415,7 +415,7 @@ pub fn win_to_systray_icon(
 
 /// Get monitor for systray using dependency injection.
 pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
-    if core.globals().cfg.systray_pinning == 0 {
+    if core.globals().cfg.systray.pinning == 0 {
         return match m {
             Some(id) => {
                 if id == core.globals().selected_monitor_id() {
@@ -429,9 +429,9 @@ pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
     }
 
     let n = core.globals().monitors.count();
-    let target = core.globals().cfg.systray_pinning.min(n);
+    let target = core.globals().cfg.systray.pinning.min(n);
 
-    if core.globals().cfg.systray_pinning > n {
+    if core.globals().cfg.systray.pinning > n {
         MonitorId(0)
     } else {
         MonitorId(target.saturating_sub(1))

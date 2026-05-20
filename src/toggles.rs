@@ -4,13 +4,9 @@ use crate::globals::WmBehavior;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
-pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
-    action.apply(value);
-}
-
 fn toggled_bool(current: bool, action: ToggleAction) -> bool {
     let mut next = current;
-    ctrl_toggle(&mut next, action);
+    action.apply(&mut next);
     next
 }
 
@@ -45,7 +41,7 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.animated, action);
+    action.apply(&mut behavior.animated);
 }
 
 pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) {
@@ -70,11 +66,11 @@ pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
 }
 
 pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.focus_follows_mouse, action);
+    action.apply(&mut behavior.focus_follows_mouse);
 }
 
 pub fn toggle_focus_follows_float_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.focus_follows_float_mouse, action);
+    action.apply(&mut behavior.focus_follows_float_mouse);
 }
 
 pub fn toggle_double_draw(behavior: &mut WmBehavior) {
@@ -126,13 +122,16 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
-    if name == crate::overview::OVERVIEW_MODE_NAME
-        && !ctx.core().globals().selected_monitor().clients.is_empty()
-    {
-        ctx.with_behavior_mut(|behavior| behavior.overview_accept_selection_on_exit = false);
-    }
     let mode = toggle_mode_name(ctx.current_mode(), name);
-    ctx.set_current_mode(mode);
+    // Overview exit is handled by `exit_overview` (which updates
+    // `current_mode` directly) rather than `set_current_mode` to avoid
+    // calling `handle_mode_transition` a second time — the exit logic
+    // runs inside `exit_overview` itself.
+    if name == crate::overview::OVERVIEW_MODE_NAME && mode == "default" {
+        crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
+    } else {
+        ctx.set_current_mode(mode);
+    }
     if let WmCtx::X11(x11) = ctx {
         crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
     }
@@ -149,10 +148,10 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         tmp_no_anim = true;
     }
 
-    let bar_height = ctx.core().globals().cfg.bar_height;
+    let bar_height = ctx.core().globals().cfg.bar.height;
     let selmon = ctx.core_mut().globals_mut().selected_monitor_mut();
     selmon.pertag_state().showbar = !selmon.pertag_state().showbar;
-    selmon.showbar = selmon.pertag_state().showbar;
+    selmon.show_bar = selmon.pertag_state().showbar;
 
     selmon.update_bar_position(bar_height);
 

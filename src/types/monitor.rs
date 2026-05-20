@@ -116,9 +116,9 @@ pub struct Monitor {
     /// Number of clients on this monitor.
     pub clientcount: u32,
     /// Whether to show the bar.
-    pub showbar: bool,
+    pub show_bar: bool,
     /// Whether the bar is at the top.
-    pub topbar: bool,
+    pub top_bar: bool,
     /// Current gesture state.
     pub gesture: Gesture,
     /// Bar window handle.
@@ -142,9 +142,9 @@ pub struct Monitor {
     /// visible below it.
     pub tag_tiled_focus_history: HashMap<u32, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
-    pub pertag: HashMap<u32, PertagState>,
-    /// Tag mask to restore when leaving overview mode.
-    pub overview_restore_tags: Option<TagMask>,
+    pub per_tag: HashMap<u32, PertagState>,
+    /// Overview mode state.
+    pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
     pub z_order: ClientZOrder,
     /// Currently maximized client.
@@ -173,8 +173,8 @@ impl Default for Monitor {
             activeoffset: 0,
             titleoffset: 0,
             clientcount: 0,
-            showbar: true,
-            topbar: true,
+            show_bar: true,
+            top_bar: true,
             gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: false,
@@ -184,8 +184,8 @@ impl Default for Monitor {
             sel: None,
             tag_focus_history: HashMap::new(),
             tag_tiled_focus_history: HashMap::new(),
-            pertag: HashMap::new(),
-            overview_restore_tags: None,
+            per_tag: HashMap::new(),
+            overview_state: None,
             z_order: ClientZOrder::default(),
             maximized: None,
             name: String::new(),
@@ -197,11 +197,11 @@ impl Monitor {
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
-    pub fn new_with_values(showbar: bool, topbar: bool) -> Self {
+    pub fn new_with_values(show_bar: bool, top_bar: bool) -> Self {
         Self {
-            showbar,
-            topbar,
-            pertag: HashMap::new(),
+            show_bar,
+            top_bar,
+            per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             clientcount: 0,
             prev_tag: Some(1),
@@ -237,12 +237,6 @@ impl Monitor {
         self.tag_set[self.sel_tags as usize] = mask;
     }
 
-    /// Get the currently selected tags for this monitor as raw bits.
-    #[inline]
-    pub fn selected_tags_bits(&self) -> u32 {
-        self.tag_set[self.sel_tags as usize].bits()
-    }
-
     /// Set the currently selected tags for this monitor from raw bits.
     #[inline]
     pub fn set_selected_tags_bits(&mut self, mask: u32) {
@@ -252,20 +246,14 @@ impl Monitor {
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
         let mask = self.selected_tags().bits();
-        let default_showbar = self.showbar;
-        self.pertag
+        let default_showbar = self.show_bar;
+        self.per_tag
             .entry(mask)
             .or_insert_with(|| PertagState::new(default_showbar))
     }
 
-    /// Get the currently selected tags as a type-safe mask.
     #[inline]
-    pub fn selected_tag_mask(&self) -> TagMask {
-        self.selected_tags()
-    }
-
-    #[inline]
-    pub fn current_tag_index(&self) -> Option<usize> {
+    pub fn current_tag_number(&self) -> Option<usize> {
         let selected = self.selected_tags();
         if selected.is_single() {
             selected.first_tag()
@@ -425,15 +413,15 @@ impl Monitor {
 
     /// Returns showbar state for the given tag mask.
     pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
-        self.pertag
+        self.per_tag
             .get(&mask.bits())
             .map(|s| s.showbar)
-            .unwrap_or(self.showbar)
+            .unwrap_or(self.show_bar)
     }
 
     /// Returns layout state for the given tag mask (immutable lookup).
     pub fn layouts_for_mask(&self, mask: TagMask) -> TagLayouts {
-        self.pertag
+        self.per_tag
             .get(&mask.bits())
             .map(|s| s.layouts)
             .unwrap_or_default()
@@ -446,7 +434,7 @@ impl Monitor {
 
     /// Get the current tag name data for this monitor.
     pub fn current_tag(&self) -> Option<&TagNames> {
-        let idx = self.current_tag_index()?;
+        let idx = self.current_tag_number()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&self.tags[idx - 1])
         } else {
@@ -456,7 +444,7 @@ impl Monitor {
 
     /// Get a mutable reference to the current tag name data.
     pub fn current_tag_mut(&mut self) -> Option<&mut TagNames> {
-        let idx = self.current_tag_index()?;
+        let idx = self.current_tag_number()?;
         if idx > 0 && idx <= self.tags.len() {
             Some(&mut self.tags[idx - 1])
         } else {
@@ -496,13 +484,13 @@ impl Monitor {
         self.bar_height = bar_height.max(0);
         let safe_bh = self.bar_height.min(self.monitor_rect.h.max(0));
         if self.pertag_state().showbar {
-            self.work_rect.y = if self.topbar {
+            self.work_rect.y = if self.top_bar {
                 self.monitor_rect.y + safe_bh
             } else {
                 self.monitor_rect.y
             };
             self.work_rect.h = (self.monitor_rect.h - safe_bh).max(1);
-            self.bar_y = if self.topbar {
+            self.bar_y = if self.top_bar {
                 self.monitor_rect.y
             } else {
                 self.monitor_rect.y + self.monitor_rect.h - safe_bh
@@ -510,7 +498,7 @@ impl Monitor {
         } else {
             self.work_rect.y = self.monitor_rect.y;
             self.work_rect.h = self.monitor_rect.h.max(1);
-            self.bar_y = if self.topbar {
+            self.bar_y = if self.top_bar {
                 -safe_bh
             } else {
                 self.monitor_rect.h.max(0)
@@ -595,7 +583,7 @@ impl Monitor {
     pub fn tag_index_for_slot(&self, slot: usize) -> usize {
         const MAX_BAR_SLOTS: usize = 9;
         if slot == MAX_BAR_SLOTS - 1
-            && let Some(current_tag) = self.current_tag_index()
+            && let Some(current_tag) = self.current_tag_number()
             && current_tag > MAX_BAR_SLOTS
         {
             current_tag - 1
@@ -789,16 +777,16 @@ mod tests {
         let mut monitor = Monitor::default();
 
         monitor.set_selected_tags(TagMask::single(3).unwrap());
-        assert_eq!(monitor.current_tag_index(), Some(3));
+        assert_eq!(monitor.current_tag_number(), Some(3));
 
         monitor.set_selected_tags(
             TagMask::single(2).unwrap_or(TagMask::EMPTY)
                 | TagMask::single(3).unwrap_or(TagMask::EMPTY),
         );
-        assert_eq!(monitor.current_tag_index(), None);
+        assert_eq!(monitor.current_tag_number(), None);
 
         monitor.set_selected_tags(TagMask::EMPTY);
-        assert_eq!(monitor.current_tag_index(), None);
+        assert_eq!(monitor.current_tag_number(), None);
     }
 
     #[test]

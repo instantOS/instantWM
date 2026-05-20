@@ -27,12 +27,12 @@ pub(crate) struct VisibleTag<'a> {
     pub width: i32,
 }
 
-pub(crate) fn visible_tags_ctx<'a>(
+pub(crate) fn visible_tags<'a>(
     core: &CoreCtx,
     monitor: &'a Monitor,
     occupied: TagMask,
 ) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = core.globals().cfg.horizontal_padding;
+    let horizontal_padding = core.globals().cfg.bar.horizontal_padding;
     let show_alt = core.globals().tags.show_alternative_names;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
@@ -79,15 +79,15 @@ pub(crate) fn visible_tags_ctx<'a>(
 pub fn get_tag_width(core: &CoreCtx) -> i32 {
     let m = core.globals().selected_monitor();
     if m.tags.is_empty() {
-        return core.globals().cfg.startmenusize;
+        return core.globals().cfg.bar.startmenu_size;
     }
 
     let occupied = m.occupied_tags(core.globals().clients.map());
-    let tags_width: i32 = visible_tags_ctx(core, m, occupied)
+    let tags_width: i32 = visible_tags(core, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
-    core.globals().cfg.startmenusize + tags_width
+    core.globals().cfg.bar.startmenu_size + tags_width
 }
 
 /// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
@@ -100,8 +100,8 @@ pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
     }
 
     let occupied = m.occupied_tags(core.globals().clients.map());
-    let mut acc = core.globals().cfg.startmenusize;
-    for t in visible_tags_ctx(core, m, occupied) {
+    let mut acc = core.globals().cfg.bar.startmenu_size;
+    for t in visible_tags(core, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;

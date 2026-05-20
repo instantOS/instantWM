@@ -12,7 +12,7 @@ use crate::types::{MouseButton, Point as RootPoint};
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{handle_wayland_bar_click, wayland_button_to_mouse_button};
+use crate::wayland::input::bar::handle_wayland_bar_click;
 use crate::wayland::input::pointer::drag::{
     wayland_hover_resize_drag_begin, wayland_hover_resize_drag_finish,
 };
@@ -33,7 +33,7 @@ pub fn handle_pointer_button_raw(
         pointer_location.x.round() as i32,
         pointer_location.y.round() as i32,
     );
-    let wm_button = wayland_button_to_mouse_button(button);
+    let wm_button = MouseButton::from_wayland_code(button);
 
     let button = ButtonPress {
         serial,
@@ -76,7 +76,7 @@ pub fn handle_pointer_button<B: InputBackend>(
         pointer_location.x.round() as i32,
         pointer_location.y.round() as i32,
     );
-    let wm_button = wayland_button_to_mouse_button(event.button_code());
+    let wm_button = MouseButton::from_wayland_code(event.button_code());
 
     let button = ButtonPress {
         serial,
