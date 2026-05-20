@@ -95,6 +95,7 @@ pub mod draw;
 pub mod events;
 pub mod floating;
 pub mod grab;
+pub mod keyboard;
 pub mod lifecycle;
 pub mod mouse;
 pub mod properties;

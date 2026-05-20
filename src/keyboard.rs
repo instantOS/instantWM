@@ -11,16 +11,6 @@ use crate::types::{Direction, StackDirection, VerticalDirection};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> u32 {
-    if let Ok(cookie) = conn.get_keyboard_mapping(keycode, 1)
-        && let Ok(reply) = cookie.reply()
-        && index < reply.keysyms_per_keycode as usize
-    {
-        return reply.keysyms[index];
-    }
-    0
-}
-
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
@@ -138,7 +128,7 @@ fn resolve_key_action(
 pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
-    let keysym = keycode_to_keysym(ctx.x11.conn, keycode, 0);
+    let keysym = crate::backend::x11::keyboard::keycode_to_keysym(ctx.x11.conn, keycode, 0);
     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
     let _ = handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
 }

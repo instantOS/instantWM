@@ -129,7 +129,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     };
 
     if let Some(btn) = MouseButton::from_x11_detail(e.detail) {
-        crate::mouse::bindings::run_all(
+        crate::mouse::bindings::run_matching(
             &mut WmCtx::X11(ctx.reborrow()),
             crate::mouse::bindings::ButtonBindingEvent {
                 target: button_target,
@@ -139,6 +139,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
                 clean_state,
             },
             numlockmask,
+            crate::mouse::bindings::MatchPolicy::All,
         );
     }
 }

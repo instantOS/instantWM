@@ -97,8 +97,6 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 
 // ── draw_window ───────────────────────────────────────────────────────────────
 
-// ── draw_window ───────────────────────────────────────────────────────────────
-
 /// Let the user draw a rectangle with `instantslop` and resize the focused
 /// window to that rectangle.
 ///

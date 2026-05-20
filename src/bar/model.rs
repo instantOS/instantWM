@@ -1,7 +1,6 @@
 use crate::bar::{MonitorHitCache, TagHitRange, TitleHitRange};
 use crate::contexts::CoreCtx;
 use crate::globals::Globals;
-use crate::tags::get_tag_width;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, Default)]

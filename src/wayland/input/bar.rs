@@ -112,7 +112,7 @@ fn run_wayland_bar_bindings(
     clean_state: u32,
 ) {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    crate::mouse::bindings::run_all(
+    crate::mouse::bindings::run_matching(
         &mut wm_ctx,
         crate::mouse::bindings::ButtonBindingEvent {
             target: ButtonTarget::Bar(pos),
@@ -122,5 +122,6 @@ fn run_wayland_bar_bindings(
             clean_state,
         },
         0,
+        crate::mouse::bindings::MatchPolicy::All,
     );
 }
