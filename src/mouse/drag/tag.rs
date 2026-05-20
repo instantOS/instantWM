@@ -4,7 +4,7 @@
 //! windows between tags.
 
 use crate::backend::x11::grab::mouse_drag_loop;
-use crate::bar::bar_position_to_gesture;
+use crate::bar::hit_test;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::cursor::set_cursor_style;
 use crate::types::*;
@@ -104,7 +104,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         core.globals()
             .monitors
             .get(selmon_id)
-            .map(|mon| bar_position_to_gesture(mon.bar_position_at_x(core, local_x)))
+            .map(|mon| mon.bar_position_at_x(core, local_x).to_gesture())
             .unwrap_or(Gesture::None)
     };
     let gesture_key = match new_gesture {

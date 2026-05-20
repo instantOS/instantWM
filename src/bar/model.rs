@@ -42,19 +42,6 @@ impl ClientBarStats {
     }
 }
 
-/// Map a `BarPosition` to the `Gesture` used for hover highlighting.
-pub fn bar_position_to_gesture(pos: BarPosition) -> Gesture {
-    match pos {
-        BarPosition::StartMenu => Gesture::StartMenu,
-        BarPosition::Tag(idx) => Gesture::Tag(idx),
-        BarPosition::CloseButton(_) => Gesture::CloseButton,
-        BarPosition::WinTitle(w) => Gesture::WinTitle(w),
-        BarPosition::SystrayItem(_) => Gesture::None,
-        BarPosition::SystrayMenuItem(_) => Gesture::None,
-        _ => Gesture::None,
-    }
-}
-
 /// Walk a `MonitorHitCache` to resolve a local-x coordinate into a `BarPosition`.
 /// This is the single source of truth for hit-testing; both the cached and the
 /// fallback paths go through here.

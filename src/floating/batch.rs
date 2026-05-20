@@ -71,7 +71,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> V
         // Skip tags that have a tiling layout — only purely-floating tags matter.
         let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
         let tag_is_floating = mon
-            .pertag
+            .per_tag
             .get(&tag_mask.bits())
             .map(|s| !s.layouts.is_tiling())
             .unwrap_or(false);

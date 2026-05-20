@@ -35,6 +35,16 @@ impl MouseButton {
         }
     }
 
+    /// Convert from a Wayland button code (Linux input event codes).
+    pub fn from_wayland_code(code: u32) -> Option<Self> {
+        match code {
+            0x110 => Some(Self::Left),
+            0x112 => Some(Self::Middle),
+            0x111 => Some(Self::Right),
+            _ => None,
+        }
+    }
+
     /// Convert to an X11 button detail value.
     pub fn to_x11_detail(self) -> u8 {
         match self {
@@ -126,6 +136,17 @@ impl BarPosition {
             _ => None,
         }
     }
+
+    /// Map this position to the `Gesture` used for hover highlighting.
+    pub fn to_gesture(self) -> Gesture {
+        match self {
+            Self::StartMenu => Gesture::StartMenu,
+            Self::Tag(idx) => Gesture::Tag(idx),
+            Self::CloseButton(_) => Gesture::CloseButton,
+            Self::WinTitle(w) => Gesture::WinTitle(w),
+            _ => Gesture::None,
+        }
+    }
 }
 
 /// Describes which interactive bar region the cursor is hovering over.
@@ -200,6 +221,24 @@ pub enum SnapPosition {
     TopLeft,
     /// Maximized.
     Maximized,
+}
+
+impl SnapPosition {
+    /// Convert this snap position to a numeric index for matrix lookup.
+    pub fn to_index(self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::Top => 1,
+            Self::TopRight => 2,
+            Self::Right => 3,
+            Self::BottomRight => 4,
+            Self::Bottom => 5,
+            Self::BottomLeft => 6,
+            Self::Left => 7,
+            Self::TopLeft => 8,
+            Self::Maximized => 9,
+        }
+    }
 }
 
 /// Direction for window resize operations.

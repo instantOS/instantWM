@@ -156,7 +156,7 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
                 let mode_strings = data.backend.list_display_modes(display_name);
                 mode_strings
                     .iter()
-                    .filter_map(|s| parse_mode_string(s))
+                    .filter_map(|s| crate::ipc_types::MonitorMode::from_str(s))
                     .collect()
             }
             crate::backend::Backend::X11(_) => {
@@ -175,21 +175,6 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
     }
 
     Response::MonitorModes(all_modes)
-}
-
-/// Parse a mode string like "1920x1080@60.000" into a MonitorMode
-fn parse_mode_string(s: &str) -> Option<crate::ipc_types::MonitorMode> {
-    let (res, rate_str) = s.split_once('@')?;
-    let (w, h) = res.split_once('x')?;
-    let width: u32 = w.parse().ok()?;
-    let height: u32 = h.parse().ok()?;
-    let rate_hz: f64 = rate_str.parse().ok()?;
-    let refresh_mhz = (rate_hz * 1000.0) as u32;
-    Some(crate::ipc_types::MonitorMode {
-        width,
-        height,
-        refresh_mhz,
-    })
 }
 
 /// Get modes for a display using xrandr (X11 fallback)

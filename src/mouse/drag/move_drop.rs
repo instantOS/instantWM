@@ -4,7 +4,7 @@
 //! This module contains the core logic for moving windows with the mouse,
 //! including bar hover handling, edge snapping, and drop completion.
 
-use crate::bar::bar_position_to_gesture;
+use crate::bar::hit_test;
 use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
@@ -201,7 +201,7 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
             let core = ctx.core();
             let mon = core.globals().selected_monitor();
             let local_x = root.x - mon.work_rect.x;
-            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+            mon.bar_position_at_x(core, local_x).to_gesture()
         };
 
         let gesture_changed = ctx.core().globals().selected_monitor().gesture != new_gesture;
@@ -234,7 +234,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
             let core = ctx.core();
             let mon = core.globals().selected_monitor();
             let local_x = root.x - mon.work_rect.x;
-            bar_position_to_gesture(mon.bar_position_at_x(core, local_x))
+            mon.bar_position_at_x(core, local_x).to_gesture()
         };
         let gesture_changed = ctx.core().globals().selected_monitor().gesture != new_gesture;
         if !was_on_bar || gesture_changed {

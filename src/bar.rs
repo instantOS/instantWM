@@ -9,7 +9,7 @@ mod widgets;
 pub mod x11;
 mod x11_painter;
 
-pub use model::bar_position_to_gesture;
+pub(crate) use model::{build_fallback_hit_cache, hit_test};
 pub use renderer::reset_bar_common;
 pub use x11::resize_bar_win;
 
@@ -294,7 +294,7 @@ pub fn update_hover(
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
-        bar_position_to_gesture(pos)
+        pos.to_gesture()
     };
     if old_gesture != gesture {
         ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;

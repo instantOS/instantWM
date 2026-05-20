@@ -37,22 +37,6 @@ impl Default for WindowConfig {
     }
 }
 
-/// Tiling layout parameters (initial values; per-monitor state lives elsewhere).
-#[derive(Clone)]
-pub struct LayoutConfig {
-    pub mfact: f32,
-    pub nmaster: i32,
-}
-
-impl Default for LayoutConfig {
-    fn default() -> Self {
-        Self {
-            mfact: 0.55,
-            nmaster: 1,
-        }
-    }
-}
-
 /// Status bar settings.
 #[derive(Clone)]
 pub struct BarConfig {
@@ -123,7 +107,6 @@ pub struct FontConfig {
 pub struct RuntimeConfig {
     pub display: DisplayConfig,
     pub window: WindowConfig,
-    pub layout: LayoutConfig,
     pub bar: BarConfig,
     pub systray: SystrayConfig,
     pub colors: ColorConfig,
@@ -145,7 +128,6 @@ impl Default for RuntimeConfig {
         Self {
             display: DisplayConfig::default(),
             window: WindowConfig::default(),
-            layout: LayoutConfig::default(),
             bar: BarConfig::default(),
             systray: SystrayConfig::default(),
             colors: ColorConfig::default(),
@@ -168,7 +150,6 @@ impl Clone for RuntimeConfig {
         Self {
             display: self.display.clone(),
             window: self.window.clone(),
-            layout: self.layout.clone(),
             bar: self.bar.clone(),
             systray: self.systray.clone(),
             colors: self.colors.clone(),
@@ -872,8 +853,6 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.bar.height = cfg.bar_height;
     g.cfg.window.resizehints = cfg.resize_hints;
     g.cfg.window.decorhints = cfg.decorhints;
-    g.cfg.layout.mfact = cfg.mfact;
-    g.cfg.layout.nmaster = cfg.nmaster;
 
     g.cfg.colors.window = cfg.window_colors.clone();
     g.cfg.colors.close_button = cfg.closebuttoncolors.clone();

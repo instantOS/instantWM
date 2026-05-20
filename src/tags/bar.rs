@@ -27,7 +27,7 @@ pub(crate) struct VisibleTag<'a> {
     pub width: i32,
 }
 
-pub(crate) fn visible_tags_ctx<'a>(
+pub(crate) fn visible_tags<'a>(
     core: &CoreCtx,
     monitor: &'a Monitor,
     occupied: TagMask,
@@ -83,7 +83,7 @@ pub fn get_tag_width(core: &CoreCtx) -> i32 {
     }
 
     let occupied = m.occupied_tags(core.globals().clients.map());
-    let tags_width: i32 = visible_tags_ctx(core, m, occupied)
+    let tags_width: i32 = visible_tags(core, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
@@ -101,7 +101,7 @@ pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
 
     let occupied = m.occupied_tags(core.globals().clients.map());
     let mut acc = core.globals().cfg.bar.startmenu_size;
-    for t in visible_tags_ctx(core, m, occupied) {
+    for t in visible_tags(core, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;

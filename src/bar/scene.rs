@@ -138,7 +138,7 @@ pub(crate) fn build_monitor_snapshots(
             Gesture::None
         };
         let mut tags = Vec::new();
-        for tag in crate::tags::bar::visible_tags_ctx(core, &mon, stats.occupied_tags) {
+        for tag in crate::tags::bar::visible_tags(core, &mon, stats.occupied_tags) {
             let is_hover = gesture == Gesture::Tag(tag.slot);
             let mut scheme = core.globals().tag_scheme(
                 &mon,

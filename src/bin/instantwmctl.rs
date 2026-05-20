@@ -1,7 +1,7 @@
 mod ctl;
 
 use clap::Parser;
-use ctl::{Cli, IpcClient, command_to_ipc, format_response, get_default_socket};
+use ctl::{Cli, IpcClient, format_response, get_default_socket};
 use instantwm::ipc_types::IpcCommand;
 
 #[cfg(test)]
@@ -92,7 +92,8 @@ mod tests {
 
     #[test]
     fn scratchpad_show_defaults_name_when_omitted() {
-        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "scratchpad", "show"]).command);
+        let cmd: IpcCommand =
+            Cli::parse_from(["instantwmctl", "scratchpad", "show"]).command.into();
 
         assert!(matches!(
             cmd,
@@ -103,7 +104,8 @@ mod tests {
 
     #[test]
     fn scratchpad_hide_defaults_name_when_omitted() {
-        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "scratchpad", "hide"]).command);
+        let cmd: IpcCommand =
+            Cli::parse_from(["instantwmctl", "scratchpad", "hide"]).command.into();
 
         assert!(matches!(
             cmd,
@@ -114,7 +116,8 @@ mod tests {
 
     #[test]
     fn parses_window_info_command() {
-        let cmd = command_to_ipc(Cli::parse_from(["instantwmctl", "window", "info", "42"]).command);
+        let cmd: IpcCommand =
+            Cli::parse_from(["instantwmctl", "window", "info", "42"]).command.into();
 
         assert!(matches!(
             cmd,
@@ -124,25 +127,24 @@ mod tests {
 
     #[test]
     fn parses_window_resize_command() {
-        let cmd = command_to_ipc(
-            Cli::parse_from([
-                "instantwmctl",
-                "window",
-                "resize",
-                "42",
-                "--monitor",
-                "1",
-                "--x",
-                "10",
-                "--y",
-                "20",
-                "--width",
-                "800",
-                "--height",
-                "600",
-            ])
-            .command,
-        );
+        let cmd: IpcCommand = Cli::parse_from([
+            "instantwmctl",
+            "window",
+            "resize",
+            "42",
+            "--monitor",
+            "1",
+            "--x",
+            "10",
+            "--y",
+            "20",
+            "--width",
+            "800",
+            "--height",
+            "600",
+        ])
+        .command
+        .into();
 
         assert!(matches!(
             cmd,
@@ -159,22 +161,21 @@ mod tests {
 
     #[test]
     fn parses_window_resize_without_monitor() {
-        let cmd = command_to_ipc(
-            Cli::parse_from([
-                "instantwmctl",
-                "window",
-                "resize",
-                "--x",
-                "10",
-                "--y",
-                "20",
-                "--width",
-                "800",
-                "--height",
-                "600",
-            ])
-            .command,
-        );
+        let cmd: IpcCommand = Cli::parse_from([
+            "instantwmctl",
+            "window",
+            "resize",
+            "--x",
+            "10",
+            "--y",
+            "20",
+            "--width",
+            "800",
+            "--height",
+            "600",
+        ])
+        .command
+        .into();
 
         assert!(matches!(
             cmd,
@@ -226,7 +227,7 @@ fn main() {
                 args: args.clone(),
             }
         }
-        _ => command_to_ipc(cli.command.clone()),
+        _ => cli.command.clone().into(),
     };
 
     if let IpcCommand::UpdateStatus(text) = &command

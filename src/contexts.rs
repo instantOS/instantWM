@@ -355,7 +355,7 @@ impl<'a> WmCtx<'a> {
                 && ptr.y < c.geo.y + c.geo.h + c.border_width * 2);
 
         let on_bar = c.monitor(self.core().globals()).is_some_and(|mon| {
-            (ptr.y > mon.bar_y && ptr.y < mon.bar_y + bar_height) || (mon.topbar && ptr.y == 0)
+            (ptr.y > mon.bar_y && ptr.y < mon.bar_y + bar_height) || (mon.top_bar && ptr.y == 0)
         });
 
         if in_window || on_bar {

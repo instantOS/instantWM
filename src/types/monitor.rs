@@ -116,9 +116,9 @@ pub struct Monitor {
     /// Number of clients on this monitor.
     pub clientcount: u32,
     /// Whether to show the bar.
-    pub showbar: bool,
+    pub show_bar: bool,
     /// Whether the bar is at the top.
-    pub topbar: bool,
+    pub top_bar: bool,
     /// Current gesture state.
     pub gesture: Gesture,
     /// Bar window handle.
@@ -142,7 +142,7 @@ pub struct Monitor {
     /// visible below it.
     pub tag_tiled_focus_history: HashMap<u32, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
-    pub pertag: HashMap<u32, PertagState>,
+    pub per_tag: HashMap<u32, PertagState>,
     /// Tag mask to restore when leaving overview mode.
     pub overview_restore_tags: Option<TagMask>,
     /// Persistent client z-order.
@@ -173,8 +173,8 @@ impl Default for Monitor {
             activeoffset: 0,
             titleoffset: 0,
             clientcount: 0,
-            showbar: true,
-            topbar: true,
+            show_bar: true,
+            top_bar: true,
             gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: false,
@@ -184,7 +184,7 @@ impl Default for Monitor {
             sel: None,
             tag_focus_history: HashMap::new(),
             tag_tiled_focus_history: HashMap::new(),
-            pertag: HashMap::new(),
+            per_tag: HashMap::new(),
             overview_restore_tags: None,
             z_order: ClientZOrder::default(),
             maximized: None,
@@ -197,11 +197,11 @@ impl Monitor {
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
-    pub fn new_with_values(showbar: bool, topbar: bool) -> Self {
+    pub fn new_with_values(show_bar: bool, top_bar: bool) -> Self {
         Self {
-            showbar,
-            topbar,
-            pertag: HashMap::new(),
+            show_bar,
+            top_bar,
+            per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             clientcount: 0,
             prev_tag: Some(1),
@@ -252,8 +252,8 @@ impl Monitor {
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
         let mask = self.selected_tags().bits();
-        let default_showbar = self.showbar;
-        self.pertag
+        let default_showbar = self.show_bar;
+        self.per_tag
             .entry(mask)
             .or_insert_with(|| PertagState::new(default_showbar))
     }
@@ -425,15 +425,15 @@ impl Monitor {
 
     /// Returns showbar state for the given tag mask.
     pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
-        self.pertag
+        self.per_tag
             .get(&mask.bits())
             .map(|s| s.showbar)
-            .unwrap_or(self.showbar)
+            .unwrap_or(self.show_bar)
     }
 
     /// Returns layout state for the given tag mask (immutable lookup).
     pub fn layouts_for_mask(&self, mask: TagMask) -> TagLayouts {
-        self.pertag
+        self.per_tag
             .get(&mask.bits())
             .map(|s| s.layouts)
             .unwrap_or_default()
@@ -496,13 +496,13 @@ impl Monitor {
         self.bar_height = bar_height.max(0);
         let safe_bh = self.bar_height.min(self.monitor_rect.h.max(0));
         if self.pertag_state().showbar {
-            self.work_rect.y = if self.topbar {
+            self.work_rect.y = if self.top_bar {
                 self.monitor_rect.y + safe_bh
             } else {
                 self.monitor_rect.y
             };
             self.work_rect.h = (self.monitor_rect.h - safe_bh).max(1);
-            self.bar_y = if self.topbar {
+            self.bar_y = if self.top_bar {
                 self.monitor_rect.y
             } else {
                 self.monitor_rect.y + self.monitor_rect.h - safe_bh
@@ -510,7 +510,7 @@ impl Monitor {
         } else {
             self.work_rect.y = self.monitor_rect.y;
             self.work_rect.h = self.monitor_rect.h.max(1);
-            self.bar_y = if self.topbar {
+            self.bar_y = if self.top_bar {
                 -safe_bh
             } else {
                 self.monitor_rect.h.max(0)

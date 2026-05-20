@@ -332,8 +332,9 @@ pub struct Cli {
     pub command: CommandKind,
 }
 
-pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
-    match command {
+impl From<CommandKind> for IpcCommand {
+    fn from(command: CommandKind) -> Self {
+        match command {
         CommandKind::Action {
             name,
             args,
@@ -589,4 +590,5 @@ pub fn command_to_ipc(command: CommandKind) -> IpcCommand {
         CommandKind::Config { .. } => unreachable!("config is handled locally"),
         CommandKind::Quit => IpcCommand::Quit,
     }
+}
 }

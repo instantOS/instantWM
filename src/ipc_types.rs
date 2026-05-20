@@ -331,8 +331,8 @@ pub struct GeometryInfo {
     pub height: i32,
 }
 
-impl GeometryInfo {
-    pub fn from_rect(rect: crate::types::Rect) -> Self {
+impl From<crate::types::Rect> for GeometryInfo {
+    fn from(rect: crate::types::Rect) -> Self {
         Self {
             x: rect.x,
             y: rect.y,
@@ -353,8 +353,8 @@ pub struct WindowState {
     pub never_focus: bool,
 }
 
-impl WindowState {
-    pub fn from_client(c: &crate::types::client::Client) -> Self {
+impl From<&crate::types::client::Client> for WindowState {
+    fn from(c: &crate::types::client::Client) -> Self {
         Self {
             mode: c.mode,
             sticky: c.is_sticky,
@@ -387,13 +387,15 @@ pub struct SizeHintsInfo {
     pub height_increment: Option<i32>,
 }
 
-impl SizeHintsInfo {
-    pub fn from_client(c: &crate::types::client::Client) -> Option<Self> {
+impl TryFrom<&crate::types::client::Client> for SizeHintsInfo {
+    type Error = ();
+
+    fn try_from(c: &crate::types::client::Client) -> Result<Self, Self::Error> {
         if !c.size_hints_dirty {
-            return None;
+            return Err(());
         }
         let h = &c.size_hints;
-        Some(Self {
+        Ok(Self {
             min_width: (h.minw > 0).then_some(h.minw),
             min_height: (h.minh > 0).then_some(h.minh),
             max_width: (h.maxw > 0).then_some(h.maxw),
@@ -434,11 +436,11 @@ impl WindowInfo {
             protocol,
             monitor: c.monitor_id.index(),
             tags: c.tags & valid_tag_mask,
-            geometry: GeometryInfo::from_rect(c.geo),
+            geometry: c.geo.into(),
             border_width: c.border_width,
-            state: WindowState::from_client(c),
+            state: c.into(),
             scratchpad: ScratchpadInfo::from_client(c),
-            size_hints: SizeHintsInfo::from_client(c),
+            size_hints: SizeHintsInfo::try_from(c).ok(),
         }
     }
 }
@@ -472,6 +474,23 @@ pub struct MonitorMode {
     pub width: u32,
     pub height: u32,
     pub refresh_mhz: u32,
+}
+
+impl MonitorMode {
+    /// Parse a mode string like "1920x1080@60.000" into a MonitorMode.
+    pub fn from_str(s: &str) -> Option<Self> {
+        let (res, rate_str) = s.split_once('@')?;
+        let (w, h) = res.split_once('x')?;
+        let width: u32 = w.parse().ok()?;
+        let height: u32 = h.parse().ok()?;
+        let rate_hz: f64 = rate_str.parse().ok()?;
+        let refresh_mhz = (rate_hz * 1000.0) as u32;
+        Some(Self {
+            width,
+            height,
+            refresh_mhz,
+        })
+    }
 }
 
 /// Modes for a specific display.

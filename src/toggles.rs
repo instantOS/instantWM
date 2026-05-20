@@ -4,13 +4,9 @@ use crate::globals::WmBehavior;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
-pub fn ctrl_toggle(value: &mut bool, action: ToggleAction) {
-    action.apply(value);
-}
-
 fn toggled_bool(current: bool, action: ToggleAction) -> bool {
     let mut next = current;
-    ctrl_toggle(&mut next, action);
+    action.apply(&mut next);
     next
 }
 
@@ -45,7 +41,7 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.animated, action);
+    action.apply(&mut behavior.animated);
 }
 
 pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) {
@@ -70,11 +66,11 @@ pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
 }
 
 pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.focus_follows_mouse, action);
+    action.apply(&mut behavior.focus_follows_mouse);
 }
 
 pub fn toggle_focus_follows_float_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    ctrl_toggle(&mut behavior.focus_follows_float_mouse, action);
+    action.apply(&mut behavior.focus_follows_float_mouse);
 }
 
 pub fn toggle_double_draw(behavior: &mut WmBehavior) {
@@ -152,7 +148,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     let bar_height = ctx.core().globals().cfg.bar.height;
     let selmon = ctx.core_mut().globals_mut().selected_monitor_mut();
     selmon.pertag_state().showbar = !selmon.pertag_state().showbar;
-    selmon.showbar = selmon.pertag_state().showbar;
+    selmon.show_bar = selmon.pertag_state().showbar;
 
     selmon.update_bar_position(bar_height);
 
