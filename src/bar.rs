@@ -5,7 +5,7 @@ mod renderer;
 pub(crate) mod scene;
 pub mod status;
 pub mod wayland;
-mod widgets;
+
 pub mod x11;
 mod x11_painter;
 
