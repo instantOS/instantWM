@@ -4,7 +4,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL};
 use crate::backend::x11::properties::set_client_state;
 use crate::constants::animation::DECORATIVE_SHOW_FRAME_COUNT;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::types::{ClientMode, Rect, WindowId};
 use x11rb::connection::Connection;
@@ -19,12 +19,7 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state_x11(
-    _core: &CoreCtx,
-    x11: &X11BackendRef,
-    wm_state_atom: u32,
-    win: WindowId,
-) -> i32 {
+pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
@@ -60,7 +55,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
     }
 
     for (win, geo, is_visible, mode) in operations {
-        crate::animation::drop_x11_animation(ctx, win);
+        crate::animation::drop_x11_animation(ctx.x11_runtime, win);
 
         if is_visible {
             let Rect { x, y, w, h } = geo;

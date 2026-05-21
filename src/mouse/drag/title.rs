@@ -301,4 +301,3 @@ pub fn window_title_mouse_handler(
         WmCtx::Wayland(_) => {}
     }
 }
-

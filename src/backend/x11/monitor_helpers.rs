@@ -1,7 +1,8 @@
 //! X11-specific monitor helpers: Xinerama, bar destruction, stacking.
 
+use crate::backend::x11::X11BackendRef;
 use crate::backend::{BackendOutputInfo, BackendVrrSupport};
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
 use x11rb::protocol::xinerama;
 use x11rb::protocol::xproto::*;
@@ -18,18 +19,18 @@ pub fn destroy_monitor_bar_x11(ctx: &mut WmCtx, bar_win: WindowId) {
 }
 
 /// Raise a client window above siblings on X11.
-pub fn raise_client_window_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+pub fn raise_client_window_x11(x11: &X11BackendRef<'_>, win: WindowId) {
     let x11_win: Window = win.into();
     let _ = configure_window(
-        ctx.x11.conn,
+        x11.conn,
         x11_win,
         &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
     );
 }
 
 /// Query Xinerama screen information and return outputs (no monitor sync).
-pub fn xinerama_outputs(x11: &mut WmCtxX11) -> Option<Vec<BackendOutputInfo>> {
-    let conn = x11.x11.conn;
+pub fn xinerama_outputs(x11: &X11BackendRef<'_>) -> Option<Vec<BackendOutputInfo>> {
+    let conn = x11.conn;
     let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
     if is_active.state == 0 {
         return None;

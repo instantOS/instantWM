@@ -202,9 +202,7 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::KeyPress(e) => {
             crate::backend::x11::keyboard::key_press_x11(&mut ctx, &e)
         }
-        x11rb::protocol::Event::KeyRelease(e) => {
-            crate::backend::x11::keyboard::key_release_x11(&mut ctx, &e)
-        }
+        x11rb::protocol::Event::KeyRelease(_) => crate::backend::x11::keyboard::key_release_x11(),
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),

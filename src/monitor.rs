@@ -496,9 +496,8 @@ fn make_monitor_for_output(
 fn destroy_bars_for_removed_monitors(ctx: &mut WmCtx, pool: &mut [Option<Monitor>]) {
     for slot in pool.iter_mut() {
         if let Some(m) = slot.as_ref() {
-    crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
-}
-
+            crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
+        }
     }
 }
 
@@ -780,7 +779,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
 }
 
 fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
-    let outputs = crate::backend::x11::monitor_helpers::xinerama_outputs(x11)?;
+    let outputs = crate::backend::x11::monitor_helpers::xinerama_outputs(&x11.x11)?;
     Some(sync_monitors_from_outputs(
         &mut WmCtx::X11(x11.reborrow()),
         outputs,

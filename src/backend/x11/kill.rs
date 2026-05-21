@@ -10,7 +10,6 @@ use x11rb::protocol::xproto::{ConnectionExt, Window};
 pub fn force_close_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
     let sent = send_event_x11(
-        &mut ctx_x11.core,
         &ctx_x11.x11,
         ctx_x11.x11_runtime,
         win,

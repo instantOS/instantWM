@@ -7,7 +7,7 @@
 //! | [`WmCtx::warp_cursor_to_client`]   | Warp to a client only if the cursor is outside it      |
 //! | [`warp_into`]                      | Clamp cursor into window bounds (before a drag/resize) |
 //! | [`warp_to_focus`]                  | Keybinding handler – warp to the selected window       |
-//! | [`reset_cursor`]                   | Restore the normal (arrow) root cursor                 |
+//! | [`WmCtx::set_cursor_style`]        | Restore the normal (arrow) root cursor                 |
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
 
@@ -59,5 +59,3 @@ pub fn warp_to_focus(ctx: &mut WmCtx) {
         ctx.warp_cursor_to_client(win);
     }
 }
-
-

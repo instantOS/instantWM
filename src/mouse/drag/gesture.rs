@@ -21,7 +21,7 @@ pub fn begin_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(ptr) = ctx.pointer_location() else {
         return;
     };
-    let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), ptr) else {
+    let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core().globals(), ptr) else {
         return;
     };
     ctx.core_mut().globals_mut().drag.gesture = crate::globals::GestureInteraction {

@@ -197,7 +197,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = if crate::overview::is_active_on_monitor(core, m) {
+        let symbol = if crate::overview::is_active_on_monitor(core.globals(), m) {
             "OVR"
         } else {
             m.layouts_for_mask(m.selected_tags()).symbol()
@@ -300,7 +300,7 @@ pub fn update_hover(
 }
 
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
-    if crate::overview::is_active(ctx.core()) {
+    if crate::overview::is_active(ctx.core().globals()) {
         ctx.reset_mode();
         ctx.request_bar_update();
         return;

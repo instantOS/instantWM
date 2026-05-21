@@ -87,7 +87,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     apply_manage_hints(ctx, w);
     snapshot_float_geo(ctx.core.globals_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
-    grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
+    grab_buttons_x11(ctx.core.globals(), &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.globals_mut(), w, trans.is_some()) {
         if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w, trans) {
@@ -169,9 +169,8 @@ fn insert_client_and_apply_rules(
     mut c: Client,
     launch_context: Option<crate::client::LaunchContext>,
 ) {
-    c.is_hidden =
-        crate::backend::x11::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
-            == crate::backend::x11::constants::WM_STATE_ICONIC;
+    c.is_hidden = crate::backend::x11::visibility::get_state_x11(x11, x11_cfg.wmatom.state, w)
+        == crate::backend::x11::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
     let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
     crate::client::apply_rules(core.globals_mut(), w, &props, launch_context);

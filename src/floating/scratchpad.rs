@@ -526,7 +526,7 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_overview = crate::overview::is_active(ctx.core());
+    let is_overview = crate::overview::is_active(ctx.core().globals());
 
     if is_overview {
         return;

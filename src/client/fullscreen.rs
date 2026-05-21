@@ -54,7 +54,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
 
         // Signal the application (X11-specific atom write).
         if let WmCtx::X11(ctx_x11) = ctx {
-            crate::backend::x11::fullscreen::set_fullscreen_atoms(ctx_x11, win, true);
+            crate::backend::x11::fullscreen::set_fullscreen_atoms(
+                &ctx_x11.x11,
+                ctx_x11.x11_runtime,
+                win,
+                true,
+            );
         }
 
         // Shared: save border width, flip client mode.
@@ -80,7 +85,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
 
             // Backend-specific: remove border, enforce geometry, raise.
             if let WmCtx::X11(ctx_x11) = ctx {
-                crate::backend::x11::fullscreen::remove_border_x11(ctx_x11, win);
+                crate::backend::x11::fullscreen::remove_border_x11(&ctx_x11.x11, win);
                 ctx.configure_window_geometry(win, mon_rect);
                 ctx.raise_window_visual_only(win);
             }
@@ -93,8 +98,17 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
 
         // Backend-specific: clear the fullscreen signal and restore border.
         if let WmCtx::X11(ctx_x11) = ctx {
-            crate::backend::x11::fullscreen::set_fullscreen_atoms(ctx_x11, win, false);
-            crate::backend::x11::fullscreen::restore_border_x11(ctx_x11, win);
+            crate::backend::x11::fullscreen::set_fullscreen_atoms(
+                &ctx_x11.x11,
+                ctx_x11.x11_runtime,
+                win,
+                fullscreen,
+            );
+            crate::backend::x11::fullscreen::restore_border_x11(
+                &ctx_x11.x11,
+                &mut ctx_x11.core,
+                win,
+            );
         }
 
         crate::client::mode::set_fullscreen(ctx.core_mut().globals_mut(), win, false);

@@ -1,6 +1,7 @@
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::types::{Monitor, Rect, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
@@ -22,12 +23,12 @@ impl OverviewState {
     }
 }
 
-pub fn is_active(core: &CoreCtx<'_>) -> bool {
-    core.globals().selected_monitor().overview_state.is_some()
+pub fn is_active(globals: &Globals) -> bool {
+    globals.selected_monitor().overview_state.is_some()
 }
 
-pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor: &Monitor) -> bool {
-    monitor.overview_state.is_some() && core.globals().selected_monitor_id() == monitor.id()
+pub fn is_active_on_monitor(globals: &Globals, monitor: &Monitor) -> bool {
+    monitor.overview_state.is_some() && globals.selected_monitor_id() == monitor.id()
 }
 
 fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool {
@@ -148,7 +149,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
-    if is_active(ctx.core()) {
+    if is_active(ctx.core().globals()) {
         exit_overview(ctx, ExitMode::ToSelectedWindow);
         ctx.request_bar_update();
         return;
@@ -163,7 +164,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
-    if !is_active(ctx.core()) {
+    if !is_active(ctx.core().globals()) {
         return;
     }
 

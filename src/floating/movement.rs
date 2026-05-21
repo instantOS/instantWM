@@ -11,7 +11,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
         return;
     }
 
@@ -52,7 +52,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 
     super::snap::reset_snap(ctx, win);
 
-    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
         return;
     }
 
@@ -88,7 +88,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
         return;
     }
 

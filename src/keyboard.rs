@@ -180,7 +180,7 @@ pub fn down_press(ctx: &mut WmCtx) {
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = crate::overview::is_active(ctx.core());
+    let is_overview = crate::overview::is_active(ctx.core().globals());
 
     if is_overview {
         direction_focus(ctx, VerticalDirection::Up.into());
@@ -209,7 +209,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = crate::overview::is_active(ctx.core());
+    let is_overview = crate::overview::is_active(ctx.core().globals());
 
     if is_overview {
         direction_focus(ctx, VerticalDirection::Down.into());
@@ -229,7 +229,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn space_toggle(ctx: &mut WmCtx) {
-    if crate::overview::is_active(ctx.core()) {
+    if crate::overview::is_active(ctx.core().globals()) {
         return;
     }
 

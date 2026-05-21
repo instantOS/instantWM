@@ -9,7 +9,8 @@ pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
     match ctx {
         WmCtx::X11(x11) => {
             crate::backend::x11::mouse::set_x11_root_cursor_by_index(
-                x11.reborrow(),
+                &x11.x11,
+                x11.x11_runtime,
                 style.to_x11_index(),
             );
         }

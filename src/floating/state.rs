@@ -166,7 +166,8 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     let outcome = crate::client::mode::set_maximized(ctx.core_mut().globals_mut(), win, enter);
 
     if let Some(crate::client::mode::MaximizedOutcome::Exited { base }) = outcome
-        && (base == BaseClientMode::Floating || !super::helpers::has_tiling_layout(ctx.core()))
+        && (base == BaseClientMode::Floating
+            || !super::helpers::has_tiling_layout(ctx.core().globals()))
     {
         restore_floating_geometry(ctx, win);
         if let WmCtx::X11(x11) = ctx {

@@ -51,7 +51,6 @@ pub fn configure_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
 
 /// Send a `ClientMessage` event to `win`.
 pub fn send_event_x11(
-    _core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -162,10 +161,9 @@ pub fn set_focus_x11(
 
     refresh_border_color_x11(core, x11, x11_runtime, win, true);
 
-    grab_buttons_x11(core, x11, x11_runtime, win, true);
+    grab_buttons_x11(core.globals(), x11, x11_runtime, win, true);
 
     let _ = send_event_x11(
-        core,
         x11,
         x11_runtime,
         win,
@@ -194,7 +192,7 @@ pub fn unfocus_win_x11(
     }
 
     core.focus.last_client = win;
-    grab_buttons_x11(core, x11, x11_runtime, win, false);
+    grab_buttons_x11(core.globals(), x11, x11_runtime, win, false);
 
     refresh_border_color_x11(core, x11, x11_runtime, win, false);
 
@@ -216,7 +214,7 @@ pub fn unfocus_win_x11(
 
 /// Grab or ungrab mouse buttons on `win` depending on whether it is focused.
 pub fn grab_buttons_x11(
-    core: &mut CoreCtx,
+    globals: &crate::globals::Globals,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -236,7 +234,7 @@ pub fn grab_buttons_x11(
         grabs.extend([(1, 0), (3, 0)]);
     }
 
-    for button in &core.globals().cfg.bindings.buttons {
+    for button in &globals.cfg.bindings.buttons {
         if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }
@@ -352,7 +350,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
     }
 
     fn on_desktop_binding_state_changed(&self, core: &mut CoreCtx) {
-        crate::backend::x11::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys_x11(core.globals(), self.x11, &*self.x11_runtime);
     }
 }
 

@@ -13,7 +13,7 @@ use x11rb::protocol::xproto::*;
 /// Fetch the geometry and border width for `win`.
 ///
 /// Returns a fallback (`800×600`, border `1`) when the request fails.
-pub(crate) fn get_win_geometry(_core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> (Rect, u32) {
+pub(crate) fn get_win_geometry(x11: &X11BackendRef, win: WindowId) -> (Rect, u32) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     conn.get_geometry(x11_win)
@@ -42,7 +42,7 @@ pub(crate) fn get_win_geometry(_core: &CoreCtx, x11: &X11BackendRef, win: Window
 }
 
 /// Returns `true` when the `override_redirect` attribute is set on `win`.
-pub(crate) fn is_override_redirect(_core: &CoreCtx, x11: &X11BackendRef, win: WindowId) -> bool {
+pub(crate) fn is_override_redirect(x11: &X11BackendRef, win: WindowId) -> bool {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     conn.get_window_attributes(x11_win)
@@ -66,7 +66,7 @@ fn classify_windows(
 
     for win in children {
         let win_id = WindowId::from(win);
-        if is_override_redirect(core, x11, win_id) {
+        if is_override_redirect(x11, win_id) {
             continue;
         }
 
@@ -130,7 +130,7 @@ pub fn scan(ctx: &mut WmCtxX11<'_>) {
     let (managed, transients) = classify_windows(&ctx.core, &ctx.x11, ctx.x11_runtime, children);
 
     for win in managed.into_iter().chain(transients) {
-        let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, win);
+        let (geo, border_width) = get_win_geometry(&ctx.x11, win);
         let mut tmp = ctx.reborrow();
         manage(&mut tmp, win, geo, border_width);
     }

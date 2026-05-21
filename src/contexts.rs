@@ -316,18 +316,18 @@ impl<'a> WmCtx<'a> {
     /// (Re)grab all keybindings.  X11 only; no-op on Wayland.
     pub fn grab_keys(&mut self) {
         if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+            crate::backend::x11::keyboard::grab_keys_x11(
+                ctx.core.globals(),
+                &ctx.x11,
+                ctx.x11_runtime,
+            );
         }
     }
 
     /// Update the cached numlock modifier mask.  X11 only; no-op on Wayland.
     pub fn update_num_lock_mask(&mut self) {
         if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::update_num_lock_mask_x11(
-                &mut ctx.core,
-                &ctx.x11,
-                ctx.x11_runtime,
-            );
+            crate::backend::x11::keyboard::update_num_lock_mask_x11(&ctx.x11, ctx.x11_runtime);
         }
     }
 

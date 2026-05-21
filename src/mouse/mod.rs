@@ -3,7 +3,7 @@
 //! This module is split into focused sub-modules:
 //!
 //! - [`constants`]  — shared numeric constants (sizes, thresholds, keycodes)
-//! - [`warp`]       — cursor-warping utilities (`warp_into`, `warp_to_focus`, `reset_cursor`, …)
+//! - [`warp`]       — cursor-warping utilities (`warp_into`, `warp_to_focus`, ``, …)
 //! - [`drag`]       — drag operations aggregator, re-exports from sub-modules:
 //!   - [`drag::move_drop`] — move/drop logic, bar hover, edge snap
 //!   - [`drag::tag`] — tag bar drag operations

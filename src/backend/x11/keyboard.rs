@@ -1,7 +1,7 @@
 //! X11-specific keyboard helpers: key grabbing, numlock detection.
 
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::Key;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -27,13 +27,17 @@ fn grab_keys_for_key<C: Connection>(
 }
 
 /// Grab all X11 keybindings for the current config.
-pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
+pub fn grab_keys_x11(
+    globals: &crate::globals::Globals,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
     let conn = x11.conn;
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
-    let keys = core.globals().cfg.bindings.keys.as_slice();
-    let desktop_keybinds = core.globals().cfg.bindings.desktop_keybinds.as_slice();
-    let modes = &core.globals().cfg.bindings.modes;
+    let keys = globals.cfg.bindings.keys.as_slice();
+    let desktop_keybinds = globals.cfg.bindings.desktop_keybinds.as_slice();
+    let modes = &globals.cfg.bindings.modes;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
@@ -84,9 +88,9 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
             }
         }
 
-        let current_mode = &core.globals().behavior.current_mode;
+        let current_mode = &globals.behavior.current_mode;
         let desktop_bindings_enabled =
-            crate::keyboard::desktop_bindings_enabled(core.selected_client(), current_mode);
+            crate::keyboard::desktop_bindings_enabled(globals.selected_win(), current_mode);
 
         if desktop_bindings_enabled {
             for key in desktop_keybinds {
@@ -101,11 +105,7 @@ pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11Runti
 }
 
 /// Update the cached numlock modifier mask from the X11 server.
-pub fn update_num_lock_mask_x11(
-    _core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
-) {
+pub fn update_num_lock_mask_x11(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     let new_numlockmask = {
         let conn = x11.conn;
         let Ok(cookie) = conn.get_modifier_mapping() else {
@@ -170,4 +170,4 @@ pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
 }
 
 /// Handle an X11 `KeyRelease` event (currently a no‑op).
-pub fn key_release_x11(_ctx: &mut WmCtxX11, _e: &KeyReleaseEvent) {}
+pub fn key_release_x11() {}

@@ -157,7 +157,7 @@ fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     };
 
-    if crate::overview::is_active_on_monitor(ctx.core(), &m) {
+    if crate::overview::is_active_on_monitor(ctx.core().globals(), &m) {
         crate::overview::arrange(ctx, &mut m);
         ctx.core_mut()
             .globals_mut()
@@ -181,7 +181,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     };
 
-    if crate::overview::is_active_on_monitor(ctx.core(), monitor) {
+    if crate::overview::is_active_on_monitor(ctx.core().globals(), monitor) {
         return;
     }
 

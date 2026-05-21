@@ -283,7 +283,7 @@ impl SidebarOfferUpdate {
 }
 
 pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root: crate::types::Point) -> SidebarOfferUpdate {
-    if let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core(), root) {
+    if let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core().globals(), root) {
         if ctx.core().globals().drag.hover_offer != HoverOffer::Sidebar(target) {
             ctx.core_mut()
                 .globals_mut()
@@ -415,7 +415,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
 
                     // Query cursor position relative to the client window (X11 only).
                     let (root_x, root_y, win_x, win_y) =
-                        query_pointer_on_win(ctx.reborrow(), win).unwrap_or((0, 0, 0, 0));
+                        query_pointer_on_win(&ctx.x11, win).unwrap_or((0, 0, 0, 0));
 
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
                     let btn = *button;
@@ -542,9 +542,12 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
 // ── Utilities ────────────────────────────────────────────────────────────────
 
 /// Query the pointer position in both root and window-local coordinates (X11 only).
-fn query_pointer_on_win(ctx: WmCtxX11, win: WindowId) -> Option<(i32, i32, i32, i32)> {
+fn query_pointer_on_win(
+    x11: &crate::backend::x11::X11BackendRef<'_>,
+    win: WindowId,
+) -> Option<(i32, i32, i32, i32)> {
     use x11rb::protocol::xproto::ConnectionExt;
-    let reply = ctx.x11.conn.query_pointer(win.0).ok()?.reply().ok()?;
+    let reply = x11.conn.query_pointer(win.0).ok()?.reply().ok()?;
     Some((
         reply.root_x as i32,
         reply.root_y as i32,
@@ -564,5 +567,5 @@ fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
         WmCtx::X11(x11) => (x11.x11.conn, x11.x11_runtime.root, &mut x11.core),
         WmCtx::Wayland(_) => return None,
     };
-    crate::backend::x11::mouse::get_cursor_client_win_with_conn(core, conn, root)
+    crate::backend::x11::mouse::get_cursor_client_win_with_conn(core.globals(), conn, root)
 }

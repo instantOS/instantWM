@@ -5,6 +5,7 @@
 //! rare compared with motion events.
 
 use crate::contexts::CoreCtx;
+use crate::globals::Globals;
 use crate::types::{BarPosition, EdgeDirection, MonitorId, Point, Rect, SidebarTarget, WindowId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -53,10 +54,10 @@ pub fn right_sidebar_rect(monitor_rect: Rect, bar_height: i32) -> Rect {
 }
 
 /// Cheap sidebar-only hit test for pointer motion.
-pub fn sidebar_target_at(core: &CoreCtx<'_>, root: Point) -> Option<SidebarTarget> {
+pub fn sidebar_target_at(globals: &Globals, root: Point) -> Option<SidebarTarget> {
     let monitor_id =
-        crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &point_rect(root))?;
-    let mon = core.globals().monitor(monitor_id)?;
+        crate::types::find_monitor_by_rect(globals.monitors.monitors(), &point_rect(root))?;
+    let mon = globals.monitor(monitor_id)?;
     let rect = right_sidebar_rect(mon.monitor_rect, mon.bar_height);
     rect.contains_point(root).then_some(SidebarTarget {
         monitor_id,
@@ -79,7 +80,7 @@ pub fn button_region_at(
         return PointerRegion::Client(win);
     }
 
-    if let Some(target) = sidebar_target_at(core, root) {
+    if let Some(target) = sidebar_target_at(core.globals(), root) {
         if target.monitor_id != core.globals().selected_monitor_id() {
             core.globals_mut().set_selected_monitor(target.monitor_id);
         }

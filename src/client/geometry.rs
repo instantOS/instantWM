@@ -266,7 +266,7 @@ fn is_floating_layout(core: &CoreCtx, monitor: Option<&Monitor>) -> bool {
         return true;
     };
 
-    if crate::overview::is_active_on_monitor(core, mon) {
+    if crate::overview::is_active_on_monitor(core.globals(), mon) {
         return false;
     }
 

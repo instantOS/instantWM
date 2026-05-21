@@ -1,7 +1,8 @@
 //! X11 mouse backend helpers.
 
 use crate::backend::BackendEvent;
-use crate::contexts::{CoreCtx, WmCtxX11};
+use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::contexts::WmCtxX11;
 use crate::mouse::drag::{
     MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
 };
@@ -10,20 +11,24 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
 
 /// Set the root window cursor by its index in the cached cursor array.
-pub fn set_x11_root_cursor_by_index(ctx: WmCtxX11<'_>, cursor_index: usize) {
-    if ctx.x11_runtime.last_x11_cursor_index == Some(cursor_index) {
+pub fn set_x11_root_cursor_by_index(
+    x11: &X11BackendRef<'_>,
+    x11_runtime: &mut X11RuntimeConfig,
+    cursor_index: usize,
+) {
+    if x11_runtime.last_x11_cursor_index == Some(cursor_index) {
         return;
     }
-    let conn = ctx.x11.conn;
-    let root = ctx.x11_runtime.root;
-    if let Some(ref loaded_cursor) = ctx.x11_runtime.cursors[cursor_index] {
+    let conn = x11.conn;
+    let root = x11_runtime.root;
+    if let Some(ref loaded_cursor) = x11_runtime.cursors[cursor_index] {
         let _ = xproto::change_window_attributes(
             conn,
             root,
             &xproto::ChangeWindowAttributesAux::new().cursor(loaded_cursor.cursor as u32),
         );
         let _ = conn.flush();
-        ctx.x11_runtime.last_x11_cursor_index = Some(cursor_index);
+        x11_runtime.last_x11_cursor_index = Some(cursor_index);
     }
 }
 
@@ -90,7 +95,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
 }
 
 pub fn get_cursor_client_win_with_conn(
-    core: &CoreCtx,
+    globals: &crate::globals::Globals,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,
 ) -> Option<WindowId> {
@@ -101,7 +106,7 @@ pub fn get_cursor_client_win_with_conn(
     }
 
     let win = WindowId::from(reply.child);
-    if core.globals().clients.contains_key(&win) {
+    if globals.clients.contains_key(&win) {
         Some(win)
     } else {
         None

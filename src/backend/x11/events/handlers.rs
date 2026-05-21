@@ -27,7 +27,6 @@ fn send_xembed_event(
     let xembed_atom = ctx.x11_runtime.xatom.xembed;
     let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
     crate::backend::x11::focus::send_event_x11(
-        &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
         icon_win,
@@ -302,7 +301,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                     return;
                 }
                 if let Some(newc) = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
-                    &ctx.core,
+                    ctx.core.globals(),
                     ctx.x11.conn,
                     ctx.x11_runtime.root,
                 ) && Some(newc) != selected_window
@@ -316,7 +315,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 
     // 4. Determine what's actually under the cursor
     let topmost_win_under_cursor = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
-        &ctx.core,
+        ctx.core.globals(),
         ctx.x11.conn,
         ctx.x11_runtime.root,
     );
@@ -371,7 +370,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::backend::x11::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::keyboard::grab_keys_x11(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
@@ -391,9 +390,9 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     };
 
     if !ctx.core.globals().clients.contains_key(&event_win)
-        && !is_override_redirect(&ctx.core, &ctx.x11, event_win)
+        && !is_override_redirect(&ctx.x11, event_win)
     {
-        let (geo, border_width) = get_win_geometry(&ctx.core, &ctx.x11, event_win);
+        let (geo, border_width) = get_win_geometry(&ctx.x11, event_win);
         let mut tmp = ctx.reborrow();
         crate::backend::x11::lifecycle::manage(&mut tmp, event_win, geo, border_width);
     };

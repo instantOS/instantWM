@@ -43,7 +43,7 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    if crate::overview::is_active(ctx.core()) {
+    if crate::overview::is_active(ctx.core().globals()) {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::ToSelectedWindow);
         ctx.request_bar_update();
         return;
