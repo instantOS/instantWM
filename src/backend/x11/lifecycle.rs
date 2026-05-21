@@ -313,7 +313,7 @@ fn configure_client_border(
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     crate::backend::x11::focus::configure_x11(ctx_x11.core.globals(), &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
-    crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    crate::backend::x11::update_size_hints_x11(ctx_x11.core.globals_mut(), &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(
         ctx_x11.core.globals_mut(),
@@ -321,7 +321,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
         ctx_x11.x11_runtime,
         w,
     );
-    set_client_tag_prop(&ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    set_client_tag_prop(ctx_x11.core.globals(), &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
 }
 
@@ -419,9 +419,9 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     if let Some(selected_window) = ctx.core().globals().selected_win()
         && let WmCtx::X11(ctx_x11) = ctx
     {
-        let mut core = ctx_x11.core.reborrow();
+        ctx_x11.core.focus.last_client = selected_window;
         unfocus_win_x11(
-            &mut core,
+            ctx_x11.core.globals(),
             &ctx_x11.x11,
             ctx_x11.x11_runtime,
             selected_window,
@@ -545,7 +545,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         let tmp = ctx.reborrow();
         focus(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(&ctx.core, &ctx.x11, ctx.x11_runtime);
+    update_client_list(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
 
     if let Some(mid) = monitor_id {
         let mut tmp = WmCtx::X11(ctx.reborrow());

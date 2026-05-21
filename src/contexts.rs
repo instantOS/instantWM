@@ -12,7 +12,7 @@ use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::globals::Globals;
-use crate::types::{Client, Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
     g: &'a mut Globals,
@@ -325,7 +325,12 @@ impl<'a> WmCtx<'a> {
     /// Write tag/monitor metadata into a window property.  X11 only; no-op on Wayland.
     pub fn set_client_tag_prop(&mut self, win: WindowId) {
         if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::set_client_tag_prop(&ctx.core, &ctx.x11, ctx.x11_runtime, win);
+            crate::backend::x11::set_client_tag_prop(
+                ctx.core.globals(),
+                &ctx.x11,
+                ctx.x11_runtime,
+                win,
+            );
         }
     }
 

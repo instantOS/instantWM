@@ -232,7 +232,9 @@ pub fn apply_size_hints(
 
 /// Check if the given rect differs from the client's current stored geometry.
 pub(crate) fn size_hints_changed(globals: &Globals, win: WindowId, rect: &Rect) -> bool {
-    globals.clients.get(&win)
+    globals
+        .clients
+        .get(&win)
         .map(|c| rect.differs_from(&c.geo))
         .unwrap_or(false)
 }
@@ -247,12 +249,7 @@ fn clamp_position_to_bounds(
     total_h: i32,
 ) {
     if interact {
-        let screen = Rect::new(
-            0,
-            0,
-            globals.cfg.display.width,
-            globals.cfg.display.height,
-        );
+        let screen = Rect::new(0, 0, globals.cfg.display.width, globals.cfg.display.height);
         geo.clamp_position(&screen, total_w, total_h);
     } else if let Some(wr) = work_rect {
         geo.clamp_position(&wr, total_w, total_h);

@@ -298,7 +298,12 @@ pub fn scratchpad_make(
         (mon.work_rect.w, mon.work_rect.h)
     };
 
-    let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&selected_window) else {
+    let Some(client) = ctx
+        .core_mut()
+        .globals_mut()
+        .clients
+        .get_mut(&selected_window)
+    else {
         return;
     };
 
@@ -346,7 +351,12 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     };
 
     let mut was_hidden = false;
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&selected_window) {
+    if let Some(client) = ctx
+        .core_mut()
+        .globals_mut()
+        .clients
+        .get_mut(&selected_window)
+    {
         was_hidden = client.is_hidden;
         client.exit_scratchpad_state(effective_tags, had_direction);
     }
@@ -634,7 +644,12 @@ pub fn scratchpad_find(g: &Globals, name: &str) -> Option<WindowId> {
 }
 
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
-    let was_sticky = ctx.core().globals().clients.get(&win).is_some_and(|c| c.is_sticky);
+    let was_sticky = ctx
+        .core()
+        .globals()
+        .clients
+        .get(&win)
+        .is_some_and(|c| c.is_sticky);
 
     let (mon_ww, mon_wh) = {
         let mon = ctx.core().globals().selected_monitor();
@@ -655,7 +670,9 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
     if was_sticky {
         let name = ctx
             .core()
-            .globals().clients.get(&win)
+            .globals()
+            .clients
+            .get(&win)
             .and_then(|c| c.scratchpad.as_ref().map(|sp| sp.name.clone()))
             .unwrap_or_default();
         if !name.is_empty() {
@@ -676,7 +693,9 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 
     let is_fullscreen = ctx
         .core()
-        .globals().clients.get(&selected)
+        .globals()
+        .clients
+        .get(&selected)
         .is_some_and(|c| c.mode.is_true_fullscreen());
     if is_fullscreen {
         crate::floating::toggle_maximized(ctx);

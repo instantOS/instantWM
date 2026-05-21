@@ -223,7 +223,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         // the bar and redraw the systray — matching the C code's sequence of
         // removesystrayicon(c) → resizebar_win(selmon) → updatesystray().
         crate::backend::x11::systray::remove_systray_icon(
-            &mut ctx.core,
+            ctx.core.globals_mut(),
             ctx.systray.as_deref_mut(),
             icon,
         );
@@ -231,7 +231,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         let selmon_idx = ctx.core.globals().selected_monitor_id();
         if let Some(mon) = ctx.core.globals().monitor(selmon_idx).cloned() {
             crate::backend::x11::bar::resize_bar_win(
-                &ctx.core,
+                ctx.core.globals(),
                 &ctx.x11,
                 ctx.x11_runtime,
                 ctx.systray.as_deref(),
@@ -635,9 +635,9 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         }
     };
 
-    crate::backend::x11::update_size_hints_x11(&mut ctx.core, &ctx.x11, icon_win);
+    crate::backend::x11::update_size_hints_x11(ctx.core.globals_mut(), &ctx.x11, icon_win);
     crate::backend::x11::systray::update_systray_icon_geom(
-        &mut ctx.core,
+        ctx.core.globals_mut(),
         &ctx.x11,
         icon_win,
         geo.w,
@@ -701,7 +701,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     if let Some(mon) = ctx.core.globals().monitor(selmon_id).cloned() {
         crate::backend::x11::bar::resize_bar_win(
-            &ctx.core,
+            ctx.core.globals(),
             &ctx.x11,
             ctx.x11_runtime,
             ctx.systray.as_deref(),

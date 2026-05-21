@@ -84,7 +84,9 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
     let Some((geo, is_floating)) = ctx
         .core()
-        .globals().clients.get(&win)
+        .globals()
+        .clients
+        .get(&win)
         .map(|c| (c.geo, c.mode.is_floating()))
     else {
         return;

@@ -7,6 +7,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
+use crate::globals::Globals;
 use crate::types::{ButtonTarget, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -180,8 +181,11 @@ pub fn set_focus_x11(
 }
 
 /// Remove focus from `win`.
+///
+/// When `redirect_to_root` is true, input focus is redirected to the root
+/// window and `_NET_ACTIVE_WINDOW` is cleared.
 pub fn unfocus_win_x11(
-    core: &mut CoreCtx,
+    globals: &Globals,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -191,10 +195,9 @@ pub fn unfocus_win_x11(
         return;
     }
 
-    core.focus.last_client = win;
-    grab_buttons_x11(core.globals(), x11, x11_runtime, win, false);
+    grab_buttons_x11(globals, x11, x11_runtime, win, false);
 
-    refresh_border_color_x11(core.globals(), x11, x11_runtime, win, false);
+    refresh_border_color_x11(globals, x11, x11_runtime, win, false);
 
     if redirect_to_root {
         let _ = x11
@@ -316,27 +319,26 @@ pub struct X11FocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
-    fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId) {
-        unfocus_win_x11(core, self.x11, &*self.x11_runtime, current, false);
+    fn unfocus_current(&self, globals: &Globals, current: WindowId) {
+        unfocus_win_x11(globals, self.x11, &*self.x11_runtime, current, false);
     }
 
-    fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
-        let is_urgent = core
-            .globals()
+    fn focus_window(&self, globals: &mut Globals, win: WindowId) {
+        let is_urgent = globals
             .clients
             .get(&win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
         if is_urgent {
-            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
+            if let Some(c) = globals.clients.get_mut(&win) {
                 c.clear_urgency();
             }
             clear_urgency_hint_x11(self.x11, win);
         }
-        set_focus_x11(core.globals(), self.x11, &*self.x11_runtime, win);
+        set_focus_x11(globals, self.x11, &*self.x11_runtime, win);
     }
 
-    fn focus_none(&self, _core: &mut CoreCtx) {
+    fn focus_none(&self, _globals: &Globals) {
         let _ = self.x11.conn.set_input_focus(
             InputFocus::POINTER_ROOT,
             self.x11_runtime.root,
@@ -349,8 +351,8 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         let _ = self.x11.conn.flush();
     }
 
-    fn on_desktop_binding_state_changed(&self, core: &mut CoreCtx) {
-        crate::backend::x11::keyboard::grab_keys_x11(core.globals(), self.x11, &*self.x11_runtime);
+    fn on_desktop_binding_state_changed(&self, globals: &Globals) {
+        crate::backend::x11::keyboard::grab_keys_x11(globals, self.x11, &*self.x11_runtime);
     }
 }
 

@@ -139,6 +139,9 @@ pub trait BackendOps {
     }
 
     /// Position and resize a window directly (no size-hint enforcement).
+    ///
+    /// X11-only operation. The Wayland backend leaves this as a no-op because
+    /// compositor-side geometry is authoritative there.
     fn configure_window_geometry(&self, _win: WindowId, _rect: Rect) {}
 }
 

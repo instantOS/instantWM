@@ -96,7 +96,9 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
         .into_iter()
         .filter(|&win| {
             ctx.core()
-                .globals().clients.get(&win)
+                .globals()
+                .clients
+                .get(&win)
                 .is_some_and(|c| c.mode.is_true_fullscreen() && c.is_visible(selected_tags))
         })
         .collect();

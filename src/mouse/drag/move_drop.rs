@@ -428,7 +428,9 @@ pub fn handle_bar_drop(
         // Don't tile fullscreen windows
         if !ctx
             .core()
-            .globals().clients.get(&win)
+            .globals()
+            .clients
+            .get(&win)
             .is_some_and(|c| c.mode.is_true_fullscreen())
         {
             let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);

@@ -71,7 +71,9 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     // Place master client
     let master_bw = ctx
         .core()
-        .globals().clients.get(&first_win)
+        .globals()
+        .clients
+        .get(&first_win)
         .map(|c| BORDER_MULTIPLIER * c.border_width)
         .unwrap_or(0);
 
@@ -139,7 +141,13 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
             }
             let win = tiled_clients[stack_client_index];
 
-            let border_width = ctx.core().globals().clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+            let border_width = ctx
+                .core()
+                .globals()
+                .clients
+                .get(&win)
+                .map(|c| c.border_width)
+                .unwrap_or(0);
 
             let window_height = if stack_position + 1 == right_column_client_count {
                 monitor.work_rect.y + monitor.work_rect.h
@@ -188,7 +196,13 @@ pub fn three_column(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
             }
             let win = tiled_clients[stack_client_index];
 
-            let border_width = ctx.core().globals().clients.get(&win).map(|c| c.border_width).unwrap_or(0);
+            let border_width = ctx
+                .core()
+                .globals()
+                .clients
+                .get(&win)
+                .map(|c| c.border_width)
+                .unwrap_or(0);
 
             let window_height = if stack_position + 1 == left_column_client_count {
                 monitor.work_rect.y + monitor.work_rect.h

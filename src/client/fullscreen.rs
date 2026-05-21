@@ -106,7 +106,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             );
             crate::backend::x11::fullscreen::restore_border_x11(
                 &ctx_x11.x11,
-                &mut ctx_x11.core,
+                ctx_x11.core.globals(),
                 win,
             );
         }

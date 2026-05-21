@@ -47,7 +47,7 @@ fn reload_x11(wm: &mut Wm) {
     let ctx = wm.ctx();
     if let WmCtx::X11(mut x11_ctx) = ctx {
         crate::backend::x11::bar::update_bars(
-            &mut x11_ctx.core,
+            x11_ctx.core.globals_mut(),
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref(),

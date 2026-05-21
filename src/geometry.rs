@@ -204,24 +204,24 @@ fn apply_resize_policies(
     let changed = match ctx {
         WmCtx::X11(x11_ctx) => {
             let outcome = crate::client::geometry::apply_size_hints(
-                &mut x11_ctx.core,
+                x11_ctx.core.globals_mut(),
                 win,
                 &mut adjusted,
                 interact,
             );
             if outcome.should_apply_icccm {
                 crate::backend::x11::geometry::apply_icccm_size_hints_x11(
-                    &mut x11_ctx.core,
+                    x11_ctx.core.globals_mut(),
                     &x11_ctx.x11,
                     win,
                     &mut adjusted,
                 );
             }
-            crate::client::geometry::size_hints_changed(&x11_ctx.core, win, &adjusted)
+            crate::client::geometry::size_hints_changed(x11_ctx.core.globals(), win, &adjusted)
         }
         WmCtx::Wayland(wl_ctx) => {
             let outcome = crate::client::geometry::apply_size_hints(
-                &mut wl_ctx.core,
+                wl_ctx.core.globals_mut(),
                 win,
                 &mut adjusted,
                 interact,
@@ -281,7 +281,13 @@ pub(crate) fn move_resize(
             }
 
             if from == final_rect {
-                if ctx.core().globals().clients.get(&win).is_some_and(|c| c.geo != final_rect) {
+                if ctx
+                    .core()
+                    .globals()
+                    .clients
+                    .get(&win)
+                    .is_some_and(|c| c.geo != final_rect)
+                {
                     ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 }
                 return;

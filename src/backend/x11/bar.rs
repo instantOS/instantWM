@@ -41,7 +41,7 @@ pub fn draw_bar(
 
     if core.globals().cfg.systray.show {
         core.globals_mut().bar_runtime.systray_width =
-            crate::backend::x11::systray::get_systray_width(core, systray) as i32;
+            crate::backend::x11::systray::get_systray_width(core.globals(), systray) as i32;
     }
 
     let drw = {
@@ -102,7 +102,7 @@ pub fn draw_bars_x11(
 
         if core.globals().cfg.systray.show {
             core.globals_mut().bar_runtime.systray_width =
-                crate::backend::x11::systray::get_systray_width(core, systray) as i32;
+                crate::backend::x11::systray::get_systray_width(core.globals(), systray) as i32;
         }
 
         let drw = {
@@ -141,7 +141,7 @@ pub fn reset_bar_x11(
 
 /// Resize bar window with dependency injection.
 pub fn resize_bar_win(
-    core: &CoreCtx,
+    globals: &crate::globals::Globals,
     x11: &X11BackendRef,
     _x11_runtime: &X11RuntimeConfig,
     systray: Option<&Systray>,
@@ -149,14 +149,14 @@ pub fn resize_bar_win(
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
-    let bar_height = core.globals().cfg.bar.height;
-    let showsystray = core.globals().cfg.systray.show;
-    let is_selmon = core.globals().selected_monitor().num == m.num;
+    let bar_height = globals.cfg.bar.height;
+    let showsystray = globals.cfg.systray.show;
+    let is_selmon = globals.selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
     if showsystray && is_selmon {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
-            core, systray,
+            globals, systray,
         ));
     }
 
@@ -173,20 +173,20 @@ pub fn resize_bar_win(
 }
 
 pub fn update_bars(
-    core: &mut CoreCtx,
+    globals: &mut crate::globals::Globals,
     x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
+    x11_runtime: &X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
     use crate::bar::color::rgba_to_u32;
 
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = core.globals().cfg.bar.height;
-        let showsystray = core.globals().cfg.systray.show;
-        let status_bg = rgba_to_u32(core.globals().cfg.colors.status_bar.bg);
+        let bar_height = globals.cfg.bar.height;
+        let showsystray = globals.cfg.systray.show;
+        let status_bg = rgba_to_u32(globals.cfg.colors.status_bar.bg);
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
-        let selected_monitor_id = core.globals().selected_monitor_id();
+        let selected_monitor_id = globals.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
         let mut systray_widths: std::collections::HashMap<MonitorId, u32> =
@@ -194,12 +194,12 @@ pub fn update_bars(
         if showsystray {
             systray_widths.insert(
                 selected_monitor_id,
-                crate::backend::x11::systray::get_systray_width(core, systray),
+                crate::backend::x11::systray::get_systray_width(globals, systray),
             );
         }
 
         let mut bar_configs = Vec::new();
-        for (i, m) in core.globals().monitors_iter() {
+        for (i, m) in globals.monitors_iter() {
             if m.bar_win != WindowId::default() {
                 continue;
             }
@@ -255,7 +255,7 @@ pub fn update_bars(
     }
 
     for (i, win_id) in created {
-        if let Some(mon) = core.globals_mut().monitor_mut(i) {
+        if let Some(mon) = globals.monitor_mut(i) {
             mon.bar_win = WindowId::from(win_id);
         }
     }

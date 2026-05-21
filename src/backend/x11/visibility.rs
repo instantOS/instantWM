@@ -54,6 +54,12 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
         }
     }
 
+    let has_tiling = ctx
+        .core
+        .globals()
+        .monitors_iter()
+        .any(|(_, m)| m.is_tiling_layout());
+
     for (win, geo, is_visible, mode) in operations {
         crate::animation::drop_x11_animation(ctx.x11_runtime, win);
 
@@ -72,15 +78,9 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
             );
             let _ = ctx.x11.conn.flush();
 
-            let is_tiling = ctx
-                .core
-                .globals()
-                .monitors_iter()
-                .any(|(_, m)| m.is_tiling_layout());
-
             let should_position = mode.is_free_positioned()
                 || mode.is_fake_fullscreen()
-                || (mode.is_tiling() && !is_tiling);
+                || (mode.is_tiling() && !has_tiling);
             if should_position {
                 let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
                 tmp_ctx.move_resize(

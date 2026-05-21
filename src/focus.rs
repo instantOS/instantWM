@@ -95,17 +95,10 @@ fn update_focus_state(globals: &mut Globals, result: FocusTargetResult) -> Optio
 /// This allows the common focus logic to call backend-specific operations
 /// without duplicating the surrounding logic.
 pub(crate) trait FocusBackendOps {
-    /// Unfocus the current window (if any) without focusing a new one.
-    fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId);
-    /// Focus a specific window.
-    fn focus_window(&self, core: &mut CoreCtx, win: WindowId);
-    /// Handle the case where no window should be focused (focus root/nothing).
-    fn focus_none(&self, core: &mut CoreCtx);
-    /// Called when the shared desktop-binding eligibility changes.
-    fn on_desktop_binding_state_changed(&self, core: &mut CoreCtx);
-    /// Return `true` when the backend's seat focus is out of sync with the
-    /// requested target and needs to be re-applied even though the WM-level
-    /// selection (`mon.sel`) did not change.
+    fn unfocus_current(&self, globals: &Globals, current: WindowId);
+    fn focus_window(&self, globals: &mut Globals, win: WindowId);
+    fn focus_none(&self, globals: &Globals);
+    fn on_desktop_binding_state_changed(&self, globals: &Globals);
     fn needs_focus_refresh(&self, _target: Option<WindowId>) -> bool {
         false
     }
@@ -116,30 +109,25 @@ struct WaylandFocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
-    fn unfocus_current(&self, _core: &mut CoreCtx, _current: WindowId) {
-        // Wayland doesn't need explicit unfocus - focus is managed by the backend
-    }
+    fn unfocus_current(&self, _globals: &Globals, _current: WindowId) {}
 
-    fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
-        let is_urgent = core
-            .globals()
+    fn focus_window(&self, globals: &mut Globals, win: WindowId) {
+        let is_urgent = globals
             .clients
             .get(&win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
-        if is_urgent && let Some(c) = core.globals_mut().clients.get_mut(&win) {
+        if is_urgent && let Some(c) = globals.clients.get_mut(&win) {
             c.clear_urgency();
         }
         self.wayland.backend.set_focus(win);
     }
 
-    fn focus_none(&self, _core: &mut CoreCtx) {
+    fn focus_none(&self, _globals: &Globals) {
         self.wayland.backend.clear_keyboard_focus();
     }
 
-    fn on_desktop_binding_state_changed(&self, _core: &mut CoreCtx) {
-        // Wayland: key grabs not applicable; desktop bindings kept in core
-    }
+    fn on_desktop_binding_state_changed(&self, _globals: &Globals) {}
 
     fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
         match target {
@@ -189,11 +177,11 @@ pub(crate) fn focus_generic(
         && let Some(cur_win) = current_sel
     {
         core.focus.last_client = cur_win;
-        backend.unfocus_current(core, cur_win);
+        backend.unfocus_current(core.globals(), cur_win);
     }
 
     if desktop_bindings_before != desktop_bindings_after {
-        backend.on_desktop_binding_state_changed(core);
+        backend.on_desktop_binding_state_changed(core.globals());
     }
 
     let focus_changed = current_sel != target;
@@ -202,11 +190,11 @@ pub(crate) fn focus_generic(
     if let Some(w) = target {
         if focus_changed || needs_refocus {
             core.bar.mark_dirty();
-            backend.focus_window(core, w);
+            backend.focus_window(core.globals_mut(), w);
         }
     } else if focus_changed {
         core.bar.mark_dirty();
-        backend.focus_none(core);
+        backend.focus_none(core.globals());
     }
 
     Ok(FocusOutcome {
@@ -274,7 +262,7 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
             ..
         }) => {
             crate::backend::x11::focus::unfocus_win_x11(
-                core,
+                core.globals(),
                 x11,
                 x11_runtime,
                 win,
@@ -323,7 +311,11 @@ pub fn hover_focus_target(
 /// Common hover-focus guard checks shared by both backends.
 ///
 /// Returns `true` when hover focus should proceed for `hovered_win`.
-fn should_hover_focus(globals: &Globals, hovered_win: Option<WindowId>, entering_root: bool) -> bool {
+fn should_hover_focus(
+    globals: &Globals,
+    hovered_win: Option<WindowId>,
+    entering_root: bool,
+) -> bool {
     let Some(win) = hovered_win else {
         return false;
     };
@@ -351,7 +343,10 @@ fn should_hover_focus(globals: &Globals, hovered_win: Option<WindowId>, entering
     true
 }
 
-//TODO: document what this returns
+/// Switch the selected monitor to `monitor_id` and re-focus the target.
+///
+/// Returns `true` if the selection actually changed (i.e. the monitor was not
+/// already selected), `false` otherwise.
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
     if ctx.core().globals().monitors.is_empty() {
         return false;

@@ -3,8 +3,9 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::types::{ClientMode, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -41,10 +42,11 @@ pub fn remove_border_x11(x11: &X11BackendRef<'_>, win: WindowId) {
 }
 
 /// Restore border width on an X11 window (for exiting fullscreen).
-pub fn restore_border_x11(x11: &X11BackendRef<'_>, core: &mut CoreCtx, win: WindowId) {
+pub fn restore_border_x11(x11: &X11BackendRef<'_>, globals: &Globals, win: WindowId) {
     let x11_win: Window = win.into();
-    let restored_border = core
-        .globals().clients.get(&win)
+    let restored_border = globals
+        .clients
+        .get(&win)
         .map(|c| c.border_width.max(0) as u32)
         .unwrap_or(0);
     let _ = x11.conn.configure_window(

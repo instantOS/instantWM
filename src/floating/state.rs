@@ -74,11 +74,12 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
         }
         BaseClientMode::Tiling => {
             let is_sole_client = ctx.core().globals().clients.len() <= 1;
-            let clear_border = if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                client.enter_tiling(is_sole_client)
-            } else {
-                false
-            };
+            let clear_border =
+                if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                    client.enter_tiling(is_sole_client)
+                } else {
+                    false
+                };
 
             // Border width clearing is X11-specific
             if clear_border && let WmCtx::X11(x11) = ctx {
@@ -95,7 +96,9 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         Some(sel)
             if !ctx
                 .core()
-                .globals().clients.get(&sel)
+                .globals()
+                .clients
+                .get(&sel)
                 .is_some_and(|c| c.is_edge_scratchpad()) =>
         {
             if let Some(c) = ctx.core().globals().clients.get(&sel)
@@ -112,7 +115,9 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let (is_floating, is_fixed) = ctx
         .core()
-        .globals().clients.get(&win)
+        .globals()
+        .clients
+        .get(&win)
         .map(|c| (c.mode.is_floating(), c.is_fixed_size))
         .unwrap_or((false, false));
     let target_mode = if !is_floating || is_fixed {

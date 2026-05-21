@@ -14,6 +14,7 @@ use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::client::set_fullscreen;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::types::{ClientMode, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
@@ -41,18 +42,18 @@ pub fn set_client_state(
 }
 
 pub fn set_client_tag_prop(
-    core: &CoreCtx,
+    globals: &crate::globals::Globals,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    let Some(c) = core.globals().clients.get(&win) else {
+    let Some(c) = globals.clients.get(&win) else {
         return;
     };
 
-    let mon_num = c.monitor(core.globals()).map(|m| m.num as u32).unwrap_or(0);
+    let mon_num = c.monitor(globals).map(|m| m.num as u32).unwrap_or(0);
 
     let mut data = [0u8; 8];
     data[..4].copy_from_slice(&c.tags.bits().to_ne_bytes());
@@ -69,11 +70,15 @@ pub fn set_client_tag_prop(
     let _ = conn.flush();
 }
 
-pub fn update_client_list(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
+pub fn update_client_list(
+    globals: &crate::globals::Globals,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
     let conn = x11.conn;
     let _ = conn.delete_property(x11_runtime.root, x11_runtime.netatom.client_list);
 
-    for mon in core.globals().monitors_iter_all() {
+    for mon in globals.monitors_iter_all() {
         for &cur_win in &mon.clients {
             let x11_win: Window = cur_win.into();
             let _ = conn.change_property32(
@@ -168,10 +173,10 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 }
 
-pub fn set_urgent_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, urg: bool) {
+pub fn set_urgent_x11(globals: &mut Globals, x11: &X11BackendRef, win: WindowId, urg: bool) {
     let conn = x11.conn;
 
-    if let Some(client) = core.globals_mut().clients.get_mut(&win) {
+    if let Some(client) = globals.clients.get_mut(&win) {
         client.is_urgent = urg;
     }
 

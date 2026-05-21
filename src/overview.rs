@@ -117,7 +117,9 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             let selected_window = ctx.core().globals().selected_win();
             let selected_tags = selected_window.and_then(|win| {
                 ctx.core()
-                    .globals().clients.get(&win)
+                    .globals()
+                    .clients
+                    .get(&win)
                     .map(|c| c.tags.without_scratchpad())
                     .filter(|tags| !tags.is_empty())
             });

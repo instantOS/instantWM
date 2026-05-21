@@ -78,7 +78,9 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     if ctx
         .core()
-        .globals().clients.get(&win)
+        .globals()
+        .clients
+        .get(&win)
         .is_some_and(|c| c.is_edge_scratchpad())
     {
         return;

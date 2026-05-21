@@ -159,7 +159,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
         WmCtx::X11(x11) => {
             if let Some(m) = x11.core.globals().monitors.get(selmon_idx).cloned() {
                 crate::backend::x11::bar::resize_bar_win(
-                    &x11.core,
+                    x11.core.globals(),
                     &x11.x11,
                     &*x11.x11_runtime,
                     x11.systray.as_deref(),

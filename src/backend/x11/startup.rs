@@ -78,7 +78,7 @@ fn wm_init(wm: &mut Wm) {
             return;
         };
         crate::backend::x11::bar::update_bars(
-            &mut ctx.core,
+            ctx.core.globals_mut(),
             &ctx.x11,
             ctx.x11_runtime,
             ctx.systray.as_deref(),
