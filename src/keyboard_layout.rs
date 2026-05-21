@@ -129,25 +129,6 @@ pub fn keyboard_layout_status(ctx: &WmCtx) -> String {
     )
 }
 
-/// Get the list of configured keyboard layouts as a formatted string.
-pub fn keyboard_layout_list(ctx: &WmCtx) -> String {
-    let state = &ctx.core().globals().keyboard_layout;
-    if state.is_empty() {
-        return String::new();
-    }
-    let mut out = String::new();
-    for (i, layout) in state.layouts.iter().enumerate() {
-        let variant = layout.variant.as_deref().unwrap_or("");
-        let marker = if i == state.current { "* " } else { "  " };
-        if variant.is_empty() {
-            out.push_str(&format!("{}{}\n", marker, layout.name));
-        } else {
-            out.push_str(&format!("{}{} ({})\n", marker, layout.name, variant));
-        }
-    }
-    out
-}
-
 /// Replace the configured keyboard layouts at runtime.
 ///
 /// This allows IPC clients to reconfigure layouts without editing the TOML file.

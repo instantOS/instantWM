@@ -84,8 +84,7 @@ pub fn point_is_on_bar(g: &Globals, root: Point) -> bool {
     let mon = g.selected_monitor();
     let mask = mon.selected_tags();
     mon.showbar_for_mask(mask)
-        && root.y >= mon.bar_y
-        && root.y < mon.bar_y + mon.bar_height
+        && crate::bar::y_in_bar(mon, root.y)
         && root.x >= mon.monitor_rect.x
         && root.x < mon.monitor_rect.x + mon.monitor_rect.w
 }

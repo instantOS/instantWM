@@ -9,13 +9,13 @@ use smithay::desktop::PopupManager;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::globals::Globals;
-use crate::types::{BorderColorConfig, Rect, WindowId};
+use crate::types::{BorderColorConfig, Point, Rect, WindowId};
 
 /// Information about a window needed for border rendering.
 #[derive(Debug, Clone, Copy)]
 struct WindowBorderInfo {
     id: WindowId,
-    geo: Rect,
+    position: Point,
     border_width: i32,
     content_size: (i32, i32),
     is_visible: bool,
@@ -27,15 +27,15 @@ struct WindowBorderInfo {
 impl WindowBorderInfo {
     /// Total outer size including borders.
     fn outer_size(&self) -> (i32, i32) {
-        let bw = self.border_width;
-        let (cw, ch) = self.content_size;
-        (cw + 2 * bw, ch + 2 * bw)
+        let border_width = self.border_width;
+        let (content_width, content_height) = self.content_size;
+        (content_width + 2 * border_width, content_height + 2 * border_width)
     }
 
     /// Bounding rectangle including borders.
     fn bounding_rect(&self) -> Rect {
-        let (ow, oh) = self.outer_size();
-        Rect::new(self.geo.x, self.geo.y, ow, oh)
+        let (outer_width, outer_height) = self.outer_size();
+        Rect::new(self.position.x, self.position.y, outer_width, outer_height)
     }
 
     /// Checks if this window should render borders.
@@ -79,7 +79,10 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
 
         windows.push(WindowBorderInfo {
             id: marker.id,
-            geo: c.geo,
+            position: Point {
+                x: c.geo.x,
+                y: c.geo.y,
+            },
             border_width: c.border_width.max(0),
             content_size,
             is_visible,
@@ -93,22 +96,22 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
 }
 
 /// Generates the four border rectangles for a window.
-fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i32) -> Vec<Rect> {
-    if bw <= 0 || outer_w <= 2 * bw || outer_h <= 2 * bw {
+fn generate_border_rectangles(x: i32, y: i32, outer_width: i32, outer_height: i32, border_width: i32) -> Vec<Rect> {
+    if border_width <= 0 || outer_width <= 2 * border_width || outer_height <= 2 * border_width {
         return Vec::new();
     }
 
-    let inner_h = (outer_h - 2 * bw).max(0);
+    let inner_height = (outer_height - 2 * border_width).max(0);
 
     vec![
         // Top border
-        Rect::new(x, y, outer_w, bw),
+        Rect::new(x, y, outer_width, border_width),
         // Bottom border
-        Rect::new(x, y + outer_h - bw, outer_w, bw),
+        Rect::new(x, y + outer_height - border_width, outer_width, border_width),
         // Left border (between top and bottom)
-        Rect::new(x, y + bw, bw, inner_h),
+        Rect::new(x, y + border_width, border_width, inner_height),
         // Right border (between top and bottom)
-        Rect::new(x + outer_w - bw, y + bw, bw, inner_h),
+        Rect::new(x + outer_width - border_width, y + border_width, border_width, inner_height),
     ]
 }
 
@@ -155,17 +158,17 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
         let Some(space_loc) = state.space.element_location(window) else {
             continue;
         };
-        let window_geo = window.geometry();
+        let window_geometry = window.geometry();
         for (popup, popup_offset) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-            let popup_geo = popup.geometry();
-            if popup_geo.size.w <= 0 || popup_geo.size.h <= 0 {
+            let popup_geometry = popup.geometry();
+            if popup_geometry.size.w <= 0 || popup_geometry.size.h <= 0 {
                 continue;
             }
             occluders.push(Rect::new(
-                space_loc.x + window_geo.loc.x + popup_offset.x,
-                space_loc.y + window_geo.loc.y + popup_offset.y,
-                popup_geo.size.w,
-                popup_geo.size.h,
+                space_loc.x + window_geometry.loc.x + popup_offset.x,
+                space_loc.y + window_geometry.loc.y + popup_offset.y,
+                popup_geometry.size.w,
+                popup_geometry.size.h,
             ));
         }
     }
@@ -189,12 +192,12 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
             continue;
         }
 
-        let (outer_w, outer_h) = window.outer_size();
-        let bw = window.border_width;
+        let (outer_width, outer_height) = window.outer_size();
+        let border_width = window.border_width;
 
         // Generate the four border sides
         let border_parts =
-            generate_border_rectangles(window.geo.x, window.geo.y, outer_w, outer_h, bw);
+            generate_border_rectangles(window.position.x, window.position.y, outer_width, outer_height, border_width);
         if border_parts.is_empty() {
             continue;
         }
@@ -223,14 +226,14 @@ fn push_solid(
     out: &mut Vec<SolidColorRenderElement>,
     x: i32,
     y: i32,
-    w: i32,
-    h: i32,
+    width: i32,
+    height: i32,
     color: [f32; 4],
 ) {
-    if w <= 0 || h <= 0 {
+    if width <= 0 || height <= 0 {
         return;
     }
-    let buffer = SolidColorBuffer::new((w, h), color);
+    let buffer = SolidColorBuffer::new((width, height), color);
     out.push(SolidColorRenderElement::from_buffer(
         &buffer,
         (x, y),

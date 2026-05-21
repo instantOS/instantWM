@@ -137,25 +137,23 @@ pub fn wayland_hover_resize_drag_motion(
             true
         }
         crate::globals::DragType::Resize(dir) => {
-            let orig_left = drag.win_start_geo.x;
-            let orig_top = drag.win_start_geo.y;
-            let orig_right = drag.win_start_geo.x + drag.win_start_geo.w;
-            let orig_bottom = drag.win_start_geo.y + drag.win_start_geo.h;
             let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
-            let (new_x, new_w) = if affects_left {
-                (root_x, (orig_right - root_x).max(1))
-            } else if affects_right {
-                (orig_left, (root_x - orig_left + 1).max(1))
-            } else {
-                (orig_left, drag.win_start_geo.w.max(1))
-            };
-            let (new_y, new_h) = if affects_top {
-                (root_y, (orig_bottom - root_y).max(1))
-            } else if !affects_top && affects_bottom {
-                (orig_top, (root_y - orig_top + 1).max(1))
-            } else {
-                (orig_top, drag.win_start_geo.h.max(1))
-            };
+            let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
+                root_x,
+                drag.win_start_geo.x,
+                drag.win_start_geo.x + drag.win_start_geo.w,
+                0,
+                affects_left,
+                affects_right,
+            );
+            let (new_y, new_h) = crate::mouse::resize::compute_axis_resize(
+                root_y,
+                drag.win_start_geo.y,
+                drag.win_start_geo.y + drag.win_start_geo.h,
+                0,
+                affects_top,
+                affects_bottom,
+            );
             crate::contexts::WmCtx::Wayland(ctx.reborrow()).move_resize(
                 drag.win,
                 Rect {

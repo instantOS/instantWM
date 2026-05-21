@@ -162,62 +162,6 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
-    if monitor_id.index() >= ctx.core_mut().globals_mut().monitors.len() {
-        return;
-    }
-
-    let bar_win = ctx
-        .core()
-        .globals()
-        .monitors
-        .get(monitor_id)
-        .map(|m| m.bar_win)
-        .unwrap_or_default();
-
-    // Remove and fix up IDs
-    ctx.core_mut()
-        .globals_mut()
-        .monitors
-        .monitors
-        .remove(monitor_id.index());
-    for (i, m) in ctx
-        .core_mut()
-        .globals_mut()
-        .monitors
-        .monitors
-        .iter_mut()
-        .enumerate()
-    {
-        m.monitor_id = MonitorId(i);
-    }
-
-    // Adjust selected index
-    if ctx.core_mut().globals_mut().monitors.selected_monitor_idx == monitor_id {
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(0);
-    } else if ctx.core_mut().globals_mut().monitors.selected_monitor_idx > monitor_id {
-        let current = ctx
-            .core_mut()
-            .globals_mut()
-            .monitors
-            .selected_monitor_idx
-            .index();
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(current - 1);
-    }
-
-    // Fix up client monitor references
-    let target = ctx.core_mut().globals_mut().monitors.selected_monitor_idx;
-    for client in ctx.core_mut().globals_mut().clients.values_mut() {
-        if client.monitor_id == monitor_id {
-            client.monitor_id = target;
-        } else if client.monitor_id > monitor_id {
-            client.monitor_id = MonitorId(client.monitor_id.index() - 1);
-        }
-    }
-
-    crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, bar_win);
-}
-
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if ctx.core_mut().globals_mut().monitors.sel_idx() == target_mon {
         return;

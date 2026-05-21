@@ -133,9 +133,7 @@ fn resize_target_for_window(
 
 fn pointer_in_bar(globals: &Globals, root_y: i32) -> bool {
     let mon = globals.selected_monitor();
-    crate::bar::monitor_bar_visible(globals, mon)
-        && root_y >= mon.bar_y
-        && root_y < mon.bar_y + mon.bar_height.max(1)
+    crate::bar::monitor_bar_contains_y(globals, mon, root_y)
 }
 
 // ── Cursor helpers ───────────────────────────────────────────────────────────

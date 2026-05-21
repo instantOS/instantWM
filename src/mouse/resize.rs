@@ -43,7 +43,7 @@ fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>)
 /// and size is reduced. When dragging the end edge, position stays fixed and
 /// size grows. The `bw` parameter is the border width, used to keep the
 /// opposite border stationary when resizing from a corner.
-fn compute_axis_resize(
+pub(crate) fn compute_axis_resize(
     pointer: i32,
     orig_start: i32,
     orig_end: i32,
@@ -325,8 +325,8 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 }
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let (is_fullscreen, orig_left, orig_top) = match ctx.core.globals().clients.get(&win) {
-        Some(c) => (c.mode.is_fullscreen(), c.geo.x, c.geo.y),
+    let (is_fullscreen, orig_geo) = match ctx.core.globals().clients.get(&win) {
+        Some(c) => (c.mode.is_fullscreen(), c.geo),
         None => return,
     };
     if is_fullscreen {
@@ -356,8 +356,22 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         false,
         |ctx, event| {
             if let BackendEvent::Motion { root_x, root_y, .. } = event {
-                let raw_nw = (*root_x as i32 - orig_left + 1).max(1);
-                let raw_nh = (*root_y as i32 - orig_top + 1).max(1);
+                let (_, raw_nw) = compute_axis_resize(
+                    *root_x as i32,
+                    orig_geo.x,
+                    orig_geo.x + orig_geo.w,
+                    0,
+                    false,
+                    true,
+                );
+                let (_, raw_nh) = compute_axis_resize(
+                    *root_y as i32,
+                    orig_geo.y,
+                    orig_geo.y + orig_geo.h,
+                    0,
+                    false,
+                    true,
+                );
 
                 if let Some((client_geo, sh, min_aspect, max_aspect)) = ctx
                     .core
