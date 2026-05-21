@@ -8,11 +8,7 @@ pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
     ctx.core_mut().globals_mut().behavior.requested_cursor = style;
     match ctx {
         WmCtx::X11(x11) => {
-            crate::backend::x11::mouse::set_x11_root_cursor(
-                &x11.x11,
-                x11.x11_runtime,
-                style,
-            );
+            crate::backend::x11::mouse::set_x11_root_cursor(&x11.x11, x11.x11_runtime, style);
         }
         WmCtx::Wayland(wayland) => {
             let icon = match style {

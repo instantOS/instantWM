@@ -2,7 +2,7 @@ use smithay::xwayland::{X11Surface, xwm::WmWindowType};
 use x11rb::properties::{WmHints, WmSizeHints};
 
 use crate::client::rules::WindowProperties;
-use crate::types::{Client, WindowId};
+use crate::types::Client;
 
 pub fn window_properties_from_x11_surface(surface: &X11Surface) -> WindowProperties {
     WindowProperties {
@@ -10,10 +10,6 @@ pub fn window_properties_from_x11_surface(surface: &X11Surface) -> WindowPropert
         instance: surface.instance(),
         title: surface.title(),
     }
-}
-
-pub fn transient_for_window_id(surface: &X11Surface) -> Option<WindowId> {
-    surface.is_transient_for().map(WindowId::from)
 }
 
 pub fn apply_wm_hints_to_client(client: &mut Client, hints: Option<WmHints>) {
