@@ -191,7 +191,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
     if ctx.core.globals().clients.contains_key(&event_win) {
-        crate::backend::x11::focus::configure_x11(&mut ctx.core, &ctx.x11, event_win);
+        crate::backend::x11::focus::configure_x11(ctx.core.globals(), &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -268,7 +268,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let selected_window = selected_monitor.sel;
     let is_floating_sel = {
         let is_floating = selected_window
-            .and_then(|w| ctx.core.client(w))
+            .and_then(|w| ctx.core.globals().clients.get(&w))
             .map(|c| c.mode.is_floating())
             .unwrap_or(false);
         let has_tiling = selected_monitor.is_tiling_layout();
@@ -359,9 +359,9 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
 }
 
 pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
-    if let Some(selected_window) = ctx.core.selected_client() {
+    if let Some(selected_window) = ctx.core.globals().selected_win() {
         crate::backend::x11::focus::set_focus_x11(
-            &mut ctx.core,
+            ctx.core.globals(),
             &ctx.x11,
             ctx.x11_runtime,
             selected_window,
@@ -750,7 +750,7 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         crate::client::show_window(&mut WmCtx::X11(ctx.reborrow()), win);
     };
 
-    if let Some(c) = ctx.core.client(win) {
+    if let Some(c) = ctx.core.globals().clients.get(&win) {
         let monitor_id = c.monitor_id;
         crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
         crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(win));

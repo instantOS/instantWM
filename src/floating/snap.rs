@@ -148,7 +148,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
 fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
-    let (snap_status, saved_geo, border_width) = match ctx.core.client(win) {
+    let (snap_status, saved_geo, border_width) = match ctx.core.globals().clients.get(&win) {
         Some(c) => (c.snap_status, c.float_geo, c.border_width),
         None => return None,
     };
@@ -253,7 +253,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
 /// Apply the window's current [`SnapPosition`] by animating it into the
 /// corresponding screen region on monitor `monitor_id`.
 pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
-    let snap_status = match ctx.core.client(win) {
+    let snap_status = match ctx.core.globals().clients.get(&win) {
         Some(c) => c.snap_status,
         None => return,
     };
@@ -266,7 +266,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 
     // Raise the window if it is the focused one (Maximized only).
     if snap_status == SnapPosition::Maximized {
-        let is_sel = ctx.core.selected_client() == Some(win);
+        let is_sel = ctx.core.globals().selected_win() == Some(win);
         if is_sel {
             let wm_ctx = WmCtx::X11(ctx.reborrow());
             wm_ctx.raise_window_visual_only(win);
@@ -280,7 +280,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
-    let (is_floating, snap_status) = match ctx.core().client(win) {
+    let (is_floating, snap_status) = match ctx.core().globals().clients.get(&win) {
         Some(c) => (c.mode.is_floating(), c.snap_status),
         None => return,
     };

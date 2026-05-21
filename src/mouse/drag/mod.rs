@@ -84,7 +84,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             let Some(root) = wl.wayland.backend.pointer_location() else {
                 return;
             };
-            let (geo, is_floating) = match wl.core.client(win) {
+            let (geo, is_floating) = match wl.core.globals().clients.get(&win) {
                 Some(c) => (c.geo, c.mode.is_floating()),
                 None => return,
             };

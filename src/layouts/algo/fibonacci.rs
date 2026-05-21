@@ -99,7 +99,7 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
     let mut i: u32 = 0;
 
     for &win in &m.clients {
-        let Some(c) = ctx.core().client(win) else {
+        let Some(c) = ctx.core().globals().clients.get(&win) else {
             continue;
         };
 

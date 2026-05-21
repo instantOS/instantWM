@@ -311,7 +311,7 @@ fn configure_client_border(
 }
 
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
-    crate::backend::x11::focus::configure_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    crate::backend::x11::focus::configure_x11(ctx_x11.core.globals(), &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
     crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
@@ -416,7 +416,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
         set_client_state(&ctx_x11.x11, ctx_x11.x11_runtime, w, WM_STATE_NORMAL);
     }
-    if let Some(selected_window) = ctx.core().selected_client()
+    if let Some(selected_window) = ctx.core().globals().selected_win()
         && let WmCtx::X11(ctx_x11) = ctx
     {
         let mut core = ctx_x11.core.reborrow();

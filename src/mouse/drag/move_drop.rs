@@ -116,7 +116,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         let mon = g.selected_monitor();
         mon.sel?
     };
-    let c = ctx.core().client(sel)?;
+    let c = ctx.core().globals().clients.get(&sel)?;
     let is_true_fullscreen = c.mode.is_true_fullscreen();
     let is_edge_scratchpad = c.is_edge_scratchpad();
     let is_maximized = c.mode.is_maximized();
@@ -137,7 +137,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     crate::layouts::sync_monitor_z_order(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = match ctx.core().client(selected_window) {
+    let is_snapped = match ctx.core().globals().clients.get(&selected_window) {
         Some(c) => c.snap_status != SnapPosition::None,
         None => return None,
     };
@@ -158,7 +158,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         if !has_tiling {
             let mon = ctx.core().globals().selected_monitor();
             let bar_height = mon.bar_height;
-            if let Some(c) = ctx.core().client(selected_window) {
+            if let Some(c) = ctx.core().globals().clients.get(&selected_window) {
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.y >= mon.monitor_rect.y + bar_height - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
@@ -269,7 +269,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
 
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
-    let (mut is_floating, mut drag_geo) = match ctx.core().client(win) {
+    let (mut is_floating, mut drag_geo) = match ctx.core().globals().clients.get(&win) {
         Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
@@ -287,7 +287,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     );
 
     if !has_tiling || is_floating {
-        if let Some(client) = ctx.core().client(win).cloned() {
+        if let Some(client) = ctx.core().globals().clients.get(&win).cloned() {
             snap_to_monitor_edges(ctx, &client, &mut new_x, &mut new_y);
         }
         ctx.move_resize(
@@ -405,7 +405,7 @@ pub fn handle_bar_drop(
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = match ctx.core().client(win) {
+    let was_floating = match ctx.core().globals().clients.get(&win) {
         Some(c) => c.mode.is_floating(),
         None => return,
     };
@@ -428,7 +428,7 @@ pub fn handle_bar_drop(
         // Don't tile fullscreen windows
         if !ctx
             .core()
-            .client(win)
+            .globals().clients.get(&win)
             .is_some_and(|c| c.mode.is_true_fullscreen())
         {
             let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);

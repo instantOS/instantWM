@@ -49,7 +49,7 @@ pub fn zoom(ctx: &mut WmCtx) {
         return;
     }
 
-    let Some(win) = ctx.core().selected_client() else {
+    let Some(win) = ctx.core().globals().selected_win() else {
         return;
     };
 

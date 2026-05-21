@@ -67,10 +67,10 @@ fn compute_axis_resize(
 }
 
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
-    let Some(win) = ctx.core().selected_client() else {
+    let Some(win) = ctx.core().globals().selected_win() else {
         return;
     };
-    let is_blocked = match ctx.core().client(win) {
+    let is_blocked = match ctx.core().globals().clients.get(&win) {
         Some(c) => c.mode.is_true_fullscreen(),
         None => return,
     };
@@ -84,7 +84,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
     let Some((geo, is_floating)) = ctx
         .core()
-        .client(win)
+        .globals().clients.get(&win)
         .map(|c| (c.geo, c.mode.is_floating()))
     else {
         return;
@@ -192,11 +192,11 @@ pub fn resize_mouse_directional(
     direction: Option<ResizeDirection>,
     btn: MouseButton,
 ) {
-    let Some(win) = ctx.core.selected_client() else {
+    let Some(win) = ctx.core.globals().selected_win() else {
         return;
     };
     let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) =
-        match ctx.core.client(win) {
+        match ctx.core.globals().clients.get(&win) {
             Some(c) => (
                 c.mode.is_true_fullscreen(),
                 c.geo.x,
@@ -250,7 +250,7 @@ pub fn resize_mouse_directional(
 
                 let snap = ctx.core.globals().cfg.window.snap_threshold;
 
-                let should_toggle = if let Some(client) = ctx.core.client(win) {
+                let should_toggle = if let Some(client) = ctx.core.globals().clients.get(&win) {
                     let has_tiling = ctx.core.globals().selected_monitor().is_tiling_layout();
 
                     !client.mode.is_floating()
@@ -264,7 +264,7 @@ pub fn resize_mouse_directional(
                 if should_toggle {
                     with_wm_ctx_x11(ctx, toggle_floating);
                 } else {
-                    let is_floating = match ctx.core.client(win) {
+                    let is_floating = match ctx.core.globals().clients.get(&win) {
                         Some(c) => c.mode.is_floating(),
                         None => return false,
                     };
@@ -328,7 +328,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 }
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let (is_fullscreen, orig_left, orig_top) = match ctx.core.client(win) {
+    let (is_fullscreen, orig_left, orig_top) = match ctx.core.globals().clients.get(&win) {
         Some(c) => (c.mode.is_fullscreen(), c.geo.x, c.geo.y),
         None => return,
     };

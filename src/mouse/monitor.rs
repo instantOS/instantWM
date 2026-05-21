@@ -75,7 +75,7 @@ pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(c) = ctx.core().client(c_win) else {
+    let Some(c) = ctx.core().globals().clients.get(&c_win) else {
         return;
     };
     let rect = c.geo;

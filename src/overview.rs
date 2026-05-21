@@ -114,10 +114,10 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             crate::focus::focus(ctx, None);
         }
         ExitMode::ToSelectedWindow => {
-            let selected_window = ctx.core().selected_client();
+            let selected_window = ctx.core().globals().selected_win();
             let selected_tags = selected_window.and_then(|win| {
                 ctx.core()
-                    .client(win)
+                    .globals().clients.get(&win)
                     .map(|c| c.tags.without_scratchpad())
                     .filter(|tags| !tags.is_empty())
             });
@@ -189,7 +189,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let clients: Vec<(WindowId, i32, i32, bool)> = ordered_windows
         .into_iter()
         .filter_map(|win| {
-            let c = ctx.core().client(win)?;
+            let c = ctx.core().globals().clients.get(&win)?;
             if !c.is_visible(selected_tags) || c.is_edge_scratchpad() {
                 return None;
             }

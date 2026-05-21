@@ -109,7 +109,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(win) = ctx.core().selected_client() else {
+    let Some(win) = ctx.core().globals().selected_win() else {
         return;
     };
 

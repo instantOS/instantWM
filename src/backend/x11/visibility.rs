@@ -119,7 +119,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
 // ---------------------------------------------------------------------------
 
 pub fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.client(win) {
+    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };

@@ -74,7 +74,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
         }
         BaseClientMode::Tiling => {
             let is_sole_client = ctx.core().globals().clients.len() <= 1;
-            let clear_border = if let Some(client) = ctx.core_mut().client_mut(win) {
+            let clear_border = if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                 client.enter_tiling(is_sole_client)
             } else {
                 false
@@ -95,10 +95,10 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         Some(sel)
             if !ctx
                 .core()
-                .client(sel)
+                .globals().clients.get(&sel)
                 .is_some_and(|c| c.is_edge_scratchpad()) =>
         {
-            if let Some(c) = ctx.core().client(sel)
+            if let Some(c) = ctx.core().globals().clients.get(&sel)
                 && c.mode.is_true_fullscreen()
             {
                 return;
@@ -112,7 +112,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let (is_floating, is_fixed) = ctx
         .core()
-        .client(win)
+        .globals().clients.get(&win)
         .map(|c| (c.mode.is_floating(), c.is_fixed_size))
         .unwrap_or((false, false));
     let target_mode = if !is_floating || is_fixed {
@@ -152,7 +152,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
     let maximized_win = ctx.core().globals().selected_monitor().maximized;
-    let selected_window = ctx.core().selected_client();
+    let selected_window = ctx.core().globals().selected_win();
     let animated = ctx.core().globals().behavior.animated;
 
     let enter = maximized_win.is_none();

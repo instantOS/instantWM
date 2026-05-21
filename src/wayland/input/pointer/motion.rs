@@ -597,7 +597,7 @@ fn update_pointer_focus(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        if ctx.core.selected_client() != Some(lock_win) {
+        if ctx.core.globals().selected_win() != Some(lock_win) {
             crate::focus::focus(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 Some(lock_win),

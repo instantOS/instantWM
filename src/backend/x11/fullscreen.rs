@@ -44,7 +44,7 @@ pub fn remove_border_x11(x11: &X11BackendRef<'_>, win: WindowId) {
 pub fn restore_border_x11(x11: &X11BackendRef<'_>, core: &mut CoreCtx, win: WindowId) {
     let x11_win: Window = win.into();
     let restored_border = core
-        .client(win)
+        .globals().clients.get(&win)
         .map(|c| c.border_width.max(0) as u32)
         .unwrap_or(0);
     let _ = x11.conn.configure_window(
@@ -55,7 +55,7 @@ pub fn restore_border_x11(x11: &X11BackendRef<'_>, core: &mut CoreCtx, win: Wind
 
 /// Toggle fake-fullscreen on the selected client (X11 backend).
 pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
-    let Some(win) = ctx_x11.core.selected_client() else {
+    let Some(win) = ctx_x11.core.globals().selected_win() else {
         return;
     };
 

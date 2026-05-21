@@ -48,22 +48,6 @@ impl<'a> CoreCtx<'a> {
         *self.running = false;
     }
 
-    pub fn client(&self, win: WindowId) -> Option<&Client> {
-        self.g.clients.get(&win)
-    }
-
-    pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
-        self.g.clients.get_mut(&win)
-    }
-
-    pub fn selected_client(&self) -> Option<WindowId> {
-        self.g.selected_win()
-    }
-
-    pub fn set_selected_client(&mut self, win: Option<WindowId>) {
-        self.g.selected_monitor_mut().sel = win;
-    }
-
     pub fn reborrow(&mut self) -> CoreCtx<'_> {
         CoreCtx {
             g: self.g,
@@ -285,7 +269,7 @@ impl<'a> WmCtx<'a> {
                 let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
                 crate::client::sync_client_geometry(x11.core.globals_mut(), win, actual);
 
-                crate::backend::x11::focus::configure_x11(&mut x11.core, &x11.x11, win);
+                crate::backend::x11::focus::configure_x11(x11.core.globals(), &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
@@ -375,7 +359,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        let Some(c) = self.core().client(win).cloned() else {
+        let Some(c) = self.core().globals().clients.get(&win).cloned() else {
             return;
         };
 

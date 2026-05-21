@@ -19,11 +19,11 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 /// Send a synthetic `ConfigureNotify` event to `win`.
-pub fn configure_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId) {
+pub fn configure_x11(globals: &crate::globals::Globals, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let Some(c) = core.client(win) else {
+    let Some(c) = globals.clients.get(&win) else {
         return;
     };
 
@@ -100,19 +100,19 @@ pub fn send_event_x11(
 
 /// Update the border color of `win` based on its current focus and floating state.
 pub fn refresh_border_color_x11(
-    core: &CoreCtx,
+    globals: &crate::globals::Globals,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
     focused: bool,
 ) {
     let scheme = &x11_runtime.borderscheme;
-    let Some(c) = core.client(win) else {
+    let Some(c) = globals.clients.get(&win) else {
         return;
     };
 
     let pixel = if focused {
-        let has_tiling = core.globals().selected_monitor().is_tiling_layout();
+        let has_tiling = globals.selected_monitor().is_tiling_layout();
         let isfloating = c.mode.is_free_positioned() || !has_tiling;
         if isfloating {
             scheme.float_focus.bg.pixel()
@@ -136,12 +136,12 @@ pub fn refresh_border_color_x11(
 
 /// Give input focus to `win`.
 pub fn set_focus_x11(
-    core: &mut CoreCtx,
+    globals: &crate::globals::Globals,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(c) = core.client(win) else {
+    let Some(c) = globals.clients.get(&win) else {
         return;
     };
 
@@ -159,9 +159,9 @@ pub fn set_focus_x11(
         );
     }
 
-    refresh_border_color_x11(core, x11, x11_runtime, win, true);
+    refresh_border_color_x11(globals, x11, x11_runtime, win, true);
 
-    grab_buttons_x11(core.globals(), x11, x11_runtime, win, true);
+    grab_buttons_x11(globals, x11, x11_runtime, win, true);
 
     let _ = send_event_x11(
         x11,
@@ -194,7 +194,7 @@ pub fn unfocus_win_x11(
     core.focus.last_client = win;
     grab_buttons_x11(core.globals(), x11, x11_runtime, win, false);
 
-    refresh_border_color_x11(core, x11, x11_runtime, win, false);
+    refresh_border_color_x11(core.globals(), x11, x11_runtime, win, false);
 
     if redirect_to_root {
         let _ = x11
@@ -333,7 +333,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
             }
             clear_urgency_hint_x11(self.x11, win);
         }
-        set_focus_x11(core, self.x11, &*self.x11_runtime, win);
+        set_focus_x11(core.globals(), self.x11, &*self.x11_runtime, win);
     }
 
     fn focus_none(&self, _core: &mut CoreCtx) {

@@ -75,11 +75,11 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
     let move_from_top_middle = {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         clear_hover_offer(&mut wm_ctx);
-        if wm_ctx.core().selected_client() != Some(win) {
+        if wm_ctx.core().globals().selected_win() != Some(win) {
             crate::focus::focus(&mut wm_ctx, Some(win));
         }
 
-        let Some(c) = wm_ctx.core().client(win) else {
+        let Some(c) = wm_ctx.core().globals().clients.get(&win) else {
             return false;
         };
         wm_ctx
@@ -141,7 +141,7 @@ fn pointer_in_bar(globals: &Globals, root_y: i32) -> bool {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let Some(c) = ctx.core().client(win) else {
+    let Some(c) = ctx.core().globals().clients.get(&win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -243,7 +243,7 @@ pub fn update_floating_resize_offer_at(
         // When tiled clients exist, enter_notify handles focus transitions,
         // so motion_notify must not steal focus back to the floating window.
         let should_focus = do_focus
-            && ctx.core().selected_client() != Some(target.win)
+            && ctx.core().globals().selected_win() != Some(target.win)
             && !has_visible_tiled_client(ctx.core().globals());
 
         if should_focus {
@@ -378,7 +378,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                         })
                         .unwrap_or(false);
                     if !in_resize_border {
-                        let sel = wm_ctx.core().selected_client();
+                        let sel = wm_ctx.core().globals().selected_win();
                         let target = get_cursor_client_win(&mut wm_ctx)
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
@@ -403,11 +403,11 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                 BackendEvent::ButtonPress { button } => {
                     action_started = true;
 
-                    let Some(win) = ctx.core.selected_client() else {
+                    let Some(win) = ctx.core.globals().selected_win() else {
                         return false;
                     };
                     let (geo, w, h) = {
-                        let Some(c) = ctx.core.client(win) else {
+                        let Some(c) = ctx.core.globals().clients.get(&win) else {
                             return false;
                         };
                         (c.geo, c.geo.w, c.geo.h)
@@ -475,7 +475,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
 
         // Selected window must be floating in a tiling layout
-        let selected_window = match wm_ctx.core().selected_client() {
+        let selected_window = match wm_ctx.core().globals().selected_win() {
             Some(w) => w,
             None => return false,
         };
@@ -484,7 +484,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             .globals()
             .selected_monitor()
             .is_tiling_layout();
-        let sel_geo = match wm_ctx.core().client(selected_window) {
+        let sel_geo = match wm_ctx.core().globals().clients.get(&selected_window) {
             Some(c) if c.mode.is_floating() || !is_tiling_layout => c.geo,
             _ => return false,
         };

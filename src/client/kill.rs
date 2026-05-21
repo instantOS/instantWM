@@ -4,7 +4,7 @@ use crate::contexts::WmCtx;
 use crate::types::WindowId;
 
 pub fn kill_client(ctx: &mut WmCtx, win: WindowId) {
-    let Some(client) = ctx.core().client(win) else {
+    let Some(client) = ctx.core().globals().clients.get(&win) else {
         return;
     };
 
@@ -31,7 +31,7 @@ pub fn shut_kill(ctx: &mut WmCtx) {
     let has_clients = !ctx.core().globals().selected_monitor().clients.is_empty();
 
     if has_clients {
-        if let Some(win) = ctx.core().selected_client() {
+        if let Some(win) = ctx.core().globals().selected_win() {
             kill_client(ctx, win);
         }
     } else {

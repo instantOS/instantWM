@@ -36,12 +36,12 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     // ── snapshot selected window before the loop ────────
-    let selected_window = ctx.core().selected_client();
+    let selected_window = ctx.core().globals().selected_win();
     let selected_tags = m.selected_tags();
 
     // ── resize every tiled client to fill the work area ───────────────────
     for &win in &m.clients {
-        let Some(c) = ctx.core().client(win) else {
+        let Some(c) = ctx.core().globals().clients.get(&win) else {
             continue;
         };
 

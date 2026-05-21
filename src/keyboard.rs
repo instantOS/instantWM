@@ -34,7 +34,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             .desktop_keybinds
             .as_slice(),
         &ctx.core().globals().cfg.bindings.modes,
-        ctx.core().selected_client(),
+        ctx.core().globals().selected_win(),
         &current_mode,
         keysym,
         cleaned,
@@ -190,10 +190,10 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.core().selected_client() {
+        if let Some(win) = ctx.core().globals().selected_win() {
             if let WmCtx::X11(x11_ctx) = ctx {
                 crate::backend::x11::focus::refresh_border_color_x11(
-                    &x11_ctx.core,
+                    x11_ctx.core.globals(),
                     &x11_ctx.x11,
                     x11_ctx.x11_runtime,
                     win,
@@ -219,7 +219,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.core().selected_client() {
+        if let Some(win) = ctx.core().globals().selected_win() {
             change_snap(ctx, win, Direction::Down);
         }
         return;
@@ -236,7 +236,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
     let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        let Some(win) = ctx.core().selected_client() else {
+        let Some(win) = ctx.core().globals().selected_win() else {
             return;
         };
 

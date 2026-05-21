@@ -12,7 +12,6 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::contexts::CoreCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
 use crate::types::{Client, Monitor, Rect, WindowId};
@@ -184,12 +183,12 @@ pub(crate) struct SizeHintsOutcome {
 }
 
 pub fn apply_size_hints(
-    core: &mut CoreCtx,
+    globals: &mut Globals,
     win: WindowId,
     rect: &mut Rect,
     interact: bool,
 ) -> SizeHintsOutcome {
-    let client = match core.client(win) {
+    let client = match globals.clients.get(&win) {
         Some(c) => c,
         None => {
             return SizeHintsOutcome {
@@ -202,10 +201,10 @@ pub fn apply_size_hints(
     let old_geo = client.geo;
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
-    let monitor = core.globals().monitors.get(monitor_id);
-    let should_apply_hints = core.globals().cfg.window.resizehints
+    let monitor = globals.monitors.get(monitor_id);
+    let should_apply_hints = globals.cfg.window.resizehints
         || client.mode.is_floating()
-        || is_floating_layout(core, monitor);
+        || is_floating_layout(globals, monitor);
 
     // Phase 1: Ensure positive dimensions.
     rect.w = rect.w.max(1);
@@ -213,7 +212,7 @@ pub fn apply_size_hints(
 
     // Phase 2: Clamp position to keep window visible.
     clamp_position_to_bounds(
-        core,
+        globals,
         rect,
         monitor.map(|m| m.work_rect),
         interact,
@@ -222,7 +221,7 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = core.globals().cfg.bar.height;
+    let bar_height = globals.cfg.bar.height;
     rect.enforce_minimum(bar_height, bar_height);
 
     SizeHintsOutcome {
@@ -232,15 +231,15 @@ pub fn apply_size_hints(
 }
 
 /// Check if the given rect differs from the client's current stored geometry.
-pub(crate) fn size_hints_changed(core: &CoreCtx, win: WindowId, rect: &Rect) -> bool {
-    core.client(win)
+pub(crate) fn size_hints_changed(globals: &Globals, win: WindowId, rect: &Rect) -> bool {
+    globals.clients.get(&win)
         .map(|c| rect.differs_from(&c.geo))
         .unwrap_or(false)
 }
 
 /// Clamp window position to keep it within usable screen area.
 fn clamp_position_to_bounds(
-    core: &CoreCtx,
+    globals: &Globals,
     geo: &mut Rect,
     work_rect: Option<Rect>,
     interact: bool,
@@ -251,8 +250,8 @@ fn clamp_position_to_bounds(
         let screen = Rect::new(
             0,
             0,
-            core.globals().cfg.display.width,
-            core.globals().cfg.display.height,
+            globals.cfg.display.width,
+            globals.cfg.display.height,
         );
         geo.clamp_position(&screen, total_w, total_h);
     } else if let Some(wr) = work_rect {
@@ -261,12 +260,12 @@ fn clamp_position_to_bounds(
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(core: &CoreCtx, monitor: Option<&Monitor>) -> bool {
+fn is_floating_layout(globals: &Globals, monitor: Option<&Monitor>) -> bool {
     let Some(mon) = monitor else {
         return true;
     };
 
-    if crate::overview::is_active_on_monitor(core.globals(), mon) {
+    if crate::overview::is_active_on_monitor(globals, mon) {
         return false;
     }
 
@@ -419,7 +418,7 @@ mod tests {
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
     let target = {
         let core = ctx.core();
-        let c = match core.client(win) {
+        let c = match core.globals().clients.get(&win) {
             Some(c) => c,
             None => return,
         };
