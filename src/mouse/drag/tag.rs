@@ -3,7 +3,7 @@
 //! This module handles dragging across the tag bar to switch views or move
 //! windows between tags.
 
-use crate::backend::BackendEvent;
+use crate::backend::{BackendEvent, BackendOps};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::cursor::set_cursor_style;
 use crate::types::*;
@@ -26,7 +26,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => TagMask::from_index(idx).unwrap_or(TagMask::EMPTY),
         _ => {
-            let ptr_x = ctx.pointer_location().map(|p| p.x).unwrap_or(0);
+            let ptr_x = ctx.backend().pointer_location().map(|p| p.x).unwrap_or(0);
             let core = ctx.core();
             core.globals()
                 .monitors

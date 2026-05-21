@@ -11,6 +11,7 @@
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
 
+use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::types::*;
 
@@ -35,6 +36,7 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
     };
 
     let (mut tx, mut ty) = ctx
+        .backend()
         .pointer_location()
         .map(|p| (p.x, p.y))
         .unwrap_or((c.geo.x + c.geo.w / 2, c.geo.y + c.geo.h / 2));
@@ -50,7 +52,7 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
         ty = c.geo.y + c.geo.h - WARP_INTO_PADDING;
     }
 
-    ctx.warp_pointer(tx as f64, ty as f64);
+    ctx.backend().warp_pointer(tx as f64, ty as f64);
 }
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.

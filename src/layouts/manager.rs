@@ -1,5 +1,6 @@
 //! Layout manager — the stateful half of the layout system.
 
+use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Client, ClientMode, Monitor, MonitorId, WindowId};
@@ -30,7 +31,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     }
 
     ctx.request_space_sync();
-    ctx.flush();
+    ctx.backend().flush();
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
@@ -195,16 +196,16 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let is_tiling = layout.is_tiling();
 
     if !is_tiling {
-        ctx.raise_window_visual_only(selected_window);
-        ctx.flush();
+        ctx.backend().raise_window_visual_only(selected_window);
+        ctx.backend().flush();
         return;
     }
 
     let Some(stack) = compute_monitor_z_order(monitor, ctx.core().globals().clients.map()) else {
         return;
     };
-    ctx.apply_z_order(&stack);
-    ctx.flush();
+    ctx.backend().apply_z_order(&stack);
+    ctx.backend().flush();
 }
 
 pub(crate) fn compute_monitor_z_order(

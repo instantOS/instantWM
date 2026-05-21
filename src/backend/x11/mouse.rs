@@ -1,7 +1,7 @@
 //! X11 mouse backend helpers.
 
-use crate::backend::BackendEvent;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::backend::{BackendEvent, BackendOps};
 use crate::contexts::WmCtxX11;
 use crate::mouse::drag::{
     MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
@@ -46,7 +46,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     };
 
     let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let Some(start) = wm_ctx.pointer_location() else {
+    let Some(start) = wm_ctx.backend().pointer_location() else {
         return;
     };
 

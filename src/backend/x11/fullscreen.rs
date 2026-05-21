@@ -1,5 +1,6 @@
 //! X11-specific fullscreen helpers.
 
+use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};
@@ -93,7 +94,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
             MoveResizeOptions::immediate(),
         );
 
-        wm_ctx.raise_window_visual_only(win);
+        wm_ctx.backend().raise_window_visual_only(win);
     }
 
     // Restore the border width when leaving fake-fullscreen while still in

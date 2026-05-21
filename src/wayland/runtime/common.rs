@@ -7,6 +7,7 @@
 //! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
 
 use crate::backend::Backend as WmBackend;
+use crate::backend::BackendOps;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
@@ -121,7 +122,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::RaiseWindow(win) => {
                 let mut ctx = wm.ctx();
                 ctx.core_mut().globals_mut().raise_client_in_z_order(win);
-                ctx.raise_window_visual_only(win);
+                ctx.backend().raise_window_visual_only(win);
             }
             WmCommand::MapWindow(params) => handle_map_window(wm, state, params),
             WmCommand::UnmapWindow(_) => {}

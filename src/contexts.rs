@@ -12,7 +12,7 @@ use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::globals::Globals;
-use crate::types::{Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
     g: &'a mut Globals,
@@ -203,32 +203,12 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn flush(&self) {
-        self.backend().flush();
-    }
-
     /// Request backend-specific space/compositor sync after authoritative WM
     /// geometry changes.
     pub fn request_space_sync(&self) {
         if let WmCtx::Wayland(ctx) = self {
             ctx.wayland.backend.request_space_sync();
         }
-    }
-
-    pub fn pointer_location(&self) -> Option<Point> {
-        self.backend().pointer_location()
-    }
-
-    pub fn warp_pointer(&self, x: f64, y: f64) {
-        self.backend().warp_pointer(x, y);
-    }
-
-    pub fn raise_window_visual_only(&self, win: WindowId) {
-        self.backend().raise_window_visual_only(win);
-    }
-
-    pub fn configure_window_geometry(&self, win: WindowId, rect: Rect) {
-        self.backend().configure_window_geometry(win, rect);
     }
 
     /// Raise a client and persist that z-order in monitor state.
@@ -242,10 +222,6 @@ impl<'a> WmCtx<'a> {
             mon.z_order.raise(win);
         }
         self.backend().raise_window_visual_only(win);
-    }
-
-    pub fn apply_z_order(&self, wins: &[WindowId]) {
-        self.backend().apply_z_order(wins);
     }
 
     pub(crate) fn set_geometry_impl(
@@ -334,18 +310,6 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn map_window(&self, win: WindowId) {
-        self.backend().map_window(win);
-    }
-
-    pub fn unmap_window(&self, win: WindowId) {
-        self.backend().unmap_window(win);
-    }
-
-    pub fn set_focus(&self, win: WindowId) {
-        self.backend().set_focus(win);
-    }
-
     /// Warp cursor to client.
     ///
     /// On X11 this uses `XWarpPointer`.  On Wayland the warp is deferred to
@@ -360,7 +324,7 @@ impl<'a> WmCtx<'a> {
             let mon = self.core().globals().selected_monitor();
             let target_x = (mon.work_rect.x + mon.work_rect.w / 2) as f64;
             let target_y = (mon.work_rect.y + mon.work_rect.h / 2) as f64;
-            self.warp_pointer(target_x, target_y);
+            self.backend().warp_pointer(target_x, target_y);
             return;
         }
 
@@ -368,7 +332,7 @@ impl<'a> WmCtx<'a> {
             return;
         };
 
-        let Some(ptr) = self.pointer_location() else {
+        let Some(ptr) = self.backend().pointer_location() else {
             return;
         };
 
@@ -389,7 +353,7 @@ impl<'a> WmCtx<'a> {
 
         let target_x = (c.geo.x + c.geo.w / 2) as f64;
         let target_y = (c.geo.y + c.geo.h / 2) as f64;
-        self.warp_pointer(target_x, target_y);
+        self.backend().warp_pointer(target_x, target_y);
     }
 
     /// Returns true when running under Wayland.

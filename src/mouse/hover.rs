@@ -15,7 +15,7 @@
 //! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 //! | [`run_x11_hover_resize_offer_loop`]           | `enter_notify`, etc. | Modal loop: wait for click near border     |
 
-use crate::backend::BackendEvent;
+use crate::backend::{BackendEvent, BackendOps};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::globals::{Globals, HoverOffer};
 use crate::types::{
@@ -83,6 +83,7 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
             return false;
         };
         wm_ctx
+            .backend()
             .pointer_location()
             .map(|p| c.geo.is_at_top_middle_edge(p, RESIZE_BORDER_ZONE))
             .unwrap_or(dir == ResizeDirection::Top)
@@ -145,7 +146,8 @@ fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
-    ctx.warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
+    ctx.backend()
+        .warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
 }
 
 // ── Border detection ─────────────────────────────────────────────────────────
@@ -332,7 +334,7 @@ impl X11HoverResizeOfferResult {
 pub fn run_x11_hover_resize_offer_loop(ctx: &mut WmCtxX11) -> X11HoverResizeOfferResult {
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-        let Some(ptr) = wm_ctx.pointer_location() else {
+        let Some(ptr) = wm_ctx.backend().pointer_location() else {
             return X11HoverResizeOfferResult::NotOffered;
         };
         let Some(target) = selected_hover_resize_target_at(wm_ctx.core().globals(), ptr) else {
@@ -372,6 +374,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                 BackendEvent::Motion { .. } => {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
                     let in_resize_border = wm_ctx
+                        .backend()
                         .pointer_location()
                         .map(|p| {
                             selected_hover_resize_target_at(wm_ctx.core().globals(), p).is_some()
@@ -382,7 +385,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                         let target = get_cursor_client_win(&mut wm_ctx)
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
-                                let p = wm_ctx.pointer_location()?;
+                                let p = wm_ctx.backend().pointer_location()?;
                                 find_tiled_win_at_point(wm_ctx.core().globals(), p.x, p.y, sel)
                             });
                         if let Some(win) = target {
@@ -513,7 +516,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             return false;
         }
 
-        let Some(ptr) = wm_ctx.pointer_location() else {
+        let Some(ptr) = wm_ctx.backend().pointer_location() else {
             return false;
         };
 

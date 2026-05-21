@@ -3,7 +3,7 @@
 //! This module handles click and drag interactions on window title bars,
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
-use crate::backend::BackendEvent;
+use crate::backend::{BackendEvent, BackendOps};
 use crate::contexts::WmCtx;
 use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
@@ -118,7 +118,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         ctx.core_mut().globals_mut().drag.interactive.start_point = root;
     } else {
         warp::warp_into(ctx, win);
-        let ptr = ctx.pointer_location().unwrap_or(root);
+        let ptr = ctx.backend().pointer_location().unwrap_or(root);
         let pad = warp::WARP_INTO_PADDING;
         let clamped_x = ptr
             .x
@@ -186,7 +186,8 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         if let Some(c) = ctx.core().globals().clients.get(&win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
-            ctx.warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
+            ctx.backend()
+                .warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
         }
         if let WmCtx::X11(x11) = ctx {
             resize_mouse_directional(x11, Some(ResizeDirection::BottomRight), btn);

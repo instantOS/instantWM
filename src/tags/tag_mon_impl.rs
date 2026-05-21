@@ -11,6 +11,7 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
+use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::monitor::transfer_client;
 use crate::types::{MonitorDirection, WindowId};
@@ -151,5 +152,5 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
 
     // Raise so the window is immediately visible on the new monitor.
     ctx.raise_client(win);
-    ctx.flush();
+    ctx.backend().flush();
 }

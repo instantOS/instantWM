@@ -1,3 +1,4 @@
+use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
@@ -232,14 +233,14 @@ pub fn arrange(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             },
             MoveResizeOptions::hinted_immediate(false),
         );
-        ctx.raise_window_visual_only(win);
+        ctx.backend().raise_window_visual_only(win);
     }
 
     if let Some(selected) = m.sel
         && clients.iter().any(|(win, _, _, _)| *win == selected)
     {
-        ctx.raise_window_visual_only(selected);
+        ctx.backend().raise_window_visual_only(selected);
     }
 
-    ctx.flush();
+    ctx.backend().flush();
 }

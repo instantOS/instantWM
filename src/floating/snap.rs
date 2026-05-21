@@ -17,6 +17,7 @@
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
+use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
@@ -129,7 +130,9 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             };
             apply_snap(ctx_x11, win, &rect);
             let wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-            wm_ctx.warp_pointer((rect.x + rect.w / 2) as f64, (rect.y + rect.h / 2) as f64);
+            wm_ctx
+                .backend()
+                .warp_pointer((rect.x + rect.w / 2) as f64, (rect.y + rect.h / 2) as f64);
             crate::focus::focus(&mut WmCtx::X11(ctx_x11.reborrow()), Some(win));
         }
         WmCtx::Wayland(_) => {
@@ -269,7 +272,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
         let is_sel = ctx.core.globals().selected_win() == Some(win);
         if is_sel {
             let wm_ctx = WmCtx::X11(ctx.reborrow());
-            wm_ctx.raise_window_visual_only(win);
+            wm_ctx.backend().raise_window_visual_only(win);
         }
     }
 }

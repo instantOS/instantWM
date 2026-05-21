@@ -363,7 +363,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     focus(ctx, Some(c_win));
 
-    ctx.raise_window_visual_only(c_win);
+    ctx.backend().raise_window_visual_only(c_win);
     ctx.warp_cursor_to_client(c_win);
 }
 
@@ -540,7 +540,7 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     }
     ctx.core_mut().globals_mut().queue_layout_for_all_monitors();
     ctx.core_mut().bar.mark_dirty();
-    if let Some(ptr) = ctx.pointer_location()
+    if let Some(ptr) = ctx.backend().pointer_location()
         && let Some(m) = ctx.core().globals().monitors.find_monitor_at_pointer(ptr)
     {
         ctx.core_mut().globals_mut().monitors.set_sel_idx(m);

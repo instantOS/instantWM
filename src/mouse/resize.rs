@@ -17,7 +17,7 @@
 //! that hover-border drags use, giving correct per-quadrant behaviour without
 //! any cursor warp or anchor chaos.
 
-use crate::backend::BackendEvent;
+use crate::backend::{BackendEvent, BackendOps};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
@@ -78,7 +78,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     }
 
-    let Some(ptr) = ctx.pointer_location() else {
+    let Some(ptr) = ctx.backend().pointer_location() else {
         return;
     };
 
@@ -307,7 +307,7 @@ pub fn resize_mouse_directional(
 /// intended for use on windows that are already floating (e.g. video players
 /// with a fixed aspect ratio).
 pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
-    let Some(ptr) = ctx.pointer_location() else {
+    let Some(ptr) = ctx.backend().pointer_location() else {
         return;
     };
 
