@@ -212,6 +212,7 @@ pub struct WaylandRuntimeState {
     pub image_copy_sessions: Vec<ImageCopySession>,
     pub space_sync_pending: bool,
     pub render_dirty: bool,
+    pub frame_callbacks_pending: bool,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
@@ -233,6 +234,7 @@ impl Default for WaylandRuntimeState {
             image_copy_sessions: Vec::new(),
             space_sync_pending: true,
             render_dirty: false,
+            frame_callbacks_pending: false,
             render_ping: None,
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
@@ -532,6 +534,16 @@ impl WaylandState {
     }
 
     #[inline]
+    pub fn request_frame_callbacks(&mut self) {
+        if !self.runtime.frame_callbacks_pending
+            && let Some(render_ping) = &self.runtime.render_ping
+        {
+            render_ping.ping();
+        }
+        self.runtime.frame_callbacks_pending = true;
+    }
+
+    #[inline]
     pub fn request_space_sync(&mut self) {
         if self.runtime.space_sync_pending {
             log::debug!("request_space_sync: already pending");
@@ -553,6 +565,11 @@ impl WaylandState {
     #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
         std::mem::take(&mut self.runtime.render_dirty)
+    }
+
+    #[inline]
+    pub fn take_frame_callbacks_pending(&mut self) -> bool {
+        std::mem::take(&mut self.runtime.frame_callbacks_pending)
     }
 
     pub fn set_output_vrr_support(

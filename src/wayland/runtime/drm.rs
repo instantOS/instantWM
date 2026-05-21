@@ -413,6 +413,13 @@ fn run_event_loop(
                 &monotonic_clock,
             );
             process_commit_redraws(state, loop_state);
+            process_frame_callback_requests(
+                state,
+                &loop_handle,
+                loop_state,
+                output_surfaces,
+                start_time,
+            );
             process_common_tick(ipc_server, wm, state, loop_state);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
             sync_output_enabled_from_state(state, output_surfaces, loop_state);
@@ -584,6 +591,23 @@ fn arm_empty_frame_callback_timer(
 fn process_commit_redraws(state: &mut WaylandState, loop_state: &mut DrmLoopState) {
     if state.take_render_dirty() {
         loop_state.mark_all_dirty();
+    }
+}
+
+/// Service frame-callback-only commits without forcing a DRM render.
+fn process_frame_callback_requests(
+    state: &mut WaylandState,
+    loop_handle: &LoopHandle<'_, WaylandState>,
+    loop_state: &DrmLoopState,
+    output_surfaces: &[OutputSurfaceEntry],
+    start_time: std::time::Instant,
+) {
+    if !state.take_frame_callbacks_pending() {
+        return;
+    }
+
+    for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
+        arm_empty_frame_callback_timer(loop_handle, loop_state, entry, start_time);
     }
 }
 
