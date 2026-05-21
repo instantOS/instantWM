@@ -37,7 +37,7 @@ fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId
         }
 
         let previous_current_tag = mon.current_tag_number();
-        mon.sel_tags ^= 1;
+        mon.sel_tags = !mon.sel_tags;
         mon.set_selected_tags(new_mask);
 
         if previous_current_tag != mon.current_tag_number()

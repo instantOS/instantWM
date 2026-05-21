@@ -333,13 +333,13 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     focus(ctx, None);
 }
 
-pub fn focus_n_mon(ctx: &mut WmCtx, index: i32) {
+pub fn focus_n_mon(ctx: &mut WmCtx, index: MonitorId) {
     let target = {
         let mgr = &ctx.core_mut().globals_mut().monitors;
         if mgr.monitors.len() <= 1 {
             return;
         }
-        MonitorId((index as usize).min(mgr.monitors.len() - 1))
+        MonitorId(index.index().min(mgr.monitors.len() - 1))
     };
 
     if let Some(win) = ctx

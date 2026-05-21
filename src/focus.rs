@@ -50,7 +50,7 @@ fn resolve_focus_target(core: &CoreCtx, win: Option<WindowId>) -> Option<FocusTa
 
     if target.is_none() {
         // Try focus history first.
-        if let Some(&hist_win) = mon.tag_focus_history.get(&selected.bits())
+        if let Some(&hist_win) = mon.tag_focus_history.get(&selected)
             && is_focusable_on_monitor(core, sel_mon_id, selected, hist_win)
         {
             target = Some(hist_win);
@@ -82,10 +82,10 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
     if let Some(mon) = core.globals_mut().monitor_mut(sel_mon_id) {
         mon.sel = target;
         if let Some(t) = target {
-            mon.tag_focus_history.insert(mon.selected_tags().bits(), t);
+            mon.tag_focus_history.insert(mon.selected_tags(), t);
             if target_is_tiled {
                 mon.tag_tiled_focus_history
-                    .insert(mon.selected_tags().bits(), t);
+                    .insert(mon.selected_tags(), t);
             }
         }
     }

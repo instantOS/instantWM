@@ -105,8 +105,8 @@ pub struct Monitor {
     pub monitor_rect: Rect,
     /// Work area geometry (excluding bar).
     pub work_rect: Rect,
-    /// Currently selected tag set index.
-    pub sel_tags: u32,
+    /// Currently selected tag set index (0 or 1).
+    pub sel_tags: bool,
     /// Tag sets (two sets for switching).
     pub tag_set: [TagMask; 2],
     /// Active offset for bar display.
@@ -134,15 +134,15 @@ pub struct Monitor {
     /// Currently selected client.
     pub sel: Option<WindowId>,
     /// Focus history per tag mask.
-    pub tag_focus_history: HashMap<u32, WindowId>,
+    pub tag_focus_history: HashMap<TagMask, WindowId>,
     /// Last tiled focus per tag mask.
     ///
     /// This is distinct from `sel`: a floating dialog can hold keyboard focus
     /// while monocle still needs to keep the previously focused tiled client
     /// visible below it.
-    pub tag_tiled_focus_history: HashMap<u32, WindowId>,
+    pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
-    pub per_tag: HashMap<u32, PertagState>,
+    pub per_tag: HashMap<TagMask, PertagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
@@ -168,7 +168,7 @@ impl Default for Monitor {
             bar_clients_width: 0,
             monitor_rect: Rect::default(),
             work_rect: Rect::default(),
-            sel_tags: 0,
+            sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
             activeoffset: 0,
             titleoffset: 0,
@@ -237,15 +237,9 @@ impl Monitor {
         self.tag_set[self.sel_tags as usize] = mask;
     }
 
-    /// Set the currently selected tags for this monitor from raw bits.
-    #[inline]
-    pub fn set_selected_tags_bits(&mut self, mask: u32) {
-        self.tag_set[self.sel_tags as usize] = TagMask::from_bits(mask);
-    }
-
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
-        let mask = self.selected_tags().bits();
+        let mask = self.selected_tags();
         let default_showbar = self.show_bar;
         self.per_tag
             .entry(mask)
@@ -414,7 +408,7 @@ impl Monitor {
     /// Returns showbar state for the given tag mask.
     pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
         self.per_tag
-            .get(&mask.bits())
+            .get(&mask)
             .map(|s| s.showbar)
             .unwrap_or(self.show_bar)
     }
@@ -422,7 +416,7 @@ impl Monitor {
     /// Returns layout state for the given tag mask (immutable lookup).
     pub fn layouts_for_mask(&self, mask: TagMask) -> TagLayouts {
         self.per_tag
-            .get(&mask.bits())
+            .get(&mask)
             .map(|s| s.layouts)
             .unwrap_or_default()
     }

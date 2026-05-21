@@ -214,7 +214,7 @@ pub(crate) fn compute_monitor_z_order(
     let bar_win = monitor.bar_win;
     let tiled_focus = monitor
         .tag_tiled_focus_history
-        .get(&selected_tags.bits())
+        .get(&selected_tags)
         .copied()
         .filter(|win| {
             clients
@@ -319,16 +319,6 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     };
     let final_layout = all_layouts[candidate];
     set_layout(ctx, final_layout);
-}
-
-pub fn command_layout(ctx: &mut WmCtx<'_>, layout_idx: u32) {
-    let all_layouts = LayoutKind::all();
-    let idx = if layout_idx > 0 && (layout_idx as usize) < all_layouts.len() {
-        layout_idx as usize
-    } else {
-        0
-    };
-    set_layout(ctx, all_layouts[idx]);
 }
 
 pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
@@ -474,7 +464,7 @@ mod tests {
         let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
         monitor
             .tag_tiled_focus_history
-            .insert(monitor.selected_tags().bits(), WindowId(1));
+            .insert(monitor.selected_tags(), WindowId(1));
         let mut clients = [WindowId(1), WindowId(2), WindowId(3)]
             .into_iter()
             .map(|win| (win, visible_client(win)))

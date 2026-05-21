@@ -193,7 +193,7 @@ pub fn apply_size_hints(
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
     let monitor = core.globals().monitors.get(monitor_id);
-    let should_apply_hints = core.globals().cfg.window.resizehints != 0
+    let should_apply_hints = core.globals().cfg.window.resizehints
         || client.mode.is_floating()
         || is_floating_layout(core, monitor);
 

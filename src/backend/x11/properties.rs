@@ -217,7 +217,7 @@ pub fn set_urgent_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: WindowId, ur
 }
 
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    if ctx.core.globals().cfg.window.decorhints == 0 {
+    if !ctx.core.globals().cfg.window.decorhints {
         return;
     }
 

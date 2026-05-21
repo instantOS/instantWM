@@ -114,7 +114,7 @@ pub fn select_client(g: &mut Globals, win: WindowId) {
         mon.sel = Some(win);
         if is_tiled {
             mon.tag_tiled_focus_history
-                .insert(mon.selected_tags().bits(), win);
+                .insert(mon.selected_tags(), win);
         }
     }
 }

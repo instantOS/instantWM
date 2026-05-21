@@ -21,7 +21,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
     let mon_mx = ctx.core().globals().selected_monitor().work_rect.x;
 
     let initial_tag = match bar_pos {
-        BarPosition::Tag(idx) => 1u32 << (idx as u32),
+        BarPosition::Tag(idx) => TagMask::from_index(idx).unwrap_or(TagMask::EMPTY),
         _ => {
             let ptr_x = ctx.pointer_location().map(|p| p.x).unwrap_or(0);
             let core = ctx.core();
@@ -31,22 +31,22 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
                 .and_then(|mon| {
                     let local_x = ptr_x - mon.work_rect.x;
                     match mon.bar_position_at_x(core, local_x) {
-                        BarPosition::Tag(idx) => Some(1u32 << (idx as u32)),
+                        BarPosition::Tag(idx) => TagMask::from_index(idx),
                         _ => None,
                     }
                 })
-                .unwrap_or(0)
+                .unwrap_or(TagMask::EMPTY)
         }
     };
 
     let current_tagset = ctx.core().globals().selected_monitor().selected_tags();
     let is_current_tag =
-        (TagMask::from_bits(initial_tag) & ctx.core().globals().tags.mask()) == current_tagset;
+        (initial_tag & ctx.core().globals().tags.mask()) == current_tagset;
     let has_sel = ctx.core().selected_client().is_some();
 
     // Click on a *different* tag → switch view, no drag.
-    if !is_current_tag && initial_tag != 0 {
-        crate::tags::view::view_tags(ctx, TagMask::from_bits(initial_tag));
+    if !is_current_tag && !initial_tag.is_empty() {
+        crate::tags::view::view_tags(ctx, initial_tag);
         return false;
     }
     // No selected window → nothing to drag.
@@ -60,7 +60,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         initial_tag,
         monitor_id: selmon_id,
         mon_mx,
-        last_tag: -1,
+        last_tag: None,
         cursor_on_bar: true,
         last_motion: None,
         button: btn,
@@ -107,8 +107,8 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
             .unwrap_or(Gesture::None)
     };
     let gesture_key = match new_gesture {
-        Gesture::Tag(idx) => idx as i32,
-        _ => -1,
+        Gesture::Tag(idx) => Some(idx),
+        _ => None,
     };
 
     if ctx.core_mut().globals_mut().drag.tag.last_tag != gesture_key {

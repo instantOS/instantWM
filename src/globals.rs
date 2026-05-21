@@ -22,8 +22,8 @@ pub struct DisplayConfig {
 pub struct WindowConfig {
     pub border_width_px: i32,
     pub snap_threshold: i32,
-    pub resizehints: i32,
-    pub decorhints: i32,
+    pub resizehints: bool,
+    pub decorhints: bool,
 }
 
 impl Default for WindowConfig {
@@ -31,8 +31,8 @@ impl Default for WindowConfig {
         Self {
             border_width_px: 1,
             snap_threshold: 32,
-            resizehints: 1,
-            decorhints: 0,
+            resizehints: true,
+            decorhints: false,
         }
     }
 }
@@ -204,14 +204,14 @@ pub struct DragInteraction {
 pub struct TagDragState {
     /// Whether a tag drag is currently active.
     pub active: bool,
-    /// The initial tag bitmask that was clicked.
-    pub initial_tag: u32,
+    /// The initial tag mask that was clicked.
+    pub initial_tag: TagMask,
     /// Monitor ID where the drag started.
     pub monitor_id: MonitorId,
     /// Monitor X origin (for converting root coords to local).
     pub mon_mx: i32,
-    /// Last seen tag gesture index (-1 = none).
-    pub last_tag: i32,
+    /// Last seen tag gesture index (None = none).
+    pub last_tag: Option<usize>,
     /// Whether cursor is still on the bar.
     pub cursor_on_bar: bool,
     /// Last motion coordinates + modifier state (for release handling).

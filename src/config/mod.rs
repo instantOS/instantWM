@@ -147,10 +147,10 @@ pub struct Config {
     pub bar_height: i32,
 
     // --- Tiling ---
-    /// Respect size hints for tiled clients (`1` = yes).
-    pub resize_hints: i32,
-    /// Respect decoration hints (`1` = yes).
-    pub decorhints: i32,
+    /// Respect size hints for tiled clients.
+    pub resize_hints: bool,
+    /// Respect decoration hints.
+    pub decorhints: bool,
     /// Master area size factor (0.0–1.0).
     pub mfact: f32,
     /// Number of clients in master area.
@@ -302,8 +302,8 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         bar_height: theme.bar_height as i32,
 
         // --- Tiling ---
-        resize_hints: 1,
-        decorhints: 1,
+        resize_hints: true,
+        decorhints: true,
         mfact: 0.55,
         nmaster: 1,
 

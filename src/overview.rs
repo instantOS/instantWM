@@ -36,7 +36,7 @@ fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool 
     }
 
     let previous_current_tag = mon.current_tag_number();
-    mon.sel_tags ^= 1;
+    mon.sel_tags = !mon.sel_tags;
     mon.set_selected_tags(new_mask);
     if previous_current_tag != mon.current_tag_number()
         && let Some(previous_current_tag) = previous_current_tag

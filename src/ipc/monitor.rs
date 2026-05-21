@@ -1,6 +1,6 @@
 use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, focus_n_mon};
-use crate::types::MonitorDirection;
+use crate::types::{MonitorDirection, MonitorId};
 use crate::wm::Wm;
 use std::collections::HashMap;
 
@@ -67,7 +67,7 @@ fn list_monitors(wm: &Wm) -> Response {
 }
 
 fn switch_monitor(wm: &mut Wm, index: i32) -> Response {
-    focus_n_mon(&mut wm.ctx(), index);
+    focus_n_mon(&mut wm.ctx(), MonitorId(index.max(0) as usize));
     Response::ok()
 }
 
