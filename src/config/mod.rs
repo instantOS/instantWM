@@ -116,7 +116,7 @@ pub struct ModeConfig {
 
 /// All WM configuration in one place.
 ///
-/// Built by [`init_config`] and consumed by `init_globals` in `startup::x11`.
+/// Built by [`init_config`] and consumed by `init_globals` in `backend::x11::startup`.
 /// Fields are public so `init_globals` can move them into `Globals` without
 /// extra getters.
 #[derive(Debug, Clone)]
@@ -214,7 +214,7 @@ pub struct Config {
 
 /// Build the default [`Config`].
 ///
-/// Called once from `init_globals` in `startup::x11`.  All values here are the
+/// Called once from `init_globals` in `backend::x11::startup`.  All values here are the
 /// compile-time defaults; TOML config overrides the appearance fields when present.
 pub fn init_config(backend: crate::backend::BackendKind) -> Config {
     let theme = config_toml::load_config_file();

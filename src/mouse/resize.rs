@@ -17,6 +17,7 @@
 //! that hover-border drags use, giving correct per-quadrant behaviour without
 //! any cursor warp or anchor chaos.
 
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
@@ -225,9 +226,9 @@ pub fn resize_mouse_directional(
         AltCursor::Resize(dir),
         false,
         |ctx, event| {
-            if let x11rb::protocol::Event::MotionNotify(m) = event {
-                let pointer_x = m.event_x as i32;
-                let pointer_y = m.event_y as i32;
+            if let BackendEvent::Motion { root_x, root_y, .. } = event {
+                let pointer_x = *root_x as i32;
+                let pointer_y = *root_y as i32;
 
                 let (new_x, new_w) = compute_axis_resize(
                     pointer_x,
@@ -347,9 +348,9 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         AltCursor::Resize(ResizeDirection::BottomRight),
         false,
         |ctx, event| {
-            if let x11rb::protocol::Event::MotionNotify(m) = event {
-                let raw_nw = (m.event_x as i32 - orig_left + 1).max(1);
-                let raw_nh = (m.event_y as i32 - orig_top + 1).max(1);
+            if let BackendEvent::Motion { root_x, root_y, .. } = event {
+                let raw_nw = (*root_x as i32 - orig_left + 1).max(1);
+                let raw_nh = (*root_y as i32 - orig_top + 1).max(1);
 
                 if let Some((client_geo, sh, min_aspect, max_aspect)) = ctx
                     .core

@@ -90,16 +90,27 @@ impl X11RuntimeConfig {
 }
 
 pub mod bar;
+pub mod bar_painter;
 pub mod client;
+pub mod constants;
 pub mod draw;
 pub mod events;
 pub mod floating;
+pub mod focus;
+pub mod fullscreen;
+pub mod geometry;
 pub mod grab;
 pub mod keyboard;
+pub mod kill;
 pub mod lifecycle;
+pub mod monitor_helpers;
 pub mod mouse;
+pub mod policy;
 pub mod properties;
 pub mod randr;
+pub mod startup;
+pub mod systray;
+pub mod visibility;
 
 pub use client::update_size_hints_x11;
 pub use properties::{
@@ -180,6 +191,18 @@ pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect>
 }
 
 impl BackendOps for X11BackendRef<'_> {
+    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new()
+                .x(rect.x)
+                .y(rect.y)
+                .width(rect.w.max(1) as u32)
+                .height(rect.h.max(1) as u32),
+        );
+    }
+
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;

@@ -30,13 +30,13 @@
 
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::constants::BROKEN;
+use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
+use crate::backend::x11::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
     update_motif_hints, update_window_type, update_wm_hints,
 };
-use crate::client::constants::BROKEN;
-use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
@@ -169,8 +169,9 @@ fn insert_client_and_apply_rules(
     mut c: Client,
     launch_context: Option<crate::client::LaunchContext>,
 ) {
-    c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
-        == crate::client::constants::WM_STATE_ICONIC;
+    c.is_hidden =
+        crate::backend::x11::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
+            == crate::backend::x11::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
     let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
     crate::client::apply_rules(core.globals_mut(), w, &props, launch_context);
@@ -311,7 +312,7 @@ fn configure_client_border(
 }
 
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
-    crate::client::focus::configure_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    crate::backend::x11::focus::configure_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
     crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);

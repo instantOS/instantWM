@@ -68,7 +68,8 @@ pub fn setup_wayland_listen_socket_xwayland_systray(
     let _socket_name = crate::wayland::common::setup_wayland_socket(loop_handle, state);
     crate::wayland::common::spawn_xwayland(state, loop_handle);
     if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
+        data.wayland_systray_runtime =
+            crate::backend::wayland::systray::WaylandSystrayRuntime::start();
     }
 }
 
@@ -345,10 +346,10 @@ fn handle_map_window(
     }
 
     if let Some(hints) = x11_hints {
-        crate::client::x11_policy::apply_wm_hints_to_client(&mut client, Some(hints));
+        crate::backend::x11::policy::apply_wm_hints_to_client(&mut client, Some(hints));
     }
     if let Some(shints) = x11_size_hints {
-        crate::client::x11_policy::apply_size_hints_to_client(&mut client, Some(shints));
+        crate::backend::x11::policy::apply_size_hints_to_client(&mut client, Some(shints));
     }
 
     if let Some(geo) = initial_geo {
@@ -497,8 +498,8 @@ fn handle_update_xwayland_policy(
     let mut ctx = wm.ctx();
     let g = ctx.core_mut().globals_mut();
     if let Some(client) = g.clients.get_mut(&win) {
-        crate::client::x11_policy::apply_wm_hints_to_client(client, hints);
-        crate::client::x11_policy::apply_size_hints_to_client(client, size_hints);
+        crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
+        crate::backend::x11::policy::apply_size_hints_to_client(client, size_hints);
     }
 
     crate::client::mode::set_fullscreen(g, win, is_fullscreen);

@@ -17,14 +17,11 @@
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::client::{restore_border_width, save_border_width};
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::algo::apply_snap_for_window;
 use crate::types::*;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 // ── Snap navigation matrix ────────────────────────────────────────────────────
 //
@@ -179,7 +176,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
     if snap_status != SnapPosition::Maximized
         && let Some(client) = ctx.core.globals_mut().clients.get_mut(&win)
     {
-        restore_border_width(client);
+        client.restore_border_width();
     }
 
     // Compute target rect based on snap position.
@@ -240,7 +237,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
         },
         SnapPosition::Maximized => {
             if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
-                save_border_width(client);
+                client.save_border_width();
                 client.border_width = 0;
             }
             Rect {
@@ -271,14 +268,8 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
     if snap_status == SnapPosition::Maximized {
         let is_sel = ctx.core.selected_client() == Some(win);
         if is_sel {
-            let conn = ctx.x11.conn;
-            let x11_win: Window = win.into();
-            let _ = configure_window(
-                conn,
-                x11_win,
-                &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-            );
-            let _ = conn.flush();
+            let wm_ctx = WmCtx::X11(ctx.reborrow());
+            wm_ctx.raise_window_visual_only(win);
         }
     }
 }
@@ -303,7 +294,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     if is_floating || !tiling {
         if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
             client.snap_status = SnapPosition::None;
-            restore_border_width(client);
+            client.restore_border_width();
         }
         super::state::restore_floating_geometry(ctx, win);
 

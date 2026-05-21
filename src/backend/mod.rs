@@ -11,7 +11,9 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{
+    MouseButton, Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId,
+};
 use bincode::{Decode, Encode};
 
 #[derive(
@@ -49,6 +51,28 @@ pub enum WindowProtocol {
     Wayland,
     #[serde(rename = "xwayland")]
     XWayland,
+}
+
+/// Backend-agnostic event type for drag loops.
+///
+/// Backend-specific events (X11 `x11rb::protocol::Event`, Wayland input
+/// events) are converted to this enum so that shared code does not depend
+/// on either backend's event types.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BackendEvent {
+    /// Pointer motion.
+    Motion {
+        root_x: f64,
+        root_y: f64,
+        /// Modifier key mask (X11: `state` field, Wayland: modifier flags).
+        modifiers: u32,
+    },
+    /// Button press (start of a click).
+    ButtonPress { button: MouseButton },
+    /// Button release.
+    ButtonRelease { button: MouseButton },
+    /// Key press (used with `with_keys: true`).
+    KeyPress { keycode: u32 },
 }
 
 /// Core backend operations required by the WM.
@@ -113,6 +137,9 @@ pub trait BackendOps {
     fn get_input_devices(&self) -> Vec<String> {
         Vec::new()
     }
+
+    /// Position and resize a window directly (no size-hint enforcement).
+    fn configure_window_geometry(&self, _win: WindowId, _rect: Rect) {}
 }
 
 /// X11-specific backend data.
@@ -129,7 +156,7 @@ pub struct WaylandBackendData {
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
     pub wayland_systray: WaylandSystray,
     pub wayland_systray_menu: Option<WaylandSystrayMenu>,
-    pub wayland_systray_runtime: Option<crate::systray::wayland::WaylandSystrayRuntime>,
+    pub wayland_systray_runtime: Option<crate::backend::wayland::systray::WaylandSystrayRuntime>,
 }
 
 /// Owned backend implementation.
@@ -265,6 +292,13 @@ impl BackendOps for BackendRef<'_> {
         match self {
             BackendRef::X11(x11) => x11.resize_window(window, rect),
             BackendRef::Wayland(wayland) => wayland.resize_window(window, rect),
+        }
+    }
+
+    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
+        match self {
+            BackendRef::X11(x11) => x11.configure_window_geometry(window, rect),
+            BackendRef::Wayland(wayland) => wayland.configure_window_geometry(window, rect),
         }
     }
 

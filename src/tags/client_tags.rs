@@ -18,9 +18,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         return;
     }
 
-    if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.set_client_tag_prop(win);
     crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()

@@ -1,23 +1,11 @@
 //! Floating state transitions and geometry persistence.
 
 use crate::backend::BackendOps;
-use crate::backend::x11::X11BackendRef;
-use crate::client::restore_border_width;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::types::*;
-
-/// Common helper for restoring border width when transitioning to floating.
-/// Returns the restored border width value.
-/// This is X11-specific since Wayland doesn't support border widths.
-fn restore_client_border_x11(client: &mut Client, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
-    restore_border_width(client);
-    let restored_border_width = client.border_width;
-    x11.set_border_width(win, restored_border_width);
-    restored_border_width
-}
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     if let Some(rect) = ctx.core().globals().clients.effective_float_geo(win) {
@@ -56,23 +44,20 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
         BaseClientMode::Floating => {
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                 client.mode = ClientMode::Floating;
+                client.restore_border_width();
             }
 
-            // Restore borders
-            match ctx {
-                WmCtx::X11(x11) => {
-                    if let Some(client) = x11.core.globals_mut().clients.get_mut(&win) {
-                        restore_client_border_x11(client, &x11.x11, win);
-                    }
-                    crate::backend::x11::floating::apply_floating_borderscheme(
-                        &x11.x11,
-                        win,
-                        x11.x11_runtime,
-                    );
-                }
-                WmCtx::Wayland(_) => {
-                    // Wayland doesn't support border widths, nothing to restore
-                }
+            // Restore borders and apply floating border scheme
+            ctx.set_border(win, 0);
+            if let Some(client) = ctx.core().globals().clients.get(&win) {
+                ctx.set_border(win, client.border_width);
+            }
+            if let WmCtx::X11(x11) = ctx {
+                crate::backend::x11::floating::apply_floating_borderscheme(
+                    &x11.x11,
+                    win,
+                    x11.x11_runtime,
+                );
             }
 
             // Apply saved float geometry

@@ -26,6 +26,7 @@
 //! ungrab_ctx(ctx);
 //! ```
 
+use crate::backend::BackendEvent;
 use crate::contexts::WmCtxX11;
 use crate::types::{AltCursor, MouseButton, WindowId};
 use x11rb::CURRENT_TIME;
@@ -135,7 +136,48 @@ pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
 
 fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     if ctx.core.bar.needs_redraw() {
-        crate::bar::x11::draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+        crate::backend::x11::bar::draw_bars_x11(
+            &mut ctx.core,
+            ctx.x11_runtime,
+            ctx.systray.as_deref(),
+        );
+    }
+}
+
+/// Convert an X11 event to a backend-agnostic [`BackendEvent`].
+fn x11_event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
+    match event {
+        x11rb::protocol::Event::MotionNotify(m) => Some(BackendEvent::Motion {
+            root_x: m.root_x as f64,
+            root_y: m.root_y as f64,
+            modifiers: u16::from(m.state) as u32,
+        }),
+        x11rb::protocol::Event::ButtonRelease(br) => MouseButton::from_x11_detail(br.detail)
+            .map(|button| BackendEvent::ButtonRelease { button }),
+        x11rb::protocol::Event::ButtonPress(bp) => MouseButton::from_x11_detail(bp.detail)
+            .map(|button| BackendEvent::ButtonPress { button }),
+        x11rb::protocol::Event::KeyPress(kp) => Some(BackendEvent::KeyPress {
+            keycode: kp.detail as u32,
+        }),
+        _ => None,
+    }
+}
+
+/// Call `on_event` with the given event converted to [`BackendEvent`].
+///
+/// Returns `true` (continue) when the event cannot be converted.
+fn call_on_event<F>(
+    on_event: &mut F,
+    ctx: &mut WmCtxX11<'_>,
+    event: &x11rb::protocol::Event,
+) -> bool
+where
+    F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
+{
+    if let Some(be) = x11_event_to_backend(event) {
+        on_event(ctx, &be)
+    } else {
+        true
     }
 }
 
@@ -146,6 +188,7 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
 ///
 /// If `with_keys` is true, also captures KeyPress events.
 /// The closure `on_event` returns `true` to continue the loop, `false` to break.
+/// Events are converted to [`BackendEvent`] so callers are backend-agnostic.
 pub fn mouse_drag_loop<F>(
     ctx: &mut WmCtxX11<'_>,
     btn: MouseButton,
@@ -153,7 +196,7 @@ pub fn mouse_drag_loop<F>(
     with_keys: bool,
     mut on_event: F,
 ) where
-    F: FnMut(&mut WmCtxX11<'_>, &x11rb::protocol::Event) -> bool,
+    F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
 {
     let grabbed = if with_keys {
         grab_pointer_with_keys(ctx, cursor)
@@ -187,7 +230,7 @@ pub fn mouse_drag_loop<F>(
                             // back so wait_event/poll_for_event yield it next time!
                             // x11rb doesn't let us un-read events easily, so we process
                             // the compressed motion *now*, then process this next_evt.
-                            if !on_event(ctx, &event) {
+                            if !call_on_event(&mut on_event, ctx, &event) {
                                 pump_deferred_work(ctx);
                                 ungrab(ctx);
                                 return;
@@ -202,7 +245,7 @@ pub fn mouse_drag_loop<F>(
                                 ungrab(ctx);
                                 return;
                             }
-                            if !on_event(ctx, &next_evt) {
+                            if !call_on_event(&mut on_event, ctx, &next_evt) {
                                 pump_deferred_work(ctx);
                                 ungrab(ctx);
                                 return;
@@ -227,10 +270,10 @@ pub fn mouse_drag_loop<F>(
                 if br.detail == btn.to_x11_detail() {
                     false
                 } else {
-                    on_event(ctx, &event)
+                    call_on_event(&mut on_event, ctx, &event)
                 }
             }
-            _ => on_event(ctx, &event),
+            _ => call_on_event(&mut on_event, ctx, &event),
         };
 
         pump_deferred_work(ctx);

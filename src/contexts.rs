@@ -243,6 +243,10 @@ impl<'a> WmCtx<'a> {
         self.backend().raise_window_visual_only(win);
     }
 
+    pub fn configure_window_geometry(&self, win: WindowId, rect: Rect) {
+        self.backend().configure_window_geometry(win, rect);
+    }
+
     /// Raise a client and persist that z-order in monitor state.
     ///
     /// Use this for interactive operations (move/resize drags) so later
@@ -281,7 +285,7 @@ impl<'a> WmCtx<'a> {
                 let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
                 crate::client::sync_client_geometry(x11.core.globals_mut(), win, actual);
 
-                crate::client::focus::configure_x11(&mut x11.core, &x11.x11, win);
+                crate::backend::x11::focus::configure_x11(&mut x11.core, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
@@ -306,6 +310,38 @@ impl<'a> WmCtx<'a> {
         // Border width is X11-specific; Wayland doesn't support border width
         if let WmCtx::X11(x11) = self {
             x11.x11.set_border_width(win, width);
+        }
+    }
+
+    /// (Re)grab all keybindings.  X11 only; no-op on Wayland.
+    pub fn grab_keys(&mut self) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::keyboard::grab_keys_x11(&ctx.core, &ctx.x11, ctx.x11_runtime);
+        }
+    }
+
+    /// Update the cached numlock modifier mask.  X11 only; no-op on Wayland.
+    pub fn update_num_lock_mask(&mut self) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::keyboard::update_num_lock_mask_x11(
+                &mut ctx.core,
+                &ctx.x11,
+                ctx.x11_runtime,
+            );
+        }
+    }
+
+    /// Set `WM_STATE` property.  X11 only; no-op on Wayland.
+    pub fn set_client_state(&mut self, win: WindowId, state: i32) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, win, state);
+        }
+    }
+
+    /// Write tag/monitor metadata into a window property.  X11 only; no-op on Wayland.
+    pub fn set_client_tag_prop(&mut self, win: WindowId) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::set_client_tag_prop(&ctx.core, &ctx.x11, ctx.x11_runtime, win);
         }
     }
 

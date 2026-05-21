@@ -4,13 +4,8 @@
 //! global state access and making dependencies explicit.
 
 use crate::backend::BackendOps;
-use crate::backend::x11::X11BackendRef;
-use crate::client::{clear_urgency_hint_x11, set_focus_x11, unfocus_win_x11};
 use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
 use crate::types::*;
-use x11rb::CURRENT_TIME;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConnectionExt, InputFocus};
 
 /// Result of resolving a focus target, containing both the target window
 /// and information needed for state updates.
@@ -84,8 +79,7 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
         if let Some(t) = target {
             mon.tag_focus_history.insert(mon.selected_tags(), t);
             if target_is_tiled {
-                mon.tag_tiled_focus_history
-                    .insert(mon.selected_tags(), t);
+                mon.tag_tiled_focus_history.insert(mon.selected_tags(), t);
             }
         }
     }
@@ -99,7 +93,7 @@ fn update_focus_state(core: &mut CoreCtx, result: FocusTargetResult) -> Option<W
 /// Backend-specific focus operations trait.
 /// This allows the common focus logic to call backend-specific operations
 /// without duplicating the surrounding logic.
-trait FocusBackendOps {
+pub(crate) trait FocusBackendOps {
     /// Unfocus the current window (if any) without focusing a new one.
     fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId);
     /// Focus a specific window.
@@ -113,50 +107,6 @@ trait FocusBackendOps {
     /// selection (`mon.sel`) did not change.
     fn needs_focus_refresh(&self, _target: Option<WindowId>) -> bool {
         false
-    }
-}
-
-struct X11FocusBackend<'a> {
-    x11: &'a X11BackendRef<'a>,
-    x11_runtime: &'a mut crate::backend::x11::X11RuntimeConfig,
-}
-
-impl<'a> FocusBackendOps for X11FocusBackend<'a> {
-    fn unfocus_current(&self, core: &mut CoreCtx, current: WindowId) {
-        unfocus_win_x11(core, self.x11, &*self.x11_runtime, current, false);
-    }
-
-    fn focus_window(&self, core: &mut CoreCtx, win: WindowId) {
-        let is_urgent = core
-            .globals()
-            .clients
-            .get(&win)
-            .map(|c| c.is_urgent)
-            .unwrap_or(false);
-        if is_urgent {
-            if let Some(c) = core.globals_mut().clients.get_mut(&win) {
-                c.clear_urgency();
-            }
-            clear_urgency_hint_x11(self.x11, win);
-        }
-        set_focus_x11(core, self.x11, &*self.x11_runtime, win);
-    }
-
-    fn focus_none(&self, _core: &mut CoreCtx) {
-        let _ = self.x11.conn.set_input_focus(
-            InputFocus::POINTER_ROOT,
-            self.x11_runtime.root,
-            CURRENT_TIME,
-        );
-        let _ = self.x11.conn.delete_property(
-            self.x11_runtime.root,
-            self.x11_runtime.netatom.active_window,
-        );
-        let _ = self.x11.conn.flush();
-    }
-
-    fn on_desktop_binding_state_changed(&self, core: &mut CoreCtx) {
-        crate::keyboard::grab_keys_x11(core, self.x11, &*self.x11_runtime);
     }
 }
 
@@ -207,7 +157,7 @@ pub(crate) struct FocusOutcome {
 }
 
 /// Generic focus implementation shared between X11 and Wayland.
-fn focus_generic(
+pub(crate) fn focus_generic(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
@@ -274,7 +224,7 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     use crate::contexts::WmCtx::*;
     let outcome = match ctx {
         X11(x11_ctx) => {
-            let mut backend = X11FocusBackend {
+            let mut backend = crate::backend::x11::focus::X11FocusBackend {
                 x11: &x11_ctx.x11,
                 x11_runtime: x11_ctx.x11_runtime,
             };
@@ -304,20 +254,6 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     }
 }
 
-/// X11-only focus helper for call sites that hold disaggregated X11 types
-/// rather than a full `WmCtx` (e.g. inside `Client::set_tags`).
-pub(crate) fn focus_soft_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
-    win: Option<WindowId>,
-) {
-    let mut backend = X11FocusBackend { x11, x11_runtime };
-    if let Err(e) = focus_generic(core, win, &mut backend) {
-        log::warn!("focus_soft_x11({:?}) failed: {}", win, e);
-    }
-}
-
 /// Backend-agnostic unfocus.
 ///
 /// Records the window in `last_client` (for focus-last), then delegates
@@ -336,7 +272,13 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
             x11_runtime,
             ..
         }) => {
-            unfocus_win_x11(core, x11, x11_runtime, win, redirect_to_root);
+            crate::backend::x11::focus::unfocus_win_x11(
+                core,
+                x11,
+                x11_runtime,
+                win,
+                redirect_to_root,
+            );
         }
         Wayland(_) => {
             // Seat focus is managed by the focus path (focus_generic →
@@ -407,24 +349,6 @@ fn should_hover_focus(core: &CoreCtx, hovered_win: Option<WindowId>, entering_ro
         return false;
     }
     true
-}
-
-/// Backend-agnostic cursor query for hover logic.
-pub fn cursor_client(ctx: &crate::contexts::WmCtx) -> Option<WindowId> {
-    use crate::contexts::{WmCtx::*, WmCtxX11};
-    match ctx {
-        X11(WmCtxX11 {
-            core,
-            x11,
-            x11_runtime,
-            ..
-        }) => crate::backend::x11::mouse::get_cursor_client_win_with_conn(
-            core,
-            x11.conn,
-            x11_runtime.root,
-        ),
-        Wayland(_) => None,
-    }
 }
 
 //TODO: document what this returns

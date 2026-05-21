@@ -15,13 +15,12 @@
 //! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 //! | [`run_x11_hover_resize_offer_loop`]           | `enter_notify`, etc. | Modal loop: wait for click near border     |
 
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::globals::{Globals, HoverOffer};
 use crate::types::{
     AltCursor, MouseButton, Point, Rect, ResizeDirection, WindowId, get_resize_direction,
 };
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ConnectionExt, Window};
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::set_cursor_style;
@@ -146,29 +145,7 @@ fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
-    let target_x = c.geo.x + x_off;
-    let target_y = c.geo.y + y_off;
-    match ctx {
-        WmCtx::X11(x11) => {
-            let x11_win: Window = win.into();
-            let _ = x11.x11.conn.warp_pointer(
-                x11rb::NONE,
-                x11_win,
-                0,
-                0,
-                0,
-                0,
-                x_off as i16,
-                y_off as i16,
-            );
-            let _ = x11.x11.conn.flush();
-        }
-        WmCtx::Wayland(wl) => {
-            wl.wayland
-                .backend
-                .warp_pointer(target_x as f64, target_y as f64);
-        }
-    }
+    ctx.warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
 }
 
 // ── Border detection ─────────────────────────────────────────────────────────
@@ -390,9 +367,9 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
         true,
         |ctx, event| {
             match event {
-                x11rb::protocol::Event::ButtonRelease(_) => false,
+                BackendEvent::ButtonRelease { .. } => false,
 
-                x11rb::protocol::Event::MotionNotify(_) => {
+                BackendEvent::Motion { .. } => {
                     let mut wm_ctx = WmCtx::X11(ctx.reborrow());
                     let in_resize_border = wm_ctx
                         .pointer_location()
@@ -416,34 +393,32 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                     true
                 }
 
-                x11rb::protocol::Event::KeyPress(k) => {
-                    if k.detail == KEYCODE_ESCAPE {
+                BackendEvent::KeyPress { keycode } => {
+                    if *keycode == KEYCODE_ESCAPE as u32 {
                         return false;
                     }
                     true
                 }
 
-                x11rb::protocol::Event::ButtonPress(bp) => {
+                BackendEvent::ButtonPress { button } => {
                     action_started = true;
-                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
 
-                    let Some(win) = wm_ctx.core().selected_client() else {
+                    let Some(win) = ctx.core.selected_client() else {
                         return false;
                     };
                     let (geo, w, h) = {
-                        let Some(c) = wm_ctx.core().client(win) else {
+                        let Some(c) = ctx.core.client(win) else {
                             return false;
                         };
                         (c.geo, c.geo.w, c.geo.h)
                     };
 
-                    // Query cursor position relative to the client window.
+                    // Query cursor position relative to the client window (X11 only).
                     let (root_x, root_y, win_x, win_y) =
-                        query_pointer_on_win(&mut wm_ctx, win).unwrap_or((0, 0, 0, 0));
+                        query_pointer_on_win(ctx.reborrow(), win).unwrap_or((0, 0, 0, 0));
 
-                    let Some(btn) = MouseButton::from_x11_detail(bp.detail) else {
-                        return false;
-                    };
+                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                    let btn = *button;
                     wm_ctx.raise_client(win);
                     match btn {
                         MouseButton::Right => {
@@ -566,6 +541,18 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
+/// Query the pointer position in both root and window-local coordinates (X11 only).
+fn query_pointer_on_win(ctx: WmCtxX11, win: WindowId) -> Option<(i32, i32, i32, i32)> {
+    use x11rb::protocol::xproto::ConnectionExt;
+    let reply = ctx.x11.conn.query_pointer(win.0).ok()?.reply().ok()?;
+    Some((
+        reply.root_x as i32,
+        reply.root_y as i32,
+        reply.win_x as i32,
+        reply.win_y as i32,
+    ))
+}
+
 /// Return the window ID of the client currently under the mouse pointer.
 ///
 /// Uses `query_pointer` on the root window to get the actual window under the
@@ -578,20 +565,4 @@ fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
         WmCtx::Wayland(_) => return None,
     };
     crate::backend::x11::mouse::get_cursor_client_win_with_conn(core, conn, root)
-}
-
-/// Query the pointer position in both root and window-local coordinates.
-fn query_pointer_on_win(ctx: &mut WmCtx, win: WindowId) -> Option<(i32, i32, i32, i32)> {
-    let conn = match ctx {
-        WmCtx::X11(x11) => x11.x11.conn,
-        WmCtx::Wayland(_) => return None,
-    };
-    let x11_win: Window = win.into();
-    let reply = conn.query_pointer(x11_win).ok()?.reply().ok()?;
-    Some((
-        reply.root_x as i32,
-        reply.root_y as i32,
-        reply.win_x as i32,
-        reply.win_y as i32,
-    ))
 }

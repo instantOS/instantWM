@@ -11,12 +11,8 @@
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
 
-use crate::backend::x11::X11BackendRef;
-use crate::backend::x11::X11RuntimeConfig;
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::types::*;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 pub(crate) const WARP_INTO_PADDING: i32 = 10;
 
@@ -64,42 +60,4 @@ pub fn warp_to_focus(ctx: &mut WmCtx) {
     }
 }
 
-// ── Cursor reset ──────────────────────────────────────────────────────────────
 
-/// Restore the root window's default (arrow) cursor and clear the requested
-/// WM cursor presentation.
-///
-/// Call this after a modal grab ends so the cursor reverts to normal even
-/// if the pointer is not over any client window.
-pub fn reset_cursor_x11(core: &mut CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
-    if core.globals().behavior.requested_cursor == AltCursor::Default {
-        return;
-    }
-    core.globals_mut().behavior.requested_cursor = AltCursor::Default;
-
-    let cursor_idx = AltCursor::Default.to_x11_index();
-    if let Some(ref cursor) = x11_runtime.cursors[cursor_idx] {
-        let _ = change_window_attributes(
-            x11.conn,
-            x11_runtime.root,
-            &ChangeWindowAttributesAux::new().cursor(cursor.cursor as u32),
-        );
-        let _ = x11.conn.flush();
-    }
-}
-
-/// Backend-agnostic cursor reset.
-pub fn reset_cursor(ctx: &mut crate::contexts::WmCtx) {
-    use crate::contexts::{WmCtx::*, WmCtxX11};
-    match ctx {
-        X11(WmCtxX11 {
-            core,
-            x11,
-            x11_runtime,
-            ..
-        }) => reset_cursor_x11(core, x11, x11_runtime),
-        Wayland(_) => {
-            // Wayland cursor is managed via CursorImageStatus — no root-window cursor to reset.
-        }
-    }
-}

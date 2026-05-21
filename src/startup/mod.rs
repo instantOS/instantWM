@@ -1,7 +1,6 @@
 use clap::{Parser, ValueEnum};
 use std::env;
 pub mod autostart;
-pub(crate) mod x11;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum CliBackend {
@@ -50,7 +49,7 @@ pub fn run() {
     }
 
     match cli.backend {
-        CliBackend::X11 => x11::run(),
+        CliBackend::X11 => crate::backend::x11::startup::run(),
         CliBackend::Nested => crate::wayland::runtime::winit::run(),
         CliBackend::Drm => crate::wayland::runtime::drm::run(),
     }

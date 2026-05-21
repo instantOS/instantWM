@@ -42,24 +42,25 @@ fn reload_wayland(
 }
 
 fn reload_x11(wm: &mut Wm) {
-    crate::startup::x11::init_drw_and_schemes(wm);
+    crate::backend::x11::startup::init_drw_and_schemes(wm);
 
     let ctx = wm.ctx();
     if let WmCtx::X11(mut x11_ctx) = ctx {
-        crate::bar::x11::update_bars(
+        crate::backend::x11::bar::update_bars(
             &mut x11_ctx.core,
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref(),
         );
-        crate::bar::x11::update_status(
+        crate::backend::x11::bar::update_status(
             &mut x11_ctx.core,
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref_mut(),
         );
-        crate::keyboard::grab_keys_x11(&x11_ctx.core, &x11_ctx.x11, x11_ctx.x11_runtime);
-        crate::focus::focus(&mut WmCtx::X11(x11_ctx.reborrow()), None);
+        let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
+        wm_ctx.grab_keys();
+        crate::focus::focus(&mut wm_ctx, None);
     }
 }
 

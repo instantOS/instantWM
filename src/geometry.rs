@@ -202,20 +202,32 @@ fn apply_resize_policies(
     let mut adjusted = target;
     let interact = options.bounds == BoundsPolicy::Interactive;
     let changed = match ctx {
-        WmCtx::X11(x11_ctx) => crate::client::geometry::apply_size_hints(
-            &mut x11_ctx.core,
-            Some(&x11_ctx.x11),
-            win,
-            &mut adjusted,
-            interact,
-        ),
-        WmCtx::Wayland(wl_ctx) => crate::client::geometry::apply_size_hints(
-            &mut wl_ctx.core,
-            None,
-            win,
-            &mut adjusted,
-            interact,
-        ),
+        WmCtx::X11(x11_ctx) => {
+            let outcome = crate::client::geometry::apply_size_hints(
+                &mut x11_ctx.core,
+                win,
+                &mut adjusted,
+                interact,
+            );
+            if outcome.should_apply_icccm {
+                crate::backend::x11::geometry::apply_icccm_size_hints_x11(
+                    &mut x11_ctx.core,
+                    &x11_ctx.x11,
+                    win,
+                    &mut adjusted,
+                );
+            }
+            crate::client::geometry::size_hints_changed(&x11_ctx.core, win, &adjusted)
+        }
+        WmCtx::Wayland(wl_ctx) => {
+            let outcome = crate::client::geometry::apply_size_hints(
+                &mut wl_ctx.core,
+                win,
+                &mut adjusted,
+                interact,
+            );
+            outcome.changed
+        }
     };
 
     let client_count = ctx.core().globals().clients.len();

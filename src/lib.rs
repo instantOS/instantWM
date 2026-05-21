@@ -28,7 +28,6 @@ mod overview;
 pub mod reload;
 mod runtime;
 pub mod startup;
-mod systray;
 mod tags;
 mod toggles;
 pub mod types;

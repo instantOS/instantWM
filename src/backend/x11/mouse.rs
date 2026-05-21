@@ -1,11 +1,31 @@
 //! X11 mouse backend helpers.
 
+use crate::backend::BackendEvent;
 use crate::contexts::{CoreCtx, WmCtxX11};
 use crate::mouse::drag::{
     MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
 };
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
-use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::{self, ConnectionExt};
+
+/// Set the root window cursor by its index in the cached cursor array.
+pub fn set_x11_root_cursor_by_index(ctx: WmCtxX11<'_>, cursor_index: usize) {
+    if ctx.x11_runtime.last_x11_cursor_index == Some(cursor_index) {
+        return;
+    }
+    let conn = ctx.x11.conn;
+    let root = ctx.x11_runtime.root;
+    if let Some(ref loaded_cursor) = ctx.x11_runtime.cursors[cursor_index] {
+        let _ = xproto::change_window_attributes(
+            conn,
+            root,
+            &xproto::ChangeWindowAttributesAux::new().cursor(loaded_cursor.cursor as u32),
+        );
+        let _ = conn.flush();
+        ctx.x11_runtime.last_x11_cursor_index = Some(cursor_index);
+    }
+}
 
 /// X11-only synchronous window move implementation.
 ///
@@ -39,13 +59,13 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     };
 
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let x11rb::protocol::Event::MotionNotify(m) = event {
+        if let BackendEvent::Motion { root_x, root_y, .. } = event {
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
             on_motion(
                 &mut wm_ctx,
                 win,
-                Point::new(m.event_x as i32, m.event_y as i32),
-                Point::new(m.root_x as i32, m.root_y as i32),
+                Point::new(*root_x as i32, *root_y as i32),
+                Point::new(*root_x as i32, *root_y as i32),
                 &mut state,
             );
         }

@@ -12,7 +12,6 @@
 //! * [`Client::total_width`](crate::types::Client::total_width) – total width including borders
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
-use crate::backend::x11::X11BackendRef;
 use crate::contexts::CoreCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
@@ -177,16 +176,27 @@ fn normalize_spawn_axis(
 ///
 /// Returns `true` if the resulting geometry differs from the client's current
 /// stored geometry (i.e. an actual change would occur).
+/// Result of [`apply_size_hints`] indicating whether ICCCM hints should also
+/// be applied (X11 only — the caller is responsible for actually doing so).
+pub(crate) struct SizeHintsOutcome {
+    pub changed: bool,
+    pub should_apply_icccm: bool,
+}
+
 pub fn apply_size_hints(
     core: &mut CoreCtx,
-    x11: Option<&X11BackendRef>,
     win: WindowId,
     rect: &mut Rect,
     interact: bool,
-) -> bool {
+) -> SizeHintsOutcome {
     let client = match core.client(win) {
         Some(c) => c,
-        None => return false,
+        None => {
+            return SizeHintsOutcome {
+                changed: false,
+                should_apply_icccm: false,
+            };
+        }
     };
 
     let old_geo = client.geo;
@@ -215,12 +225,17 @@ pub fn apply_size_hints(
     let bar_height = core.globals().cfg.bar.height;
     rect.enforce_minimum(bar_height, bar_height);
 
-    // Phase 4: Apply ICCCM size hints (X11 only).
-    if should_apply_hints && let Some(x11_backend) = x11 {
-        apply_icccm_size_hints_x11(core, x11_backend, win, rect);
+    SizeHintsOutcome {
+        changed: rect.differs_from(&old_geo),
+        should_apply_icccm: should_apply_hints,
     }
+}
 
-    rect.differs_from(&old_geo)
+/// Check if the given rect differs from the client's current stored geometry.
+pub(crate) fn size_hints_changed(core: &CoreCtx, win: WindowId, rect: &Rect) -> bool {
+    core.client(win)
+        .map(|c| rect.differs_from(&c.geo))
+        .unwrap_or(false)
 }
 
 /// Clamp window position to keep it within usable screen area.
@@ -256,34 +271,6 @@ fn is_floating_layout(core: &CoreCtx, monitor: Option<&Monitor>) -> bool {
     }
 
     !mon.is_tiling_layout()
-}
-
-fn apply_icccm_size_hints_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    win: WindowId,
-    geo: &mut Rect,
-) {
-    let needs_update = core
-        .client(win)
-        .map(|c| !c.size_hints_dirty)
-        .unwrap_or(false);
-
-    if needs_update {
-        crate::backend::x11::client::update_size_hints_x11(core, x11, win);
-    }
-
-    let client = match core.client(win) {
-        Some(c) => c,
-        None => return,
-    };
-
-    let (w, h) =
-        client
-            .size_hints
-            .constrain_size(geo.w, geo.h, client.min_aspect, client.max_aspect);
-    geo.w = w;
-    geo.h = h;
 }
 
 // ---------------------------------------------------------------------------

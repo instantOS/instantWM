@@ -1,15 +1,11 @@
 use crate::actions::{KeyAction, execute_key_action};
-use crate::backend::x11::X11BackendRef;
-use crate::backend::x11::X11RuntimeConfig;
 use crate::config::ModeConfig;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::floating::{change_snap, reset_snap, toggle_floating, unhide_one};
 use crate::focus::{direction_focus, focus_stack};
 
 use crate::types::*;
 use crate::types::{Direction, StackDirection, VerticalDirection};
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
@@ -125,160 +121,6 @@ fn resolve_key_action(
         })
 }
 
-pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
-    let keycode = e.detail;
-    let state = e.state;
-    let keysym = crate::backend::x11::keyboard::keycode_to_keysym(ctx.x11.conn, keycode, 0);
-    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-    let _ = handle_keysym(&mut wm_ctx, keysym, state.bits() as u32);
-}
-
-pub fn key_release_x11(_ctx: &mut WmCtxX11, _e: &KeyReleaseEvent) {}
-
-fn grab_keys_for_key<C: Connection>(
-    conn: &C,
-    root: Window,
-    modifiers: &[u16],
-    key: &Key,
-    keycode: u8,
-) {
-    for &modif in modifiers {
-        let _ = grab_key(
-            conn,
-            false,
-            root,
-            ((key.mod_mask as u16) | modif).into(),
-            keycode,
-            GrabMode::ASYNC,
-            GrabMode::ASYNC,
-        );
-    }
-}
-
-pub fn grab_keys_x11(core: &CoreCtx, x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) {
-    let conn = x11.conn;
-    let root = x11_runtime.root;
-    let numlockmask = x11_runtime.numlockmask;
-    let keys = core.globals().cfg.bindings.keys.as_slice();
-    let desktop_keybinds = core.globals().cfg.bindings.desktop_keybinds.as_slice();
-    let modes = &core.globals().cfg.bindings.modes;
-
-    let _ = ungrab_key(conn, 0, root, ModMask::ANY);
-
-    let (keycode_min, keycode_max): (u8, u8) = (conn.setup().min_keycode, conn.setup().max_keycode);
-
-    let modifiers: [u16; 4] = [
-        0,
-        ModMask::LOCK.bits(),
-        numlockmask as u16,
-        (numlockmask as u16) | ModMask::LOCK.bits(),
-    ];
-
-    let mapping = match conn
-        .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-    {
-        Some(mapping) => mapping,
-        None => return,
-    };
-
-    let get_keysym = |keycode: u8| -> u32 {
-        let index = (keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-        if index < mapping.keysyms.len() {
-            mapping.keysyms[index]
-        } else {
-            0
-        }
-    };
-
-    for keycode in keycode_min..=keycode_max {
-        let keysym = get_keysym(keycode);
-        if keysym == 0 {
-            continue;
-        }
-
-        for key in keys {
-            if keysym == key.keysym {
-                grab_keys_for_key(conn, root, &modifiers, key, keycode);
-            }
-        }
-
-        for mode in modes.values() {
-            for key in &mode.keybinds {
-                if keysym == key.keysym {
-                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
-                }
-            }
-        }
-
-        let current_mode = &core.globals().behavior.current_mode;
-        let desktop_bindings_enabled =
-            desktop_bindings_enabled(core.selected_client(), current_mode);
-
-        if desktop_bindings_enabled {
-            for key in desktop_keybinds {
-                if keysym == key.keysym {
-                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
-                }
-            }
-        }
-    }
-
-    let _ = conn.flush();
-}
-
-pub fn update_num_lock_mask_x11(
-    _core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &mut X11RuntimeConfig,
-) {
-    let new_numlockmask = {
-        let conn = x11.conn;
-        let Ok(cookie) = conn.get_modifier_mapping() else {
-            return;
-        };
-        let Ok(reply) = cookie.reply() else {
-            return;
-        };
-        let (keycode_min, keycode_max) = (conn.setup().min_keycode, conn.setup().max_keycode);
-        let mapping = match conn
-            .get_keyboard_mapping(keycode_min, keycode_max - keycode_min + 1)
-            .ok()
-            .and_then(|cookie| cookie.reply().ok())
-        {
-            Some(mapping) => mapping,
-            None => return,
-        };
-
-        let mut new_numlockmask: u32 = 0;
-        for (i, keycode) in reply.keycodes.iter().enumerate() {
-            if *keycode >= keycode_min && *keycode <= keycode_max {
-                let idx = (*keycode - keycode_min) as usize * mapping.keysyms_per_keycode as usize;
-                let keysym = if idx < mapping.keysyms.len() {
-                    mapping.keysyms[idx]
-                } else {
-                    0
-                };
-                // XK_Num_Lock keysym (X11 keysym 0xff7f) — used to detect
-                // which modifier bit corresponds to Num Lock so we can mask
-                // it out when matching keybindings.
-                if keysym == 0xff7f {
-                    let mod_index = i / reply.keycodes_per_modifier() as usize;
-                    // X11 supports at most 8 modifier bits (Mod1–Mod5 + Shift/Control/Lock).
-                    if mod_index < 8 {
-                        new_numlockmask = 1 << mod_index;
-                    }
-                }
-            }
-        }
-
-        new_numlockmask
-    };
-
-    x11_runtime.numlockmask = new_numlockmask;
-}
-
 pub fn up_press(ctx: &mut WmCtx) {
     let (selected_window, is_floating) = {
         let mon = ctx.core().globals().selected_monitor();
@@ -350,7 +192,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     if !has_tiling {
         if let Some(win) = ctx.core().selected_client() {
             if let WmCtx::X11(x11_ctx) = ctx {
-                crate::client::refresh_border_color_x11(
+                crate::backend::x11::focus::refresh_border_color_x11(
                     &x11_ctx.core,
                     &x11_ctx.x11,
                     x11_ctx.x11_runtime,

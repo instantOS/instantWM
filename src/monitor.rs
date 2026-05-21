@@ -3,17 +3,13 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::backend::x11::set_client_tag_prop;
-use crate::backend::{BackendOps, BackendOutputInfo, BackendVrrSupport};
+use crate::backend::{BackendOps, BackendOutputInfo};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus, unfocus_win};
 use crate::globals::Globals;
 use crate::globals::RuntimeConfig;
 use crate::types::*;
 use std::collections::HashMap;
-use x11rb::protocol::xproto::Window;
-
-use x11rb::protocol::xinerama;
 
 /// Manages the collection of monitors and the current selection.
 #[derive(Default)]
@@ -166,16 +162,6 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-fn destroy_monitor_bar_x11(ctx: &mut WmCtx, bar_win: WindowId) {
-    if bar_win != WindowId::default()
-        && let WmCtx::X11(x11) = ctx
-    {
-        let x11_bar_win: Window = bar_win.into();
-        let _ = x11rb::protocol::xproto::unmap_window(x11.x11.conn, x11_bar_win);
-        let _ = x11rb::protocol::xproto::destroy_window(x11.x11.conn, x11_bar_win);
-    }
-}
-
 pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
     if monitor_id.index() >= ctx.core_mut().globals_mut().monitors.len() {
         return;
@@ -229,7 +215,7 @@ pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
         }
     }
 
-    destroy_monitor_bar_x11(ctx, bar_win);
+    crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, bar_win);
 }
 
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
@@ -279,9 +265,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
     ctx.core_mut().globals_mut().attach(win);
     ctx.core_mut().globals_mut().attach_z_order_top(win);
-    if let WmCtx::X11(x11) = ctx {
-        set_client_tag_prop(&x11.core, &x11.x11, x11.x11_runtime, win);
-    }
+    ctx.set_client_tag_prop(win);
 
     focus(ctx, None);
 
@@ -379,15 +363,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     focus(ctx, Some(c_win));
 
-    if let WmCtx::X11(x11) = ctx {
-        let x11_win: Window = c_win.into();
-        let _ = x11rb::protocol::xproto::configure_window(
-            x11.x11.conn,
-            x11_win,
-            &x11rb::protocol::xproto::ConfigureWindowAux::new()
-                .stack_mode(x11rb::protocol::xproto::StackMode::ABOVE),
-        );
-    }
+    ctx.raise_window_visual_only(c_win);
     ctx.warp_cursor_to_client(c_win);
 }
 
@@ -413,7 +389,7 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     // Try the backend's get_outputs first (uses XRandR on X11, native on Wayland)
     let outputs = ctx.backend().get_outputs();
     if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
-        return update_from_outputs(ctx, outputs);
+        return sync_monitors_from_outputs(ctx, outputs);
     }
 
     // Fall back to Xinerama for X11
@@ -520,8 +496,9 @@ fn make_monitor_for_output(
 fn destroy_bars_for_removed_monitors(ctx: &mut WmCtx, pool: &mut [Option<Monitor>]) {
     for slot in pool.iter_mut() {
         if let Some(m) = slot.as_ref() {
-            destroy_monitor_bar_x11(ctx, m.bar_win);
-        }
+    crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
+}
+
     }
 }
 
@@ -669,10 +646,6 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     changed
 }
 
-fn update_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) -> bool {
-    sync_monitors_from_outputs(ctx, outputs)
-}
-
 fn scaled_i32(value: i32, scale: f64) -> i32 {
     if value <= 0 {
         return 0;
@@ -807,42 +780,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
 }
 
 fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
-    let conn = x11.x11.conn;
-    let is_active = xinerama::is_active(conn).ok()?.reply().ok()?;
-    if is_active.state == 0 {
-        return None;
-    }
-
-    let screens = xinerama::query_screens(conn).ok()?.reply().ok()?;
-    let mut unique = Vec::new();
-    for s in &screens.screen_info {
-        let info = Rect {
-            x: s.x_org as i32,
-            y: s.y_org as i32,
-            w: s.width as i32,
-            h: s.height as i32,
-        };
-        if !unique
-            .iter()
-            .any(|u: &Rect| u.x == info.x && u.y == info.y && u.w == info.w && u.h == info.h)
-        {
-            unique.push(info);
-        }
-    }
-
-    let outputs: Vec<BackendOutputInfo> = unique
-        .into_iter()
-        .enumerate()
-        .map(|(i, rect)| BackendOutputInfo {
-            name: format!("XINERAMA-{i}"),
-            rect,
-            scale: 1.0,
-            vrr_support: BackendVrrSupport::Unsupported,
-            vrr_mode: None,
-            vrr_enabled: false,
-        })
-        .collect();
-
+    let outputs = crate::backend::x11::monitor_helpers::xinerama_outputs(x11)?;
     Some(sync_monitors_from_outputs(
         &mut WmCtx::X11(x11.reborrow()),
         outputs,

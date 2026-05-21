@@ -3,7 +3,7 @@
 //! This module handles click and drag interactions on window title bars,
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
-use crate::backend::x11::grab::mouse_drag_loop;
+use crate::backend::BackendEvent;
 use crate::contexts::WmCtx;
 use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
@@ -13,8 +13,6 @@ use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
 use crate::types::geometry::Point;
 use crate::types::*;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 /// Initialise a title-bar click/drag interaction.
 ///
@@ -188,20 +186,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         if let Some(c) = ctx.core().client(win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
-            if let WmCtx::X11(x11) = ctx {
-                let x11_win: Window = win.into();
-                let _ = x11.x11.conn.warp_pointer(
-                    x11rb::NONE,
-                    x11_win,
-                    0i16,
-                    0i16,
-                    0u16,
-                    0u16,
-                    x_off as i16,
-                    y_off as i16,
-                );
-                let _ = x11.x11.conn.flush();
-            }
+            ctx.warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
         }
         if let WmCtx::X11(x11) = ctx {
             resize_mouse_directional(x11, Some(ResizeDirection::BottomRight), btn);
@@ -292,18 +277,24 @@ pub fn window_title_mouse_handler(
             } else {
                 AltCursor::Default
             };
-            mouse_drag_loop(ctx_x11, btn, cursor, false, |ctx, event| {
-                if let x11rb::protocol::Event::MotionNotify(m) = event {
-                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    if title_drag_motion(
-                        &mut wm_ctx,
-                        Point::new(m.event_x as i32, m.event_y as i32),
-                    ) {
-                        return false;
+            crate::backend::x11::grab::mouse_drag_loop(
+                ctx_x11,
+                btn,
+                cursor,
+                false,
+                |ctx, event| {
+                    if let BackendEvent::Motion { root_x, root_y, .. } = event {
+                        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                        if title_drag_motion(
+                            &mut wm_ctx,
+                            Point::new(*root_x as i32, *root_y as i32),
+                        ) {
+                            return false;
+                        }
                     }
-                }
-                true
-            });
+                    true
+                },
+            );
             let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
             title_drag_finish(&mut wm_ctx);
         }
@@ -311,11 +302,3 @@ pub fn window_title_mouse_handler(
     }
 }
 
-/// Right-click handler for a window title bar entry.
-///
-/// This is currently an alias for [`window_title_mouse_handler`] since both
-/// left and right clicks are handled by the same function with different
-/// behaviors based on the button.
-pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: WindowId, click_root: Point) {
-    window_title_mouse_handler(ctx, win, MouseButton::Right, click_root);
-}

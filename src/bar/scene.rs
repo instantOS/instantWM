@@ -359,9 +359,11 @@ pub(crate) fn worker_systray_layout(
     if !snapshot.items.items.is_empty() {
         tray_total_w = spacing;
         for item in &snapshot.items.items {
-            tray_total_w +=
-                crate::systray::wayland::scale_icon_width(item.icon_w, item.icon_h, icon_h)
-                    + spacing;
+            tray_total_w += crate::backend::wayland::systray::scale_icon_width(
+                item.icon_w,
+                item.icon_h,
+                icon_h,
+            ) + spacing;
         }
     }
     let tray_start_x = monitor_width - tray_total_w;
@@ -369,7 +371,8 @@ pub(crate) fn worker_systray_layout(
     let mut tray_slots = Vec::new();
     let mut x = tray_start_x + spacing;
     for (idx, item) in snapshot.items.items.iter().enumerate() {
-        let w = crate::systray::wayland::scale_icon_width(item.icon_w, item.icon_h, icon_h);
+        let w =
+            crate::backend::wayland::systray::scale_icon_width(item.icon_w, item.icon_h, icon_h);
         if w > 0 && item.icon_w > 0 && item.icon_h > 0 {
             tray_slots.push(crate::bar::SystrayHitSlot {
                 idx,

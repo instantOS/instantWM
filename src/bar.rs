@@ -1,17 +1,12 @@
 pub mod color;
 pub(crate) mod model;
 pub mod paint;
-mod renderer;
+pub(crate) mod renderer;
 pub(crate) mod scene;
 pub mod status;
 pub mod wayland;
 
-pub mod x11;
-mod x11_painter;
-
-pub(crate) use model::hit_test;
 pub use renderer::reset_bar_common;
-pub use x11::resize_bar_win;
 
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::globals::Globals;

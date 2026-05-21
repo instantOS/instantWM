@@ -71,7 +71,3 @@ pub fn should_float_for_x11_type(window_type: Option<WmWindowType>) -> bool {
         )
     )
 }
-
-pub fn preferred_border_width(borderpx: i32, decorated: bool) -> i32 {
-    if decorated { 0 } else { borderpx }
-}

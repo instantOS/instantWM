@@ -77,7 +77,10 @@ pub fn update_systray_icon_geom(
 
     let mut rect = Rect::new(geo_x, geo_y, new_geo_w, new_geo_h);
 
-    let _ = crate::client::geometry::apply_size_hints(core, Some(x11), icon_win, &mut rect, false);
+    let outcome = crate::client::geometry::apply_size_hints(core, icon_win, &mut rect, false);
+    if outcome.should_apply_icccm {
+        crate::backend::x11::geometry::apply_icccm_size_hints_x11(core, x11, icon_win, &mut rect);
+    }
 
     // Now update the client with the computed values
     if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {

@@ -2,6 +2,7 @@
 //!
 //! This module handles root-window gestures like vertical swipes.
 
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::*;
 
@@ -83,9 +84,9 @@ pub fn sidebar_gesture_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
     }
 
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let x11rb::protocol::Event::MotionNotify(m) = event {
+        if let BackendEvent::Motion { root_y, .. } = event {
             let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            update_sidebar_gesture(&mut wm_ctx, m.root_y as i32);
+            update_sidebar_gesture(&mut wm_ctx, *root_y as i32);
         }
         true
     });

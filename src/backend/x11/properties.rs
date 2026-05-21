@@ -5,7 +5,7 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
-use crate::client::constants::{
+use crate::backend::x11::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
 };
@@ -144,7 +144,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
     {
-        client.mode = if crate::client::x11_policy::should_float_for_x11_type(Some(
+        client.mode = if crate::backend::x11::policy::should_float_for_x11_type(Some(
             smithay::xwayland::xwm::WmWindowType::Dialog,
         )) {
             ClientMode::Floating
@@ -164,7 +164,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     };
 
     if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
-        crate::client::x11_policy::apply_wm_hints_to_client(client, hints);
+        crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
     }
 }
 

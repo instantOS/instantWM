@@ -18,5 +18,5 @@ pub fn update_size_hints_x11(core: &mut CoreCtx, x11: &X11BackendRef, win: Windo
     let Some(c) = core.globals_mut().clients.get_mut(&win) else {
         return;
     };
-    crate::client::x11_policy::apply_size_hints_to_client(c, hints);
+    crate::backend::x11::policy::apply_size_hints_to_client(c, hints);
 }

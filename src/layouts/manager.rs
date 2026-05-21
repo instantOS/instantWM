@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use super::LayoutKind;
 
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
-    crate::mouse::reset_cursor(ctx);
+    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
 
     if let Some(id) = monitor_id {
         // First pass: show/hide stack
