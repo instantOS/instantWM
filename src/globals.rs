@@ -198,6 +198,54 @@ pub struct DragInteraction {
     pub suppress_click_action: bool,
 }
 
+impl DragInteraction {
+    /// Create a new Move drag interaction.
+    ///
+    /// Note: This constructor is used exclusively for immediate-start drag contexts
+    /// (such as keyboard-driven moves or client/Wayland click-drags), and therefore
+    /// initializes `dragging` as `true` immediately.
+    pub fn new_move(win: WindowId, button: MouseButton, start: Point, geo: Rect) -> Self {
+        Self {
+            active: true,
+            win,
+            button,
+            dragging: true,
+            drag_type: DragType::Move,
+            start_point: start,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: start,
+            ..Default::default()
+        }
+    }
+
+    /// Create a new Resize drag interaction.
+    ///
+    /// Note: This constructor is used exclusively for immediate-start resize contexts
+    /// (such as keyboard-driven resizing or direct click-to-resize/Wayland client resize),
+    /// and therefore initializes `dragging` as `true` immediately.
+    pub fn new_resize(
+        win: WindowId,
+        button: MouseButton,
+        dir: ResizeDirection,
+        start: Point,
+        geo: Rect,
+    ) -> Self {
+        Self {
+            active: true,
+            win,
+            button,
+            dragging: true,
+            drag_type: DragType::Resize(dir),
+            start_point: start,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: start,
+            ..Default::default()
+        }
+    }
+}
+
 /// On X11, the synchronous grab loop drives this. On Wayland, the calloop
 /// press/motion/release events drive it asynchronously.
 #[derive(Debug, Clone, Default)]

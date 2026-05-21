@@ -24,7 +24,6 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 use super::cursor::set_cursor_style;
-use super::monitor::handle_client_monitor_switch;
 use crate::types::input::get_resize_direction;
 
 fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
@@ -165,18 +164,8 @@ fn begin_wayland_super_resize(
         .warp_pointer(warp_x as f64, warp_y as f64);
 
     let root = Point::new(warp_x, warp_y);
-    wl.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
-        active: true,
-        win,
-        button: btn,
-        dragging: true,
-        drag_type: crate::globals::DragType::Resize(dir),
-        start_point: root,
-        win_start_geo: geo,
-        drop_restore_geo: geo,
-        last_root_point: root,
-        ..Default::default()
-    };
+    wl.core.globals_mut().drag.interactive =
+        crate::globals::DragInteraction::new_resize(win, btn, dir, root, geo);
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
     crate::focus::focus(&mut WmCtx::Wayland(wl.reborrow()), Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());
@@ -221,6 +210,11 @@ pub fn resize_mouse_directional(
         let selmon_id = ctx.core().globals().selected_monitor_id();
         crate::layouts::sync_monitor_z_order(ctx, selmon_id);
     });
+
+    let start = ctx.backend.pointer_location().unwrap_or_default();
+    let geo = ctx.core.globals().clients.geo(win).unwrap_or_default();
+    ctx.core.globals_mut().drag.interactive =
+        crate::globals::DragInteraction::new_resize(win, btn, dir, start, geo);
 
     crate::backend::x11::grab::mouse_drag_loop(
         ctx,
@@ -292,7 +286,8 @@ pub fn resize_mouse_directional(
         },
     );
 
-    with_wm_ctx_x11(ctx, |ctx| handle_client_monitor_switch(ctx, win));
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }
 
 // ── resize_aspect_mouse ───────────────────────────────────────────────────────
@@ -343,6 +338,16 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         let selmon_id = tmp.core().globals().selected_monitor_id();
         crate::layouts::sync_monitor_z_order(&mut tmp, selmon_id);
     }
+
+    let start = ctx.backend.pointer_location().unwrap_or_default();
+    let geo = ctx.core.globals().clients.geo(win).unwrap_or_default();
+    ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction::new_resize(
+        win,
+        btn,
+        ResizeDirection::BottomRight,
+        start,
+        geo,
+    );
 
     crate::backend::x11::grab::mouse_drag_loop(
         ctx,
@@ -405,6 +410,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         },
     );
 
-    with_wm_ctx_x11(ctx, |ctx| handle_client_monitor_switch(ctx, win));
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }
 // Hover-offer loops live in `super::hover`.

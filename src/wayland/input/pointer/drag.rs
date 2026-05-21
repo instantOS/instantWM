@@ -36,17 +36,13 @@ pub fn wayland_hover_resize_drag_begin(
         } else {
             crate::globals::DragType::Resize(target.dir)
         };
-    ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
-        active: true,
-        win,
-        button: btn,
-        dragging: true,
-        drag_type,
-        start_point: position,
-        win_start_geo: geo,
-        drop_restore_geo: geo,
-        last_root_point: position,
-        ..Default::default()
+    ctx.core.globals_mut().drag.interactive = match drag_type {
+        crate::globals::DragType::Move => {
+            crate::globals::DragInteraction::new_move(win, btn, position, geo)
+        }
+        crate::globals::DragType::Resize(dir) => {
+            crate::globals::DragInteraction::new_resize(win, btn, dir, position, geo)
+        }
     };
     if matches!(drag_type, crate::globals::DragType::Resize(_)) {
         let _ = ctx.wayland.backend.with_state(|state| {
@@ -188,36 +184,25 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
         return false;
     }
     let drag = ctx.core.globals().drag.interactive.clone();
-    ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction::default();
     if matches!(drag.drag_type, crate::globals::DragType::Resize(_)) {
         let _ = ctx.wayland.backend.with_state(|state| {
             state.end_interactive_resize(drag.win);
         });
     }
-    set_cursor_style(
-        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-        AltCursor::Default,
-    );
+    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
     match drag.drag_type {
         crate::globals::DragType::Move => {
-            crate::mouse::drag::complete_move_drop(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+            crate::mouse::drag::finish_drag_move(
+                &mut wm_ctx,
                 drag.win,
                 drag.drop_restore_geo,
                 None,
                 Some(drag.last_root_point),
             );
-            crate::mouse::drag::clear_bar_hover(&mut crate::contexts::WmCtx::Wayland(
-                ctx.reborrow(),
-            ));
         }
         crate::globals::DragType::Resize(_) => {
-            crate::mouse::monitor::handle_client_monitor_switch(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                drag.win,
-            );
+            crate::mouse::drag::finish_drag_resize(&mut wm_ctx, drag.win);
         }
     }
-    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_client(drag.win);
     true
 }

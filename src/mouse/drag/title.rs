@@ -92,18 +92,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             wl.wayland
                 .backend
                 .warp_pointer(warp_x as f64, warp_y as f64);
-            wl.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
-                active: true,
-                win,
-                button: btn,
-                dragging: true,
-                drag_type: crate::globals::DragType::Resize(dir),
-                win_start_geo: current_geo,
-                start_point: warp_point,
-                last_root_point: warp_point,
-                drop_restore_geo: current_geo,
-                ..Default::default()
-            };
+            wl.core.globals_mut().drag.interactive =
+                crate::globals::DragInteraction::new_resize(win, btn, dir, warp_point, current_geo);
             set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
         }
         return true;

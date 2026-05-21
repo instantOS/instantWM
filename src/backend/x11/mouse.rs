@@ -67,35 +67,27 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         edge_snap_indicator: None,
     };
 
+    ctx.core.globals_mut().drag.interactive =
+        crate::globals::DragInteraction::new_move(win, btn, start, grab_start_rect);
+
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
         if let BackendEvent::Motion { root_x, root_y, .. } = event {
+            let root = Point::new(*root_x as i32, *root_y as i32);
+            ctx.core.globals_mut().drag.interactive.last_root_point = root;
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-            on_motion(
-                &mut wm_ctx,
-                win,
-                Point::new(*root_x as i32, *root_y as i32),
-                Point::new(*root_x as i32, *root_y as i32),
-                &mut state,
-            );
+            on_motion(&mut wm_ctx, win, root, root, &mut state);
         }
         true
     });
 
-    {
-        let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-        clear_bar_hover(&mut wm_ctx);
-    }
-
-    {
-        let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-        complete_move_drop(
-            &mut wm_ctx,
-            win,
-            state.grab_start_rect,
-            state.edge_snap_indicator,
-            None,
-        );
-    }
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    crate::mouse::drag::finish_drag_move(
+        &mut wm_ctx,
+        win,
+        state.grab_start_rect,
+        state.edge_snap_indicator,
+        None,
+    );
 }
 
 pub fn get_cursor_client_win_with_conn(
