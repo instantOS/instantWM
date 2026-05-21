@@ -397,6 +397,9 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     if let Some(dir) = direction {
         let yoffset = selected_monitor_yoffset(ctx.core().globals(), tags);
         let (mon_rect, mon_ww, client_rect) = {
+            if !ctx.backend().window_exists(found) {
+                return Err(format!("scratchpad '{}' no longer exists", name));
+            }
             let mon = ctx.core().globals().monitor(current_mon).unwrap();
             let client = ctx.core().globals().clients.get(&found).unwrap();
             (mon.monitor_rect, mon.work_rect.w, client.geo)

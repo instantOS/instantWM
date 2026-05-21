@@ -9,8 +9,7 @@ use std::os::unix::io::AsRawFd;
 use calloop::generic::Generic;
 use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
-use crate::backend::BackendOps;
-use crate::backend::BackendRef;
+use crate::backend::{BackendOps, BackendRef};
 use crate::geometry::GeometryApplyMode;
 use crate::ipc::IpcServer;
 use crate::runtime::AnimationTimerGuard;

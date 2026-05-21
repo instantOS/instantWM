@@ -257,7 +257,7 @@ impl Backend {
     }
 }
 
-/// Borrowed backend view for context wiring.
+/// Borrowed backend view — lightweight enum created on demand (not stored).
 pub enum BackendRef<'a> {
     X11(X11BackendRef<'a>),
     Wayland(&'a WaylandBackend),
@@ -273,20 +273,6 @@ impl<'a> BackendRef<'a> {
 
     pub fn from_x11(conn: &'a x11rb::rust_connection::RustConnection, screen_num: usize) -> Self {
         BackendRef::X11(X11BackendRef::new(conn, screen_num))
-    }
-
-    pub fn x11_conn(&self) -> Option<(&'a x11rb::rust_connection::RustConnection, usize)> {
-        match self {
-            BackendRef::X11(x11) => Some((x11.conn, x11.screen_num)),
-            BackendRef::Wayland(_) => None,
-        }
-    }
-
-    pub fn reborrow(&self) -> BackendRef<'_> {
-        match self {
-            BackendRef::X11(x11) => BackendRef::X11(X11BackendRef::new(x11.conn, x11.screen_num)),
-            BackendRef::Wayland(wayland) => BackendRef::Wayland(wayland),
-        }
     }
 }
 

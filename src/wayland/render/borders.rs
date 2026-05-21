@@ -29,7 +29,10 @@ impl WindowBorderInfo {
     fn outer_size(&self) -> (i32, i32) {
         let border_width = self.border_width;
         let (content_width, content_height) = self.content_size;
-        (content_width + 2 * border_width, content_height + 2 * border_width)
+        (
+            content_width + 2 * border_width,
+            content_height + 2 * border_width,
+        )
     }
 
     /// Bounding rectangle including borders.
@@ -96,7 +99,13 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
 }
 
 /// Generates the four border rectangles for a window.
-fn generate_border_rectangles(x: i32, y: i32, outer_width: i32, outer_height: i32, border_width: i32) -> Vec<Rect> {
+fn generate_border_rectangles(
+    x: i32,
+    y: i32,
+    outer_width: i32,
+    outer_height: i32,
+    border_width: i32,
+) -> Vec<Rect> {
     if border_width <= 0 || outer_width <= 2 * border_width || outer_height <= 2 * border_width {
         return Vec::new();
     }
@@ -107,11 +116,21 @@ fn generate_border_rectangles(x: i32, y: i32, outer_width: i32, outer_height: i3
         // Top border
         Rect::new(x, y, outer_width, border_width),
         // Bottom border
-        Rect::new(x, y + outer_height - border_width, outer_width, border_width),
+        Rect::new(
+            x,
+            y + outer_height - border_width,
+            outer_width,
+            border_width,
+        ),
         // Left border (between top and bottom)
         Rect::new(x, y + border_width, border_width, inner_height),
         // Right border (between top and bottom)
-        Rect::new(x + outer_width - border_width, y + border_width, border_width, inner_height),
+        Rect::new(
+            x + outer_width - border_width,
+            y + border_width,
+            border_width,
+            inner_height,
+        ),
     ]
 }
 
@@ -196,8 +215,13 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
         let border_width = window.border_width;
 
         // Generate the four border sides
-        let border_parts =
-            generate_border_rectangles(window.position.x, window.position.y, outer_width, outer_height, border_width);
+        let border_parts = generate_border_rectangles(
+            window.position.x,
+            window.position.y,
+            outer_width,
+            outer_height,
+            border_width,
+        );
         if border_parts.is_empty() {
             continue;
         }

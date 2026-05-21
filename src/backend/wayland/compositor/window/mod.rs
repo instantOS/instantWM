@@ -17,7 +17,7 @@ pub use classify::WindowType;
 pub(crate) use x11::is_unmanaged_x11_overlay;
 
 impl WaylandState {
-    /// Check if a window exists.
+    /// Check if a window exists in the index.
     pub fn window_exists(&self, window: WindowId) -> bool {
         self.window_index.contains_key(&window)
     }

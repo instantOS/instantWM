@@ -211,7 +211,7 @@ pub fn resize_mouse_directional(
         crate::layouts::sync_monitor_z_order(ctx, selmon_id);
     });
 
-    let start = ctx.backend.pointer_location().unwrap_or_default();
+    let start = ctx.x11.pointer_location().unwrap_or_default();
     let geo = ctx.core.globals().clients.geo(win).unwrap_or_default();
     ctx.core.globals_mut().drag.interactive =
         crate::globals::DragInteraction::new_resize(win, btn, dir, start, geo);
@@ -339,7 +339,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         crate::layouts::sync_monitor_z_order(&mut tmp, selmon_id);
     }
 
-    let start = ctx.backend.pointer_location().unwrap_or_default();
+    let start = ctx.x11.pointer_location().unwrap_or_default();
     let geo = ctx.core.globals().clients.geo(win).unwrap_or_default();
     ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction::new_resize(
         win,
