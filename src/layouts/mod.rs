@@ -72,6 +72,39 @@ pub enum LayoutKind {
 }
 
 impl LayoutKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Tile => "tile",
+            Self::Grid => "grid",
+            Self::Floating => "floating",
+            Self::Monocle => "monocle",
+            Self::Deck => "deck",
+            Self::BottomStack => "bottom-stack",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Tile => "Tile",
+            Self::Grid => "Grid",
+            Self::Floating => "Floating",
+            Self::Monocle => "Monocle",
+            Self::Deck => "Deck",
+            Self::BottomStack => "Bottom Stack",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Tile => "Windows split the screen side-by-side",
+            Self::Grid => "Windows arranged in an even grid pattern",
+            Self::Floating => "Windows can be freely moved and resized",
+            Self::Monocle => "One window fills the entire screen at a time",
+            Self::Deck => "Large main window with smaller windows stacked on the side",
+            Self::BottomStack => "Main window on top, others stacked below",
+        }
+    }
+
     pub fn from_name(name: &str) -> Option<Self> {
         Self::from_str(name).ok()
     }
@@ -131,7 +164,7 @@ impl FromStr for LayoutKind {
             "float" | "floating" => Ok(Self::Floating),
             "monocle" => Ok(Self::Monocle),
             "deck" => Ok(Self::Deck),
-            "bottomstack" => Ok(Self::BottomStack),
+            "bottomstack" | "bottom-stack" | "bstack" => Ok(Self::BottomStack),
             _ => Err(()),
         }
     }

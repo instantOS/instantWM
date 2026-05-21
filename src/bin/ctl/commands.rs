@@ -4,6 +4,7 @@ use instantwm::ipc_types::{
     MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus, SpecialNext,
     TagCommand, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
+use std::str::FromStr;
 
 const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
 
@@ -279,7 +280,7 @@ pub enum CommandKind {
         direction: MonitorDirection,
     },
     Layout {
-        name: LayoutKind,
+        name: Option<String>,
     },
     Border {
         width: Option<u32>,
@@ -456,7 +457,12 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::WarpFocus => IpcCommand::WarpFocus,
             CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
             CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
-            CommandKind::Layout { name } => IpcCommand::Layout(name),
+            CommandKind::Layout { name } => {
+                let name = name.expect("layout name required (use 'layout list' to see layouts)");
+                let layout = LayoutKind::from_str(&name)
+                    .expect("invalid layout name (use 'layout list' to see layouts)");
+                IpcCommand::Layout(layout)
+            }
             CommandKind::Border { width } => IpcCommand::Border(width),
             CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
             CommandKind::Keyboard { action } => {
