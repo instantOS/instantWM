@@ -43,8 +43,8 @@ pub struct X11RuntimeConfig {
     pub statusscheme: StatusScheme,
     /// X11 cursors for different cursor states.
     pub cursors: [Option<Cursor>; 10],
-    /// Last cursor index applied to the X11 root cursor (caching to avoid redundant requests).
-    pub last_x11_cursor_index: Option<usize>,
+    /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
+    pub last_x11_cursor: Option<crate::types::AltCursor>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
 }
@@ -64,7 +64,7 @@ impl Default for X11RuntimeConfig {
             borderscheme: BorderScheme::default(),
             statusscheme: StatusScheme::default(),
             cursors: [const { None }; 10],
-            last_x11_cursor_index: None,
+            last_x11_cursor: None,
             window_animations: crate::animation::WindowAnimations::new(),
         }
     }

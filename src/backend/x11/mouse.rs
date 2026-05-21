@@ -10,25 +10,29 @@ use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
 
-/// Set the root window cursor by its index in the cached cursor array.
-pub fn set_x11_root_cursor_by_index(
+/// Set the root window cursor for the given cursor style.
+///
+/// Looks up the corresponding X11 cursor in the cached array and applies it to
+/// the root window.  No-op if the requested style is already active.
+pub fn set_x11_root_cursor(
     x11: &X11BackendRef<'_>,
     x11_runtime: &mut X11RuntimeConfig,
-    cursor_index: usize,
+    cursor: AltCursor,
 ) {
-    if x11_runtime.last_x11_cursor_index == Some(cursor_index) {
+    if x11_runtime.last_x11_cursor == Some(cursor) {
         return;
     }
     let conn = x11.conn;
     let root = x11_runtime.root;
-    if let Some(ref loaded_cursor) = x11_runtime.cursors[cursor_index] {
+    let cursor_index = cursor.to_x11_index();
+    if let Some(Some(loaded_cursor)) = x11_runtime.cursors.get(cursor_index) {
         let _ = xproto::change_window_attributes(
             conn,
             root,
             &xproto::ChangeWindowAttributesAux::new().cursor(loaded_cursor.cursor as u32),
         );
         let _ = conn.flush();
-        x11_runtime.last_x11_cursor_index = Some(cursor_index);
+        x11_runtime.last_x11_cursor = Some(cursor);
     }
 }
 
