@@ -29,7 +29,7 @@
 mod focus;
 mod handlers;
 pub(crate) mod image_capture;
-mod layer_shell;
+pub(crate) mod layer_shell;
 pub mod output;
 pub mod screencopy;
 mod session_lock;

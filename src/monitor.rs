@@ -669,18 +669,15 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         scaled_monitor_ui_metrics(ctx.core().globals(), 1.0);
     if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(MonitorId(0)) {
         m.num = 0;
-        m.monitor_rect = Rect {
+        let rect = Rect {
             x: 0,
             y: 0,
             w: sw,
             h,
         };
-        m.work_rect = Rect {
-            x: 0,
-            y: 0,
-            w: sw,
-            h,
-        };
+        m.monitor_rect = rect;
+        m.available_rect = rect;
+        m.work_rect = rect;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.update_bar_position(bar_height);
     }
@@ -714,6 +711,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(MonitorId(0)) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
+        m.available_rect = m.monitor_rect;
         m.work_rect.w = sw;
         m.work_rect.h = sh;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);

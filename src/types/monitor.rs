@@ -103,7 +103,12 @@ pub struct Monitor {
     pub bar_clients_width: i32,
     /// Full monitor geometry (including bar).
     pub monitor_rect: Rect,
-    /// Work area geometry (excluding bar).
+    /// Portion of the monitor not consumed by exclusive layer-shell surfaces
+    /// (waybar, quickshell, etc.). On X11 and when no exclusive layer surfaces
+    /// are mapped this is identical to `monitor_rect`. The instantWM bar and
+    /// `work_rect` are positioned inside this rectangle.
+    pub available_rect: Rect,
+    /// Work area geometry (excluding bar and exclusive layer surfaces).
     pub work_rect: Rect,
     /// Currently selected tag set index (0 or 1).
     pub sel_tags: bool,
@@ -167,6 +172,7 @@ impl Default for Monitor {
             startmenu_size: 0,
             bar_clients_width: 0,
             monitor_rect: Rect::default(),
+            available_rect: Rect::default(),
             work_rect: Rect::default(),
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
@@ -473,31 +479,42 @@ impl Monitor {
         self.pertag_state().layouts.toggle_slot();
     }
 
-    /// Update the bar position based on monitor geometry.
+    /// Update the bar position and `work_rect` from the current
+    /// `available_rect` (which excludes exclusive layer-shell surfaces).
     pub fn update_bar_position(&mut self, bar_height: i32) {
         self.bar_height = bar_height.max(0);
-        let safe_bh = self.bar_height.min(self.monitor_rect.h.max(0));
+        let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
+        // x/w of the work area always follows the available area.
+        self.work_rect.x = self.available_rect.x;
+        self.work_rect.w = self.available_rect.w.max(1);
         if self.pertag_state().showbar {
             self.work_rect.y = if self.top_bar {
-                self.monitor_rect.y + safe_bh
+                self.available_rect.y + safe_bh
             } else {
-                self.monitor_rect.y
+                self.available_rect.y
             };
-            self.work_rect.h = (self.monitor_rect.h - safe_bh).max(1);
+            self.work_rect.h = (self.available_rect.h - safe_bh).max(1);
             self.bar_y = if self.top_bar {
-                self.monitor_rect.y
+                self.available_rect.y
             } else {
-                self.monitor_rect.y + self.monitor_rect.h - safe_bh
+                self.available_rect.y + self.available_rect.h - safe_bh
             };
         } else {
-            self.work_rect.y = self.monitor_rect.y;
-            self.work_rect.h = self.monitor_rect.h.max(1);
+            self.work_rect.y = self.available_rect.y;
+            self.work_rect.h = self.available_rect.h.max(1);
             self.bar_y = if self.top_bar {
-                -safe_bh
+                self.available_rect.y - safe_bh
             } else {
-                self.monitor_rect.h.max(0)
+                self.available_rect.y + self.available_rect.h
             };
         }
+    }
+
+    /// Set the rectangle that is not consumed by exclusive layer-shell
+    /// surfaces. Callers should follow up with `update_bar_position` to
+    /// re-derive `work_rect` and `bar_y`.
+    pub fn set_available_rect(&mut self, rect: Rect) {
+        self.available_rect = rect;
     }
 
     /// Apply output-derived geometry and UI metrics from the compositor / RandR.
@@ -515,6 +532,9 @@ impl Monitor {
     ) {
         self.num = index as i32;
         self.monitor_rect = rect;
+        // Reset the available rect to the full output. The Wayland backend
+        // re-applies layer-shell exclusive zones on top of this.
+        self.available_rect = rect;
         self.work_rect = rect;
         self.name = name;
         self.set_ui_metrics(scale, bar_height, horizontal_padding, startmenu_size);

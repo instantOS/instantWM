@@ -128,4 +128,8 @@ pub enum WmCommand {
     RecordPendingLaunch { pid: Option<u32> },
     /// Request to restore focus (e.g. after an overlay closed).
     RestoreFocus,
+    /// Re-read layer-shell exclusive zones for every output and refresh each
+    /// monitor's `available_rect`, `work_rect` and bar position. Triggers a
+    /// layout pass and bar redraw if any monitor changed.
+    SyncLayerExclusiveZones,
 }

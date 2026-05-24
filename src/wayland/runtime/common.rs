@@ -281,6 +281,15 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 let mut ctx = wm.ctx();
                 crate::focus::focus(&mut ctx, None);
             }
+            WmCommand::SyncLayerExclusiveZones => {
+                if crate::backend::wayland::compositor::layer_shell::apply_available_rects(
+                    wm, state,
+                ) {
+                    wm.g.queue_layout_for_all_monitors_urgent();
+                    wm.bar.mark_dirty();
+                    state.request_render();
+                }
+            }
         }
     }
 }

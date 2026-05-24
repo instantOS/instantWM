@@ -116,6 +116,9 @@ pub fn handle_resize(
     wm.g.cfg.display.width = safe_w;
     wm.g.cfg.display.height = safe_h;
     refresh_monitor_layout(&mut wm.ctx());
+    // `refresh_monitor_layout` resets each monitor's `available_rect` back to
+    // its full output rect, so re-apply the layer-shell exclusive zones.
+    let _ = crate::backend::wayland::compositor::layer_shell::apply_available_rects(wm, state);
     wm.g.queue_layout_for_all_monitors_urgent();
     state.request_space_sync();
 }

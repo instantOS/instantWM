@@ -171,6 +171,7 @@ pub fn run() -> ! {
         use crate::monitor::refresh_monitor_layout;
         refresh_monitor_layout(&mut wm.ctx());
     }
+    state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 
     let layout_state = Arc::new(init_layout_state(
