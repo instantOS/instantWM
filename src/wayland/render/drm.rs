@@ -328,6 +328,7 @@ pub fn render_drm_output(
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: std::time::Instant,
     fixed_scene: Option<Rc<FixedSceneElements>>,
+    suppress_upper_layers: bool,
 ) -> RenderOutcome {
     let cursor_elements = build_drm_cursor_elements(
         state,
@@ -341,8 +342,14 @@ pub fn render_drm_output(
         .iter()
         .map(|element| element.id().clone())
         .collect();
-    let render_elements =
-        build_drm_render_elements(state, renderer, entry, cursor_elements, fixed_scene);
+    let render_elements = build_drm_render_elements(
+        state,
+        renderer,
+        entry,
+        cursor_elements,
+        fixed_scene,
+        suppress_upper_layers,
+    );
     let capture_requests = take_drm_capture_requests(state, &entry.output);
 
     let frame_result = match entry.surface.render_frame(
@@ -434,11 +441,19 @@ fn build_drm_render_elements(
     entry: &OutputSurfaceEntry,
     cursor_elements: Vec<DrmExtras>,
     fixed_scene: Option<Rc<FixedSceneElements>>,
+    suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
     if state.is_locked() {
         build_locked_drm_render_elements(state, renderer, entry, cursor_elements)
     } else {
-        build_unlocked_drm_render_elements(state, renderer, entry, cursor_elements, fixed_scene)
+        build_unlocked_drm_render_elements(
+            state,
+            renderer,
+            entry,
+            cursor_elements,
+            fixed_scene,
+            suppress_upper_layers,
+        )
     }
 }
 
@@ -474,6 +489,7 @@ fn build_unlocked_drm_render_elements(
     entry: &OutputSurfaceEntry,
     cursor_elements: Vec<DrmExtras>,
     fixed_scene: Option<Rc<FixedSceneElements>>,
+    suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
     let scene = build_common_scene_elements_from_fixed(
         state,
@@ -498,6 +514,7 @@ fn build_unlocked_drm_render_elements(
         scene,
         space_render_elements,
         num_upper,
+        suppress_upper_layers,
         render_elements
     );
     render_elements

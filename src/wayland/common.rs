@@ -809,6 +809,22 @@ pub fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
 }
 
+pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
+    let output_name = output.name();
+    let Some(monitor) =
+        wm.g.monitors
+            .monitors()
+            .iter()
+            .find(|m| m.name == output_name)
+    else {
+        return false;
+    };
+    let selected_tags = monitor.selected_tags();
+    monitor
+        .iter_clients(wm.g.clients.map())
+        .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Layer shell rendering helpers
 // ─────────────────────────────────────────────────────────────────────────────

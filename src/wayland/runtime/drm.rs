@@ -839,6 +839,8 @@ fn render_outputs(
                 continue;
             }
             apply_output_vrr_policy(wm, state, entry);
+            let suppress_upper_layers =
+                crate::wayland::common::output_has_real_fullscreen(wm, &entry.output);
             let rendered = render_drm_output(
                 state,
                 renderer,
@@ -847,6 +849,7 @@ fn render_outputs(
                 pointer_location,
                 start_time,
                 fixed_scene.clone(),
+                suppress_upper_layers,
             );
 
             match rendered {

@@ -408,7 +408,7 @@ impl Monitor {
 
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
-        self.showbar_for_mask(self.selected_tags())
+        self.showbar_for_mask(self.selected_tags()) && !self.has_external_bar_on_internal_bar_edge()
     }
 
     /// Returns showbar state for the given tag mask.
@@ -417,6 +417,17 @@ impl Monitor {
             .get(&mask)
             .map(|s| s.showbar)
             .unwrap_or(self.show_bar)
+    }
+
+    /// Returns true when an exclusive layer-shell surface reserves space on the
+    /// same edge where instantWM would place its own bar.
+    pub fn has_external_bar_on_internal_bar_edge(&self) -> bool {
+        if self.top_bar {
+            self.available_rect.y > self.monitor_rect.y
+        } else {
+            self.available_rect.y + self.available_rect.h
+                < self.monitor_rect.y + self.monitor_rect.h
+        }
     }
 
     /// Returns layout state for the given tag mask (immutable lookup).
@@ -487,7 +498,7 @@ impl Monitor {
         // x/w of the work area always follows the available area.
         self.work_rect.x = self.available_rect.x;
         self.work_rect.w = self.available_rect.w.max(1);
-        if self.pertag_state().showbar {
+        if self.shows_bar() {
             self.work_rect.y = if self.top_bar {
                 self.available_rect.y + safe_bh
             } else {

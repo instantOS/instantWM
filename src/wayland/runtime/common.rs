@@ -238,11 +238,15 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::SetMaximized { win, maximized } => handle_set_maximized(wm, win, maximized),
             WmCommand::SetFullscreen { win, fullscreen } => {
-                let mut ctx = wm.ctx();
-                let g = ctx.core_mut().globals_mut();
-                crate::client::mode::set_fullscreen(g, win, fullscreen);
-                g.queue_layout_for_client(win);
+                {
+                    let mut ctx = wm.ctx();
+                    let g = ctx.core_mut().globals_mut();
+                    crate::client::mode::set_fullscreen(g, win, fullscreen);
+                    g.queue_layout_for_client(win);
+                }
+                wm.bar.mark_dirty();
                 state.request_space_sync();
+                state.request_render();
             }
             WmCommand::SetMinimized { win, minimized } => {
                 let mut ctx = wm.ctx();
