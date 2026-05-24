@@ -132,4 +132,9 @@ pub enum WmCommand {
     /// monitor's `available_rect`, `work_rect` and bar position. Triggers a
     /// layout pass and bar redraw if any monitor changed.
     SyncLayerExclusiveZones,
+    /// Select a tag/workspace on a specific monitor by name and tag index (0-indexed).
+    SelectTag {
+        monitor_name: String,
+        tag_index: usize,
+    },
 }

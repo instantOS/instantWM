@@ -99,6 +99,8 @@ pub fn event_loop_tick(
 ) -> crate::runtime::TickResult {
     drain_command_queue(wm, state);
 
+    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(state);
+
     crate::runtime::event_loop_tick_with_options(
         wm,
         ipc_server,
@@ -288,6 +290,18 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                     wm.g.queue_layout_for_all_monitors_urgent();
                     wm.bar.mark_dirty();
                     state.request_render();
+                }
+            }
+            WmCommand::SelectTag { monitor_name, tag_index } => {
+                let mut ctx = wm.ctx();
+                let mon_id = ctx.core().globals().monitors.monitors.iter()
+                    .position(|m| m.name == monitor_name)
+                    .map(crate::types::MonitorId::from);
+                if let Some(mid) = mon_id {
+                    crate::focus::select_monitor(&mut ctx, mid);
+                    if let Some(mask) = crate::types::TagMask::from_index(tag_index) {
+                        crate::tags::view::view_tags(&mut ctx, mask);
+                    }
                 }
             }
         }

@@ -37,6 +37,7 @@ mod state;
 pub mod window;
 mod xdg_shell;
 mod xwayland;
+pub mod protocols;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};

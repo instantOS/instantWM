@@ -59,6 +59,7 @@ use crate::config::config_toml::VrrMode;
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
+use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 
 use super::image_capture::PendingImageCapture;
 use super::screencopy::PendingScreencopy;
@@ -134,6 +135,7 @@ pub struct WaylandState {
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
+    pub ext_workspace_state: ExtWorkspaceManagerState,
     /// Current session lock state.
     pub lock_state: SessionLockState,
     /// Lock surfaces per output (keyed by output name).
@@ -306,6 +308,7 @@ impl WaylandState {
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let ext_workspace_state = ExtWorkspaceManagerState::new(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -347,6 +350,7 @@ impl WaylandState {
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,
+            ext_workspace_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
