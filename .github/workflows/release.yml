@@ -95,7 +95,16 @@ jobs:
             artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz
             artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz.sha256
   cross-compile:
-    name: Cross-compile for ARM and musl targets
+    # Cross-compile for ARM (aarch64 + armv7). The musl target used to be built
+    # here too, but smithay/wayland/X11 pull in a large number of native -sys
+    # crates (libudev, libdrm, libgbm, libegl, libgl, libinput, libseat,
+    # libwayland, libxkbcommon, libfontconfig, libfreetype, libx11, ...), and
+    # Ubuntu doesn't ship :musl variants of those packages. Bringing musl back
+    # will require either a dedicated cross-rs image that builds those libs
+    # against musl, or a sysroot-based approach (e.g. via Alpine in a chroot).
+    # See the multi-arch (arm64/armhf) setup below for the equivalent dance on
+    # the glibc side as a starting point.
+    name: Cross-compile for ARM targets
     runs-on: self-hosted
     timeout-minutes: 1440
     container:
@@ -111,17 +120,22 @@ jobs:
         with:
           fetch-depth: 0
       - name: Install build dependencies
+        # `--cross` enables multi-arch (arm64/armhf), points apt at
+        # ports.ubuntu.com for those architectures, and installs the cross
+        # toolchains + cross pkg-config wrappers + :arm64/:armhf dev libs.
         run: bash scripts/ci/install-deps-ubuntu.sh --cross
       - name: Install Rust toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Add Rust cross-compilation targets
+        # x86_64-unknown-linux-musl is intentionally omitted until we have a
+        # toolchain that can provide musl builds of our native deps (see the
+        # comment on this job).
         run: |
           rustup target add \
             aarch64-unknown-linux-gnu \
-            armv7-unknown-linux-gnueabihf \
-            x86_64-unknown-linux-musl
+            armv7-unknown-linux-gnueabihf
       - name: Extract version
         id: vars
         run: |
@@ -138,20 +152,19 @@ jobs:
       - name: Cross compile for ARM64 Linux
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          # The pkg-config crate picks up `<triple>-pkg-config` automatically,
+          # but be explicit so a future env-stripping change can't break this.
+          PKG_CONFIG_aarch64_unknown_linux_gnu: aarch64-linux-gnu-pkg-config
         run: cargo build --locked --release --target aarch64-unknown-linux-gnu
       - name: Cross compile for ARMv7 Linux
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          PKG_CONFIG_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-pkg-config
         run: cargo build --locked --release --target armv7-unknown-linux-gnueabihf
-      - name: Cross compile for x86_64 musl
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        run: cargo build --locked --release --target x86_64-unknown-linux-musl
       - name: Strip cross-compiled binaries
         run: |
           aarch64-linux-gnu-strip target/aarch64-unknown-linux-gnu/release/instantwm target/aarch64-unknown-linux-gnu/release/instantwmctl
           arm-linux-gnueabihf-strip target/armv7-unknown-linux-gnueabihf/release/instantwm target/armv7-unknown-linux-gnueabihf/release/instantwmctl
-          strip target/x86_64-unknown-linux-musl/release/instantwm target/x86_64-unknown-linux-musl/release/instantwmctl
       - name: Collect cross-compile artifacts
         env:
           VERSION: ${{ steps.vars.outputs.version }}
@@ -175,15 +188,6 @@ jobs:
           tar -czf "artifacts/${pkg_dir_armv7}.tgz" -C "$tmpdir_armv7" "$pkg_dir_armv7"
           sha256sum "artifacts/${pkg_dir_armv7}.tgz" > "artifacts/${pkg_dir_armv7}.tgz.sha256"
           rm -rf "$tmpdir_armv7"
-
-          pkg_dir_musl_x86="instantwm-x86_64-unknown-linux-musl-v${VERSION}"
-          tmpdir_musl_x86=$(mktemp -d)
-          mkdir -p "$tmpdir_musl_x86/$pkg_dir_musl_x86"
-          install -Dm0755 "target/x86_64-unknown-linux-musl/release/instantwm" "$tmpdir_musl_x86/$pkg_dir_musl_x86/instantwm"
-          install -Dm0755 "target/x86_64-unknown-linux-musl/release/instantwmctl" "$tmpdir_musl_x86/$pkg_dir_musl_x86/instantwmctl"
-          tar -czf "artifacts/${pkg_dir_musl_x86}.tgz" -C "$tmpdir_musl_x86" "$pkg_dir_musl_x86"
-          sha256sum "artifacts/${pkg_dir_musl_x86}.tgz" > "artifacts/${pkg_dir_musl_x86}.tgz.sha256"
-          rm -rf "$tmpdir_musl_x86"
       - name: Upload cross-compile artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -193,8 +197,6 @@ jobs:
             artifacts/instantwm-aarch64-unknown-linux-gnu-v${{ steps.vars.outputs.version }}.tgz.sha256
             artifacts/instantwm-armv7-unknown-linux-gnueabihf-v${{ steps.vars.outputs.version }}.tgz
             artifacts/instantwm-armv7-unknown-linux-gnueabihf-v${{ steps.vars.outputs.version }}.tgz.sha256
-            artifacts/instantwm-x86_64-unknown-linux-musl-v${{ steps.vars.outputs.version }}.tgz
-            artifacts/instantwm-x86_64-unknown-linux-musl-v${{ steps.vars.outputs.version }}.tgz.sha256
       - name: Clean up toolchains
         if: always()
         run: rm -rf /opt/cargo /opt/rustup
