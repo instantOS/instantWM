@@ -113,7 +113,7 @@ pub fn event_loop_tick(
 
 fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     use crate::backend::wayland::commands::WmCommand;
-    let commands: Vec<WmCommand> = state.command_queue.borrow_mut().drain(..).collect();
+    let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
 
     for command in commands {
         match command {
@@ -292,13 +292,25 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                     state.request_render();
                 }
             }
-            WmCommand::SelectTag { monitor_name, tag_index } => {
+            WmCommand::SelectTag {
+                monitor_name,
+                tag_index,
+            } => {
                 let mut ctx = wm.ctx();
-                let mon_id = ctx.core().globals().monitors.monitors.iter()
+                let mon_id = ctx
+                    .core()
+                    .globals()
+                    .monitors
+                    .monitors
+                    .iter()
                     .position(|m| m.name == monitor_name)
                     .map(crate::types::MonitorId::from);
                 if let Some(mid) = mon_id {
                     crate::focus::select_monitor(&mut ctx, mid);
+
+                    // NOTE: tag_index is 0-based index coming from the ext-workspace-v1 protocol coordinates.
+                    // TagMask::from_index() internally converts this 0-based index to a 1-based index (e.g. index + 1)
+                    // suitable for bitmask operations (contains / intersects).
                     if let Some(mask) = crate::types::TagMask::from_index(tag_index) {
                         crate::tags::view::view_tags(&mut ctx, mask);
                     }

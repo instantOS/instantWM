@@ -28,11 +28,29 @@ enum Action {
     Activate(String, usize), // (output_name, tag_index)
 }
 
+/// UserData stored with each ExtWorkspaceHandleV1 resource to avoid O(N) scans.
+pub struct ExtWorkspaceUserData {
+    pub manager: ExtWorkspaceManagerV1,
+    pub output_name: String,
+    pub tag_index: usize,
+}
+
+/// UserData stored with each ExtWorkspaceGroupHandleV1 resource.
+pub struct ExtWorkspaceGroupUserData {
+    pub manager: ExtWorkspaceManagerV1,
+    pub output_name: String,
+}
+
 pub struct ExtWorkspaceManagerState {
     display: DisplayHandle,
     instances: HashMap<ExtWorkspaceManagerV1, Vec<Action>>,
     pub(crate) workspace_groups: HashMap<String, ExtWorkspaceGroupData>, // output_name -> group
-    pub(crate) workspaces: HashMap<(String, usize), ExtWorkspaceData>,    // (output_name, tag_index) -> workspace
+    pub(crate) workspaces: HashMap<(String, usize), ExtWorkspaceData>, // (output_name, tag_index) -> workspace
+
+    // Performance: Caches to support O(1) fast-path early-return during tick checks.
+    last_tags: HashMap<String, crate::types::TagMask>,
+    last_urgent_tags: HashMap<String, crate::types::TagMask>,
+    last_output_names: Vec<String>,
 }
 
 pub(crate) struct ExtWorkspaceGroupData {
@@ -51,28 +69,125 @@ pub struct ExtWorkspaceGlobalData;
 
 impl ExtWorkspaceManagerState {
     pub fn new(display: &DisplayHandle) -> Self {
-        display.create_global::<WaylandState, ExtWorkspaceManagerV1, _>(VERSION, ExtWorkspaceGlobalData);
+        display.create_global::<WaylandState, ExtWorkspaceManagerV1, _>(
+            VERSION,
+            ExtWorkspaceGlobalData,
+        );
         Self {
             display: display.clone(),
             instances: HashMap::new(),
             workspace_groups: HashMap::new(),
             workspaces: HashMap::new(),
+            last_tags: HashMap::new(),
+            last_urgent_tags: HashMap::new(),
+            last_output_names: Vec::new(),
         }
     }
 }
 
 pub fn refresh(state: &mut WaylandState) {
+    // Performance Optimization: Zero-Allocation Fast-Path Early-Return if nothing changed.
     let mut changed = false;
+    {
+        let protocol_state = &state.ext_workspace_state;
+        let outputs_count = state.space.outputs().count();
 
-    // Get list of active outputs (monitors)
+        if outputs_count != protocol_state.last_output_names.len() {
+            changed = true;
+        } else {
+            // Check if any output name differs
+            for (i, output) in state.space.outputs().enumerate() {
+                if output.name() != protocol_state.last_output_names[i] {
+                    changed = true;
+                    break;
+                }
+            }
+        }
+
+        if !changed {
+            if let Some(globals) = state.globals() {
+                for output in state.space.outputs() {
+                    let output_name = output.name();
+                    let last_tag = protocol_state.last_tags.get(&output_name).copied();
+                    let last_urgent = protocol_state.last_urgent_tags.get(&output_name).copied();
+
+                    if let Some(mon) = globals
+                        .monitors
+                        .monitors
+                        .iter()
+                        .find(|m| m.name == output_name)
+                    {
+                        // Compute urgent_mask for this monitor
+                        let mut urgent_mask = crate::types::TagMask::EMPTY;
+                        for &win in &mon.clients {
+                            if let Some(c) = globals.clients.get(&win)
+                                && c.is_urgent
+                            {
+                                urgent_mask = urgent_mask | c.tags;
+                            }
+                        }
+
+                        if Some(mon.selected_tags()) != last_tag || Some(urgent_mask) != last_urgent
+                        {
+                            changed = true;
+                            break;
+                        }
+                    } else {
+                        changed = true;
+                        break;
+                    }
+                }
+            } else {
+                changed = true;
+            }
+        }
+    }
+
+    if !changed {
+        return;
+    }
+
+    // Now that we know a change occurred, gather all physical monitors and construct caches
     let active_outputs: Vec<Output> = state.space.outputs().cloned().collect();
     let active_output_names: Vec<String> = active_outputs.iter().map(|o| o.name()).collect();
 
-    // Map output name -> (selected_tags, tag_names)
+    let mut current_tags = HashMap::new();
+    let mut current_urgent_tags = HashMap::new();
+
+    if let Some(globals) = state.globals() {
+        for output_name in &active_output_names {
+            if let Some(mon) = globals
+                .monitors
+                .monitors
+                .iter()
+                .find(|m| m.name == *output_name)
+            {
+                current_tags.insert(output_name.clone(), mon.selected_tags());
+
+                // Urgency mapping: A tag is urgent if any client placed on it has is_urgent == true.
+                let mut urgent_mask = crate::types::TagMask::EMPTY;
+                for &win in &mon.clients {
+                    if let Some(c) = globals.clients.get(&win)
+                        && c.is_urgent
+                    {
+                        urgent_mask = urgent_mask | c.tags;
+                    }
+                }
+                current_urgent_tags.insert(output_name.clone(), urgent_mask);
+            }
+        }
+    }
+
+    // Now that we know a change occurred, build monitors_info to update protocol resources
     let mut monitors_info = HashMap::new();
     if let Some(globals) = state.globals() {
         for output_name in &active_output_names {
-            if let Some(mon) = globals.monitors.monitors.iter().find(|m| m.name == *output_name) {
+            if let Some(mon) = globals
+                .monitors
+                .monitors
+                .iter()
+                .find(|m| m.name == *output_name)
+            {
                 let selected_tags = mon.selected_tags();
                 let tag_names: Vec<String> = mon.tags.iter().map(|t| t.name.clone()).collect();
                 monitors_info.insert(output_name.clone(), (selected_tags, tag_names));
@@ -82,7 +197,17 @@ pub fn refresh(state: &mut WaylandState) {
 
     let protocol_state = &mut state.ext_workspace_state;
 
-    // 1. Remove workspace groups for outputs that no longer exist
+    // Cache current state for the next tick
+    protocol_state.last_output_names = active_output_names.clone();
+    protocol_state.last_tags = current_tags.clone();
+    protocol_state.last_urgent_tags = current_urgent_tags.clone();
+
+    let mut changed = false;
+
+    // 2. Remove workspace groups for outputs that no longer exist.
+    // NOTE: This assumes protocol_state.workspace_groups and protocol_state.workspaces
+    // are stored as separate disjoint fields in ExtWorkspaceManagerState, allowing us to
+    // read workspaces while performing a retain on workspace_groups.
     protocol_state.workspace_groups.retain(|output_name, data| {
         if active_output_names.contains(output_name) {
             return true;
@@ -93,7 +218,11 @@ pub fn refresh(state: &mut WaylandState) {
                 for ((ws_output, _), ws) in &protocol_state.workspaces {
                     if ws_output == output_name {
                         for workspace in &ws.instances {
-                            if workspace.data::<ExtWorkspaceManagerV1>() == Some(manager) {
+                            if workspace
+                                .data::<ExtWorkspaceUserData>()
+                                .map(|ud| &ud.manager)
+                                == Some(manager)
+                            {
                                 group.workspace_leave(workspace);
                             }
                         }
@@ -106,7 +235,7 @@ pub fn refresh(state: &mut WaylandState) {
         false
     });
 
-    // 2. Remove workspaces for outputs that no longer exist
+    // 3. Remove workspaces for outputs that no longer exist
     protocol_state.workspaces.retain(|(output_name, _), ws| {
         if active_output_names.contains(output_name) {
             return true;
@@ -118,22 +247,34 @@ pub fn refresh(state: &mut WaylandState) {
         false
     });
 
-    // 3. For each active monitor, update workspaces and workspace groups
+    // 4. For each active monitor, update workspaces and workspace groups
     for output in active_outputs {
         let output_name = output.name();
 
-        let (selected_tags, tag_names) = monitors_info.get(&output_name)
-            .cloned()
-            .unwrap_or_else(|| {
-                (crate::types::TagMask::EMPTY, (1..=9).map(|i| i.to_string()).collect())
+        let (selected_tags, tag_names) =
+            monitors_info.get(&output_name).cloned().unwrap_or_else(|| {
+                (
+                    crate::types::TagMask::EMPTY,
+                    (1..=9).map(|i| i.to_string()).collect(),
+                )
             });
+
+        let urgent_tags = current_urgent_tags
+            .get(&output_name)
+            .cloned()
+            .unwrap_or(crate::types::TagMask::EMPTY);
 
         // Add/Refresh workspaces for this output
         for (tag_idx, name) in tag_names.into_iter().enumerate() {
             let is_active = selected_tags.contains(tag_idx + 1);
+            let is_urgent = urgent_tags.contains(tag_idx + 1);
+
             let mut ws_state = ext_workspace_handle_v1::State::empty();
             if is_active {
                 ws_state |= ext_workspace_handle_v1::State::Active;
+            }
+            if is_urgent {
+                ws_state |= ext_workspace_handle_v1::State::Urgent;
             }
 
             let key = (output_name.clone(), tag_idx);
@@ -172,14 +313,24 @@ pub fn refresh(state: &mut WaylandState) {
                     };
                     for manager in protocol_state.instances.keys() {
                         if let Some(client) = manager.client() {
-                            ws_data.add_instance(&protocol_state.display, &client, manager);
+                            ws_data.add_instance(
+                                &protocol_state.display,
+                                &client,
+                                manager,
+                                &output_name,
+                                tag_idx,
+                            );
                         }
                     }
                     if let Some(group_data) = protocol_state.workspace_groups.get(&output_name) {
                         for group in &group_data.instances {
                             if let Some(manager) = group.data::<ExtWorkspaceManagerV1>() {
                                 for workspace in &ws_data.instances {
-                                    if workspace.data::<ExtWorkspaceManagerV1>() == Some(manager) {
+                                    if workspace
+                                        .data::<ExtWorkspaceUserData>()
+                                        .map(|ud| &ud.manager)
+                                        == Some(manager)
+                                    {
                                         group.workspace_enter(workspace);
                                     }
                                 }
@@ -207,7 +358,11 @@ pub fn refresh(state: &mut WaylandState) {
                     for ((ws_output, _), ws) in &protocol_state.workspaces {
                         if ws_output == &output_name {
                             for workspace in &ws.instances {
-                                if workspace.data::<ExtWorkspaceManagerV1>() == Some(manager) {
+                                if workspace
+                                    .data::<ExtWorkspaceUserData>()
+                                    .map(|ud| &ud.manager)
+                                    == Some(manager)
+                                {
                                     group.workspace_enter(workspace);
                                 }
                             }
@@ -215,7 +370,9 @@ pub fn refresh(state: &mut WaylandState) {
                     }
                 }
             }
-            protocol_state.workspace_groups.insert(output_name, group_data);
+            protocol_state
+                .workspace_groups
+                .insert(output_name, group_data);
             changed = true;
         }
     }
@@ -234,16 +391,27 @@ impl ExtWorkspaceGroupData {
         client: &Client,
         manager: &ExtWorkspaceManagerV1,
         output: &Output,
-    ) -> &ExtWorkspaceGroupHandleV1 {
-        let group = client
-            .create_resource::<ExtWorkspaceGroupHandleV1, _, WaylandState>(
-                handle,
-                manager.version(),
-                manager.clone(),
-            )
-            .unwrap();
+    ) -> Option<&ExtWorkspaceGroupHandleV1> {
+        let group = match client.create_resource::<ExtWorkspaceGroupHandleV1, _, WaylandState>(
+            handle,
+            manager.version(),
+            ExtWorkspaceGroupUserData {
+                manager: manager.clone(),
+                output_name: output.name(),
+            },
+        ) {
+            Ok(g) => g,
+            Err(e) => {
+                log::error!(
+                    "Failed to create ExtWorkspaceGroupHandleV1 resource safely: {}",
+                    e
+                );
+                return None;
+            }
+        };
         manager.workspace_group(&group);
 
+        // GroupCapabilities::empty() is intentional as instantWM manages tag sets locally via its internal configs.
         group.capabilities(ext_workspace_group_handle_v1::GroupCapabilities::empty());
 
         for wl_output in output.client_outputs(client) {
@@ -251,7 +419,7 @@ impl ExtWorkspaceGroupData {
         }
 
         self.instances.push(group);
-        self.instances.last().unwrap()
+        self.instances.last()
     }
 }
 
@@ -261,17 +429,34 @@ impl ExtWorkspaceData {
         handle: &DisplayHandle,
         client: &Client,
         manager: &ExtWorkspaceManagerV1,
-    ) -> &ExtWorkspaceHandleV1 {
-        let workspace = client
-            .create_resource::<ExtWorkspaceHandleV1, _, WaylandState>(
-                handle,
-                manager.version(),
-                manager.clone(),
-            )
-            .unwrap();
+        output_name: &str,
+        tag_index: usize,
+    ) -> Option<&ExtWorkspaceHandleV1> {
+        let workspace = match client.create_resource::<ExtWorkspaceHandleV1, _, WaylandState>(
+            handle,
+            manager.version(),
+            ExtWorkspaceUserData {
+                manager: manager.clone(),
+                output_name: output_name.to_string(),
+                tag_index,
+            },
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                log::error!(
+                    "Failed to create ExtWorkspaceHandleV1 resource safely: {}",
+                    e
+                );
+                return None;
+            }
+        };
         manager.workspace(&workspace);
 
         workspace.name(self.name.clone());
+
+        // Spec mandates `coordinates` is a `vec<u32>` of native endianness.
+        // Rust's `wayland-server` maps Wayland's `array` type to a `Vec<u8>`.
+        // We serialize `u32` to native endian bytes to meet this signature.
         workspace.coordinates(
             self.coordinates
                 .iter()
@@ -282,7 +467,7 @@ impl ExtWorkspaceData {
         workspace.capabilities(ext_workspace_handle_v1::WorkspaceCapabilities::Activate);
 
         self.instances.push(workspace);
-        self.instances.last().unwrap()
+        self.instances.last()
     }
 }
 
@@ -300,19 +485,29 @@ impl GlobalDispatch<ExtWorkspaceManagerV1, ExtWorkspaceGlobalData, WaylandState>
         let manager_state = &mut state.ext_workspace_state;
 
         let mut new_workspaces: HashMap<_, Vec<_>> = HashMap::new();
-        for ((ws_output, _), ws_data) in &mut manager_state.workspaces {
-            let workspace = ws_data.add_instance(handle, client, &manager);
-            new_workspaces.entry(ws_output.clone()).or_default().push(workspace.clone());
+        for ((ws_output, ws_idx), ws_data) in &mut manager_state.workspaces {
+            if let Some(workspace) =
+                ws_data.add_instance(handle, client, &manager, ws_output, *ws_idx)
+            {
+                new_workspaces
+                    .entry(ws_output.clone())
+                    .or_default()
+                    .push(workspace.clone());
+            }
         }
 
         for (output_name, group_data) in &mut manager_state.workspace_groups {
-            let output = state.space.outputs().find(|o| o.name() == *output_name).cloned();
-            if let Some(output) = output {
-                let group = group_data.add_instance(handle, client, &manager, &output);
-                if let Some(workspaces) = new_workspaces.get(output_name) {
-                    for workspace in workspaces {
-                        group.workspace_enter(workspace);
-                    }
+            let output = state
+                .space
+                .outputs()
+                .find(|o| o.name() == *output_name)
+                .cloned();
+            if let Some(output) = output
+                && let Some(group) = group_data.add_instance(handle, client, &manager, &output)
+                && let Some(workspaces) = new_workspaces.get(output_name)
+            {
+                for workspace in workspaces {
+                    group.workspace_enter(workspace);
                 }
             }
         }
@@ -340,10 +535,12 @@ impl Dispatch<ExtWorkspaceManagerV1, (), WaylandState> for WaylandState {
                     for action in actions {
                         match action {
                             Action::Activate(output_name, tag_index) => {
-                                state.push_command(crate::backend::wayland::commands::WmCommand::SelectTag {
-                                    monitor_name: output_name,
-                                    tag_index,
-                                });
+                                state.push_command(
+                                    crate::backend::wayland::commands::WmCommand::SelectTag {
+                                        monitor_name: output_name,
+                                        tag_index,
+                                    },
+                                );
                             }
                         }
                     }
@@ -354,53 +551,55 @@ impl Dispatch<ExtWorkspaceManagerV1, (), WaylandState> for WaylandState {
                 let manager_state = &mut state.ext_workspace_state;
                 manager_state.instances.retain(|x, _| x != resource);
                 for group_data in manager_state.workspace_groups.values_mut() {
-                    group_data.instances.retain(|instance| instance.data::<ExtWorkspaceManagerV1>() != Some(resource));
+                    group_data.instances.retain(|instance| {
+                        instance
+                            .data::<ExtWorkspaceGroupUserData>()
+                            .map(|ud| &ud.manager)
+                            != Some(resource)
+                    });
                 }
                 for ws_data in manager_state.workspaces.values_mut() {
-                    ws_data.instances.retain(|instance| instance.data::<ExtWorkspaceManagerV1>() != Some(resource));
+                    ws_data.instances.retain(|instance| {
+                        instance
+                            .data::<ExtWorkspaceUserData>()
+                            .map(|ud| &ud.manager)
+                            != Some(resource)
+                    });
                 }
             }
-            _ => unreachable!(),
+            _ => {
+                log::debug!("unhandled ext_workspace_manager request: {:?}", request);
+            }
         }
     }
 
-    fn destroyed(state: &mut WaylandState, _client: ClientId, resource: &ExtWorkspaceManagerV1, _data: &()) {
+    fn destroyed(
+        state: &mut WaylandState,
+        _client: ClientId,
+        resource: &ExtWorkspaceManagerV1,
+        _data: &(),
+    ) {
         let manager_state = &mut state.ext_workspace_state;
         manager_state.instances.retain(|x, _| x != resource);
     }
 }
 
-impl Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceManagerV1, WaylandState> for WaylandState {
+impl Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceUserData, WaylandState> for WaylandState {
     fn request(
         state: &mut WaylandState,
         _client: &Client,
-        resource: &ExtWorkspaceHandleV1,
+        _resource: &ExtWorkspaceHandleV1,
         request: <ExtWorkspaceHandleV1 as Resource>::Request,
-        data: &ExtWorkspaceManagerV1,
+        data: &ExtWorkspaceUserData,
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, WaylandState>,
     ) {
         let manager_state = &mut state.ext_workspace_state;
-        let Some((key, _)) = manager_state
-            .workspaces
-            .iter()
-            .find(|(_, ws_data)| ws_data.instances.contains(resource))
-        else {
-            return;
-        };
-        let key = key.clone();
 
-        match request {
-            ext_workspace_handle_v1::Request::Activate => {
-                if let Some(actions) = manager_state.instances.get_mut(data) {
-                    actions.push(Action::Activate(key.0, key.1));
-                }
-            }
-            ext_workspace_handle_v1::Request::Deactivate => (),
-            ext_workspace_handle_v1::Request::Assign { .. } => (),
-            ext_workspace_handle_v1::Request::Remove => (),
-            ext_workspace_handle_v1::Request::Destroy => (),
-            _ => unreachable!(),
+        if let ext_workspace_handle_v1::Request::Activate = request
+            && let Some(actions) = manager_state.instances.get_mut(&data.manager)
+        {
+            actions.push(Action::Activate(data.output_name.clone(), data.tag_index));
         }
     }
 
@@ -408,40 +607,39 @@ impl Dispatch<ExtWorkspaceHandleV1, ExtWorkspaceManagerV1, WaylandState> for Way
         state: &mut WaylandState,
         _client: ClientId,
         resource: &ExtWorkspaceHandleV1,
-        _data: &ExtWorkspaceManagerV1,
+        data: &ExtWorkspaceUserData,
     ) {
         let manager_state = &mut state.ext_workspace_state;
-        for ws_data in manager_state.workspaces.values_mut() {
+        if let Some(ws_data) = manager_state
+            .workspaces
+            .get_mut(&(data.output_name.clone(), data.tag_index))
+        {
             ws_data.instances.retain(|instance| instance != resource);
         }
     }
 }
 
-impl Dispatch<ExtWorkspaceGroupHandleV1, ExtWorkspaceManagerV1, WaylandState> for WaylandState {
+impl Dispatch<ExtWorkspaceGroupHandleV1, ExtWorkspaceGroupUserData, WaylandState> for WaylandState {
     fn request(
         _state: &mut WaylandState,
         _client: &Client,
         _resource: &ExtWorkspaceGroupHandleV1,
         request: <ExtWorkspaceGroupHandleV1 as Resource>::Request,
-        _data: &ExtWorkspaceManagerV1,
+        _data: &ExtWorkspaceGroupUserData,
         _dhandle: &DisplayHandle,
         _data_init: &mut DataInit<'_, WaylandState>,
     ) {
-        match request {
-            ext_workspace_group_handle_v1::Request::CreateWorkspace { .. } => (),
-            ext_workspace_group_handle_v1::Request::Destroy => (),
-            _ => unreachable!(),
-        }
+        log::debug!("unhandled ext_workspace_group request: {:?}", request);
     }
 
     fn destroyed(
         state: &mut WaylandState,
         _client: ClientId,
         resource: &ExtWorkspaceGroupHandleV1,
-        _data: &ExtWorkspaceManagerV1,
+        data: &ExtWorkspaceGroupUserData,
     ) {
         let manager_state = &mut state.ext_workspace_state;
-        for group_data in manager_state.workspace_groups.values_mut() {
+        if let Some(group_data) = manager_state.workspace_groups.get_mut(&data.output_name) {
             group_data.instances.retain(|instance| instance != resource);
         }
     }

@@ -45,6 +45,7 @@ struct DrmLayoutState {
 struct DrmLoopState {
     session_active: bool,
     render_flags: HashMap<crtc::Handle, bool>,
+    taken_render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
     empty_frame_callback_crtcs: Rc<RefCell<HashSet<crtc::Handle>>>,
     presentation_seq: HashMap<crtc::Handle, u64>,
@@ -60,6 +61,7 @@ impl DrmLoopState {
         Self {
             session_active: true,
             render_flags,
+            taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
             empty_frame_callback_crtcs: Rc::new(RefCell::new(HashSet::new())),
             presentation_seq: output_surfaces
@@ -93,11 +95,13 @@ impl DrmLoopState {
     }
 
     fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
-        let flags = self.render_flags.clone();
-        for flag in self.render_flags.values_mut() {
+        let mut taken = std::mem::take(&mut self.taken_render_flags);
+        taken.clear();
+        for (&crtc, flag) in &mut self.render_flags {
+            taken.insert(crtc, *flag);
             *flag = false;
         }
-        flags
+        taken
     }
 
     fn has_renderable_dirty_outputs(&self) -> bool {
@@ -714,17 +718,17 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     let selected = mon.selected_tags();
     let mut visible_clients = mon
         .iter_clients(wm.g.clients.map())
-        .filter(|(_, client)| client.is_visible(selected))
-        .filter(|(_, client)| !client.is_scratchpad())
-        .collect::<Vec<_>>();
+        .filter(|(_, client)| client.is_visible(selected) && !client.is_scratchpad());
 
-    if visible_clients.len() != 1 {
+    let Some((_, first_client)) = visible_clients.next() else {
+        return false;
+    };
+
+    if visible_clients.next().is_some() {
         return false;
     }
 
-    visible_clients
-        .pop()
-        .is_some_and(|(_, client)| client.mode.is_true_fullscreen())
+    first_client.mode.is_true_fullscreen()
 }
 
 fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {
@@ -882,4 +886,5 @@ fn render_outputs(
             }
         }
     }
+    loop_state.taken_render_flags = render_flags;
 }

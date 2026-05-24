@@ -3,7 +3,7 @@
 use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Client, ClientMode, Monitor, MonitorId, WindowId};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, TagMask, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -48,11 +48,21 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         m.clientcount = clientcount;
     }
 
-    let Some(monitor_before_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
+    let (clients, selected_tags, current_layout, clientcount) = {
+        let m = ctx
+            .core()
+            .globals()
+            .monitor(monitor_id)
+            .expect("invalid monitor");
+        (
+            m.clients.clone(),
+            m.selected_tags(),
+            m.current_layout(),
+            m.clientcount,
+        )
     };
 
-    apply_border_widths(ctx, &monitor_before_layout);
+    apply_border_widths(ctx, &clients, selected_tags, current_layout, clientcount);
     {
         let bar_height = ctx.core().globals().cfg.bar.height;
         let mon = ctx
@@ -81,20 +91,27 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         pertag.mfact = mfact;
     }
 
-    let Some(monitor_after_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
+    let (clients_after, selected_tags_after, monitor_rect_after) = {
+        let m = ctx
+            .core()
+            .globals()
+            .monitor(monitor_id)
+            .expect("invalid monitor");
+        (m.clients.clone(), m.selected_tags(), m.monitor_rect)
     };
 
-    apply_fullscreen(ctx, &monitor_after_layout);
+    apply_fullscreen(ctx, &clients_after, selected_tags_after, monitor_rect_after);
 }
 
-fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
-    let mon_rect = monitor.monitor_rect;
-    let clients = monitor.clients.clone();
-    let selected_tags = monitor.selected_tags();
-
+fn apply_fullscreen(
+    ctx: &mut WmCtx<'_>,
+    clients: &[WindowId],
+    selected_tags: TagMask,
+    mon_rect: Rect,
+) {
     let fullscreen_windows: Vec<_> = clients
-        .into_iter()
+        .iter()
+        .copied()
         .filter(|&win| {
             ctx.core()
                 .globals()
@@ -109,15 +126,18 @@ fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
     }
 }
 
-fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
-    let is_tiling = monitor.current_layout().is_tiling();
-    let is_monocle = monitor.current_layout().is_monocle();
-    let clientcount = monitor.clientcount;
-    let selected_tags = monitor.selected_tags();
+fn apply_border_widths(
+    ctx: &mut WmCtx<'_>,
+    clients: &[WindowId],
+    selected_tags: TagMask,
+    current_layout: LayoutKind,
+    clientcount: u32,
+) {
+    let is_tiling = current_layout.is_tiling();
+    let is_monocle = current_layout.is_monocle();
 
     // Collect border changes first to avoid borrow conflicts
-    let border_changes: Vec<(WindowId, i32)> = monitor
-        .clients
+    let border_changes: Vec<(WindowId, i32)> = clients
         .iter()
         .filter_map(|&win| {
             let info = ctx.core().globals().clients.get(&win)?;

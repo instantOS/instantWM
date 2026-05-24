@@ -31,13 +31,13 @@ mod handlers;
 pub(crate) mod image_capture;
 pub(crate) mod layer_shell;
 pub mod output;
+pub mod protocols;
 pub mod screencopy;
 mod session_lock;
 mod state;
 pub mod window;
 mod xdg_shell;
 mod xwayland;
-pub mod protocols;
 
 pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};

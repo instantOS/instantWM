@@ -568,11 +568,27 @@ pub struct FixedSceneElements {
 }
 
 /// Build the shared scene pieces that do not depend on the target output.
-pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> FixedSceneElements {
-    FixedSceneElements {
+pub fn build_fixed_scene_elements(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+) -> std::rc::Rc<FixedSceneElements> {
+    let bar_seq = wm.bar.update_seq();
+    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.g, state);
+
+    if let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
+        && cached_bar == bar_seq
+        && cached_borders == borders_hash
+    {
+        return elements.clone();
+    }
+
+    let elements = std::rc::Rc::new(FixedSceneElements {
         bar_buffers: build_bar_buffers(wm, state),
         borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),
-    }
+    });
+
+    state.runtime.fixed_scene_cache = Some((bar_seq, borders_hash, elements.clone()));
+    elements
 }
 
 /// Backend-agnostic render element buckets used by both Wayland startup paths.
@@ -590,7 +606,7 @@ pub fn build_common_scene_elements(
     output_x_offset: i32,
 ) -> CommonSceneElements {
     let fixed = build_fixed_scene_elements(wm, state);
-    build_common_scene_elements_from_fixed(state, renderer, output_x_offset, fixed)
+    build_common_scene_elements_from_fixed(state, renderer, output_x_offset, &fixed)
 }
 
 /// Build the full scene for one output from reusable shared pieces.
@@ -598,7 +614,7 @@ pub fn build_common_scene_elements_from_fixed(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
     output_x_offset: i32,
-    fixed: FixedSceneElements,
+    fixed: &FixedSceneElements,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
@@ -616,11 +632,11 @@ pub fn build_common_scene_elements_from_fixed(
     }
 
     let mut bar = Vec::new();
-    for (buffer, x, y) in fixed.bar_buffers {
+    for (buffer, x, y) in &fixed.bar_buffers {
         match MemoryRenderBufferRenderElement::from_buffer(
             renderer,
-            (x as f64, y as f64),
-            &buffer,
+            (*x as f64, *y as f64),
+            buffer,
             None,
             None,
             None,
@@ -634,7 +650,7 @@ pub fn build_common_scene_elements_from_fixed(
     CommonSceneElements {
         overlays,
         bar,
-        borders: fixed.borders,
+        borders: fixed.borders.clone(),
     }
 }
 

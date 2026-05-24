@@ -135,17 +135,24 @@ fn generate_border_rectangles(
 }
 
 /// Subtracts occluders from border parts, returning the remaining visible parts.
-fn apply_occluders(border_parts: Vec<Rect>, occluders: &[Rect]) -> Vec<Rect> {
+/// Reuses the scratch vector's capacity to avoid heap allocations.
+fn apply_occluders(
+    border_parts: Vec<Rect>,
+    occluders: &[Rect],
+    scratch: &mut Vec<Rect>,
+) -> Vec<Rect> {
     let mut remaining = border_parts;
+    scratch.clear();
 
     for occluder in occluders {
         if remaining.is_empty() {
             break;
         }
-        remaining = remaining
-            .into_iter()
-            .flat_map(|part| part.subtract(occluder))
-            .collect();
+        for part in remaining.drain(..) {
+            scratch.extend(part.subtract(occluder));
+        }
+        std::mem::swap(&mut remaining, scratch);
+        scratch.clear();
     }
 
     remaining
@@ -194,6 +201,63 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
     occluders
 }
 
+/// Compute a zero-allocation u64 hash representing the current compositor state
+/// that affects borders (geometries, focus, tag masks, and popups).
+pub fn get_borders_hash(g: &Globals, state: &WaylandState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+    // 1. Selected window
+    g.selected_win().hash(&mut hasher);
+
+    // 2. Monitor layout / selected tags
+    for mon in g.monitors.iter_all() {
+        mon.id().hash(&mut hasher);
+        mon.monitor_rect.x.hash(&mut hasher);
+        mon.monitor_rect.y.hash(&mut hasher);
+        mon.monitor_rect.w.hash(&mut hasher);
+        mon.monitor_rect.h.hash(&mut hasher);
+        mon.selected_tags().hash(&mut hasher);
+        mon.is_tiling_layout().hash(&mut hasher);
+    }
+
+    // 3. Window and Popup properties
+    for window in state.space.elements() {
+        if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
+            marker.id.hash(&mut hasher);
+            if let Some(c) = g.clients.get(&marker.id) {
+                c.geo.x.hash(&mut hasher);
+                c.geo.y.hash(&mut hasher);
+                c.border_width.hash(&mut hasher);
+                c.is_hidden.hash(&mut hasher);
+                c.mode.is_floating().hash(&mut hasher);
+            }
+            let size = window.geometry().size;
+            size.w.hash(&mut hasher);
+            size.h.hash(&mut hasher);
+        }
+
+        if let Some(toplevel) = window.toplevel()
+            && let Some(space_loc) = state.space.element_location(window)
+        {
+            let window_geometry = window.geometry();
+            for (popup, popup_offset) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
+                let popup_geometry = popup.geometry();
+                space_loc.x.hash(&mut hasher);
+                space_loc.y.hash(&mut hasher);
+                window_geometry.loc.x.hash(&mut hasher);
+                window_geometry.loc.y.hash(&mut hasher);
+                popup_offset.x.hash(&mut hasher);
+                popup_offset.y.hash(&mut hasher);
+                popup_geometry.size.w.hash(&mut hasher);
+                popup_geometry.size.h.hash(&mut hasher);
+            }
+        }
+    }
+
+    hasher.finish()
+}
+
 /// Renders border elements for all visible windows.
 pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidColorRenderElement> {
     let windows = collect_window_info(g, state);
@@ -205,6 +269,8 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
     let occluders: Vec<Rect> = build_occluders(&windows);
     // Popups always render above borders, so they occlude every border.
     let popup_occluders: Vec<Rect> = build_popup_occluders(state);
+
+    let mut scratch = Vec::with_capacity(32);
 
     for (idx, window) in windows.iter().enumerate() {
         if !window.has_borders() {
@@ -228,10 +294,10 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
 
         // Subtract occluders from higher windows (windows in front)
         let higher_occluders = &occluders[idx + 1..];
-        let visible_parts = apply_occluders(border_parts, higher_occluders);
+        let visible_parts = apply_occluders(border_parts, higher_occluders, &mut scratch);
         // Subtract popup areas so right-click menus and similar overlays
         // are not covered by borders.
-        let visible_parts = apply_occluders(visible_parts, &popup_occluders);
+        let visible_parts = apply_occluders(visible_parts, &popup_occluders, &mut scratch);
 
         // Get color based on focus state
         let is_focused = Some(window.id) == selected_win;

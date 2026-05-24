@@ -54,12 +54,12 @@ use smithay::{
     xwayland::X11Wm,
 };
 
+use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
-use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 
 use super::image_capture::PendingImageCapture;
 use super::screencopy::PendingScreencopy;
@@ -225,6 +225,11 @@ pub struct WaylandRuntimeState {
     pub pending_winit_resize: Option<(i32, i32)>,
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
+    pub fixed_scene_cache: Option<(
+        u64,
+        u64,
+        std::rc::Rc<crate::wayland::common::FixedSceneElements>,
+    )>,
 }
 
 impl Default for WaylandRuntimeState {
@@ -247,6 +252,7 @@ impl Default for WaylandRuntimeState {
             pending_winit_resize: None,
             winit_close_requested: false,
             output_enabled: HashMap::new(),
+            fixed_scene_cache: None,
         }
     }
 }
