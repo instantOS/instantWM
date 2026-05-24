@@ -53,6 +53,7 @@ pub struct ExtWorkspaceManagerState {
     // Performance: Caches to support O(1) fast-path early-return during tick checks.
     last_tags: HashMap<String, crate::types::TagMask>,
     last_urgent_tags: HashMap<String, crate::types::TagMask>,
+    last_occupied_tags: HashMap<String, crate::types::TagMask>,
     last_output_names: Vec<String>,
 }
 
@@ -83,6 +84,7 @@ impl ExtWorkspaceManagerState {
             workspaces: HashMap::new(),
             last_tags: HashMap::new(),
             last_urgent_tags: HashMap::new(),
+            last_occupied_tags: HashMap::new(),
             last_output_names: Vec::new(),
         }
     }
@@ -113,6 +115,8 @@ pub fn refresh(state: &mut WaylandState) {
                     let output_name = output.name();
                     let last_tag = protocol_state.last_tags.get(&output_name).copied();
                     let last_urgent = protocol_state.last_urgent_tags.get(&output_name).copied();
+                    let last_occupied =
+                        protocol_state.last_occupied_tags.get(&output_name).copied();
 
                     if let Some(mon) = globals
                         .monitors
@@ -130,7 +134,11 @@ pub fn refresh(state: &mut WaylandState) {
                             }
                         }
 
-                        if Some(mon.selected_tags()) != last_tag || Some(urgent_mask) != last_urgent
+                        let occupied_mask = mon.occupied_tags(globals.clients.map());
+
+                        if Some(mon.selected_tags()) != last_tag
+                            || Some(urgent_mask) != last_urgent
+                            || Some(occupied_mask) != last_occupied
                         {
                             changed = true;
                             break;
@@ -184,6 +192,7 @@ pub fn refresh(state: &mut WaylandState) {
 
     let mut current_tags = HashMap::new();
     let mut current_urgent_tags = HashMap::new();
+    let mut current_occupied_tags = HashMap::new();
 
     if let Some(globals) = state.globals() {
         for output_name in &active_output_names {
@@ -205,6 +214,10 @@ pub fn refresh(state: &mut WaylandState) {
                     }
                 }
                 current_urgent_tags.insert(output_name.clone(), urgent_mask);
+
+                // Occupied tags mapping
+                let occupied = mon.occupied_tags(globals.clients.map());
+                current_occupied_tags.insert(output_name.clone(), occupied);
             }
         }
     }
@@ -232,6 +245,7 @@ pub fn refresh(state: &mut WaylandState) {
     protocol_state.last_output_names = active_output_names.clone();
     protocol_state.last_tags = current_tags.clone();
     protocol_state.last_urgent_tags = current_urgent_tags.clone();
+    protocol_state.last_occupied_tags = current_occupied_tags.clone();
 
     let mut changed = false;
 
@@ -295,10 +309,16 @@ pub fn refresh(state: &mut WaylandState) {
             .cloned()
             .unwrap_or(crate::types::TagMask::EMPTY);
 
+        let occupied_tags = current_occupied_tags
+            .get(&output_name)
+            .cloned()
+            .unwrap_or(crate::types::TagMask::EMPTY);
+
         // Add/Refresh workspaces for this output
         for (tag_idx, name) in tag_names.into_iter().enumerate() {
             let is_active = selected_tags.contains(tag_idx + 1);
             let is_urgent = urgent_tags.contains(tag_idx + 1);
+            let is_occupied = occupied_tags.contains(tag_idx + 1);
 
             let mut ws_state = ext_workspace_handle_v1::State::empty();
             if is_active {
@@ -306,6 +326,9 @@ pub fn refresh(state: &mut WaylandState) {
             }
             if is_urgent {
                 ws_state |= ext_workspace_handle_v1::State::Urgent;
+            }
+            if !is_active && !is_occupied {
+                ws_state |= ext_workspace_handle_v1::State::Hidden;
             }
 
             let key = (output_name.clone(), tag_idx);
