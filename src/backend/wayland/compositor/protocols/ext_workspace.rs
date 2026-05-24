@@ -39,6 +39,9 @@ pub struct ExtWorkspaceUserData {
 pub struct ExtWorkspaceGroupUserData {
     pub manager: ExtWorkspaceManagerV1,
     pub output_name: String,
+    pub sent_outputs: std::sync::Mutex<
+        std::collections::HashSet<smithay::reexports::wayland_server::backend::ObjectId>,
+    >,
 }
 
 pub struct ExtWorkspaceManagerState {
@@ -139,6 +142,34 @@ pub fn refresh(state: &mut WaylandState) {
                 }
             } else {
                 changed = true;
+            }
+        }
+        if !changed {
+            for group_data in protocol_state.workspace_groups.values() {
+                for group in &group_data.instances {
+                    if let Some(client) = group.client() {
+                        if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
+                            if let Some(output) =
+                                state.space.outputs().find(|o| o.name() == ud.output_name)
+                            {
+                                for wl_output in output.client_outputs(&client) {
+                                    let already_sent =
+                                        ud.sent_outputs.lock().unwrap().contains(&wl_output.id());
+                                    if !already_sent {
+                                        changed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if changed {
+                        break;
+                    }
+                }
+                if changed {
+                    break;
+                }
             }
         }
     }
@@ -372,8 +403,34 @@ pub fn refresh(state: &mut WaylandState) {
             }
             protocol_state
                 .workspace_groups
-                .insert(output_name, group_data);
+                .insert(output_name.clone(), group_data);
             changed = true;
+        }
+
+        if let Some(group_data) = protocol_state.workspace_groups.get_mut(&output_name) {
+            for group in &group_data.instances {
+                if let Some(client) = group.client() {
+                    let mut group_changed = false;
+                    for wl_output in output.client_outputs(&client) {
+                        let already_sent =
+                            if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
+                                ud.sent_outputs.lock().unwrap().contains(&wl_output.id())
+                            } else {
+                                false
+                            };
+                        if !already_sent {
+                            group.output_enter(&wl_output);
+                            if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
+                                ud.sent_outputs.lock().unwrap().insert(wl_output.id());
+                            }
+                            group_changed = true;
+                        }
+                    }
+                    if group_changed {
+                        changed = true;
+                    }
+                }
+            }
         }
     }
 
@@ -398,6 +455,7 @@ impl ExtWorkspaceGroupData {
             ExtWorkspaceGroupUserData {
                 manager: manager.clone(),
                 output_name: output.name(),
+                sent_outputs: std::sync::Mutex::new(std::collections::HashSet::new()),
             },
         ) {
             Ok(g) => g,
@@ -416,6 +474,9 @@ impl ExtWorkspaceGroupData {
 
         for wl_output in output.client_outputs(client) {
             group.output_enter(&wl_output);
+            if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
+                ud.sent_outputs.lock().unwrap().insert(wl_output.id());
+            }
         }
 
         self.instances.push(group);
