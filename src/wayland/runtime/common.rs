@@ -7,7 +7,6 @@
 //! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
 
 use crate::backend::Backend as WmBackend;
-use crate::backend::BackendOps;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;

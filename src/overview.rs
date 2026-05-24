@@ -1,4 +1,3 @@
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;

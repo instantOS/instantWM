@@ -26,7 +26,6 @@
 //!                   ↑ Maximized fills the whole work area
 //! ```
 //!
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Monitor, Rect, SnapPosition, WindowId};

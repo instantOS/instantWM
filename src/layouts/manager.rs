@@ -1,6 +1,5 @@
 //! Layout manager — the stateful half of the layout system.
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, TagMask, WindowId};

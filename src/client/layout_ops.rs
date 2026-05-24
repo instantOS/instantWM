@@ -4,7 +4,6 @@
 //! the layout engine.  They are collected here so that neither `geometry.rs`
 //! nor the layout algorithms need to know about each other's internals.
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::focus::focus;
 

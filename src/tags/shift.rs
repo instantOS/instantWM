@@ -3,7 +3,6 @@
 use crate::contexts::WmCtx;
 // focus() is used via focus_soft() in this module
 
-use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};

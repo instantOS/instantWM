@@ -9,7 +9,6 @@ use std::os::unix::io::AsRawFd;
 use calloop::generic::Generic;
 use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
-use crate::backend::{BackendOps, BackendRef};
 use crate::geometry::GeometryApplyMode;
 use crate::ipc::IpcServer;
 use crate::runtime::AnimationTimerGuard;
@@ -82,7 +81,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             });
 
             // ── 4. Flush X11 connection ─────────────────────────────────
-            BackendRef::from_backend(&wm.backend).flush();
+            crate::backend::BackendOps::flush(&wm.backend);
 
             // ── 5. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {

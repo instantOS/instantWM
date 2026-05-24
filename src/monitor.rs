@@ -3,7 +3,7 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::backend::{BackendOps, BackendOutputInfo};
+use crate::backend::BackendOutputInfo;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus, unfocus_win};
 use crate::globals::Globals;

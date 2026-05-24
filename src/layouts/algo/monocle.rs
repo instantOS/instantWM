@@ -16,7 +16,6 @@
 //! window is snapped into place instantly (0 frames) to avoid mid-air ghost
 //! windows appearing during the animation.
 
-use crate::backend::BackendOps;
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;

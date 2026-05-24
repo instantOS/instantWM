@@ -3,7 +3,7 @@
 //! This module handles dragging across the tag bar to switch views or move
 //! windows between tags.
 
-use crate::backend::{BackendEvent, BackendOps};
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::cursor::set_cursor_style;
 use crate::types::*;

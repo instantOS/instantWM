@@ -1,6 +1,5 @@
 //! X11-specific fullscreen helpers.
 
-use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::properties::{get_atom_props, write_net_wm_state_atoms};

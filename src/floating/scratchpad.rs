@@ -1,4 +1,3 @@
-use crate::backend::BackendOps;
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;

@@ -15,7 +15,7 @@
 //! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 //! | [`run_x11_hover_resize_offer_loop`]           | `enter_notify`, etc. | Modal loop: wait for click near border     |
 
-use crate::backend::{BackendEvent, BackendOps};
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::globals::{Globals, HoverOffer};
 use crate::types::{

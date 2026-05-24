@@ -257,114 +257,95 @@ impl Backend {
     }
 }
 
-/// Borrowed backend view — lightweight enum created on demand (not stored).
-pub enum BackendRef<'a> {
-    X11(X11BackendRef<'a>),
-    Wayland(&'a WaylandBackend),
-}
-
-impl<'a> BackendRef<'a> {
-    pub fn from_backend(backend: &'a Backend) -> Self {
-        match backend {
-            Backend::X11(data) => BackendRef::X11(X11BackendRef::new(&data.conn, data.screen_num)),
-            Backend::Wayland(data) => BackendRef::Wayland(&data.backend),
-        }
-    }
-
-    pub fn from_x11(conn: &'a x11rb::rust_connection::RustConnection, screen_num: usize) -> Self {
-        BackendRef::X11(X11BackendRef::new(conn, screen_num))
-    }
-}
-
-impl BackendOps for BackendRef<'_> {
+impl BackendOps for Backend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         match self {
-            BackendRef::X11(x11) => x11.resize_window(window, rect),
-            BackendRef::Wayland(wayland) => wayland.resize_window(window, rect),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).resize_window(window, rect),
+            Backend::Wayland(data) => data.backend.resize_window(window, rect),
         }
     }
 
     fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
         match self {
-            BackendRef::X11(x11) => x11.configure_window_geometry(window, rect),
-            BackendRef::Wayland(wayland) => wayland.configure_window_geometry(window, rect),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).configure_window_geometry(window, rect),
+            Backend::Wayland(data) => data.backend.configure_window_geometry(window, rect),
         }
     }
 
     fn raise_window_visual_only(&self, window: WindowId) {
         match self {
-            BackendRef::X11(x11) => x11.raise_window_visual_only(window),
-            BackendRef::Wayland(wayland) => wayland.raise_window_visual_only(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).raise_window_visual_only(window),
+            Backend::Wayland(data) => data.backend.raise_window_visual_only(window),
         }
     }
 
     fn apply_z_order(&self, windows: &[WindowId]) {
         match self {
-            BackendRef::X11(x11) => x11.apply_z_order(windows),
-            BackendRef::Wayland(wayland) => wayland.apply_z_order(windows),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).apply_z_order(windows),
+            Backend::Wayland(data) => data.backend.apply_z_order(windows),
         }
     }
 
     fn set_focus(&self, window: WindowId) {
         match self {
-            BackendRef::X11(x11) => x11.set_focus(window),
-            BackendRef::Wayland(wayland) => wayland.set_focus(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).set_focus(window),
+            Backend::Wayland(data) => data.backend.set_focus(window),
         }
     }
 
     fn map_window(&self, window: WindowId) {
         match self {
-            BackendRef::X11(x11) => x11.map_window(window),
-            BackendRef::Wayland(wayland) => wayland.map_window(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).map_window(window),
+            Backend::Wayland(data) => data.backend.map_window(window),
         }
     }
 
     fn unmap_window(&self, window: WindowId) {
         match self {
-            BackendRef::X11(x11) => x11.unmap_window(window),
-            BackendRef::Wayland(wayland) => wayland.unmap_window(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).unmap_window(window),
+            Backend::Wayland(data) => data.backend.unmap_window(window),
         }
     }
 
     fn window_exists(&self, window: WindowId) -> bool {
         match self {
-            BackendRef::X11(x11) => x11.window_exists(window),
-            BackendRef::Wayland(wayland) => wayland.window_exists(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).window_exists(window),
+            Backend::Wayland(data) => data.backend.window_exists(window),
         }
     }
 
     fn flush(&self) {
         match self {
-            BackendRef::X11(x11) => x11.flush(),
-            BackendRef::Wayland(wayland) => wayland.flush(),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).flush(),
+            Backend::Wayland(data) => data.backend.flush(),
         }
     }
 
     fn pointer_location(&self) -> Option<Point> {
         match self {
-            BackendRef::X11(x11) => x11.pointer_location(),
-            BackendRef::Wayland(wayland) => wayland.pointer_location(),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).pointer_location(),
+            Backend::Wayland(data) => data.backend.pointer_location(),
         }
     }
 
     fn warp_pointer(&self, x: f64, y: f64) {
         match self {
-            BackendRef::X11(x11) => x11.warp_pointer(x, y),
-            BackendRef::Wayland(wayland) => wayland.warp_pointer(x, y),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).warp_pointer(x, y),
+            Backend::Wayland(data) => data.backend.warp_pointer(x, y),
         }
     }
 
     fn window_title(&self, window: WindowId) -> Option<String> {
         match self {
-            BackendRef::X11(x11) => x11.window_title(window),
-            BackendRef::Wayland(wayland) => wayland.window_title(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).window_title(window),
+            Backend::Wayland(data) => data.backend.window_title(window),
         }
     }
 
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         match self {
-            BackendRef::X11(x11) => x11.window_protocol(window),
-            BackendRef::Wayland(wayland) => wayland.window_protocol(window),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window),
+            Backend::Wayland(data) => data.backend.window_protocol(window),
         }
     }
 
@@ -376,24 +357,22 @@ impl BackendOps for BackendRef<'_> {
         model: Option<&str>,
     ) {
         match self {
-            BackendRef::X11(x11) => x11.set_keyboard_layout(layout, variant, options, model),
-            BackendRef::Wayland(wayland) => {
-                wayland.set_keyboard_layout(layout, variant, options, model)
-            }
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).set_keyboard_layout(layout, variant, options, model),
+            Backend::Wayland(data) => data.backend.set_keyboard_layout(layout, variant, options, model),
         }
     }
 
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         match self {
-            BackendRef::X11(x11) => x11.set_monitor_config(name, config),
-            BackendRef::Wayland(wayland) => wayland.set_monitor_config(name, config),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).set_monitor_config(name, config),
+            Backend::Wayland(data) => data.backend.set_monitor_config(name, config),
         }
     }
 
     fn get_outputs(&self) -> Vec<BackendOutputInfo> {
         match self {
-            BackendRef::X11(x11) => x11.get_outputs(),
-            BackendRef::Wayland(wayland) => wayland.get_outputs(),
+            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).get_outputs(),
+            Backend::Wayland(data) => data.backend.get_outputs(),
         }
     }
 }

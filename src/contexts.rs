@@ -4,7 +4,6 @@
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
 //! receives explicit `X11BackendRef` / `WaylandCtx` instead of runtime checks.
 
-use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
@@ -176,12 +175,10 @@ impl<'a> WmCtx<'a> {
     }
 
     /// Get a borrowed backend view. Constructed on the fly — not a stored field.
-    pub fn backend(&self) -> crate::backend::BackendRef<'_> {
+    pub fn backend(&self) -> &dyn crate::backend::BackendOps {
         match self {
-            WmCtx::X11(ctx) => crate::backend::BackendRef::X11(
-                crate::backend::x11::X11BackendRef::new(ctx.x11.conn, ctx.x11.screen_num),
-            ),
-            WmCtx::Wayland(ctx) => crate::backend::BackendRef::Wayland(ctx.wayland.backend),
+            WmCtx::X11(ctx) => &ctx.x11 as &dyn crate::backend::BackendOps,
+            WmCtx::Wayland(ctx) => ctx.wayland.backend as &dyn crate::backend::BackendOps,
         }
     }
 

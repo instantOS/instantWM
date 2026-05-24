@@ -1,6 +1,5 @@
 //! Floating state transitions and geometry persistence.
 
-use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;

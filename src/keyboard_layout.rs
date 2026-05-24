@@ -5,7 +5,6 @@
 //! TOML config under `[keyboard]` and can be switched at runtime via
 //! keybindings or IPC.
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::globals::KeyboardLayout;
 use std::process::Command;
