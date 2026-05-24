@@ -15,7 +15,7 @@ pub(crate) fn draw_bar_snapshot(
         return;
     }
 
-    if !monitor.shows_bar() || core.bar.pausedraw() {
+    if !monitor.shows_bar() {
         core.bar.recursion_exit();
         return;
     }

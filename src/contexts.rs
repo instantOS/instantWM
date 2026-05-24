@@ -93,18 +93,6 @@ impl<'a> WmCtxX11<'a> {
     pub fn x11_runtime(&self) -> &X11RuntimeConfig {
         self.x11_runtime
     }
-
-    pub fn x11_runtime_mut(&mut self) -> &mut X11RuntimeConfig {
-        self.x11_runtime
-    }
-
-    pub fn systray(&self) -> Option<&Systray> {
-        self.systray.as_deref()
-    }
-
-    pub fn systray_mut(&mut self) -> Option<&mut Systray> {
-        self.systray.as_deref_mut()
-    }
 }
 
 pub struct WmCtxWayland<'a> {
@@ -127,22 +115,6 @@ impl<'a> WmCtxWayland<'a> {
             wayland_systray: self.wayland_systray,
             wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
-    }
-
-    pub fn wayland_systray(&self) -> &WaylandSystray {
-        self.wayland_systray
-    }
-
-    pub fn wayland_systray_mut(&mut self) -> &mut WaylandSystray {
-        self.wayland_systray
-    }
-
-    pub fn wayland_systray_menu(&self) -> Option<&WaylandSystrayMenu> {
-        self.wayland_systray_menu.as_deref()
-    }
-
-    pub fn wayland_systray_menu_mut(&mut self) -> Option<&mut WaylandSystrayMenu> {
-        self.wayland_systray_menu.as_deref_mut()
     }
 }
 
@@ -255,47 +227,6 @@ impl<'a> WmCtx<'a> {
     pub fn set_border(&mut self, win: WindowId, width: i32) {
         if let Some(client) = self.core_mut().globals_mut().clients.get_mut(&win) {
             client.border_width = width.max(0);
-        }
-        // Border width is X11-specific; Wayland doesn't support border width
-        if let WmCtx::X11(x11) = self {
-            x11.x11.set_border_width(win, width);
-        }
-    }
-
-    /// (Re)grab all keybindings.  X11 only; no-op on Wayland.
-    pub fn grab_keys(&mut self) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::grab_keys_x11(
-                ctx.core.globals(),
-                &ctx.x11,
-                ctx.x11_runtime,
-            );
-        }
-    }
-
-    /// Update the cached numlock modifier mask.  X11 only; no-op on Wayland.
-    pub fn update_num_lock_mask(&mut self) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::update_num_lock_mask_x11(&ctx.x11, ctx.x11_runtime);
-        }
-    }
-
-    /// Set `WM_STATE` property.  X11 only; no-op on Wayland.
-    pub fn set_client_state(&mut self, win: WindowId, state: i32) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, win, state);
-        }
-    }
-
-    /// Write tag/monitor metadata into a window property.  X11 only; no-op on Wayland.
-    pub fn set_client_tag_prop(&mut self, win: WindowId) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::set_client_tag_prop(
-                ctx.core.globals(),
-                &ctx.x11,
-                ctx.x11_runtime,
-                win,
-            );
         }
     }
 

@@ -14,8 +14,6 @@ use crate::types::*;
 
 #[derive(Default)]
 pub struct BarState {
-    //TODO: should this be used or removed?
-    pause_draw: bool,
     draw_bar_recursion: usize,
     bar_update_seq: u64,
     last_drawn_seq: u64,
@@ -69,14 +67,6 @@ pub struct MonitorHitCache {
 }
 
 impl BarState {
-    pub fn pausedraw(&self) -> bool {
-        self.pause_draw
-    }
-
-    pub fn set_pausedraw(&mut self, paused: bool) {
-        self.pause_draw = paused;
-    }
-
     pub(crate) fn try_recursion_enter(&mut self) -> bool {
         if self.draw_bar_recursion > 0 {
             self.mark_dirty();

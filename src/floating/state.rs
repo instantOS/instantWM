@@ -52,6 +52,10 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
                 ctx.set_border(win, client.border_width);
             }
             if let WmCtx::X11(x11) = ctx {
+                x11.x11.set_border_width(win, 0);
+                if let Some(client) = x11.core.globals().clients.get(&win) {
+                    x11.x11.set_border_width(win, client.border_width);
+                }
                 crate::backend::x11::floating::apply_floating_borderscheme(
                     &x11.x11,
                     win,

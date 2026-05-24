@@ -254,6 +254,9 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         } else {
             let border_width = ctx.core().globals().cfg.window.border_width_px;
             ctx.set_border(win, border_width);
+            if let WmCtx::X11(x11) = ctx {
+                x11.x11.set_border_width(win, border_width);
+            }
 
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                 client.save_floating_geometry();

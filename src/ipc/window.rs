@@ -42,7 +42,7 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let tag_mask = wm.g.tags.mask();
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| WindowInfo::from_client(c, tag_mask, (&wm.backend).window_protocol(c.win)))
+        .map(|c| WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win)))
         .collect();
 
     Response::WindowList(windows)
@@ -70,7 +70,7 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     Response::WindowInfo(WindowInfo::from_client(
         c,
         tag_mask,
-        (&wm.backend).window_protocol(c.win),
+        wm.backend.window_protocol(c.win),
     ))
 }
 

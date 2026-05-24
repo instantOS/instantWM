@@ -155,6 +155,9 @@ fn apply_border_widths(
     // Apply border changes
     for (win, border) in border_changes {
         ctx.set_border(win, border);
+        if let WmCtx::X11(x11) = ctx {
+            x11.x11.set_border_width(win, border);
+        }
     }
 }
 

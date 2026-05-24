@@ -209,7 +209,14 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
     ctx.core_mut().globals_mut().attach(win);
     ctx.core_mut().globals_mut().attach_z_order_top(win);
-    ctx.set_client_tag_prop(win);
+    if let WmCtx::X11(x11) = ctx {
+        crate::backend::x11::set_client_tag_prop(
+            x11.core.globals(),
+            &x11.x11,
+            x11.x11_runtime,
+            win,
+        );
+    }
 
     focus(ctx, None);
 
