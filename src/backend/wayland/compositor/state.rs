@@ -13,7 +13,7 @@ use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{
         Seat, SeatState,
-        keyboard::{KeyboardHandle, XkbConfig},
+        keyboard::{KeyboardHandle, Keycode, XkbConfig},
         pointer::PointerHandle,
     },
     reexports::{
@@ -225,6 +225,7 @@ pub struct WaylandRuntimeState {
     pub pending_winit_resize: Option<(i32, i32)>,
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
+    pub intercepted_key_releases: HashSet<Keycode>,
     pub fixed_scene_cache: Option<(
         u64,
         u64,
@@ -252,6 +253,7 @@ impl Default for WaylandRuntimeState {
             pending_winit_resize: None,
             winit_close_requested: false,
             output_enabled: HashMap::new(),
+            intercepted_key_releases: HashSet::new(),
             fixed_scene_cache: None,
         }
     }
