@@ -575,7 +575,8 @@ pub fn build_fixed_scene_elements(
     let bar_seq = wm.bar.update_seq();
     let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.g, state);
 
-    if let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
+    if !wm.bar.needs_redraw()
+        && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
         && cached_bar == bar_seq
         && cached_borders == borders_hash
     {
@@ -587,7 +588,9 @@ pub fn build_fixed_scene_elements(
         borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),
     });
 
-    state.runtime.fixed_scene_cache = Some((bar_seq, borders_hash, elements.clone()));
+    if !wm.bar.needs_redraw() {
+        state.runtime.fixed_scene_cache = Some((bar_seq, borders_hash, elements.clone()));
+    }
     elements
 }
 
