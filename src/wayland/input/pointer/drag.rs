@@ -16,18 +16,27 @@ pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
     None
 }
 
-/// Begin hover resize drag if applicable.
+/// Begin hover resize/move/close action based on button pressed in border zone.
 pub fn wayland_hover_resize_drag_begin(
     ctx: &mut WmCtxWayland<'_>,
     position: Point,
     btn: MouseButton,
 ) -> bool {
-    if btn != MouseButton::Left && btn != MouseButton::Right {
-        return false;
-    }
     let Some(target) = selected_hover_resize_target_at(ctx.core.globals(), position) else {
         return false;
     };
+
+    if btn == MouseButton::Middle {
+        crate::client::kill::close_win(
+            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+            target.win,
+        );
+        return true;
+    }
+
+    if btn != MouseButton::Left && btn != MouseButton::Right {
+        return false;
+    }
     let win = target.win;
     let geo = target.geo;
     let drag_type =
