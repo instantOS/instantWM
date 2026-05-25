@@ -30,7 +30,9 @@ def current_version() -> str:
 
 
 def latest_version_tag() -> str | None:
-    tags = run(["git", "tag", "--merged", "HEAD", "--sort=-v:refname", "--list", "v[0-9]*"])
+    tags = run(
+        ["git", "tag", "--merged", "HEAD", "--sort=-v:refname", "--list", "v[0-9]*"]
+    )
     return tags.splitlines()[0] if tags else None
 
 
@@ -53,12 +55,17 @@ def bump_level(commits: list[tuple[str, str, str]], requested: str) -> str | Non
         return requested
     level: str | None = None
     for _, subject, body in commits:
-        if "BREAKING CHANGE" in body or re.match(r"^[a-zA-Z]+(?:\([^)]+\))?!:", subject):
+        if "BREAKING CHANGE" in body or re.match(
+            r"^[a-zA-Z]+(?:\([^)]+\))?!:", subject
+        ):
             return "major"
         commit_type = subject.split(":", 1)[0].split("(", 1)[0].rstrip("!")
         if commit_type == "feat":
             level = "minor"
-        elif commit_type not in {"chore", "ci", "docs", "style", "test"} and level != "minor":
+        elif (
+            commit_type not in {"chore", "ci", "docs", "style", "test"}
+            and level != "minor"
+        ):
             level = "patch"
     return level
 
@@ -76,7 +83,9 @@ def bump_version(version: str, level: str) -> str:
 
 def update_cargo_toml(version: str) -> None:
     text = read("Cargo.toml")
-    text = re.sub(r'^(version = )"[^"]+"', rf'\1"{version}"', text, count=1, flags=re.MULTILINE)
+    text = re.sub(
+        r'^(version = )"[^"]+"', rf'\1"{version}"', text, count=1, flags=re.MULTILINE
+    )
     write("Cargo.toml", text)
 
 
@@ -115,16 +124,25 @@ def clean_subject(subject: str) -> tuple[str, str]:
     return "Other", text
 
 
-def update_changelog(version: str, previous_tag: str | None, commits: list[tuple[str, str, str]]) -> None:
+def update_changelog(
+    version: str, previous_tag: str | None, commits: list[tuple[str, str, str]]
+) -> None:
     text = read("CHANGELOG.md")
     if re.search(rf"^## \[{re.escape(version)}\]", text, re.MULTILINE):
-        print(f"Version {version} already exists in CHANGELOG.md; leaving changelog unchanged.")
+        print(
+            f"Version {version} already exists in CHANGELOG.md; leaving changelog unchanged."
+        )
         return
 
     today = dt.date.today().isoformat()
     compare_base = previous_tag or "HEAD"
     header = f"## [{version}](https://github.com/instantOS/instantWM/compare/{compare_base}...v{version}) - {today}"
-    groups: dict[str, list[str]] = {"Added": [], "Changed": [], "Fixed": [], "Other": []}
+    groups: dict[str, list[str]] = {
+        "Added": [],
+        "Changed": [],
+        "Fixed": [],
+        "Other": [],
+    }
     seen: set[str] = set()
     for _, subject, _ in reversed(commits):
         group, line = clean_subject(subject)
@@ -148,7 +166,9 @@ def update_changelog(version: str, previous_tag: str | None, commits: list[tuple
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bump", choices=["auto", "patch", "minor", "major"], default="auto")
+    parser.add_argument(
+        "--bump", choices=["auto", "patch", "minor", "major"], default="auto"
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
