@@ -59,6 +59,7 @@ fn reload_x11(wm: &mut Wm) {
             x11_ctx.systray.as_deref_mut(),
         );
         let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
+        wm_ctx.update_ewmh_desktop_props();
         wm_ctx.grab_keys();
         crate::focus::focus(&mut wm_ctx, None);
     }

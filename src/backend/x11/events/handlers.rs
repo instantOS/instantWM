@@ -6,7 +6,8 @@ use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
-    BarPosition, ButtonTarget, Client, ClientMode, Gesture, MouseButton, Point, Rect, WindowId,
+    BarPosition, ButtonTarget, Client, ClientMode, Gesture, MouseButton, Point, Rect, TagMask,
+    WindowId,
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -150,6 +151,8 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let net_system_tray_op = ctx.x11_runtime.netatom.system_tray_op;
     let net_wm_state = ctx.x11_runtime.netatom.wm_state;
     let net_active_window = ctx.x11_runtime.netatom.active_window;
+    let net_current_desktop = ctx.x11_runtime.netatom.current_desktop;
+    let net_wm_desktop = ctx.x11_runtime.netatom.wm_desktop;
     let event_win = WindowId::from(e.window);
 
     if showsystray && event_win == systray_win && e.type_ == net_system_tray_op {
@@ -160,6 +163,11 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
+    if e.type_ == net_current_desktop {
+        handle_current_desktop(ctx, e);
+        return;
+    }
+
     if !ctx.core.globals().clients.contains_key(&event_win) {
         return;
     };
@@ -168,6 +176,8 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         handle_net_wm_state(ctx, e, event_win);
     } else if e.type_ == net_active_window {
         handle_active_window(ctx, event_win);
+    } else if e.type_ == net_wm_desktop {
+        handle_wm_desktop(ctx, e, event_win);
     };
 }
 
@@ -182,6 +192,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     ctx.core.globals_mut().cfg.display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
+    crate::backend::x11::update_ewmh_desktop_props(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
     ctx.core
         .globals_mut()
@@ -741,6 +752,80 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
         1 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, true),
         2 => crate::client::set_fullscreen(&mut WmCtx::X11(ctx.reborrow()), win, !is_fullscreen),
         _ => {}
+    }
+}
+
+fn handle_current_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
+    let desktop = e.data.as_data32()[0];
+    let Some((monitor_id, tag_index)) =
+        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.globals(), desktop)
+    else {
+        return;
+    };
+    let Some(mask) = TagMask::single(tag_index) else {
+        return;
+    };
+
+    crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
+    crate::tags::view::view_tags(&mut WmCtx::X11(ctx.reborrow()), mask);
+}
+
+fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
+    let desktop = e.data.as_data32()[0];
+
+    if desktop == u32::MAX {
+        if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+            client.is_sticky = true;
+        }
+        crate::backend::x11::set_client_tag_prop(
+            ctx.core.globals(),
+            &ctx.x11,
+            ctx.x11_runtime,
+            win,
+        );
+        ctx.core
+            .globals_mut()
+            .queue_layout_for_all_monitors_urgent();
+        return;
+    }
+
+    let Some((target_mon, tag_index)) =
+        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.globals(), desktop)
+    else {
+        return;
+    };
+    let Some(target_tags) = TagMask::single(tag_index) else {
+        return;
+    };
+
+    let old_mon = ctx.core.globals().clients.monitor_id(win);
+    {
+        let globals = ctx.core.globals_mut();
+        globals.detach(win);
+        globals.detach_z_order(win);
+        if let Some(client) = globals.clients.get_mut(&win) {
+            client.monitor_id = target_mon;
+            client.is_sticky = false;
+            client.clear_sticky_if_scratchpad();
+            client.set_tag_mask(target_tags);
+        } else {
+            return;
+        }
+        globals.attach(win);
+        globals.attach_z_order_top(win);
+    }
+
+    crate::backend::x11::set_client_tag_prop(ctx.core.globals(), &ctx.x11, ctx.x11_runtime, win);
+    crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
+
+    if old_mon == Some(target_mon) {
+        ctx.core
+            .globals_mut()
+            .queue_layout_for_monitor_urgent(target_mon);
+    } else {
+        ctx.core
+            .globals_mut()
+            .queue_layout_for_all_monitors_urgent();
     }
 }
 

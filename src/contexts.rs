@@ -310,6 +310,17 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Update root EWMH workspace/tag properties. X11 only; no-op on Wayland.
+    pub fn update_ewmh_desktop_props(&mut self) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::update_ewmh_desktop_props(
+                ctx.core.globals(),
+                &ctx.x11,
+                ctx.x11_runtime,
+            );
+        }
+    }
+
     /// Warp cursor to client.
     ///
     /// On X11 this uses `XWarpPointer`.  On Wayland the warp is deferred to

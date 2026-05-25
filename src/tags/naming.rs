@@ -45,6 +45,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 
     let tag_width = get_tag_width(ctx.core());
     ctx.core_mut().globals_mut().tags.width = tag_width;
+    ctx.update_ewmh_desktop_props();
     ctx.request_bar_update();
 }
 
@@ -61,6 +62,7 @@ pub fn reset_name_tag(ctx: &mut WmCtx) {
 
     let tagwidth = get_tag_width(ctx.core());
     ctx.core_mut().globals_mut().tags.width = tagwidth;
+    ctx.update_ewmh_desktop_props();
     ctx.request_bar_update();
 }
 

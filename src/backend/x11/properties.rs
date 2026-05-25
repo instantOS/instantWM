@@ -15,7 +15,7 @@ use crate::client::set_fullscreen;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::globals::Globals;
-use crate::types::{ClientMode, Rect, WindowId};
+use crate::types::{ClientMode, MonitorId, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -67,7 +67,153 @@ pub fn set_client_tag_prop(
         data.len() as u32,
         &data,
     );
+    set_wm_desktop_prop(globals, x11, x11_runtime, win);
     let _ = conn.flush();
+}
+
+pub fn desktop_count(globals: &crate::globals::Globals) -> u32 {
+    let monitors = globals.monitors.len().max(1);
+    let tags = globals.tags.count().max(1);
+    monitors.saturating_mul(tags) as u32
+}
+
+pub fn desktop_for_monitor_tag(
+    globals: &crate::globals::Globals,
+    monitor_id: MonitorId,
+    tag_index: usize,
+) -> Option<u32> {
+    let tag_count = globals.tags.count().max(1);
+    if tag_index == 0 || tag_index > tag_count || globals.monitor(monitor_id).is_none() {
+        return None;
+    }
+
+    Some((monitor_id.index() * tag_count + (tag_index - 1)) as u32)
+}
+
+pub fn monitor_tag_for_desktop(
+    globals: &crate::globals::Globals,
+    desktop: u32,
+) -> Option<(MonitorId, usize)> {
+    let tag_count = globals.tags.count().max(1);
+    let desktop = desktop as usize;
+    let monitor_id = MonitorId::new(desktop / tag_count);
+    let tag_index = desktop % tag_count + 1;
+
+    if tag_index == 0 || tag_index > tag_count || globals.monitor(monitor_id).is_none() {
+        return None;
+    }
+
+    Some((monitor_id, tag_index))
+}
+
+pub fn update_ewmh_desktop_props(
+    globals: &crate::globals::Globals,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+) {
+    let conn = x11.conn;
+    let netatom = x11_runtime.netatom;
+    let count = desktop_count(globals);
+    let current = current_desktop(globals).unwrap_or(0);
+    let names = desktop_names(globals);
+    let viewport = vec![0u32; count as usize * 2];
+    let utf8_atom = conn
+        .intern_atom(false, b"UTF8_STRING")
+        .ok()
+        .and_then(|c| c.reply().ok())
+        .map(|r| r.atom)
+        .unwrap_or(AtomEnum::STRING.into());
+
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        netatom.number_of_desktops,
+        AtomEnum::CARDINAL,
+        &[count],
+    );
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        netatom.current_desktop,
+        AtomEnum::CARDINAL,
+        &[current],
+    );
+    let _ = conn.change_property8(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        netatom.desktop_names,
+        utf8_atom,
+        &names,
+    );
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        netatom.desktop_viewport,
+        AtomEnum::CARDINAL,
+        &viewport,
+    );
+
+    for win in globals.clients.keys().copied().collect::<Vec<_>>() {
+        set_wm_desktop_prop(globals, x11, x11_runtime, win);
+    }
+
+    let _ = conn.flush();
+}
+
+fn current_desktop(globals: &crate::globals::Globals) -> Option<u32> {
+    let mon = globals.selected_monitor();
+    let tag = mon.selected_tags().first_tag().unwrap_or(1);
+    desktop_for_monitor_tag(globals, mon.id(), tag)
+}
+
+fn desktop_names(globals: &crate::globals::Globals) -> Vec<u8> {
+    let mut names = Vec::new();
+
+    for (monitor_id, monitor) in globals.monitors_iter() {
+        for tag_index in 1..=globals.tags.count().max(1) {
+            let tag_name = monitor
+                .tags
+                .get(tag_index - 1)
+                .map(|tag| tag.name.as_str())
+                .unwrap_or("");
+            let name = if globals.monitors.len() > 1 {
+                format!("{}:{}", monitor_id.index() + 1, tag_name)
+            } else {
+                tag_name.to_string()
+            };
+            names.extend_from_slice(name.as_bytes());
+            names.push(0);
+        }
+    }
+
+    names
+}
+
+fn set_wm_desktop_prop(
+    globals: &crate::globals::Globals,
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) {
+    let Some(client) = globals.clients.get(&win) else {
+        return;
+    };
+
+    let desktop = if client.is_sticky {
+        u32::MAX
+    } else {
+        let tag = client.tags.first_tag().unwrap_or(1);
+        desktop_for_monitor_tag(globals, client.monitor_id, tag).unwrap_or(0)
+    };
+
+    let x11_win: Window = win.into();
+    let _ = x11.conn.change_property32(
+        PropMode::REPLACE,
+        x11_win,
+        x11_runtime.netatom.wm_desktop,
+        AtomEnum::CARDINAL,
+        &[desktop],
+    );
 }
 
 pub fn update_client_list(

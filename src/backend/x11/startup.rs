@@ -147,6 +147,11 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
     let net_wm_window_type_dialog = intern_atom(conn, "_NET_WM_WINDOW_TYPE_DIALOG", false);
     let net_client_list = intern_atom(conn, "_NET_CLIENT_LIST", false);
     let net_client_info = intern_atom(conn, "_NET_CLIENT_INFO", false);
+    let net_number_of_desktops = intern_atom(conn, "_NET_NUMBER_OF_DESKTOPS", false);
+    let net_current_desktop = intern_atom(conn, "_NET_CURRENT_DESKTOP", false);
+    let net_desktop_names = intern_atom(conn, "_NET_DESKTOP_NAMES", false);
+    let net_desktop_viewport = intern_atom(conn, "_NET_DESKTOP_VIEWPORT", false);
+    let net_wm_desktop = intern_atom(conn, "_NET_WM_DESKTOP", false);
 
     let motifatom = intern_atom(conn, "_MOTIF_WM_HINTS", false);
 
@@ -175,6 +180,11 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         wm_window_type_dialog: net_wm_window_type_dialog,
         client_list: net_client_list,
         client_info: net_client_info,
+        number_of_desktops: net_number_of_desktops,
+        current_desktop: net_current_desktop,
+        desktop_names: net_desktop_names,
+        desktop_viewport: net_desktop_viewport,
+        wm_desktop: net_wm_desktop,
     };
     x11_runtime.motifatom = motifatom;
     x11_runtime.xatom = crate::types::XAtoms {

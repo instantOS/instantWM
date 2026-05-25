@@ -358,6 +358,7 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
     ctx.core_mut()
         .globals_mut()
         .set_selected_monitor(monitor_id);
+    ctx.update_ewmh_desktop_props();
     focus(ctx, None);
     true
 }

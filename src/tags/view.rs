@@ -4,6 +4,7 @@ use crate::contexts::WmCtx;
 use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
+    ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()

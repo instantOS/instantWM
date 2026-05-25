@@ -49,6 +49,11 @@ pub fn setup_root(wm: &mut Wm) {
         netatom.wm_window_type_dialog,
         netatom.client_list,
         netatom.client_info,
+        netatom.number_of_desktops,
+        netatom.current_desktop,
+        netatom.desktop_names,
+        netatom.desktop_viewport,
+        netatom.wm_desktop,
     ];
 
     let mask = EventMask::SUBSTRUCTURE_REDIRECT
@@ -134,6 +139,7 @@ pub fn setup_root(wm: &mut Wm) {
 
     let mut ctx = wm.ctx();
     crate::monitor::refresh_monitor_layout(&mut ctx);
+    ctx.update_ewmh_desktop_props();
 
     if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
         crate::mouse::set_cursor_style(
