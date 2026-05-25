@@ -46,6 +46,10 @@ automatically when starting its Wayland socket.
 
 ## [Documentation](https://instantos.io/documentation)
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for version bump and release rules.
+
 ## Features
 
 - General
