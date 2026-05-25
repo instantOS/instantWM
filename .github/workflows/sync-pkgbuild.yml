@@ -8,7 +8,7 @@ on:
       - reopened
 jobs:
   sync:
-    if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release-plz-')
+    if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/')
     runs-on: self-hosted
     container:
       image: archlinux:latest
