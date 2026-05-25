@@ -3,7 +3,7 @@
 //! This module encapsulates monitor state and logic, providing a clean API
 //! for monitor-related operations.
 
-use crate::backend::{BackendOps, BackendOutputInfo};
+use crate::backend::BackendOutputInfo;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::focus::{focus, unfocus_win};
 use crate::globals::Globals;
@@ -162,62 +162,6 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-pub fn cleanup_monitor(ctx: &mut WmCtx, monitor_id: MonitorId) {
-    if monitor_id.index() >= ctx.core_mut().globals_mut().monitors.len() {
-        return;
-    }
-
-    let bar_win = ctx
-        .core()
-        .globals()
-        .monitors
-        .get(monitor_id)
-        .map(|m| m.bar_win)
-        .unwrap_or_default();
-
-    // Remove and fix up IDs
-    ctx.core_mut()
-        .globals_mut()
-        .monitors
-        .monitors
-        .remove(monitor_id.index());
-    for (i, m) in ctx
-        .core_mut()
-        .globals_mut()
-        .monitors
-        .monitors
-        .iter_mut()
-        .enumerate()
-    {
-        m.monitor_id = MonitorId(i);
-    }
-
-    // Adjust selected index
-    if ctx.core_mut().globals_mut().monitors.selected_monitor_idx == monitor_id {
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(0);
-    } else if ctx.core_mut().globals_mut().monitors.selected_monitor_idx > monitor_id {
-        let current = ctx
-            .core_mut()
-            .globals_mut()
-            .monitors
-            .selected_monitor_idx
-            .index();
-        ctx.core_mut().globals_mut().monitors.selected_monitor_idx = MonitorId(current - 1);
-    }
-
-    // Fix up client monitor references
-    let target = ctx.core_mut().globals_mut().monitors.selected_monitor_idx;
-    for client in ctx.core_mut().globals_mut().clients.values_mut() {
-        if client.monitor_id == monitor_id {
-            client.monitor_id = target;
-        } else if client.monitor_id > monitor_id {
-            client.monitor_id = MonitorId(client.monitor_id.index() - 1);
-        }
-    }
-
-    crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, bar_win);
-}
-
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if ctx.core_mut().globals_mut().monitors.sel_idx() == target_mon {
         return;
@@ -265,7 +209,14 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
     ctx.core_mut().globals_mut().attach(win);
     ctx.core_mut().globals_mut().attach_z_order_top(win);
-    ctx.set_client_tag_prop(win);
+    if let WmCtx::X11(x11) = ctx {
+        crate::backend::x11::set_client_tag_prop(
+            x11.core.globals(),
+            &x11.x11,
+            x11.x11_runtime,
+            win,
+        );
+    }
 
     focus(ctx, None);
 
@@ -725,18 +676,15 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         scaled_monitor_ui_metrics(ctx.core().globals(), 1.0);
     if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(MonitorId(0)) {
         m.num = 0;
-        m.monitor_rect = Rect {
+        let rect = Rect {
             x: 0,
             y: 0,
             w: sw,
             h,
         };
-        m.work_rect = Rect {
-            x: 0,
-            y: 0,
-            w: sw,
-            h,
-        };
+        m.monitor_rect = rect;
+        m.available_rect = rect;
+        m.work_rect = rect;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.update_bar_position(bar_height);
     }
@@ -770,6 +718,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
     if let Some(m) = ctx.core_mut().globals_mut().monitors.get_mut(MonitorId(0)) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
+        m.available_rect = m.monitor_rect;
         m.work_rect.w = sw;
         m.work_rect.h = sh;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);

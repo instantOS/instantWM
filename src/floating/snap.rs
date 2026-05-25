@@ -17,7 +17,6 @@
 //! To cancel a snap and return to the previous floating geometry call
 //! [`reset_snap`].
 
-use crate::backend::BackendOps;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;

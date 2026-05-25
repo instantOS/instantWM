@@ -2,7 +2,7 @@
 //!
 //! This module handles root-window gestures like vertical swipes.
 
-use crate::backend::{BackendEvent, BackendOps};
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::*;
 

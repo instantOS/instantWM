@@ -1,10 +1,11 @@
-//! Hover-resize: cursor feedback and click-to-resize/move near floating windows.
+//! Hover-resize: cursor feedback and click-to-resize/move/close near floating
+//! windows.
 //!
 //! When the pointer hovers just outside a floating window's border, the root
 //! cursor changes to a resize shape.  A left-click then starts an interactive
 //! resize (or move, when the cursor is at the window's top-middle edge);
-//! a right-click always starts a move.  Moving further away deactivates the
-//! mode.
+//! a right-click always starts a move; a middle-click closes the window.
+//! Moving further away deactivates the mode.
 //!
 //! ## Entry points
 //!
@@ -15,7 +16,7 @@
 //! | [`commit_x11_hover_offer`]                    | X11 button press     | Commit current offer to move/resize        |
 //! | [`run_x11_hover_resize_offer_loop`]           | `enter_notify`, etc. | Modal loop: wait for click near border     |
 
-use crate::backend::{BackendEvent, BackendOps};
+use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::globals::{Globals, HoverOffer};
 use crate::types::{
@@ -59,18 +60,28 @@ pub fn clear_hover_offer(ctx: &mut WmCtx) {
     }
 }
 
-/// Commit the current X11 resize offer to a move or resize operation.
+/// Commit the current X11 resize offer to a move, resize, or close operation.
 ///
 /// Returns `false` when there is no resize offer or the mouse button is not a
 /// valid commit button for hover resize.
 pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
-    if btn != MouseButton::Left && btn != MouseButton::Right {
-        return false;
-    }
-
     let Some((win, dir)) = ctx.core.globals().drag.hover_offer.resize_target() else {
         return false;
     };
+
+    if btn == MouseButton::Middle {
+        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+        clear_hover_offer(&mut wm_ctx);
+        if wm_ctx.core().globals().selected_win() != Some(win) {
+            crate::focus::focus(&mut wm_ctx, Some(win));
+        }
+        crate::client::kill::close_win(&mut wm_ctx, win);
+        return true;
+    }
+
+    if btn != MouseButton::Left && btn != MouseButton::Right {
+        return false;
+    }
 
     let move_from_top_middle = {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
@@ -133,9 +144,7 @@ fn resize_target_for_window(
 
 fn pointer_in_bar(globals: &Globals, root_y: i32) -> bool {
     let mon = globals.selected_monitor();
-    crate::bar::monitor_bar_visible(globals, mon)
-        && root_y >= mon.bar_y
-        && root_y < mon.bar_y + mon.bar_height.max(1)
+    crate::bar::monitor_bar_contains_y(globals, mon, root_y)
 }
 
 // ── Cursor helpers ───────────────────────────────────────────────────────────
@@ -313,6 +322,7 @@ pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root: crate::types::Point) -> Si
 /// |------------------|------------------------------------------------|
 /// | Left click       | Resize (directional) — or move if top-middle   |
 /// | Right click      | Move                                           |
+/// | Middle click     | Close the window                               |
 /// | Escape           | Abort                                          |
 /// | Cursor leaves    | Abort                                          |
 /// | Button release   | Abort (spurious release from prior click)      |
@@ -424,6 +434,10 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                     let btn = *button;
                     wm_ctx.raise_client(win);
                     match btn {
+                        MouseButton::Middle => {
+                            let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                            crate::client::kill::close_win(&mut wm_ctx, win);
+                        }
                         MouseButton::Right => {
                             let mut wm_ctx_x11 = ctx.reborrow();
                             let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());

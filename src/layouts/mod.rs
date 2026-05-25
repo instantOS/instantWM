@@ -31,6 +31,7 @@
 
 pub mod algo;
 pub mod manager;
+pub(crate) mod placement;
 pub mod query;
 
 use std::str::FromStr;

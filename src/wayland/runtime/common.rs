@@ -7,7 +7,6 @@
 //! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
 
 use crate::backend::Backend as WmBackend;
-use crate::backend::BackendOps;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wm::Wm;
@@ -99,6 +98,8 @@ pub fn event_loop_tick(
 ) -> crate::runtime::TickResult {
     drain_command_queue(wm, state);
 
+    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(state);
+
     crate::runtime::event_loop_tick_with_options(
         wm,
         ipc_server,
@@ -111,7 +112,7 @@ pub fn event_loop_tick(
 
 fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     use crate::backend::wayland::commands::WmCommand;
-    let commands: Vec<WmCommand> = state.command_queue.borrow_mut().drain(..).collect();
+    let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
 
     for command in commands {
         match command {
@@ -236,11 +237,15 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::SetMaximized { win, maximized } => handle_set_maximized(wm, win, maximized),
             WmCommand::SetFullscreen { win, fullscreen } => {
-                let mut ctx = wm.ctx();
-                let g = ctx.core_mut().globals_mut();
-                crate::client::mode::set_fullscreen(g, win, fullscreen);
-                g.queue_layout_for_client(win);
+                {
+                    let mut ctx = wm.ctx();
+                    let g = ctx.core_mut().globals_mut();
+                    crate::client::mode::set_fullscreen(g, win, fullscreen);
+                    g.queue_layout_for_client(win);
+                }
+                wm.bar.mark_dirty();
                 state.request_space_sync();
+                state.request_render();
             }
             WmCommand::SetMinimized { win, minimized } => {
                 let mut ctx = wm.ctx();
@@ -280,6 +285,39 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::RestoreFocus => {
                 let mut ctx = wm.ctx();
                 crate::focus::focus(&mut ctx, None);
+            }
+            WmCommand::SyncLayerExclusiveZones => {
+                if crate::backend::wayland::compositor::layer_shell::apply_available_rects(
+                    wm, state,
+                ) {
+                    wm.g.queue_layout_for_all_monitors_urgent();
+                    wm.bar.mark_dirty();
+                    state.request_render();
+                }
+            }
+            WmCommand::SelectTag {
+                monitor_name,
+                tag_index,
+            } => {
+                let mut ctx = wm.ctx();
+                let mon_id = ctx
+                    .core()
+                    .globals()
+                    .monitors
+                    .monitors
+                    .iter()
+                    .position(|m| m.name == monitor_name)
+                    .map(crate::types::MonitorId::from);
+                if let Some(mid) = mon_id {
+                    crate::focus::select_monitor(&mut ctx, mid);
+
+                    // NOTE: tag_index is 0-based index coming from the ext-workspace-v1 protocol coordinates.
+                    // TagMask::from_index() internally converts this 0-based index to a 1-based index (e.g. index + 1)
+                    // suitable for bitmask operations (contains / intersects).
+                    if let Some(mask) = crate::types::TagMask::from_index(tag_index) {
+                        crate::tags::view::view_tags(&mut ctx, mask);
+                    }
+                }
             }
         }
     }

@@ -10,8 +10,8 @@ use smithay::output::Output;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
-    get_render_element_counts, poll_wayland_systray, resolve_cursor_presentation,
-    send_frame_callbacks, update_primary_scanout_output,
+    get_render_element_counts, output_has_real_fullscreen, poll_wayland_systray,
+    resolve_cursor_presentation, send_frame_callbacks, update_primary_scanout_output,
 };
 use crate::wm::Wm;
 
@@ -77,6 +77,7 @@ pub fn render_frame(
 
         // Shared: count upper layer elements
         let num_upper = count_upper_layer_render_elements(renderer, output);
+        let suppress_upper_layers = output_has_real_fullscreen(wm, output);
 
         // Shared: get element counts for pre-allocation
         let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
@@ -96,6 +97,7 @@ pub fn render_frame(
             scene,
             space_render_elements,
             num_upper,
+            suppress_upper_layers,
             render_elements
         );
     }

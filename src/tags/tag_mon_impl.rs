@@ -11,7 +11,6 @@
 //! Tiled clients are simply detached and re-attached; the layout engine takes
 //! care of placement.
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::monitor::transfer_client;
 use crate::types::{MonitorDirection, WindowId};

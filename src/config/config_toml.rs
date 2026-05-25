@@ -53,6 +53,8 @@ pub struct ThemeConfig {
     pub modes: std::collections::HashMap<String, ModeSpec>,
     /// Cursor configuration (Wayland only).
     pub cursor: CursorConfig,
+    /// Layout geometry configuration.
+    pub layout: LayoutConfig,
     /// Window rules.
     #[serde(default)]
     pub rules: Vec<Rule>,
@@ -81,12 +83,36 @@ impl Default for ThemeConfig {
             status_command: None,
             modes: std::collections::HashMap::new(),
             cursor: CursorConfig::default(),
+            layout: LayoutConfig::default(),
             rules: Vec::new(),
             bar_height: 0,
             exec_once: Vec::new(),
             exec: Vec::new(),
         }
     }
+}
+
+/// Layout geometry configuration.
+///
+/// ```toml
+/// [layout]
+/// inner_gap = 8
+/// outer_gap = 8
+/// smart_gaps = true
+/// monocle_gaps = false
+/// ```
+#[derive(Debug, Deserialize, Clone, Copy, Serialize)]
+#[serde(default)]
+#[derive(Default)]
+pub struct LayoutConfig {
+    /// Gap between tiled windows in logical pixels.
+    pub inner_gap: i32,
+    /// Gap between tiled windows and the monitor work area edge in logical pixels.
+    pub outer_gap: i32,
+    /// Disable gaps when a tiling layout has one or fewer tiled windows.
+    pub smart_gaps: bool,
+    /// Apply configured gaps to monocle layout.
+    pub monocle_gaps: bool,
 }
 
 /// Cursor configuration for Wayland.

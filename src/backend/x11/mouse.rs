@@ -1,11 +1,9 @@
 //! X11 mouse backend helpers.
 
+use crate::backend::BackendEvent;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
-use crate::backend::{BackendEvent, BackendOps};
 use crate::contexts::WmCtxX11;
-use crate::mouse::drag::{
-    MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
-};
+use crate::mouse::drag::{MoveState, on_motion, prepare_drag_target};
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};

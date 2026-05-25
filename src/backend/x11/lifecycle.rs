@@ -93,8 +93,8 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w, trans) {
             crate::client::sync_client_geometry(ctx.core.globals_mut(), w, rect);
         }
-        ctx.backend.raise_window_visual_only(w);
-        ctx.backend.flush();
+        ctx.x11.raise_window_visual_only(w);
+        ctx.x11.flush();
     }
 
     ctx.core.globals_mut().attach(w);

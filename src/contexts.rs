@@ -4,8 +4,6 @@
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
 //! receives explicit `X11BackendRef` / `WaylandCtx` instead of runtime checks.
 
-use crate::backend::BackendOps;
-use crate::backend::BackendRef;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
@@ -77,7 +75,6 @@ pub struct XwaylandCtx<'a> {
 
 pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
-    pub backend: BackendRef<'a>,
     pub x11: X11BackendRef<'a>,
     pub x11_runtime: &'a mut X11RuntimeConfig,
     pub systray: Option<&'a mut Systray>,
@@ -87,7 +84,6 @@ impl<'a> WmCtxX11<'a> {
     pub fn reborrow(&mut self) -> WmCtxX11<'_> {
         WmCtxX11 {
             core: self.core.reborrow(),
-            backend: self.backend.reborrow(),
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
             x11_runtime: self.x11_runtime,
             systray: self.systray.as_deref_mut(),
@@ -97,23 +93,10 @@ impl<'a> WmCtxX11<'a> {
     pub fn x11_runtime(&self) -> &X11RuntimeConfig {
         self.x11_runtime
     }
-
-    pub fn x11_runtime_mut(&mut self) -> &mut X11RuntimeConfig {
-        self.x11_runtime
-    }
-
-    pub fn systray(&self) -> Option<&Systray> {
-        self.systray.as_deref()
-    }
-
-    pub fn systray_mut(&mut self) -> Option<&mut Systray> {
-        self.systray.as_deref_mut()
-    }
 }
 
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
-    pub backend: BackendRef<'a>,
     pub wayland: WaylandCtx<'a>,
     pub xwayland: Option<XwaylandCtx<'a>>,
     pub wayland_systray: &'a mut WaylandSystray,
@@ -124,7 +107,6 @@ impl<'a> WmCtxWayland<'a> {
     pub fn reborrow(&mut self) -> WmCtxWayland<'_> {
         WmCtxWayland {
             core: self.core.reborrow(),
-            backend: self.backend.reborrow(),
             wayland: self.wayland.reborrow(),
             xwayland: self.xwayland.as_ref().map(|xw| XwaylandCtx {
                 xdisplay: xw.xdisplay,
@@ -133,22 +115,6 @@ impl<'a> WmCtxWayland<'a> {
             wayland_systray: self.wayland_systray,
             wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
-    }
-
-    pub fn wayland_systray(&self) -> &WaylandSystray {
-        self.wayland_systray
-    }
-
-    pub fn wayland_systray_mut(&mut self) -> &mut WaylandSystray {
-        self.wayland_systray
-    }
-
-    pub fn wayland_systray_menu(&self) -> Option<&WaylandSystrayMenu> {
-        self.wayland_systray_menu.as_deref()
-    }
-
-    pub fn wayland_systray_menu_mut(&mut self) -> Option<&mut WaylandSystrayMenu> {
-        self.wayland_systray_menu.as_deref_mut()
     }
 }
 
@@ -180,19 +146,11 @@ impl<'a> WmCtx<'a> {
         self.core_mut().quit();
     }
 
-    // Backend-agnostic operations (delegate through BackendOps)
-
-    pub fn backend(&self) -> &BackendRef<'_> {
+    /// Get a borrowed backend view. Constructed on the fly — not a stored field.
+    pub fn backend(&self) -> &dyn crate::backend::BackendOps {
         match self {
-            WmCtx::X11(ctx) => &ctx.backend,
-            WmCtx::Wayland(ctx) => &ctx.backend,
-        }
-    }
-
-    pub fn backend_mut(&mut self) -> &mut BackendRef<'a> {
-        match self {
-            WmCtx::X11(ctx) => &mut ctx.backend,
-            WmCtx::Wayland(ctx) => &mut ctx.backend,
+            WmCtx::X11(ctx) => &ctx.x11 as &dyn crate::backend::BackendOps,
+            WmCtx::Wayland(ctx) => ctx.wayland.backend as &dyn crate::backend::BackendOps,
         }
     }
 
@@ -231,17 +189,20 @@ impl<'a> WmCtx<'a> {
         apply_mode: GeometryApplyMode,
     ) {
         match self {
-            WmCtx::X11(x11) => {
+            WmCtx::X11(_) => {
                 if apply_mode == GeometryApplyMode::VisualOnly {
-                    x11.backend.resize_window(win, rect);
-                    x11.backend.flush();
+                    self.backend().resize_window(win, rect);
+                    self.backend().flush();
                     return;
                 }
 
                 // X11 clients may ignore or adjust resize requests (size hints).
                 // Query the actual geometry back and sync that into WM state.
-                x11.backend.resize_window(win, rect);
-                x11.backend.flush();
+                self.backend().resize_window(win, rect);
+                self.backend().flush();
+                let WmCtx::X11(x11) = self else {
+                    unreachable!()
+                };
                 let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
                 crate::client::sync_client_geometry(x11.core.globals_mut(), win, actual);
 
@@ -267,47 +228,6 @@ impl<'a> WmCtx<'a> {
         if let Some(client) = self.core_mut().globals_mut().clients.get_mut(&win) {
             client.border_width = width.max(0);
         }
-        // Border width is X11-specific; Wayland doesn't support border width
-        if let WmCtx::X11(x11) = self {
-            x11.x11.set_border_width(win, width);
-        }
-    }
-
-    /// (Re)grab all keybindings.  X11 only; no-op on Wayland.
-    pub fn grab_keys(&mut self) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::grab_keys_x11(
-                ctx.core.globals(),
-                &ctx.x11,
-                ctx.x11_runtime,
-            );
-        }
-    }
-
-    /// Update the cached numlock modifier mask.  X11 only; no-op on Wayland.
-    pub fn update_num_lock_mask(&mut self) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::update_num_lock_mask_x11(&ctx.x11, ctx.x11_runtime);
-        }
-    }
-
-    /// Set `WM_STATE` property.  X11 only; no-op on Wayland.
-    pub fn set_client_state(&mut self, win: WindowId, state: i32) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, win, state);
-        }
-    }
-
-    /// Write tag/monitor metadata into a window property.  X11 only; no-op on Wayland.
-    pub fn set_client_tag_prop(&mut self, win: WindowId) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::set_client_tag_prop(
-                ctx.core.globals(),
-                &ctx.x11,
-                ctx.x11_runtime,
-                win,
-            );
-        }
     }
 
     /// Update root EWMH workspace/tag properties. X11 only; no-op on Wayland.
@@ -328,8 +248,6 @@ impl<'a> WmCtx<'a> {
     /// the pointer handle and the external `pointer_location` variable are
     /// both updated atomically.
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
-        let bar_height = self.core().globals().cfg.bar.height;
-
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
             let mon = self.core().globals().selected_monitor();
@@ -355,7 +273,7 @@ impl<'a> WmCtx<'a> {
                 && ptr.y < c.geo.y + c.geo.h + c.border_width * 2);
 
         let on_bar = c.monitor(self.core().globals()).is_some_and(|mon| {
-            (ptr.y > mon.bar_y && ptr.y < mon.bar_y + bar_height) || (mon.top_bar && ptr.y == 0)
+            crate::bar::monitor_bar_contains_y(self.core().globals(), mon, ptr.y)
         });
 
         if in_window || on_bar {

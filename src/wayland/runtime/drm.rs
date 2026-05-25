@@ -45,6 +45,7 @@ struct DrmLayoutState {
 struct DrmLoopState {
     session_active: bool,
     render_flags: HashMap<crtc::Handle, bool>,
+    taken_render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
     empty_frame_callback_crtcs: Rc<RefCell<HashSet<crtc::Handle>>>,
     presentation_seq: HashMap<crtc::Handle, u64>,
@@ -60,6 +61,7 @@ impl DrmLoopState {
         Self {
             session_active: true,
             render_flags,
+            taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
             empty_frame_callback_crtcs: Rc::new(RefCell::new(HashSet::new())),
             presentation_seq: output_surfaces
@@ -93,11 +95,13 @@ impl DrmLoopState {
     }
 
     fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
-        let flags = self.render_flags.clone();
-        for flag in self.render_flags.values_mut() {
+        let mut taken = std::mem::take(&mut self.taken_render_flags);
+        taken.clear();
+        for (&crtc, flag) in &mut self.render_flags {
+            taken.insert(crtc, *flag);
             *flag = false;
         }
-        flags
+        taken
     }
 
     fn has_renderable_dirty_outputs(&self) -> bool {
@@ -171,6 +175,7 @@ pub fn run() -> ! {
         use crate::monitor::refresh_monitor_layout;
         refresh_monitor_layout(&mut wm.ctx());
     }
+    state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 
     let layout_state = Arc::new(init_layout_state(
@@ -413,6 +418,13 @@ fn run_event_loop(
                 &monotonic_clock,
             );
             process_commit_redraws(state, loop_state);
+            process_frame_callback_requests(
+                state,
+                &loop_handle,
+                loop_state,
+                output_surfaces,
+                start_time,
+            );
             process_common_tick(ipc_server, wm, state, loop_state);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
             sync_output_enabled_from_state(state, output_surfaces, loop_state);
@@ -587,6 +599,23 @@ fn process_commit_redraws(state: &mut WaylandState, loop_state: &mut DrmLoopStat
     }
 }
 
+/// Service frame-callback-only commits without forcing a DRM render.
+fn process_frame_callback_requests(
+    state: &mut WaylandState,
+    loop_handle: &LoopHandle<'_, WaylandState>,
+    loop_state: &DrmLoopState,
+    output_surfaces: &[OutputSurfaceEntry],
+    start_time: std::time::Instant,
+) {
+    if !state.take_frame_callbacks_pending() {
+        return;
+    }
+
+    for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
+        arm_empty_frame_callback_timer(loop_handle, loop_state, entry, start_time);
+    }
+}
+
 /// Run the shared Wayland tick, then apply DRM-specific invalidation.
 fn process_common_tick(
     ipc_server: &mut Option<crate::ipc::IpcServer>,
@@ -689,17 +718,17 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     let selected = mon.selected_tags();
     let mut visible_clients = mon
         .iter_clients(wm.g.clients.map())
-        .filter(|(_, client)| client.is_visible(selected))
-        .filter(|(_, client)| !client.is_scratchpad())
-        .collect::<Vec<_>>();
+        .filter(|(_, client)| client.is_visible(selected) && !client.is_scratchpad());
 
-    if visible_clients.len() != 1 {
+    let Some((_, first_client)) = visible_clients.next() else {
+        return false;
+    };
+
+    if visible_clients.next().is_some() {
         return false;
     }
 
-    visible_clients
-        .pop()
-        .is_some_and(|(_, client)| client.mode.is_true_fullscreen())
+    first_client.mode.is_true_fullscreen()
 }
 
 fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {
@@ -810,6 +839,8 @@ fn render_outputs(
                 continue;
             }
             apply_output_vrr_policy(wm, state, entry);
+            let suppress_upper_layers =
+                crate::wayland::common::output_has_real_fullscreen(wm, &entry.output);
             let rendered = render_drm_output(
                 state,
                 renderer,
@@ -818,6 +849,7 @@ fn render_outputs(
                 pointer_location,
                 start_time,
                 fixed_scene.clone(),
+                suppress_upper_layers,
             );
 
             match rendered {
@@ -857,4 +889,5 @@ fn render_outputs(
             }
         }
     }
+    loop_state.taken_render_flags = render_flags;
 }

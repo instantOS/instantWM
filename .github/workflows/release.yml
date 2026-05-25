@@ -1,22 +1,97 @@
 name: Release
 on:
   push:
+    branches:
+      - main
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - CHANGELOG.md
     tags:
       - "v*"
-      - "instantwm-v*"
   workflow_dispatch:
 jobs:
+  metadata:
+    name: Prepare release metadata
+    runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
+    if: ${{ github.repository_owner == 'instantOS' }}
+    permissions:
+      contents: write
+    outputs:
+      should_release: ${{ steps.metadata.outputs.should_release }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Determine release tag
+        id: metadata
+        run: |
+          set -euo pipefail
+
+          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
+          if [[ -z "$version" ]]; then
+            echo "Failed to determine version from Cargo.toml" >&2
+            exit 1
+          fi
+
+          tag="v${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "$tag" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}" >&2
+              exit 1
+            fi
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          head_subject="$(git log -1 --format=%s)"
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" && "${head_subject}" != "chore: release ${tag}" ]]; then
+            echo "Head commit is not a generated release commit (${head_subject}); skipping branch-triggered release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists; skipping branch-triggered release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git tag -a "$tag" -m "Release ${tag}"
+          git push origin "$tag"
+
+          echo "Created ${tag}; publishing release from this workflow run."
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
   build:
     name: Build release artifacts
     runs-on: self-hosted
     timeout-minutes: 1440
     container:
       image: archlinux:latest
+    needs: metadata
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     env:
       CARGO_TERM_COLOR: always
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -109,6 +184,8 @@ jobs:
     timeout-minutes: 1440
     container:
       image: ubuntu:24.04
+    needs: metadata
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     env:
       CARGO_TERM_COLOR: always
       DEBIAN_FRONTEND: noninteractive
@@ -116,7 +193,7 @@ jobs:
       RUSTUP_HOME: /opt/rustup
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -206,7 +283,10 @@ jobs:
     timeout-minutes: 1440
     container:
       image: archlinux:latest
-    needs: build
+    needs:
+      - metadata
+      - build
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Initialise pacman and install git
         run: |
@@ -215,7 +295,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed git
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install build dependencies
         run: bash scripts/ci/install-deps-arch.sh
       - name: Extract version
@@ -261,10 +341,13 @@ jobs:
     runs-on: self-hosted
     container:
       image: ubuntu:24.04
-    needs: build
+    needs:
+      - metadata
+      - build
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install build dependencies
         run: |
           bash scripts/ci/install-deps-ubuntu.sh
@@ -314,21 +397,42 @@ jobs:
     container:
       image: ubuntu:24.04
     needs:
+      - metadata
       - build
       - cross-compile
       - pkgbuild
       - deb
     permissions:
       contents: write
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Extract release notes
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          awk -v version="$VERSION" '
+            $0 ~ "^## \\[" version "\\]" { capture = 1; next }
+            capture && $0 ~ "^## \\[" { exit }
+            capture { print }
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            printf 'Release v%s\n' "$VERSION" > release-notes.md
+          fi
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.metadata.outputs.tag }}
+          name: ${{ needs.metadata.outputs.tag }}
+          body_path: release-notes.md
           files: dist/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -37,6 +37,7 @@ pub fn run() -> ! {
     wm.g.cfg.display.width = initial_w;
     wm.g.cfg.display.height = initial_h;
     refresh_monitor_layout(&mut wm.ctx());
+    state.push_command(WmCommand::SyncLayerExclusiveZones);
 
     // Store initial window size for the calloop source callback.
     state.runtime.winit_window_size = output_size;

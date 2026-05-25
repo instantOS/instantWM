@@ -22,7 +22,7 @@ pub mod winit;
 /// `WaylandExtras`), so this macro generates the assembly for any target
 /// type that has `Surface`, `Space`, `Memory`, and `Solid` variants.
 macro_rules! assemble_scene_elements {
-    ($target:ident, $scene:expr, $space_elements:expr, $num_upper:expr, $elements:expr) => {{
+    ($target:ident, $scene:expr, $space_elements:expr, $num_upper:expr, $suppress_upper:expr, $elements:expr) => {{
         // 1. Overlays (dmenu, popups)
         for elem in $scene.overlays {
             $elements.push($target::Surface(elem));
@@ -30,7 +30,9 @@ macro_rules! assemble_scene_elements {
         // 2. Upper layer shells (Overlay / Top)
         let mut space_iter = $space_elements.into_iter();
         for elem in space_iter.by_ref().take($num_upper) {
-            $elements.push($target::Space(elem));
+            if !$suppress_upper {
+                $elements.push($target::Space(elem));
+            }
         }
         // 3. Status Bar
         for elem in $scene.bar {

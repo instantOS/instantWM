@@ -16,11 +16,12 @@
 //! window is snapped into place instantly (0 frames) to avoid mid-air ghost
 //! windows appearing during the animation.
 
-use crate::backend::BackendOps;
-use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
+use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Monitor, Rect};
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
+use crate::types::Monitor;
 
 pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── raise the selected client so it is visible while we animate ───────
@@ -38,6 +39,14 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // ── snapshot selected window before the loop ────────
     let selected_window = ctx.core().globals().selected_win();
     let selected_tags = m.selected_tags();
+    let tiled_client_count = m.tiled_client_count(ctx.core().globals().clients.map()) as u32;
+    let placement = LayoutPlacement::new(
+        ctx.core().globals(),
+        m,
+        LayoutKind::Monocle,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
 
     // ── resize every tiled client to fill the work area ───────────────────
     for &win in &m.clients {
@@ -61,14 +70,11 @@ pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
                 0
             };
 
-        ctx.move_resize(
+        placement.place(
+            ctx,
             win,
-            Rect {
-                x: m.work_rect.x,
-                y: m.work_rect.y,
-                w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
-                h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
-            },
+            work_rect,
+            border_width,
             MoveResizeOptions::animate_to(frames),
         );
     }

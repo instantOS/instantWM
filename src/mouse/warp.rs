@@ -11,7 +11,6 @@
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::types::*;
 

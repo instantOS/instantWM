@@ -14,8 +14,6 @@ use crate::types::*;
 
 #[derive(Default)]
 pub struct BarState {
-    //TODO: should this be used or removed?
-    pause_draw: bool,
     draw_bar_recursion: usize,
     bar_update_seq: u64,
     last_drawn_seq: u64,
@@ -69,14 +67,6 @@ pub struct MonitorHitCache {
 }
 
 impl BarState {
-    pub fn pausedraw(&self) -> bool {
-        self.pause_draw
-    }
-
-    pub fn set_pausedraw(&mut self, paused: bool) {
-        self.pause_draw = paused;
-    }
-
     pub(crate) fn try_recursion_enter(&mut self) -> bool {
         if self.draw_bar_recursion > 0 {
             self.mark_dirty();
@@ -207,6 +197,25 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
     width + core.globals().cfg.bar.horizontal_padding
 }
 
+/// Check whether a root-space y-coordinate falls within the bar's vertical span.
+/// Does not check bar visibility — caller must do that separately.
+pub fn y_in_bar(mon: &Monitor, root_y: i32) -> bool {
+    let h = mon.bar_height.max(1);
+    root_y >= mon.bar_y && root_y < mon.bar_y + h
+}
+
+/// Check whether a root-space y-coordinate falls in the 4-pixel guard band
+/// immediately below the bar. Does not check bar visibility.
+pub fn y_in_guard_band(mon: &Monitor, root_y: i32) -> bool {
+    let bar_bottom = mon.bar_y + mon.bar_height.max(1);
+    root_y >= bar_bottom && root_y < bar_bottom + 4
+}
+
+/// Check whether the bar is visible on `mon` and `root_y` falls within it.
+pub fn monitor_bar_contains_y(globals: &Globals, mon: &Monitor, root_y: i32) -> bool {
+    monitor_bar_visible(globals, mon) && y_in_bar(mon, root_y)
+}
+
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core().globals().selected_monitor().gesture != Gesture::None {
         reset_bar_common(ctx.core_mut().globals_mut());
@@ -226,11 +235,7 @@ pub fn resolve_bar_position_at_root(
     }
 
     let mon = core.globals().monitor(monitor_id)?;
-    let bar_h = core.globals().cfg.bar.height.max(1);
-    let in_bar = monitor_bar_visible(core.globals(), mon)
-        && root.y >= mon.bar_y
-        && root.y < mon.bar_y + bar_h;
-    if !in_bar {
+    if !monitor_bar_contains_y(core.globals(), mon, root.y) {
         return None;
     }
 

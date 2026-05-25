@@ -60,7 +60,13 @@ fn reload_x11(wm: &mut Wm) {
         );
         let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
         wm_ctx.update_ewmh_desktop_props();
-        wm_ctx.grab_keys();
+        if let WmCtx::X11(x11) = &mut wm_ctx {
+            crate::backend::x11::keyboard::grab_keys_x11(
+                x11.core.globals(),
+                &x11.x11,
+                x11.x11_runtime,
+            );
+        }
         crate::focus::focus(&mut wm_ctx, None);
     }
 }

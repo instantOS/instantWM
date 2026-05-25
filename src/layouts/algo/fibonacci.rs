@@ -45,9 +45,10 @@
 //! | `true`  | toward the centre (spiral)   |
 //! | `false` | away from centre (dwindle)   |
 
-use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::types::{Monitor, Rect};
 
 // ── public entry points ───────────────────────────────────────────────────────
@@ -87,13 +88,16 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
         return;
     }
 
+    let placement = LayoutPlacement::new(ctx.core().globals(), m, LayoutKind::Tile, n);
+    let work_rect = placement.work_rect();
+
     // ── iteratively partition the work area ───────────────────────────────
     // `x`, `y`, `w`, `h` track the *remaining* rectangle that still needs to
     // be distributed among the not-yet-placed clients.
-    let mut x = m.work_rect.x;
-    let mut y = m.work_rect.y;
-    let mut w = m.work_rect.w;
-    let mut h = m.work_rect.h;
+    let mut x = work_rect.x;
+    let mut y = work_rect.y;
+    let mut w = work_rect.w;
+    let mut h = work_rect.h;
 
     let selected_tags = m.selected_tags();
     let mut i: u32 = 0;
@@ -131,14 +135,11 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
             }
         }
 
-        ctx.move_resize(
+        placement.place(
+            ctx,
             win,
-            Rect {
-                x,
-                y,
-                w: w - BORDER_MULTIPLIER * border_width,
-                h: h - BORDER_MULTIPLIER * border_width,
-            },
+            Rect { x, y, w, h },
+            border_width,
             MoveResizeOptions::hinted_immediate(false),
         );
 

@@ -37,6 +37,7 @@ use crate::wayland::common::{
     count_upper_layer_render_elements, get_render_element_counts, resolve_cursor_presentation,
     send_frame_callbacks, update_primary_scanout_output,
 };
+use std::rc::Rc;
 
 mod cursor;
 
@@ -326,7 +327,8 @@ pub fn render_drm_output(
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: std::time::Instant,
-    fixed_scene: Option<FixedSceneElements>,
+    fixed_scene: Option<Rc<FixedSceneElements>>,
+    suppress_upper_layers: bool,
 ) -> RenderOutcome {
     let cursor_elements = build_drm_cursor_elements(
         state,
@@ -340,8 +342,14 @@ pub fn render_drm_output(
         .iter()
         .map(|element| element.id().clone())
         .collect();
-    let render_elements =
-        build_drm_render_elements(state, renderer, entry, cursor_elements, fixed_scene);
+    let render_elements = build_drm_render_elements(
+        state,
+        renderer,
+        entry,
+        cursor_elements,
+        fixed_scene,
+        suppress_upper_layers,
+    );
     let capture_requests = take_drm_capture_requests(state, &entry.output);
 
     let frame_result = match entry.surface.render_frame(
@@ -432,12 +440,20 @@ fn build_drm_render_elements(
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
     cursor_elements: Vec<DrmExtras>,
-    fixed_scene: Option<FixedSceneElements>,
+    fixed_scene: Option<Rc<FixedSceneElements>>,
+    suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
     if state.is_locked() {
         build_locked_drm_render_elements(state, renderer, entry, cursor_elements)
     } else {
-        build_unlocked_drm_render_elements(state, renderer, entry, cursor_elements, fixed_scene)
+        build_unlocked_drm_render_elements(
+            state,
+            renderer,
+            entry,
+            cursor_elements,
+            fixed_scene,
+            suppress_upper_layers,
+        )
     }
 }
 
@@ -472,13 +488,14 @@ fn build_unlocked_drm_render_elements(
     renderer: &mut GlesRenderer,
     entry: &OutputSurfaceEntry,
     cursor_elements: Vec<DrmExtras>,
-    fixed_scene: Option<FixedSceneElements>,
+    fixed_scene: Option<Rc<FixedSceneElements>>,
+    suppress_upper_layers: bool,
 ) -> Vec<DrmExtras> {
     let scene = build_common_scene_elements_from_fixed(
         state,
         renderer,
         entry.x_offset,
-        fixed_scene.expect("fixed scene elements"),
+        &fixed_scene.expect("fixed scene elements"),
     );
     let space_render_elements = smithay::desktop::space::space_render_elements(
         renderer,
@@ -497,6 +514,7 @@ fn build_unlocked_drm_render_elements(
         scene,
         space_render_elements,
         num_upper,
+        suppress_upper_layers,
         render_elements
     );
     render_elements

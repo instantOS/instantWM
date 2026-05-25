@@ -46,7 +46,7 @@ impl CompositorHandler for WaylandState {
         &mut self,
         surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     ) {
-        let render_relevant_commit = surface_commit_needs_render_service(surface);
+        let commit_kind = surface_commit_render_service(surface);
         on_commit_buffer_handler::<Self>(surface);
 
         // Check if this commit is from a pending toplevel that has finally
@@ -97,9 +97,7 @@ impl CompositorHandler for WaylandState {
 
         // Skip sync subsurfaces - they don't receive their own commits
         if is_sync_subsurface(surface) {
-            if render_relevant_commit {
-                self.request_render();
-            }
+            service_surface_commit(self, commit_kind);
             return;
         }
 
@@ -111,9 +109,7 @@ impl CompositorHandler for WaylandState {
 
         // Only call on_commit for the root surface, not for subsurfaces
         if surface != &root {
-            if render_relevant_commit {
-                self.request_render();
-            }
+            service_surface_commit(self, commit_kind);
             return;
         }
 
@@ -135,29 +131,39 @@ impl CompositorHandler for WaylandState {
 
         super::layer_shell::handle_layer_commit(self, surface);
 
-        // Buffer/damage commits must drive redraws in the DRM backend, and
-        // frame-callback commits must drive the frame clock. Video clients can
-        // commit only a wl_surface.frame request while waiting for the
-        // compositor to tell them when to produce the next buffer; ignoring
-        // those commits stalls playback until unrelated input dirties an
-        // output. Other metadata-only commits still stay off the render path.
-        if render_relevant_commit {
-            self.request_render();
-        }
+        service_surface_commit(self, commit_kind);
     }
 }
 
-fn surface_commit_needs_render_service(
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SurfaceCommitService {
+    None,
+    FrameCallbacks,
+    Render,
+}
+
+fn surface_commit_render_service(
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) -> bool {
+) -> SurfaceCommitService {
     smithay::wayland::compositor::with_states(surface, |states| {
         let mut guard = states.cached_state.get::<SurfaceAttributes>();
         let attrs = guard.current();
-        attrs.buffer.is_some()
-            || attrs.buffer_delta.is_some()
-            || !attrs.damage.is_empty()
-            || !attrs.frame_callbacks.is_empty()
+        if attrs.buffer.is_some() || attrs.buffer_delta.is_some() || !attrs.damage.is_empty() {
+            SurfaceCommitService::Render
+        } else if !attrs.frame_callbacks.is_empty() {
+            SurfaceCommitService::FrameCallbacks
+        } else {
+            SurfaceCommitService::None
+        }
     })
+}
+
+fn service_surface_commit(state: &mut WaylandState, service: SurfaceCommitService) {
+    match service {
+        SurfaceCommitService::Render => state.request_render(),
+        SurfaceCommitService::FrameCallbacks => state.request_frame_callbacks(),
+        SurfaceCommitService::None => {}
+    }
 }
 
 impl ShmHandler for WaylandState {

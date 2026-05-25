@@ -40,10 +40,9 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     wins.sort_by_key(|c| c.win.0);
 
     let tag_mask = wm.g.tags.mask();
-    let backend = crate::backend::BackendRef::from_backend(&wm.backend);
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| WindowInfo::from_client(c, tag_mask, backend.window_protocol(c.win)))
+        .map(|c| WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win)))
         .collect();
 
     Response::WindowList(windows)
@@ -68,11 +67,10 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     };
 
     let tag_mask = wm.g.tags.mask();
-    let backend = crate::backend::BackendRef::from_backend(&wm.backend);
     Response::WindowInfo(WindowInfo::from_client(
         c,
         tag_mask,
-        backend.window_protocol(c.win),
+        wm.backend.window_protocol(c.win),
     ))
 }
 
