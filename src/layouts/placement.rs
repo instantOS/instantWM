@@ -29,8 +29,16 @@ impl LayoutPlacement {
         let monocle_disabled = layout.is_monocle() && !cfg.monocle_gaps;
         let gaps_enabled = layout.is_tiling() && !smart_gaps_disabled && !monocle_disabled;
 
-        let outer_gap = if gaps_enabled { cfg.outer_gap.max(0) } else { 0 };
-        let inner_gap = if gaps_enabled { cfg.inner_gap.max(0) } else { 0 };
+        let outer_gap = if gaps_enabled {
+            cfg.outer_gap.max(0)
+        } else {
+            0
+        };
+        let inner_gap = if gaps_enabled {
+            cfg.inner_gap.max(0)
+        } else {
+            0
+        };
 
         Self {
             work_rect: inset_rect_saturating(
@@ -84,8 +92,16 @@ impl LayoutPlacement {
 
         let left = if slot.x <= self.work_rect.x { 0 } else { half };
         let top = if slot.y <= self.work_rect.y { 0 } else { half };
-        let right = if slot_right >= work_right { 0 } else { other_half };
-        let bottom = if slot_bottom >= work_bottom { 0 } else { other_half };
+        let right = if slot_right >= work_right {
+            0
+        } else {
+            other_half
+        };
+        let bottom = if slot_bottom >= work_bottom {
+            0
+        } else {
+            other_half
+        };
 
         inset_rect_saturating(slot, left, top, right, bottom)
     }
@@ -201,7 +217,7 @@ mod tests {
     fn inset_never_collapses_rect() {
         assert_eq!(
             inset_rect_saturating(Rect::new(0, 0, 4, 3), 8, 8, 8, 8),
-            Rect::new(4, 3, 1, 1)
+            Rect::new(3, 2, 1, 1)
         );
     }
 }

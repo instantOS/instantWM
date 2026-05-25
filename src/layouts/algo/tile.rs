@@ -100,8 +100,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 master_y_offset += slot.h;
             }
         } else {
-            let stack_window_height = (work_rect.h - stack_y_offset)
-                / (tiled_client_count - index as u32) as i32;
+            let stack_window_height =
+                (work_rect.h - stack_y_offset) / (tiled_client_count - index as u32) as i32;
 
             let animation_frames = if tiled_client_count == 2 {
                 0

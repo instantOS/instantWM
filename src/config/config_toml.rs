@@ -103,6 +103,7 @@ impl Default for ThemeConfig {
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, Serialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct LayoutConfig {
     /// Gap between tiled windows in logical pixels.
     pub inner_gap: i32,
@@ -112,17 +113,6 @@ pub struct LayoutConfig {
     pub smart_gaps: bool,
     /// Apply configured gaps to monocle layout.
     pub monocle_gaps: bool,
-}
-
-impl Default for LayoutConfig {
-    fn default() -> Self {
-        Self {
-            inner_gap: 0,
-            outer_gap: 0,
-            smart_gaps: false,
-            monocle_gaps: false,
-        }
-    }
 }
 
 /// Cursor configuration for Wayland.

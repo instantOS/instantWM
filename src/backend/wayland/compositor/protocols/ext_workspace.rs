@@ -155,19 +155,17 @@ pub fn refresh(state: &mut WaylandState) {
         if !changed {
             for group_data in protocol_state.workspace_groups.values() {
                 for group in &group_data.instances {
-                    if let Some(client) = group.client() {
-                        if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
-                            if let Some(output) =
-                                state.space.outputs().find(|o| o.name() == ud.output_name)
-                            {
-                                for wl_output in output.client_outputs(&client) {
-                                    let already_sent =
-                                        ud.sent_outputs.lock().unwrap().contains(&wl_output.id());
-                                    if !already_sent {
-                                        changed = true;
-                                        break;
-                                    }
-                                }
+                    if let Some(client) = group.client()
+                        && let Some(ud) = group.data::<ExtWorkspaceGroupUserData>()
+                        && let Some(output) =
+                            state.space.outputs().find(|o| o.name() == ud.output_name)
+                    {
+                        for wl_output in output.client_outputs(&client) {
+                            let already_sent =
+                                ud.sent_outputs.lock().unwrap().contains(&wl_output.id());
+                            if !already_sent {
+                                changed = true;
+                                break;
                             }
                         }
                     }
