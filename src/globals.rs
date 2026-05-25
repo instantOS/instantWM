@@ -109,6 +109,7 @@ pub struct RuntimeConfig {
     pub window: WindowConfig,
     pub bar: BarConfig,
     pub systray: SystrayConfig,
+    pub layout: crate::config::config_toml::LayoutConfig,
     pub colors: ColorConfig,
     pub bindings: BindingConfig,
     pub fonts: FontConfig,
@@ -130,6 +131,7 @@ impl Default for RuntimeConfig {
             window: WindowConfig::default(),
             bar: BarConfig::default(),
             systray: SystrayConfig::default(),
+            layout: crate::config::config_toml::LayoutConfig::default(),
             colors: ColorConfig::default(),
             bindings: BindingConfig::default(),
             fonts: FontConfig::default(),
@@ -898,6 +900,12 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.bar.height = cfg.bar_height;
     g.cfg.window.resizehints = cfg.resize_hints;
     g.cfg.window.decorhints = cfg.decorhints;
+    g.cfg.layout = crate::config::config_toml::LayoutConfig {
+        inner_gap: cfg.layout.inner_gap.max(0),
+        outer_gap: cfg.layout.outer_gap.max(0),
+        smart_gaps: cfg.layout.smart_gaps,
+        monocle_gaps: cfg.layout.monocle_gaps,
+    };
 
     g.cfg.colors.window = cfg.window_colors.clone();
     g.cfg.colors.close_button = cfg.closebuttoncolors.clone();

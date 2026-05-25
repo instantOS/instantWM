@@ -155,6 +155,8 @@ pub struct Config {
     pub mfact: f32,
     /// Number of clients in master area.
     pub nmaster: i32,
+    /// Tiled layout gap configuration.
+    pub layout: config_toml::LayoutConfig,
 
     // --- Tags ---
     pub tag_names: Vec<String>,
@@ -306,6 +308,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         decorhints: true,
         mfact: 0.55,
         nmaster: 1,
+        layout: theme.layout,
 
         // --- Tags ---
         tag_names: get_tags(),
