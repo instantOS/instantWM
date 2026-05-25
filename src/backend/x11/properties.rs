@@ -117,6 +117,11 @@ pub fn update_ewmh_desktop_props(
     let current = current_desktop(globals).unwrap_or(0);
     let names = desktop_names(globals);
     let viewport = vec![0u32; count as usize * 2];
+    let geometry = [
+        globals.cfg.display.width.max(1) as u32,
+        globals.cfg.display.height.max(1) as u32,
+    ];
+    let workarea = desktop_workarea(globals);
     let utf8_atom = conn
         .intern_atom(false, b"UTF8_STRING")
         .ok()
@@ -151,6 +156,20 @@ pub fn update_ewmh_desktop_props(
         netatom.desktop_viewport,
         AtomEnum::CARDINAL,
         &viewport,
+    );
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        netatom.desktop_geometry,
+        AtomEnum::CARDINAL,
+        &geometry,
+    );
+    let _ = conn.change_property32(
+        PropMode::REPLACE,
+        x11_runtime.root,
+        netatom.workarea,
+        AtomEnum::CARDINAL,
+        &workarea,
     );
 
     for win in globals.clients.keys().copied().collect::<Vec<_>>() {
@@ -187,6 +206,33 @@ fn desktop_names(globals: &crate::globals::Globals) -> Vec<u8> {
     }
 
     names
+}
+
+fn desktop_workarea(globals: &crate::globals::Globals) -> Vec<u32> {
+    let tag_count = globals.tags.count().max(1);
+    let mut workarea = Vec::with_capacity(globals.monitors.len().max(1) * tag_count * 4);
+
+    for (_monitor_id, monitor) in globals.monitors_iter() {
+        for _tag_index in 1..=tag_count {
+            workarea.extend_from_slice(&[
+                monitor.work_rect.x.max(0) as u32,
+                monitor.work_rect.y.max(0) as u32,
+                monitor.work_rect.w.max(1) as u32,
+                monitor.work_rect.h.max(1) as u32,
+            ]);
+        }
+    }
+
+    if workarea.is_empty() {
+        workarea.extend_from_slice(&[
+            0,
+            0,
+            globals.cfg.display.width.max(1) as u32,
+            globals.cfg.display.height.max(1) as u32,
+        ]);
+    }
+
+    workarea
 }
 
 fn set_wm_desktop_prop(

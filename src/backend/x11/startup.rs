@@ -151,6 +151,8 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
     let net_current_desktop = intern_atom(conn, "_NET_CURRENT_DESKTOP", false);
     let net_desktop_names = intern_atom(conn, "_NET_DESKTOP_NAMES", false);
     let net_desktop_viewport = intern_atom(conn, "_NET_DESKTOP_VIEWPORT", false);
+    let net_desktop_geometry = intern_atom(conn, "_NET_DESKTOP_GEOMETRY", false);
+    let net_workarea = intern_atom(conn, "_NET_WORKAREA", false);
     let net_wm_desktop = intern_atom(conn, "_NET_WM_DESKTOP", false);
 
     let motifatom = intern_atom(conn, "_MOTIF_WM_HINTS", false);
@@ -184,6 +186,8 @@ fn init_atoms(backend: &mut crate::backend::Backend) {
         current_desktop: net_current_desktop,
         desktop_names: net_desktop_names,
         desktop_viewport: net_desktop_viewport,
+        desktop_geometry: net_desktop_geometry,
+        workarea: net_workarea,
         wm_desktop: net_wm_desktop,
     };
     x11_runtime.motifatom = motifatom;

@@ -44,7 +44,7 @@ use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::focus::focus;
 use crate::globals::Globals;
 use crate::layouts::arrange;
-use crate::types::{Client, ClientMode, Rect, WindowId};
+use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -321,6 +321,12 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
         ctx_x11.x11_runtime,
         w,
     );
+    read_wm_desktop_hint(
+        ctx_x11.core.globals_mut(),
+        &ctx_x11.x11,
+        ctx_x11.x11_runtime,
+        w,
+    );
     set_client_tag_prop(ctx_x11.core.globals(), &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
 }
@@ -533,6 +539,10 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
                 ctx.x11
                     .conn
                     .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+            let _ = ctx
+                .x11
+                .conn
+                .delete_property(x11_win, ctx.x11_runtime.netatom.wm_desktop);
 
             set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_WITHDRAWN);
         }
@@ -637,6 +647,53 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
         if let Some(mid) = target_mon {
             client.monitor_id = mid;
         }
+    }
+}
+
+/// Read the standard `_NET_WM_DESKTOP` hint from `w` and apply it to the
+/// just-managed client. This covers clients that request a desktop before map.
+fn read_wm_desktop_hint(
+    g: &mut Globals,
+    x11: &X11BackendRef,
+    x11_cfg: &X11RuntimeConfig,
+    w: WindowId,
+) {
+    let x11_win: Window = w.into();
+    let wm_desktop_atom = x11_cfg.netatom.wm_desktop;
+
+    let Ok(cookie) =
+        x11.conn
+            .get_property(false, x11_win, wm_desktop_atom, AtomEnum::CARDINAL, 0, 1)
+    else {
+        return;
+    };
+    let Ok(reply) = cookie.reply() else { return };
+    let Some(mut data) = reply.value32() else {
+        return;
+    };
+    let Some(desktop) = data.next() else { return };
+
+    if desktop == u32::MAX {
+        if let Some(client) = g.clients.get_mut(&w) {
+            client.is_sticky = true;
+        }
+        return;
+    }
+
+    let Some((monitor_id, tag_index)) =
+        crate::backend::x11::properties::monitor_tag_for_desktop(g, desktop)
+    else {
+        return;
+    };
+    let Some(tags) = TagMask::single(tag_index) else {
+        return;
+    };
+
+    if let Some(client) = g.clients.get_mut(&w) {
+        client.monitor_id = monitor_id;
+        client.is_sticky = false;
+        client.clear_sticky_if_scratchpad();
+        client.set_tag_mask(tags);
     }
 }
 

@@ -53,6 +53,8 @@ pub fn setup_root(wm: &mut Wm) {
         netatom.current_desktop,
         netatom.desktop_names,
         netatom.desktop_viewport,
+        netatom.desktop_geometry,
+        netatom.workarea,
         netatom.wm_desktop,
     ];
 

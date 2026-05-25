@@ -54,6 +54,10 @@ pub struct NetAtoms {
     pub desktop_names: u32,
     /// _NET_DESKTOP_VIEWPORT atom.
     pub desktop_viewport: u32,
+    /// _NET_DESKTOP_GEOMETRY atom.
+    pub desktop_geometry: u32,
+    /// _NET_WORKAREA atom.
+    pub workarea: u32,
     /// _NET_WM_DESKTOP atom.
     pub wm_desktop: u32,
 }
