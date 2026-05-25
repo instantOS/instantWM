@@ -30,11 +30,11 @@
 //! divide evenly: `grid` pads the last *row*, while `horizgrid` pads the last
 //! *column*.
 
-use crate::constants::animation::{
-    BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
-};
+use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 
@@ -59,6 +59,8 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     }
 
     let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let placement = LayoutPlacement::new(ctx.core().globals(), m, LayoutKind::Grid, n as u32);
+    let work_rect = placement.work_rect();
     let framecount = framecount_for_layout(
         ctx.core().globals().behavior.animated,
         n as usize,
@@ -70,14 +72,11 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // A single tiled client fills the whole work area.
     if n == 1 {
         let client = &tiled[0];
-        ctx.move_resize(
+        placement.place(
+            ctx,
             client.win,
-            Rect {
-                x: m.work_rect.x,
-                y: m.work_rect.y,
-                w: m.work_rect.w - BORDER_MULTIPLIER * client.border_width,
-                h: m.work_rect.h - BORDER_MULTIPLIER * client.border_width,
-            },
+            work_rect,
+            client.border_width,
             MoveResizeOptions::animate_to(framecount),
         );
         return;
@@ -99,8 +98,8 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         rows as u32
     };
 
-    let cell_height = m.work_rect.h / if rows > 0 { rows } else { 1 };
-    let cell_width = m.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
+    let cell_height = work_rect.h / if rows > 0 { rows } else { 1 };
+    let cell_width = work_rect.w / if cols > 0 { cols as i32 } else { 1 };
 
     // ── place each tiled client ─────────────────────────────────────────
     let selected_tags = m.selected_tags();
@@ -118,30 +117,32 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         let border_width = c.border_width;
 
-        let cell_x = m.work_rect.x + (i / rows) * cell_width;
-        let cell_y = m.work_rect.y + (i % rows) * cell_height;
+        let cell_x = work_rect.x + (i / rows) * cell_width;
+        let cell_y = work_rect.y + (i % rows) * cell_height;
 
         // Last cell in a row or column gets the remaining pixels to avoid gaps
         // caused by integer division rounding.
         let extra_h = if (i + 1) % rows == 0 {
-            m.work_rect.h - cell_height * rows
+            work_rect.h - cell_height * rows
         } else {
             0
         };
         let extra_w = if i >= rows * (cols as i32 - 1) {
-            m.work_rect.w - cell_width * cols as i32
+            work_rect.w - cell_width * cols as i32
         } else {
             0
         };
 
-        ctx.move_resize(
+        placement.place(
+            ctx,
             win,
             Rect {
                 x: cell_x,
                 y: cell_y,
-                w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
-                h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
+                w: cell_width + extra_w,
+                h: cell_height + extra_h,
             },
+            border_width,
             MoveResizeOptions::animate_to(framecount),
         );
 
@@ -177,6 +178,8 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
     // Collect tiled clients first
     let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let placement = LayoutPlacement::new(ctx.core().globals(), m, LayoutKind::Grid, n);
+    let work_rect = placement.work_rect();
 
     for col in 0..cols {
         // Clients in this column: last column absorbs any remainder.
@@ -185,7 +188,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         } else {
             n / cols
         };
-        let cell_width = m.work_rect.w / cols as i32;
+        let cell_width = work_rect.w / cols as i32;
 
         // Start index for this column
         let start_idx = (col * (n / cols)) as usize;
@@ -198,25 +201,27 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let win = tiled[idx].win;
             let border_width = tiled[idx].border_width;
 
-            let cell_height = m.work_rect.h / cn as i32;
-            let cell_x = m.work_rect.x + col as i32 * cell_width;
-            let cell_y = m.work_rect.y + row as i32 * cell_height;
+            let cell_height = work_rect.h / cn as i32;
+            let cell_x = work_rect.x + col as i32 * cell_width;
+            let cell_y = work_rect.y + row as i32 * cell_height;
 
             // Last column gets any remaining width from rounding.
             let extra_w = if col == cols - 1 {
-                m.work_rect.w - cols as i32 * cell_width + cell_width
+                work_rect.w - cols as i32 * cell_width + cell_width
             } else {
                 0
             };
 
-            ctx.move_resize(
+            placement.place(
+                ctx,
                 win,
                 Rect {
                     x: cell_x,
                     y: cell_y,
-                    w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
-                    h: cell_height - BORDER_MULTIPLIER * border_width,
+                    w: cell_width + extra_w,
+                    h: cell_height,
                 },
+                border_width,
                 MoveResizeOptions::animate_to(framecount),
             );
         }

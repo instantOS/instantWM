@@ -154,6 +154,7 @@ impl Clone for RuntimeConfig {
             window: self.window.clone(),
             bar: self.bar.clone(),
             systray: self.systray.clone(),
+            layout: self.layout,
             colors: self.colors.clone(),
             bindings: self.bindings.clone(),
             fonts: self.fonts.clone(),

@@ -17,10 +17,11 @@
 //! - The right column holds all remaining clients in the same fashion.
 //! - When there is only one client it expands to fill the entire work area.
 
-use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::types::{Monitor, Rect};
 use std::cmp::min;
@@ -29,15 +30,15 @@ fn effective_nmaster(monitor: &Monitor, tiled_client_count: u32) -> u32 {
     min(monitor.nmaster.max(0) as u32, tiled_client_count)
 }
 
-fn master_width(monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32 {
+fn master_width(work_width: i32, monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32 {
     if tiled_client_count > nmaster {
         if nmaster > 0 {
-            (monitor.mfact * monitor.work_rect.w as f32) as i32
+            (monitor.mfact * work_width as f32) as i32
         } else {
             0
         }
     } else {
-        monitor.work_rect.w
+        work_width
     }
 }
 
@@ -57,16 +58,23 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
         DEFAULT_FRAME_COUNT,
     );
 
+    let placement = LayoutPlacement::new(
+        ctx.core().globals(),
+        monitor,
+        LayoutKind::Tile,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
     let nmaster = effective_nmaster(monitor, tiled_client_count);
-    let master_area_width = master_width(monitor, tiled_client_count, nmaster);
+    let master_area_width = master_width(work_rect.w, monitor, tiled_client_count, nmaster);
 
-    let mut master_y_offset: u32 = 0;
-    let mut stack_y_offset: u32 = 0;
+    let mut master_y_offset: i32 = 0;
+    let mut stack_y_offset: i32 = 0;
 
     for (index, client) in tiled_clients.iter().enumerate() {
         if (index as u32) < nmaster {
             let master_window_height =
-                (monitor.work_rect.h - master_y_offset as i32) / (nmaster - index as u32) as i32;
+                (work_rect.h - master_y_offset) / (nmaster - index as u32) as i32;
 
             let animation_frames = if tiled_client_count == 2 {
                 0
@@ -74,24 +82,25 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 framecount
             };
 
-            ctx.move_resize(
+            let slot = Rect {
+                x: work_rect.x,
+                y: work_rect.y + master_y_offset,
+                w: master_area_width,
+                h: master_window_height,
+            };
+            placement.place(
+                ctx,
                 client.win,
-                Rect {
-                    x: monitor.work_rect.x,
-                    y: monitor.work_rect.y + master_y_offset as i32,
-                    w: master_area_width - BORDER_MULTIPLIER * client.border_width,
-                    h: master_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                slot,
+                client.border_width,
                 MoveResizeOptions::animate_to(animation_frames),
             );
 
-            if let Some(c) = ctx.core().globals().clients.get(&client.win)
-                && master_y_offset as i32 + c.total_height() < monitor.work_rect.h
-            {
-                master_y_offset += c.total_height() as u32;
+            if master_y_offset + slot.h < work_rect.h {
+                master_y_offset += slot.h;
             }
         } else {
-            let stack_window_height = (monitor.work_rect.h - stack_y_offset as i32)
+            let stack_window_height = (work_rect.h - stack_y_offset)
                 / (tiled_client_count - index as u32) as i32;
 
             let animation_frames = if tiled_client_count == 2 {
@@ -100,23 +109,22 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 framecount
             };
 
-            ctx.move_resize(
+            let slot = Rect {
+                x: work_rect.x + master_area_width,
+                y: work_rect.y + stack_y_offset,
+                w: work_rect.w - master_area_width,
+                h: stack_window_height,
+            };
+            placement.place(
+                ctx,
                 client.win,
-                Rect {
-                    x: monitor.work_rect.x + master_area_width,
-                    y: monitor.work_rect.y + stack_y_offset as i32,
-                    w: monitor.work_rect.w
-                        - master_area_width
-                        - BORDER_MULTIPLIER * client.border_width,
-                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                slot,
+                client.border_width,
                 MoveResizeOptions::animate_to(animation_frames),
             );
 
-            if let Some(c) = ctx.core().globals().clients.get(&client.win)
-                && stack_y_offset as i32 + c.total_height() < monitor.work_rect.h
-            {
-                stack_y_offset += c.total_height() as u32;
+            if stack_y_offset + slot.h < work_rect.h {
+                stack_y_offset += slot.h;
             }
         }
     }
@@ -135,7 +143,12 @@ mod tests {
         monitor.nmaster = 1;
 
         assert_eq!(
-            master_width(&monitor, 2, effective_nmaster(&monitor, 2)),
+            master_width(
+                monitor.work_rect.w,
+                &monitor,
+                2,
+                effective_nmaster(&monitor, 2)
+            ),
             700
         );
     }
@@ -148,7 +161,12 @@ mod tests {
         monitor.nmaster = 2;
 
         assert_eq!(
-            master_width(&monitor, 1, effective_nmaster(&monitor, 1)),
+            master_width(
+                monitor.work_rect.w,
+                &monitor,
+                1,
+                effective_nmaster(&monitor, 1)
+            ),
             1000
         );
     }
@@ -171,6 +189,6 @@ mod tests {
         let nmaster = effective_nmaster(&monitor, 3);
 
         assert_eq!(nmaster, 0);
-        assert_eq!(master_width(&monitor, 3, nmaster), 0);
+        assert_eq!(master_width(monitor.work_rect.w, &monitor, 3, nmaster), 0);
     }
 }

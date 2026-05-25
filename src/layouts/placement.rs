@@ -11,7 +11,7 @@ use crate::globals::Globals;
 use crate::layouts::LayoutKind;
 use crate::types::{Monitor, Rect, WindowId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct LayoutPlacement {
     work_rect: Rect,
     inner_gap: i32,
@@ -33,7 +33,13 @@ impl LayoutPlacement {
         let inner_gap = if gaps_enabled { cfg.inner_gap.max(0) } else { 0 };
 
         Self {
-            work_rect: inset_rect_saturating(monitor.work_rect, outer_gap, outer_gap, outer_gap, outer_gap),
+            work_rect: inset_rect_saturating(
+                monitor.work_rect,
+                outer_gap,
+                outer_gap,
+                outer_gap,
+                outer_gap,
+            ),
             inner_gap,
         }
     }
