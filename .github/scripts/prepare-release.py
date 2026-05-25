@@ -82,6 +82,7 @@ def update_cargo_toml(version: str) -> None:
 
 def update_cargo_lock(version: str) -> None:
     text = read("Cargo.lock")
+    # This repository has one package today; fail loudly if that changes.
     pattern = re.compile(r'(\[\[package\]\]\nname = "instantwm"\nversion = )"[^"]+"')
     text, count = pattern.subn(rf'\1"{version}"', text, count=1)
     if count == 0:
@@ -116,6 +117,10 @@ def clean_subject(subject: str) -> tuple[str, str]:
 
 def update_changelog(version: str, previous_tag: str | None, commits: list[tuple[str, str, str]]) -> None:
     text = read("CHANGELOG.md")
+    if re.search(rf"^## \[{re.escape(version)}\]", text, re.MULTILINE):
+        print(f"Version {version} already exists in CHANGELOG.md; leaving changelog unchanged.")
+        return
+
     today = dt.date.today().isoformat()
     compare_base = previous_tag or "HEAD"
     header = f"## [{version}](https://github.com/instantOS/instantWM/compare/{compare_base}...v{version}) - {today}"

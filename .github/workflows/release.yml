@@ -61,6 +61,13 @@ jobs:
             exit 0
           fi
 
+          head_subject="$(git log -1 --format=%s)"
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" && "${head_subject}" != "chore: release ${tag}" ]]; then
+            echo "Head commit is not a generated release commit (${head_subject}); skipping branch-triggered release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
             echo "Tag ${tag} already exists; skipping branch-triggered release."
             echo "should_release=false" >> "$GITHUB_OUTPUT"
@@ -84,7 +91,7 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -186,7 +193,7 @@ jobs:
       RUSTUP_HOME: /opt/rustup
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -288,7 +295,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed git
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install build dependencies
         run: bash scripts/ci/install-deps-arch.sh
       - name: Extract version
@@ -340,7 +347,7 @@ jobs:
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install build dependencies
         run: |
           bash scripts/ci/install-deps-ubuntu.sh
