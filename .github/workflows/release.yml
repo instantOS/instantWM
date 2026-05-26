@@ -39,68 +39,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - name: Determine release tag
         id: metadata
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-
-          tag="v${version}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            if [[ "${GITHUB_REF_NAME}" != "$tag" ]]; then
-              echo "Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}" >&2
-              exit 1
-            fi
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
-            head_subject="$(git log -1 --format=%s)"
-            release_subject="chore: release ${tag}"
-            is_release_commit=false
-
-            if [[ "${head_subject}" == "${release_subject}" ]]; then
-              is_release_commit=true
-            else
-              # Handle merge commits: when the version-bump PR is merged with a
-              # merge commit (GitHub's default "Create a merge commit" button),
-              # HEAD's subject is "Merge pull request #N from ...". The merged
-              # branch tip lives at HEAD^2 and carries the real release commit.
-              parent_count="$(git rev-list --no-walk --parents HEAD | awk '{print NF - 1}')"
-              if [[ "${parent_count}" -ge 2 ]]; then
-                merged_subject="$(git log -1 --format=%s HEAD^2 2>/dev/null || true)"
-                if [[ "${merged_subject}" == "${release_subject}" ]]; then
-                  is_release_commit=true
-                fi
-              fi
-            fi
-
-            if [[ "${is_release_commit}" != "true" ]]; then
-              echo "Head commit is not a generated release commit (${head_subject}); skipping branch-triggered release."
-              echo "should_release=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
-            echo "Tag ${tag} already exists; skipping branch-triggered release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          git tag -a "$tag" -m "Release ${tag}"
-          git push origin "$tag"
-
-          echo "Created ${tag}; publishing release from this workflow run."
-          echo "should_release=true" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/determine-release.sh
   build:
     name: Build release artifacts
     runs-on: self-hosted
@@ -135,29 +74,7 @@ jobs:
           echo "triple=$target" >> "$GITHUB_OUTPUT"
       - name: Extract version
         id: vars
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          case "$GITHUB_REF_NAME" in
-            v*)
-              tag_version="${GITHUB_REF_NAME#v}"
-              ;;
-            instantwm-v*)
-              tag_version="${GITHUB_REF_NAME#instantwm-v}"
-              ;;
-            *)
-              echo "No tag ref detected (ref: $GITHUB_REF_NAME), using Cargo.toml version"
-              tag_version=""
-              ;;
-          esac
-          if [[ -n "$tag_version" && "$tag_version" != "$version" ]]; then
-            echo "Tag version $tag_version does not match Cargo.toml version $version" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Run tests
         run: |
           WORKSPACE="$PWD"
@@ -171,19 +88,7 @@ jobs:
           WORKSPACE="$PWD"
           su builder -c "cd '$WORKSPACE' && strip target/release/instantwm target/release/instantwmctl"
       - name: Collect artifacts
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
-          TARGET: ${{ steps.target.outputs.triple }}
-        run: |
-          mkdir -p artifacts
-          pkg_dir="instantwm-${TARGET}-v${VERSION}"
-          tmpdir=$(mktemp -d)
-          mkdir -p "$tmpdir/$pkg_dir"
-          install -Dm0755 "target/release/instantwm" "$tmpdir/$pkg_dir/instantwm"
-          install -Dm0755 "target/release/instantwmctl" "$tmpdir/$pkg_dir/instantwmctl"
-          tar -czf "artifacts/${pkg_dir}.tgz" -C "$tmpdir" "$pkg_dir"
-          sha256sum "artifacts/${pkg_dir}.tgz" > "artifacts/${pkg_dir}.tgz.sha256"
-          rm -rf "$tmpdir"
+        run: bash scripts/ci/package-binary.sh "${{ steps.target.outputs.triple }}" "${{ steps.vars.outputs.version }}" target/release
       - name: Upload release package
         uses: actions/upload-artifact@v4
         with:
@@ -237,14 +142,7 @@ jobs:
             armv7-unknown-linux-gnueabihf
       - name: Extract version
         id: vars
-        shell: bash
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -266,28 +164,9 @@ jobs:
           aarch64-linux-gnu-strip target/aarch64-unknown-linux-gnu/release/instantwm target/aarch64-unknown-linux-gnu/release/instantwmctl
           arm-linux-gnueabihf-strip target/armv7-unknown-linux-gnueabihf/release/instantwm target/armv7-unknown-linux-gnueabihf/release/instantwmctl
       - name: Collect cross-compile artifacts
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
         run: |
-          mkdir -p artifacts
-
-          pkg_dir_aarch64="instantwm-aarch64-unknown-linux-gnu-v${VERSION}"
-          tmpdir_aarch64=$(mktemp -d)
-          mkdir -p "$tmpdir_aarch64/$pkg_dir_aarch64"
-          install -Dm0755 "target/aarch64-unknown-linux-gnu/release/instantwm" "$tmpdir_aarch64/$pkg_dir_aarch64/instantwm"
-          install -Dm0755 "target/aarch64-unknown-linux-gnu/release/instantwmctl" "$tmpdir_aarch64/$pkg_dir_aarch64/instantwmctl"
-          tar -czf "artifacts/${pkg_dir_aarch64}.tgz" -C "$tmpdir_aarch64" "$pkg_dir_aarch64"
-          sha256sum "artifacts/${pkg_dir_aarch64}.tgz" > "artifacts/${pkg_dir_aarch64}.tgz.sha256"
-          rm -rf "$tmpdir_aarch64"
-
-          pkg_dir_armv7="instantwm-armv7-unknown-linux-gnueabihf-v${VERSION}"
-          tmpdir_armv7=$(mktemp -d)
-          mkdir -p "$tmpdir_armv7/$pkg_dir_armv7"
-          install -Dm0755 "target/armv7-unknown-linux-gnueabihf/release/instantwm" "$tmpdir_armv7/$pkg_dir_armv7/instantwm"
-          install -Dm0755 "target/armv7-unknown-linux-gnueabihf/release/instantwmctl" "$tmpdir_armv7/$pkg_dir_armv7/instantwmctl"
-          tar -czf "artifacts/${pkg_dir_armv7}.tgz" -C "$tmpdir_armv7" "$pkg_dir_armv7"
-          sha256sum "artifacts/${pkg_dir_armv7}.tgz" > "artifacts/${pkg_dir_armv7}.tgz.sha256"
-          rm -rf "$tmpdir_armv7"
+          bash scripts/ci/package-binary.sh aarch64-unknown-linux-gnu       "${{ steps.vars.outputs.version }}" target/aarch64-unknown-linux-gnu/release
+          bash scripts/ci/package-binary.sh armv7-unknown-linux-gnueabihf   "${{ steps.vars.outputs.version }}" target/armv7-unknown-linux-gnueabihf/release
       - name: Upload cross-compile artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -323,32 +202,23 @@ jobs:
         run: bash scripts/ci/install-deps-arch.sh
       - name: Extract version
         id: vars
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Create build user
         run: |
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
           chown -R builder:builder "$PWD"
       - name: Create source tarball
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          git archive --format=tar.gz --prefix="instantwm-${version}/" -o "instantwm-${version}.tar.gz" HEAD
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+        run: git archive --format=tar.gz --prefix="instantwm-${VERSION}/" -o "instantwm-${VERSION}.tar.gz" HEAD
       - name: Copy PKGBUILD to build context
-        run: |
-          cp packaging/arch/PKGBUILD .
+        run: cp packaging/arch/PKGBUILD .
       - name: Build package
         run: |
           WORKSPACE="$PWD"
           su builder -c "cd '$WORKSPACE' && makepkg -s --noconfirm --skippgpcheck"
       - name: Collect package artifacts
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p artifacts
           shopt -s nullglob
@@ -377,14 +247,7 @@ jobs:
           apt-get install -y --no-install-recommends dpkg-dev
       - name: Extract version
         id: vars
-        shell: bash
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Download native build artifact
         uses: actions/download-artifact@v4
         with:
@@ -408,8 +271,8 @@ jobs:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p artifacts
-          mv target/deb/instantwm_${VERSION}_amd64.deb artifacts/
-          cd artifacts && sha256sum instantwm_${VERSION}_amd64.deb > instantwm_${VERSION}_amd64.deb.sha256
+          mv "target/deb/instantwm_${VERSION}_amd64.deb" artifacts/
+          cd artifacts && sha256sum "instantwm_${VERSION}_amd64.deb" > "instantwm_${VERSION}_amd64.deb.sha256"
       - name: Upload deb package
         uses: actions/upload-artifact@v4
         with:
@@ -442,15 +305,7 @@ jobs:
       - name: Extract release notes
         env:
           VERSION: ${{ needs.metadata.outputs.version }}
-        run: |
-          awk -v version="$VERSION" '
-            $0 ~ "^## \\[" version "\\]" { capture = 1; next }
-            capture && $0 ~ "^## \\[" { exit }
-            capture { print }
-          ' CHANGELOG.md > release-notes.md
-          if ! grep -q '[^[:space:]]' release-notes.md; then
-            printf 'Release v%s\n' "$VERSION" > release-notes.md
-          fi
+        run: bash scripts/ci/extract-release-notes.sh "$VERSION" > release-notes.md
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
