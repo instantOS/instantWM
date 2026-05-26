@@ -21,11 +21,10 @@
 #   GITHUB_OUTPUT, GITHUB_REF_TYPE, GITHUB_REF_NAME, GITHUB_EVENT_NAME
 set -euo pipefail
 
-version="$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)"
-if [[ -z "$version" ]]; then
-  echo "Failed to determine version from Cargo.toml" >&2
-  exit 1
-fi
+# Defer version parsing to the shared script so there is exactly one place that
+# knows how to read Cargo.toml. The subshell prevents extract-version.sh from
+# also writing to $GITHUB_OUTPUT (we write our own keys explicitly below).
+version="$(GITHUB_OUTPUT= bash "$(dirname "$0")/extract-version.sh")"
 
 tag="v${version}"
 {

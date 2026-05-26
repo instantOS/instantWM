@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Print the package version from Cargo.toml to stdout.
 #
-# If $GITHUB_OUTPUT is set, also writes `version=<v>` to it so the script can
-# be used directly as a `run:` step that feeds a later `${{ steps.X.outputs.version }}`.
+# Dual output is intentional:
+#   * stdout always carries the bare version string so the script can be used
+#     in command substitution from other scripts (e.g. determine-release.sh).
+#   * If $GITHUB_OUTPUT is set, also writes `version=<v>` to it so the script
+#     works as a self-contained `run:` step feeding `${{ steps.X.outputs.version }}`.
+# Workflow `run:` steps consume only the GITHUB_OUTPUT path; the stdout copy
+# exists for local testing and for other scripts.
 #
 # Optional first argument: a tag ref name (typically $GITHUB_REF_NAME). When
 # provided and it looks like a version tag (`v<X.Y.Z>` or `instantwm-v<X.Y.Z>`),
