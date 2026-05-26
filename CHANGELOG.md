@@ -7,6 +7,191 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/instantOS/instantWM/compare/v0.1.1...v0.1.2) - 2026-05-25
+
+### Changed
+
+- complete command queue migration and fix compilation errors
+
+### Other
+
+- fix clap for swapescape
+- more unified accessors
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- fmt
+- some renames
+- remove redundant wrapper
+- fix divide by zero
+- fix sliding animation
+- remove redundant field
+- smaller resize API surface
+- more robust IPC handling
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix maxed out CPU on drm
+- remove old plan
+- refactor long wayland functions
+- refactor insanely long DRM function
+- fix CPU spin
+- add design spec: idempotent wayland backend methods
+- clarify request_render: always set flag, only skip ping
+- fix redundant work
+- Merge pull request #251 from instantOS/release-plz-2026-04-12T13-07-16Z
+- Merge branch 'main' of github.com:instantOS/instantWM
+- fix pkgbuild
+- remove redundant param
+- use rect in more places
+- deduplicate fullscreen
+- better output update
+- some moving around and renaming
+- more stable monitor identifiers
+- refactor long function
+- unify direction types
+- fix reload on wayland
+- fix smithay version
+- configurable bar height
+- deduplicate wayland reloading
+- fix drag and drop icon not disappearing
+- more TagMask usage
+- more stable layout code
+- unify high level resize API
+- introduce instantwmctl quit
+- live reloading for status command
+- simplify status process handling
+- better stacking semantics
+- even better stacking semantics
+- better X11 batching
+- fix tiled history not being kept
+- add window protocol to IPC info
+- fix chrome being accidentally tiled
+- fix floating spawning off-screen
+- better float spawning
+- track animation position separately
+- handle idle notify
+- merge overlay into scratchpad
+- clean up new scratchpad logic
+- more encapsulation
+- simplify bar thread communication
+- remove legacy overlay and color APIs
+- use more Rect
+- no more needless int
+- unify startup
+- shared renderer attach
+- fix layout stack interfering with z ordering
+- refactor wayland bar
+- fix hover focus
+- fix grim image capture
+- more idiomatic resize hover state
+- better mode data structures
+- some simplifications to new floating mode data structure
+- better mouse button x11 management
+- add design spec for backend-agnostic mode transitions
+- remove redundant field from monitor
+- clean up needless int bool thingy
+- add implementation plan for backend-agnostic mode transitions
+- Merge branch 'dev' of http://ubuntu.taila275e.ts.net:3000/beelink/instantWM into dev
+- clearer exports
+- better hover offer state machine
+- more consistent accessors
+- more interface segregation
+- shared hit testing
+- add exec config
+- better shared startup
+- migrate to `ins assist`
+- fix layer surface clicks
+- fix animation hack thing
+- remove old layouts
+- fix overview mode
+- fix performance issue
+- fix more performance
+- more optimized hit detection
+- fix firefox video regression
+- avoid hashing systray icons all the time
+- fix CI again
+- update smithay
+- make right click menus occlude borders
+- more unified wayland and x11 minimize
+- refactor button dispatch
+- less needless indirection
+- clean up double lookups
+- introduce Point struct
+- cleaner methods
+- more point usage
+- some cleanups
+- remove redundant checks
+- implement resize requests for xwayland
+- add pointer restraint support
+- fix minecraft
+- fix deadlock
+- simplify refactor
+- better wayland session
+- fix border width being 0
+- fix scroll regression
+- less mouse cursor side effects
+- fix minecraft spawn position
+- remove redundant locale check
+- better client state transitions
+- clean up redundant backend specific stuff
+- upgrade deps
+- fix git smithay not working
+- dedupe, fix name
+- update deps
+- finally fix minecraft
+- remove hacky non working minecraft fix
+- add focus_fix plan
+- less god struct
+- make xwayland focus bugs harder to introduce
+- nicer tagmask methods
+- more methods instead of free functions
+- less duplication
+- remove unnecessary corectx arg
+- update plan
+- cargo fmt
+- fix tag index bug
+- cleaner overview state machine
+- fix xwayland DnD
+- remove unneeded params
+- more methods
+- remove dead code
+- backend agnostic set fullscreen
+- fix dmenu hit testing
+- remove old plans
+- move some X11 stuff
+- more idiomatic enum use
+- better backend abstraction
+- narrow function params
+- more narrowing
+- more narrowing, globals instead of ctx
+- remove unnecessary backend wrapper functions
+- make snapping more readable
+- more typesafe X11 cursors
+- remove unneeded wrapper
+- unify drag interactions more
+- add way to list layouts
+- some cleanup
+- fix too many ways to access the same thing
+- improve rendering performance
+- fix arm cross compile
+- introduce waybar/quickshell bar support in layouting
+- implement ext-workspace-v1
+- Merge branch 'main' into dev
+- improve performance of ext-workspace-v1
+- fix stale bars being used
+- fix external bar and internal bar colliding
+- fix leaked keybinds
+- eliminate backendref
+- more compile time backend checks
+- fix ext workspace protocol
+- fix workspaces always shown
+- init gaps support
+- fix middle click close
+- port some layouts to new gaps supporting structure
+- convert all layouts
+- switch away from release-plz
+- add contributing md
+- harden CI
+- formatting
+- add check and fmt recipes
+
 ## [0.1.1](https://github.com/instantOS/instantWM/compare/v0.1.0...v0.1.1) - 2026-04-12
 
 ### Added
