@@ -39,6 +39,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - name: Determine release tag
         id: metadata
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -215,6 +216,7 @@ jobs:
             armv7-unknown-linux-gnueabihf
       - name: Extract version
         id: vars
+        shell: bash
         run: |
           version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
           if [[ -z "$version" ]]; then
@@ -354,6 +356,7 @@ jobs:
           apt-get install -y --no-install-recommends dpkg-dev
       - name: Extract version
         id: vars
+        shell: bash
         run: |
           version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
           if [[ -z "$version" ]]; then
