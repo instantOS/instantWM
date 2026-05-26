@@ -62,11 +62,32 @@ jobs:
             exit 0
           fi
 
-          head_subject="$(git log -1 --format=%s)"
-          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" && "${head_subject}" != "chore: release ${tag}" ]]; then
-            echo "Head commit is not a generated release commit (${head_subject}); skipping branch-triggered release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [[ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]]; then
+            head_subject="$(git log -1 --format=%s)"
+            release_subject="chore: release ${tag}"
+            is_release_commit=false
+
+            if [[ "${head_subject}" == "${release_subject}" ]]; then
+              is_release_commit=true
+            else
+              # Handle merge commits: when the version-bump PR is merged with a
+              # merge commit (GitHub's default "Create a merge commit" button),
+              # HEAD's subject is "Merge pull request #N from ...". The merged
+              # branch tip lives at HEAD^2 and carries the real release commit.
+              parent_count="$(git rev-list --no-walk --parents HEAD | awk '{print NF - 1}')"
+              if [[ "${parent_count}" -ge 2 ]]; then
+                merged_subject="$(git log -1 --format=%s HEAD^2 2>/dev/null || true)"
+                if [[ "${merged_subject}" == "${release_subject}" ]]; then
+                  is_release_commit=true
+                fi
+              fi
+            fi
+
+            if [[ "${is_release_commit}" != "true" ]]; then
+              echo "Head commit is not a generated release commit (${head_subject}); skipping branch-triggered release."
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
 
           if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
