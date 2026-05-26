@@ -97,11 +97,11 @@ EOF
     g++-aarch64-linux-gnu
     gcc-arm-linux-gnueabihf
     g++-arm-linux-gnueabihf
-    # Cross pkg-config wrappers. cargo's `pkg-config` build helper looks for
-    # `<triple>-pkg-config` automatically when cross-compiling, so installing
-    # these is what unblocks crates like `libudev-sys`.
-    pkg-config-aarch64-linux-gnu
-    pkg-config-arm-linux-gnueabihf
+    # NOTE: the per-triple `pkg-config-<triple>` packages used to ship in
+    # Ubuntu bionic but no longer exist in noble (24.04). In noble the cross
+    # wrappers live inside `pkgconf:<arch>`, which conflicts with the native
+    # `pkgconf:amd64` on `/usr/bin/pkg-config`, so we cannot co-install them.
+    # We synthesise the wrappers ourselves below.
     unzip
     curl
     ca-certificates
@@ -116,3 +116,26 @@ fi
 
 apt-get update
 apt-get install -y --no-install-recommends "${PKGS[@]}"
+
+if $CROSS_COMPILE; then
+  # Create per-triple pkg-config wrappers so the `pkg-config` Rust crate (used
+  # by libudev-sys, libinput-sys, etc.) picks up arm64/armhf .pc files.
+  # cargo's pkg-config helper auto-detects `<triple>-pkg-config` on PATH when
+  # cross-compiling; pointing PKG_CONFIG_LIBDIR at the arch-specific pkgconfig
+  # directory plus the arch-independent /usr/share/pkgconfig is what wayland-
+  # protocols and friends rely on.
+  install_cross_pkgconfig() {
+    local triple="$1" libdir="$2"
+    cat > "/usr/local/bin/${triple}-pkg-config" <<EOF
+#!/bin/sh
+exec env \\
+  PKG_CONFIG_LIBDIR="/usr/lib/${libdir}/pkgconfig:/usr/share/pkgconfig" \\
+  PKG_CONFIG_SYSROOT_DIR="\${PKG_CONFIG_SYSROOT_DIR:-/}" \\
+  PKG_CONFIG_ALLOW_CROSS=1 \\
+  pkg-config "\$@"
+EOF
+    chmod +x "/usr/local/bin/${triple}-pkg-config"
+  }
+  install_cross_pkgconfig aarch64-linux-gnu     aarch64-linux-gnu
+  install_cross_pkgconfig arm-linux-gnueabihf   arm-linux-gnueabihf
+fi
