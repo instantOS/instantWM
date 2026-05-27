@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/instantOS/instantWM/compare/v0.1.3...v0.1.4) - 2026-05-27
+
+### Other
+
+- fix CI merge commit ignorance
+- refactor CI into scripts
+- refactor more
+- fix deps
+
 ## [0.1.3](https://github.com/instantOS/instantWM/compare/v0.1.1...v0.1.3) - 2026-05-26
 
 ### Changed
