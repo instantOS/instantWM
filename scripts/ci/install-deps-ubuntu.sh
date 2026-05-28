@@ -92,6 +92,20 @@ EOF
   dpkg --add-architecture arm64
   dpkg --add-architecture armhf
 
+  # Some :arm64 / :armhf packages (e.g. python3.12-minimal) run their own
+  # foreign-arch interpreter from their postinst script. Without a qemu
+  # user-mode binfmt handler registered, the kernel returns ENOEXEC and the
+  # whole apt transaction aborts. Install qemu-user-static + binfmt-support
+  # in a separate pass first so the handlers are registered before we pull
+  # in any :arm64 / :armhf packages.
+  #
+  # NOTE: this requires /proc/sys/fs/binfmt_misc to be available inside the
+  # container (true on standard Docker setups). If running in a container
+  # where it isn't mounted, register handlers once on the host with:
+  #   docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+  apt-get update
+  apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+
   PKGS+=(
     gcc-aarch64-linux-gnu
     g++-aarch64-linux-gnu
