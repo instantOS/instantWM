@@ -11,14 +11,14 @@ use std::collections::VecDeque;
 // ---------------------------------------------------------------------------
 
 /// Display/screen dimensions.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DisplayConfig {
     pub width: i32,
     pub height: i32,
 }
 
 /// Window behaviour settings.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct WindowConfig {
     pub border_width_px: i32,
     pub snap_threshold: i32,
@@ -38,7 +38,7 @@ impl Default for WindowConfig {
 }
 
 /// Status bar settings.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct BarConfig {
     pub show: bool,
     pub top: bool,
@@ -60,7 +60,7 @@ impl Default for BarConfig {
 }
 
 /// System tray settings.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SystrayConfig {
     pub show: bool,
     pub pinning: usize,
@@ -78,7 +78,7 @@ impl Default for SystrayConfig {
 }
 
 /// Colour schemes for various UI elements.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ColorConfig {
     pub window: WindowColorConfigs,
     pub close_button: CloseButtonColorConfigs,
@@ -97,7 +97,7 @@ pub struct BindingConfig {
 }
 
 /// Font configuration.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct FontConfig {
     pub fonts: Vec<String>,
     pub config_font: String,

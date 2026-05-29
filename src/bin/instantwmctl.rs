@@ -218,17 +218,16 @@ fn main() {
             };
             IpcCommand::Layout(layout)
         }
-        ctl::CommandKind::Config { action } => {
-            match action {
-                ctl::commands::ConfigAction::Default => {
-                    println!(
-                        "{}",
-                        instantwm::config::config_toml::generate_commented_config()
-                    );
-                }
+        ctl::CommandKind::Config { action } => match action {
+            ctl::commands::ConfigAction::Default => {
+                println!(
+                    "{}",
+                    instantwm::config::config_toml::generate_commented_config()
+                );
+                return;
             }
-            return;
-        }
+            _ => cli.command.clone().into(),
+        },
         ctl::CommandKind::Action { name, args, list } => {
             if *list {
                 let actions = instantwm::config::keybind_config::get_actions_for_ipc();

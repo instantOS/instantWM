@@ -184,6 +184,13 @@ pub enum ModeCommand {
 }
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub enum ConfigCommand {
+    Get { key: String },
+    Set { key: String, value: String },
+    List,
+}
+
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ScratchpadCommand {
     List,
     Toggle(Option<String>),
@@ -320,6 +327,7 @@ pub enum IpcCommand {
     Wallpaper(String),
     Input(InputCommand),
     Mode(ModeCommand),
+    Config(ConfigCommand),
     Quit,
 }
 
@@ -554,6 +562,8 @@ pub enum Response {
     KeyboardLayoutList(Vec<KeyboardLayoutInfo>),
     TagList(Vec<TagInfo>),
     ActionList(Vec<ActionInfo>),
+    ConfigValue(String),
+    ConfigList(Vec<(String, String)>),
     Message(String),
 }
 

@@ -20,6 +20,8 @@ pub fn format_response(response: &Response, json: bool) {
         Response::KeyboardLayoutList(layouts) => format_keyboard_layout_list(layouts, json),
         Response::TagList(tags) => format_tag_list(tags, json),
         Response::ActionList(actions) => format_action_list(actions, json),
+        Response::ConfigValue(val) => format_config_value(val, json),
+        Response::ConfigList(entries) => format_config_list(entries, json),
         Response::Message(msg) => print!("{}", msg),
     }
 }
@@ -317,5 +319,51 @@ fn format_monitor_modes(displays: &[DisplayModes], json: bool) {
                 println!("  {}x{} @ {:.3}Hz", mode.width, mode.height, rate);
             }
         }
+    }
+}
+
+fn format_config_value(val: &str, json: bool) {
+    // val is a serde_json-serialized fragment, e.g. `"Adwaita"` or `42` or `true`.
+    let parsed: serde_json::Value = serde_json::from_str(val).unwrap_or(serde_json::Value::Null);
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string(&serde_json::json!({ "value": parsed })).unwrap()
+        );
+    } else {
+        // For strings, Display prints without quotes; for numbers/bools, prints the value.
+        println!("{}", display_value(&parsed));
+    }
+}
+
+fn format_config_list(entries: &[(String, String)], json: bool) {
+    if json {
+        let map: std::collections::BTreeMap<&str, serde_json::Value> = entries
+            .iter()
+            .map(|(k, v)| {
+                let parsed = serde_json::from_str(v).unwrap_or(serde_json::Value::Null);
+                (k.as_str(), parsed)
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&map).unwrap());
+    } else {
+        let max_key_len = entries.iter().map(|(k, _)| k.len()).max().unwrap_or(0);
+        for (key, val) in entries {
+            let parsed = serde_json::from_str(val).unwrap_or(serde_json::Value::Null);
+            println!(
+                "{:>width$} = {}",
+                key,
+                display_value(&parsed),
+                width = max_key_len
+            );
+        }
+    }
+}
+
+/// Display a serde_json::Value without quotes for strings.
+fn display_value(val: &serde_json::Value) -> String {
+    match val {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
     }
 }

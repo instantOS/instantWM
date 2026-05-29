@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
+pub mod config;
 pub mod general;
 pub mod input;
 pub mod keyboard;
@@ -203,6 +204,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Input(cmd) => input::handle_input_command(wm, cmd),
         IpcCommand::Mode(cmd) => mode::handle_mode_command(wm, cmd),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
+        IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
         IpcCommand::Quit => {
             wm.quit();
             Response::ok()
