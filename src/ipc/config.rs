@@ -4,6 +4,13 @@
 //! to read/write fields by name. The two HashMap sections (`input`,
 //! `monitors`) take a `<section>.<id>.<field>` key and auto-create missing
 //! entries so users can add new device/monitor configs at runtime.
+//!
+//! **Persistence:** edits made through this command live in the running
+//! WM only — `reload` reloads from disk and discards them.
+//!
+//! **Read-only fields:** `display.width`/`display.height` are derived from
+//! the actual outputs, so the entire `display` section is hidden from
+//! `get`/`set`/`list`.
 
 use crate::ipc_types::{ConfigCommand, Response};
 use crate::wm::Wm;
@@ -28,13 +35,15 @@ fn get(wm: &Wm, key: &str) -> Response {
         "window" => field_get(&g.cfg.window, rest),
         "bar" => field_get(&g.cfg.bar, rest),
         "systray" => field_get(&g.cfg.systray, rest),
-        "display" => field_get(&g.cfg.display, rest),
         "layout" => field_get(&g.cfg.layout, rest),
         "colors" => field_get(&g.cfg.colors, rest),
         "cursor" => field_get(&g.cfg.cursor, rest),
         "fonts" => field_get(&g.cfg.fonts, rest),
         "input" => return map_get(&g.cfg.input, "input", rest),
         "monitors" => return map_get(&g.cfg.monitors, "monitors", rest),
+        "display" => {
+            return Response::err("display.* is derived from outputs and not exposed at runtime");
+        }
         _ => return Response::err(format!("unknown section '{section}'")),
     };
     val.map(Response::ConfigValue)
@@ -46,27 +55,15 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
     };
 
-    // display.width/height are derived from real outputs — setting them
-    // just desyncs config from reality until the next output change.
-    if section == "display" && matches!(rest, "width" | "height") {
-        return Response::err(format!(
-            "display.{rest} is derived from outputs and cannot be set at runtime"
-        ));
-    }
-
-    let value: serde_json::Value =
-        serde_json::from_str(&value).unwrap_or(serde_json::Value::String(value));
-
     let g = &mut wm.g;
     let result = match section {
-        "window" => field_set(&mut g.cfg.window, rest, value),
-        "bar" => field_set(&mut g.cfg.bar, rest, value),
-        "systray" => field_set(&mut g.cfg.systray, rest, value),
-        "display" => field_set(&mut g.cfg.display, rest, value),
-        "layout" => field_set(&mut g.cfg.layout, rest, value),
-        "colors" => field_set(&mut g.cfg.colors, rest, value),
-        "cursor" => field_set(&mut g.cfg.cursor, rest, value),
-        "fonts" => field_set(&mut g.cfg.fonts, rest, value),
+        "window" => parse_then_set(&mut g.cfg.window, rest, value),
+        "bar" => parse_then_set(&mut g.cfg.bar, rest, value),
+        "systray" => parse_then_set(&mut g.cfg.systray, rest, value),
+        "layout" => parse_then_set(&mut g.cfg.layout, rest, value),
+        "colors" => parse_then_set(&mut g.cfg.colors, rest, value),
+        "cursor" => parse_then_set(&mut g.cfg.cursor, rest, value),
+        "fonts" => parse_then_set(&mut g.cfg.fonts, rest, value),
         "input" => {
             let resp = map_set(&mut g.cfg.input, "input", rest, value);
             if matches!(resp, Response::Ok) {
@@ -80,6 +77,9 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
                 g.queue_monitor_config_apply();
             }
             return resp;
+        }
+        "display" => {
+            return Response::err("display.* is derived from outputs and cannot be set at runtime");
         }
         _ => return Response::err(format!("unknown section '{section}'")),
     };
@@ -96,7 +96,6 @@ fn list(wm: &Wm) -> Response {
     collect(&g.cfg.window, "window", &mut entries);
     collect(&g.cfg.bar, "bar", &mut entries);
     collect(&g.cfg.systray, "systray", &mut entries);
-    collect(&g.cfg.display, "display", &mut entries);
     collect(&g.cfg.layout, "layout", &mut entries);
     collect(&g.cfg.colors, "colors", &mut entries);
     collect(&g.cfg.cursor, "cursor", &mut entries);
@@ -115,16 +114,50 @@ fn list(wm: &Wm) -> Response {
 // Field-level get/set via serde round-tripping (reflection-by-name).
 // ---------------------------------------------------------------------------
 
-fn field_get<T: Serialize>(obj: &T, field: &str) -> Option<String> {
-    let v = serde_json::to_value(obj).ok()?;
-    Some(serde_json::to_string(v.get(field)?).unwrap_or_default())
+/// Render a config value as a string. Strings come back unquoted so shell
+/// users see `my-cursor`, not `"my-cursor"`.
+fn render_value(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        other => serde_json::to_string(other).unwrap_or_default(),
+    }
 }
 
-fn field_set<T: Serialize + DeserializeOwned>(
+fn field_get<T: Serialize>(obj: &T, field: &str) -> Option<String> {
+    let v = serde_json::to_value(obj).ok()?;
+    Some(render_value(v.get(field)?))
+}
+
+/// Parse `raw` as JSON; if that fails and the existing field is a string,
+/// take the raw value as a string. Otherwise surface a parse error so we
+/// don't silently turn `42` into `"42"` for a numeric field.
+fn parse_value_for_field<T: Serialize>(
+    obj: &T,
+    field: &str,
+    raw: String,
+) -> Result<serde_json::Value, String> {
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+        return Ok(v);
+    }
+    let snapshot = serde_json::to_value(obj).map_err(|e| e.to_string())?;
+    let current = snapshot
+        .get(field)
+        .ok_or_else(|| format!("unknown field '{field}'"))?;
+    if matches!(current, serde_json::Value::String(_)) {
+        Ok(serde_json::Value::String(raw))
+    } else {
+        Err(format!(
+            "invalid value for '{field}': expected JSON (got {raw:?})"
+        ))
+    }
+}
+
+fn parse_then_set<T: Serialize + DeserializeOwned>(
     obj: &mut T,
     field: &str,
-    value: serde_json::Value,
+    raw: String,
 ) -> Result<(), String> {
+    let value = parse_value_for_field(&*obj, field, raw)?;
     *obj = field_set_owned(&*obj, field, value)?;
     Ok(())
 }
@@ -146,10 +179,7 @@ fn field_set_owned<T: Serialize + DeserializeOwned>(
 fn collect<T: Serialize>(obj: &T, prefix: &str, entries: &mut Vec<(String, String)>) {
     if let Ok(serde_json::Value::Object(map)) = serde_json::to_value(obj) {
         for (field, val) in map {
-            entries.push((
-                format!("{prefix}.{field}"),
-                serde_json::to_string(&val).unwrap_or_default(),
-            ));
+            entries.push((format!("{prefix}.{field}"), render_value(&val)));
         }
     }
 }
@@ -176,16 +206,24 @@ fn map_set<T: Serialize + DeserializeOwned + Default>(
     map: &mut HashMap<String, T>,
     section: &str,
     rest: &str,
-    value: serde_json::Value,
+    raw: String,
 ) -> Response {
     let Some((id, field)) = rest.split_once('.') else {
         return Response::err(format!("{section} key must be '{section}.<name>.<field>'"));
     };
-    let updated = match map.get(id) {
-        Some(cfg) => field_set_owned(cfg, field, value),
-        None => field_set_owned(&T::default(), field, value),
+    let default;
+    let existing = match map.get(id) {
+        Some(cfg) => cfg,
+        None => {
+            default = T::default();
+            &default
+        }
     };
-    match updated {
+    let value = match parse_value_for_field(existing, field, raw) {
+        Ok(v) => v,
+        Err(e) => return Response::err(e),
+    };
+    match field_set_owned(existing, field, value) {
         Ok(cfg) => {
             map.insert(id.to_string(), cfg);
             Response::ok()
@@ -202,15 +240,28 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
         }
-        "window" | "layout" | "display" => {
+        "window" | "layout" => {
             let mut ctx = wm.ctx();
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
         }
-        // TODO: colors/fonts should refresh window decorations beyond the
-        // bar; cursor.size/theme needs CursorManager rebuild. For now we
-        // just redraw the bar and pick the rest up on next reload.
-        "systray" | "colors" | "fonts" | "cursor" => {
+        "colors" | "fonts" => {
+            // X11 schemes/fontset are baked into the Drw at startup; rebuild
+            // them so the new values are visible without a full reload. On
+            // Wayland the bar painter pulls colours/fonts on each redraw, so
+            // marking the bar dirty is enough.
+            if matches!(wm.backend, crate::backend::Backend::X11(_)) {
+                crate::backend::x11::startup::init_drw_and_schemes(wm);
+            }
+            wm.bar.mark_dirty();
+            let mut ctx = wm.ctx();
+            ctx.request_bar_update();
+            crate::layouts::manager::arrange(&mut ctx, None);
+        }
+        // TODO: cursor.size/theme needs the Wayland CursorManager to be
+        // rebuilt before it takes effect. Until that lands, treat it as a
+        // bar-only refresh and rely on the next reload for the real change.
+        "systray" | "cursor" => {
             wm.bar.mark_dirty();
         }
         _ => {}
@@ -314,7 +365,7 @@ mod tests {
             do_set(&mut wm, "window.nonexistent", "1"),
             Response::Err(_)
         ));
-        // display dimensions are read-only.
+        // display section is hidden — both fields are derived from outputs.
         assert!(matches!(
             do_set(&mut wm, "display.width", "1920"),
             Response::Err(_)
@@ -323,6 +374,46 @@ mod tests {
             do_set(&mut wm, "display.height", "1080"),
             Response::Err(_)
         ));
+        assert!(matches!(do_get(&mut wm, "display.width"), Response::Err(_)));
+    }
+
+    #[test]
+    fn get_returns_unquoted_strings() {
+        let mut wm = test_wm();
+        do_set(&mut wm, "cursor.theme", "my-cursor");
+        match do_get(&mut wm, "cursor.theme") {
+            Response::ConfigValue(v) => assert_eq!(v, "my-cursor"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_string_fallback_is_type_aware() {
+        let mut wm = test_wm();
+        // Bare non-JSON value into a string field works (fallback path).
+        assert!(matches!(
+            do_set(&mut wm, "cursor.theme", "my-cursor"),
+            Response::Ok
+        ));
+        assert_eq!(wm.g.cfg.cursor.theme, "my-cursor");
+
+        // Bare non-JSON value into a numeric field is rejected as parse
+        // error, not silently coerced to a string and then mis-typed.
+        assert!(matches!(
+            do_set(&mut wm, "window.border_width_px", "nope"),
+            Response::Err(_)
+        ));
+    }
+
+    #[test]
+    fn list_excludes_display_section() {
+        let mut wm = test_wm();
+        match do_list(&mut wm) {
+            Response::ConfigList(entries) => {
+                assert!(entries.iter().all(|(k, _)| !k.starts_with("display.")));
+            }
+            other => panic!("expected ConfigList, got {other:?}"),
+        }
     }
 
     #[test]
