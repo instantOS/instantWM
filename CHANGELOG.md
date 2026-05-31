@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/instantOS/instantWM/compare/v0.1.6...v0.1.7) - 2026-05-31
+
+### Other
+
+- add ipc config manipulation
+- Merge branch 'main' of github.com:instantOS/instantWM
+- better config ipc side effects
+- fix CI again
+- better config set side effects
+
 ## [0.1.6](https://github.com/instantOS/instantWM/compare/v0.1.5...v0.1.6) - 2026-05-30
 
 ### Other
