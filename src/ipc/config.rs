@@ -37,9 +37,8 @@ fn get(wm: &Wm, key: &str) -> Response {
         "monitors" => return map_get(&g.cfg.monitors, "monitors", rest),
         _ => return Response::err(format!("unknown section '{section}'")),
     };
-    val.map(Response::ConfigValue).unwrap_or_else(|| {
-        Response::err(format!("unknown field '{rest}' on section '{section}'"))
-    })
+    val.map(Response::ConfigValue)
+        .unwrap_or_else(|| Response::err(format!("unknown field '{rest}' on section '{section}'")))
 }
 
 fn set(wm: &mut Wm, key: &str, value: String) -> Response {
@@ -126,14 +125,22 @@ fn field_set<T: Serialize + DeserializeOwned>(
     field: &str,
     value: serde_json::Value,
 ) -> Result<(), String> {
+    *obj = field_set_owned(&*obj, field, value)?;
+    Ok(())
+}
+
+fn field_set_owned<T: Serialize + DeserializeOwned>(
+    obj: &T,
+    field: &str,
+    value: serde_json::Value,
+) -> Result<T, String> {
     let mut v = serde_json::to_value(&*obj).map_err(|e| e.to_string())?;
     let map = v.as_object_mut().ok_or("expected object")?;
     if !map.contains_key(field) {
         return Err(format!("unknown field '{field}'"));
     }
     map.insert(field.to_string(), value);
-    *obj = serde_json::from_value(v).map_err(|e| format!("type error: {e}"))?;
-    Ok(())
+    serde_json::from_value(v).map_err(|e| format!("type error: {e}"))
 }
 
 fn collect<T: Serialize>(obj: &T, prefix: &str, entries: &mut Vec<(String, String)>) {
@@ -158,9 +165,11 @@ fn map_get<T: Serialize>(map: &HashMap<String, T>, section: &str, rest: &str) ->
     let Some(cfg) = map.get(id) else {
         return Response::err(format!("unknown {section} entry '{id}'"));
     };
-    field_get(cfg, field).map(Response::ConfigValue).unwrap_or_else(|| {
-        Response::err(format!("unknown field '{field}' on {section} entry '{id}'"))
-    })
+    field_get(cfg, field)
+        .map(Response::ConfigValue)
+        .unwrap_or_else(|| {
+            Response::err(format!("unknown field '{field}' on {section} entry '{id}'"))
+        })
 }
 
 fn map_set<T: Serialize + DeserializeOwned + Default>(
@@ -172,29 +181,51 @@ fn map_set<T: Serialize + DeserializeOwned + Default>(
     let Some((id, field)) = rest.split_once('.') else {
         return Response::err(format!("{section} key must be '{section}.<name>.<field>'"));
     };
-    // Auto-create missing entries so users can add new device/monitor configs.
-    // Caveat: a typo in the identifier silently creates a dead entry.
-    let cfg = map.entry(id.to_string()).or_default();
-    match field_set(cfg, field, value) {
-        Ok(()) => Response::ok(),
+    let updated = match map.get(id) {
+        Some(cfg) => field_set_owned(cfg, field, value),
+        None => field_set_owned(&T::default(), field, value),
+    };
+    match updated {
+        Ok(cfg) => {
+            map.insert(id.to_string(), cfg);
+            Response::ok()
+        }
         Err(e) => Response::err(e),
     }
 }
 
 fn apply_side_effects(wm: &mut Wm, section: &str) {
     match section {
-        "window" | "layout" | "display" => {
-            wm.bar.mark_dirty();
+        "bar" => {
+            sync_bar_config_to_monitors(wm);
             let mut ctx = wm.ctx();
+            ctx.request_bar_update();
+            crate::layouts::manager::arrange(&mut ctx, None);
+        }
+        "window" | "layout" | "display" => {
+            let mut ctx = wm.ctx();
+            ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
         }
         // TODO: colors/fonts should refresh window decorations beyond the
         // bar; cursor.size/theme needs CursorManager rebuild. For now we
         // just redraw the bar and pick the rest up on next reload.
-        "bar" | "systray" | "colors" | "fonts" | "cursor" => {
+        "systray" | "colors" | "fonts" | "cursor" => {
             wm.bar.mark_dirty();
         }
         _ => {}
+    }
+}
+
+fn sync_bar_config_to_monitors(wm: &mut Wm) {
+    let show_bar = wm.g.cfg.bar.show;
+    let top_bar = wm.g.cfg.bar.top;
+    for monitor in wm.g.monitors_iter_all_mut() {
+        monitor.show_bar = show_bar;
+        monitor.top_bar = top_bar;
+        for state in monitor.per_tag.values_mut() {
+            state.showbar = show_bar;
+        }
     }
 }
 
@@ -202,6 +233,7 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
 mod tests {
     use super::*;
     use crate::backend::{Backend, wayland::WaylandBackend};
+    use crate::types::{Monitor, Rect};
 
     fn test_wm() -> Wm {
         Wm::new(Backend::new_wayland(WaylandBackend::new()))
@@ -230,22 +262,37 @@ mod tests {
             Response::ConfigValue(v) => assert_eq!(v, "1"),
             other => panic!("expected ConfigValue, got {other:?}"),
         }
-        assert!(matches!(do_get(&mut wm, "window.nonexistent"), Response::Err(_)));
-        assert!(matches!(do_get(&mut wm, "nonexistent.field"), Response::Err(_)));
+        assert!(matches!(
+            do_get(&mut wm, "window.nonexistent"),
+            Response::Err(_)
+        ));
+        assert!(matches!(
+            do_get(&mut wm, "nonexistent.field"),
+            Response::Err(_)
+        ));
         assert!(matches!(do_get(&mut wm, "nodot"), Response::Err(_)));
     }
 
     #[test]
     fn set_updates_and_roundtrips() {
         let mut wm = test_wm();
-        assert!(matches!(do_set(&mut wm, "layout.inner_gap", "42"), Response::Ok));
+        assert!(matches!(
+            do_set(&mut wm, "layout.inner_gap", "42"),
+            Response::Ok
+        ));
         assert_eq!(wm.g.cfg.layout.inner_gap, 42);
 
-        assert!(matches!(do_set(&mut wm, "window.resizehints", "false"), Response::Ok));
+        assert!(matches!(
+            do_set(&mut wm, "window.resizehints", "false"),
+            Response::Ok
+        ));
         assert!(!wm.g.cfg.window.resizehints);
 
         // Plain string fallback when value isn't valid JSON.
-        assert!(matches!(do_set(&mut wm, "cursor.theme", "my-cursor"), Response::Ok));
+        assert!(matches!(
+            do_set(&mut wm, "cursor.theme", "my-cursor"),
+            Response::Ok
+        ));
         assert_eq!(wm.g.cfg.cursor.theme, "my-cursor");
 
         match do_get(&mut wm, "layout.inner_gap") {
@@ -263,10 +310,19 @@ mod tests {
             Response::Err(_)
         ));
         // Unknown field.
-        assert!(matches!(do_set(&mut wm, "window.nonexistent", "1"), Response::Err(_)));
+        assert!(matches!(
+            do_set(&mut wm, "window.nonexistent", "1"),
+            Response::Err(_)
+        ));
         // display dimensions are read-only.
-        assert!(matches!(do_set(&mut wm, "display.width", "1920"), Response::Err(_)));
-        assert!(matches!(do_set(&mut wm, "display.height", "1080"), Response::Err(_)));
+        assert!(matches!(
+            do_set(&mut wm, "display.width", "1920"),
+            Response::Err(_)
+        ));
+        assert!(matches!(
+            do_set(&mut wm, "display.height", "1080"),
+            Response::Err(_)
+        ));
     }
 
     #[test]
@@ -277,7 +333,11 @@ mod tests {
         match do_list(&mut wm) {
             Response::ConfigList(entries) => {
                 assert!(entries.iter().any(|(k, _)| k == "layout.inner_gap"));
-                assert!(entries.iter().any(|(k, _)| k.starts_with("input.type:touchpad.")));
+                assert!(
+                    entries
+                        .iter()
+                        .any(|(k, _)| k.starts_with("input.type:touchpad."))
+                );
                 assert!(entries.iter().any(|(k, _)| k.starts_with("monitors.DP-1.")));
             }
             other => panic!("expected ConfigList, got {other:?}"),
@@ -308,12 +368,75 @@ mod tests {
     #[test]
     fn monitor_set_creates_entry_and_queues_apply() {
         let mut wm = test_wm();
-        assert!(matches!(do_set(&mut wm, "monitors.DP-1.scale", "2.0"), Response::Ok));
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.scale", "2.0"),
+            Response::Ok
+        ));
         assert!(wm.g.cfg.monitors.contains_key("DP-1"));
         assert!(wm.g.pending.monitor_config);
         assert!(matches!(
             do_get(&mut wm, "monitors.nonexistent.scale"),
             Response::Err(_)
         ));
+    }
+
+    #[test]
+    fn map_set_does_not_create_entry_on_error() {
+        let mut wm = test_wm();
+
+        assert!(matches!(
+            do_set(&mut wm, "input.type:touchpad.pointer_accel", r#""fast""#),
+            Response::Err(_)
+        ));
+        assert!(!wm.g.cfg.input.contains_key("type:touchpad"));
+        assert!(!wm.g.pending.input_config);
+
+        assert!(matches!(
+            do_set(&mut wm, "monitors.DP-1.scale", r#""large""#),
+            Response::Err(_)
+        ));
+        assert!(!wm.g.cfg.monitors.contains_key("DP-1"));
+        assert!(!wm.g.pending.monitor_config);
+    }
+
+    #[test]
+    fn bar_set_recomputes_monitor_bar_geometry() {
+        let mut wm = test_wm();
+        let mut monitor = Monitor::new_with_values(true, true);
+        monitor.monitor_rect = Rect::new(0, 0, 800, 600);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.work_rect = monitor.monitor_rect;
+        wm.g.monitors.push(monitor);
+
+        assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
+
+        let monitor = wm.g.monitor(crate::types::MonitorId(0)).unwrap();
+        assert_eq!(monitor.bar_height, 32);
+        assert_eq!(monitor.bar_y, 0);
+        assert_eq!(monitor.work_rect, Rect::new(0, 32, 800, 568));
+    }
+
+    #[test]
+    fn bar_show_and_top_apply_to_existing_monitor() {
+        let mut wm = test_wm();
+        let mut monitor = Monitor::new_with_values(true, true);
+        monitor.monitor_rect = Rect::new(0, 0, 800, 600);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.work_rect = monitor.monitor_rect;
+        wm.g.monitors.push(monitor);
+
+        assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
+        assert!(matches!(do_set(&mut wm, "bar.show", "false"), Response::Ok));
+        let monitor = wm.g.monitor(crate::types::MonitorId(0)).unwrap();
+        assert!(!monitor.show_bar);
+        assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 600));
+
+        assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
+        assert!(matches!(do_set(&mut wm, "bar.top", "false"), Response::Ok));
+        let monitor = wm.g.monitor(crate::types::MonitorId(0)).unwrap();
+        assert!(monitor.show_bar);
+        assert!(!monitor.top_bar);
+        assert_eq!(monitor.bar_y, 568);
+        assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 568));
     }
 }
