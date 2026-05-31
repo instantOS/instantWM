@@ -37,6 +37,7 @@ DEV_LIBS=(
   libxxf86vm-dev
   libxcomposite-dev
   libxrender-dev
+  libxft-dev
   libxt-dev
   libxmu-dev
   libxpm-dev
