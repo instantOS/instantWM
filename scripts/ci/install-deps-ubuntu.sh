@@ -129,7 +129,25 @@ EOF
 fi
 
 apt-get update
-apt-get install -y --no-install-recommends "${PKGS[@]}"
+if $CROSS_COMPILE; then
+  # Ubuntu 24.04 multi-arch packages like libgudev-1.0-dev ship .gir files in
+  # /usr/share/gir-1.0/ that differ across architectures but share the same
+  # path. dpkg treats this as a fatal conflict unless we force the overwrite.
+  # This is a known packaging issue on Noble; the files are GObject
+  # Introspection metadata and are not required for C/Rust compilation.
+  apt-get install -y --no-install-recommends \
+    -o Dpkg::Options::="--force-overwrite" \
+    "${PKGS[@]}"
+
+  # Some foreign-arch postinst scripts (e.g. libglib2.0-0t64) try to run
+  # arch-specific helper binaries that may fail under qemu-user-static if
+  # binfmt_misc isn't perfectly set up in the container. Those failures leave
+  # packages half-configured, which is harmless for linking but can break
+  # later apt operations. Attempt to finish configuration and ignore any errors.
+  dpkg --configure -a || true
+else
+  apt-get install -y --no-install-recommends "${PKGS[@]}"
+fi
 
 if $CROSS_COMPILE; then
   # Create per-triple pkg-config wrappers so the `pkg-config` Rust crate (used
