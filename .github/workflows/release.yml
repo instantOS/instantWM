@@ -211,7 +211,9 @@ jobs:
       - name: Create source tarball
         env:
           VERSION: ${{ steps.vars.outputs.version }}
-        run: git archive --format=tar.gz --prefix="instantwm-${VERSION}/" -o "instantwm-${VERSION}.tar.gz" HEAD
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git archive --format=tar.gz --prefix="instantwm-${VERSION}/" -o "instantwm-${VERSION}.tar.gz" HEAD
       - name: Copy PKGBUILD to build context
         run: cp packaging/arch/PKGBUILD .
       - name: Build package
