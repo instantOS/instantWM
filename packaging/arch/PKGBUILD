@@ -28,7 +28,7 @@ depends=(
     'libxpm'
     'libxaw'
     'fontconfig'
-    'freetype'
+    'freetype2'
     'libdrm'
     'mesa'
     'wayland'
