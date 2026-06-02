@@ -1104,7 +1104,7 @@ checksum = "36eee07d8e02bd95bf52b2e642cf13d33701b94c6e4b04fbf1d1fb07e9cb19e7"
 
 [[package]]
 name = "instantwm"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "bincode",
