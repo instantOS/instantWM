@@ -100,13 +100,14 @@ def update_cargo_lock(version: str) -> None:
 
 
 def update_pkgbuild(version: str) -> None:
-    path = ROOT / "packaging/arch/PKGBUILD"
-    if not path.exists():
-        return
-    text = path.read_text()
-    text = re.sub(r"^pkgver=.*", f"pkgver={version}", text, flags=re.MULTILINE)
-    text = re.sub(r"^pkgrel=.*", "pkgrel=1", text, flags=re.MULTILINE)
-    path.write_text(text)
+    for relative_path in ("packaging/arch/PKGBUILD", "packaging/arch-bin/PKGBUILD"):
+        path = ROOT / relative_path
+        if not path.exists():
+            continue
+        text = path.read_text()
+        text = re.sub(r"^pkgver=.*", f"pkgver={version}", text, flags=re.MULTILINE)
+        text = re.sub(r"^pkgrel=.*", "pkgrel=1", text, flags=re.MULTILINE)
+        path.write_text(text)
 
 
 def clean_subject(subject: str) -> tuple[str, str]:

@@ -12,6 +12,7 @@ opens a release PR that updates:
 - `Cargo.lock`
 - `CHANGELOG.md`
 - `packaging/arch/PKGBUILD`
+- `packaging/arch-bin/PKGBUILD`
 
 After that PR is merged, the release workflow creates the `vX.Y.Z` tag, builds
 release artifacts, and publishes a GitHub release.

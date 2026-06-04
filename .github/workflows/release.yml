@@ -180,7 +180,7 @@ jobs:
         if: always()
         run: rm -rf /opt/cargo /opt/rustup
   pkgbuild:
-    name: Build Arch package
+    name: Build Arch binary package
     runs-on: self-hosted
     timeout-minutes: 1440
     container:
@@ -195,14 +195,17 @@ jobs:
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed git
+          pacman -S --noconfirm --needed base-devel git
       - name: Checkout
         uses: actions/checkout@v5
-      - name: Install build dependencies
-        run: bash scripts/ci/install-deps-arch.sh
       - name: Extract version
         id: vars
         run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
+      - name: Download native build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-x86_64-unknown-linux-gnu
+          path: dist
       - name: Create build user
         run: |
           useradd -m builder
@@ -214,12 +217,13 @@ jobs:
         run: |
           git config --global --add safe.directory "$PWD"
           git archive --format=tar.gz --prefix="instantwm-${VERSION}/" -o "instantwm-${VERSION}.tar.gz" HEAD
+          cp "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}.tgz" .
       - name: Copy PKGBUILD to build context
-        run: cp packaging/arch/PKGBUILD .
+        run: cp packaging/arch-bin/PKGBUILD .
       - name: Build package
         run: |
           WORKSPACE="$PWD"
-          su builder -c "cd '$WORKSPACE' && makepkg -s --noconfirm --skippgpcheck"
+          su builder -c "cd '$WORKSPACE' && makepkg --nodeps --noconfirm --skippgpcheck"
       - name: Collect package artifacts
         run: |
           mkdir -p artifacts
@@ -229,7 +233,7 @@ jobs:
       - name: Upload Arch package
         uses: actions/upload-artifact@v4
         with:
-          name: instantwm-${{ steps.vars.outputs.version }}-arch-packages
+          name: instantwm-${{ steps.vars.outputs.version }}-arch-bin-package
           path: artifacts/
   deb:
     name: Build Debian package

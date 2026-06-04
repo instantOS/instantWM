@@ -63,33 +63,30 @@ jobs:
           PY
           )"
 
-          # Try common PKGBUILD locations
-          for pkgbuild_file in packaging/arch/PKGBUILD pkgbuild/instantwm/PKGBUILD PKGBUILD instantwm/PKGBUILD; do
-            if [[ -f "$pkgbuild_file" ]]; then
-              break
+          changed_files=()
+          for pkgbuild_file in packaging/arch/PKGBUILD packaging/arch-bin/PKGBUILD; do
+            if [[ ! -f "$pkgbuild_file" ]]; then
+              continue
+            fi
+
+            file_version="$(awk -F '=' '/^pkgver=/ {print $2; exit}' "$pkgbuild_file")"
+            if [[ "$file_version" != "$version" ]]; then
+              sed -i "s/^pkgver=.*/pkgver=$version/" "$pkgbuild_file"
+              sed -i "s/^pkgrel=.*/pkgrel=1/" "$pkgbuild_file"
+            fi
+
+            if ! git diff --quiet "$pkgbuild_file"; then
+              cp "$pkgbuild_file" /home/builder/PKGBUILD
+              chown builder:builder /home/builder/PKGBUILD
+              srcinfo="$(su builder -c 'cd /home/builder && makepkg --printsrcinfo -p PKGBUILD')"
+              pkgbuild_dir="$(dirname "$pkgbuild_file")"
+              printf '%s\n' "$srcinfo" > "$pkgbuild_dir/.SRCINFO"
+              changed_files+=("$pkgbuild_file" "$pkgbuild_dir/.SRCINFO")
             fi
           done
 
-          if [[ ! -f "$pkgbuild_file" ]]; then
-            echo "No PKGBUILD found in expected locations, skipping sync"
-            exit 0
-          fi
-
-          file_version="$(awk -F '=' '/^pkgver=/ {print $2; exit}' "$pkgbuild_file")"
-          pkgrel="$(awk -F '=' '/^pkgrel=/ {print $2; exit}' "$pkgbuild_file")"
-          if [[ "$file_version" != "$version" ]]; then
-            sed -i "s/^pkgver=.*/pkgver=$version/" "$pkgbuild_file"
-            sed -i "s/^pkgrel=.*/pkgrel=1/" "$pkgbuild_file"
-          fi
-          if ! git diff --quiet "$pkgbuild_file"; then
-            # Copy PKGBUILD to builder's home and generate .SRCINFO as builder user
-            cp "$pkgbuild_file" /home/builder/PKGBUILD
-            chown builder:builder /home/builder/PKGBUILD
-            srcinfo="$(su builder -c 'cd /home/builder && makepkg --printsrcinfo -p PKGBUILD')"
-            # Find the directory containing PKGBUILD
-            pkgbuild_dir="$(dirname "$pkgbuild_file")"
-            printf '%s\n' "$srcinfo" > "$pkgbuild_dir/.SRCINFO"
-            git add "$pkgbuild_file" "$pkgbuild_dir/.SRCINFO"
+          if ((${#changed_files[@]} > 0)); then
+            git add "${changed_files[@]}"
             git commit -m "chore: sync PKGBUILD version"
             git push
           fi

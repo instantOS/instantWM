@@ -9,6 +9,7 @@ on:
       - Cargo.lock
       - CHANGELOG.md
       - packaging/arch/PKGBUILD
+      - packaging/arch-bin/PKGBUILD
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
@@ -83,3 +84,4 @@ jobs:
             - `Cargo.lock`
             - `CHANGELOG.md`
             - `packaging/arch/PKGBUILD`
+            - `packaging/arch-bin/PKGBUILD`
