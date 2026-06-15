@@ -6,9 +6,9 @@ use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutKind;
+use crate::layouts::LayoutOutput;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
-use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
 use std::cmp::min;
@@ -27,12 +27,7 @@ pub fn deck(
         return vec![];
     }
 
-    let placement = LayoutPlacement::new(
-        layout_cfg,
-        monitor,
-        LayoutKind::Deck,
-        tiled_client_count,
-    );
+    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Deck, tiled_client_count);
     let work_rect = placement.work_rect();
     let nmaster = monitor.nmaster.max(0) as u32;
     let master_area_width: i32 = if tiled_client_count > nmaster {

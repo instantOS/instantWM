@@ -412,7 +412,10 @@ mod tests {
         let resp = do_set(&mut wm, "monitors.DP-1.position", "0,0");
         assert!(matches!(resp, Response::Ok), "got {resp:?}");
         assert_eq!(
-            wm.g.cfg.monitors.get("DP-1").and_then(|m| m.position.as_deref()),
+            wm.g.cfg
+                .monitors
+                .get("DP-1")
+                .and_then(|m| m.position.as_deref()),
             Some("0,0")
         );
     }

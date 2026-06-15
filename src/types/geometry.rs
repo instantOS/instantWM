@@ -545,15 +545,55 @@ pub fn snap_rect(snap_status: SnapPosition, bw: i32, work_rect: &Rect) -> Option
     let half_h = work_rect.h / 2;
 
     let (x, y, w, h) = match snap_status {
-        SnapPosition::Top => (work_rect.x, work_rect.y, work_rect.w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::Bottom => (work_rect.x, work_rect.y + half_h, work_rect.w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::Left => (work_rect.x, work_rect.y, half_w - 2 * bw, work_rect.h - 2 * bw),
-        SnapPosition::Right => (work_rect.x + half_w, work_rect.y, half_w - 2 * bw, work_rect.h - 2 * bw),
+        SnapPosition::Top => (
+            work_rect.x,
+            work_rect.y,
+            work_rect.w - 2 * bw,
+            half_h - 2 * bw,
+        ),
+        SnapPosition::Bottom => (
+            work_rect.x,
+            work_rect.y + half_h,
+            work_rect.w - 2 * bw,
+            half_h - 2 * bw,
+        ),
+        SnapPosition::Left => (
+            work_rect.x,
+            work_rect.y,
+            half_w - 2 * bw,
+            work_rect.h - 2 * bw,
+        ),
+        SnapPosition::Right => (
+            work_rect.x + half_w,
+            work_rect.y,
+            half_w - 2 * bw,
+            work_rect.h - 2 * bw,
+        ),
         SnapPosition::TopLeft => (work_rect.x, work_rect.y, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::TopRight => (work_rect.x + half_w, work_rect.y, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::BottomLeft => (work_rect.x, work_rect.y + half_h, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::BottomRight => (work_rect.x + half_w, work_rect.y + half_h, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::Maximized => (work_rect.x, work_rect.y, work_rect.w - 2 * bw, work_rect.h - 2 * bw),
+        SnapPosition::TopRight => (
+            work_rect.x + half_w,
+            work_rect.y,
+            half_w - 2 * bw,
+            half_h - 2 * bw,
+        ),
+        SnapPosition::BottomLeft => (
+            work_rect.x,
+            work_rect.y + half_h,
+            half_w - 2 * bw,
+            half_h - 2 * bw,
+        ),
+        SnapPosition::BottomRight => (
+            work_rect.x + half_w,
+            work_rect.y + half_h,
+            half_w - 2 * bw,
+            half_h - 2 * bw,
+        ),
+        SnapPosition::Maximized => (
+            work_rect.x,
+            work_rect.y,
+            work_rect.w - 2 * bw,
+            work_rect.h - 2 * bw,
+        ),
         SnapPosition::None => return None,
     };
 

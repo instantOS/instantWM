@@ -191,9 +191,18 @@ mod tests {
             LayoutKind::from_name("floating"),
             Some(LayoutKind::Floating)
         );
-        assert_eq!(LayoutKind::from_name("horizgrid"), Some(LayoutKind::HorizGrid));
-        assert_eq!(LayoutKind::from_name("gaplessgrid"), Some(LayoutKind::GaplessGrid));
-        assert_eq!(LayoutKind::from_name("bstackhoriz"), Some(LayoutKind::BStackHoriz));
+        assert_eq!(
+            LayoutKind::from_name("horizgrid"),
+            Some(LayoutKind::HorizGrid)
+        );
+        assert_eq!(
+            LayoutKind::from_name("gaplessgrid"),
+            Some(LayoutKind::GaplessGrid)
+        );
+        assert_eq!(
+            LayoutKind::from_name("bstackhoriz"),
+            Some(LayoutKind::BStackHoriz)
+        );
         assert_eq!(LayoutKind::from_name("bad"), None);
     }
 

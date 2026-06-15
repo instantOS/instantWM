@@ -154,7 +154,10 @@ impl Monitor {
             (moves, save_geo)
         } else {
             let layout = self.current_layout();
-            (layout.compute(self, clients, layout_cfg, animated), Vec::new())
+            (
+                layout.compute(self, clients, layout_cfg, animated),
+                Vec::new(),
+            )
         };
 
         // Compute fullscreen moves
@@ -178,10 +181,7 @@ impl Monitor {
     }
 }
 
-fn compute_borders(
-    monitor: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-) -> Vec<(WindowId, i32)> {
+fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {
     let is_tiling = monitor.current_layout().is_tiling();
     let is_monocle = monitor.current_layout().is_monocle();
     let clientcount = monitor.clientcount;

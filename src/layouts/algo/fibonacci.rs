@@ -51,8 +51,8 @@ use std::collections::HashMap;
 use crate::config::config_toml::LayoutConfig;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutKind;
-use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::LayoutOutput;
+use crate::layouts::placement::LayoutPlacement;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
 

@@ -36,9 +36,9 @@ use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutKind;
+use crate::layouts::LayoutOutput;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
-use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
 
@@ -70,13 +70,7 @@ pub fn grid(
     let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Grid, n as u32);
     let work_rect = placement.work_rect();
 
-    let framecount = framecount_for_layout(
-        animated,
-        n as usize,
-        FAST_ANIM_THRESHOLD,
-        3,
-        6,
-    );
+    let framecount = framecount_for_layout(animated, n as usize, FAST_ANIM_THRESHOLD, 3, 6);
 
     // A single tiled client fills the whole work area.
     if n == 1 {
