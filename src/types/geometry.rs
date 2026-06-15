@@ -2,6 +2,8 @@
 //!
 //! Provides types for rectangles, size hints, and geometric calculations.
 
+use super::input::SnapPosition;
+
 /// Parsed monitor position configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MonitorPosition {
@@ -532,4 +534,28 @@ impl SizeHints {
     pub fn is_fixed(&self) -> bool {
         self.maxw != 0 && self.maxh != 0 && self.maxw == self.minw && self.maxh == self.minh
     }
+}
+
+/// Compute the screen rectangle for a given snap position.
+///
+/// Returns the target `Rect` (border-aware) for a window snapped to one of the
+/// nine screen regions (half/quarter/maximized), or `None` if `SnapPosition::None`.
+pub fn snap_rect(snap_status: SnapPosition, bw: i32, work_rect: &Rect) -> Option<Rect> {
+    let half_w = work_rect.w / 2;
+    let half_h = work_rect.h / 2;
+
+    let (x, y, w, h) = match snap_status {
+        SnapPosition::Top => (work_rect.x, work_rect.y, work_rect.w - 2 * bw, half_h - 2 * bw),
+        SnapPosition::Bottom => (work_rect.x, work_rect.y + half_h, work_rect.w - 2 * bw, half_h - 2 * bw),
+        SnapPosition::Left => (work_rect.x, work_rect.y, half_w - 2 * bw, work_rect.h - 2 * bw),
+        SnapPosition::Right => (work_rect.x + half_w, work_rect.y, half_w - 2 * bw, work_rect.h - 2 * bw),
+        SnapPosition::TopLeft => (work_rect.x, work_rect.y, half_w - 2 * bw, half_h - 2 * bw),
+        SnapPosition::TopRight => (work_rect.x + half_w, work_rect.y, half_w - 2 * bw, half_h - 2 * bw),
+        SnapPosition::BottomLeft => (work_rect.x, work_rect.y + half_h, half_w - 2 * bw, half_h - 2 * bw),
+        SnapPosition::BottomRight => (work_rect.x + half_w, work_rect.y + half_h, half_w - 2 * bw, half_h - 2 * bw),
+        SnapPosition::Maximized => (work_rect.x, work_rect.y, work_rect.w - 2 * bw, work_rect.h - 2 * bw),
+        SnapPosition::None => return None,
+    };
+
+    Some(Rect { x, y, w, h })
 }

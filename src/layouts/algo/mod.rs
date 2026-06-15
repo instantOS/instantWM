@@ -12,7 +12,7 @@
 //! | [`stack`]     | `deck`, `bottom_stack`, `bstackhoriz`         |
 //! | [`fibonacci`] | `spiral`, `dwindle`, `fibonacci`              |
 //! | [`three_column`] | `three_column`                              |
-//! | [`float`]     | `floating`, `apply_snap_for_window` |
+//! | [`float`]     | `floating` |
 
 mod fibonacci;
 mod float;
@@ -35,10 +35,10 @@ pub use grid::{gaplessgrid, grid, horizgrid};
 pub use stack::{bottom_stack, bstackhoriz, deck};
 
 // ── fibonacci family ─────────────────────────────────────────────────────────
-pub use fibonacci::{dwindle, fibonacci, spiral};
+pub use fibonacci::{dwindle, spiral};
 
 // ── three-column ─────────────────────────────────────────────────────────────
 pub use three_column::three_column;
 
-// ── floating / snap ──────────────────────────────────────────────────────────
-pub use float::{apply_snap_for_window, floating};
+// ── floating ─────────────────────────────────────────────────────────────────
+pub use float::floating;

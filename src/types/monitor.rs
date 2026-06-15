@@ -252,6 +252,11 @@ impl Monitor {
             .or_insert_with(|| PertagState::new(default_showbar))
     }
 
+    /// Read the current pertag state, returning `None` if no entry exists yet.
+    pub fn pertag(&self) -> Option<&PertagState> {
+        self.per_tag.get(&self.selected_tags().bits())
+    }
+
     #[inline]
     pub fn current_tag_number(&self) -> Option<usize> {
         let selected = self.selected_tags();
@@ -345,8 +350,6 @@ impl Monitor {
                 Some(TiledClientInfo {
                     win,
                     border_width: c.border_width,
-                    total_height: c.total_height(),
-                    total_width: c.total_width(),
                 })
             })
             .collect()

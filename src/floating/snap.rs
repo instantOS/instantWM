@@ -21,7 +21,7 @@ use crate::client::{restore_border_width, save_border_width};
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::algo::apply_snap_for_window;
+
 use crate::types::*;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -312,4 +312,27 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
             super::helpers::apply_size(x11, win);
         }
     }
+}
+
+/// Compute and apply the geometry dictated by a client's [`SnapPosition`].
+///
+/// This is a pure geometry function: it reads `client.snap_status` and
+/// `client.border_width`, derives the target `Rect` from the monitor's
+/// `work_rect`, and applies it through `move_resize`. It does *not* modify
+/// `snap_status`.
+///
+/// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
+/// client window is not found.
+fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
+    let c = match ctx.core().client(win) {
+        Some(c) => c,
+        None => return,
+    };
+
+    let Some(rect) = crate::types::geometry::snap_rect(c.snap_status, c.border_width, &m.work_rect)
+    else {
+        return;
+    };
+
+    ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
 }

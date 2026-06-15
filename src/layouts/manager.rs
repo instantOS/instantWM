@@ -1,20 +1,21 @@
-//! Layout manager — the stateful half of the layout system.
+//! Layout manager — applies computed [`ArrangePlan`]s to backend state.
+//!
+//! This is the stateful half of the layout system. Pure geometry computation
+//! lives in [`algo`]; this module drives the arrange cycle (compute → apply)
+//! and handles z-order, monitor sync, and layout switching.
 
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Client, ClientMode, Monitor, MonitorId, WindowId};
+use crate::layouts::{ArrangePlan, LayoutKind, LayoutOutput, MonitorUpdates};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, PertagState, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
-
-use super::LayoutKind;
 
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     crate::mouse::reset_cursor(ctx);
 
     if let Some(id) = monitor_id {
-        // First pass: show/hide stack
         crate::client::apply_visibility(ctx);
-        // Second pass: arrange and sync_monitor_z_order
         arrange_monitor(ctx, id);
         sync_monitor_z_order(ctx, id);
     } else {
@@ -34,90 +35,155 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let clientcount = {
-        let m = ctx
+    let bar_height = ctx.core().globals().cfg.bar.height;
+    let animated = ctx.core().globals().behavior.animated;
+
+    let clients = ctx.core().globals().clients.map();
+    let Some(mut monitor) = ctx.core().globals().monitor(monitor_id).cloned() else {
+        return;
+    };
+
+    let plan = monitor.compute_arrange(clients, bar_height, animated);
+
+    plan.apply(ctx, monitor_id);
+}
+
+impl ArrangePlan {
+    fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
+        // 1. Save floating geometry for overview mode
+        for &win in &self.save_geo {
+            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                client.save_floating_geometry();
+            }
+        }
+
+        // 2. Apply border widths
+        for (win, border) in &self.borders {
+            ctx.set_border(*win, *border);
+        }
+
+        // 3. Apply monitor updates
+        if let Some(m) = ctx.core_mut().globals_mut().monitor_mut(monitor_id) {
+            m.clientcount = self.monitor_updates.clientcount;
+            m.nmaster = self.monitor_updates.nmaster;
+            m.mfact = self.monitor_updates.mfact;
+            m.work_rect = self.monitor_updates.work_rect;
+            m.bar_y = self.monitor_updates.bar_y;
+
+            // Sync pertag state back (copy values to avoid borrow conflict)
+            let nmaster = m.nmaster;
+            let mfact = m.mfact;
+            let pertag = m.pertag_state();
+            pertag.nmaster = nmaster;
+            pertag.mfact = mfact;
+        }
+
+        // 4. For monocle, raise the selected window before animated moves
+        //    so it doesn't briefly render beneath siblings during animation.
+        if let Some(selected) = ctx
             .core()
             .globals()
             .monitor(monitor_id)
-            .expect("invalid monitor");
-        m.tiled_client_count(ctx.core().globals().clients.map()) as u32
-    };
+            .filter(|m| m.current_layout().is_monocle())
+            .and_then(|m| m.sel)
+        {
+            ctx.raise_window_visual_only(selected);
+            ctx.flush();
+        }
 
-    if let Some(m) = ctx.core_mut().globals_mut().monitor_mut(monitor_id) {
-        m.clientcount = clientcount;
+        // 5. Apply client moves (layout placements)
+        for output in &self.client_moves {
+            ctx.move_resize(output.win, output.rect, output.options);
+        }
+
+        // 6. Apply fullscreen moves last — fullscreen overrides layout geometry
+        for output in &self.fullscreen_moves {
+            ctx.move_resize(output.win, output.rect, output.options);
+        }
+
+        // 7. Raise selected window in overview mode
+        if self.is_overview {
+            if let Some(monitor) = ctx.core().globals().monitor(monitor_id) {
+                if let Some(selected) = monitor.sel
+                    && self.client_moves.iter().any(|o| o.win == selected)
+                {
+                    ctx.raise_window_visual_only(selected);
+                }
+            }
+        }
     }
+}
 
-    let Some(monitor_before_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
-    };
+impl Monitor {
+    pub fn compute_arrange(
+        &mut self,
+        clients: &HashMap<WindowId, Client>,
+        bar_height: i32,
+        animated: bool,
+    ) -> ArrangePlan {
+        let clientcount = self.tiled_client_count(clients) as u32;
 
-    apply_border_widths(ctx, &monitor_before_layout);
-    {
-        let bar_height = ctx.core().globals().cfg.bar.height;
-        let mon = ctx
-            .core_mut()
-            .globals_mut()
-            .monitor_mut(monitor_id)
-            .unwrap();
-        let (nmaster, mfact) = {
-            let pertag = mon.pertag_state();
-            (pertag.nmaster, pertag.mfact)
+        let defaults = PertagState::new(self.show_bar);
+        let (nmaster, mfact) = self
+            .pertag()
+            .map(|p| (p.nmaster, p.mfact))
+            .unwrap_or((defaults.nmaster, defaults.mfact));
+
+        self.clientcount = clientcount;
+        self.nmaster = nmaster;
+        self.mfact = mfact;
+        self.update_bar_position(bar_height);
+
+        let bar_y = self.bar_y;
+        let work_rect = self.work_rect;
+
+        // Compute borders
+        let borders = compute_borders(self, clients);
+
+        // Compute layout moves and save_geo
+        let is_overview = self.overview_state.is_some();
+        let (client_moves, save_geo) = if is_overview {
+            let (moves, save_geo) = crate::overview::compute(self, clients);
+            (moves, save_geo)
+        } else {
+            let layout = self.current_layout();
+            (layout.compute(self, clients, animated), Vec::new())
         };
-        mon.nmaster = nmaster;
-        mon.mfact = mfact;
-        mon.update_bar_position(bar_height);
-    }
-    run_layout(ctx, monitor_id);
-    {
-        let mon = ctx
-            .core_mut()
-            .globals_mut()
-            .monitor_mut(monitor_id)
-            .unwrap();
-        let (nmaster, mfact) = (mon.nmaster, mon.mfact);
-        let pertag = mon.pertag_state();
-        pertag.nmaster = nmaster;
-        pertag.mfact = mfact;
-    }
 
-    let Some(monitor_after_layout) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
-    };
+        // Compute fullscreen moves
+        let fullscreen_moves = compute_fullscreen_moves(self, clients);
 
-    apply_fullscreen(ctx, &monitor_after_layout);
-}
-
-fn apply_fullscreen(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
-    let mon_rect = monitor.monitor_rect;
-    let clients = monitor.clients.clone();
-    let selected_tags = monitor.selected_tags();
-
-    let fullscreen_windows: Vec<_> = clients
-        .into_iter()
-        .filter(|&win| {
-            ctx.core()
-                .client(win)
-                .is_some_and(|c| c.mode.is_true_fullscreen() && c.is_visible(selected_tags))
-        })
-        .collect();
-
-    for win in fullscreen_windows {
-        ctx.move_resize(win, mon_rect, MoveResizeOptions::immediate());
+        ArrangePlan {
+            monitor_updates: MonitorUpdates {
+                clientcount,
+                nmaster,
+                mfact,
+                work_rect,
+                bar_y,
+            },
+            borders,
+            client_moves,
+            fullscreen_moves,
+            save_geo,
+            is_overview,
+        }
     }
 }
 
-fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
+fn compute_borders(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+) -> Vec<(WindowId, i32)> {
     let is_tiling = monitor.current_layout().is_tiling();
     let is_monocle = monitor.current_layout().is_monocle();
     let clientcount = monitor.clientcount;
     let selected_tags = monitor.selected_tags();
 
-    // Collect border changes first to avoid borrow conflicts
-    let border_changes: Vec<(WindowId, i32)> = monitor
+    monitor
         .clients
         .iter()
         .filter_map(|&win| {
-            let info = ctx.core().client(win)?;
+            let info = clients.get(&win)?;
             let is_visible = info.is_visible(selected_tags);
             if !is_visible {
                 return None;
@@ -128,12 +194,32 @@ fn apply_border_widths(ctx: &mut WmCtx<'_>, monitor: &crate::types::Monitor) {
                 border_width_for_layout_client(info, clientcount, is_tiling, is_monocle),
             ))
         })
-        .collect();
+        .collect()
+}
 
-    // Apply border changes
-    for (win, border) in border_changes {
-        ctx.set_border(win, border);
-    }
+fn compute_fullscreen_moves(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+) -> Vec<LayoutOutput> {
+    let mon_rect = monitor.monitor_rect;
+    let selected_tags = monitor.selected_tags();
+
+    monitor
+        .clients
+        .iter()
+        .filter_map(|&win| {
+            let c = clients.get(&win)?;
+            if c.mode.is_true_fullscreen() && c.is_visible(selected_tags) {
+                Some(LayoutOutput {
+                    win,
+                    rect: mon_rect,
+                    options: MoveResizeOptions::immediate(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 fn border_width_for_layout_client(
@@ -150,28 +236,6 @@ fn border_width_for_layout_client(
     } else {
         client.old_border_width
     }
-}
-
-fn run_layout(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let Some(mut m) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
-    };
-
-    if crate::overview::is_active_on_monitor(ctx.core(), &m) {
-        crate::overview::arrange(ctx, &mut m);
-        ctx.core_mut()
-            .globals_mut()
-            .monitors
-            .set_monitor(monitor_id, m);
-        return;
-    }
-
-    let layout = m.current_layout();
-    layout.arrange(ctx, &mut m);
-    ctx.core_mut()
-        .globals_mut()
-        .monitors
-        .set_monitor(monitor_id, m);
 }
 
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
@@ -198,7 +262,8 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let Some(stack) = compute_monitor_z_order(monitor, ctx.core().globals().clients.map()) else {
+    let clients = ctx.core().globals().clients.map();
+    let Some(stack) = compute_monitor_z_order(monitor, clients) else {
         return;
     };
     ctx.apply_z_order(&stack);
@@ -284,7 +349,7 @@ pub(crate) fn compute_monitor_z_order(
     Some(stack)
 }
 
-pub fn set_layout(ctx: &mut WmCtx<'_>, layout: LayoutKind) {
+pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
     let m = ctx.core_mut().globals_mut().selected_monitor_mut();
     m.pertag_state().layouts.set_layout(layout);
     finish_layout_change(ctx);

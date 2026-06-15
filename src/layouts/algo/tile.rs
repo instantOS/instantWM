@@ -1,5 +1,10 @@
 //! Classic master-stack tiling layout.
 //!
+//! Offset accumulation uses the requested rect (`rect.h + 2 * bw`) rather than
+//! the final applied geometry after size-hint clamping. This assumes tiled
+//! clients have no constraints that would cause the backend to diverge from the
+//! request — true for all practical tiling cases.
+//!
 //! The screen is split vertically into:
 //!
 //! ```text
@@ -19,11 +24,13 @@
 
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
-use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::query::framecount_for_layout;
-use crate::types::{Monitor, Rect};
+use crate::layouts::LayoutOutput;
+use crate::types::client::Client;
+use crate::types::{Monitor, Rect, WindowId};
 use std::cmp::min;
+use std::collections::HashMap;
 
 fn effective_nmaster(monitor: &Monitor, tiled_client_count: u32) -> u32 {
     min(monitor.nmaster.max(0) as u32, tiled_client_count)
@@ -41,16 +48,16 @@ fn master_width(monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32
     }
 }
 
-pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
-    let tiled_clients = monitor.collect_tiled(ctx.core().globals().clients.map());
+pub fn tile(monitor: &Monitor, clients: &HashMap<WindowId, Client>, animated: bool) -> Vec<LayoutOutput> {
+    let tiled_clients = monitor.collect_tiled(clients);
     let tiled_client_count = tiled_clients.len() as u32;
 
     if tiled_client_count == 0 {
-        return;
+        return vec![];
     }
 
     let framecount = framecount_for_layout(
-        ctx.core().globals().behavior.animated,
+        animated,
         tiled_client_count as usize,
         FAST_ANIM_THRESHOLD,
         FAST_FRAME_COUNT,
@@ -63,6 +70,8 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
     let mut master_y_offset: u32 = 0;
     let mut stack_y_offset: u32 = 0;
 
+    let mut result = Vec::new();
+
     for (index, client) in tiled_clients.iter().enumerate() {
         if (index as u32) < nmaster {
             let master_window_height =
@@ -74,21 +83,22 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 framecount
             };
 
-            ctx.move_resize(
-                client.win,
-                Rect {
-                    x: monitor.work_rect.x,
-                    y: monitor.work_rect.y + master_y_offset as i32,
-                    w: master_area_width - BORDER_MULTIPLIER * client.border_width,
-                    h: master_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
-                MoveResizeOptions::animate_to(animation_frames),
-            );
+            let rect = Rect {
+                x: monitor.work_rect.x,
+                y: monitor.work_rect.y + master_y_offset as i32,
+                w: master_area_width - BORDER_MULTIPLIER * client.border_width,
+                h: master_window_height - BORDER_MULTIPLIER * client.border_width,
+            };
 
-            if let Some(c) = ctx.core().client(client.win)
-                && master_y_offset as i32 + c.total_height() < monitor.work_rect.h
-            {
-                master_y_offset += c.total_height() as u32;
+            result.push(LayoutOutput {
+                win: client.win,
+                rect,
+                options: MoveResizeOptions::animate_to(animation_frames),
+            });
+
+            let total_h = rect.h + 2 * client.border_width;
+            if master_y_offset as i32 + total_h < monitor.work_rect.h {
+                master_y_offset += total_h as u32;
             }
         } else {
             let stack_window_height = (monitor.work_rect.h - stack_y_offset as i32)
@@ -100,26 +110,29 @@ pub fn tile(ctx: &mut WmCtx<'_>, monitor: &mut Monitor) {
                 framecount
             };
 
-            ctx.move_resize(
-                client.win,
-                Rect {
-                    x: monitor.work_rect.x + master_area_width,
-                    y: monitor.work_rect.y + stack_y_offset as i32,
-                    w: monitor.work_rect.w
-                        - master_area_width
-                        - BORDER_MULTIPLIER * client.border_width,
-                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
-                MoveResizeOptions::animate_to(animation_frames),
-            );
+            let rect = Rect {
+                x: monitor.work_rect.x + master_area_width,
+                y: monitor.work_rect.y + stack_y_offset as i32,
+                w: monitor.work_rect.w
+                    - master_area_width
+                    - BORDER_MULTIPLIER * client.border_width,
+                h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
+            };
 
-            if let Some(c) = ctx.core().client(client.win)
-                && stack_y_offset as i32 + c.total_height() < monitor.work_rect.h
-            {
-                stack_y_offset += c.total_height() as u32;
+            result.push(LayoutOutput {
+                win: client.win,
+                rect,
+                options: MoveResizeOptions::animate_to(animation_frames),
+            });
+
+            let total_h = rect.h + 2 * client.border_width;
+            if stack_y_offset as i32 + total_h < monitor.work_rect.h {
+                stack_y_offset += total_h as u32;
             }
         }
     }
+
+    result
 }
 
 #[cfg(test)]
@@ -172,5 +185,45 @@ mod tests {
 
         assert_eq!(nmaster, 0);
         assert_eq!(master_width(&monitor, 3, nmaster), 0);
+    }
+
+    #[test]
+    fn test_tile_layout_calculation() {
+        use super::tile;
+        use crate::types::{Client, Rect, TagMask, WindowId};
+        use std::collections::HashMap;
+
+        let mut monitor = Monitor::default();
+        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.monitor_rect = Rect::new(0, 0, 1000, 800);
+        monitor.mfact = 0.5;
+        monitor.nmaster = 1;
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        monitor.clients = vec![WindowId(1), WindowId(2)];
+
+        let mut clients = HashMap::new();
+
+        let mut c1 = Client::default();
+        c1.win = WindowId(1);
+        c1.border_width = 0;
+        c1.set_tag_mask(TagMask::single(1).unwrap());
+        clients.insert(WindowId(1), c1);
+
+        let mut c2 = Client::default();
+        c2.win = WindowId(2);
+        c2.border_width = 0;
+        c2.set_tag_mask(TagMask::single(1).unwrap());
+        clients.insert(WindowId(2), c2);
+
+        let outputs = tile(&monitor, &clients, false);
+        assert_eq!(outputs.len(), 2);
+
+        // Client 1 (master): x=0, y=0, w=500, h=800
+        assert_eq!(outputs[0].win, WindowId(1));
+        assert_eq!(outputs[0].rect, Rect::new(0, 0, 500, 800));
+
+        // Client 2 (stack): x=500, y=0, w=500, h=800
+        assert_eq!(outputs[1].win, WindowId(2));
+        assert_eq!(outputs[1].rect, Rect::new(500, 0, 500, 800));
     }
 }

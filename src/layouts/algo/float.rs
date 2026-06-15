@@ -11,9 +11,9 @@
 //! ## Snap positions
 //!
 //! A snap position is stored on each client as a [`SnapPosition`] enum
-//! variant.  When a floating client is dragged to a screen edge the WM sets
-//! `client.snap_status`; [`floating`] then calls [`apply_snap_for_window`] to
-//! compute and apply the corresponding geometry.
+//! variant. When a floating client is dragged to a screen edge the WM sets
+//! `client.snap_status`; [`floating`] reads it and computes the target
+//! geometry via [`snap_rect`](crate::types::geometry::snap_rect).
 //!
 //! ```text
 //! ┌──────────────────────────────────┐
@@ -26,10 +26,12 @@
 //!                   ↑ Maximized fills the whole work area
 //! ```
 //!
-use crate::backend::BackendOps;
-use crate::contexts::WmCtx;
+use std::collections::HashMap;
+
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Monitor, Rect, SnapPosition, WindowId};
+use crate::layouts::LayoutOutput;
+use crate::types::client::Client;
+use crate::types::{Monitor, SnapPosition, WindowId};
 
 // ── floating ─────────────────────────────────────────────────────────────────
 
@@ -38,81 +40,32 @@ use crate::types::{Monitor, Rect, SnapPosition, WindowId};
 /// Called by the [`Floating`](crate::layouts::LayoutKind::Floating) layout
 /// — leaves clients at their self-managed positions but still needs snap
 /// geometry enforced and the window stack sorted.
-pub fn floating(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let selected = m.selected_tags();
+pub fn floating(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    _animated: bool,
+) -> Vec<LayoutOutput> {
+    let selected = monitor.selected_tags();
 
-    // ── apply pending snap positions ──────────────────────────────────────
-    // Collect targets first to avoid borrowing ctx/m/clients immutably while
-    // we mutate state during resize.
-    let snap_targets: Vec<WindowId> = m
-        .iter_clients(ctx.core_mut().globals_mut().clients.map())
-        .filter_map(|(win, c)| {
-            (c.is_visible(selected) && c.snap_status != SnapPosition::None).then_some(win)
-        })
-        .collect();
+    let mut result: Vec<LayoutOutput> = Vec::new();
 
-    for win in snap_targets {
-        apply_snap_for_window(ctx, win, m);
+    for &win in &monitor.clients {
+        let Some(c) = clients.get(&win) else {
+            continue;
+        };
+
+        if c.is_visible(selected) && c.snap_status != SnapPosition::None {
+            if let Some(rect) =
+                crate::types::geometry::snap_rect(c.snap_status, c.border_width, &monitor.work_rect)
+            {
+                result.push(LayoutOutput {
+                    win,
+                    rect,
+                    options: MoveResizeOptions::hinted_immediate(false),
+                });
+            }
+        }
     }
 
-    // Raise the selected window to the top of the Z-order so it is not
-    // accidentally obscured by a tiled window placed above it by the compositor.
-    if let Some(selected_window) = m.sel {
-        ctx.backend().raise_window_visual_only(selected_window);
-        ctx.backend().flush();
-    }
-}
-
-// ── apply_snap_for_window ─────────────────────────────────────────────────────
-
-/// Compute and apply the geometry dictated by a client's [`SnapPosition`].
-///
-/// This is a pure geometry function: it reads `client.snap_status` and
-/// `client.border_width`, derives the target `Rect` from the monitor's
-/// `work_rect`, and applies it through `move_resize`. It does *not* modify
-/// `snap_status`.
-///
-/// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
-/// client window is not found.
-pub fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
-    let c = match ctx.core().client(win) {
-        Some(c) => c,
-        None => return,
-    };
-
-    let snap_status = c.snap_status;
-    let bw = c.border_width; // border width in pixels
-    let wr = &m.work_rect; // shorthand
-
-    // Half-dimensions, pre-computed to keep match arms readable.
-    let half_w = wr.w / 2;
-    let half_h = wr.h / 2;
-
-    let (x, y, w, h) = match snap_status {
-        // ── half-screen positions ─────────────────────────────────────────
-        SnapPosition::Top => (wr.x, wr.y, wr.w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::Bottom => (wr.x, wr.y + half_h, wr.w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::Left => (wr.x, wr.y, half_w - 2 * bw, wr.h - 2 * bw),
-        SnapPosition::Right => (wr.x + half_w, wr.y, half_w - 2 * bw, wr.h - 2 * bw),
-        // ── quarter-screen (corner) positions ─────────────────────────────
-        SnapPosition::TopLeft => (wr.x, wr.y, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::TopRight => (wr.x + half_w, wr.y, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::BottomLeft => (wr.x, wr.y + half_h, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::BottomRight => (
-            wr.x + half_w,
-            wr.y + half_h,
-            half_w - 2 * bw,
-            half_h - 2 * bw,
-        ),
-        // ── full work-area maximise ───────────────────────────────────────
-        SnapPosition::Maximized => (wr.x, wr.y, wr.w - 2 * bw, wr.h - 2 * bw),
-        // ── no snap — nothing to do ───────────────────────────────────────
-        SnapPosition::None => return,
-    };
-
-    ctx.move_resize(
-        win,
-        Rect { x, y, w, h },
-        MoveResizeOptions::hinted_immediate(false),
-    );
+    result
 }

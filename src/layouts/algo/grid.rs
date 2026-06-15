@@ -30,13 +30,16 @@
 //! divide evenly: `grid` pads the last *row*, while `horizgrid` pads the last
 //! *column*.
 
+use std::collections::HashMap;
+
 use crate::constants::animation::{
     BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
 };
-use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::query::framecount_for_layout;
-use crate::types::{Monitor, Rect};
+use crate::layouts::LayoutOutput;
+use crate::types::client::Client;
+use crate::types::{Monitor, Rect, WindowId};
 
 // ── grid ─────────────────────────────────────────────────────────────────────
 
@@ -44,23 +47,26 @@ use crate::types::{Monitor, Rect};
 ///
 /// Falls back to [`super::tile::tile`] when there are ≤ 2 clients on a
 /// landscape monitor, where a master/stack split looks better.
-pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn grid(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    animated: bool,
+) -> Vec<LayoutOutput> {
     // Two-client landscape shortcut: tile looks nicer.
-    if m.clientcount <= 2 && m.monitor_rect.w > m.monitor_rect.h {
-        super::tile::tile(ctx, m);
-        return;
+    if monitor.clientcount <= 2 && monitor.monitor_rect.w > monitor.monitor_rect.h {
+        return super::tile::tile(monitor, clients, animated);
     }
 
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as i32;
+    let n = monitor.tiled_client_count(clients) as i32;
 
     if n == 0 {
-        return;
+        return vec![];
     }
 
-    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let tiled = monitor.collect_tiled(clients);
     let framecount = framecount_for_layout(
-        ctx.core().globals().behavior.animated,
+        animated,
         n as usize,
         FAST_ANIM_THRESHOLD,
         3,
@@ -70,17 +76,16 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     // A single tiled client fills the whole work area.
     if n == 1 {
         let client = &tiled[0];
-        ctx.move_resize(
-            client.win,
-            Rect {
-                x: m.work_rect.x,
-                y: m.work_rect.y,
-                w: m.work_rect.w - BORDER_MULTIPLIER * client.border_width,
-                h: m.work_rect.h - BORDER_MULTIPLIER * client.border_width,
+        return vec![LayoutOutput {
+            win: client.win,
+            rect: Rect {
+                x: monitor.work_rect.x,
+                y: monitor.work_rect.y,
+                w: monitor.work_rect.w - BORDER_MULTIPLIER * client.border_width,
+                h: monitor.work_rect.h - BORDER_MULTIPLIER * client.border_width,
             },
-            MoveResizeOptions::animate_to(framecount),
-        );
-        return;
+            options: MoveResizeOptions::animate_to(framecount),
+        }];
     }
 
     // ── find the smallest integer r such that r² ≥ n ─────────────────────
@@ -99,15 +104,16 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         rows as u32
     };
 
-    let cell_height = m.work_rect.h / if rows > 0 { rows } else { 1 };
-    let cell_width = m.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
+    let cell_height = monitor.work_rect.h / if rows > 0 { rows } else { 1 };
+    let cell_width = monitor.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
 
     // ── place each tiled client ─────────────────────────────────────────
-    let selected_tags = m.selected_tags();
+    let selected_tags = monitor.selected_tags();
     let mut i: i32 = 0;
+    let mut result = Vec::new();
 
-    for &win in &m.clients {
-        let Some(c) = ctx.core().client(win) else {
+    for &win in &monitor.clients {
+        let Some(c) = clients.get(&win) else {
             continue;
         };
 
@@ -118,35 +124,37 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 
         let border_width = c.border_width;
 
-        let cell_x = m.work_rect.x + (i / rows) * cell_width;
-        let cell_y = m.work_rect.y + (i % rows) * cell_height;
+        let cell_x = monitor.work_rect.x + (i / rows) * cell_width;
+        let cell_y = monitor.work_rect.y + (i % rows) * cell_height;
 
         // Last cell in a row or column gets the remaining pixels to avoid gaps
         // caused by integer division rounding.
         let extra_h = if (i + 1) % rows == 0 {
-            m.work_rect.h - cell_height * rows
+            monitor.work_rect.h - cell_height * rows
         } else {
             0
         };
         let extra_w = if i >= rows * (cols as i32 - 1) {
-            m.work_rect.w - cell_width * cols as i32
+            monitor.work_rect.w - cell_width * cols as i32
         } else {
             0
         };
 
-        ctx.move_resize(
+        result.push(LayoutOutput {
             win,
-            Rect {
+            rect: Rect {
                 x: cell_x,
                 y: cell_y,
                 w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                 h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
             },
-            MoveResizeOptions::animate_to(framecount),
-        );
+            options: MoveResizeOptions::animate_to(framecount),
+        });
 
         i += 1;
     }
+
+    result
 }
 
 // ── horizgrid ─────────────────────────────────────────────────────────────────
@@ -156,16 +164,20 @@ pub fn grid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// Arranges clients in equal-width columns, each column containing an equal
 /// share of clients stacked vertically.  The last column absorbs any remainder
 /// so there are never empty cells.
-pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+pub fn horizgrid(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    animated: bool,
+) -> Vec<LayoutOutput> {
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+    let n = monitor.tiled_client_count(clients) as u32;
 
     if n == 0 {
-        return;
+        return vec![];
     }
 
     let framecount = framecount_for_layout(
-        ctx.core().globals().behavior.animated,
+        animated,
         n as usize,
         FAST_ANIM_THRESHOLD,
         FAST_FRAME_COUNT,
@@ -176,7 +188,9 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
     let cols = ((n as f32).sqrt() + 0.5) as u32;
 
     // Collect tiled clients first
-    let tiled = m.collect_tiled(ctx.core().globals().clients.map());
+    let tiled = monitor.collect_tiled(clients);
+
+    let mut result = Vec::new();
 
     for col in 0..cols {
         // Clients in this column: last column absorbs any remainder.
@@ -185,7 +199,7 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         } else {
             n / cols
         };
-        let cell_width = m.work_rect.w / cols as i32;
+        let cell_width = monitor.work_rect.w / cols as i32;
 
         // Start index for this column
         let start_idx = (col * (n / cols)) as usize;
@@ -198,29 +212,31 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
             let win = tiled[idx].win;
             let border_width = tiled[idx].border_width;
 
-            let cell_height = m.work_rect.h / cn as i32;
-            let cell_x = m.work_rect.x + col as i32 * cell_width;
-            let cell_y = m.work_rect.y + row as i32 * cell_height;
+            let cell_height = monitor.work_rect.h / cn as i32;
+            let cell_x = monitor.work_rect.x + col as i32 * cell_width;
+            let cell_y = monitor.work_rect.y + row as i32 * cell_height;
 
             // Last column gets any remaining width from rounding.
             let extra_w = if col == cols - 1 {
-                m.work_rect.w - cols as i32 * cell_width + cell_width
+                monitor.work_rect.w - cols as i32 * cell_width + cell_width
             } else {
                 0
             };
 
-            ctx.move_resize(
+            result.push(LayoutOutput {
                 win,
-                Rect {
+                rect: Rect {
                     x: cell_x,
                     y: cell_y,
                     w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
                     h: cell_height - BORDER_MULTIPLIER * border_width,
                 },
-                MoveResizeOptions::animate_to(framecount),
-            );
+                options: MoveResizeOptions::animate_to(framecount),
+            });
         }
     }
+
+    result
 }
 
 // ── gaplessgrid ───────────────────────────────────────────────────────────────
@@ -230,6 +246,10 @@ pub fn horizgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 /// Kept as a named entry point so that layout index tables that reference
 /// `gaplessgrid` by name continue to compile without changes.
 #[inline]
-pub fn gaplessgrid(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    grid(ctx, m);
+pub fn gaplessgrid(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    animated: bool,
+) -> Vec<LayoutOutput> {
+    grid(monitor, clients, animated)
 }

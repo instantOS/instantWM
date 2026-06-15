@@ -45,21 +45,32 @@
 //! | `true`  | toward the centre (spiral)   |
 //! | `false` | away from centre (dwindle)   |
 
+use std::collections::HashMap;
+
 use crate::constants::animation::BORDER_MULTIPLIER;
-use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Monitor, Rect};
+use crate::layouts::LayoutOutput;
+use crate::types::client::Client;
+use crate::types::{Monitor, Rect, WindowId};
 
 // ── public entry points ───────────────────────────────────────────────────────
 
 /// Inward-spiral fibonacci layout.
-pub fn spiral(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    fibonacci(ctx, m, true);
+pub fn spiral(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    _animated: bool,
+) -> Vec<LayoutOutput> {
+    fibonacci(monitor, clients, _animated, true)
 }
 
 /// Outward-dwindle fibonacci layout.
-pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    fibonacci(ctx, m, false);
+pub fn dwindle(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    _animated: bool,
+) -> Vec<LayoutOutput> {
+    fibonacci(monitor, clients, _animated, false)
 }
 
 // ── shared implementation ─────────────────────────────────────────────────────
@@ -79,27 +90,34 @@ pub fn dwindle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
 ///   inward (classic golden-ratio spiral).
 /// - `spiral = false` — the client takes the inner half; the remainder grows
 ///   outward (dwindle / Fibonacci staircase).
-pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
+fn fibonacci(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    _animated: bool,
+    spiral: bool,
+) -> Vec<LayoutOutput> {
     // ── count tiled clients ───────────────────────────────────────────────
-    let n = m.tiled_client_count(ctx.core_mut().globals_mut().clients.map()) as u32;
+    let n = monitor.tiled_client_count(clients) as u32;
 
     if n == 0 {
-        return;
+        return Vec::new();
     }
 
     // ── iteratively partition the work area ───────────────────────────────
     // `x`, `y`, `w`, `h` track the *remaining* rectangle that still needs to
     // be distributed among the not-yet-placed clients.
-    let mut x = m.work_rect.x;
-    let mut y = m.work_rect.y;
-    let mut w = m.work_rect.w;
-    let mut h = m.work_rect.h;
+    let mut x = monitor.work_rect.x;
+    let mut y = monitor.work_rect.y;
+    let mut w = monitor.work_rect.w;
+    let mut h = monitor.work_rect.h;
 
-    let selected_tags = m.selected_tags();
+    let selected_tags = monitor.selected_tags();
     let mut i: u32 = 0;
 
-    for &win in &m.clients {
-        let Some(c) = ctx.core().client(win) else {
+    let mut result = Vec::new();
+
+    for &win in &monitor.clients {
+        let Some(c) = clients.get(&win) else {
             continue;
         };
 
@@ -131,16 +149,16 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
             }
         }
 
-        ctx.move_resize(
+        result.push(LayoutOutput {
             win,
-            Rect {
+            rect: Rect {
                 x,
                 y,
                 w: w - BORDER_MULTIPLIER * border_width,
                 h: h - BORDER_MULTIPLIER * border_width,
             },
-            MoveResizeOptions::hinted_immediate(false),
-        );
+            options: MoveResizeOptions::hinted_immediate(false),
+        });
 
         // After placing the client, advance the remainder pointer.
         if i.is_multiple_of(2) {
@@ -153,4 +171,6 @@ pub fn fibonacci(ctx: &mut WmCtx<'_>, m: &mut Monitor, spiral: bool) {
 
         i += 1;
     }
+
+    result
 }

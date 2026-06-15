@@ -16,60 +16,52 @@
 //! window is snapped into place instantly (0 frames) to avoid mid-air ghost
 //! windows appearing during the animation.
 
-use crate::backend::BackendOps;
+use std::collections::HashMap;
+
 use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
-use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
-use crate::types::{Monitor, Rect};
+use crate::layouts::LayoutOutput;
+use crate::types::client::Client;
+use crate::types::{Monitor, Rect, WindowId};
 
-pub fn monocle(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    // ── raise the selected client so it is visible while we animate ───────
-    let is_animated = ctx.core_mut().globals_mut().behavior.animated
-        && !ctx.core_mut().globals_mut().monitors.is_empty();
+pub fn monocle(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    animated: bool,
+) -> Vec<LayoutOutput> {
+    let selected_window = monitor.sel;
+    let selected_tags = monitor.selected_tags();
 
-    if is_animated {
-        let mon = ctx.core_mut().globals_mut().selected_monitor();
-        if let Some(selected_window) = mon.sel {
-            ctx.backend().raise_window_visual_only(selected_window);
-            ctx.backend().flush();
-        }
-    }
+    let mut result = Vec::new();
 
-    // ── snapshot selected window before the loop ────────
-    let selected_window = ctx.core().selected_client();
-    let selected_tags = m.selected_tags();
-
-    // ── resize every tiled client to fill the work area ───────────────────
-    for &win in &m.clients {
-        let Some(c) = ctx.core().client(win) else {
+    for &win in &monitor.clients {
+        let Some(c) = clients.get(&win) else {
             continue;
         };
 
-        // Skip non-tiled, hidden, or invisible clients
         if !c.is_tiled(selected_tags) {
             continue;
         }
 
         let border_width = c.border_width;
 
-        // Only animate the currently selected window; snap everything else
-        // immediately so there are no ghost windows flying around.
-        let frames =
-            if ctx.core_mut().globals_mut().behavior.animated && Some(win) == selected_window {
-                DEFAULT_FRAME_COUNT
-            } else {
-                0
-            };
+        let frames = if animated && Some(win) == selected_window {
+            DEFAULT_FRAME_COUNT
+        } else {
+            0
+        };
 
-        ctx.move_resize(
+        result.push(LayoutOutput {
             win,
-            Rect {
-                x: m.work_rect.x,
-                y: m.work_rect.y,
-                w: m.work_rect.w - BORDER_MULTIPLIER * border_width,
-                h: m.work_rect.h - BORDER_MULTIPLIER * border_width,
+            rect: Rect {
+                x: monitor.work_rect.x,
+                y: monitor.work_rect.y,
+                w: monitor.work_rect.w - BORDER_MULTIPLIER * border_width,
+                h: monitor.work_rect.h - BORDER_MULTIPLIER * border_width,
             },
-            MoveResizeOptions::animate_to(frames),
-        );
+            options: MoveResizeOptions::animate_to(frames),
+        });
     }
+
+    result
 }

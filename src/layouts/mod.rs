@@ -33,10 +33,50 @@ pub mod algo;
 pub mod manager;
 pub mod query;
 
+use std::collections::HashMap;
 use std::str::FromStr;
 
-use crate::contexts::WmCtx;
-use crate::types::Monitor;
+use crate::geometry::MoveResizeOptions;
+use crate::types::client::Client;
+use crate::types::{Monitor, Rect, WindowId};
+
+/// The computed geometry output for a single client in a layout pass.
+///
+/// Returned by the pure `compute` methods on layout algorithms and collected
+/// into an [`ArrangePlan`] for batch application.
+#[derive(Debug, Clone)]
+pub struct LayoutOutput {
+    pub win: WindowId,
+    pub rect: Rect,
+    pub options: MoveResizeOptions,
+}
+
+/// Pure-data snapshot of the monitor state changes after an arrange pass.
+#[derive(Debug, Clone)]
+pub struct MonitorUpdates {
+    pub clientcount: u32,
+    pub nmaster: i32,
+    pub mfact: f32,
+    pub work_rect: Rect,
+    pub bar_y: i32,
+}
+
+/// Complete set of changes required to arrange one monitor.
+///
+/// Produced by [`Monitor::compute_arrange`] (mutates a snapshot to compute bar geometry)
+/// and applied atomically by [`ArrangePlan::apply`].
+#[derive(Debug, Clone)]
+pub struct ArrangePlan {
+    pub monitor_updates: MonitorUpdates,
+    pub borders: Vec<(WindowId, i32)>,
+    pub client_moves: Vec<LayoutOutput>,
+    pub fullscreen_moves: Vec<LayoutOutput>,
+    /// Windows whose geometry should be saved before applying moves
+    /// (used by overview mode to preserve floating positions).
+    pub save_geo: Vec<WindowId>,
+    /// True when the plan was computed for overview mode.
+    pub is_overview: bool,
+}
 
 /// All available window layouts.
 ///
@@ -87,14 +127,22 @@ impl LayoutKind {
         }
     }
 
-    pub fn arrange(self, ctx: &mut WmCtx<'_>, m: &mut Monitor) {
+    /// Compute layout geometry for this layout kind.
+    ///
+    /// Pure computation — returns `LayoutOutput`s without side effects.
+    pub fn compute(
+        self,
+        monitor: &Monitor,
+        clients: &HashMap<WindowId, Client>,
+        animated: bool,
+    ) -> Vec<LayoutOutput> {
         match self {
-            Self::Tile => algo::tile(ctx, m),
-            Self::Grid => algo::grid(ctx, m),
-            Self::Floating => algo::floating(ctx, m),
-            Self::Monocle => algo::monocle(ctx, m),
-            Self::Deck => algo::deck(ctx, m),
-            Self::BottomStack => algo::bottom_stack(ctx, m),
+            Self::Tile => algo::tile(monitor, clients, animated),
+            Self::Grid => algo::grid(monitor, clients, animated),
+            Self::Floating => algo::floating(monitor, clients, animated),
+            Self::Monocle => algo::monocle(monitor, clients, animated),
+            Self::Deck => algo::deck(monitor, clients, animated),
+            Self::BottomStack => algo::bottom_stack(monitor, clients, animated),
         }
     }
 
@@ -137,8 +185,10 @@ impl FromStr for LayoutKind {
     }
 }
 
-// ── Re-exports: manager ───────────────────────────────────────────────────────
+// ── Re-exports ────────────────────────────────────────────────────────────────
 pub use manager::{
     arrange, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, sync_monitor_z_order,
     toggle_layout,
 };
+
+

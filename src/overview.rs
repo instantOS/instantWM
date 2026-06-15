@@ -1,6 +1,10 @@
+use std::collections::HashMap;
+
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutOutput;
+use crate::types::client::Client;
 use crate::types::{Monitor, Rect, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
@@ -173,22 +177,22 @@ pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
 
 /// Arrange the selected monitor in overview mode.
 ///
-/// Uses a grid of anchor points while preserving each window's current size.
-/// This produces a "cards"-style overview where windows can overlap but remain
-/// partially visible.
-pub fn arrange(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
-    let selected_tags = m.selected_tags();
-    let mut ordered_windows: Vec<WindowId> = m.z_order.iter_bottom_to_top().collect();
-    for &win in &m.clients {
+pub fn compute(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+) -> (Vec<LayoutOutput>, Vec<WindowId>) {
+    let selected_tags = monitor.selected_tags();
+    let mut ordered_windows: Vec<WindowId> = monitor.z_order.iter_bottom_to_top().collect();
+    for &win in &monitor.clients {
         if !ordered_windows.contains(&win) {
             ordered_windows.push(win);
         }
     }
 
-    let clients: Vec<(WindowId, i32, i32, bool)> = ordered_windows
+    let client_info: Vec<(WindowId, i32, i32, bool)> = ordered_windows
         .into_iter()
         .filter_map(|win| {
-            let c = ctx.core().client(win)?;
+            let c = clients.get(&win)?;
             if !c.is_visible(selected_tags) || c.is_edge_scratchpad() {
                 return None;
             }
@@ -196,22 +200,25 @@ pub fn arrange(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         })
         .collect();
 
-    if clients.is_empty() {
-        return;
+    if client_info.is_empty() {
+        return (vec![], vec![]);
     }
 
     let mut gridwidth = 1_i32;
-    while (gridwidth * gridwidth) < clients.len() as i32 {
+    while (gridwidth * gridwidth) < client_info.len() as i32 {
         gridwidth += 1;
     }
 
-    let work_rect = m.work_rect;
+    let work_rect = monitor.work_rect;
     let cell_w = (work_rect.w / gridwidth).max(1);
     let cell_h = (work_rect.h / gridwidth).max(1);
 
-    for (i, (win, width, height, is_floating)) in clients.iter().copied().enumerate() {
-        if is_floating && let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-            client.save_floating_geometry();
+    let mut moves = Vec::new();
+    let mut save_geo = Vec::new();
+
+    for (i, (win, width, height, is_floating)) in client_info.iter().copied().enumerate() {
+        if is_floating {
+            save_geo.push(win);
         }
 
         let row = i as i32 / gridwidth;
@@ -219,24 +226,17 @@ pub fn arrange(ctx: &mut WmCtx<'_>, m: &mut Monitor) {
         let x = work_rect.x + col * cell_w;
         let y = work_rect.y + row * cell_h;
 
-        ctx.move_resize(
+        moves.push(LayoutOutput {
             win,
-            Rect {
+            rect: Rect {
                 x,
                 y,
                 w: width,
                 h: height,
             },
-            MoveResizeOptions::hinted_immediate(false),
-        );
-        ctx.raise_window_visual_only(win);
+            options: MoveResizeOptions::hinted_immediate(false),
+        });
     }
 
-    if let Some(selected) = m.sel
-        && clients.iter().any(|(win, _, _, _)| *win == selected)
-    {
-        ctx.raise_window_visual_only(selected);
-    }
-
-    ctx.flush();
+    (moves, save_geo)
 }

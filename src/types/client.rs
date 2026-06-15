@@ -692,8 +692,6 @@ mod tests {
 pub struct TiledClientInfo {
     pub win: WindowId,
     pub border_width: i32,
-    pub total_height: i32,
-    pub total_width: i32,
 }
 
 /// Iterator over a monitor's client list (focus order).
