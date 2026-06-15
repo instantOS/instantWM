@@ -43,12 +43,15 @@
 //! | flag    | how the remainder rect moves |
 //! |---------|------------------------------|
 //! | `true`  | toward the centre (spiral)   |
+//! |---------|------------------------------|
 //! | `false` | away from centre (dwindle)   |
 
 use std::collections::HashMap;
 
-use crate::constants::animation::BORDER_MULTIPLIER;
+use crate::config::config_toml::LayoutConfig;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
@@ -59,18 +62,20 @@ use crate::types::{Monitor, Rect, WindowId};
 pub fn spiral(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     _animated: bool,
 ) -> Vec<LayoutOutput> {
-    fibonacci(monitor, clients, _animated, true)
+    fibonacci(monitor, clients, layout_cfg, _animated, true)
 }
 
 /// Outward-dwindle fibonacci layout.
 pub fn dwindle(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     _animated: bool,
 ) -> Vec<LayoutOutput> {
-    fibonacci(monitor, clients, _animated, false)
+    fibonacci(monitor, clients, layout_cfg, _animated, false)
 }
 
 // ── shared implementation ─────────────────────────────────────────────────────
@@ -93,6 +98,7 @@ pub fn dwindle(
 fn fibonacci(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     _animated: bool,
     spiral: bool,
 ) -> Vec<LayoutOutput> {
@@ -103,13 +109,16 @@ fn fibonacci(
         return Vec::new();
     }
 
+    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Tile, n);
+    let work_rect = placement.work_rect();
+
     // ── iteratively partition the work area ───────────────────────────────
     // `x`, `y`, `w`, `h` track the *remaining* rectangle that still needs to
     // be distributed among the not-yet-placed clients.
-    let mut x = monitor.work_rect.x;
-    let mut y = monitor.work_rect.y;
-    let mut w = monitor.work_rect.w;
-    let mut h = monitor.work_rect.h;
+    let mut x = work_rect.x;
+    let mut y = work_rect.y;
+    let mut w = work_rect.w;
+    let mut h = work_rect.h;
 
     let selected_tags = monitor.selected_tags();
     let mut i: u32 = 0;
@@ -149,14 +158,11 @@ fn fibonacci(
             }
         }
 
+        let slot = Rect { x, y, w, h };
+
         result.push(LayoutOutput {
             win,
-            rect: Rect {
-                x,
-                y,
-                w: w - BORDER_MULTIPLIER * border_width,
-                h: h - BORDER_MULTIPLIER * border_width,
-            },
+            rect: placement.client_rect(slot, border_width),
             options: MoveResizeOptions::hinted_immediate(false),
         });
 

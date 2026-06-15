@@ -26,6 +26,8 @@
 //!                   ↑ Maximized fills the whole work area
 //! ```
 //!
+//! use std::collections::HashMap;
+
 use std::collections::HashMap;
 
 use crate::geometry::MoveResizeOptions;

@@ -33,8 +33,10 @@
 
 use std::collections::HashMap;
 
-use crate::constants::animation::BORDER_MULTIPLIER;
+use crate::config::config_toml::LayoutConfig;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
@@ -42,6 +44,7 @@ use crate::types::{Monitor, Rect, WindowId};
 pub fn three_column(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     _animated: bool,
 ) -> Vec<LayoutOutput> {
     let tiled_client_count = monitor.tiled_client_count(clients) as u32;
@@ -50,56 +53,49 @@ pub fn three_column(
         return vec![];
     }
 
-    // Collect all tiled clients
-    let selected_tags = monitor.selected_tags();
-    let tiled_clients: Vec<WindowId> = monitor
-        .clients
-        .iter()
-        .filter_map(|&win| {
-            let c = clients.get(&win)?;
-            if !c.is_tiled(selected_tags) {
-                return None;
-            }
-            Some(win)
-        })
-        .collect();
+    let tiled_clients = monitor.collect_tiled(clients);
 
     if tiled_clients.is_empty() {
         return vec![];
     }
 
-    let first_win = tiled_clients[0];
-    let first_client = clients.get(&first_win).expect("first_win guaranteed by collect_tiled filter");
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        LayoutKind::Tile,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
+    let first_client = &tiled_clients[0];
 
     let mut result = Vec::new();
 
     // Column geometry
-    let master_area_width = (monitor.mfact * monitor.work_rect.w as f32) as i32;
-    let side_column_width = (monitor.work_rect.w - master_area_width) / 2;
-
-    // Place master client
-    let master_bw = BORDER_MULTIPLIER * first_client.border_width;
+    let master_area_width = (monitor.mfact * work_rect.w as f32) as i32;
+    let side_column_width = (work_rect.w - master_area_width) / 2;
 
     let master_x = if tiled_client_count < 3 {
-        monitor.work_rect.x
+        work_rect.x
     } else {
-        monitor.work_rect.x + side_column_width
+        work_rect.x + side_column_width
     };
 
     let master_window_width = if tiled_client_count == 1 {
-        monitor.work_rect.w - master_bw
+        work_rect.w
     } else {
-        master_area_width - master_bw
+        master_area_width
+    };
+
+    let master_slot = Rect {
+        x: master_x,
+        y: work_rect.y,
+        w: master_window_width,
+        h: work_rect.h,
     };
 
     result.push(LayoutOutput {
-        win: first_win,
-        rect: Rect {
-            x: master_x,
-            y: monitor.work_rect.y,
-            w: master_window_width,
-            h: monitor.work_rect.h - master_bw,
-        },
+        win: first_client.win,
+        rect: placement.client_rect(master_slot, first_client.border_width),
         options: MoveResizeOptions::hinted_immediate(false),
     });
 
@@ -110,7 +106,7 @@ pub fn three_column(
     // Distribute stack clients
     let stack_client_count = tiled_client_count - 1;
     let stack_column_width = if stack_client_count == 1 {
-        monitor.work_rect.w - master_area_width
+        work_rect.w - master_area_width
     } else {
         side_column_width
     };
@@ -122,19 +118,19 @@ pub fn three_column(
 
     // Right column (even indices in stack: 0, 2, 4...)
     if right_column_client_count > 0 {
-        let raw_window_height = monitor.work_rect.h / right_column_client_count as i32;
+        let raw_window_height = work_rect.h / right_column_client_count as i32;
         let per_window_height = if raw_window_height < bar_height {
-            monitor.work_rect.h
+            work_rect.h
         } else {
             raw_window_height
         };
 
         let column_x = if tiled_client_count < 3 {
-            monitor.work_rect.x + master_area_width
+            work_rect.x + master_area_width
         } else {
-            monitor.work_rect.x + master_area_width + side_column_width
+            work_rect.x + master_area_width + side_column_width
         };
-        let mut next_window_y = monitor.work_rect.y;
+        let mut next_window_y = work_rect.y;
 
         // Stack clients start at index 1
         for stack_position in 0..right_column_client_count {
@@ -142,46 +138,44 @@ pub fn three_column(
             if stack_client_index >= tiled_clients.len() {
                 break;
             }
-            let win = tiled_clients[stack_client_index];
-            let c = clients.get(&win).expect("tiled client guaranteed by collect_tiled filter");
-            let border_width = c.border_width;
+            let client = &tiled_clients[stack_client_index];
 
             let window_height = if stack_position + 1 == right_column_client_count {
-                monitor.work_rect.y + monitor.work_rect.h
-                    - next_window_y
-                    - BORDER_MULTIPLIER * border_width
+                work_rect.y + work_rect.h - next_window_y
             } else {
-                per_window_height - BORDER_MULTIPLIER * border_width
+                per_window_height
+            };
+
+            let slot = Rect {
+                x: column_x,
+                y: next_window_y,
+                w: stack_column_width,
+                h: window_height,
             };
 
             result.push(LayoutOutput {
-                win,
-                rect: Rect {
-                    x: column_x,
-                    y: next_window_y,
-                    w: stack_column_width - BORDER_MULTIPLIER * border_width,
-                    h: window_height,
-                },
+                win: client.win,
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::hinted_immediate(false),
             });
 
-            if per_window_height != monitor.work_rect.h {
-                next_window_y += window_height + BORDER_MULTIPLIER * border_width;
+            if per_window_height != work_rect.h {
+                next_window_y += slot.h;
             }
         }
     }
 
     // Left column (odd indices in stack: 1, 3, 5...)
     if left_column_client_count > 0 {
-        let raw_window_height = monitor.work_rect.h / left_column_client_count as i32;
+        let raw_window_height = work_rect.h / left_column_client_count as i32;
         let per_window_height = if raw_window_height < bar_height {
-            monitor.work_rect.h
+            work_rect.h
         } else {
             raw_window_height
         };
 
-        let column_x = monitor.work_rect.x;
-        let mut next_window_y = monitor.work_rect.y;
+        let column_x = work_rect.x;
+        let mut next_window_y = work_rect.y;
 
         // Stack clients start at index 2 (second odd)
         for stack_position in 0..left_column_client_count {
@@ -189,31 +183,29 @@ pub fn three_column(
             if stack_client_index >= tiled_clients.len() {
                 break;
             }
-            let win = tiled_clients[stack_client_index];
-            let c = clients.get(&win).expect("tiled client guaranteed by collect_tiled filter");
-            let border_width = c.border_width;
+            let client = &tiled_clients[stack_client_index];
 
             let window_height = if stack_position + 1 == left_column_client_count {
-                monitor.work_rect.y + monitor.work_rect.h
-                    - next_window_y
-                    - BORDER_MULTIPLIER * border_width
+                work_rect.y + work_rect.h - next_window_y
             } else {
-                per_window_height - BORDER_MULTIPLIER * border_width
+                per_window_height
+            };
+
+            let slot = Rect {
+                x: column_x,
+                y: next_window_y,
+                w: stack_column_width,
+                h: window_height,
             };
 
             result.push(LayoutOutput {
-                win,
-                rect: Rect {
-                    x: column_x,
-                    y: next_window_y,
-                    w: stack_column_width - BORDER_MULTIPLIER * border_width,
-                    h: window_height,
-                },
+                win: client.win,
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::hinted_immediate(false),
             });
 
-            if per_window_height != monitor.work_rect.h {
-                next_window_y += window_height + BORDER_MULTIPLIER * border_width;
+            if per_window_height != work_rect.h {
+                next_window_y += slot.h;
             }
         }
     }

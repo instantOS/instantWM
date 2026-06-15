@@ -9,13 +9,13 @@ use smithay::desktop::PopupManager;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::globals::Globals;
-use crate::types::{BorderColorConfig, Rect, WindowId};
+use crate::types::{BorderColorConfig, Point, Rect, WindowId};
 
 /// Information about a window needed for border rendering.
 #[derive(Debug, Clone, Copy)]
 struct WindowBorderInfo {
     id: WindowId,
-    geo: Rect,
+    position: Point,
     border_width: i32,
     content_size: (i32, i32),
     is_visible: bool,
@@ -27,15 +27,18 @@ struct WindowBorderInfo {
 impl WindowBorderInfo {
     /// Total outer size including borders.
     fn outer_size(&self) -> (i32, i32) {
-        let bw = self.border_width;
-        let (cw, ch) = self.content_size;
-        (cw + 2 * bw, ch + 2 * bw)
+        let border_width = self.border_width;
+        let (content_width, content_height) = self.content_size;
+        (
+            content_width + 2 * border_width,
+            content_height + 2 * border_width,
+        )
     }
 
     /// Bounding rectangle including borders.
     fn bounding_rect(&self) -> Rect {
-        let (ow, oh) = self.outer_size();
-        Rect::new(self.geo.x, self.geo.y, ow, oh)
+        let (outer_width, outer_height) = self.outer_size();
+        Rect::new(self.position.x, self.position.y, outer_width, outer_height)
     }
 
     /// Checks if this window should render borders.
@@ -79,7 +82,10 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
 
         windows.push(WindowBorderInfo {
             id: marker.id,
-            geo: c.geo,
+            position: Point {
+                x: c.geo.x,
+                y: c.geo.y,
+            },
             border_width: c.border_width.max(0),
             content_size,
             is_visible,
@@ -93,37 +99,60 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
 }
 
 /// Generates the four border rectangles for a window.
-fn generate_border_rectangles(x: i32, y: i32, outer_w: i32, outer_h: i32, bw: i32) -> Vec<Rect> {
-    if bw <= 0 || outer_w <= 2 * bw || outer_h <= 2 * bw {
+fn generate_border_rectangles(
+    x: i32,
+    y: i32,
+    outer_width: i32,
+    outer_height: i32,
+    border_width: i32,
+) -> Vec<Rect> {
+    if border_width <= 0 || outer_width <= 2 * border_width || outer_height <= 2 * border_width {
         return Vec::new();
     }
 
-    let inner_h = (outer_h - 2 * bw).max(0);
+    let inner_height = (outer_height - 2 * border_width).max(0);
 
     vec![
         // Top border
-        Rect::new(x, y, outer_w, bw),
+        Rect::new(x, y, outer_width, border_width),
         // Bottom border
-        Rect::new(x, y + outer_h - bw, outer_w, bw),
+        Rect::new(
+            x,
+            y + outer_height - border_width,
+            outer_width,
+            border_width,
+        ),
         // Left border (between top and bottom)
-        Rect::new(x, y + bw, bw, inner_h),
+        Rect::new(x, y + border_width, border_width, inner_height),
         // Right border (between top and bottom)
-        Rect::new(x + outer_w - bw, y + bw, bw, inner_h),
+        Rect::new(
+            x + outer_width - border_width,
+            y + border_width,
+            border_width,
+            inner_height,
+        ),
     ]
 }
 
 /// Subtracts occluders from border parts, returning the remaining visible parts.
-fn apply_occluders(border_parts: Vec<Rect>, occluders: &[Rect]) -> Vec<Rect> {
+/// Reuses the scratch vector's capacity to avoid heap allocations.
+fn apply_occluders(
+    border_parts: Vec<Rect>,
+    occluders: &[Rect],
+    scratch: &mut Vec<Rect>,
+) -> Vec<Rect> {
     let mut remaining = border_parts;
+    scratch.clear();
 
     for occluder in occluders {
         if remaining.is_empty() {
             break;
         }
-        remaining = remaining
-            .into_iter()
-            .flat_map(|part| part.subtract(occluder))
-            .collect();
+        for part in remaining.drain(..) {
+            scratch.extend(part.subtract(occluder));
+        }
+        std::mem::swap(&mut remaining, scratch);
+        scratch.clear();
     }
 
     remaining
@@ -155,21 +184,78 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
         let Some(space_loc) = state.space.element_location(window) else {
             continue;
         };
-        let window_geo = window.geometry();
+        let window_geometry = window.geometry();
         for (popup, popup_offset) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-            let popup_geo = popup.geometry();
-            if popup_geo.size.w <= 0 || popup_geo.size.h <= 0 {
+            let popup_geometry = popup.geometry();
+            if popup_geometry.size.w <= 0 || popup_geometry.size.h <= 0 {
                 continue;
             }
             occluders.push(Rect::new(
-                space_loc.x + window_geo.loc.x + popup_offset.x,
-                space_loc.y + window_geo.loc.y + popup_offset.y,
-                popup_geo.size.w,
-                popup_geo.size.h,
+                space_loc.x + window_geometry.loc.x + popup_offset.x,
+                space_loc.y + window_geometry.loc.y + popup_offset.y,
+                popup_geometry.size.w,
+                popup_geometry.size.h,
             ));
         }
     }
     occluders
+}
+
+/// Compute a zero-allocation u64 hash representing the current compositor state
+/// that affects borders (geometries, focus, tag masks, and popups).
+pub fn get_borders_hash(g: &Globals, state: &WaylandState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+
+    // 1. Selected window
+    g.selected_win().hash(&mut hasher);
+
+    // 2. Monitor layout / selected tags
+    for mon in g.monitors.iter_all() {
+        mon.id().hash(&mut hasher);
+        mon.monitor_rect.x.hash(&mut hasher);
+        mon.monitor_rect.y.hash(&mut hasher);
+        mon.monitor_rect.w.hash(&mut hasher);
+        mon.monitor_rect.h.hash(&mut hasher);
+        mon.selected_tags().hash(&mut hasher);
+        mon.is_tiling_layout().hash(&mut hasher);
+    }
+
+    // 3. Window and Popup properties
+    for window in state.space.elements() {
+        if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
+            marker.id.hash(&mut hasher);
+            if let Some(c) = g.clients.get(&marker.id) {
+                c.geo.x.hash(&mut hasher);
+                c.geo.y.hash(&mut hasher);
+                c.border_width.hash(&mut hasher);
+                c.is_hidden.hash(&mut hasher);
+                c.mode.is_floating().hash(&mut hasher);
+            }
+            let size = window.geometry().size;
+            size.w.hash(&mut hasher);
+            size.h.hash(&mut hasher);
+        }
+
+        if let Some(toplevel) = window.toplevel()
+            && let Some(space_loc) = state.space.element_location(window)
+        {
+            let window_geometry = window.geometry();
+            for (popup, popup_offset) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
+                let popup_geometry = popup.geometry();
+                space_loc.x.hash(&mut hasher);
+                space_loc.y.hash(&mut hasher);
+                window_geometry.loc.x.hash(&mut hasher);
+                window_geometry.loc.y.hash(&mut hasher);
+                popup_offset.x.hash(&mut hasher);
+                popup_offset.y.hash(&mut hasher);
+                popup_geometry.size.w.hash(&mut hasher);
+                popup_geometry.size.h.hash(&mut hasher);
+            }
+        }
+    }
+
+    hasher.finish()
 }
 
 /// Renders border elements for all visible windows.
@@ -184,27 +270,34 @@ pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidCol
     // Popups always render above borders, so they occlude every border.
     let popup_occluders: Vec<Rect> = build_popup_occluders(state);
 
+    let mut scratch = Vec::with_capacity(32);
+
     for (idx, window) in windows.iter().enumerate() {
         if !window.has_borders() {
             continue;
         }
 
-        let (outer_w, outer_h) = window.outer_size();
-        let bw = window.border_width;
+        let (outer_width, outer_height) = window.outer_size();
+        let border_width = window.border_width;
 
         // Generate the four border sides
-        let border_parts =
-            generate_border_rectangles(window.geo.x, window.geo.y, outer_w, outer_h, bw);
+        let border_parts = generate_border_rectangles(
+            window.position.x,
+            window.position.y,
+            outer_width,
+            outer_height,
+            border_width,
+        );
         if border_parts.is_empty() {
             continue;
         }
 
         // Subtract occluders from higher windows (windows in front)
         let higher_occluders = &occluders[idx + 1..];
-        let visible_parts = apply_occluders(border_parts, higher_occluders);
+        let visible_parts = apply_occluders(border_parts, higher_occluders, &mut scratch);
         // Subtract popup areas so right-click menus and similar overlays
         // are not covered by borders.
-        let visible_parts = apply_occluders(visible_parts, &popup_occluders);
+        let visible_parts = apply_occluders(visible_parts, &popup_occluders, &mut scratch);
 
         // Get color based on focus state
         let is_focused = Some(window.id) == selected_win;
@@ -223,14 +316,14 @@ fn push_solid(
     out: &mut Vec<SolidColorRenderElement>,
     x: i32,
     y: i32,
-    w: i32,
-    h: i32,
+    width: i32,
+    height: i32,
     color: [f32; 4],
 ) {
-    if w <= 0 || h <= 0 {
+    if width <= 0 || height <= 0 {
         return;
     }
-    let buffer = SolidColorBuffer::new((w, h), color);
+    let buffer = SolidColorBuffer::new((width, height), color);
     out.push(SolidColorRenderElement::from_buffer(
         &buffer,
         (x, y),

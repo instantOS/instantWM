@@ -43,8 +43,8 @@ pub struct X11RuntimeConfig {
     pub statusscheme: StatusScheme,
     /// X11 cursors for different cursor states.
     pub cursors: [Option<Cursor>; 10],
-    /// Last cursor index applied to the X11 root cursor (caching to avoid redundant requests).
-    pub last_x11_cursor_index: Option<usize>,
+    /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
+    pub last_x11_cursor: Option<crate::types::AltCursor>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
 }
@@ -64,7 +64,7 @@ impl Default for X11RuntimeConfig {
             borderscheme: BorderScheme::default(),
             statusscheme: StatusScheme::default(),
             cursors: [const { None }; 10],
-            last_x11_cursor_index: None,
+            last_x11_cursor: None,
             window_animations: crate::animation::WindowAnimations::new(),
         }
     }
@@ -90,20 +90,32 @@ impl X11RuntimeConfig {
 }
 
 pub mod bar;
+pub mod bar_painter;
 pub mod client;
+pub mod constants;
 pub mod draw;
 pub mod events;
 pub mod floating;
+pub mod focus;
+pub mod fullscreen;
+pub mod geometry;
 pub mod grab;
+pub mod keyboard;
+pub mod kill;
 pub mod lifecycle;
+pub mod monitor_helpers;
 pub mod mouse;
+pub mod policy;
 pub mod properties;
 pub mod randr;
+pub mod startup;
+pub mod systray;
+pub mod visibility;
 
 pub use client::update_size_hints_x11;
 pub use properties::{
-    set_client_state, set_client_tag_prop, update_client_list, update_motif_hints,
-    update_window_type, update_wm_hints, window_properties_x11,
+    set_client_state, set_client_tag_prop, update_client_list, update_ewmh_desktop_props,
+    update_motif_hints, update_window_type, update_wm_hints, window_properties_x11,
 };
 
 pub struct X11Backend {
@@ -179,6 +191,18 @@ pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect>
 }
 
 impl BackendOps for X11BackendRef<'_> {
+    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new()
+                .x(rect.x)
+                .y(rect.y)
+                .width(rect.w.max(1) as u32)
+                .height(rect.h.max(1) as u32),
+        );
+    }
+
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;

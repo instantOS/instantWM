@@ -223,24 +223,6 @@ pub enum SnapPosition {
     Maximized,
 }
 
-impl SnapPosition {
-    /// Convert this snap position to a numeric index for matrix lookup.
-    pub fn to_index(self) -> usize {
-        match self {
-            Self::None => 0,
-            Self::Top => 1,
-            Self::TopRight => 2,
-            Self::Right => 3,
-            Self::BottomRight => 4,
-            Self::Bottom => 5,
-            Self::BottomLeft => 6,
-            Self::Left => 7,
-            Self::TopLeft => 8,
-            Self::Maximized => 9,
-        }
-    }
-}
-
 /// Direction for window resize operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResizeDirection {
@@ -465,16 +447,6 @@ impl Direction {
             Self::Up => (0, -step),
             Self::Right => (step, 0),
             Self::Left => (-step, 0),
-        }
-    }
-
-    /// Column index for [`crate::floating::snap::SNAP_MATRIX`] (Up=0, Right=1, Down=2, Left=3).
-    pub fn snap_matrix_index(self) -> usize {
-        match self {
-            Self::Up => 0,
-            Self::Right => 1,
-            Self::Down => 2,
-            Self::Left => 3,
         }
     }
 

@@ -4,7 +4,6 @@
 //! the layout engine.  They are collected here so that neither `geometry.rs`
 //! nor the layout algorithms need to know about each other's internals.
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::focus::focus;
 
@@ -43,13 +42,13 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    if crate::overview::is_active(ctx.core()) {
+    if crate::overview::is_active(ctx.core().globals()) {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::ToSelectedWindow);
         ctx.request_bar_update();
         return;
     }
 
-    let Some(win) = ctx.core().selected_client() else {
+    let Some(win) = ctx.core().globals().selected_win() else {
         return;
     };
 

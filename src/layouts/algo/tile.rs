@@ -1,10 +1,5 @@
 //! Classic master-stack tiling layout.
 //!
-//! Offset accumulation uses the requested rect (`rect.h + 2 * bw`) rather than
-//! the final applied geometry after size-hint clamping. This assumes tiled
-//! clients have no constraints that would cause the backend to diverge from the
-//! request — true for all practical tiling cases.
-//!
 //! The screen is split vertically into:
 //!
 //! ```text
@@ -22,9 +17,11 @@
 //! - The right column holds all remaining clients in the same fashion.
 //! - When there is only one client it expands to fill the entire work area.
 
-use crate::constants::animation::BORDER_MULTIPLIER;
+use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
@@ -36,19 +33,24 @@ fn effective_nmaster(monitor: &Monitor, tiled_client_count: u32) -> u32 {
     min(monitor.nmaster.max(0) as u32, tiled_client_count)
 }
 
-fn master_width(monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32 {
+fn master_width(work_width: i32, monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32 {
     if tiled_client_count > nmaster {
         if nmaster > 0 {
-            (monitor.mfact * monitor.work_rect.w as f32) as i32
+            (monitor.mfact * work_width as f32) as i32
         } else {
             0
         }
     } else {
-        monitor.work_rect.w
+        work_width
     }
 }
 
-pub fn tile(monitor: &Monitor, clients: &HashMap<WindowId, Client>, animated: bool) -> Vec<LayoutOutput> {
+pub fn tile(
+    monitor: &Monitor,
+    clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
+    animated: bool,
+) -> Vec<LayoutOutput> {
     let tiled_clients = monitor.collect_tiled(clients);
     let tiled_client_count = tiled_clients.len() as u32;
 
@@ -64,18 +66,25 @@ pub fn tile(monitor: &Monitor, clients: &HashMap<WindowId, Client>, animated: bo
         DEFAULT_FRAME_COUNT,
     );
 
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        LayoutKind::Tile,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
     let nmaster = effective_nmaster(monitor, tiled_client_count);
-    let master_area_width = master_width(monitor, tiled_client_count, nmaster);
+    let master_area_width = master_width(work_rect.w, monitor, tiled_client_count, nmaster);
 
-    let mut master_y_offset: u32 = 0;
-    let mut stack_y_offset: u32 = 0;
+    let mut master_y_offset: i32 = 0;
+    let mut stack_y_offset: i32 = 0;
 
     let mut result = Vec::new();
 
     for (index, client) in tiled_clients.iter().enumerate() {
         if (index as u32) < nmaster {
             let master_window_height =
-                (monitor.work_rect.h - master_y_offset as i32) / (nmaster - index as u32) as i32;
+                (work_rect.h - master_y_offset) / (nmaster - index as u32) as i32;
 
             let animation_frames = if tiled_client_count == 2 {
                 0
@@ -83,26 +92,25 @@ pub fn tile(monitor: &Monitor, clients: &HashMap<WindowId, Client>, animated: bo
                 framecount
             };
 
-            let rect = Rect {
-                x: monitor.work_rect.x,
-                y: monitor.work_rect.y + master_y_offset as i32,
-                w: master_area_width - BORDER_MULTIPLIER * client.border_width,
-                h: master_window_height - BORDER_MULTIPLIER * client.border_width,
+            let slot = Rect {
+                x: work_rect.x,
+                y: work_rect.y + master_y_offset,
+                w: master_area_width,
+                h: master_window_height,
             };
 
             result.push(LayoutOutput {
                 win: client.win,
-                rect,
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::animate_to(animation_frames),
             });
 
-            let total_h = rect.h + 2 * client.border_width;
-            if master_y_offset as i32 + total_h < monitor.work_rect.h {
-                master_y_offset += total_h as u32;
+            if master_y_offset + slot.h < work_rect.h {
+                master_y_offset += slot.h;
             }
         } else {
-            let stack_window_height = (monitor.work_rect.h - stack_y_offset as i32)
-                / (tiled_client_count - index as u32) as i32;
+            let stack_window_height =
+                (work_rect.h - stack_y_offset) / (tiled_client_count - index as u32) as i32;
 
             let animation_frames = if tiled_client_count == 2 {
                 0
@@ -110,24 +118,21 @@ pub fn tile(monitor: &Monitor, clients: &HashMap<WindowId, Client>, animated: bo
                 framecount
             };
 
-            let rect = Rect {
-                x: monitor.work_rect.x + master_area_width,
-                y: monitor.work_rect.y + stack_y_offset as i32,
-                w: monitor.work_rect.w
-                    - master_area_width
-                    - BORDER_MULTIPLIER * client.border_width,
-                h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
+            let slot = Rect {
+                x: work_rect.x + master_area_width,
+                y: work_rect.y + stack_y_offset,
+                w: work_rect.w - master_area_width,
+                h: stack_window_height,
             };
 
             result.push(LayoutOutput {
                 win: client.win,
-                rect,
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::animate_to(animation_frames),
             });
 
-            let total_h = rect.h + 2 * client.border_width;
-            if stack_y_offset as i32 + total_h < monitor.work_rect.h {
-                stack_y_offset += total_h as u32;
+            if stack_y_offset + slot.h < work_rect.h {
+                stack_y_offset += slot.h;
             }
         }
     }
@@ -148,7 +153,12 @@ mod tests {
         monitor.nmaster = 1;
 
         assert_eq!(
-            master_width(&monitor, 2, effective_nmaster(&monitor, 2)),
+            master_width(
+                monitor.work_rect.w,
+                &monitor,
+                2,
+                effective_nmaster(&monitor, 2)
+            ),
             700
         );
     }
@@ -161,7 +171,12 @@ mod tests {
         monitor.nmaster = 2;
 
         assert_eq!(
-            master_width(&monitor, 1, effective_nmaster(&monitor, 1)),
+            master_width(
+                monitor.work_rect.w,
+                &monitor,
+                1,
+                effective_nmaster(&monitor, 1)
+            ),
             1000
         );
     }
@@ -184,13 +199,14 @@ mod tests {
         let nmaster = effective_nmaster(&monitor, 3);
 
         assert_eq!(nmaster, 0);
-        assert_eq!(master_width(&monitor, 3, nmaster), 0);
+        assert_eq!(master_width(monitor.work_rect.w, &monitor, 3, nmaster), 0);
     }
 
     #[test]
     fn test_tile_layout_calculation() {
         use super::tile;
         use crate::types::{Client, Rect, TagMask, WindowId};
+        use crate::config::config_toml::LayoutConfig;
         use std::collections::HashMap;
 
         let mut monitor = Monitor::default();
@@ -215,7 +231,8 @@ mod tests {
         c2.set_tag_mask(TagMask::single(1).unwrap());
         clients.insert(WindowId(2), c2);
 
-        let outputs = tile(&monitor, &clients, false);
+        let cfg = LayoutConfig::default();
+        let outputs = tile(&monitor, &clients, &cfg, false);
         assert_eq!(outputs.len(), 2);
 
         // Client 1 (master): x=0, y=0, w=500, h=800

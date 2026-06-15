@@ -72,7 +72,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> V
         let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
         let tag_is_floating = mon
             .per_tag
-            .get(&tag_mask.bits())
+            .get(&tag_mask)
             .map(|s| !s.layouts.is_tiling())
             .unwrap_or(false);
 

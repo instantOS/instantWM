@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 
-use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
+use crate::config::config_toml::LayoutConfig;
+use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
@@ -15,6 +18,7 @@ use std::cmp::min;
 pub fn deck(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     _animated: bool,
 ) -> Vec<LayoutOutput> {
     let tiled_client_count = monitor.tiled_client_count(clients) as u32;
@@ -23,15 +27,22 @@ pub fn deck(
         return vec![];
     }
 
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        LayoutKind::Deck,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
     let nmaster = monitor.nmaster.max(0) as u32;
     let master_area_width: i32 = if tiled_client_count > nmaster {
         if nmaster > 0 {
-            (monitor.mfact * monitor.work_rect.w as f32) as i32
+            (monitor.mfact * work_rect.w as f32) as i32
         } else {
             0
         }
     } else {
-        monitor.work_rect.w
+        work_rect.w
     };
 
     // Collect tiled clients first
@@ -42,32 +53,33 @@ pub fn deck(
 
     for (index, client) in tiled_clients.iter().enumerate() {
         if (index as u32) < nmaster {
-            let master_window_height = (monitor.work_rect.h - master_column_offset)
+            let master_window_height = (work_rect.h - master_column_offset)
                 / (min(tiled_client_count, nmaster) - index as u32) as i32;
+            let slot = Rect {
+                x: work_rect.x,
+                y: work_rect.y + master_column_offset,
+                w: master_area_width,
+                h: master_window_height,
+            };
 
             result.push(LayoutOutput {
                 win: client.win,
-                rect: Rect {
-                    x: monitor.work_rect.x,
-                    y: monitor.work_rect.y + master_column_offset,
-                    w: master_area_width - BORDER_MULTIPLIER * client.border_width,
-                    h: master_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::hinted_immediate(false),
             });
 
-            master_column_offset += master_window_height;
+            master_column_offset += slot.h;
         } else {
+            let slot = Rect {
+                x: work_rect.x + master_area_width,
+                y: work_rect.y,
+                w: work_rect.w - master_area_width,
+                h: work_rect.h,
+            };
+
             result.push(LayoutOutput {
                 win: client.win,
-                rect: Rect {
-                    x: monitor.work_rect.x + master_area_width,
-                    y: monitor.work_rect.y,
-                    w: monitor.work_rect.w
-                        - master_area_width
-                        - BORDER_MULTIPLIER * client.border_width,
-                    h: monitor.work_rect.h - BORDER_MULTIPLIER * client.border_width,
-                },
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::hinted_immediate(false),
             });
         }
@@ -81,6 +93,7 @@ pub fn deck(
 pub fn bottom_stack(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     let tiled_client_count = monitor.tiled_client_count(clients) as u32;
@@ -97,63 +110,68 @@ pub fn bottom_stack(
         DEFAULT_FRAME_COUNT,
     );
 
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        LayoutKind::BottomStack,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
     let nmaster = monitor.nmaster.max(0) as u32;
     let (master_area_height, stack_window_width, stack_area_y) = if tiled_client_count > nmaster {
         let master_area_height = if nmaster > 0 {
-            (monitor.mfact * monitor.work_rect.h as f32) as i32
+            (monitor.mfact * work_rect.h as f32) as i32
         } else {
             0
         };
-        let stack_window_width = monitor.work_rect.w / (tiled_client_count - nmaster) as i32;
-        let stack_area_y = monitor.work_rect.y + master_area_height;
+        let stack_window_width = work_rect.w / (tiled_client_count - nmaster) as i32;
+        let stack_area_y = work_rect.y + master_area_height;
         (master_area_height, stack_window_width, stack_area_y)
     } else {
-        (
-            monitor.work_rect.h,
-            monitor.work_rect.w,
-            monitor.work_rect.y,
-        )
+        (work_rect.h, work_rect.w, work_rect.y)
     };
 
     let tiled_clients = monitor.collect_tiled(clients);
 
     let mut result = Vec::new();
     let mut master_row_offset: i32 = 0;
-    let mut stack_window_x: i32 = monitor.work_rect.x;
+    let mut stack_window_x: i32 = work_rect.x;
 
     for (index, client) in tiled_clients.iter().enumerate() {
         if (index as u32) < nmaster {
-            let master_window_width = (monitor.work_rect.w - master_row_offset)
+            let master_window_width = (work_rect.w - master_row_offset)
                 / (min(tiled_client_count, nmaster) - index as u32) as i32;
+            let slot = Rect {
+                x: work_rect.x + master_row_offset,
+                y: work_rect.y,
+                w: master_window_width,
+                h: master_area_height,
+            };
 
             result.push(LayoutOutput {
                 win: client.win,
-                rect: Rect {
-                    x: monitor.work_rect.x + master_row_offset,
-                    y: monitor.work_rect.y,
-                    w: master_window_width - BORDER_MULTIPLIER * client.border_width,
-                    h: master_area_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::animate_to(framecount),
             });
 
-            master_row_offset += master_window_width;
+            master_row_offset += slot.w;
         } else {
-            let stack_window_height = monitor.work_rect.h - master_area_height;
+            let stack_window_height = work_rect.h - master_area_height;
+            let slot = Rect {
+                x: stack_window_x,
+                y: stack_area_y,
+                w: stack_window_width,
+                h: stack_window_height,
+            };
 
             result.push(LayoutOutput {
                 win: client.win,
-                rect: Rect {
-                    x: stack_window_x,
-                    y: stack_area_y,
-                    w: stack_window_width - BORDER_MULTIPLIER * client.border_width,
-                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::animate_to(framecount),
             });
 
-            if stack_window_width != monitor.work_rect.w {
-                stack_window_x += stack_window_width;
+            if stack_window_width != work_rect.w {
+                stack_window_x += slot.w;
             }
         }
     }
@@ -166,6 +184,7 @@ pub fn bottom_stack(
 pub fn bstackhoriz(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     let tiled_client_count = monitor.tiled_client_count(clients) as u32;
@@ -182,63 +201,69 @@ pub fn bstackhoriz(
         DEFAULT_FRAME_COUNT,
     );
 
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        LayoutKind::BottomStack,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
     let nmaster = monitor.nmaster.max(0) as u32;
     let (master_area_height, stack_window_height, mut stack_window_y) =
         if tiled_client_count > nmaster {
             let master_area_height = if nmaster > 0 {
-                (monitor.mfact * monitor.work_rect.h as f32) as i32
+                (monitor.mfact * work_rect.h as f32) as i32
             } else {
                 0
             };
             let stack_window_height =
-                (monitor.work_rect.h - master_area_height) / (tiled_client_count - nmaster) as i32;
-            let stack_window_y = monitor.work_rect.y + master_area_height;
+                (work_rect.h - master_area_height) / (tiled_client_count - nmaster) as i32;
+            let stack_window_y = work_rect.y + master_area_height;
             (master_area_height, stack_window_height, stack_window_y)
         } else {
-            (
-                monitor.work_rect.h,
-                monitor.work_rect.h,
-                monitor.work_rect.y,
-            )
+            (work_rect.h, work_rect.h, work_rect.y)
         };
 
     let tiled_clients = monitor.collect_tiled(clients);
 
     let mut result = Vec::new();
     let mut master_row_offset: i32 = 0;
-    let stack_window_x: i32 = monitor.work_rect.x;
+    let stack_window_x: i32 = work_rect.x;
 
     for (index, client) in tiled_clients.iter().enumerate() {
         if (index as u32) < nmaster {
-            let master_window_width = (monitor.work_rect.w - master_row_offset)
+            let master_window_width = (work_rect.w - master_row_offset)
                 / (min(tiled_client_count, nmaster) - index as u32) as i32;
+            let slot = Rect {
+                x: work_rect.x + master_row_offset,
+                y: work_rect.y,
+                w: master_window_width,
+                h: master_area_height,
+            };
 
             result.push(LayoutOutput {
                 win: client.win,
-                rect: Rect {
-                    x: monitor.work_rect.x + master_row_offset,
-                    y: monitor.work_rect.y,
-                    w: master_window_width - BORDER_MULTIPLIER * client.border_width,
-                    h: master_area_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::animate_to(framecount),
             });
 
-            master_row_offset += master_window_width;
+            master_row_offset += slot.w;
         } else {
+            let slot = Rect {
+                x: stack_window_x,
+                y: stack_window_y,
+                w: work_rect.w,
+                h: stack_window_height,
+            };
+
             result.push(LayoutOutput {
                 win: client.win,
-                rect: Rect {
-                    x: stack_window_x,
-                    y: stack_window_y,
-                    w: monitor.work_rect.w - BORDER_MULTIPLIER * client.border_width,
-                    h: stack_window_height - BORDER_MULTIPLIER * client.border_width,
-                },
+                rect: placement.client_rect(slot, client.border_width),
                 options: MoveResizeOptions::animate_to(framecount),
             });
 
-            if stack_window_height != monitor.work_rect.h {
-                stack_window_y += stack_window_height;
+            if stack_window_height != work_rect.h {
+                stack_window_y += slot.h;
             }
         }
     }

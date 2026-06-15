@@ -1,25 +1,5 @@
-use crate::contexts::{WmCtx, WmCtxX11};
+use crate::contexts::WmCtx;
 use crate::types::AltCursor;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::{ChangeWindowAttributesAux, change_window_attributes};
-
-//TODO: should this be in another module? This is X11 specific
-fn set_x11_root_cursor_by_index(ctx: &mut WmCtxX11<'_>, cursor_index: usize) {
-    if ctx.x11_runtime.last_x11_cursor_index == Some(cursor_index) {
-        return;
-    }
-    let conn = ctx.x11.conn;
-    let root = ctx.x11_runtime.root;
-    if let Some(ref loaded_cursor) = ctx.x11_runtime.cursors[cursor_index] {
-        let _ = change_window_attributes(
-            conn,
-            root,
-            &ChangeWindowAttributesAux::new().cursor(loaded_cursor.cursor as u32),
-        );
-        let _ = conn.flush();
-        ctx.x11_runtime.last_x11_cursor_index = Some(cursor_index);
-    }
-}
 
 pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
     if ctx.core().globals().behavior.requested_cursor == style {
@@ -28,7 +8,7 @@ pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
     ctx.core_mut().globals_mut().behavior.requested_cursor = style;
     match ctx {
         WmCtx::X11(x11) => {
-            set_x11_root_cursor_by_index(x11, style.to_x11_index());
+            crate::backend::x11::mouse::set_x11_root_cursor(&x11.x11, x11.x11_runtime, style);
         }
         WmCtx::Wayland(wayland) => {
             let icon = match style {

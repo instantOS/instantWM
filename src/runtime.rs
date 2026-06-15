@@ -126,7 +126,7 @@ pub fn draw_x11_bars_if_dirty(wm: &mut Wm) {
 
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::bar::x11::draw_bars_x11(
+        crate::backend::x11::bar::draw_bars_x11(
             &mut x11_ctx.core,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref(),

@@ -26,6 +26,8 @@
 //! ungrab_ctx(ctx);
 //! ```
 
+use crate::backend::BackendEvent;
+use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::contexts::WmCtxX11;
 use crate::types::{AltCursor, MouseButton, WindowId};
 use x11rb::CURRENT_TIME;
@@ -44,10 +46,13 @@ use x11rb::protocol::xproto::*;
 ///
 /// After a successful grab, use [`wait_event`] to poll events inside the
 /// loop and [`ungrab_ctx`] to release the grab when done.
-pub fn grab_pointer(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
+pub fn grab_pointer(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    cursor: AltCursor,
+) -> bool {
     let cursor_index = cursor.to_x11_index();
-    let xcursor = ctx
-        .x11_runtime
+    let xcursor = x11_runtime
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
@@ -55,8 +60,8 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
         .unwrap_or(x11rb::NONE);
 
     grab_pointer_impl(
-        ctx.x11.conn,
-        ctx.x11_runtime.root,
+        x11.conn,
+        x11_runtime.root,
         xcursor,
         EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
     )
@@ -66,10 +71,13 @@ pub fn grab_pointer(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
 ///
 /// Used by [`crate::mouse::hover::run_x11_hover_resize_offer_loop`] so that pressing
 /// Escape can abort the hover-resize wait before the user clicks.
-pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
+pub fn grab_pointer_with_keys(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    cursor: AltCursor,
+) -> bool {
     let cursor_index = cursor.to_x11_index();
-    let xcursor = ctx
-        .x11_runtime
+    let xcursor = x11_runtime
         .cursors
         .get(cursor_index)
         .and_then(|c| c.as_ref())
@@ -77,8 +85,8 @@ pub fn grab_pointer_with_keys(ctx: &WmCtxX11, cursor: AltCursor) -> bool {
         .unwrap_or(x11rb::NONE);
 
     grab_pointer_impl(
-        ctx.x11.conn,
-        ctx.x11_runtime.root,
+        x11.conn,
+        x11_runtime.root,
         xcursor,
         EventMask::BUTTON_PRESS
             | EventMask::BUTTON_RELEASE
@@ -113,8 +121,8 @@ fn grab_pointer_impl<C: Connection>(
 ///
 /// Borrows the connection only for the duration of the call, so the caller
 /// can freely mutate `ctx` between events.
-pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
-    match ctx.x11.conn.wait_for_event() {
+pub fn wait_event(x11: &X11BackendRef) -> Option<x11rb::protocol::Event> {
+    match x11.conn.wait_for_event() {
         Ok(event) => Some(event),
         Err(err) => {
             log::warn!("X11 wait_for_event error in drag loop: {}", err);
@@ -128,14 +136,55 @@ pub fn wait_event(ctx: &WmCtxX11) -> Option<x11rb::protocol::Event> {
 /// Always call this when a drag/resize loop ends, even on early returns,
 /// to avoid leaving the pointer permanently grabbed.
 #[inline]
-pub fn ungrab(ctx: &crate::contexts::WmCtxX11) {
-    let _ = ungrab_pointer(ctx.x11.conn, CURRENT_TIME);
-    let _ = ctx.x11.conn.flush();
+pub fn ungrab(x11: &X11BackendRef) {
+    let _ = ungrab_pointer(x11.conn, CURRENT_TIME);
+    let _ = x11.conn.flush();
 }
 
 fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     if ctx.core.bar.needs_redraw() {
-        crate::bar::x11::draw_bars_x11(&mut ctx.core, ctx.x11_runtime, ctx.systray.as_deref());
+        crate::backend::x11::bar::draw_bars_x11(
+            &mut ctx.core,
+            ctx.x11_runtime,
+            ctx.systray.as_deref(),
+        );
+    }
+}
+
+/// Convert an X11 event to a backend-agnostic [`BackendEvent`].
+fn x11_event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
+    match event {
+        x11rb::protocol::Event::MotionNotify(m) => Some(BackendEvent::Motion {
+            root_x: m.root_x as f64,
+            root_y: m.root_y as f64,
+            modifiers: u16::from(m.state) as u32,
+        }),
+        x11rb::protocol::Event::ButtonRelease(br) => MouseButton::from_x11_detail(br.detail)
+            .map(|button| BackendEvent::ButtonRelease { button }),
+        x11rb::protocol::Event::ButtonPress(bp) => MouseButton::from_x11_detail(bp.detail)
+            .map(|button| BackendEvent::ButtonPress { button }),
+        x11rb::protocol::Event::KeyPress(kp) => Some(BackendEvent::KeyPress {
+            keycode: kp.detail as u32,
+        }),
+        _ => None,
+    }
+}
+
+/// Call `on_event` with the given event converted to [`BackendEvent`].
+///
+/// Returns `true` (continue) when the event cannot be converted.
+fn call_on_event<F>(
+    on_event: &mut F,
+    ctx: &mut WmCtxX11<'_>,
+    event: &x11rb::protocol::Event,
+) -> bool
+where
+    F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
+{
+    if let Some(be) = x11_event_to_backend(event) {
+        on_event(ctx, &be)
+    } else {
+        true
     }
 }
 
@@ -146,6 +195,7 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
 ///
 /// If `with_keys` is true, also captures KeyPress events.
 /// The closure `on_event` returns `true` to continue the loop, `false` to break.
+/// Events are converted to [`BackendEvent`] so callers are backend-agnostic.
 pub fn mouse_drag_loop<F>(
     ctx: &mut WmCtxX11<'_>,
     btn: MouseButton,
@@ -153,12 +203,12 @@ pub fn mouse_drag_loop<F>(
     with_keys: bool,
     mut on_event: F,
 ) where
-    F: FnMut(&mut WmCtxX11<'_>, &x11rb::protocol::Event) -> bool,
+    F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
 {
     let grabbed = if with_keys {
-        grab_pointer_with_keys(ctx, cursor)
+        grab_pointer_with_keys(&ctx.x11, ctx.x11_runtime, cursor)
     } else {
-        grab_pointer(ctx, cursor)
+        grab_pointer(&ctx.x11, ctx.x11_runtime, cursor)
     };
 
     if !grabbed {
@@ -169,7 +219,7 @@ pub fn mouse_drag_loop<F>(
 
     loop {
         // Wait for at least one event (blocking).
-        let Some(mut event) = wait_event(ctx) else {
+        let Some(mut event) = wait_event(&ctx.x11) else {
             break;
         };
 
@@ -187,9 +237,9 @@ pub fn mouse_drag_loop<F>(
                             // back so wait_event/poll_for_event yield it next time!
                             // x11rb doesn't let us un-read events easily, so we process
                             // the compressed motion *now*, then process this next_evt.
-                            if !on_event(ctx, &event) {
+                            if !call_on_event(&mut on_event, ctx, &event) {
                                 pump_deferred_work(ctx);
-                                ungrab(ctx);
+                                ungrab(&ctx.x11);
                                 return;
                             }
                             pump_deferred_work(ctx);
@@ -199,12 +249,12 @@ pub fn mouse_drag_loop<F>(
                                 && br.detail == btn.to_x11_detail()
                             {
                                 pump_deferred_work(ctx);
-                                ungrab(ctx);
+                                ungrab(&ctx.x11);
                                 return;
                             }
-                            if !on_event(ctx, &next_evt) {
+                            if !call_on_event(&mut on_event, ctx, &next_evt) {
                                 pump_deferred_work(ctx);
-                                ungrab(ctx);
+                                ungrab(&ctx.x11);
                                 return;
                             }
                             pump_deferred_work(ctx);
@@ -227,10 +277,10 @@ pub fn mouse_drag_loop<F>(
                 if br.detail == btn.to_x11_detail() {
                     false
                 } else {
-                    on_event(ctx, &event)
+                    call_on_event(&mut on_event, ctx, &event)
                 }
             }
-            _ => on_event(ctx, &event),
+            _ => call_on_event(&mut on_event, ctx, &event),
         };
 
         pump_deferred_work(ctx);
@@ -241,7 +291,7 @@ pub fn mouse_drag_loop<F>(
     }
 
     pump_deferred_work(ctx);
-    ungrab(ctx);
+    ungrab(&ctx.x11);
 }
 
 // ── Passive button grabs ──────────────────────────────────────────────────────
@@ -251,8 +301,13 @@ pub fn mouse_drag_loop<F>(
 /// * When `focused` is **`true`**: all existing grabs are removed.
 /// * When `focused` is **`false`**: grabs are installed for buttons 1 and 3
 ///   with every combination of NumLock and CapsLock modifiers.
-pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: bool) {
-    let conn = ctx.x11.conn;
+pub fn grab_buttons(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    c_win: WindowId,
+    focused: bool,
+) {
+    let conn = x11.conn;
     let x11_win: Window = c_win.into();
 
     // Always start clean.
@@ -262,7 +317,7 @@ pub fn grab_buttons(ctx: &crate::contexts::WmCtxX11, c_win: WindowId, focused: b
         return;
     }
 
-    let numlockmask = ctx.x11_runtime.numlockmask as u16;
+    let numlockmask = x11_runtime.numlockmask as u16;
 
     let modifier_variants: [u16; 4] = [
         0,

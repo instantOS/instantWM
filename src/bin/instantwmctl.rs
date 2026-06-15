@@ -3,6 +3,7 @@ mod ctl;
 use clap::Parser;
 use ctl::{Cli, IpcClient, format_response, get_default_socket};
 use instantwm::ipc_types::IpcCommand;
+use std::str::FromStr;
 
 #[cfg(test)]
 mod tests {
@@ -198,17 +199,35 @@ fn main() {
     let cli = Cli::parse();
 
     let command = match &cli.command {
-        ctl::CommandKind::Config { action } => {
-            match action {
-                ctl::commands::ConfigAction::Default => {
-                    println!(
-                        "{}",
-                        instantwm::config::config_toml::generate_commented_config()
-                    );
-                }
-            }
+        ctl::CommandKind::Layout { name } if name.as_deref() == Some("list") => {
+            print_layout_list(cli.json);
             return;
         }
+        ctl::CommandKind::Layout { name } => {
+            let Some(name) = name else {
+                eprintln!(
+                    "instantwmctl: layout name required (use 'instantwmctl layout list' to see layouts)"
+                );
+                std::process::exit(1);
+            };
+            let Ok(layout) = instantwm::layouts::LayoutKind::from_str(name) else {
+                eprintln!(
+                    "instantwmctl: invalid layout '{name}' (use 'instantwmctl layout list' to see layouts)"
+                );
+                std::process::exit(1);
+            };
+            IpcCommand::Layout(layout)
+        }
+        ctl::CommandKind::Config { action } => match action {
+            ctl::commands::ConfigAction::Default => {
+                println!(
+                    "{}",
+                    instantwm::config::config_toml::generate_commented_config()
+                );
+                return;
+            }
+            _ => cli.command.clone().into(),
+        },
         ctl::CommandKind::Action { name, args, list } => {
             if *list {
                 let actions = instantwm::config::keybind_config::get_actions_for_ipc();
@@ -266,6 +285,34 @@ fn main() {
     };
 
     format_response(&response, cli.json);
+}
+
+fn print_layout_list(json: bool) {
+    let layouts: Vec<_> = instantwm::layouts::LayoutKind::all()
+        .iter()
+        .map(|layout| {
+            serde_json::json!({
+                "name": layout.name(),
+                "label": layout.label(),
+                "description": layout.description(),
+                "symbol": layout.symbol(),
+                "tiling": layout.is_tiling(),
+            })
+        })
+        .collect();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&layouts).unwrap());
+    } else {
+        for layout in instantwm::layouts::LayoutKind::all() {
+            println!(
+                "{:<13} {:<14} {}",
+                layout.name(),
+                layout.symbol(),
+                layout.description()
+            );
+        }
+    }
 }
 
 fn handle_status_from_stdin(ignore_version_mismatches: bool) {

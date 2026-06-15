@@ -1,3 +1,4 @@
+use crate::backend::x11::X11RuntimeConfig;
 use crate::constants::animation::*;
 use crate::contexts::WmCtx;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
@@ -62,8 +63,8 @@ pub fn cancel_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: Window
 }
 
 /// Drop an in-flight X11 animation without applying its final target.
-pub fn drop_x11_animation(ctx: &mut crate::contexts::WmCtxX11<'_>, win: WindowId) {
-    let _ = ctx.x11_runtime.take_window_animation(win);
+pub fn drop_x11_animation(x11_runtime: &mut X11RuntimeConfig, win: WindowId) {
+    let _ = x11_runtime.take_window_animation(win);
 }
 
 pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
@@ -101,7 +102,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
     let mut animation_targets = Vec::new();
     for win in clients {
-        let Some(client) = ctx.core().client(win).cloned() else {
+        let Some(client) = ctx.core().globals().clients.get(&win).cloned() else {
             continue;
         };
         if !client.is_visible(selected_tags)

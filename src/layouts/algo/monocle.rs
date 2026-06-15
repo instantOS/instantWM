@@ -18,8 +18,11 @@
 
 use std::collections::HashMap;
 
-use crate::constants::animation::{BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT};
+use crate::config::config_toml::LayoutConfig;
+use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
@@ -27,10 +30,19 @@ use crate::types::{Monitor, Rect, WindowId};
 pub fn monocle(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     let selected_window = monitor.sel;
     let selected_tags = monitor.selected_tags();
+    let tiled_client_count = monitor.tiled_client_count(clients) as u32;
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        LayoutKind::Monocle,
+        tiled_client_count,
+    );
+    let work_rect = placement.work_rect();
 
     let mut result = Vec::new();
 
@@ -53,12 +65,7 @@ pub fn monocle(
 
         result.push(LayoutOutput {
             win,
-            rect: Rect {
-                x: monitor.work_rect.x,
-                y: monitor.work_rect.y,
-                w: monitor.work_rect.w - BORDER_MULTIPLIER * border_width,
-                h: monitor.work_rect.h - BORDER_MULTIPLIER * border_width,
-            },
+            rect: placement.client_rect(work_rect, border_width),
             options: MoveResizeOptions::animate_to(frames),
         });
     }

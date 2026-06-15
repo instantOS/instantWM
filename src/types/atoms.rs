@@ -46,6 +46,20 @@ pub struct NetAtoms {
     pub client_list: u32,
     /// _NET_CLIENT_INFO atom.
     pub client_info: u32,
+    /// _NET_NUMBER_OF_DESKTOPS atom.
+    pub number_of_desktops: u32,
+    /// _NET_CURRENT_DESKTOP atom.
+    pub current_desktop: u32,
+    /// _NET_DESKTOP_NAMES atom.
+    pub desktop_names: u32,
+    /// _NET_DESKTOP_VIEWPORT atom.
+    pub desktop_viewport: u32,
+    /// _NET_DESKTOP_GEOMETRY atom.
+    pub desktop_geometry: u32,
+    /// _NET_WORKAREA atom.
+    pub workarea: u32,
+    /// _NET_WM_DESKTOP atom.
+    pub wm_desktop: u32,
 }
 
 /// Named struct for XEmbed / ICCCM atoms (replaces `xatom: [u32; 3]`).

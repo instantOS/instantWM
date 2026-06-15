@@ -9,8 +9,6 @@ use std::os::unix::io::AsRawFd;
 use calloop::generic::Generic;
 use calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
 
-use crate::backend::BackendOps;
-use crate::backend::BackendRef;
 use crate::geometry::GeometryApplyMode;
 use crate::ipc::IpcServer;
 use crate::runtime::AnimationTimerGuard;
@@ -83,7 +81,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             });
 
             // ── 4. Flush X11 connection ─────────────────────────────────
-            BackendRef::from_backend(&wm.backend).flush();
+            crate::backend::BackendOps::flush(&wm.backend);
 
             // ── 5. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {
@@ -199,8 +197,10 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::EnterNotify(e) => handlers::enter_notify(&mut ctx, &e),
         x11rb::protocol::Event::Expose(e) => handlers::expose(&mut ctx, &e),
         x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(&mut ctx, &e),
-        x11rb::protocol::Event::KeyPress(e) => crate::keyboard::key_press_x11(&mut ctx, &e),
-        x11rb::protocol::Event::KeyRelease(e) => crate::keyboard::key_release_x11(&mut ctx, &e),
+        x11rb::protocol::Event::KeyPress(e) => {
+            crate::backend::x11::keyboard::key_press_x11(&mut ctx, &e)
+        }
+        x11rb::protocol::Event::KeyRelease(_) => crate::backend::x11::keyboard::key_release_x11(),
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),

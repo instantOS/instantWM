@@ -1,23 +1,10 @@
 //! Floating state transitions and geometry persistence.
 
-use crate::backend::BackendOps;
-use crate::backend::x11::X11BackendRef;
-use crate::client::restore_border_width;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::types::*;
-
-/// Common helper for restoring border width when transitioning to floating.
-/// Returns the restored border width value.
-/// This is X11-specific since Wayland doesn't support border widths.
-fn restore_client_border_x11(client: &mut Client, x11: &X11BackendRef<'_>, win: WindowId) -> i32 {
-    restore_border_width(client);
-    let restored_border_width = client.border_width;
-    x11.set_border_width(win, restored_border_width);
-    restored_border_width
-}
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
     if let Some(rect) = ctx.core().globals().clients.effective_float_geo(win) {
@@ -56,23 +43,24 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
         BaseClientMode::Floating => {
             if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
                 client.mode = ClientMode::Floating;
+                client.restore_border_width();
             }
 
-            // Restore borders
-            match ctx {
-                WmCtx::X11(x11) => {
-                    if let Some(client) = x11.core.globals_mut().clients.get_mut(&win) {
-                        restore_client_border_x11(client, &x11.x11, win);
-                    }
-                    crate::backend::x11::floating::apply_floating_borderscheme(
-                        &x11.x11,
-                        win,
-                        x11.x11_runtime,
-                    );
+            // Restore borders and apply floating border scheme
+            ctx.set_border(win, 0);
+            if let Some(client) = ctx.core().globals().clients.get(&win) {
+                ctx.set_border(win, client.border_width);
+            }
+            if let WmCtx::X11(x11) = ctx {
+                x11.x11.set_border_width(win, 0);
+                if let Some(client) = x11.core.globals().clients.get(&win) {
+                    x11.x11.set_border_width(win, client.border_width);
                 }
-                WmCtx::Wayland(_) => {
-                    // Wayland doesn't support border widths, nothing to restore
-                }
+                crate::backend::x11::floating::apply_floating_borderscheme(
+                    &x11.x11,
+                    win,
+                    x11.x11_runtime,
+                );
             }
 
             // Apply saved float geometry
@@ -89,11 +77,12 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
         }
         BaseClientMode::Tiling => {
             let is_sole_client = ctx.core().globals().clients.len() <= 1;
-            let clear_border = if let Some(client) = ctx.core_mut().client_mut(win) {
-                client.enter_tiling(is_sole_client)
-            } else {
-                false
-            };
+            let clear_border =
+                if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+                    client.enter_tiling(is_sole_client)
+                } else {
+                    false
+                };
 
             // Border width clearing is X11-specific
             if clear_border && let WmCtx::X11(x11) = ctx {
@@ -110,10 +99,12 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         Some(sel)
             if !ctx
                 .core()
-                .client(sel)
+                .globals()
+                .clients
+                .get(&sel)
                 .is_some_and(|c| c.is_edge_scratchpad()) =>
         {
-            if let Some(c) = ctx.core().client(sel)
+            if let Some(c) = ctx.core().globals().clients.get(&sel)
                 && c.mode.is_true_fullscreen()
             {
                 return;
@@ -127,7 +118,9 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let (is_floating, is_fixed) = ctx
         .core()
-        .client(win)
+        .globals()
+        .clients
+        .get(&win)
         .map(|c| (c.mode.is_floating(), c.is_fixed_size))
         .unwrap_or((false, false));
     let target_mode = if !is_floating || is_fixed {
@@ -167,7 +160,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
     let maximized_win = ctx.core().globals().selected_monitor().maximized;
-    let selected_window = ctx.core().selected_client();
+    let selected_window = ctx.core().globals().selected_win();
     let animated = ctx.core().globals().behavior.animated;
 
     let enter = maximized_win.is_none();
@@ -181,7 +174,8 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     let outcome = crate::client::mode::set_maximized(ctx.core_mut().globals_mut(), win, enter);
 
     if let Some(crate::client::mode::MaximizedOutcome::Exited { base }) = outcome
-        && (base == BaseClientMode::Floating || !super::helpers::has_tiling_layout(ctx.core()))
+        && (base == BaseClientMode::Floating
+            || !super::helpers::has_tiling_layout(ctx.core().globals()))
     {
         restore_floating_geometry(ctx, win);
         if let WmCtx::X11(x11) = ctx {

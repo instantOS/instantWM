@@ -68,7 +68,8 @@ pub fn setup_wayland_listen_socket_xwayland_systray(
     let _socket_name = crate::wayland::common::setup_wayland_socket(loop_handle, state);
     crate::wayland::common::spawn_xwayland(state, loop_handle);
     if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.wayland_systray_runtime = crate::systray::wayland::WaylandSystrayRuntime::start();
+        data.wayland_systray_runtime =
+            crate::backend::wayland::systray::WaylandSystrayRuntime::start();
     }
 }
 
@@ -97,6 +98,8 @@ pub fn event_loop_tick(
 ) -> crate::runtime::TickResult {
     drain_command_queue(wm, state);
 
+    crate::backend::wayland::compositor::protocols::ext_workspace::refresh(state);
+
     crate::runtime::event_loop_tick_with_options(
         wm,
         ipc_server,
@@ -109,7 +112,7 @@ pub fn event_loop_tick(
 
 fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     use crate::backend::wayland::commands::WmCommand;
-    let commands: Vec<WmCommand> = state.command_queue.borrow_mut().drain(..).collect();
+    let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
 
     for command in commands {
         match command {
@@ -120,7 +123,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::RaiseWindow(win) => {
                 let mut ctx = wm.ctx();
                 ctx.core_mut().globals_mut().raise_client_in_z_order(win);
-                ctx.raise_window_visual_only(win);
+                ctx.backend().raise_window_visual_only(win);
             }
             WmCommand::MapWindow(params) => handle_map_window(wm, state, params),
             WmCommand::UnmapWindow(_) => {}
@@ -234,11 +237,15 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
             WmCommand::SetMaximized { win, maximized } => handle_set_maximized(wm, win, maximized),
             WmCommand::SetFullscreen { win, fullscreen } => {
-                let mut ctx = wm.ctx();
-                let g = ctx.core_mut().globals_mut();
-                crate::client::mode::set_fullscreen(g, win, fullscreen);
-                g.queue_layout_for_client(win);
+                {
+                    let mut ctx = wm.ctx();
+                    let g = ctx.core_mut().globals_mut();
+                    crate::client::mode::set_fullscreen(g, win, fullscreen);
+                    g.queue_layout_for_client(win);
+                }
+                wm.bar.mark_dirty();
                 state.request_space_sync();
+                state.request_render();
             }
             WmCommand::SetMinimized { win, minimized } => {
                 let mut ctx = wm.ctx();
@@ -278,6 +285,39 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::RestoreFocus => {
                 let mut ctx = wm.ctx();
                 crate::focus::focus(&mut ctx, None);
+            }
+            WmCommand::SyncLayerExclusiveZones => {
+                if crate::backend::wayland::compositor::layer_shell::apply_available_rects(
+                    wm, state,
+                ) {
+                    wm.g.queue_layout_for_all_monitors_urgent();
+                    wm.bar.mark_dirty();
+                    state.request_render();
+                }
+            }
+            WmCommand::SelectTag {
+                monitor_name,
+                tag_index,
+            } => {
+                let mut ctx = wm.ctx();
+                let mon_id = ctx
+                    .core()
+                    .globals()
+                    .monitors
+                    .monitors
+                    .iter()
+                    .position(|m| m.name == monitor_name)
+                    .map(crate::types::MonitorId::from);
+                if let Some(mid) = mon_id {
+                    crate::focus::select_monitor(&mut ctx, mid);
+
+                    // NOTE: tag_index is 0-based index coming from the ext-workspace-v1 protocol coordinates.
+                    // TagMask::from_index() internally converts this 0-based index to a 1-based index (e.g. index + 1)
+                    // suitable for bitmask operations (contains / intersects).
+                    if let Some(mask) = crate::types::TagMask::from_index(tag_index) {
+                        crate::tags::view::view_tags(&mut ctx, mask);
+                    }
+                }
             }
         }
     }
@@ -345,10 +385,10 @@ fn handle_map_window(
     }
 
     if let Some(hints) = x11_hints {
-        crate::client::x11_policy::apply_wm_hints_to_client(&mut client, Some(hints));
+        crate::backend::x11::policy::apply_wm_hints_to_client(&mut client, Some(hints));
     }
     if let Some(shints) = x11_size_hints {
-        crate::client::x11_policy::apply_size_hints_to_client(&mut client, Some(shints));
+        crate::backend::x11::policy::apply_size_hints_to_client(&mut client, Some(shints));
     }
 
     if let Some(geo) = initial_geo {
@@ -497,8 +537,8 @@ fn handle_update_xwayland_policy(
     let mut ctx = wm.ctx();
     let g = ctx.core_mut().globals_mut();
     if let Some(client) = g.clients.get_mut(&win) {
-        crate::client::x11_policy::apply_wm_hints_to_client(client, hints);
-        crate::client::x11_policy::apply_size_hints_to_client(client, size_hints);
+        crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
+        crate::backend::x11::policy::apply_size_hints_to_client(client, size_hints);
     }
 
     crate::client::mode::set_fullscreen(g, win, is_fullscreen);

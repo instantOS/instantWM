@@ -133,7 +133,7 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
         ctx.set_current_mode(mode);
     }
     if let WmCtx::X11(x11) = ctx {
-        crate::keyboard::grab_keys_x11(&x11.core, &x11.x11, x11.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys_x11(x11.core.globals(), &x11.x11, x11.x11_runtime);
     }
     let _selmon_id = ctx.core().globals().selected_monitor_id();
     ctx.request_bar_update();
@@ -160,8 +160,8 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(x11) => {
             if let Some(m) = x11.core.globals().monitors.get(selmon_idx).cloned() {
-                crate::bar::x11::resize_bar_win(
-                    &x11.core,
+                crate::backend::x11::bar::resize_bar_win(
+                    x11.core.globals(),
                     &x11.x11,
                     &*x11.x11_runtime,
                     x11.systray.as_deref(),

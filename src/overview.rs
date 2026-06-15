@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, TagMask, WindowId};
@@ -26,12 +27,12 @@ impl OverviewState {
     }
 }
 
-pub fn is_active(core: &CoreCtx<'_>) -> bool {
-    core.globals().selected_monitor().overview_state.is_some()
+pub fn is_active(globals: &Globals) -> bool {
+    globals.selected_monitor().overview_state.is_some()
 }
 
-pub fn is_active_on_monitor(core: &CoreCtx<'_>, monitor: &Monitor) -> bool {
-    monitor.overview_state.is_some() && core.globals().selected_monitor_id() == monitor.id()
+pub fn is_active_on_monitor(globals: &Globals, monitor: &Monitor) -> bool {
+    monitor.overview_state.is_some() && globals.selected_monitor_id() == monitor.id()
 }
 
 fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool {
@@ -40,7 +41,7 @@ fn set_selected_tags_with_history(mon: &mut Monitor, new_mask: TagMask) -> bool 
     }
 
     let previous_current_tag = mon.current_tag_number();
-    mon.sel_tags ^= 1;
+    mon.sel_tags = !mon.sel_tags;
     mon.set_selected_tags(new_mask);
     if previous_current_tag != mon.current_tag_number()
         && let Some(previous_current_tag) = previous_current_tag
@@ -117,10 +118,12 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             crate::focus::focus(ctx, None);
         }
         ExitMode::ToSelectedWindow => {
-            let selected_window = ctx.core().selected_client();
+            let selected_window = ctx.core().globals().selected_win();
             let selected_tags = selected_window.and_then(|win| {
                 ctx.core()
-                    .client(win)
+                    .globals()
+                    .clients
+                    .get(&win)
                     .map(|c| c.tags.without_scratchpad())
                     .filter(|tags| !tags.is_empty())
             });
@@ -152,7 +155,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
-    if is_active(ctx.core()) {
+    if is_active(ctx.core().globals()) {
         exit_overview(ctx, ExitMode::ToSelectedWindow);
         ctx.request_bar_update();
         return;
@@ -167,7 +170,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
-    if !is_active(ctx.core()) {
+    if !is_active(ctx.core().globals()) {
         return;
     }
 

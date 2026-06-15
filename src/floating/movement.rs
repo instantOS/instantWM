@@ -6,12 +6,12 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo, border_width) = match ctx.core().client(win) {
+    let (is_floating, geo, border_width) = match ctx.core().globals().clients.get(&win) {
         Some(c) => (c.mode.is_floating(), c.geo, c.border_width),
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
         return;
     }
 
@@ -45,14 +45,14 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo) = match ctx.core().client(win) {
+    let (is_floating, geo) = match ctx.core().globals().clients.get(&win) {
         Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
 
     super::snap::reset_snap(ctx, win);
 
-    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
         return;
     }
 
@@ -78,17 +78,19 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     if ctx
         .core()
-        .client(win)
+        .globals()
+        .clients
+        .get(&win)
         .is_some_and(|c| c.is_edge_scratchpad())
     {
         return;
     }
-    let (geo, is_floating) = match ctx.core().client(win) {
+    let (geo, is_floating) = match ctx.core().globals().clients.get(&win) {
         Some(c) => (c.geo, c.mode.is_floating()),
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(ctx.core()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
         return;
     }
 

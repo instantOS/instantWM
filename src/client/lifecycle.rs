@@ -113,8 +113,7 @@ pub fn select_client(g: &mut Globals, win: WindowId) {
     if let Some(mon) = g.monitor_mut(monitor_id) {
         mon.sel = Some(win);
         if is_tiled {
-            mon.tag_tiled_focus_history
-                .insert(mon.selected_tags().bits(), win);
+            mon.tag_tiled_focus_history.insert(mon.selected_tags(), win);
         }
     }
 }

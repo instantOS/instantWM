@@ -278,7 +278,7 @@ fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, 
     let should_close = match &mut wm.backend {
         Backend::Wayland(data) => {
             data.wayland_systray_menu.as_ref().is_some()
-                && crate::systray::wayland::hit_test_wayland_systray_menu_item(
+                && crate::backend::wayland::systray::hit_test_wayland_systray_menu_item(
                     &core,
                     &data.wayland_systray,
                     data.wayland_systray_menu.as_ref(),

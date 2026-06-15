@@ -1,22 +1,58 @@
 name: Release
 on:
   push:
+    branches:
+      - main
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - CHANGELOG.md
     tags:
       - "v*"
-      - "instantwm-v*"
   workflow_dispatch:
 jobs:
+  metadata:
+    name: Prepare release metadata
+    runs-on: self-hosted
+    container:
+      image: ubuntu:24.04
+    if: ${{ github.repository_owner == 'instantOS' }}
+    permissions:
+      contents: write
+    outputs:
+      should_release: ${{ steps.metadata.outputs.should_release }}
+      tag: ${{ steps.metadata.outputs.tag }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Configure git
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Determine release tag
+        id: metadata
+        run: bash scripts/ci/determine-release.sh
   build:
     name: Build release artifacts
     runs-on: self-hosted
     timeout-minutes: 1440
     container:
       image: archlinux:latest
+    needs: metadata
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     env:
       CARGO_TERM_COLOR: always
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -38,29 +74,7 @@ jobs:
           echo "triple=$target" >> "$GITHUB_OUTPUT"
       - name: Extract version
         id: vars
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          case "$GITHUB_REF_NAME" in
-            v*)
-              tag_version="${GITHUB_REF_NAME#v}"
-              ;;
-            instantwm-v*)
-              tag_version="${GITHUB_REF_NAME#instantwm-v}"
-              ;;
-            *)
-              echo "No tag ref detected (ref: $GITHUB_REF_NAME), using Cargo.toml version"
-              tag_version=""
-              ;;
-          esac
-          if [[ -n "$tag_version" && "$tag_version" != "$version" ]]; then
-            echo "Tag version $tag_version does not match Cargo.toml version $version" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Run tests
         run: |
           WORKSPACE="$PWD"
@@ -74,19 +88,7 @@ jobs:
           WORKSPACE="$PWD"
           su builder -c "cd '$WORKSPACE' && strip target/release/instantwm target/release/instantwmctl"
       - name: Collect artifacts
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
-          TARGET: ${{ steps.target.outputs.triple }}
-        run: |
-          mkdir -p artifacts
-          pkg_dir="instantwm-${TARGET}-v${VERSION}"
-          tmpdir=$(mktemp -d)
-          mkdir -p "$tmpdir/$pkg_dir"
-          install -Dm0755 "target/release/instantwm" "$tmpdir/$pkg_dir/instantwm"
-          install -Dm0755 "target/release/instantwmctl" "$tmpdir/$pkg_dir/instantwmctl"
-          tar -czf "artifacts/${pkg_dir}.tgz" -C "$tmpdir" "$pkg_dir"
-          sha256sum "artifacts/${pkg_dir}.tgz" > "artifacts/${pkg_dir}.tgz.sha256"
-          rm -rf "$tmpdir"
+        run: bash scripts/ci/package-binary.sh "${{ steps.target.outputs.triple }}" "${{ steps.vars.outputs.version }}" target/release
       - name: Upload release package
         uses: actions/upload-artifact@v4
         with:
@@ -95,11 +97,22 @@ jobs:
             artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz
             artifacts/instantwm-${{ steps.target.outputs.triple }}-v${{ steps.vars.outputs.version }}.tgz.sha256
   cross-compile:
-    name: Cross-compile for ARM and musl targets
+    # Cross-compile for ARM (aarch64 + armv7). The musl target used to be built
+    # here too, but smithay/wayland/X11 pull in a large number of native -sys
+    # crates (libudev, libdrm, libgbm, libegl, libgl, libinput, libseat,
+    # libwayland, libxkbcommon, libfontconfig, libfreetype, libx11, ...), and
+    # Ubuntu doesn't ship :musl variants of those packages. Bringing musl back
+    # will require either a dedicated cross-rs image that builds those libs
+    # against musl, or a sysroot-based approach (e.g. via Alpine in a chroot).
+    # See the multi-arch (arm64/armhf) setup below for the equivalent dance on
+    # the glibc side as a starting point.
+    name: Cross-compile for ARM targets
     runs-on: self-hosted
     timeout-minutes: 1440
     container:
       image: ubuntu:24.04
+    needs: metadata
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     env:
       CARGO_TERM_COLOR: always
       DEBIAN_FRONTEND: noninteractive
@@ -107,30 +120,29 @@ jobs:
       RUSTUP_HOME: /opt/rustup
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Install build dependencies
+        # `--cross` enables multi-arch (arm64/armhf), points apt at
+        # ports.ubuntu.com for those architectures, and installs the cross
+        # toolchains + cross pkg-config wrappers + :arm64/:armhf dev libs.
         run: bash scripts/ci/install-deps-ubuntu.sh --cross
       - name: Install Rust toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
       - name: Add Rust cross-compilation targets
+        # x86_64-unknown-linux-musl is intentionally omitted until we have a
+        # toolchain that can provide musl builds of our native deps (see the
+        # comment on this job).
         run: |
           rustup target add \
             aarch64-unknown-linux-gnu \
-            armv7-unknown-linux-gnueabihf \
-            x86_64-unknown-linux-musl
+            armv7-unknown-linux-gnueabihf
       - name: Extract version
         id: vars
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -138,52 +150,23 @@ jobs:
       - name: Cross compile for ARM64 Linux
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          # The pkg-config crate picks up `<triple>-pkg-config` automatically,
+          # but be explicit so a future env-stripping change can't break this.
+          PKG_CONFIG_aarch64_unknown_linux_gnu: aarch64-linux-gnu-pkg-config
         run: cargo build --locked --release --target aarch64-unknown-linux-gnu
       - name: Cross compile for ARMv7 Linux
         env:
           CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER: arm-linux-gnueabihf-gcc
+          PKG_CONFIG_armv7_unknown_linux_gnueabihf: arm-linux-gnueabihf-pkg-config
         run: cargo build --locked --release --target armv7-unknown-linux-gnueabihf
-      - name: Cross compile for x86_64 musl
-        env:
-          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
-        run: cargo build --locked --release --target x86_64-unknown-linux-musl
       - name: Strip cross-compiled binaries
         run: |
           aarch64-linux-gnu-strip target/aarch64-unknown-linux-gnu/release/instantwm target/aarch64-unknown-linux-gnu/release/instantwmctl
           arm-linux-gnueabihf-strip target/armv7-unknown-linux-gnueabihf/release/instantwm target/armv7-unknown-linux-gnueabihf/release/instantwmctl
-          strip target/x86_64-unknown-linux-musl/release/instantwm target/x86_64-unknown-linux-musl/release/instantwmctl
       - name: Collect cross-compile artifacts
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
         run: |
-          mkdir -p artifacts
-
-          pkg_dir_aarch64="instantwm-aarch64-unknown-linux-gnu-v${VERSION}"
-          tmpdir_aarch64=$(mktemp -d)
-          mkdir -p "$tmpdir_aarch64/$pkg_dir_aarch64"
-          install -Dm0755 "target/aarch64-unknown-linux-gnu/release/instantwm" "$tmpdir_aarch64/$pkg_dir_aarch64/instantwm"
-          install -Dm0755 "target/aarch64-unknown-linux-gnu/release/instantwmctl" "$tmpdir_aarch64/$pkg_dir_aarch64/instantwmctl"
-          tar -czf "artifacts/${pkg_dir_aarch64}.tgz" -C "$tmpdir_aarch64" "$pkg_dir_aarch64"
-          sha256sum "artifacts/${pkg_dir_aarch64}.tgz" > "artifacts/${pkg_dir_aarch64}.tgz.sha256"
-          rm -rf "$tmpdir_aarch64"
-
-          pkg_dir_armv7="instantwm-armv7-unknown-linux-gnueabihf-v${VERSION}"
-          tmpdir_armv7=$(mktemp -d)
-          mkdir -p "$tmpdir_armv7/$pkg_dir_armv7"
-          install -Dm0755 "target/armv7-unknown-linux-gnueabihf/release/instantwm" "$tmpdir_armv7/$pkg_dir_armv7/instantwm"
-          install -Dm0755 "target/armv7-unknown-linux-gnueabihf/release/instantwmctl" "$tmpdir_armv7/$pkg_dir_armv7/instantwmctl"
-          tar -czf "artifacts/${pkg_dir_armv7}.tgz" -C "$tmpdir_armv7" "$pkg_dir_armv7"
-          sha256sum "artifacts/${pkg_dir_armv7}.tgz" > "artifacts/${pkg_dir_armv7}.tgz.sha256"
-          rm -rf "$tmpdir_armv7"
-
-          pkg_dir_musl_x86="instantwm-x86_64-unknown-linux-musl-v${VERSION}"
-          tmpdir_musl_x86=$(mktemp -d)
-          mkdir -p "$tmpdir_musl_x86/$pkg_dir_musl_x86"
-          install -Dm0755 "target/x86_64-unknown-linux-musl/release/instantwm" "$tmpdir_musl_x86/$pkg_dir_musl_x86/instantwm"
-          install -Dm0755 "target/x86_64-unknown-linux-musl/release/instantwmctl" "$tmpdir_musl_x86/$pkg_dir_musl_x86/instantwmctl"
-          tar -czf "artifacts/${pkg_dir_musl_x86}.tgz" -C "$tmpdir_musl_x86" "$pkg_dir_musl_x86"
-          sha256sum "artifacts/${pkg_dir_musl_x86}.tgz" > "artifacts/${pkg_dir_musl_x86}.tgz.sha256"
-          rm -rf "$tmpdir_musl_x86"
+          bash scripts/ci/package-binary.sh aarch64-unknown-linux-gnu       "${{ steps.vars.outputs.version }}" target/aarch64-unknown-linux-gnu/release
+          bash scripts/ci/package-binary.sh armv7-unknown-linux-gnueabihf   "${{ steps.vars.outputs.version }}" target/armv7-unknown-linux-gnueabihf/release
       - name: Upload cross-compile artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -193,57 +176,55 @@ jobs:
             artifacts/instantwm-aarch64-unknown-linux-gnu-v${{ steps.vars.outputs.version }}.tgz.sha256
             artifacts/instantwm-armv7-unknown-linux-gnueabihf-v${{ steps.vars.outputs.version }}.tgz
             artifacts/instantwm-armv7-unknown-linux-gnueabihf-v${{ steps.vars.outputs.version }}.tgz.sha256
-            artifacts/instantwm-x86_64-unknown-linux-musl-v${{ steps.vars.outputs.version }}.tgz
-            artifacts/instantwm-x86_64-unknown-linux-musl-v${{ steps.vars.outputs.version }}.tgz.sha256
       - name: Clean up toolchains
         if: always()
         run: rm -rf /opt/cargo /opt/rustup
   pkgbuild:
-    name: Build Arch package
+    name: Build Arch binary package
     runs-on: self-hosted
     timeout-minutes: 1440
     container:
       image: archlinux:latest
-    needs: build
+    needs:
+      - metadata
+      - build
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Initialise pacman and install git
         run: |
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed git
+          pacman -S --noconfirm --needed base-devel git
       - name: Checkout
-        uses: actions/checkout@v4
-      - name: Install build dependencies
-        run: bash scripts/ci/install-deps-arch.sh
+        uses: actions/checkout@v5
       - name: Extract version
         id: vars
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
+      - name: Download native build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: instantwm-${{ steps.vars.outputs.version }}-x86_64-unknown-linux-gnu
+          path: dist
       - name: Create build user
         run: |
           useradd -m builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
           chown -R builder:builder "$PWD"
       - name: Create source tarball
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
         run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          git archive --format=tar.gz --prefix="instantwm-${version}/" -o "instantwm-${version}.tar.gz" HEAD
+          git config --global --add safe.directory "$PWD"
+          git archive --format=tar.gz --prefix="instantwm-${VERSION}/" -o "instantwm-${VERSION}.tar.gz" HEAD
+          cp "dist/instantwm-x86_64-unknown-linux-gnu-v${VERSION}.tgz" .
       - name: Copy PKGBUILD to build context
-        run: |
-          cp packaging/arch/PKGBUILD .
+        run: cp packaging/arch-bin/PKGBUILD .
       - name: Build package
         run: |
           WORKSPACE="$PWD"
-          su builder -c "cd '$WORKSPACE' && makepkg -s --noconfirm --skippgpcheck"
+          su builder -c "cd '$WORKSPACE' && makepkg --nodeps --noconfirm --skippgpcheck"
       - name: Collect package artifacts
-        env:
-          VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p artifacts
           shopt -s nullglob
@@ -252,30 +233,27 @@ jobs:
       - name: Upload Arch package
         uses: actions/upload-artifact@v4
         with:
-          name: instantwm-${{ steps.vars.outputs.version }}-arch-packages
+          name: instantwm-${{ steps.vars.outputs.version }}-arch-bin-package
           path: artifacts/
   deb:
     name: Build Debian package
     runs-on: self-hosted
     container:
       image: ubuntu:24.04
-    needs: build
+    needs:
+      - metadata
+      - build
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install build dependencies
         run: |
           bash scripts/ci/install-deps-ubuntu.sh
           apt-get install -y --no-install-recommends dpkg-dev
       - name: Extract version
         id: vars
-        run: |
-          version=$(awk -F '"' '/^version =/ {print $2; exit}' Cargo.toml)
-          if [[ -z "$version" ]]; then
-            echo "Failed to determine version from Cargo.toml" >&2
-            exit 1
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+        run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Download native build artifact
         uses: actions/download-artifact@v4
         with:
@@ -299,8 +277,8 @@ jobs:
           VERSION: ${{ steps.vars.outputs.version }}
         run: |
           mkdir -p artifacts
-          mv target/deb/instantwm_${VERSION}_amd64.deb artifacts/
-          cd artifacts && sha256sum instantwm_${VERSION}_amd64.deb > instantwm_${VERSION}_amd64.deb.sha256
+          mv "target/deb/instantwm_${VERSION}_amd64.deb" artifacts/
+          cd artifacts && sha256sum "instantwm_${VERSION}_amd64.deb" > "instantwm_${VERSION}_amd64.deb.sha256"
       - name: Upload deb package
         uses: actions/upload-artifact@v4
         with:
@@ -312,21 +290,34 @@ jobs:
     container:
       image: ubuntu:24.04
     needs:
+      - metadata
       - build
       - cross-compile
       - pkgbuild
       - deb
     permissions:
       contents: write
+    if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Extract release notes
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: bash scripts/ci/extract-release-notes.sh "$VERSION" > release-notes.md
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.metadata.outputs.tag }}
+          name: ${{ needs.metadata.outputs.tag }}
+          body_path: release-notes.md
           files: dist/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -11,19 +11,19 @@ use std::collections::VecDeque;
 // ---------------------------------------------------------------------------
 
 /// Display/screen dimensions.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct DisplayConfig {
     pub width: i32,
     pub height: i32,
 }
 
 /// Window behaviour settings.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct WindowConfig {
     pub border_width_px: i32,
     pub snap_threshold: i32,
-    pub resizehints: i32,
-    pub decorhints: i32,
+    pub resizehints: bool,
+    pub decorhints: bool,
 }
 
 impl Default for WindowConfig {
@@ -31,14 +31,14 @@ impl Default for WindowConfig {
         Self {
             border_width_px: 1,
             snap_threshold: 32,
-            resizehints: 1,
-            decorhints: 0,
+            resizehints: true,
+            decorhints: false,
         }
     }
 }
 
 /// Status bar settings.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct BarConfig {
     pub show: bool,
     pub top: bool,
@@ -60,7 +60,7 @@ impl Default for BarConfig {
 }
 
 /// System tray settings.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SystrayConfig {
     pub show: bool,
     pub pinning: usize,
@@ -78,7 +78,7 @@ impl Default for SystrayConfig {
 }
 
 /// Colour schemes for various UI elements.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ColorConfig {
     pub window: WindowColorConfigs,
     pub close_button: CloseButtonColorConfigs,
@@ -97,7 +97,7 @@ pub struct BindingConfig {
 }
 
 /// Font configuration.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct FontConfig {
     pub fonts: Vec<String>,
     pub config_font: String,
@@ -109,6 +109,7 @@ pub struct RuntimeConfig {
     pub window: WindowConfig,
     pub bar: BarConfig,
     pub systray: SystrayConfig,
+    pub layout: crate::config::config_toml::LayoutConfig,
     pub colors: ColorConfig,
     pub bindings: BindingConfig,
     pub fonts: FontConfig,
@@ -130,6 +131,7 @@ impl Default for RuntimeConfig {
             window: WindowConfig::default(),
             bar: BarConfig::default(),
             systray: SystrayConfig::default(),
+            layout: crate::config::config_toml::LayoutConfig::default(),
             colors: ColorConfig::default(),
             bindings: BindingConfig::default(),
             fonts: FontConfig::default(),
@@ -152,6 +154,7 @@ impl Clone for RuntimeConfig {
             window: self.window.clone(),
             bar: self.bar.clone(),
             systray: self.systray.clone(),
+            layout: self.layout,
             colors: self.colors.clone(),
             bindings: self.bindings.clone(),
             fonts: self.fonts.clone(),
@@ -198,20 +201,68 @@ pub struct DragInteraction {
     pub suppress_click_action: bool,
 }
 
+impl DragInteraction {
+    /// Create a new Move drag interaction.
+    ///
+    /// Note: This constructor is used exclusively for immediate-start drag contexts
+    /// (such as keyboard-driven moves or client/Wayland click-drags), and therefore
+    /// initializes `dragging` as `true` immediately.
+    pub fn new_move(win: WindowId, button: MouseButton, start: Point, geo: Rect) -> Self {
+        Self {
+            active: true,
+            win,
+            button,
+            dragging: true,
+            drag_type: DragType::Move,
+            start_point: start,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: start,
+            ..Default::default()
+        }
+    }
+
+    /// Create a new Resize drag interaction.
+    ///
+    /// Note: This constructor is used exclusively for immediate-start resize contexts
+    /// (such as keyboard-driven resizing or direct click-to-resize/Wayland client resize),
+    /// and therefore initializes `dragging` as `true` immediately.
+    pub fn new_resize(
+        win: WindowId,
+        button: MouseButton,
+        dir: ResizeDirection,
+        start: Point,
+        geo: Rect,
+    ) -> Self {
+        Self {
+            active: true,
+            win,
+            button,
+            dragging: true,
+            drag_type: DragType::Resize(dir),
+            start_point: start,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: start,
+            ..Default::default()
+        }
+    }
+}
+
 /// On X11, the synchronous grab loop drives this. On Wayland, the calloop
 /// press/motion/release events drive it asynchronously.
 #[derive(Debug, Clone, Default)]
 pub struct TagDragState {
     /// Whether a tag drag is currently active.
     pub active: bool,
-    /// The initial tag bitmask that was clicked.
-    pub initial_tag: u32,
+    /// The initial tag mask that was clicked.
+    pub initial_tag: TagMask,
     /// Monitor ID where the drag started.
     pub monitor_id: MonitorId,
     /// Monitor X origin (for converting root coords to local).
     pub mon_mx: i32,
-    /// Last seen tag gesture index (-1 = none).
-    pub last_tag: i32,
+    /// Last seen tag gesture index (None = none).
+    pub last_tag: Option<usize>,
     /// Whether cursor is still on the bar.
     pub cursor_on_bar: bool,
     /// Last motion coordinates + modifier state (for release handling).
@@ -850,6 +901,12 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     g.cfg.bar.height = cfg.bar_height;
     g.cfg.window.resizehints = cfg.resize_hints;
     g.cfg.window.decorhints = cfg.decorhints;
+    g.cfg.layout = crate::config::config_toml::LayoutConfig {
+        inner_gap: cfg.layout.inner_gap.max(0),
+        outer_gap: cfg.layout.outer_gap.max(0),
+        smart_gaps: cfg.layout.smart_gaps,
+        monocle_gaps: cfg.layout.monocle_gaps,
+    };
 
     g.cfg.colors.window = cfg.window_colors.clone();
     g.cfg.colors.close_button = cfg.closebuttoncolors.clone();

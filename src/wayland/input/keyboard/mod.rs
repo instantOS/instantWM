@@ -59,8 +59,11 @@ pub fn handle_keyboard<B: InputBackend>(
         key_state,
         serial,
         event.time_msec(),
-        |_data, modifiers, keysym| {
+        |data, modifiers, keysym| {
             if key_state == smithay::backend::input::KeyState::Released {
+                if data.runtime.intercepted_key_releases.remove(&key_code) {
+                    return FilterResult::Intercept(());
+                }
                 return FilterResult::Forward;
             }
             if wm_shortcuts_allowed {
@@ -75,6 +78,7 @@ pub fn handle_keyboard<B: InputBackend>(
                     keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
                     mod_mask,
                 ) {
+                    data.runtime.intercepted_key_releases.insert(key_code);
                     return FilterResult::Intercept(());
                 }
             }

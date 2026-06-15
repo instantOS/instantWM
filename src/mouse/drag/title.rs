@@ -3,7 +3,7 @@
 //! This module handles click and drag interactions on window title bars,
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
-use crate::backend::x11::grab::mouse_drag_loop;
+use crate::backend::BackendEvent;
 use crate::contexts::WmCtx;
 use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
@@ -13,8 +13,6 @@ use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
 use crate::types::geometry::Point;
 use crate::types::*;
-use x11rb::connection::Connection;
-use x11rb::protocol::xproto::*;
 
 /// Initialise a title-bar click/drag interaction.
 ///
@@ -29,7 +27,7 @@ pub fn title_drag_begin(
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
-        let is_true_fullscreen = match ctx.core().client(win) {
+        let is_true_fullscreen = match ctx.core().globals().clients.get(&win) {
             Some(c) => c.mode.is_true_fullscreen(),
             None => return false,
         };
@@ -39,8 +37,8 @@ pub fn title_drag_begin(
         crate::focus::focus(ctx, Some(win));
     }
 
-    let sel = ctx.core().selected_client();
-    let (win_start_geo, drop_restore_geo) = match ctx.core().client(win) {
+    let sel = ctx.core().globals().selected_win();
+    let (win_start_geo, drop_restore_geo) = match ctx.core().globals().clients.get(&win) {
         Some(c) => {
             let restore = c.restore_geo_for_float();
             (c.geo, restore)
@@ -81,7 +79,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         let dir =
             crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
-        let bw = match ctx.core().client(win) {
+        let bw = match ctx.core().globals().clients.get(&win) {
             Some(c) => c.border_width,
             None => return true,
         };
@@ -94,18 +92,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             wl.wayland
                 .backend
                 .warp_pointer(warp_x as f64, warp_y as f64);
-            wl.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
-                active: true,
-                win,
-                button: btn,
-                dragging: true,
-                drag_type: crate::globals::DragType::Resize(dir),
-                win_start_geo: current_geo,
-                start_point: warp_point,
-                last_root_point: warp_point,
-                drop_restore_geo: current_geo,
-                ..Default::default()
-            };
+            wl.core.globals_mut().drag.interactive =
+                crate::globals::DragInteraction::new_resize(win, btn, dir, warp_point, current_geo);
             set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
         }
         return true;
@@ -120,7 +108,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         ctx.core_mut().globals_mut().drag.interactive.start_point = root;
     } else {
         warp::warp_into(ctx, win);
-        let ptr = ctx.pointer_location().unwrap_or(root);
+        let ptr = ctx.backend().pointer_location().unwrap_or(root);
         let pad = warp::WARP_INTO_PADDING;
         let clamped_x = ptr
             .x
@@ -185,23 +173,11 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     ctx.core_mut().globals_mut().drag.interactive.active = false;
 
     if is_right_click {
-        if let Some(c) = ctx.core().client(win) {
+        if let Some(c) = ctx.core().globals().clients.get(&win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
-            if let WmCtx::X11(x11) = ctx {
-                let x11_win: Window = win.into();
-                let _ = x11.x11.conn.warp_pointer(
-                    x11rb::NONE,
-                    x11_win,
-                    0i16,
-                    0i16,
-                    0u16,
-                    0u16,
-                    x_off as i16,
-                    y_off as i16,
-                );
-                let _ = x11.x11.conn.flush();
-            }
+            ctx.backend()
+                .warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
         }
         if let WmCtx::X11(x11) = ctx {
             resize_mouse_directional(x11, Some(ResizeDirection::BottomRight), btn);
@@ -292,30 +268,27 @@ pub fn window_title_mouse_handler(
             } else {
                 AltCursor::Default
             };
-            mouse_drag_loop(ctx_x11, btn, cursor, false, |ctx, event| {
-                if let x11rb::protocol::Event::MotionNotify(m) = event {
-                    let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                    if title_drag_motion(
-                        &mut wm_ctx,
-                        Point::new(m.event_x as i32, m.event_y as i32),
-                    ) {
-                        return false;
+            crate::backend::x11::grab::mouse_drag_loop(
+                ctx_x11,
+                btn,
+                cursor,
+                false,
+                |ctx, event| {
+                    if let BackendEvent::Motion { root_x, root_y, .. } = event {
+                        let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                        if title_drag_motion(
+                            &mut wm_ctx,
+                            Point::new(*root_x as i32, *root_y as i32),
+                        ) {
+                            return false;
+                        }
                     }
-                }
-                true
-            });
+                    true
+                },
+            );
             let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
             title_drag_finish(&mut wm_ctx);
         }
         WmCtx::Wayland(_) => {}
     }
-}
-
-/// Right-click handler for a window title bar entry.
-///
-/// This is currently an alias for [`window_title_mouse_handler`] since both
-/// left and right clicks are handled by the same function with different
-/// behaviors based on the button.
-pub fn window_title_mouse_handler_right(ctx: &mut WmCtx, win: WindowId, click_root: Point) {
-    window_title_mouse_handler(ctx, win, MouseButton::Right, click_root);
 }

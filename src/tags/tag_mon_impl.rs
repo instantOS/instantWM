@@ -26,7 +26,7 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     let (selected_window, has_multiple_mons) = {
         (
-            ctx.core().selected_client(),
+            ctx.core().globals().selected_win(),
             ctx.core().globals().monitors.len() > 1,
         )
     };
@@ -151,5 +151,5 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
 
     // Raise so the window is immediately visible on the new monitor.
     ctx.raise_client(win);
-    ctx.flush();
+    ctx.backend().flush();
 }

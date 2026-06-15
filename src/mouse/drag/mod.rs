@@ -84,7 +84,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             let Some(root) = wl.wayland.backend.pointer_location() else {
                 return;
             };
-            let (geo, is_floating) = match wl.core.client(win) {
+            let (geo, is_floating) = match wl.core.globals().clients.get(&win) {
                 Some(c) => (c.geo, c.mode.is_floating()),
                 None => return,
             };
@@ -100,18 +100,8 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
 
-            wl.core.globals_mut().drag.interactive = crate::globals::DragInteraction {
-                active: true,
-                win,
-                button: MouseButton::Left,
-                dragging: true,
-                drag_type: crate::globals::DragType::Move,
-                start_point: root,
-                win_start_geo: geo,
-                drop_restore_geo: geo,
-                last_root_point: root,
-                ..Default::default()
-            };
+            wl.core.globals_mut().drag.interactive =
+                crate::globals::DragInteraction::new_move(win, MouseButton::Left, root, geo);
             crate::mouse::set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
                 crate::types::AltCursor::Move,
@@ -119,4 +109,31 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_client(win);
         }
     }
+}
+
+/// Shared post-move-drag teardown used by both X11 and Wayland backends.
+///
+/// Clears the active drag state, restores the bar hover highlight, and runs
+/// the shared drop-completion logic (bar drop, edge snap, monitor switch).
+pub fn finish_drag_move(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    grab_start_rect: Rect,
+    edge_hint: Option<SnapPosition>,
+    pointer_override: Option<Point>,
+) {
+    ctx.core_mut().globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    clear_bar_hover(ctx);
+    complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
+}
+
+/// Shared post-resize-drag teardown used by both X11 and Wayland backends.
+///
+/// Clears the active drag state, resets the cursor to the default, handles
+/// potential monitor switch, and re-raises the client so it stays on top.
+pub fn finish_drag_resize(ctx: &mut WmCtx, win: WindowId) {
+    ctx.core_mut().globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
+    ctx.raise_client(win);
 }

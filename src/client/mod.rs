@@ -7,7 +7,6 @@
 //!
 //! | Module          | Responsibility                                              |
 //! |-----------------|-------------------------------------------------------------|
-//! | `constants`     | WM_STATE, MWM hints, WM_HINTS, XSizeHints constants         |
 //! | `geometry`      | Resize, size-hint enforcement, dimension helpers            |
 //! | `visibility`    | Show / hide / show_hide, WM_STATE queries                   |
 //! | `focus`         | Input focus, button grabs, ConfigureNotify, ClientMessage   |
@@ -20,7 +19,6 @@
 // Sub-modules
 // ---------------------------------------------------------------------------
 
-pub mod constants;
 pub mod focus;
 pub mod fullscreen;
 pub mod geometry;
@@ -31,7 +29,6 @@ pub mod manager;
 pub mod mode;
 pub mod rules;
 pub mod visibility;
-pub mod x11_policy;
 
 // ---------------------------------------------------------------------------
 // Flat re-exports
@@ -45,9 +42,6 @@ pub mod x11_policy;
 // -- Rules ------------------------------------------------------------------
 pub use rules::{WindowProperties, apply_rules, handle_property_change};
 
-// -- Constants ---------------------------------------------------------------
-pub use constants::WM_STATE_WITHDRAWN;
-
 // -- Geometry ----------------------------------------------------------------
 pub use geometry::{
     FloatingPlacementKind, resolve_and_sync_floating_geometry, sane_floating_spawn_rect,
@@ -58,21 +52,11 @@ pub use geometry::{
 pub use visibility::{apply_visibility, hide, hide_for_user, show_window};
 
 // -- Focus / input -----------------------------------------------------------
-pub use focus::{
-    clear_urgency_hint_x11, configure_x11, refresh_border_color_x11, send_event_x11, set_focus_x11,
-    unfocus_win_x11,
-};
+// X11-specific focus functions live in `client::focus` and are called
+// directly via `crate::client::focus::*` rather than re-exported here.
 
 // -- Fullscreen --------------------------------------------------------------
 pub use fullscreen::set_fullscreen;
-
-pub fn save_border_width(client: &mut crate::types::Client) {
-    client.save_border_width();
-}
-
-pub fn restore_border_width(client: &mut crate::types::Client) {
-    client.restore_border_width();
-}
 
 // -- Kill --------------------------------------------------------------------
 pub use kill::{close_win, kill_client, shut_kill};

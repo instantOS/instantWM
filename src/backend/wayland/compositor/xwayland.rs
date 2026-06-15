@@ -111,7 +111,7 @@ fn sync_xwayland_surface_metadata(
     win: crate::types::WindowId,
     surface: &X11Surface,
 ) {
-    let properties = crate::client::x11_policy::window_properties_from_x11_surface(surface);
+    let properties = crate::backend::x11::policy::window_properties_from_x11_surface(surface);
     state.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
     state.update_foreign_toplevel(win);
     state.request_bar_redraw();
@@ -184,8 +184,9 @@ impl XwmHandler for WaylandState {
             return;
         }
 
-        let parent = crate::client::x11_policy::transient_for_window_id(&window)
-            .and_then(|parent_x11| self.window_id_for_x11_window(parent_x11.into()));
+        let parent = window
+            .is_transient_for()
+            .and_then(|w| self.window_id_for_x11_window(w));
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             sync_xwayland_surface_metadata(self, win, &window);

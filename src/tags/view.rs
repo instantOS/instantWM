@@ -4,6 +4,7 @@ use crate::contexts::WmCtx;
 use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
+    ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);
     ctx.core_mut()
         .globals_mut()
@@ -37,7 +38,7 @@ fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId
         }
 
         let previous_current_tag = mon.current_tag_number();
-        mon.sel_tags ^= 1;
+        mon.sel_tags = !mon.sel_tags;
         mon.set_selected_tags(new_mask);
 
         if previous_current_tag != mon.current_tag_number()
@@ -131,7 +132,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
         let clients = ctx.core().globals().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx.core().client(win)
+            if let Some(c) = ctx.core().globals().clients.get(&win)
                 && c.tags.intersects(next_mask)
             {
                 found = true;
@@ -169,7 +170,7 @@ pub fn last_view(ctx: &mut WmCtx) {
 }
 
 pub fn win_view(ctx: &mut WmCtx) {
-    let Some(win) = ctx.core().selected_client() else {
+    let Some(win) = ctx.core().globals().selected_win() else {
         return;
     };
 
@@ -237,7 +238,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn follow_view(ctx: &mut WmCtx) {
     let selmon_id = ctx.core().globals().selected_monitor_id();
-    let selected_window = ctx.core().selected_client();
+    let selected_window = ctx.core().globals().selected_win();
     let Some(win) = selected_window else { return };
 
     let prev_tag = ctx.core().globals().selected_monitor().prev_tag;

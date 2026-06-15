@@ -52,9 +52,8 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     let metadata = {
         let ctx = wm.ctx();
         let metadata = crate::util::configure_spawn_command(&ctx, &mut cmd);
-        if ctx.is_wayland()
-            && let crate::backend::BackendRef::Wayland(wayland) = ctx.backend()
-            && let Some(display) = wayland.xdisplay()
+        if let crate::contexts::WmCtx::Wayland(wayland) = &ctx
+            && let Some(display) = wayland.wayland.backend.xdisplay()
         {
             cmd.env("DISPLAY", format!(":{display}"));
         }
@@ -96,7 +95,7 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> Response {
 
 pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
     let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
-    if let Some(win) = wm.ctx().core().selected_client() {
+    if let Some(win) = wm.ctx().core().globals().selected_win() {
         set_border_width(
             &mut wm.ctx().core_mut().globals_mut().clients,
             win,

@@ -2,8 +2,9 @@
 //!
 //! None of these functions mutate floating state – they only inspect it.
 
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
+use crate::globals::Globals;
 use crate::types::WindowId;
 
 // ── Layout query ─────────────────────────────────────────────────────────────
@@ -13,8 +14,8 @@ use crate::types::WindowId;
 /// Used as a guard throughout the floating module: floating-only operations
 /// should be no-ops when a tiling layout is active and the window is not
 /// explicitly floating.
-pub fn has_tiling_layout(core: &CoreCtx) -> bool {
-    core.globals().selected_monitor().is_tiling_layout()
+pub fn has_tiling_layout(globals: &Globals) -> bool {
+    globals.selected_monitor().is_tiling_layout()
 }
 
 // ── Per-client queries ────────────────────────────────────────────────────────
@@ -25,15 +26,15 @@ pub fn has_tiling_layout(core: &CoreCtx) -> bool {
 /// - its `isfloating` flag is set, or
 /// - no tiling layout is active on the selected monitor (all windows float in
 ///   floating-only layouts).
-pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
-    if let Some(client) = core.client(win) {
+pub fn check_floating(globals: &Globals, win: WindowId) -> bool {
+    if let Some(client) = globals.clients.get(&win) {
         if client.mode.is_floating() {
             return true;
         }
-        if crate::overview::is_active(core) {
+        if crate::overview::is_active(globals) {
             return false;
         }
-        if !core.globals().selected_monitor().is_tiling_layout() {
+        if !globals.selected_monitor().is_tiling_layout() {
             return true;
         }
     }
@@ -49,7 +50,7 @@ pub fn check_floating(core: &CoreCtx, win: WindowId) -> bool {
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
 pub fn apply_size(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let geo = ctx.core.client(win).map(|c| c.geo);
+    let geo = ctx.core.globals().clients.get(&win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());

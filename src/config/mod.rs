@@ -116,7 +116,7 @@ pub struct ModeConfig {
 
 /// All WM configuration in one place.
 ///
-/// Built by [`init_config`] and consumed by `init_globals` in `startup::x11`.
+/// Built by [`init_config`] and consumed by `init_globals` in `backend::x11::startup`.
 /// Fields are public so `init_globals` can move them into `Globals` without
 /// extra getters.
 #[derive(Debug, Clone)]
@@ -147,14 +147,16 @@ pub struct Config {
     pub bar_height: i32,
 
     // --- Tiling ---
-    /// Respect size hints for tiled clients (`1` = yes).
-    pub resize_hints: i32,
-    /// Respect decoration hints (`1` = yes).
-    pub decorhints: i32,
+    /// Respect size hints for tiled clients.
+    pub resize_hints: bool,
+    /// Respect decoration hints.
+    pub decorhints: bool,
     /// Master area size factor (0.0–1.0).
     pub mfact: f32,
     /// Number of clients in master area.
     pub nmaster: i32,
+    /// Tiled layout gap configuration.
+    pub layout: config_toml::LayoutConfig,
 
     // --- Tags ---
     pub tag_names: Vec<String>,
@@ -214,7 +216,7 @@ pub struct Config {
 
 /// Build the default [`Config`].
 ///
-/// Called once from `init_globals` in `startup::x11`.  All values here are the
+/// Called once from `init_globals` in `backend::x11::startup`.  All values here are the
 /// compile-time defaults; TOML config overrides the appearance fields when present.
 pub fn init_config(backend: crate::backend::BackendKind) -> Config {
     let theme = config_toml::load_config_file();
@@ -302,10 +304,11 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         bar_height: theme.bar_height as i32,
 
         // --- Tiling ---
-        resize_hints: 1,
-        decorhints: 1,
+        resize_hints: true,
+        decorhints: true,
         mfact: 0.55,
         nmaster: 1,
+        layout: theme.layout,
 
         // --- Tags ---
         tag_names: get_tags(),

@@ -97,8 +97,6 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
 
 // ── draw_window ───────────────────────────────────────────────────────────────
 
-// ── draw_window ───────────────────────────────────────────────────────────────
-
 /// Let the user draw a rectangle with `instantslop` and resize the focused
 /// window to that rectangle.
 ///
@@ -111,7 +109,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(win) = ctx.core().selected_client() else {
+    let Some(win) = ctx.core().globals().selected_win() else {
         return;
     };
 

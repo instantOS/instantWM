@@ -30,22 +30,21 @@
 
 use crate::backend::BackendOps;
 use crate::backend::x11::X11BackendRef;
+use crate::backend::x11::constants::BROKEN;
+use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
+use crate::backend::x11::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
     update_motif_hints, update_window_type, update_wm_hints,
 };
-use crate::client::constants::BROKEN;
-use crate::client::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::client::focus::{grab_buttons_x11, unfocus_win_x11};
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
-use crate::types::MonitorId;
 // focus() is used via focus_soft() in this module
 use crate::focus::focus;
 use crate::globals::Globals;
 use crate::layouts::arrange;
-use crate::types::{Client, ClientMode, Rect, WindowId};
+use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -88,14 +87,14 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     apply_manage_hints(ctx, w);
     snapshot_float_geo(ctx.core.globals_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
-    grab_buttons_x11(&mut ctx.core, &ctx.x11, ctx.x11_runtime, w, false);
+    grab_buttons_x11(ctx.core.globals(), &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.globals_mut(), w, trans.is_some()) {
         if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w, trans) {
             crate::client::sync_client_geometry(ctx.core.globals_mut(), w, rect);
         }
-        ctx.backend.raise_window_visual_only(w);
-        ctx.backend.flush();
+        ctx.x11.raise_window_visual_only(w);
+        ctx.x11.flush();
     }
 
     ctx.core.globals_mut().attach(w);
@@ -170,8 +169,8 @@ fn insert_client_and_apply_rules(
     mut c: Client,
     launch_context: Option<crate::client::LaunchContext>,
 ) {
-    c.is_hidden = crate::client::visibility::get_state_x11(core, x11, x11_cfg.wmatom.state, w)
-        == crate::client::constants::WM_STATE_ICONIC;
+    c.is_hidden = crate::backend::x11::visibility::get_state_x11(x11, x11_cfg.wmatom.state, w)
+        == crate::backend::x11::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
     let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
     crate::client::apply_rules(core.globals_mut(), w, &props, launch_context);
@@ -312,9 +311,9 @@ fn configure_client_border(
 }
 
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
-    crate::client::focus::configure_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    crate::backend::x11::focus::configure_x11(ctx_x11.core.globals(), &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
-    crate::backend::x11::update_size_hints_x11(&mut ctx_x11.core, &ctx_x11.x11, w);
+    crate::backend::x11::update_size_hints_x11(ctx_x11.core.globals_mut(), &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(
         ctx_x11.core.globals_mut(),
@@ -322,7 +321,13 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
         ctx_x11.x11_runtime,
         w,
     );
-    set_client_tag_prop(&ctx_x11.core, &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    read_wm_desktop_hint(
+        ctx_x11.core.globals_mut(),
+        &ctx_x11.x11,
+        ctx_x11.x11_runtime,
+        w,
+    );
+    set_client_tag_prop(ctx_x11.core.globals(), &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
 }
 
@@ -417,12 +422,12 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
         set_client_state(&ctx_x11.x11, ctx_x11.x11_runtime, w, WM_STATE_NORMAL);
     }
-    if let Some(selected_window) = ctx.core().selected_client()
+    if let Some(selected_window) = ctx.core().globals().selected_win()
         && let WmCtx::X11(ctx_x11) = ctx
     {
-        let mut core = ctx_x11.core.reborrow();
+        ctx_x11.core.focus.last_client = selected_window;
         unfocus_win_x11(
-            &mut core,
+            ctx_x11.core.globals(),
             &ctx_x11.x11,
             ctx_x11.x11_runtime,
             selected_window,
@@ -499,17 +504,6 @@ fn run_manage_animation(
     }
 }
 
-/// Initial tag mask for a newly managed client on `monitor_id`.
-///
-/// This mirrors DWM semantics: a new client appears on all tags currently
-/// visible on its target monitor.
-pub fn initial_tags_for_monitor(g: &Globals, monitor_id: MonitorId) -> u32 {
-    g.monitor(monitor_id)
-        .map(|m| m.selected_tags().bits())
-        .filter(|tags| *tags != 0)
-        .unwrap_or(1)
-}
-
 // ---------------------------------------------------------------------------
 // unmanage
 // ---------------------------------------------------------------------------
@@ -545,6 +539,10 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
                 ctx.x11
                     .conn
                     .ungrab_button(ButtonIndex::from(0u8), x11_win, ModMask::from(0u16));
+            let _ = ctx
+                .x11
+                .conn
+                .delete_property(x11_win, ctx.x11_runtime.netatom.wm_desktop);
 
             set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_WITHDRAWN);
         }
@@ -557,7 +555,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
         let tmp = ctx.reborrow();
         focus(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(&ctx.core, &ctx.x11, ctx.x11_runtime);
+    update_client_list(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
 
     if let Some(mid) = monitor_id {
         let mut tmp = WmCtx::X11(ctx.reborrow());
@@ -649,6 +647,53 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
         if let Some(mid) = target_mon {
             client.monitor_id = mid;
         }
+    }
+}
+
+/// Read the standard `_NET_WM_DESKTOP` hint from `w` and apply it to the
+/// just-managed client. This covers clients that request a desktop before map.
+fn read_wm_desktop_hint(
+    g: &mut Globals,
+    x11: &X11BackendRef,
+    x11_cfg: &X11RuntimeConfig,
+    w: WindowId,
+) {
+    let x11_win: Window = w.into();
+    let wm_desktop_atom = x11_cfg.netatom.wm_desktop;
+
+    let Ok(cookie) =
+        x11.conn
+            .get_property(false, x11_win, wm_desktop_atom, AtomEnum::CARDINAL, 0, 1)
+    else {
+        return;
+    };
+    let Ok(reply) = cookie.reply() else { return };
+    let Some(mut data) = reply.value32() else {
+        return;
+    };
+    let Some(desktop) = data.next() else { return };
+
+    if desktop == u32::MAX {
+        if let Some(client) = g.clients.get_mut(&w) {
+            client.is_sticky = true;
+        }
+        return;
+    }
+
+    let Some((monitor_id, tag_index)) =
+        crate::backend::x11::properties::monitor_tag_for_desktop(g, desktop)
+    else {
+        return;
+    };
+    let Some(tags) = TagMask::single(tag_index) else {
+        return;
+    };
+
+    if let Some(client) = g.clients.get_mut(&w) {
+        client.monitor_id = monitor_id;
+        client.is_sticky = false;
+        client.clear_sticky_if_scratchpad();
+        client.set_tag_mask(tags);
     }
 }
 

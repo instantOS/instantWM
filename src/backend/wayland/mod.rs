@@ -52,6 +52,7 @@
 
 pub mod commands;
 pub mod compositor;
+pub mod systray;
 
 use crate::backend::{BackendOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
@@ -172,6 +173,10 @@ impl Default for WaylandBackend {
 }
 
 impl BackendOps for WaylandBackend {
+    fn configure_window_geometry(&self, _window: WindowId, _rect: Rect) {
+        // Wayland compositor controls window geometry; no-op.
+    }
+
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }

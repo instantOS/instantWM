@@ -3,6 +3,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::set_client_state;
 use crate::contexts::CoreCtx;
+use crate::globals::Globals;
 use crate::types::*;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -15,30 +16,34 @@ const XEMBED_WINDOW_ACTIVATE: u32 = 1;
 const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
-pub fn get_systray_width(core: &CoreCtx, systray: Option<&Systray>) -> u32 {
-    if !core.globals().cfg.systray.show {
+pub fn get_systray_width(globals: &crate::globals::Globals, systray: Option<&Systray>) -> u32 {
+    if !globals.cfg.systray.show {
         return 1;
     }
 
     let mut w: u32 = 0;
     if let Some(systray) = systray {
         for &icon_win in &systray.icons {
-            if let Some(c) = core.client(icon_win) {
-                w += c.geo.w as u32 + core.globals().cfg.systray.spacing as u32;
+            if let Some(c) = globals.clients.get(&icon_win) {
+                w += c.geo.w as u32 + globals.cfg.systray.spacing as u32;
             }
         }
     }
 
     if w > 0 {
-        w + core.globals().cfg.systray.spacing as u32
+        w + globals.cfg.systray.spacing as u32
     } else {
         1
     }
 }
 
 /// Remove systray icon using dependency injection.
-pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, icon_win: WindowId) {
-    if !core.globals().cfg.systray.show {
+pub fn remove_systray_icon(
+    globals: &mut crate::globals::Globals,
+    systray: Option<&mut Systray>,
+    icon_win: WindowId,
+) {
+    if !globals.cfg.systray.show {
         return;
     }
 
@@ -46,21 +51,20 @@ pub fn remove_systray_icon(core: &mut CoreCtx, systray: Option<&mut Systray>, ic
         systray.icons.retain(|&w| w != icon_win);
     }
 
-    core.globals_mut().clients.remove(&icon_win);
+    globals.clients.remove(&icon_win);
 }
 
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(
-    core: &mut CoreCtx,
+    globals: &mut crate::globals::Globals,
     x11: &X11BackendRef,
     icon_win: WindowId,
     w: i32,
     h: i32,
 ) {
-    let bar_height = core.globals().cfg.bar.height;
+    let bar_height = globals.cfg.bar.height;
 
-    let (geo_x, geo_y) = core
-        .globals()
+    let (geo_x, geo_y) = globals
         .clients
         .get(&icon_win)
         .map(|client| (client.geo.x, client.geo.y))
@@ -77,10 +81,15 @@ pub fn update_systray_icon_geom(
 
     let mut rect = Rect::new(geo_x, geo_y, new_geo_w, new_geo_h);
 
-    let _ = crate::client::geometry::apply_size_hints(core, Some(x11), icon_win, &mut rect, false);
+    let outcome = crate::client::geometry::apply_size_hints(globals, icon_win, &mut rect, false);
+    if outcome.should_apply_icccm {
+        crate::backend::x11::geometry::apply_icccm_size_hints_x11(
+            globals, x11, icon_win, &mut rect,
+        );
+    }
 
     // Now update the client with the computed values
-    if let Some(client) = core.globals_mut().clients.get_mut(&icon_win) {
+    if let Some(client) = globals.clients.get_mut(&icon_win) {
         client.geo.x = rect.x;
         client.geo.y = rect.y;
         client.geo.w = rect.w;
@@ -200,7 +209,7 @@ pub fn update_systray(
     }
 
     let (x, bar_y, _showbar, bar_win) = {
-        let m = systray_to_mon(core, None);
+        let m = systray_to_mon(core.globals(), None);
         let mon = match core.globals().monitor(m) {
             Some(mon) => mon,
             None => return,
@@ -414,24 +423,24 @@ pub fn win_to_systray_icon(
 }
 
 /// Get monitor for systray using dependency injection.
-pub fn systray_to_mon(core: &mut CoreCtx, m: Option<MonitorId>) -> MonitorId {
-    if core.globals().cfg.systray.pinning == 0 {
+pub fn systray_to_mon(globals: &Globals, m: Option<MonitorId>) -> MonitorId {
+    if globals.cfg.systray.pinning == 0 {
         return match m {
             Some(id) => {
-                if id == core.globals().selected_monitor_id() {
+                if id == globals.selected_monitor_id() {
                     id
                 } else {
-                    core.globals().selected_monitor_id()
+                    globals.selected_monitor_id()
                 }
             }
-            None => core.globals().selected_monitor_id(),
+            None => globals.selected_monitor_id(),
         };
     }
 
-    let n = core.globals().monitors.count();
-    let target = core.globals().cfg.systray.pinning.min(n);
+    let n = globals.monitors.count();
+    let target = globals.cfg.systray.pinning.min(n);
 
-    if core.globals().cfg.systray.pinning > n {
+    if globals.cfg.systray.pinning > n {
         MonitorId(0)
     } else {
         MonitorId(target.saturating_sub(1))

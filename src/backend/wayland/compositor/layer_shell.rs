@@ -12,6 +12,10 @@ use smithay::{
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
+use crate::backend::wayland::commands::WmCommand;
+use crate::types::Rect;
+use crate::wm::Wm;
+use std::collections::HashMap;
 
 /// Focus a layer surface if it requests keyboard focus.
 fn focus_layer_if_requested(
@@ -72,8 +76,63 @@ pub(super) fn handle_layer_commit(
     }
     if let Some(surface) = layer_surface {
         focus_layer_if_requested(state, &surface);
+        // Exclusive zones may have changed on commit, so re-derive each
+        // monitor's `available_rect`.
+        state.push_command(WmCommand::SyncLayerExclusiveZones);
     }
     state.request_render();
+}
+
+/// Build a map from output name to the global (compositor-space) rectangle
+/// that is *not* occupied by exclusive layer-shell surfaces on that output.
+///
+/// Smithay tracks the non-exclusive zone per output via `layer_map_for_output`.
+/// The zone is returned in output-local logical coordinates, so we offset it
+/// by the output's position in the `Space` to get global coordinates that
+/// match `Monitor::monitor_rect`.
+pub fn collect_available_rects(state: &WaylandState) -> HashMap<String, Rect> {
+    let mut out = HashMap::new();
+    for output in state.space.outputs() {
+        let output_loc = state
+            .space
+            .output_geometry(output)
+            .map(|geo| geo.loc)
+            .unwrap_or_default();
+        let zone = layer_map_for_output(output).non_exclusive_zone();
+        let rect = Rect {
+            x: output_loc.x + zone.loc.x,
+            y: output_loc.y + zone.loc.y,
+            w: zone.size.w.max(1),
+            h: zone.size.h.max(1),
+        };
+        out.insert(output.name(), rect);
+    }
+    out
+}
+
+/// Apply the latest layer-shell non-exclusive zones to each `Monitor`.
+///
+/// Returns `true` if any monitor's `available_rect` changed (caller should
+/// re-arrange and redraw).
+pub fn apply_available_rects(wm: &mut Wm, state: &WaylandState) -> bool {
+    let rects = collect_available_rects(state);
+    let mut any_changed = false;
+    for mon in wm.g.monitors.iter_all_mut() {
+        let Some(&new_rect) = rects.get(&mon.name) else {
+            // No matching output (e.g. monitor was just removed or named
+            // differently). Leave it alone; the next monitor refresh will
+            // sort it out.
+            continue;
+        };
+        if new_rect == mon.available_rect {
+            continue;
+        }
+        mon.set_available_rect(new_rect);
+        let bar_height = mon.bar_height;
+        mon.update_bar_position(bar_height);
+        any_changed = true;
+    }
+    any_changed
 }
 
 impl WlrLayerShellHandler for WaylandState {
@@ -99,6 +158,8 @@ impl WlrLayerShellHandler for WaylandState {
         let mut map = layer_map_for_output(&target_output);
         let _ = map.map_layer(&layer_surface);
         map.arrange();
+        drop(map);
+        self.push_command(WmCommand::SyncLayerExclusiveZones);
         self.request_render();
     }
 
@@ -138,6 +199,8 @@ impl WlrLayerShellHandler for WaylandState {
 
         // Restore seat focus to mon.sel (the WM's selected window).
         self.restore_focus_after_overlay();
+        // Reclaim the space that this layer surface had exclusively reserved.
+        self.push_command(WmCommand::SyncLayerExclusiveZones);
         self.request_render();
     }
 }

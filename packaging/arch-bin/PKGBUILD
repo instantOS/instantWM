@@ -1,0 +1,63 @@
+# Maintainer: instantOS <hello@instantos.io>
+pkgname=instantwm-bin
+_pkgname=instantwm
+pkgver=0.1.10
+pkgrel=1
+pkgdesc="A tiling window manager for X11 and Wayland (prebuilt binary)"
+arch=('x86_64')
+url="https://instantos.io"
+license=('MIT')
+provides=("instantwm=$pkgver")
+conflicts=('instantwm')
+depends=(
+    'libx11'
+    'libxcb'
+    'libxkbcommon'
+    'libxcursor'
+    'libxinerama'
+    'libxrandr'
+    'libxss'
+    'libxtst'
+    'libxfixes'
+    'libxdamage'
+    'libxcomposite'
+    'libxrender'
+    'libxi'
+    'libxres'
+    'libxvmc'
+    'libxxf86vm'
+    'libxt'
+    'libxmu'
+    'libxpm'
+    'libxaw'
+    'fontconfig'
+    'freetype2'
+    'libdrm'
+    'mesa'
+    'wayland'
+    'libinput'
+    'seatd'
+    'libglvnd'
+    'libevdev'
+    'libwacom'
+    'dbus'
+    'systemd'
+)
+source=(
+    "$_pkgname-$pkgver.tar.gz"
+    "$_pkgname-x86_64-unknown-linux-gnu-v$pkgver.tgz"
+)
+md5sums=('SKIP' 'SKIP')
+
+package() {
+    cd "$_pkgname-$pkgver"
+
+    install -Dm755 "$srcdir/$_pkgname-x86_64-unknown-linux-gnu-v$pkgver/instantwm" "$pkgdir/usr/bin/instantwm"
+    install -Dm755 "$srcdir/$_pkgname-x86_64-unknown-linux-gnu-v$pkgver/instantwmctl" "$pkgdir/usr/bin/instantwmctl"
+
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+
+    install -Dm644 utils/instantwm-x11.desktop "$pkgdir/usr/share/xsessions/instantwm.desktop"
+    install -Dm644 utils/instantwm-wayland.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-wayland.desktop"
+    install -Dm644 resources/instantwm-portals.conf "$pkgdir/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+}

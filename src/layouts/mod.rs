@@ -31,6 +31,7 @@
 
 pub mod algo;
 pub mod manager;
+pub(crate) mod placement;
 pub mod query;
 
 use std::collections::HashMap;
@@ -59,6 +60,7 @@ pub struct MonitorUpdates {
     pub mfact: f32,
     pub work_rect: Rect,
     pub bar_y: i32,
+    pub bar_height: i32,
 }
 
 /// Complete set of changes required to arrange one monitor.
@@ -118,6 +120,48 @@ pub enum LayoutKind {
 }
 
 impl LayoutKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Tile => "tile",
+            Self::Grid => "grid",
+            Self::Floating => "floating",
+            Self::Monocle => "monocle",
+            Self::Deck => "deck",
+            Self::BottomStack => "bottom-stack",
+            Self::HorizGrid => "horiz-grid",
+            Self::GaplessGrid => "gapless-grid",
+            Self::BStackHoriz => "bstack-horiz",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Tile => "Tile",
+            Self::Grid => "Grid",
+            Self::Floating => "Floating",
+            Self::Monocle => "Monocle",
+            Self::Deck => "Deck",
+            Self::BottomStack => "Bottom Stack",
+            Self::HorizGrid => "Horizontal Grid",
+            Self::GaplessGrid => "Gapless Grid",
+            Self::BStackHoriz => "Bottom Stack Horizontal",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Tile => "Windows split the screen side-by-side",
+            Self::Grid => "Windows arranged in an even grid pattern",
+            Self::Floating => "Windows can be freely moved and resized",
+            Self::Monocle => "One window fills the entire screen at a time",
+            Self::Deck => "Large main window with smaller windows stacked on the side",
+            Self::BottomStack => "Main window on top, others stacked below",
+            Self::HorizGrid => "Windows arranged in vertical columns-first grid",
+            Self::GaplessGrid => "Grid layout without gaps",
+            Self::BStackHoriz => "Main window on top, others stacked horizontally below",
+        }
+    }
+
     pub fn from_name(name: &str) -> Option<Self> {
         Self::from_str(name).ok()
     }
@@ -143,18 +187,19 @@ impl LayoutKind {
         self,
         monitor: &Monitor,
         clients: &HashMap<WindowId, Client>,
+        layout_cfg: &crate::config::config_toml::LayoutConfig,
         animated: bool,
     ) -> Vec<LayoutOutput> {
         match self {
-            Self::Tile => algo::tile(monitor, clients, animated),
-            Self::Grid => algo::grid(monitor, clients, animated),
+            Self::Tile => algo::tile(monitor, clients, layout_cfg, animated),
+            Self::Grid => algo::grid(monitor, clients, layout_cfg, animated),
             Self::Floating => algo::floating(monitor, clients, animated),
-            Self::Monocle => algo::monocle(monitor, clients, animated),
-            Self::Deck => algo::deck(monitor, clients, animated),
-            Self::BottomStack => algo::bottom_stack(monitor, clients, animated),
-            Self::HorizGrid => algo::horizgrid(monitor, clients, animated),
-            Self::GaplessGrid => algo::gaplessgrid(monitor, clients, animated),
-            Self::BStackHoriz => algo::bstackhoriz(monitor, clients, animated),
+            Self::Monocle => algo::monocle(monitor, clients, layout_cfg, animated),
+            Self::Deck => algo::deck(monitor, clients, layout_cfg, animated),
+            Self::BottomStack => algo::bottom_stack(monitor, clients, layout_cfg, animated),
+            Self::HorizGrid => algo::horizgrid(monitor, clients, layout_cfg, animated),
+            Self::GaplessGrid => algo::gaplessgrid(monitor, clients, layout_cfg, animated),
+            Self::BStackHoriz => algo::bstackhoriz(monitor, clients, layout_cfg, animated),
         }
     }
 
@@ -201,7 +246,7 @@ impl FromStr for LayoutKind {
             "float" | "floating" => Ok(Self::Floating),
             "monocle" => Ok(Self::Monocle),
             "deck" => Ok(Self::Deck),
-            "bottomstack" => Ok(Self::BottomStack),
+            "bottomstack" | "bottom-stack" | "bstack" => Ok(Self::BottomStack),
             "horizgrid" => Ok(Self::HorizGrid),
             "gaplessgrid" => Ok(Self::GaplessGrid),
             "bstackhoriz" => Ok(Self::BStackHoriz),
@@ -215,5 +260,3 @@ pub use manager::{
     arrange, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, sync_monitor_z_order,
     toggle_layout,
 };
-
-

@@ -103,10 +103,15 @@ pub struct Monitor {
     pub bar_clients_width: i32,
     /// Full monitor geometry (including bar).
     pub monitor_rect: Rect,
-    /// Work area geometry (excluding bar).
+    /// Portion of the monitor not consumed by exclusive layer-shell surfaces
+    /// (waybar, quickshell, etc.). On X11 and when no exclusive layer surfaces
+    /// are mapped this is identical to `monitor_rect`. The instantWM bar and
+    /// `work_rect` are positioned inside this rectangle.
+    pub available_rect: Rect,
+    /// Work area geometry (excluding bar and exclusive layer surfaces).
     pub work_rect: Rect,
-    /// Currently selected tag set index.
-    pub sel_tags: u32,
+    /// Currently selected tag set index (0 or 1).
+    pub sel_tags: bool,
     /// Tag sets (two sets for switching).
     pub tag_set: [TagMask; 2],
     /// Active offset for bar display.
@@ -134,15 +139,15 @@ pub struct Monitor {
     /// Currently selected client.
     pub sel: Option<WindowId>,
     /// Focus history per tag mask.
-    pub tag_focus_history: HashMap<u32, WindowId>,
+    pub tag_focus_history: HashMap<TagMask, WindowId>,
     /// Last tiled focus per tag mask.
     ///
     /// This is distinct from `sel`: a floating dialog can hold keyboard focus
     /// while monocle still needs to keep the previously focused tiled client
     /// visible below it.
-    pub tag_tiled_focus_history: HashMap<u32, WindowId>,
+    pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
     /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
-    pub per_tag: HashMap<u32, PertagState>,
+    pub per_tag: HashMap<TagMask, PertagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
@@ -167,8 +172,9 @@ impl Default for Monitor {
             startmenu_size: 0,
             bar_clients_width: 0,
             monitor_rect: Rect::default(),
+            available_rect: Rect::default(),
             work_rect: Rect::default(),
-            sel_tags: 0,
+            sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
             activeoffset: 0,
             titleoffset: 0,
@@ -237,15 +243,9 @@ impl Monitor {
         self.tag_set[self.sel_tags as usize] = mask;
     }
 
-    /// Set the currently selected tags for this monitor from raw bits.
-    #[inline]
-    pub fn set_selected_tags_bits(&mut self, mask: u32) {
-        self.tag_set[self.sel_tags as usize] = TagMask::from_bits(mask);
-    }
-
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
-        let mask = self.selected_tags().bits();
+        let mask = self.selected_tags();
         let default_showbar = self.show_bar;
         self.per_tag
             .entry(mask)
@@ -254,7 +254,7 @@ impl Monitor {
 
     /// Read the current pertag state, returning `None` if no entry exists yet.
     pub fn pertag(&self) -> Option<&PertagState> {
-        self.per_tag.get(&self.selected_tags().bits())
+        self.per_tag.get(&self.selected_tags())
     }
 
     #[inline]
@@ -411,21 +411,32 @@ impl Monitor {
 
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
-        self.showbar_for_mask(self.selected_tags())
+        self.showbar_for_mask(self.selected_tags()) && !self.has_external_bar_on_internal_bar_edge()
     }
 
     /// Returns showbar state for the given tag mask.
     pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
         self.per_tag
-            .get(&mask.bits())
+            .get(&mask)
             .map(|s| s.showbar)
             .unwrap_or(self.show_bar)
+    }
+
+    /// Returns true when an exclusive layer-shell surface reserves space on the
+    /// same edge where instantWM would place its own bar.
+    pub fn has_external_bar_on_internal_bar_edge(&self) -> bool {
+        if self.top_bar {
+            self.available_rect.y > self.monitor_rect.y
+        } else {
+            self.available_rect.y + self.available_rect.h
+                < self.monitor_rect.y + self.monitor_rect.h
+        }
     }
 
     /// Returns layout state for the given tag mask (immutable lookup).
     pub fn layouts_for_mask(&self, mask: TagMask) -> TagLayouts {
         self.per_tag
-            .get(&mask.bits())
+            .get(&mask)
             .map(|s| s.layouts)
             .unwrap_or_default()
     }
@@ -482,31 +493,42 @@ impl Monitor {
         self.pertag_state().layouts.toggle_slot();
     }
 
-    /// Update the bar position based on monitor geometry.
+    /// Update the bar position and `work_rect` from the current
+    /// `available_rect` (which excludes exclusive layer-shell surfaces).
     pub fn update_bar_position(&mut self, bar_height: i32) {
         self.bar_height = bar_height.max(0);
-        let safe_bh = self.bar_height.min(self.monitor_rect.h.max(0));
-        if self.pertag_state().showbar {
+        let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
+        // x/w of the work area always follows the available area.
+        self.work_rect.x = self.available_rect.x;
+        self.work_rect.w = self.available_rect.w.max(1);
+        if self.shows_bar() {
             self.work_rect.y = if self.top_bar {
-                self.monitor_rect.y + safe_bh
+                self.available_rect.y + safe_bh
             } else {
-                self.monitor_rect.y
+                self.available_rect.y
             };
-            self.work_rect.h = (self.monitor_rect.h - safe_bh).max(1);
+            self.work_rect.h = (self.available_rect.h - safe_bh).max(1);
             self.bar_y = if self.top_bar {
-                self.monitor_rect.y
+                self.available_rect.y
             } else {
-                self.monitor_rect.y + self.monitor_rect.h - safe_bh
+                self.available_rect.y + self.available_rect.h - safe_bh
             };
         } else {
-            self.work_rect.y = self.monitor_rect.y;
-            self.work_rect.h = self.monitor_rect.h.max(1);
+            self.work_rect.y = self.available_rect.y;
+            self.work_rect.h = self.available_rect.h.max(1);
             self.bar_y = if self.top_bar {
-                -safe_bh
+                self.available_rect.y - safe_bh
             } else {
-                self.monitor_rect.h.max(0)
+                self.available_rect.y + self.available_rect.h
             };
         }
+    }
+
+    /// Set the rectangle that is not consumed by exclusive layer-shell
+    /// surfaces. Callers should follow up with `update_bar_position` to
+    /// re-derive `work_rect` and `bar_y`.
+    pub fn set_available_rect(&mut self, rect: Rect) {
+        self.available_rect = rect;
     }
 
     /// Apply output-derived geometry and UI metrics from the compositor / RandR.
@@ -524,6 +546,9 @@ impl Monitor {
     ) {
         self.num = index as i32;
         self.monitor_rect = rect;
+        // Reset the available rect to the full output. The Wayland backend
+        // re-applies layer-shell exclusive zones on top of this.
+        self.available_rect = rect;
         self.work_rect = rect;
         self.name = name;
         self.set_ui_metrics(scale, bar_height, horizontal_padding, startmenu_size);

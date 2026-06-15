@@ -307,7 +307,7 @@ pub fn dispatch_pointer_motion(
     let active_drag_window = wayland_active_drag_window(wm);
 
     // Phase 1: Compute bar/guard band hit detection
-    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root_x, root_y);
+    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, RootPoint::new(root_x, root_y));
 
     // Phase 2: Resolve pointer focus and hovered window
     let (pointer_focus, hovered_win) =
@@ -404,29 +404,22 @@ pub fn dispatch_pointer_motion(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Compute whether the pointer is in the bar area or guard band below it.
-fn compute_bar_hit(wm: &Wm, root_x: i32, root_y: i32) -> (bool, bool) {
+fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     crate::types::find_monitor_by_rect(
         wm.g.monitors.monitors(),
         &Rect {
-            x: root_x,
-            y: root_y,
+            x: root.x,
+            y: root.y,
             w: 1,
             h: 1,
         },
     )
     .and_then(|mid| wm.g.monitor(mid))
     .map(|mon| {
-        let bar_h = mon.bar_height.max(1);
         let bar_visible = wayland_monitor_bar_visible(wm, mon);
-        // 4-pixel guard band below the bar: pointer must move this many pixels
-        // past the bar bottom before a window drag is allowed to start.
-        let guard_h = 4;
-        let drag_active = wm.g.drag.any_drag_active();
-        let in_bar = bar_visible && root_y >= mon.bar_y && root_y < mon.bar_y + bar_h;
-        let in_guard = bar_visible
-            && !drag_active
-            && root_y >= mon.bar_y + bar_h
-            && root_y < mon.bar_y + bar_h + guard_h;
+        let in_bar = bar_visible && crate::bar::y_in_bar(mon, root.y);
+        let in_guard =
+            bar_visible && !wm.g.drag.any_drag_active() && crate::bar::y_in_guard_band(mon, root.y);
         (in_bar, in_guard)
     })
     .unwrap_or((false, false))
@@ -597,7 +590,7 @@ fn update_pointer_focus(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        if ctx.core.selected_client() != Some(lock_win) {
+        if ctx.core.globals().selected_win() != Some(lock_win) {
             crate::focus::focus(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 Some(lock_win),

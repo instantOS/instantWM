@@ -32,10 +32,11 @@
 
 use std::collections::HashMap;
 
-use crate::constants::animation::{
-    BORDER_MULTIPLIER, DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT,
-};
+use crate::config::config_toml::LayoutConfig;
+use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::LayoutKind;
+use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
@@ -50,11 +51,12 @@ use crate::types::{Monitor, Rect, WindowId};
 pub fn grid(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     // Two-client landscape shortcut: tile looks nicer.
     if monitor.clientcount <= 2 && monitor.monitor_rect.w > monitor.monitor_rect.h {
-        return super::tile::tile(monitor, clients, animated);
+        return super::tile::tile(monitor, clients, layout_cfg, animated);
     }
 
     // ── count tiled clients ───────────────────────────────────────────────
@@ -65,6 +67,9 @@ pub fn grid(
     }
 
     let tiled = monitor.collect_tiled(clients);
+    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Grid, n as u32);
+    let work_rect = placement.work_rect();
+
     let framecount = framecount_for_layout(
         animated,
         n as usize,
@@ -78,12 +83,7 @@ pub fn grid(
         let client = &tiled[0];
         return vec![LayoutOutput {
             win: client.win,
-            rect: Rect {
-                x: monitor.work_rect.x,
-                y: monitor.work_rect.y,
-                w: monitor.work_rect.w - BORDER_MULTIPLIER * client.border_width,
-                h: monitor.work_rect.h - BORDER_MULTIPLIER * client.border_width,
-            },
+            rect: placement.client_rect(work_rect, client.border_width),
             options: MoveResizeOptions::animate_to(framecount),
         }];
     }
@@ -104,8 +104,8 @@ pub fn grid(
         rows as u32
     };
 
-    let cell_height = monitor.work_rect.h / if rows > 0 { rows } else { 1 };
-    let cell_width = monitor.work_rect.w / if cols > 0 { cols as i32 } else { 1 };
+    let cell_height = work_rect.h / if rows > 0 { rows } else { 1 };
+    let cell_width = work_rect.w / if cols > 0 { cols as i32 } else { 1 };
 
     // ── place each tiled client ─────────────────────────────────────────
     let selected_tags = monitor.selected_tags();
@@ -124,30 +124,32 @@ pub fn grid(
 
         let border_width = c.border_width;
 
-        let cell_x = monitor.work_rect.x + (i / rows) * cell_width;
-        let cell_y = monitor.work_rect.y + (i % rows) * cell_height;
+        let cell_x = work_rect.x + (i / rows) * cell_width;
+        let cell_y = work_rect.y + (i % rows) * cell_height;
 
         // Last cell in a row or column gets the remaining pixels to avoid gaps
         // caused by integer division rounding.
         let extra_h = if (i + 1) % rows == 0 {
-            monitor.work_rect.h - cell_height * rows
+            work_rect.h - cell_height * rows
         } else {
             0
         };
         let extra_w = if i >= rows * (cols as i32 - 1) {
-            monitor.work_rect.w - cell_width * cols as i32
+            work_rect.w - cell_width * cols as i32
         } else {
             0
         };
 
+        let slot = Rect {
+            x: cell_x,
+            y: cell_y,
+            w: cell_width + extra_w,
+            h: cell_height + extra_h,
+        };
+
         result.push(LayoutOutput {
             win,
-            rect: Rect {
-                x: cell_x,
-                y: cell_y,
-                w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
-                h: cell_height - BORDER_MULTIPLIER * border_width + extra_h,
-            },
+            rect: placement.client_rect(slot, border_width),
             options: MoveResizeOptions::animate_to(framecount),
         });
 
@@ -167,6 +169,7 @@ pub fn grid(
 pub fn horizgrid(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     // ── count tiled clients ───────────────────────────────────────────────
@@ -189,6 +192,8 @@ pub fn horizgrid(
 
     // Collect tiled clients first
     let tiled = monitor.collect_tiled(clients);
+    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::HorizGrid, n);
+    let work_rect = placement.work_rect();
 
     let mut result = Vec::new();
 
@@ -199,7 +204,7 @@ pub fn horizgrid(
         } else {
             n / cols
         };
-        let cell_width = monitor.work_rect.w / cols as i32;
+        let cell_width = work_rect.w / cols as i32;
 
         // Start index for this column
         let start_idx = (col * (n / cols)) as usize;
@@ -212,25 +217,27 @@ pub fn horizgrid(
             let win = tiled[idx].win;
             let border_width = tiled[idx].border_width;
 
-            let cell_height = monitor.work_rect.h / cn as i32;
-            let cell_x = monitor.work_rect.x + col as i32 * cell_width;
-            let cell_y = monitor.work_rect.y + row as i32 * cell_height;
+            let cell_height = work_rect.h / cn as i32;
+            let cell_x = work_rect.x + col as i32 * cell_width;
+            let cell_y = work_rect.y + row as i32 * cell_height;
 
             // Last column gets any remaining width from rounding.
             let extra_w = if col == cols - 1 {
-                monitor.work_rect.w - cols as i32 * cell_width + cell_width
+                work_rect.w - cols as i32 * cell_width + cell_width
             } else {
                 0
             };
 
+            let slot = Rect {
+                x: cell_x,
+                y: cell_y,
+                w: cell_width + extra_w,
+                h: cell_height,
+            };
+
             result.push(LayoutOutput {
                 win,
-                rect: Rect {
-                    x: cell_x,
-                    y: cell_y,
-                    w: cell_width - BORDER_MULTIPLIER * border_width + extra_w,
-                    h: cell_height - BORDER_MULTIPLIER * border_width,
-                },
+                rect: placement.client_rect(slot, border_width),
                 options: MoveResizeOptions::animate_to(framecount),
             });
         }
@@ -249,7 +256,8 @@ pub fn horizgrid(
 pub fn gaplessgrid(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
+    layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
-    grid(monitor, clients, animated)
+    grid(monitor, clients, layout_cfg, animated)
 }

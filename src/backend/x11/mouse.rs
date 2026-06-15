@@ -1,11 +1,38 @@
 //! X11 mouse backend helpers.
 
-use crate::contexts::{CoreCtx, WmCtxX11};
-use crate::mouse::drag::{
-    MoveState, clear_bar_hover, complete_move_drop, on_motion, prepare_drag_target,
-};
+use crate::backend::BackendEvent;
+use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
+use crate::contexts::WmCtxX11;
+use crate::mouse::drag::{MoveState, on_motion, prepare_drag_target};
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
-use x11rb::protocol::xproto::ConnectionExt;
+use x11rb::connection::Connection;
+use x11rb::protocol::xproto::{self, ConnectionExt};
+
+/// Set the root window cursor for the given cursor style.
+///
+/// Looks up the corresponding X11 cursor in the cached array and applies it to
+/// the root window.  No-op if the requested style is already active.
+pub fn set_x11_root_cursor(
+    x11: &X11BackendRef<'_>,
+    x11_runtime: &mut X11RuntimeConfig,
+    cursor: AltCursor,
+) {
+    if x11_runtime.last_x11_cursor == Some(cursor) {
+        return;
+    }
+    let conn = x11.conn;
+    let root = x11_runtime.root;
+    let cursor_index = cursor.to_x11_index();
+    if let Some(Some(loaded_cursor)) = x11_runtime.cursors.get(cursor_index) {
+        let _ = xproto::change_window_attributes(
+            conn,
+            root,
+            &xproto::ChangeWindowAttributesAux::new().cursor(loaded_cursor.cursor as u32),
+        );
+        let _ = conn.flush();
+        x11_runtime.last_x11_cursor = Some(cursor);
+    }
+}
 
 /// X11-only synchronous window move implementation.
 ///
@@ -21,7 +48,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     };
 
     let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let Some(start) = wm_ctx.pointer_location() else {
+    let Some(start) = wm_ctx.backend().pointer_location() else {
         return;
     };
 
@@ -38,39 +65,31 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         edge_snap_indicator: None,
     };
 
+    ctx.core.globals_mut().drag.interactive =
+        crate::globals::DragInteraction::new_move(win, btn, start, grab_start_rect);
+
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let x11rb::protocol::Event::MotionNotify(m) = event {
+        if let BackendEvent::Motion { root_x, root_y, .. } = event {
+            let root = Point::new(*root_x as i32, *root_y as i32);
+            ctx.core.globals_mut().drag.interactive.last_root_point = root;
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-            on_motion(
-                &mut wm_ctx,
-                win,
-                Point::new(m.event_x as i32, m.event_y as i32),
-                Point::new(m.root_x as i32, m.root_y as i32),
-                &mut state,
-            );
+            on_motion(&mut wm_ctx, win, root, root, &mut state);
         }
         true
     });
 
-    {
-        let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-        clear_bar_hover(&mut wm_ctx);
-    }
-
-    {
-        let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-        complete_move_drop(
-            &mut wm_ctx,
-            win,
-            state.grab_start_rect,
-            state.edge_snap_indicator,
-            None,
-        );
-    }
+    let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+    crate::mouse::drag::finish_drag_move(
+        &mut wm_ctx,
+        win,
+        state.grab_start_rect,
+        state.edge_snap_indicator,
+        None,
+    );
 }
 
 pub fn get_cursor_client_win_with_conn(
-    core: &CoreCtx,
+    globals: &crate::globals::Globals,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,
 ) -> Option<WindowId> {
@@ -81,7 +100,7 @@ pub fn get_cursor_client_win_with_conn(
     }
 
     let win = WindowId::from(reply.child);
-    if core.globals().clients.contains_key(&win) {
+    if globals.clients.contains_key(&win) {
         Some(win)
     } else {
         None

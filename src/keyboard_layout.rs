@@ -5,7 +5,6 @@
 //! TOML config under `[keyboard]` and can be switched at runtime via
 //! keybindings or IPC.
 
-use crate::backend::BackendOps;
 use crate::contexts::WmCtx;
 use crate::globals::KeyboardLayout;
 use std::process::Command;
@@ -127,25 +126,6 @@ pub fn keyboard_layout_status(ctx: &WmCtx) -> String {
         current_name,
         variant_str
     )
-}
-
-/// Get the list of configured keyboard layouts as a formatted string.
-pub fn keyboard_layout_list(ctx: &WmCtx) -> String {
-    let state = &ctx.core().globals().keyboard_layout;
-    if state.is_empty() {
-        return String::new();
-    }
-    let mut out = String::new();
-    for (i, layout) in state.layouts.iter().enumerate() {
-        let variant = layout.variant.as_deref().unwrap_or("");
-        let marker = if i == state.current { "* " } else { "  " };
-        if variant.is_empty() {
-            out.push_str(&format!("{}{}\n", marker, layout.name));
-        } else {
-            out.push_str(&format!("{}{} ({})\n", marker, layout.name, variant));
-        }
-    }
-    out
 }
 
 /// Replace the configured keyboard layouts at runtime.

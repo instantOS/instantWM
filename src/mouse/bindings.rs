@@ -13,21 +13,17 @@ pub struct ButtonBindingEvent {
     pub clean_state: u32,
 }
 
-pub fn run_all(ctx: &mut WmCtx<'_>, event: ButtonBindingEvent, numlockmask: u32) {
-    let _ = run_matching(ctx, event, numlockmask, MatchPolicy::All);
-}
-
 pub fn consume_one(ctx: &mut WmCtx<'_>, event: ButtonBindingEvent, numlockmask: u32) -> bool {
     run_matching(ctx, event, numlockmask, MatchPolicy::First)
 }
 
 #[derive(Clone, Copy)]
-enum MatchPolicy {
+pub(crate) enum MatchPolicy {
     All,
     First,
 }
 
-fn run_matching(
+pub(crate) fn run_matching(
     ctx: &mut WmCtx<'_>,
     event: ButtonBindingEvent,
     numlockmask: u32,

@@ -13,7 +13,7 @@ use smithay::{
     desktop::{PopupManager, Space, Window},
     input::{
         Seat, SeatState,
-        keyboard::{KeyboardHandle, XkbConfig},
+        keyboard::{KeyboardHandle, Keycode, XkbConfig},
         pointer::PointerHandle,
     },
     reexports::{
@@ -54,6 +54,7 @@ use smithay::{
     xwayland::X11Wm,
 };
 
+use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::globals::Globals;
@@ -134,6 +135,7 @@ pub struct WaylandState {
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
+    pub ext_workspace_state: ExtWorkspaceManagerState,
     /// Current session lock state.
     pub lock_state: SessionLockState,
     /// Lock surfaces per output (keyed by output name).
@@ -212,6 +214,7 @@ pub struct WaylandRuntimeState {
     pub image_copy_sessions: Vec<ImageCopySession>,
     pub space_sync_pending: bool,
     pub render_dirty: bool,
+    pub frame_callbacks_pending: bool,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
@@ -222,6 +225,12 @@ pub struct WaylandRuntimeState {
     pub pending_winit_resize: Option<(i32, i32)>,
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
+    pub intercepted_key_releases: HashSet<Keycode>,
+    pub fixed_scene_cache: Option<(
+        u64,
+        u64,
+        std::rc::Rc<crate::wayland::common::FixedSceneElements>,
+    )>,
 }
 
 impl Default for WaylandRuntimeState {
@@ -233,6 +242,7 @@ impl Default for WaylandRuntimeState {
             image_copy_sessions: Vec::new(),
             space_sync_pending: true,
             render_dirty: false,
+            frame_callbacks_pending: false,
             render_ping: None,
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
@@ -243,6 +253,8 @@ impl Default for WaylandRuntimeState {
             pending_winit_resize: None,
             winit_close_requested: false,
             output_enabled: HashMap::new(),
+            intercepted_key_releases: HashSet::new(),
+            fixed_scene_cache: None,
         }
     }
 }
@@ -304,6 +316,7 @@ impl WaylandState {
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
+        let ext_workspace_state = ExtWorkspaceManagerState::new(&dh);
 
         // -- Seat (input devices) --
         let mut seat_state = SeatState::new();
@@ -345,6 +358,7 @@ impl WaylandState {
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,
+            ext_workspace_state,
             lock_state: SessionLockState::Unlocked,
             lock_surfaces: HashMap::new(),
             idle_inhibiting_surfaces: HashSet::new(),
@@ -532,6 +546,16 @@ impl WaylandState {
     }
 
     #[inline]
+    pub fn request_frame_callbacks(&mut self) {
+        if !self.runtime.frame_callbacks_pending
+            && let Some(render_ping) = &self.runtime.render_ping
+        {
+            render_ping.ping();
+        }
+        self.runtime.frame_callbacks_pending = true;
+    }
+
+    #[inline]
     pub fn request_space_sync(&mut self) {
         if self.runtime.space_sync_pending {
             log::debug!("request_space_sync: already pending");
@@ -553,6 +577,11 @@ impl WaylandState {
     #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
         std::mem::take(&mut self.runtime.render_dirty)
+    }
+
+    #[inline]
+    pub fn take_frame_callbacks_pending(&mut self) -> bool {
+        std::mem::take(&mut self.runtime.frame_callbacks_pending)
     }
 
     pub fn set_output_vrr_support(
