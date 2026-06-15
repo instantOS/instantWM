@@ -128,28 +128,32 @@ fn field_get<T: Serialize>(obj: &T, field: &str) -> Option<String> {
     Some(render_value(v.get(field)?))
 }
 
-/// Parse `raw` as JSON; if that fails and the existing field is a string,
-/// take the raw value as a string. Otherwise surface a parse error so we
-/// don't silently turn `42` into `"42"` for a numeric field.
-fn parse_value_for_field<T: Serialize>(
+/// Return a copy of `obj` with `field` set from a raw user string.
+///
+/// We try the value as JSON first (so `12`, `true`, `[1,2,3]` work), and
+/// fall back to treating it as a plain string when either:
+///   * the JSON parse fails (e.g. `my-cursor`), or
+///   * the parsed JSON value can't be deserialised into the target field
+///     (e.g. someone wrote `set monitors.DP-1.position 12` and the
+///     `Value::Number` was rejected by `Option<String>`).
+///
+/// The fallback is necessary for `Option<String>` fields too — when the
+/// current value is `None`, we can't tell from a serde snapshot that the
+/// field expects a string, so we have to actually attempt the set and
+/// retry on type error.
+fn set_field_from_raw<T: Serialize + DeserializeOwned>(
     obj: &T,
     field: &str,
     raw: String,
-) -> Result<serde_json::Value, String> {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
-        return Ok(v);
+) -> Result<T, String> {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
+        if let Ok(new) = field_set_owned(obj, field, value) {
+            return Ok(new);
+        }
+        // JSON parsed but didn't fit the field — fall through and retry as
+        // a plain string (e.g. a bare value for an `Option<String>` field).
     }
-    let snapshot = serde_json::to_value(obj).map_err(|e| e.to_string())?;
-    let current = snapshot
-        .get(field)
-        .ok_or_else(|| format!("unknown field '{field}'"))?;
-    if matches!(current, serde_json::Value::String(_)) {
-        Ok(serde_json::Value::String(raw))
-    } else {
-        Err(format!(
-            "invalid value for '{field}': expected JSON (got {raw:?})"
-        ))
-    }
+    field_set_owned(obj, field, serde_json::Value::String(raw))
 }
 
 fn parse_then_set<T: Serialize + DeserializeOwned>(
@@ -157,8 +161,7 @@ fn parse_then_set<T: Serialize + DeserializeOwned>(
     field: &str,
     raw: String,
 ) -> Result<(), String> {
-    let value = parse_value_for_field(&*obj, field, raw)?;
-    *obj = field_set_owned(&*obj, field, value)?;
+    *obj = set_field_from_raw(&*obj, field, raw)?;
     Ok(())
 }
 
@@ -219,11 +222,7 @@ fn map_set<T: Serialize + DeserializeOwned + Default>(
             &default
         }
     };
-    let value = match parse_value_for_field(existing, field, raw) {
-        Ok(v) => v,
-        Err(e) => return Response::err(e),
-    };
-    match field_set_owned(existing, field, value) {
+    match set_field_from_raw(existing, field, raw) {
         Ok(cfg) => {
             map.insert(id.to_string(), cfg);
             Response::ok()
@@ -403,6 +402,19 @@ mod tests {
             do_set(&mut wm, "window.border_width_px", "nope"),
             Response::Err(_)
         ));
+    }
+
+    #[test]
+    fn set_option_string_field_with_bare_value() {
+        let mut wm = test_wm();
+        // monitors.DP-1.position is Option<String>; defaults to None.
+        // A bare (non-JSON) value should be accepted as the string.
+        let resp = do_set(&mut wm, "monitors.DP-1.position", "0,0");
+        assert!(matches!(resp, Response::Ok), "got {resp:?}");
+        assert_eq!(
+            wm.g.cfg.monitors.get("DP-1").and_then(|m| m.position.as_deref()),
+            Some("0,0")
+        );
     }
 
     #[test]
