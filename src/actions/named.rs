@@ -90,6 +90,9 @@ define_named_actions!(
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "set grid layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Grid); } },
     LayoutDeck => { name: "layout_deck", arg_example: None, doc: "set deck layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Deck); } },
     LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BottomStack); } },
+    LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::HorizGrid); } },
+    LayoutGaplessGrid => { name: "layout_gapless_grid", arg_example: None, doc: "set gapless-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::GaplessGrid); } },
+    LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncNmaster => { name: "inc_nmaster", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_nmaster_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
@@ -188,6 +191,9 @@ mod tests {
             LayoutKind::from_name("floating"),
             Some(LayoutKind::Floating)
         );
+        assert_eq!(LayoutKind::from_name("horizgrid"), Some(LayoutKind::HorizGrid));
+        assert_eq!(LayoutKind::from_name("gaplessgrid"), Some(LayoutKind::GaplessGrid));
+        assert_eq!(LayoutKind::from_name("bstackhoriz"), Some(LayoutKind::BStackHoriz));
         assert_eq!(LayoutKind::from_name("bad"), None);
     }
 

@@ -17,25 +17,6 @@ use crate::types::WindowId;
 /// client that passes [`Client::is_visible`].
 /// TODO: does this mess with stacking policy? What is a sensible order?
 /// Choosing just ANY client should be the last resort
-pub fn find_visible_client(g: &Globals, start_win: Option<WindowId>) -> Option<WindowId> {
-    let selected = g.selected_monitor().selected_tags();
-
-    let m = g.selected_monitor();
-    let start_idx = start_win.and_then(|w| m.clients.iter().position(|&x| x == w));
-    let iter_start = start_idx.map(|i| i + 1).unwrap_or(0);
-
-    for i in iter_start..m.clients.len() {
-        let win = m.clients[i];
-        if let Some(c) = g.clients.get(&win)
-            && c.is_visible(selected)
-        {
-            return Some(win);
-        }
-    }
-
-    None
-}
-
 // ── layout query ──────────────────────────────────────────────────────────────
 
 /// Returns `fast_frame_count` if animation is enabled and client count exceeds threshold,

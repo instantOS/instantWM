@@ -109,6 +109,12 @@ pub enum LayoutKind {
     Deck,
     /// Bottom-stack layout (`TTT`).
     BottomStack,
+    /// Horizontal grid layout (`###`).
+    HorizGrid,
+    /// Gapless grid layout (`g#`).
+    GaplessGrid,
+    /// Bottom-stack horizontal layout (`===`).
+    BStackHoriz,
 }
 
 impl LayoutKind {
@@ -124,6 +130,9 @@ impl LayoutKind {
             Self::Monocle => "[M]",
             Self::Deck => "H[]",
             Self::BottomStack => "TTT",
+            Self::HorizGrid => "###",
+            Self::GaplessGrid => "g#",
+            Self::BStackHoriz => "===",
         }
     }
 
@@ -143,13 +152,23 @@ impl LayoutKind {
             Self::Monocle => algo::monocle(monitor, clients, animated),
             Self::Deck => algo::deck(monitor, clients, animated),
             Self::BottomStack => algo::bottom_stack(monitor, clients, animated),
+            Self::HorizGrid => algo::horizgrid(monitor, clients, animated),
+            Self::GaplessGrid => algo::gaplessgrid(monitor, clients, animated),
+            Self::BStackHoriz => algo::bstackhoriz(monitor, clients, animated),
         }
     }
 
     pub fn is_tiling(self) -> bool {
         matches!(
             self,
-            Self::Tile | Self::Grid | Self::Monocle | Self::Deck | Self::BottomStack
+            Self::Tile
+                | Self::Grid
+                | Self::Monocle
+                | Self::Deck
+                | Self::BottomStack
+                | Self::HorizGrid
+                | Self::GaplessGrid
+                | Self::BStackHoriz
         )
     }
 
@@ -165,6 +184,9 @@ impl LayoutKind {
             Self::Monocle,
             Self::Deck,
             Self::BottomStack,
+            Self::HorizGrid,
+            Self::GaplessGrid,
+            Self::BStackHoriz,
         ]
     }
 }
@@ -180,6 +202,9 @@ impl FromStr for LayoutKind {
             "monocle" => Ok(Self::Monocle),
             "deck" => Ok(Self::Deck),
             "bottomstack" => Ok(Self::BottomStack),
+            "horizgrid" => Ok(Self::HorizGrid),
+            "gaplessgrid" => Ok(Self::GaplessGrid),
+            "bstackhoriz" => Ok(Self::BStackHoriz),
             _ => Err(()),
         }
     }
