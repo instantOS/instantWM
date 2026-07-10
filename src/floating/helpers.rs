@@ -18,29 +18,6 @@ pub fn has_tiling_layout(model: &WmModel) -> bool {
     model.selected_monitor().is_tiling_layout()
 }
 
-// ── Per-client queries ────────────────────────────────────────────────────────
-
-/// Returns `true` if the client should be treated as floating right now.
-///
-/// A client is considered floating when either:
-/// - its `isfloating` flag is set, or
-/// - no tiling layout is active on the selected monitor (all windows float in
-///   floating-only layouts).
-pub fn check_floating(model: &WmModel, win: WindowId) -> bool {
-    if let Some(client) = model.clients.get(&win) {
-        if client.mode.is_floating() {
-            return true;
-        }
-        if model.is_overview_active() {
-            return false;
-        }
-        if !model.selected_monitor().is_tiling_layout() {
-            return true;
-        }
-    }
-    false
-}
-
 // ── Geometry helpers ──────────────────────────────────────────────────────────
 
 /// Nudge the client one pixel to the right and back, forcing a layout refresh.

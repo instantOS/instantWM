@@ -1,7 +1,7 @@
 use crate::actions::{KeyAction, execute_key_action};
 use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
-use crate::floating::{change_snap, reset_snap, toggle_floating, unhide_one};
+use crate::floating::{change_snap, reset_snap, toggle_floating};
 use crate::focus::{direction_focus, focus_stack};
 
 use crate::types::*;
@@ -121,65 +121,6 @@ fn resolve_key_action(
         })
 }
 
-pub fn up_press(ctx: &mut WmCtx) {
-    let (selected_window, is_floating) = {
-        let mon = ctx.core().model().selected_monitor();
-        let sel = mon.sel;
-        let is_floating = sel.is_some_and(|w| ctx.core().model().clients.is_floating(w));
-        (sel, is_floating)
-    };
-
-    if selected_window.is_none() {
-        return;
-    }
-
-    if is_floating {
-        toggle_floating(ctx);
-        return;
-    }
-
-    if let Some(win) = selected_window {
-        crate::client::hide_for_user(ctx, win);
-    }
-}
-
-pub fn down_press(ctx: &mut WmCtx) {
-    if unhide_one(ctx) {
-        return;
-    }
-
-    let (selected_window, snap_status, is_floating) = {
-        let mon = ctx.core().model().selected_monitor();
-        let sel = mon.sel;
-        let (snap_status, is_floating) = sel
-            .and_then(|w| {
-                ctx.core()
-                    .state()
-                    .model
-                    .clients
-                    .get(&w)
-                    .map(|c| (c.snap_status, c.mode.is_floating()))
-            })
-            .unwrap_or((SnapPosition::None, false));
-        (sel, snap_status, is_floating)
-    };
-
-    if selected_window.is_none() {
-        return;
-    }
-
-    if snap_status != SnapPosition::None {
-        if let Some(win) = selected_window {
-            reset_snap(ctx, win);
-        }
-        return;
-    }
-
-    if !is_floating {
-        toggle_floating(ctx);
-    }
-}
-
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx.core().model().is_overview_active();
 
@@ -227,50 +168,6 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     }
 
     focus_stack(ctx, direction);
-}
-
-pub fn space_toggle(ctx: &mut WmCtx) {
-    if ctx.core().model().is_overview_active() {
-        return;
-    }
-
-    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
-
-    if !has_tiling {
-        let Some(win) = ctx.core().model().selected_win() else {
-            return;
-        };
-
-        let snap_status = {
-            ctx.core()
-                .state()
-                .model
-                .clients
-                .get(&win)
-                .map(|c| c.snap_status)
-                .unwrap_or(SnapPosition::None)
-        };
-
-        if snap_status != SnapPosition::None {
-            reset_snap(ctx, win);
-        } else {
-            let border_width = ctx.core().config().window.border_width_px;
-            ctx.set_border(win, border_width);
-            if let WmCtx::X11(x11) = ctx {
-                x11.x11.set_border_width(win, border_width);
-            }
-
-            if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
-                client.save_floating_geometry();
-                client.snap_status = SnapPosition::Maximized;
-            }
-
-            let selmon_id = ctx.core().model().selected_monitor_id();
-            ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
-        }
-    } else {
-        toggle_floating(ctx);
-    }
 }
 
 #[cfg(test)]

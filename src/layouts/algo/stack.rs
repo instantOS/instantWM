@@ -29,10 +29,10 @@ pub fn deck(
 
     let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Deck, tiled_client_count);
     let work_rect = placement.work_rect();
-    let nmaster = monitor.nmaster.max(0) as u32;
+    let nmaster = monitor.master_count.max(0) as u32;
     let master_area_width: i32 = if tiled_client_count > nmaster {
         if nmaster > 0 {
-            (monitor.mfact * work_rect.w as f32) as i32
+            (monitor.master_factor * work_rect.w as f32) as i32
         } else {
             0
         }
@@ -112,10 +112,10 @@ pub fn bottom_stack(
         tiled_client_count,
     );
     let work_rect = placement.work_rect();
-    let nmaster = monitor.nmaster.max(0) as u32;
+    let nmaster = monitor.master_count.max(0) as u32;
     let (master_area_height, stack_window_width, stack_area_y) = if tiled_client_count > nmaster {
         let master_area_height = if nmaster > 0 {
-            (monitor.mfact * work_rect.h as f32) as i32
+            (monitor.master_factor * work_rect.h as f32) as i32
         } else {
             0
         };
@@ -203,11 +203,11 @@ pub fn bstackhoriz(
         tiled_client_count,
     );
     let work_rect = placement.work_rect();
-    let nmaster = monitor.nmaster.max(0) as u32;
+    let nmaster = monitor.master_count.max(0) as u32;
     let (master_area_height, stack_window_height, mut stack_window_y) =
         if tiled_client_count > nmaster {
             let master_area_height = if nmaster > 0 {
-                (monitor.mfact * work_rect.h as f32) as i32
+                (monitor.master_factor * work_rect.h as f32) as i32
             } else {
                 0
             };

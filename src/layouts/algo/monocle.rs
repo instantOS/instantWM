@@ -33,7 +33,7 @@ pub fn monocle(
     layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
-    let selected_window = monitor.sel;
+    let selected_window = monitor.selected;
     let selected_tags = monitor.selected_tags();
     let tiled_client_count = monitor.tiled_client_count(clients) as u32;
     let placement =

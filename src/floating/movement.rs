@@ -102,7 +102,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     };
     let show_bar = {
         let mon = ctx.core_mut().model_mut().selected_monitor_mut();
-        mon.pertag_state().show_bar
+        mon.per_tag_state().show_bar
     };
 
     if geo.w > work_rect.w || geo.h > work_rect.h {

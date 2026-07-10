@@ -80,7 +80,7 @@ pub(crate) fn hit_test(
         return BarPosition::LayoutSymbol;
     }
 
-    if monitor.sel.is_none() && local_x < hit.shutdown_end {
+    if monitor.selected.is_none() && local_x < hit.shutdown_end {
         return BarPosition::ShutDown;
     }
 
@@ -92,10 +92,10 @@ pub(crate) fn hit_test(
         if local_x >= r.start && local_x < r.end {
             let this_width = (r.end - r.start).max(0);
             let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
-            if monitor.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
+            if monitor.selected == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
                 return BarPosition::CloseButton(r.win);
             }
-            if monitor.sel == Some(r.win) && local_x >= resize_start {
+            if monitor.selected == Some(r.win) && local_x >= resize_start {
                 return BarPosition::ResizeWidget(r.win);
             }
             return BarPosition::WinTitle(r.win);

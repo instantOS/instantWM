@@ -114,7 +114,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let sel = {
         let g = ctx.core_mut().state_mut();
         let mon = g.selected_monitor();
-        mon.sel?
+        mon.selected?
     };
     let c = ctx.core().model().clients.get(&sel)?;
     let is_true_fullscreen = c.mode.is_true_fullscreen();

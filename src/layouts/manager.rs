@@ -7,7 +7,7 @@
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{ArrangePlan, LayoutKind, LayoutOutput, MonitorUpdates};
-use crate::types::{Client, ClientMode, Monitor, MonitorId, PertagState, WindowId};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, PerTagState, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     } else {
         crate::client::apply_visibility(ctx);
 
-        let mon_indices: Vec<MonitorId> = (0..ctx.core().model().monitors.count())
+        let mon_indices: Vec<MonitorId> = (0..ctx.core().model().monitors.len())
             .map(MonitorId)
             .collect();
         for idx in mon_indices {
@@ -70,18 +70,18 @@ impl ArrangePlan {
         // 3. Apply monitor updates
         if let Some(m) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
             m.clientcount = self.monitor_updates.clientcount;
-            m.nmaster = self.monitor_updates.nmaster;
-            m.mfact = self.monitor_updates.mfact;
+            m.master_count = self.monitor_updates.master_count;
+            m.master_factor = self.monitor_updates.master_factor;
             m.work_rect = self.monitor_updates.work_rect;
             m.bar_y = self.monitor_updates.bar_y;
             m.bar_height = self.monitor_updates.bar_height;
 
-            // Sync pertag state back (copy values to avoid borrow conflict)
-            let nmaster = m.nmaster;
-            let mfact = m.mfact;
-            let pertag = m.pertag_state();
-            pertag.nmaster = nmaster;
-            pertag.mfact = mfact;
+            // Sync per-tag state back (copy values to avoid borrow conflict)
+            let master_count = m.master_count;
+            let master_factor = m.master_factor;
+            let pertag = m.per_tag_state();
+            pertag.master_count = master_count;
+            pertag.master_factor = master_factor;
         }
 
         // 4. For monocle, raise the selected window before animated moves
@@ -91,7 +91,7 @@ impl ArrangePlan {
             .state()
             .monitor(monitor_id)
             .filter(|m| m.current_layout().is_monocle())
-            .and_then(|m| m.sel)
+            .and_then(|m| m.selected)
         {
             ctx.window_backend().raise_window_visual_only(selected);
             ctx.window_backend().flush();
@@ -110,7 +110,7 @@ impl ArrangePlan {
         // 7. Raise selected window in overview mode
         if self.is_overview
             && let Some(monitor) = ctx.core().model().monitor(monitor_id)
-            && let Some(selected) = monitor.sel
+            && let Some(selected) = monitor.selected
             && self.client_moves.iter().any(|o| o.win == selected)
         {
             ctx.window_backend().raise_window_visual_only(selected);
@@ -129,15 +129,15 @@ impl Monitor {
     ) -> ArrangePlan {
         let clientcount = self.tiled_client_count(clients) as u32;
 
-        let defaults = PertagState::new(self.show_bar);
-        let (nmaster, mfact) = self
-            .pertag()
-            .map(|p| (p.nmaster, p.mfact))
-            .unwrap_or((defaults.nmaster, defaults.mfact));
+        let defaults = PerTagState::new(self.show_bar);
+        let (master_count, master_factor) = self
+            .per_tag()
+            .map(|p| (p.master_count, p.master_factor))
+            .unwrap_or((defaults.master_count, defaults.master_factor));
 
         self.clientcount = clientcount;
-        self.nmaster = nmaster;
-        self.mfact = mfact;
+        self.master_count = master_count;
+        self.master_factor = master_factor;
         self.update_bar_position(bar_height);
 
         let bar_y = self.bar_y;
@@ -165,8 +165,8 @@ impl Monitor {
         ArrangePlan {
             monitor_updates: MonitorUpdates {
                 clientcount,
-                nmaster,
-                mfact,
+                master_count,
+                master_factor,
                 work_rect,
                 bar_y,
                 bar_height: self.bar_height,
@@ -256,7 +256,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let selected_window = match monitor.sel {
+    let selected_window = match monitor.selected {
         Some(win) => win,
         None => return,
     };
@@ -282,7 +282,7 @@ pub(crate) fn compute_monitor_z_order(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
 ) -> Option<Vec<WindowId>> {
-    let selected_window = monitor.sel?;
+    let selected_window = monitor.selected?;
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
     let tiled_focus = monitor
@@ -359,13 +359,13 @@ pub(crate) fn compute_monitor_z_order(
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
     let m = ctx.core_mut().model_mut().selected_monitor_mut();
-    m.pertag_state().layouts.set_layout(layout);
+    m.per_tag_state().layouts.set_layout(layout);
     finish_layout_change(ctx);
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     let m = ctx.core_mut().model_mut().selected_monitor_mut();
-    m.pertag_state().layouts.toggle_slot();
+    m.per_tag_state().layouts.toggle_slot();
     finish_layout_change(ctx);
 }
 
@@ -394,26 +394,26 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     set_layout(ctx, final_layout);
 }
 
-pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
+pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = ctx
         .core()
         .state()
         .selected_monitor()
         .tiled_client_count(ctx.core().model().clients.map()) as i32;
     let m = ctx.core_mut().model_mut().selected_monitor_mut();
-    if delta > 0 && m.nmaster >= ccount {
-        m.nmaster = ccount;
+    if delta > 0 && m.master_count >= ccount {
+        m.master_count = ccount;
     } else {
-        let new_nmaster = max(m.nmaster + delta, 0);
-        m.nmaster = new_nmaster;
+        let new_nmaster = max(m.master_count + delta, 0);
+        m.master_count = new_nmaster;
     }
-    m.pertag_state().nmaster = m.nmaster;
+    m.per_tag_state().master_count = m.master_count;
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
 
-pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
-    if mfact_val == 0.0 {
+pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
+    if delta == 0.0 {
         return;
     }
     let is_tiling = ctx
@@ -426,13 +426,13 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let current_mfact = ctx.core().model().selected_monitor().mfact;
-    let new_mfact = if mfact_val < 1.0 {
-        mfact_val + current_mfact
+    let current_factor = ctx.core().model().selected_monitor().master_factor;
+    let new_factor = if delta < 1.0 {
+        delta + current_factor
     } else {
-        mfact_val - 1.0
+        delta - 1.0
     };
-    if !(0.05..=0.95).contains(&new_mfact) {
+    if !(0.05..=0.95).contains(&new_factor) {
         return;
     }
 
@@ -448,8 +448,8 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     }
 
     let m = ctx.core_mut().model_mut().selected_monitor_mut();
-    m.mfact = new_mfact;
-    m.pertag_state().mfact = new_mfact;
+    m.master_factor = new_factor;
+    m.per_tag_state().master_factor = new_factor;
 
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
@@ -476,7 +476,7 @@ mod tests {
     fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
         let mut monitor = Monitor::default();
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        monitor.sel = Some(selected);
+        monitor.selected = Some(selected);
         monitor.bar_win = WindowId(99);
         for &win in order {
             monitor.z_order.attach_top(win);

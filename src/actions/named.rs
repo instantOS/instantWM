@@ -11,7 +11,7 @@ use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
+    LayoutKind, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor, toggle_layout,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
@@ -23,8 +23,8 @@ use crate::toggles::{
     toggle_alt_tag, toggle_bar, toggle_mode, toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{
-    EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, ToggleAction,
-    VerticalDirection,
+    EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, TagSelection,
+    ToggleAction, VerticalDirection,
 };
 use crate::util::spawn;
 
@@ -94,11 +94,11 @@ define_named_actions!(
     LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
-    IncNmaster => { name: "inc_nmaster", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_nmaster_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
-    DecNmaster => { name: "dec_nmaster", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_nmaster_by(ctx, -1); } },
-    MfactGrow => { name: "mfact_grow", arg_example: None, doc: "increase master area width", run: |ctx, _args| { set_mfact(ctx, 0.05); } },
-    MfactShrink => { name: "mfact_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_mfact(ctx, -0.05); } },
-    SetMfact => { name: "set_mfact", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_mfact(ctx, delta); } } },
+    IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
+    DecMasterCount => { name: "dec_master_count", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_master_count_by(ctx, -1); } },
+    MasterFactorGrow => { name: "master_factor_grow", arg_example: None, doc: "increase master area width", run: |ctx, _args| { set_master_factor(ctx, 0.05); } },
+    MasterFactorShrink => { name: "master_factor_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_master_factor(ctx, -0.05); } },
+    SetMasterFactor => { name: "set_master_factor", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_master_factor(ctx, delta); } } },
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
     ToggleMaximized => { name: "toggle_maximized", arg_example: None, doc: "toggle maximized state", run: |ctx, _args| { toggle_maximized(ctx); } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
@@ -119,7 +119,7 @@ define_named_actions!(
     ShiftTagRight => { name: "shift_tag_right", arg_example: None, doc: "shift client to tag on right", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Right.into(), 1); } },
     ShiftViewLeft => { name: "shift_view_left", arg_example: None, doc: "shift view to tag on left", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Left); } },
     ShiftViewRight => { name: "shift_view_right", arg_example: None, doc: "shift view to tag on right", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Right); } },
-    ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::view::view_tags(ctx, TagMask::ALL_BITS); } },
+    ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::tag_ops::view_selection(ctx, TagSelection::All); } },
     TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); } } },
     ToggleOverview => { name: "toggle_overview", arg_example: None, doc: "toggle overview mode", run: |ctx, _args| { toggle_overview(ctx, TagMask::ALL_BITS); } },
     CancelOverview => { name: "cancel_overview", arg_example: None, doc: "leave overview and restore previous view", run: |ctx, _args| { cancel_overview(ctx, TagMask::ALL_BITS); } },

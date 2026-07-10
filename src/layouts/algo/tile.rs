@@ -30,13 +30,13 @@ use std::cmp::min;
 use std::collections::HashMap;
 
 fn effective_nmaster(monitor: &Monitor, tiled_client_count: u32) -> u32 {
-    min(monitor.nmaster.max(0) as u32, tiled_client_count)
+    min(monitor.master_count.max(0) as u32, tiled_client_count)
 }
 
 fn master_width(work_width: i32, monitor: &Monitor, tiled_client_count: u32, nmaster: u32) -> i32 {
     if tiled_client_count > nmaster {
         if nmaster > 0 {
-            (monitor.mfact * work_width as f32) as i32
+            (monitor.master_factor * work_width as f32) as i32
         } else {
             0
         }
@@ -144,8 +144,8 @@ mod tests {
     fn master_width_respects_mfact_when_stack_exists() {
         let mut monitor = Monitor::default();
         monitor.work_rect = Rect::new(0, 0, 1000, 800);
-        monitor.mfact = 0.7;
-        monitor.nmaster = 1;
+        monitor.master_factor = 0.7;
+        monitor.master_count = 1;
 
         assert_eq!(
             master_width(
@@ -162,8 +162,8 @@ mod tests {
     fn master_width_uses_full_width_when_everything_is_in_master() {
         let mut monitor = Monitor::default();
         monitor.work_rect = Rect::new(0, 0, 1000, 800);
-        monitor.mfact = 0.2;
-        monitor.nmaster = 2;
+        monitor.master_factor = 0.2;
+        monitor.master_count = 2;
 
         assert_eq!(
             master_width(
@@ -179,17 +179,17 @@ mod tests {
     #[test]
     fn effective_nmaster_does_not_mutate_configured_nmaster() {
         let mut monitor = Monitor::default();
-        monitor.nmaster = 4;
+        monitor.master_count = 4;
 
         assert_eq!(effective_nmaster(&monitor, 2), 2);
-        assert_eq!(monitor.nmaster, 4);
+        assert_eq!(monitor.master_count, 4);
     }
 
     #[test]
     fn negative_nmaster_behaves_like_zero_master_clients() {
         let mut monitor = Monitor::default();
         monitor.work_rect = Rect::new(0, 0, 1000, 800);
-        monitor.nmaster = -1;
+        monitor.master_count = -1;
 
         let nmaster = effective_nmaster(&monitor, 3);
 
@@ -207,8 +207,8 @@ mod tests {
         let mut monitor = Monitor::default();
         monitor.work_rect = Rect::new(0, 0, 1000, 800);
         monitor.monitor_rect = Rect::new(0, 0, 1000, 800);
-        monitor.mfact = 0.5;
-        monitor.nmaster = 1;
+        monitor.master_factor = 0.5;
+        monitor.master_count = 1;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         monitor.clients = vec![WindowId(1), WindowId(2)];
 

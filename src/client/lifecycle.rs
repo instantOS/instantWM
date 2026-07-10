@@ -112,7 +112,7 @@ pub fn select_client(model: &mut WmModel, win: WindowId) {
         .get(&win)
         .is_some_and(|client| client.mode.is_tiling());
     if let Some(mon) = model.monitor_mut(monitor_id) {
-        mon.sel = Some(win);
+        mon.selected = Some(win);
         if is_tiled {
             mon.tag_tiled_focus_history.insert(mon.selected_tags(), win);
         }

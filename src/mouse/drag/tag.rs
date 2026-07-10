@@ -161,7 +161,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                     .core_mut()
                     .state_mut()
                     .monitor(selmon_id)
-                    .and_then(|m| m.sel)
+                    .and_then(|m| m.selected)
                 {
                     crate::tags::client_tags::set_client_tag(ctx, win, tag_mask);
                 }
@@ -171,7 +171,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
                 .core_mut()
                 .state_mut()
                 .monitor(selmon_id)
-                .and_then(|m| m.sel)
+                .and_then(|m| m.selected)
             {
                 crate::tags::client_tags::follow_tag(ctx, win, tag_mask);
             }

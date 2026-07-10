@@ -37,37 +37,37 @@ impl WmModel {
     /// Return the window currently selected on the selected monitor, if any.
     #[inline]
     pub fn selected_win(&self) -> Option<WindowId> {
-        self.monitors.sel().and_then(|m| m.sel)
+        self.monitors.selected().and_then(|m| m.selected)
     }
 
     /// Return the ID of the currently selected monitor.
     pub fn selected_monitor_id(&self) -> MonitorId {
-        self.monitors.sel_idx()
+        self.monitors.selected_idx()
     }
 
     /// Change the currently selected monitor.
     pub fn set_selected_monitor(&mut self, id: MonitorId) {
-        self.monitors.set_sel_idx(id);
+        self.monitors.set_selected_idx(id);
     }
 
     /// Shorthand to get the selected monitor.
     pub fn selected_monitor(&self) -> &crate::types::Monitor {
-        self.monitors.sel_unchecked()
+        self.monitors.selected_unchecked()
     }
 
     /// Shorthand to get the selected monitor mutably.
     pub fn selected_monitor_mut(&mut self) -> &mut crate::types::Monitor {
-        self.monitors.sel_mut_unchecked()
+        self.monitors.selected_mut_unchecked()
     }
 
     /// Shorthand to get the selected monitor (Option version).
     pub fn selected_monitor_opt(&self) -> Option<&crate::types::Monitor> {
-        self.monitors.sel()
+        self.monitors.selected()
     }
 
     /// Shorthand to get the selected monitor mutably (Option version).
     pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut crate::types::Monitor> {
-        self.monitors.sel_mut()
+        self.monitors.selected_mut()
     }
 
     /// Return `true` if overview mode is active on the selected monitor.

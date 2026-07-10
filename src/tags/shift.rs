@@ -15,7 +15,7 @@ pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
 pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let (win, current_tag, tagset, tagmask, animated) = {
         let mon = ctx.core().model().selected_monitor();
-        let Some(win) = mon.sel else {
+        let Some(win) = mon.selected else {
             return;
         };
         let Some(current_tag) = mon.current_tag_number() else {

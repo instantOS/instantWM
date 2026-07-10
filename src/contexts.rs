@@ -173,10 +173,10 @@ impl<'a> CoreCtx<'a> {
         let tag_role = if urgent_tags.contains(tag_num) {
             SchemeTag::Urgent
         } else if occupied_tags.contains(tag_num) {
-            let selmon = self.g.model.monitors.sel();
-            let sel_has_tag = selmon
-                .and_then(|selmon| {
-                    selmon.sel.and_then(|selected_window| {
+            let selected_monitor = self.g.model.monitors.selected();
+            let sel_has_tag = selected_monitor
+                .and_then(|m| {
+                    m.selected.and_then(|selected_window| {
                         self.g
                             .model
                             .clients
@@ -186,7 +186,7 @@ impl<'a> CoreCtx<'a> {
                 })
                 .unwrap_or(false);
 
-            let is_selected = selmon.is_some_and(|selmon| selmon.num == m.num);
+            let is_selected = selected_monitor.is_some_and(|mon| mon.num == m.num);
 
             if is_selected && sel_has_tag {
                 SchemeTag::Focus
@@ -223,8 +223,8 @@ impl<'a> CoreCtx<'a> {
         c: &crate::types::Client,
         is_hover: bool,
     ) -> crate::bar::paint::BarScheme {
-        let selmon = self.g.model.monitors.sel();
-        let is_selected = selmon.and_then(|s| s.sel) == Some(c.win);
+        let selected_monitor = self.g.model.monitors.selected();
+        let is_selected = selected_monitor.and_then(|s| s.selected) == Some(c.win);
         let is_edge_scratchpad = c.is_edge_scratchpad();
 
         let window_role = if is_selected {

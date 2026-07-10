@@ -37,7 +37,7 @@ fn resolve_focus_target(ctx: &CoreCtx<'_>, win: Option<WindowId>) -> Option<Focu
     let sel_mon_id = ctx.model().selected_monitor_id();
     let mon = ctx.model().selected_monitor();
     let selected = mon.selected_tags();
-    let current_sel = mon.sel;
+    let current_sel = mon.selected;
 
     // Use the requested window if it's visible, otherwise walk the stack
     // to find the first visible non-hidden client.
@@ -75,7 +75,7 @@ fn update_focus_state(ctx: &mut CoreCtx<'_>, result: FocusTargetResult) -> Optio
         .is_some_and(|client| !client.mode.is_floating());
 
     if let Some(mon) = ctx.model_mut().monitor_mut(sel_mon_id) {
-        mon.sel = target;
+        mon.selected = target;
         if let Some(t) = target {
             mon.tag_focus_history.insert(mon.selected_tags(), t);
             if target_is_tiled {
@@ -139,7 +139,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 
 /// Outcome of a focus operation, used to decide whether a sync_monitor_z_order is needed.
 pub(crate) struct FocusOutcome {
-    /// `true` when `mon.sel` actually changed.
+    /// `true` when `mon.selected` actually changed.
     changed: bool,
     /// The monitor that owns the new selection.
     monitor_id: MonitorId,
@@ -203,7 +203,7 @@ pub(crate) fn focus_generic(
 
 /// Best-effort focus - the single public entry point for `WmCtx` holders.
 ///
-/// Updates `mon.sel`, backend seat focus, and — when the selection actually
+/// Updates `mon.selected`, backend seat focus, and — when the selection actually
 /// changed — syncs the affected monitor z-order so visuals stay in sync.
 /// This is critical for overlapping layouts (monocle, floating) where the
 /// focused window must be visually on top.
@@ -277,7 +277,7 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
 /// Backend-agnostic hover-focus entry point.
 ///
 /// Checks focus-follows-mouse guards, then delegates to `focus_soft` which
-/// handles `mon.sel`, backend seat focus, and z-order sync in one place.
+/// handles `mon.selected`, backend seat focus, and z-order sync in one place.
 pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
@@ -496,7 +496,7 @@ fn get_direction_focus_candidate(
         return None;
     }
     let mon = model.selected_monitor();
-    let source_win = mon.sel?;
+    let source_win = mon.selected?;
     let source_client = model.clients.get(&source_win)?;
     let source_center = source_client.geo.center();
 
@@ -536,7 +536,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let sel_mon_id = ctx.core().model().selected_monitor_id();
     if !ctx.core().model().monitors.is_empty()
         && sel_mon_id != last_mon_id
-        && let Some(sel) = ctx.core().model().monitor(sel_mon_id).and_then(|m| m.sel)
+        && let Some(sel) = ctx.core().model().monitor(sel_mon_id).and_then(|m| m.selected)
     {
         unfocus_win(ctx, sel, false);
         ctx.core_mut().state_mut().set_selected_monitor(last_mon_id);

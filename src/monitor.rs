@@ -26,11 +26,11 @@ impl MonitorManager {
     // Data Accessors
     // -------------------------------------------------------------------------
 
-    pub fn sel_idx(&self) -> MonitorId {
+    pub fn selected_idx(&self) -> MonitorId {
         self.selected_monitor_idx
     }
 
-    pub fn set_sel_idx(&mut self, idx: MonitorId) {
+    pub fn set_selected_idx(&mut self, idx: MonitorId) {
         if idx.index() < self.monitors.len() {
             self.selected_monitor_idx = idx;
         }
@@ -44,28 +44,24 @@ impl MonitorManager {
         self.monitors.get_mut(idx.index())
     }
 
-    pub fn sel(&self) -> Option<&Monitor> {
+    pub fn selected(&self) -> Option<&Monitor> {
         self.monitors.get(self.selected_monitor_idx.index())
     }
 
-    pub fn sel_unchecked(&self) -> &Monitor {
+    pub fn selected_unchecked(&self) -> &Monitor {
         self.monitors
             .get(self.selected_monitor_idx.index())
             .expect("no monitors")
     }
 
-    pub fn sel_mut(&mut self) -> Option<&mut Monitor> {
+    pub fn selected_mut(&mut self) -> Option<&mut Monitor> {
         self.monitors.get_mut(self.selected_monitor_idx.index())
     }
 
-    pub fn sel_mut_unchecked(&mut self) -> &mut Monitor {
+    pub fn selected_mut_unchecked(&mut self) -> &mut Monitor {
         self.monitors
             .get_mut(self.selected_monitor_idx.index())
             .expect("no monitors")
-    }
-
-    pub fn count(&self) -> usize {
-        self.monitors.len()
     }
 
     pub fn len(&self) -> usize {
@@ -136,10 +132,6 @@ impl MonitorManager {
         crate::types::find_monitor_by_rect(&self.monitors, rect).or(Some(self.selected_monitor_idx))
     }
 
-    pub fn find_by_rect(&self, rect: &Rect) -> Option<&Monitor> {
-        self.find_id_by_rect(rect).and_then(|id| self.get(id))
-    }
-
     pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
         let rect = Rect {
             x: ptr.x,
@@ -195,7 +187,7 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         }
     };
 
-    if target == ctx.core_mut().model_mut().monitors.sel_idx() {
+    if target == ctx.core_mut().model_mut().monitors.selected_idx() {
         return;
     }
 
@@ -204,13 +196,13 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         .state_mut()
         .model
         .monitors
-        .sel()
-        .and_then(|m| m.sel)
+        .selected()
+        .and_then(|m| m.selected)
     {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.core_mut().model_mut().monitors.set_sel_idx(target);
+    ctx.core_mut().model_mut().monitors.set_selected_idx(target);
     focus(ctx, None);
 }
 
@@ -228,13 +220,13 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: MonitorId) {
         .state_mut()
         .model
         .monitors
-        .sel()
-        .and_then(|m| m.sel)
+        .selected()
+        .and_then(|m| m.selected)
     {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.core_mut().model_mut().monitors.set_sel_idx(target);
+    ctx.core_mut().model_mut().monitors.set_selected_idx(target);
     focus(ctx, None);
 }
 
@@ -244,8 +236,8 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
         .state_mut()
         .model
         .monitors
-        .sel()
-        .and_then(|m| m.sel)
+        .selected()
+        .and_then(|m| m.selected)
     {
         Some(w) => w,
         None => return,
@@ -258,7 +250,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
             .state_mut()
             .model
             .monitors
-            .set_sel_idx(monitor_id);
+            .set_selected_idx(monitor_id);
     }
 
     focus(ctx, Some(c_win));
@@ -418,12 +410,12 @@ fn remap_client_monitor_ids(model: &mut crate::model::WmModel, old_to_new: &[Opt
 }
 
 fn remap_selected_monitor_after_sync(
-    sel_idx: MonitorId,
+    selected_idx: MonitorId,
     old_to_new: &[Option<MonitorId>],
     new_len: usize,
 ) -> MonitorId {
     let new_sel = old_to_new
-        .get(sel_idx.index())
+        .get(selected_idx.index())
         .copied()
         .flatten()
         .unwrap_or(MonitorId(0));
@@ -443,7 +435,7 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     if let Some(ptr) = ctx.pointer_backend().pointer_location()
         && let Some(m) = ctx.core().model().monitors.find_monitor_at_pointer(ptr)
     {
-        ctx.core_mut().model_mut().monitors.set_sel_idx(m);
+        ctx.core_mut().model_mut().monitors.set_selected_idx(m);
     }
 }
 
@@ -491,7 +483,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_width, layout_height);
 
     let old_count = ctx.core().model().monitors.len();
-    let sel_idx = ctx.core().model().monitors.selected_monitor_idx;
+    let selected_idx = ctx.core().model().monitors.selected_monitor_idx;
 
     if old_count != outputs.len() {
         changed = true;
@@ -534,7 +526,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         let g = ctx.core_mut().state_mut();
         remap_client_monitor_ids(&mut g.model, &old_to_new);
         g.model.monitors.selected_monitor_idx =
-            remap_selected_monitor_after_sync(sel_idx, &old_to_new, new_len);
+            remap_selected_monitor_after_sync(selected_idx, &old_to_new, new_len);
     }
 
     notify_monitor_layout_changed(ctx, changed);
@@ -574,7 +566,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     }
 
     let sp_name = client.scratchpad.as_ref().unwrap().name.clone();
-    let current_mon = ctx.core_mut().model_mut().monitors.sel_idx();
+    let current_mon = ctx.core_mut().model_mut().monitors.selected_idx();
 
     if let Some(selected_window) = ctx
         .core_mut()
@@ -582,7 +574,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .model
         .monitors
         .get(current_mon)
-        .and_then(|m| m.sel)
+        .and_then(|m| m.selected)
     {
         unfocus_win(ctx, selected_window, false);
     }
@@ -590,7 +582,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .state_mut()
         .model
         .monitors
-        .set_sel_idx(target_mon);
+        .set_selected_idx(target_mon);
 
     let _ = crate::floating::scratchpad_show_name(ctx, &sp_name);
 
@@ -600,7 +592,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .model
         .monitors
         .get(target_mon)
-        .and_then(|m| m.sel)
+        .and_then(|m| m.selected)
     {
         unfocus_win(ctx, selected_window, false);
     }
@@ -608,7 +600,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .state_mut()
         .model
         .monitors
-        .set_sel_idx(current_mon);
+        .set_selected_idx(current_mon);
 
     focus(ctx, None);
 }
@@ -641,7 +633,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         .state_mut()
         .model
         .monitors
-        .set_sel_idx(MonitorId(0));
+        .set_selected_idx(MonitorId(0));
     true
 }
 

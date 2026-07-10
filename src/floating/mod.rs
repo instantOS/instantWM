@@ -7,7 +7,7 @@
 //!   toggle/set/change floating state; toggle_maximized
 //! - [`movement`] — keyboard move, resize, center window, scale client
 //! - [`batch`]   — save/restore all floating positions, distribute clients
-//! - [`helpers`] — check_floating, visible_client, has_tiling_layout, apply_size
+//! - [`helpers`] — visible_client, has_tiling_layout, apply_size
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
 //!   with optional edge-anchored positioning
 

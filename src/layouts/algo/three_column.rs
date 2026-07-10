@@ -66,7 +66,7 @@ pub fn three_column(
     let mut result = Vec::new();
 
     // Column geometry
-    let master_area_width = (monitor.mfact * work_rect.w as f32) as i32;
+    let master_area_width = (monitor.master_factor * work_rect.w as f32) as i32;
     let side_column_width = (work_rect.w - master_area_width) / 2;
 
     let master_x = if tiled_client_count < 3 {

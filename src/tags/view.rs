@@ -29,10 +29,10 @@ pub(crate) fn commit_view_selection(
     monitors: &mut crate::monitor::MonitorManager,
     new_mask: TagMask,
 ) -> Option<MonitorId> {
-    let selmon_id = monitors.sel_idx();
-    let mon = monitors.sel_mut_unchecked();
+    let selected_monitor_id = monitors.selected_idx();
+    let mon = monitors.selected_mut_unchecked();
     if mon.set_selected_tags_with_history(new_mask) {
-        Some(selmon_id)
+        Some(selected_monitor_id)
     } else {
         None
     }
@@ -293,7 +293,7 @@ mod view_selection_tests {
         mon.monitor_id = MonitorId(0);
         mon.set_selected_tags(selected);
         mmgr.push(mon);
-        mmgr.set_sel_idx(MonitorId(0));
+        mmgr.set_selected_idx(MonitorId(0));
         g.model.monitors = mmgr;
         g.model.tags.num_tags = 9;
         g

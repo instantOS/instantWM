@@ -84,9 +84,9 @@ pub struct Monitor {
     /// rather than accessing the field directly.
     pub(crate) monitor_id: MonitorId,
     /// Master factor for tiling layouts (0.0 to 1.0).
-    pub mfact: f32,
+    pub master_factor: f32,
     /// Number of clients in the master area for tiling layouts.
-    pub nmaster: i32,
+    pub master_count: i32,
     /// Monitor index number (0-based).
     pub num: i32,
     /// Bar Y position (vertical position of the status bar).
@@ -137,7 +137,7 @@ pub struct Monitor {
     /// Client list (focus order).
     pub clients: Vec<WindowId>,
     /// Currently selected client.
-    pub sel: Option<WindowId>,
+    pub selected: Option<WindowId>,
     /// Focus history per tag mask.
     pub tag_focus_history: HashMap<TagMask, WindowId>,
     /// Last tiled focus per tag mask.
@@ -146,8 +146,8 @@ pub struct Monitor {
     /// while monocle still needs to keep the previously focused tiled client
     /// visible below it.
     pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
-    /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
-    pub per_tag: HashMap<TagMask, PertagState>,
+    /// Per-tag runtime state (master factor, master_count, layouts, etc.).
+    pub per_tag: HashMap<TagMask, PerTagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
@@ -162,8 +162,8 @@ impl Default for Monitor {
     fn default() -> Self {
         Self {
             monitor_id: MonitorId(0),
-            mfact: 0.55,
-            nmaster: 1,
+            master_factor: 0.55,
+            master_count: 1,
             num: 0,
             bar_y: 0,
             ui_scale: 1.0,
@@ -187,7 +187,7 @@ impl Default for Monitor {
             prev_tag: None,
             tags: Vec::new(),
             clients: Vec::new(),
-            sel: None,
+            selected: None,
             tag_focus_history: HashMap::new(),
             tag_tiled_focus_history: HashMap::new(),
             per_tag: HashMap::new(),
@@ -292,16 +292,16 @@ impl Monitor {
     }
 
     /// Get or initialize state for the current tag mask.
-    pub fn pertag_state(&mut self) -> &mut PertagState {
+    pub fn per_tag_state(&mut self) -> &mut PerTagState {
         let mask = self.selected_tags();
         let default_show_bar = self.show_bar;
         self.per_tag
             .entry(mask)
-            .or_insert_with(|| PertagState::new(default_show_bar))
+            .or_insert_with(|| PerTagState::new(default_show_bar))
     }
 
     /// Read the current pertag state, returning `None` if no entry exists yet.
-    pub fn pertag(&self) -> Option<&PertagState> {
+    pub fn per_tag(&self) -> Option<&PerTagState> {
         self.per_tag.get(&self.selected_tags())
     }
 
@@ -464,7 +464,7 @@ impl Monitor {
 
     /// Get the currently selected client window, if any.
     pub fn selected_client(&self) -> Option<WindowId> {
-        self.sel
+        self.selected
     }
 
     /// Walk the persistent z-order and return the topmost visible, non-hidden
@@ -481,12 +481,12 @@ impl Monitor {
 
     /// Check if this monitor has a selected client.
     pub fn has_selection(&self) -> bool {
-        self.sel.is_some()
+        self.selected.is_some()
     }
 
     /// Set the selected client for this monitor.
     pub fn set_selected(&mut self, win: Option<WindowId>) {
-        self.sel = win;
+        self.selected = win;
     }
 
     /// Find the next tiled client on this monitor starting after `start_win`.
@@ -597,7 +597,7 @@ impl Monitor {
 
     /// Toggle between primary and secondary layout slots.
     pub fn toggle_layout_slot(&mut self) {
-        self.pertag_state().layouts.toggle_slot();
+        self.per_tag_state().layouts.toggle_slot();
     }
 
     /// Update the bar position and `work_rect` from the current
@@ -815,24 +815,24 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<Monitor
 /// Runtime state restored when a tag mask is revisited.
 /// Initialized with hardcoded defaults on first visit.
 #[derive(Debug, Clone)]
-pub struct PertagState {
-    pub nmaster: i32,
-    pub mfact: f32,
+pub struct PerTagState {
+    pub master_count: i32,
+    pub master_factor: f32,
     pub show_bar: bool,
     pub layouts: TagLayouts,
 }
 
-impl Default for PertagState {
+impl Default for PerTagState {
     fn default() -> Self {
         Self::new(true)
     }
 }
 
-impl PertagState {
+impl PerTagState {
     pub fn new(show_bar: bool) -> Self {
         Self {
-            nmaster: 1,
-            mfact: 0.55,
+            master_count: 1,
+            master_factor: 0.55,
             show_bar,
             layouts: TagLayouts::default(),
         }
@@ -900,11 +900,11 @@ mod tests {
     }
 
     #[test]
-    fn pertag_state_defaults_match_normal_tiling_defaults() {
-        let state = PertagState::default();
+    fn per_tag_state_defaults_match_normal_tiling_defaults() {
+        let state = PerTagState::default();
 
-        assert_eq!(state.nmaster, 1);
-        assert_eq!(state.mfact, 0.55);
+        assert_eq!(state.master_count, 1);
+        assert_eq!(state.master_factor, 0.55);
     }
 
     #[test]

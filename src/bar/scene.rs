@@ -180,7 +180,7 @@ pub(crate) fn build_monitor_snapshots(
             stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
             let scheme = core.window_scheme(c, is_hover);
-            let close_scheme = if is_selected_monitor && mon.sel == Some(c.win) {
+            let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {
                 let is_fullscreen = c.mode.is_fullscreen();
                 Some(core.close_button_scheme(
                     gesture == Gesture::CloseButton,
@@ -235,7 +235,7 @@ pub(crate) fn build_monitor_snapshots(
                 mon.layouts_for_mask(selected_tags).symbol().to_string()
             },
             tags,
-            show_shutdown: mon.sel.is_none(),
+            show_shutdown: mon.selected.is_none(),
             titles,
             monitor_rect_x: mon.monitor_rect.x,
             status_text,

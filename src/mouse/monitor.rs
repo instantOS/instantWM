@@ -46,7 +46,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     }
 
     // Unfocus the window on the old monitor before moving it.
-    if let Some(cur_sel) = ctx.core().state().monitor(current_mon).and_then(|m| m.sel) {
+    if let Some(cur_sel) = ctx.core().state().monitor(current_mon).and_then(|m| m.selected) {
         unfocus_win(ctx, cur_sel, false);
     }
 

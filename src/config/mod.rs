@@ -151,9 +151,9 @@ pub struct Config {
     /// Respect decoration hints.
     pub decor_hints: bool,
     /// Master area size factor (0.0–1.0).
-    pub mfact: f32,
+    pub master_factor: f32,
     /// Number of clients in master area.
-    pub nmaster: i32,
+    pub master_count: i32,
     /// Tiled layout gap configuration.
     pub layout: config_toml::LayoutConfig,
 
@@ -305,8 +305,8 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         // --- Tiling ---
         resize_hints: true,
         decor_hints: true,
-        mfact: 0.55,
-        nmaster: 1,
+        master_factor: 0.55,
+        master_count: 1,
         layout: theme.layout,
 
         // --- Tags ---

@@ -123,7 +123,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
     if button_target == ButtonTarget::Root
         && let Some(mon) = ctx.core.model().monitor(selmon_id)
-        && mon.sel.is_some()
+        && mon.selected.is_some()
         && let Some(btn) = MouseButton::from_x11_detail(e.detail)
         && crate::mouse::commit_x11_hover_offer(ctx, btn)
     {
@@ -276,7 +276,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 
     // 2. Snapshot selection state before any changes
     let selected_monitor = ctx.core.model().selected_monitor();
-    let selected_window = selected_monitor.sel;
+    let selected_window = selected_monitor.selected;
     let is_floating_sel = {
         let is_floating = selected_window
             .and_then(|w| ctx.core.model().clients.get(&w))
@@ -418,12 +418,12 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     if event_win != root_win {
         let root_y = e.root_y as i32;
         let (mon, gesture) = {
-            let selmon = ctx.core.model().selected_monitor();
-            (selmon.monitor_id, selmon.gesture)
+            let selected_monitor = ctx.core.model().selected_monitor();
+            (selected_monitor.monitor_id, selected_monitor.gesture)
         };
         let show_bar = {
-            let selmon = ctx.core.model_mut().selected_monitor_mut();
-            selmon.pertag_state().show_bar
+            let selected_monitor = ctx.core.model_mut().selected_monitor_mut();
+            selected_monitor.per_tag_state().show_bar
         };
         let in_bar = show_bar
             && ctx

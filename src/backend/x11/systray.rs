@@ -451,7 +451,7 @@ pub fn systray_to_mon(
         };
     }
 
-    let n = model.monitors.count();
+    let n = model.monitors.len();
     let target = config.pinning.min(n);
 
     if config.pinning > n {

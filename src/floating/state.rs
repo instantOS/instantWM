@@ -112,7 +112,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
     let mon = ctx.core().model().selected_monitor();
-    let selected_window = match mon.sel {
+    let selected_window = match mon.selected {
         Some(sel)
             if !ctx
                 .core()
