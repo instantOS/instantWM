@@ -214,6 +214,22 @@ impl WmModel {
         }
     }
 
+    /// Move a client within its monitor's focus list (stack order).
+    ///
+    /// Returns true if the position changed, false otherwise.
+    pub fn move_client_in_stack(
+        &mut self,
+        win: WindowId,
+        direction: crate::types::StackDirection,
+    ) -> bool {
+        let sel_mon_id = self.selected_monitor_id();
+        if let Some(mon) = self.monitors.get_mut(sel_mon_id) {
+            mon.move_client_in_stack(win, direction, &self.clients.map())
+        } else {
+            false
+        }
+    }
+
     /// Move a client window to a target monitor in the data model.
     pub fn move_client_to_monitor(
         &mut self,

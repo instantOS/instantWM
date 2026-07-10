@@ -56,7 +56,7 @@ pub enum ButtonAction {
     ToggleLockSelectedClient,
     SidebarGestureBegin,
     ReorderSelected {
-        up: bool,
+        direction: crate::types::StackDirection,
     },
     ScaleSelected {
         percent: i32,

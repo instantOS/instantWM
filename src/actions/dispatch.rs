@@ -4,14 +4,12 @@ use crate::contexts::{CoreCtx, WmCtx};
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
 };
-use crate::monitor::reorder_client;
 use crate::mouse::{
     drag_tag, resize_aspect_mouse, resize_mouse_from_cursor, sidebar_gesture_begin,
     window_title_mouse_handler,
 };
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
-use crate::types::VerticalDirection;
 
 use super::named::execute_named_action;
 
@@ -162,17 +160,13 @@ pub fn execute_button_action(
             }
         }
         ButtonAction::SidebarGestureBegin => sidebar_gesture_begin(ctx, arg.btn),
-        ButtonAction::ReorderSelected { up } => {
+        ButtonAction::ReorderSelected { direction } => {
             if let Some(win) = ctx.core().model().selected_win() {
-                reorder_client(
-                    ctx,
-                    win,
-                    if *up {
-                        VerticalDirection::Up
-                    } else {
-                        VerticalDirection::Down
-                    },
-                );
+                if ctx.core_mut().model_mut().move_client_in_stack(win, *direction) {
+                    crate::focus::focus(ctx, Some(win));
+                    let monitor_id = ctx.core().model().selected_monitor_id();
+                    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
+                }
             }
         }
         ButtonAction::ScaleSelected { percent } => {

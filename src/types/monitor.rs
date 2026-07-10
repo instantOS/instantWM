@@ -11,7 +11,7 @@ use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
-use crate::types::input::Gesture;
+use crate::types::input::{Gesture, StackDirection};
 use crate::types::tag_types::MonitorDirection;
 
 /// Persistent per-monitor client z-order.
@@ -401,6 +401,65 @@ impl Monitor {
                 })
             })
             .collect()
+    }
+
+    /// Move a client within this monitor's focus list (stack order).
+    ///
+    /// Returns true if the position changed, false otherwise (e.g., if the client
+    /// is floating, not found, or there are fewer than 2 tiled clients).
+    pub fn move_client_in_stack(
+        &mut self,
+        win: WindowId,
+        direction: StackDirection,
+        clients: &HashMap<WindowId, Client>,
+    ) -> bool {
+        // Check if client exists and is tiled
+        let is_floating = clients
+            .get(&win)
+            .map(|c| c.mode.is_floating())
+            .unwrap_or(false);
+        if is_floating {
+            return false;
+        }
+
+        let tiled_count = self.tiled_client_count(clients);
+        if tiled_count < 2 {
+            return false;
+        }
+
+        if let Some(pos) = self.clients.iter().position(|&w| w == win) {
+            match direction {
+                StackDirection::Previous => {
+                    if pos > 0 {
+                        self.clients.swap(pos, pos - 1);
+                        return true;
+                    } else {
+                        // Wrap to end: move first element to end
+                        if self.clients.len() > 1 {
+                            let first = self.clients.remove(0);
+                            self.clients.push(first);
+                            return true;
+                        }
+                    }
+                }
+                StackDirection::Next => {
+                    if pos + 1 < self.clients.len() {
+                        self.clients.swap(pos, pos + 1);
+                        return true;
+                    } else {
+                        // Wrap to beginning: move last element to front
+                        if self.clients.len() > 1 {
+                            let last = self.clients.pop();
+                            if let Some(last) = last {
+                                self.clients.insert(0, last);
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Get the currently selected client window, if any.
