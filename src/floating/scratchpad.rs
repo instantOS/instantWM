@@ -644,8 +644,6 @@ pub fn scratchpad_list(model: &WmModel) -> String {
     out
 }
 
-
-
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
     let was_sticky = ctx
         .core()
@@ -688,7 +686,11 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
 }
 
 pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
-    if let Some(existing) = ctx.core().model().scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME) {
+    if let Some(existing) = ctx
+        .core()
+        .model()
+        .scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME)
+    {
         scratchpad_unmake(ctx, Some(existing));
     }
 

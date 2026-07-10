@@ -552,11 +552,8 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let (showbar, topbar) = (ctx.core().config().bar.show, ctx.core().config().bar.top);
 
     let (layout_width, layout_height) = output_layout_extent(&outputs);
-    let mut changed = sync_runtime_screen_size(
-        &mut ctx.core_mut().config_mut(),
-        layout_width,
-        layout_height,
-    );
+    let mut changed =
+        sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_width, layout_height);
 
     let old_count = ctx.core().model().monitors.len();
     let sel_idx = ctx.core().model().monitors.selected_monitor_idx;

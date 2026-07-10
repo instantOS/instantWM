@@ -36,7 +36,6 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
-
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         client.is_locked = !client.is_locked;

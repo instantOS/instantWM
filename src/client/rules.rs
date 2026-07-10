@@ -148,8 +148,6 @@ pub fn handle_property_change(g: &mut CoreState, win: WindowId, props: &WindowPr
     apply_rules(g, win, props, existing_context)
 }
 
-
-
 /// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
 /// using the monitor information supplied via `mon_geo`.
 ///

@@ -205,7 +205,6 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
     width + core.config().derived.bar_horizontal_padding
 }
 
-
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core().model().selected_monitor().gesture != Gesture::None {
         reset_bar_common(ctx.core_mut().model_mut());
@@ -232,7 +231,6 @@ pub fn resolve_bar_position_at_root(
     let local_x = root.x - mon.work_rect.x;
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
 }
-
 
 #[cfg(test)]
 mod tests {

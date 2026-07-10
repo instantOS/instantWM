@@ -186,7 +186,7 @@ impl<'a> CoreCtx<'a> {
                 })
                 .unwrap_or(false);
 
-            let is_selected = selmon.map_or(false, |selmon| selmon.num == m.num);
+            let is_selected = selmon.is_some_and(|selmon| selmon.num == m.num);
 
             if is_selected && sel_has_tag {
                 SchemeTag::Focus

@@ -418,9 +418,8 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     .map(|mon| {
         let bar_visible = wayland_monitor_bar_visible(wm, mon);
         let in_bar = bar_visible && mon.y_in_bar(root.y);
-        let in_guard = bar_visible
-            && !wm.core.drag.any_drag_active()
-            && mon.y_in_guard_band(root.y);
+        let in_guard =
+            bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
         (in_bar, in_guard)
     })
     .unwrap_or((false, false))

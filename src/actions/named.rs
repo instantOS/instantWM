@@ -4,8 +4,8 @@ use crate::client::{kill_client, shut_kill, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    key_resize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
-    scratchpad_toggle, set_scratchpad_direction, toggle_floating, toggle_maximized,
+    key_resize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_toggle,
+    set_scratchpad_direction, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -20,8 +20,7 @@ use crate::tags::{
     toggle_overview, win_view,
 };
 use crate::toggles::{
-    toggle_alt_tag, toggle_bar, toggle_mode, toggle_show_tags,
-    toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_bar, toggle_mode, toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{
     EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, ToggleAction,
@@ -173,7 +172,11 @@ define_named_actions!(
 );
 
 fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
-    if let Some(win) = ctx.core().model().scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME) {
+    if let Some(win) = ctx
+        .core()
+        .model()
+        .scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME)
+    {
         set_scratchpad_direction(ctx, win, dir);
     }
 }

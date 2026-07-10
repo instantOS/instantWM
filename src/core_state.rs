@@ -158,6 +158,7 @@ impl Default for RuntimeConfig {
 /// and transient interaction state are deliberately kept alongside it rather
 /// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
 /// a single borrow boundary without mixing backend resources into core state.
+#[derive(Default)]
 pub struct CoreState {
     pub model: WmModel,
     pub config: RuntimeConfig,
@@ -165,19 +166,6 @@ pub struct CoreState {
     pub drag: DragState,
     pub keyboard_layout: KeyboardLayoutState,
     pub pending_launches: VecDeque<PendingLaunch>,
-}
-
-impl Default for CoreState {
-    fn default() -> Self {
-        Self {
-            model: WmModel::default(),
-            config: RuntimeConfig::default(),
-            behavior: WmBehavior::default(),
-            drag: DragState::default(),
-            keyboard_layout: KeyboardLayoutState::default(),
-            pending_launches: VecDeque::new(),
-        }
-    }
 }
 
 impl CoreState {

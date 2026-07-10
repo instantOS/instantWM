@@ -1,8 +1,5 @@
 use crate::ipc_types::{Response, ToggleCommand};
-use crate::toggles::{
-    toggle_alt_tag,
-    toggle_show_tags,
-};
+use crate::toggles::{toggle_alt_tag, toggle_show_tags};
 use crate::types::ToggleAction;
 use crate::wm::Wm;
 

@@ -26,10 +26,6 @@ impl OverviewState {
     }
 }
 
-
-
-
-
 pub fn handle_mode_transition(ctx: &mut WmCtx<'_>, previous_mode: &str, next_mode: &str) {
     let entering_overview = previous_mode != OVERVIEW_MODE_NAME && next_mode == OVERVIEW_MODE_NAME;
     let leaving_overview = previous_mode == OVERVIEW_MODE_NAME && next_mode != OVERVIEW_MODE_NAME;
