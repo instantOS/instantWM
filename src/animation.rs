@@ -75,7 +75,6 @@ pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
         WmCtx::Wayland(wl) => {
             let _ = wl
                 .wayland
-                .backend
                 .with_state(|state| state.cancel_window_animation(win));
         }
     }

@@ -3,7 +3,7 @@
 //! `Wm` owns all runtime state and the active backend.
 
 use crate::backend::Backend;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx, WmCtxWayland, WmCtxX11};
+use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
 use crate::globals::Globals;
 
 pub struct Wm {
@@ -45,10 +45,7 @@ impl Wm {
             }),
             Backend::Wayland(data) => WmCtx::Wayland(WmCtxWayland {
                 core,
-                wayland: WaylandCtx {
-                    backend: &data.backend,
-                },
-                xwayland: None,
+                wayland: &data.backend,
                 wayland_systray: &mut data.wayland_systray,
                 wayland_systray_menu: data.wayland_systray_menu.as_mut(),
             }),

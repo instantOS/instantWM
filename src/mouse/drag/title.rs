@@ -89,9 +89,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         let warp_point = Point::new(warp_x, warp_y);
 
         if let WmCtx::Wayland(wl) = ctx {
-            wl.wayland
-                .backend
-                .warp_pointer(warp_x as f64, warp_y as f64);
+            wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
             wl.core.globals_mut().drag.interactive =
                 crate::globals::DragInteraction::new_resize(win, btn, dir, warp_point, current_geo);
             set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));

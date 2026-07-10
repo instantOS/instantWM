@@ -17,8 +17,9 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let state = &ctx.core().globals().keyboard_layout;
     let layout = state
         .layout(index)
-        .ok_or_else(|| format!("layout index {index} out of range"))?;
-    let variant = layout.variant.as_deref().unwrap_or("");
+        .ok_or_else(|| format!("layout index {index} out of range"))?
+        .clone();
+    let variant = layout.variant.as_deref().unwrap_or("").to_owned();
     let mut options = state.options.clone();
     let model = state.model.clone();
 
@@ -37,7 +38,7 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     let mut cmd = Command::new("setxkbmap");
     cmd.arg("-layout").arg(&layout.name);
     if !variant.is_empty() {
-        cmd.arg("-variant").arg(variant);
+        cmd.arg("-variant").arg(&variant);
     }
     if let Some(ref opts) = options
         && !opts.is_empty()
@@ -53,9 +54,16 @@ fn apply_layout(ctx: &mut WmCtx, index: usize) -> Result<(), String> {
     cmd.spawn()
         .map_err(|e| format!("failed to run setxkbmap: {e}"))?;
 
-    // Also apply via the backend abstraction (for Smithay wayland native layout)
-    ctx.backend()
-        .set_keyboard_layout(&layout.name, variant, options.as_deref(), model.as_deref());
+    // Native Wayland keymap state is compositor-owned. X11 was already
+    // configured by `setxkbmap` above, so it has no corresponding backend call.
+    if let WmCtx::Wayland(wayland) = ctx {
+        wayland.wayland.set_keyboard_layout(
+            &layout.name,
+            &variant,
+            options.as_deref(),
+            model.as_deref(),
+        );
+    }
 
     ctx.core_mut().globals_mut().keyboard_layout.current = index;
     Ok(())

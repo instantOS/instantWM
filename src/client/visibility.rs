@@ -40,9 +40,9 @@ pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
 
     for (win, is_visible) in operations {
         if is_visible {
-            ctx.wayland.backend.map_window(win);
+            ctx.wayland.map_window(win);
         } else {
-            ctx.wayland.backend.unmap_window(win);
+            ctx.wayland.unmap_window(win);
         }
     }
 }
@@ -121,6 +121,6 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 }
 
 fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
-    ctx.wayland.backend.unmap_window(win);
-    ctx.wayland.backend.flush();
+    ctx.wayland.unmap_window(win);
+    ctx.wayland.flush();
 }

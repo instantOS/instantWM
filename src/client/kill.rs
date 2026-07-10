@@ -22,7 +22,7 @@ fn force_close(ctx: &mut WmCtx, win: WindowId) {
             crate::backend::x11::kill::force_close_x11(ctx_x11, win, wmatom_delete);
         }
         WmCtx::Wayland(wl) => {
-            let _ = wl.wayland.backend.close_window(win);
+            let _ = wl.wayland.close_window(win);
         }
     }
 }

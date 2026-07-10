@@ -54,7 +54,7 @@ pub fn wayland_hover_resize_drag_begin(
         }
     };
     if matches!(drag_type, crate::globals::DragType::Resize(_)) {
-        let _ = ctx.wayland.backend.with_state(|state| {
+        let _ = ctx.wayland.with_state(|state| {
             state.begin_interactive_resize(win);
         });
     }
@@ -192,7 +192,7 @@ pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseBu
     }
     let drag = ctx.core.globals().drag.interactive.clone();
     if matches!(drag.drag_type, crate::globals::DragType::Resize(_)) {
-        let _ = ctx.wayland.backend.with_state(|state| {
+        let _ = ctx.wayland.with_state(|state| {
             state.end_interactive_resize(drag.win);
         });
     }

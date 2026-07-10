@@ -146,13 +146,13 @@ fn set_field_from_raw<T: Serialize + DeserializeOwned>(
     field: &str,
     raw: String,
 ) -> Result<T, String> {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) {
-        if let Ok(new) = field_set_owned(obj, field, value) {
-            return Ok(new);
-        }
-        // JSON parsed but didn't fit the field — fall through and retry as
-        // a plain string (e.g. a bare value for an `Option<String>` field).
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw)
+        && let Ok(new) = field_set_owned(obj, field, value)
+    {
+        return Ok(new);
     }
+    // JSON parsed but didn't fit the field — fall through and retry as
+    // a plain string (e.g. a bare value for an `Option<String>` field).
     field_set_owned(obj, field, serde_json::Value::String(raw))
 }
 
@@ -170,7 +170,7 @@ fn field_set_owned<T: Serialize + DeserializeOwned>(
     field: &str,
     value: serde_json::Value,
 ) -> Result<T, String> {
-    let mut v = serde_json::to_value(&*obj).map_err(|e| e.to_string())?;
+    let mut v = serde_json::to_value(obj).map_err(|e| e.to_string())?;
     let map = v.as_object_mut().ok_or("expected object")?;
     if !map.contains_key(field) {
         return Err(format!("unknown field '{field}'"));

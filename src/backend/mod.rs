@@ -75,7 +75,11 @@ pub enum BackendEvent {
     KeyPress { keycode: u32 },
 }
 
-/// Core backend operations required by the WM.
+/// Operations that every active backend must implement.
+///
+/// This deliberately contains only cross-backend window, pointer, and output
+/// operations. Protocol-specific features stay on their backend contexts;
+/// they must not be represented as silent default no-ops here.
 pub trait BackendOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
     fn raise_window_visual_only(&self, window: WindowId);
@@ -100,49 +104,14 @@ pub trait BackendOps {
     /// Warp pointer to (x, y) in root coordinates.
     fn warp_pointer(&self, x: f64, y: f64);
 
-    /// Read the window title from the backend.
-    ///
-    /// Returns `None` when the title is not available or the backend
-    /// does not track titles (e.g. X11 titles are read separately via
-    /// X properties).
-    fn window_title(&self, _window: WindowId) -> Option<String> {
-        None
-    }
-
     /// Return the protocol/backend surface type for a managed window.
-    fn window_protocol(&self, _window: WindowId) -> WindowProtocol {
-        WindowProtocol::Unknown
-    }
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol;
 
-    /// Switch keyboard layout
-    fn set_keyboard_layout(
-        &self,
-        _layout: &str,
-        _variant: &str,
-        _options: Option<&str>,
-        _model: Option<&str>,
-    ) {
-    }
+    /// Set monitor configuration. Every active backend owns output policy.
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig);
 
-    /// Set monitor configuration
-    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {
-    }
-
-    /// Get current outputs from the backend
-    fn get_outputs(&self) -> Vec<BackendOutputInfo> {
-        Vec::new()
-    }
-
-    /// Get list of input devices (Wayland only)
-    fn get_input_devices(&self) -> Vec<String> {
-        Vec::new()
-    }
-
-    /// Position and resize a window directly (no size-hint enforcement).
-    ///
-    /// X11-only operation. The Wayland backend leaves this as a no-op because
-    /// compositor-side geometry is authoritative there.
-    fn configure_window_geometry(&self, _win: WindowId, _rect: Rect) {}
+    /// Get current outputs from the backend.
+    fn get_outputs(&self) -> Vec<BackendOutputInfo>;
 }
 
 /// X11-specific backend data.
@@ -267,14 +236,6 @@ impl BackendOps for Backend {
         }
     }
 
-    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num)
-                .configure_window_geometry(window, rect),
-            Backend::Wayland(data) => data.backend.configure_window_geometry(window, rect),
-        }
-    }
-
     fn raise_window_visual_only(&self, window: WindowId) {
         match self {
             Backend::X11(data) => {
@@ -352,37 +313,12 @@ impl BackendOps for Backend {
         }
     }
 
-    fn window_title(&self, window: WindowId) -> Option<String> {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).window_title(window)
-            }
-            Backend::Wayland(data) => data.backend.window_title(window),
-        }
-    }
-
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         match self {
             Backend::X11(data) => {
                 X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window)
             }
             Backend::Wayland(data) => data.backend.window_protocol(window),
-        }
-    }
-
-    fn set_keyboard_layout(
-        &self,
-        layout: &str,
-        variant: &str,
-        options: Option<&str>,
-        model: Option<&str>,
-    ) {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num)
-                .set_keyboard_layout(layout, variant, options, model),
-            Backend::Wayland(data) => data
-                .backend
-                .set_keyboard_layout(layout, variant, options, model),
         }
     }
 

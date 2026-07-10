@@ -128,7 +128,6 @@ fn active_animation_count(ctx: &WmCtx<'_>) -> usize {
         WmCtx::X11(x11) => x11.x11_runtime.window_animations.len(),
         WmCtx::Wayland(wl) => wl
             .wayland
-            .backend
             .with_state(|state| state.active_window_animation_count())
             .unwrap_or(0),
     }
@@ -151,7 +150,7 @@ fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: 
             );
         }
         WmCtx::Wayland(wl) => {
-            let _ = wl.wayland.backend.with_state(|state| {
+            let _ = wl.wayland.with_state(|state| {
                 if let Some(element) = state.find_window(win).cloned()
                     && let Some(surface) = element.x11_surface()
                 {
@@ -183,7 +182,6 @@ fn should_preserve_inflight_animation(ctx: &WmCtx<'_>, win: WindowId, target: Re
             .is_some_and(|anim| anim.to == target),
         WmCtx::Wayland(wl) => wl
             .wayland
-            .backend
             .with_state(|state| state.animation_targets_outer_rect(win, target))
             .unwrap_or(false),
     }

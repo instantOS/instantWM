@@ -7,7 +7,7 @@
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{ArrangePlan, LayoutKind, LayoutOutput, MonitorUpdates};
-use crate::types::{Client, ClientMode, Monitor, MonitorId, PertagState, TagMask, WindowId};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, PertagState, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -107,15 +107,13 @@ impl ArrangePlan {
         }
 
         // 7. Raise selected window in overview mode
-        if self.is_overview {
-            if let Some(monitor) = ctx.core().globals().monitor(monitor_id) {
-                if let Some(selected) = monitor.sel
-                    && self.client_moves.iter().any(|o| o.win == selected)
-                {
-                    ctx.backend().raise_window_visual_only(selected);
-                    ctx.backend().flush();
-                }
-            }
+        if self.is_overview
+            && let Some(monitor) = ctx.core().globals().monitor(monitor_id)
+            && let Some(selected) = monitor.sel
+            && self.client_moves.iter().any(|o| o.win == selected)
+        {
+            ctx.backend().raise_window_visual_only(selected);
+            ctx.backend().flush();
         }
     }
 }

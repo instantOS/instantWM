@@ -20,7 +20,7 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
 
     // Ensure XWayland DISPLAY is present for X11 apps if running under Wayland.
     if let WmCtx::Wayland(wl) = ctx {
-        if let Some(d) = wl.wayland.backend.xdisplay() {
+        if let Some(d) = wl.wayland.xdisplay() {
             command.env("DISPLAY", format!(":{d}"));
         } else if let Ok(val) = std::env::var("DISPLAY") {
             command.env("DISPLAY", val);
@@ -64,7 +64,7 @@ pub(crate) fn configure_spawn_command(
 
     if let WmCtx::Wayland(wl) = ctx {
         let selected_window = ctx.core().globals().selected_win();
-        if let Some(token) = wl.wayland.backend.with_state(|state| {
+        if let Some(token) = wl.wayland.with_state(|state| {
             let source_surface = selected_window.and_then(|win| {
                 state
                     .find_window(win)

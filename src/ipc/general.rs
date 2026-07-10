@@ -53,7 +53,7 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
         let ctx = wm.ctx();
         let metadata = crate::util::configure_spawn_command(&ctx, &mut cmd);
         if let crate::contexts::WmCtx::Wayland(wayland) = &ctx
-            && let Some(display) = wayland.wayland.backend.xdisplay()
+            && let Some(display) = wayland.wayland.xdisplay()
         {
             cmd.env("DISPLAY", format!(":{display}"));
         }

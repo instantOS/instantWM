@@ -6,9 +6,6 @@
 //! that both the algorithm modules and the manager can depend on them without
 //! creating circular imports.
 
-use crate::globals::Globals;
-use crate::types::WindowId;
-
 // ── per-monitor counts ────────────────────────────────────────────────────────
 
 // ── visibility walk ───────────────────────────────────────────────────────────

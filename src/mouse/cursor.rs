@@ -16,7 +16,7 @@ pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
                 AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
                 AltCursor::Resize(dir) => Some(dir.to_wayland_icon()),
             };
-            wayland.wayland.backend.set_cursor_icon_override(icon);
+            wayland.wayland.set_cursor_icon_override(icon);
         }
     }
 }

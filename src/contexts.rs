@@ -2,7 +2,7 @@
 //!
 //! Core state (`Globals`, tags/layouts/monitors/clients/config) remains
 //! backend-agnostic and is accessed via `CoreCtx`. Backend-specific code
-//! receives explicit `X11BackendRef` / `WaylandCtx` instead of runtime checks.
+//! receives explicit backend references instead of runtime checks.
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
@@ -56,23 +56,6 @@ impl<'a> CoreCtx<'a> {
     }
 }
 
-pub struct WaylandCtx<'a> {
-    pub backend: &'a crate::backend::wayland::WaylandBackend,
-}
-
-impl<'a> WaylandCtx<'a> {
-    pub fn reborrow(&self) -> WaylandCtx<'_> {
-        WaylandCtx {
-            backend: self.backend,
-        }
-    }
-}
-
-pub struct XwaylandCtx<'a> {
-    pub xdisplay: u32,
-    pub xwm: Option<&'a smithay::xwayland::X11Wm>,
-}
-
 pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub x11: X11BackendRef<'a>,
@@ -97,8 +80,7 @@ impl<'a> WmCtxX11<'a> {
 
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
-    pub wayland: WaylandCtx<'a>,
-    pub xwayland: Option<XwaylandCtx<'a>>,
+    pub wayland: &'a crate::backend::wayland::WaylandBackend,
     pub wayland_systray: &'a mut WaylandSystray,
     pub wayland_systray_menu: Option<&'a mut WaylandSystrayMenu>,
 }
@@ -107,11 +89,7 @@ impl<'a> WmCtxWayland<'a> {
     pub fn reborrow(&mut self) -> WmCtxWayland<'_> {
         WmCtxWayland {
             core: self.core.reborrow(),
-            wayland: self.wayland.reborrow(),
-            xwayland: self.xwayland.as_ref().map(|xw| XwaylandCtx {
-                xdisplay: xw.xdisplay,
-                xwm: xw.xwm,
-            }),
+            wayland: self.wayland,
             wayland_systray: self.wayland_systray,
             wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
@@ -150,7 +128,7 @@ impl<'a> WmCtx<'a> {
     pub fn backend(&self) -> &dyn crate::backend::BackendOps {
         match self {
             WmCtx::X11(ctx) => &ctx.x11 as &dyn crate::backend::BackendOps,
-            WmCtx::Wayland(ctx) => ctx.wayland.backend as &dyn crate::backend::BackendOps,
+            WmCtx::Wayland(ctx) => ctx.wayland as &dyn crate::backend::BackendOps,
         }
     }
 
@@ -165,7 +143,7 @@ impl<'a> WmCtx<'a> {
     /// geometry changes.
     pub fn request_space_sync(&self) {
         if let WmCtx::Wayland(ctx) = self {
-            ctx.wayland.backend.request_space_sync();
+            ctx.wayland.request_space_sync();
         }
     }
 
@@ -305,7 +283,7 @@ impl<'a> WmCtx<'a> {
                 ctx_x11.core.bar.mark_dirty();
             }
             WmCtx::Wayland(ctx_wayland) => {
-                if !ctx_wayland.wayland.backend.request_bar_redraw() {
+                if !ctx_wayland.wayland.request_bar_redraw() {
                     ctx_wayland.core.bar.mark_dirty();
                 }
             }

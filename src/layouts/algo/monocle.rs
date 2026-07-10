@@ -25,7 +25,7 @@ use crate::layouts::LayoutKind;
 use crate::layouts::LayoutOutput;
 use crate::layouts::placement::LayoutPlacement;
 use crate::types::client::Client;
-use crate::types::{Monitor, Rect, WindowId};
+use crate::types::{Monitor, WindowId};
 
 pub fn monocle(
     monitor: &Monitor,

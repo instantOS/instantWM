@@ -159,9 +159,7 @@ fn begin_wayland_super_resize(
     let (x_off, y_off) = dir.warp_offset(geo.w, geo.h, bw);
     let warp_x = geo.x + x_off;
     let warp_y = geo.y + y_off;
-    wl.wayland
-        .backend
-        .warp_pointer(warp_x as f64, warp_y as f64);
+    wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
 
     let root = Point::new(warp_x, warp_y);
     wl.core.globals_mut().drag.interactive =

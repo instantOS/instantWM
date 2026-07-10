@@ -81,7 +81,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
         WmCtx::Wayland(wl) => {
             // Wayland: arm the hover-resize state in move mode so that calloop
             // motion/release events drive the drag asynchronously.
-            let Some(root) = wl.wayland.backend.pointer_location() else {
+            let Some(root) = wl.wayland.pointer_location() else {
                 return;
             };
             let (geo, is_floating) = match wl.core.globals().clients.get(&win) {

@@ -149,6 +149,22 @@ impl<'a> X11BackendRef<'a> {
             &ConfigureWindowAux::new().border_width(width.max(0) as u32),
         );
     }
+
+    /// Position and resize a window without the shared geometry policy.
+    ///
+    /// This is intentionally X11-only: the Wayland compositor owns surface
+    /// geometry and must not expose a fake equivalent.
+    pub fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new()
+                .x(rect.x)
+                .y(rect.y)
+                .width(rect.w.max(1) as u32)
+                .height(rect.h.max(1) as u32),
+        );
+    }
 }
 
 /// RAII guard for X server grabs.
@@ -191,18 +207,6 @@ pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect>
 }
 
 impl BackendOps for X11BackendRef<'_> {
-    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new()
-                .x(rect.x)
-                .y(rect.y)
-                .width(rect.w.max(1) as u32)
-                .height(rect.h.max(1) as u32),
-        );
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;

@@ -21,6 +21,7 @@
 //! fullscreen) but the window remains in the normal layout stack with its
 //! border intact.
 
+use crate::backend::BackendOps;
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -86,8 +87,8 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             // Backend-specific: remove border, enforce geometry, raise.
             if let WmCtx::X11(ctx_x11) = ctx {
                 crate::backend::x11::fullscreen::remove_border_x11(&ctx_x11.x11, win);
-                ctx.backend().configure_window_geometry(win, mon_rect);
-                ctx.backend().raise_window_visual_only(win);
+                ctx_x11.x11.configure_window_geometry(win, mon_rect);
+                ctx_x11.x11.raise_window_visual_only(win);
             }
         }
 

@@ -4,7 +4,7 @@
 //! global state access and making dependencies explicit.
 
 use crate::backend::BackendOps;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
+use crate::contexts::{CoreCtx, WmCtx};
 use crate::globals::Globals;
 use crate::types::*;
 
@@ -105,7 +105,7 @@ pub(crate) trait FocusBackendOps {
 }
 
 struct WaylandFocusBackend<'a> {
-    wayland: &'a WaylandCtx<'a>,
+    wayland: &'a crate::backend::wayland::WaylandBackend,
 }
 
 impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
@@ -120,18 +120,18 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         if is_urgent && let Some(c) = globals.clients.get_mut(&win) {
             c.clear_urgency();
         }
-        self.wayland.backend.set_focus(win);
+        self.wayland.set_focus(win);
     }
 
     fn focus_none(&self, _globals: &Globals) {
-        self.wayland.backend.clear_keyboard_focus();
+        self.wayland.clear_keyboard_focus();
     }
 
     fn on_desktop_binding_state_changed(&self, _globals: &Globals) {}
 
     fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
         match target {
-            Some(win) => !self.wayland.backend.is_keyboard_focused_on(win),
+            Some(win) => !self.wayland.is_keyboard_focused_on(win),
             None => false,
         }
     }
@@ -227,7 +227,7 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
         }
         Wayland(wayland_ctx) => {
             let mut backend = WaylandFocusBackend {
-                wayland: &wayland_ctx.wayland,
+                wayland: wayland_ctx.wayland,
             };
             match focus_generic(&mut wayland_ctx.core, win, &mut backend) {
                 Ok(o) => o,

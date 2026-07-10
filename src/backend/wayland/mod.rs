@@ -160,6 +160,63 @@ impl WaylandBackend {
         });
     }
 
+    /// Apply the compositor-native keyboard layout. X11 uses `setxkbmap`
+    /// directly and deliberately does not pretend to provide this capability.
+    pub fn set_keyboard_layout(
+        &self,
+        layout: &str,
+        variant: &str,
+        options: Option<&str>,
+        model: Option<&str>,
+    ) {
+        let layout = layout.to_owned();
+        let variant = variant.to_owned();
+        let options = options.map(str::to_owned);
+        let model = model.map(str::to_owned);
+        let _ = self.with_state(move |state| {
+            state.set_keyboard_layout(&layout, &variant, options.as_deref(), model.as_deref());
+        });
+    }
+
+    /// Return Wayland input devices. This is intentionally not part of the
+    /// cross-backend window capability trait.
+    pub fn get_input_devices(&self) -> Vec<String> {
+        self.with_state(|state: &mut WaylandState| {
+            state
+                .runtime
+                .tracked_devices
+                .iter()
+                .map(|d| {
+                    use smithay::reexports::input::DeviceCapability;
+                    let mut caps = Vec::new();
+                    if d.has_capability(DeviceCapability::Keyboard) {
+                        caps.push("keyboard");
+                    }
+                    if d.has_capability(DeviceCapability::Pointer) {
+                        caps.push("pointer");
+                    }
+                    if d.has_capability(DeviceCapability::Touch) {
+                        caps.push("touch");
+                    }
+                    if d.has_capability(DeviceCapability::TabletTool) {
+                        caps.push("tablet_tool");
+                    }
+                    if d.has_capability(DeviceCapability::TabletPad) {
+                        caps.push("tablet_pad");
+                    }
+                    if d.has_capability(DeviceCapability::Gesture) {
+                        caps.push("gesture");
+                    }
+                    if d.has_capability(DeviceCapability::Switch) {
+                        caps.push("switch");
+                    }
+                    format!("{} (capabilities: {})", d.name(), caps.join(", "))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+    }
+
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut WaylandState) -> T) -> Option<T> {
         let maybe_ptr = *self.state.borrow();
         maybe_ptr.map(|mut ptr| unsafe { f(ptr.as_mut()) })
@@ -173,10 +230,6 @@ impl Default for WaylandBackend {
 }
 
 impl BackendOps for WaylandBackend {
-    fn configure_window_geometry(&self, _window: WindowId, _rect: Rect) {
-        // Wayland compositor controls window geometry; no-op.
-    }
-
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }
@@ -223,34 +276,8 @@ impl BackendOps for WaylandBackend {
         });
     }
 
-    fn window_title(&self, window: WindowId) -> Option<String> {
-        self.with_state(|state: &mut WaylandState| state.window_title(window))
-            .flatten()
-    }
-
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         self.window_protocol(window)
-    }
-
-    fn set_keyboard_layout(
-        &self,
-        layout: &str,
-        variant: &str,
-        options: Option<&str>,
-        model: Option<&str>,
-    ) {
-        let layout_str = layout.to_owned();
-        let variant_str = variant.to_owned();
-        let options_str = options.map(|s| s.to_owned());
-        let model_str = model.map(|s| s.to_owned());
-        let _ = self.with_state(move |state: &mut WaylandState| {
-            state.set_keyboard_layout(
-                &layout_str,
-                &variant_str,
-                options_str.as_deref(),
-                model_str.as_deref(),
-            );
-        });
     }
 
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
@@ -286,43 +313,6 @@ impl BackendOps for WaylandBackend {
                     vrr_enabled: state
                         .output_vrr_metadata(&o.name())
                         .is_some_and(|m| m.vrr_enabled),
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-    }
-
-    fn get_input_devices(&self) -> Vec<String> {
-        self.with_state(|state: &mut WaylandState| {
-            state
-                .runtime
-                .tracked_devices
-                .iter()
-                .map(|d| {
-                    use smithay::reexports::input::DeviceCapability;
-                    let mut caps = Vec::new();
-                    if d.has_capability(DeviceCapability::Keyboard) {
-                        caps.push("keyboard");
-                    }
-                    if d.has_capability(DeviceCapability::Pointer) {
-                        caps.push("pointer");
-                    }
-                    if d.has_capability(DeviceCapability::Touch) {
-                        caps.push("touch");
-                    }
-                    if d.has_capability(DeviceCapability::TabletTool) {
-                        caps.push("tablet_tool");
-                    }
-                    if d.has_capability(DeviceCapability::TabletPad) {
-                        caps.push("tablet_pad");
-                    }
-                    if d.has_capability(DeviceCapability::Gesture) {
-                        caps.push("gesture");
-                    }
-                    if d.has_capability(DeviceCapability::Switch) {
-                        caps.push("switch");
-                    }
-                    format!("{} (capabilities: {})", d.name(), caps.join(", "))
                 })
                 .collect()
         })
