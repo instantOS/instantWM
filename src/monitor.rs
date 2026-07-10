@@ -230,7 +230,11 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         unfocus_win(ctx, win, true);
     }
 
-    let Some(outcome) = ctx.core_mut().model_mut().move_client_to_monitor(win, target_mon) else {
+    let Some(outcome) = ctx
+        .core_mut()
+        .model_mut()
+        .move_client_to_monitor(win, target_mon)
+    else {
         return;
     };
     if let WmCtx::X11(x11) = ctx {
@@ -243,10 +247,10 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     // not arrange (`move_client_to_monitor` sets `needs_arrange = false`), so
     // this unconditional refresh is what actually updates the bar/geometry for
     // moved floating clients; callers must not assume the queue below covers it.
-    if let Some(src) = current_mon {
-        if src != target_mon {
-            ctx.core_mut().queue_layout_for_monitor_urgent(src);
-        }
+    if let Some(src) = current_mon
+        && src != target_mon
+    {
+        ctx.core_mut().queue_layout_for_monitor_urgent(src);
     }
     ctx.core_mut().queue_layout_for_monitor_urgent(target_mon);
 
@@ -482,14 +486,13 @@ fn take_matching_monitor(
     position: usize,
     output: &BackendOutputInfo,
 ) -> Option<Monitor> {
-    if !output.name.is_empty() {
-        if let Some((_, slot)) = pool
+    if !output.name.is_empty()
+        && let Some((_, slot)) = pool
             .iter_mut()
             .enumerate()
             .find(|(_, slot)| slot.as_ref().is_some_and(|m| m.name == output.name))
-        {
-            return Some(slot.take().unwrap());
-        }
+    {
+        return Some(slot.take().unwrap());
     }
     if let Some(slot) = pool.get_mut(position)
         && let Some(m) = slot.as_ref()
@@ -592,7 +595,11 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
 
     // Restore the rebuilt list. The selection is preserved if its monitor still
     // exists; otherwise the manager falls back to the first monitor.
-    ctx.core_mut().state_mut().model.monitors.restore(new_monitors);
+    ctx.core_mut()
+        .state_mut()
+        .model
+        .monitors
+        .restore(new_monitors);
 
     // Re-home any clients whose monitor was removed onto the first survivor.
     if let Some(survivor) = ctx.core().model().monitors.first() {
@@ -699,11 +706,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
         m.update_bar_position(bar_height);
     }
-    ctx.core_mut()
-        .state_mut()
-        .model
-        .monitors
-        .set_selected(id);
+    ctx.core_mut().state_mut().model.monitors.set_selected(id);
     true
 }
 

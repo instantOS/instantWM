@@ -257,6 +257,6 @@ impl FromStr for LayoutKind {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 pub use manager::{
-    arrange, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor, sync_monitor_z_order,
-    toggle_layout,
+    arrange, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor,
+    sync_monitor_z_order, toggle_layout,
 };

@@ -512,7 +512,8 @@ impl Monitor {
 
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
-        self.show_bar_for_mask(self.selected_tags()) && !self.has_external_bar_on_internal_bar_edge()
+        self.show_bar_for_mask(self.selected_tags())
+            && !self.has_external_bar_on_internal_bar_edge()
     }
 
     /// Returns showbar state for the given tag mask.
@@ -788,6 +789,10 @@ pub fn find_monitor_by_direction<'a>(
 }
 
 /// Find the monitor that contains the given rectangle (by maximum intersection area).
+///
+/// This intentionally uses the full output geometry, rather than the work area:
+/// callers use this for root-coordinate input hit testing, including the bar and
+/// layer-shell exclusive zones that are outside `work_rect`.
 pub fn find_monitor_by_rect<'a>(
     monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
     rect: &Rect,
@@ -796,7 +801,10 @@ pub fn find_monitor_by_rect<'a>(
     let mut max_area = 0;
 
     for (id, m) in monitors {
-        let area = m.intersect_area(rect);
+        let area = m
+            .monitor_rect
+            .intersection(rect)
+            .map_or(0, |intersection| intersection.area());
         if area > max_area {
             max_area = area;
             best_id = Some(id);
@@ -899,6 +907,47 @@ mod tests {
 
         assert_eq!(state.master_count, 1);
         assert_eq!(state.master_factor, 0.55);
+    }
+
+    #[test]
+    fn monitor_lookup_includes_bar_outside_work_area() {
+        let mut monitor = Monitor {
+            monitor_id: MonitorId::from_raw(7),
+            monitor_rect: Rect::new(100, 50, 800, 600),
+            work_rect: Rect::new(100, 80, 800, 570),
+            ..Monitor::default()
+        };
+        monitor.bar_y = 50;
+        monitor.bar_height = 30;
+
+        assert_eq!(
+            find_monitor_by_rect([(monitor.id(), &monitor)], &Rect::new(200, 60, 1, 1)),
+            Some(MonitorId::from_raw(7))
+        );
+    }
+
+    #[test]
+    fn monitor_lookup_returns_stable_id_for_each_full_output() {
+        let left = Monitor {
+            monitor_id: MonitorId::from_raw(4),
+            monitor_rect: Rect::new(0, 0, 100, 100),
+            work_rect: Rect::new(0, 20, 100, 80),
+            ..Monitor::default()
+        };
+        let right = Monitor {
+            monitor_id: MonitorId::from_raw(9),
+            monitor_rect: Rect::new(100, 0, 100, 100),
+            work_rect: Rect::new(100, 20, 100, 80),
+            ..Monitor::default()
+        };
+
+        assert_eq!(
+            find_monitor_by_rect(
+                [(left.id(), &left), (right.id(), &right)],
+                &Rect::new(150, 5, 1, 1),
+            ),
+            Some(MonitorId::from_raw(9))
+        );
     }
 
     #[test]

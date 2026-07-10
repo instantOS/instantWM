@@ -224,7 +224,7 @@ impl WmModel {
     ) -> bool {
         let sel_mon_id = self.selected_monitor_id();
         if let Some(mon) = self.monitors.get_mut(sel_mon_id) {
-            mon.move_client_in_stack(win, direction, &self.clients.map())
+            mon.move_client_in_stack(win, direction, self.clients.map())
         } else {
             false
         }

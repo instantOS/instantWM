@@ -355,7 +355,7 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
         return false;
     }
 
-        ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
+    ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
     ctx.update_ewmh_desktop_props();
     focus(ctx, None);
     true
@@ -386,7 +386,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
     };
 
     if monitor_id != ctx.core().model().selected_monitor_id() {
-    ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
+        ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
     }
 
     let target_tags = client_tags.without_scratchpad();
@@ -536,7 +536,11 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let sel_mon_id = ctx.core().model().selected_monitor_id();
     if !ctx.core().model().monitors.is_empty()
         && sel_mon_id != last_mon_id
-        && let Some(sel) = ctx.core().model().monitor(sel_mon_id).and_then(|m| m.selected)
+        && let Some(sel) = ctx
+            .core()
+            .model()
+            .monitor(sel_mon_id)
+            .and_then(|m| m.selected)
     {
         unfocus_win(ctx, sel, false);
         ctx.core_mut().model_mut().set_selected_monitor(last_mon_id);

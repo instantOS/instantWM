@@ -161,12 +161,15 @@ pub fn execute_button_action(
         }
         ButtonAction::SidebarGestureBegin => sidebar_gesture_begin(ctx, arg.btn),
         ButtonAction::ReorderSelected { direction } => {
-            if let Some(win) = ctx.core().model().selected_win() {
-                if ctx.core_mut().model_mut().move_client_in_stack(win, *direction) {
-                    crate::focus::focus(ctx, Some(win));
-                    let monitor_id = ctx.core().model().selected_monitor_id();
-                    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
-                }
+            if let Some(win) = ctx.core().model().selected_win()
+                && ctx
+                    .core_mut()
+                    .model_mut()
+                    .move_client_in_stack(win, *direction)
+            {
+                crate::focus::focus(ctx, Some(win));
+                let monitor_id = ctx.core().model().selected_monitor_id();
+                ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
             }
         }
         ButtonAction::ScaleSelected { percent } => {

@@ -230,7 +230,13 @@ mod tests {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = make_client_manager(vec![make_client(win, tag, MonitorId::from_raw(0), true, false)]);
+        let clients = make_client_manager(vec![make_client(
+            win,
+            tag,
+            MonitorId::from_raw(0),
+            true,
+            false,
+        )]);
         let mon = make_monitor(0, tag, vec![win]);
         let mons = make_monitor_manager(vec![mon]);
 
@@ -246,7 +252,13 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = make_client_manager(vec![make_client(win, tag1, MonitorId::from_raw(0), false, true)]);
+        let clients = make_client_manager(vec![make_client(
+            win,
+            tag1,
+            MonitorId::from_raw(0),
+            false,
+            true,
+        )]);
         let mon = make_monitor(0, tag2, vec![win]);
         let mons = make_monitor_manager(vec![mon]);
 

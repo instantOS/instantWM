@@ -242,10 +242,12 @@ fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
             action: NamedAction::FocusStack,
             args: vec![dir.clone()],
         }),
-        ActionSpec::Structured(StructuredAction::SetMasterFactor(delta)) => Some(KeyAction::Named {
-            action: NamedAction::SetMasterFactor,
-            args: vec![delta.to_string()],
-        }),
+        ActionSpec::Structured(StructuredAction::SetMasterFactor(delta)) => {
+            Some(KeyAction::Named {
+                action: NamedAction::SetMasterFactor,
+                args: vec![delta.to_string()],
+            })
+        }
         ActionSpec::Structured(StructuredAction::IncMasterCount(n)) => Some(KeyAction::Named {
             action: NamedAction::IncMasterCount,
             args: vec![n.to_string()],

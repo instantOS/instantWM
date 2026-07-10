@@ -145,7 +145,10 @@ pub struct ScratchpadInfo {
 }
 
 impl ScratchpadInfo {
-    pub(crate) fn from_client(c: &crate::types::client::Client, monitor_position: usize) -> Option<Self> {
+    pub(crate) fn from_client(
+        c: &crate::types::client::Client,
+        monitor_position: usize,
+    ) -> Option<Self> {
         if !c.is_scratchpad() {
             return None;
         }

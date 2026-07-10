@@ -11,7 +11,8 @@ use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor, toggle_layout,
+    LayoutKind, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor,
+    toggle_layout,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
@@ -106,8 +107,8 @@ define_named_actions!(
     KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "resize floating window down", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
     KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "resize floating window left", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
     KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "resize floating window right", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
-    PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { if ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Previous) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } } },
-    PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { if ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Next) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } } },
+    PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() && ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Previous) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } },
+    PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() && ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Next) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } },
     LastView => { name: "last_view", arg_example: None, doc: "view previously viewed tags", run: |ctx, _args| { last_view(ctx); } },
     FollowView => { name: "follow_view", arg_example: None, doc: "follow client to its tags", run: |ctx, _args| { follow_view(ctx); } },
     WinView => { name: "win_view", arg_example: None, doc: "view tags of focused client", run: |ctx, _args| { win_view(ctx); } },

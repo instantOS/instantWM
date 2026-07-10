@@ -132,7 +132,8 @@ impl BarState {
     }
 
     pub fn begin_monitor_hit_cache(&mut self, monitor_id: crate::types::MonitorId) {
-        self.hit_cache.insert(monitor_id, MonitorHitCache::default());
+        self.hit_cache
+            .insert(monitor_id, MonitorHitCache::default());
     }
 
     pub fn monitor_hit_cache_mut(

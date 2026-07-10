@@ -1,7 +1,7 @@
 use crate::actions::{KeyAction, execute_key_action};
 use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
-use crate::floating::{change_snap, reset_snap, toggle_floating};
+use crate::floating::change_snap;
 use crate::focus::{direction_focus, focus_stack};
 
 use crate::types::*;
