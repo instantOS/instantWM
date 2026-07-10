@@ -162,7 +162,8 @@ impl MonitorManager {
 // -----------------------------------------------------------------------------
 
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    if ctx.core_mut().model_mut().monitors.sel_idx() == target_mon {
+    let current_mon = ctx.core().model().clients.get(&win).map(|c| c.monitor_id);
+    if current_mon == Some(target_mon) {
         return;
     }
 

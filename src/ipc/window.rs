@@ -162,9 +162,6 @@ fn transfer_window_to_monitor(
         return;
     }
 
-    ctx.core_mut()
-        .state_mut()
-        .set_selected_monitor(current_monitor);
     transfer_client(ctx, win, target_monitor);
     ctx.core_mut()
         .state_mut()
