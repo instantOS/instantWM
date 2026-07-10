@@ -12,6 +12,14 @@ use crate::contexts::{CoreCtx, WmCtx};
 use crate::globals::Globals;
 use crate::types::*;
 
+/// Bar-owned runtime data shared by both render backends.
+#[derive(Debug, Clone, Default)]
+pub struct BarRuntime {
+    pub status_text: String,
+    /// Cached systray width (pixels), updated before rendering.
+    pub systray_width: i32,
+}
+
 #[derive(Default)]
 pub struct BarState {
     draw_bar_recursion: usize,
@@ -28,6 +36,7 @@ pub struct BarState {
     status_cache_text: String,
     status_cache: status::ParsedStatus,
     status_cache_parsed: bool,
+    pub runtime: BarRuntime,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -320,7 +329,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
 
     let selected_monitor = ctx.core().globals().selected_monitor().clone();
     let local_x = root.x - selected_monitor.work_rect.x;
-    let status_text = ctx.core().globals().bar_runtime.status_text.clone();
+    let status_text = ctx.core().bar.runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
         .bar

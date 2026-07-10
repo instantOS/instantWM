@@ -105,7 +105,7 @@ pub(crate) fn build_monitor_snapshots(
             .unwrap_or_else(|| current_mode.clone());
         Some(format!("mode: {}", mode_display))
     } else {
-        let status_text = core.globals().bar_runtime.status_text.clone();
+        let status_text = core.bar.runtime.status_text.clone();
         if status_text.is_empty() {
             None
         } else {

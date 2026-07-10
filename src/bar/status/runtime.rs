@@ -61,14 +61,14 @@ fn stop_default_source() {
 }
 
 pub(crate) fn apply_status_update(wm: &mut crate::wm::Wm, text: String) {
-    if wm.g.bar_runtime.status_text == text {
+    if wm.bar.runtime.status_text == text {
         return;
     }
 
     stop_default_source();
 
     wm.bar.prepare_status_for_render(&text);
-    wm.g.bar_runtime.status_text = text;
+    wm.bar.runtime.status_text = text;
     wm.bar.mark_dirty();
 }
 

@@ -586,14 +586,6 @@ pub struct PendingWork {
     pub layout: PendingLayoutWork,
 }
 
-/// Bar-specific runtime data (status text, systray geometry).
-#[derive(Debug, Clone, Default)]
-pub struct BarRuntime {
-    pub status_text: String,
-    /// Cached systray width (pixels) for the active backend. Updated before each bar render.
-    pub systray_width: i32,
-}
-
 pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub cfg: RuntimeConfig,
@@ -606,7 +598,6 @@ pub struct Globals {
     // Grouped subsystems
     pub behavior: WmBehavior,
     pub drag: DragState,
-    pub bar_runtime: BarRuntime,
     pub pending: PendingWork,
 
     /// XKB keyboard layout state.
@@ -878,7 +869,6 @@ impl Default for Globals {
             tags: TagSet::default(),
             behavior: WmBehavior::default(),
             drag: DragState::default(),
-            bar_runtime: BarRuntime::default(),
             pending,
             keyboard_layout: KeyboardLayoutState::default(),
             pending_launches: VecDeque::new(),

@@ -40,7 +40,7 @@ pub(crate) fn draw_status_bar(
         stext_owned = format!("mode: {}", mode_display);
         stext_owned.as_str()
     } else {
-        stext_owned = ctx.globals().bar_runtime.status_text.clone();
+        stext_owned = ctx.bar.runtime.status_text.clone();
         stext_owned.as_str()
     };
 

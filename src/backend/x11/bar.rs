@@ -40,7 +40,7 @@ pub fn draw_bar(
     }
 
     if core.globals().cfg.systray.show {
-        core.globals_mut().bar_runtime.systray_width =
+        core.bar.runtime.systray_width =
             crate::backend::x11::systray::get_systray_width(core.globals(), systray) as i32;
     }
 
@@ -101,7 +101,7 @@ pub fn draw_bars_x11(
         }
 
         if core.globals().cfg.systray.show {
-            core.globals_mut().bar_runtime.systray_width =
+            core.bar.runtime.systray_width =
                 crate::backend::x11::systray::get_systray_width(core.globals(), systray) as i32;
         }
 
