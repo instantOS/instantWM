@@ -431,21 +431,11 @@ impl Client {
     /// Apply all client-local state changes required when a window enters tiling mode.
     ///
     /// Sets the mode to `Tiling`, saves the current geometry into `float_geo` so it
-    /// can be restored on the next float, and — when `is_sole_client` is true and the
-    /// window is not snapped — saves then zeroes the border width.
-    ///
-    /// Returns `true` when the border width was cleared (so the caller can forward the
-    /// change to the backend).
-    pub fn enter_tiling(&mut self, is_sole_client: bool) -> bool {
+    /// can be restored on the next float. Border policy belongs to the layout
+    /// manager, which knows the visible tiled client count and active layout.
+    pub fn enter_tiling(&mut self) {
         self.mode = ClientMode::Tiling;
         self.float_geo = self.geo;
-        if is_sole_client && self.snap_status == SnapPosition::None {
-            self.save_border_width();
-            self.border_width = 0;
-            true
-        } else {
-            false
-        }
     }
 
     // -------------------------------------------------------------------------

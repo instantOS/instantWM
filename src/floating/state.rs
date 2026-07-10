@@ -35,7 +35,6 @@ impl WindowModeChange {
 pub(crate) struct WindowModePlan {
     pub(crate) change: WindowModeChange,
     pub(crate) border_width: i32,
-    pub(crate) clear_backend_border: bool,
     pub(crate) restore_geometry: Option<Rect>,
 }
 
@@ -44,7 +43,6 @@ pub(crate) fn update_window_mode(
     win: WindowId,
     mode: BaseClientMode,
 ) -> Option<WindowModePlan> {
-    let is_sole_client = clients.len() <= 1;
     let client = clients.get_mut(&win)?;
     match mode {
         BaseClientMode::Floating => {
@@ -57,16 +55,14 @@ pub(crate) fn update_window_mode(
                     restored_geometry: restore_geometry.is_some(),
                 },
                 border_width,
-                clear_backend_border: true,
                 restore_geometry,
             })
         }
         BaseClientMode::Tiling => {
-            let clear_backend_border = client.enter_tiling(is_sole_client);
+            client.enter_tiling();
             Some(WindowModePlan {
                 change: WindowModeChange::ChangedToTiling,
                 border_width: client.border_width,
-                clear_backend_border,
                 restore_geometry: None,
             })
         }
@@ -99,14 +95,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
             }
             plan.change
         }
-        BaseClientMode::Tiling => {
-            if plan.clear_backend_border
-                && let WmCtx::X11(x11) = ctx
-            {
-                x11.x11.set_border_width(win, 0);
-            }
-            plan.change
-        }
+        BaseClientMode::Tiling => plan.change,
     }
 }
 
@@ -274,7 +263,6 @@ mod tests {
             }
         );
         assert_eq!(p.border_width, 4); // restored from old_border_width
-        assert!(p.clear_backend_border);
         assert_eq!(
             p.restore_geometry,
             Some(Rect {
@@ -298,11 +286,9 @@ mod tests {
         let mut clients = make_client_manager(vec![make_client(win, tag, ClientMode::Floating)]);
 
         let plan = update_window_mode(&mut clients, win, BaseClientMode::Tiling);
-        assert!(plan.is_some());
         let p = plan.unwrap();
         assert_eq!(p.change, WindowModeChange::ChangedToTiling);
-        assert_eq!(p.border_width, 0);
-        assert!(p.clear_backend_border);
+        assert_eq!(p.border_width, 2);
 
         // Check model state
         let client = clients.get(&win).unwrap();
@@ -382,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn mode_change_sole_client_tiling_clears_border() {
+    fn mode_change_to_tiling_defers_border_policy_to_layout() {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
         let mut client = make_client(win, tag, ClientMode::Floating);
@@ -392,11 +378,10 @@ mod tests {
         let mut clients = make_client_manager(vec![client]);
 
         let plan = update_window_mode(&mut clients, win, BaseClientMode::Tiling);
-        assert!(plan.is_some());
-        let p = plan.unwrap();
-        assert!(p.clear_backend_border);
-        // With only one client, border width should be zeroed
+        assert_eq!(plan.unwrap().change, WindowModeChange::ChangedToTiling);
+        // Mode transitions do not guess layout policy from the global client
+        // count; the arrange plan decides this from visible tiled clients.
         let client = clients.get(&win).unwrap();
-        assert_eq!(client.border_width, 0);
+        assert_eq!(client.border_width, 2);
     }
 }

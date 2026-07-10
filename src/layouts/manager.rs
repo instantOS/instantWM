@@ -150,15 +150,22 @@ impl Monitor {
         // Compute borders
         let borders = compute_borders(self, clients);
 
+        // Layout geometry and border updates are one transaction. Compute moves
+        // from the border widths this arrange pass is about to apply, rather
+        // than from the previous pass's client state. Otherwise removing a
+        // border (notably when a floating window becomes the sole tiled
+        // client) leaves a border-sized strip until the next arrange.
+        let layout_clients = clients_with_planned_borders(clients, &borders);
+
         // Compute layout moves and save_geo
         let is_overview = self.overview_state.is_some();
         let (client_moves, save_geo) = if is_overview {
-            let (moves, save_geo) = crate::overview::compute(self, clients);
+            let (moves, save_geo) = crate::overview::compute(self, &layout_clients);
             (moves, save_geo)
         } else {
             let layout = self.current_layout();
             (
-                layout.compute(self, clients, layout_cfg, animated),
+                layout.compute(self, &layout_clients, layout_cfg, animated),
                 Vec::new(),
             )
         };
@@ -182,6 +189,19 @@ impl Monitor {
             is_overview,
         }
     }
+}
+
+fn clients_with_planned_borders(
+    clients: &HashMap<WindowId, Client>,
+    borders: &[(WindowId, i32)],
+) -> HashMap<WindowId, Client> {
+    let mut planned = clients.clone();
+    for &(win, border_width) in borders {
+        if let Some(client) = planned.get_mut(&win) {
+            client.border_width = border_width;
+        }
+    }
+    planned
 }
 
 fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {
@@ -464,7 +484,7 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
 
 #[cfg(test)]
 mod tests {
-    use super::compute_monitor_z_order;
+    use super::{clients_with_planned_borders, compute_monitor_z_order};
     use crate::types::{Client, Monitor, TagMask, WindowId};
     use std::collections::HashMap;
 
@@ -486,6 +506,19 @@ mod tests {
             monitor.z_order.attach_top(win);
         }
         monitor
+    }
+
+    #[test]
+    fn planned_border_is_used_without_waiting_for_next_arrange() {
+        let win = WindowId(1);
+        let mut client = visible_client(win);
+        client.border_width = 2;
+        let clients = HashMap::from([(win, client)]);
+
+        let planned = clients_with_planned_borders(&clients, &[(win, 0)]);
+
+        assert_eq!(planned[&win].border_width, 0);
+        assert_eq!(clients[&win].border_width, 2);
     }
 
     #[test]
