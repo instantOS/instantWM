@@ -161,50 +161,6 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-#[derive(Clone, Copy, Debug)]
-struct ClientTransferOutcome {
-    is_scratchpad: bool,
-    needs_arrange: bool,
-}
-
-fn transfer_client_model(
-    model: &mut crate::model::WmModel,
-    win: WindowId,
-    target_mon: MonitorId,
-) -> Option<ClientTransferOutcome> {
-    let client = model.clients.get(&win)?;
-    let is_scratchpad = client.is_scratchpad();
-    let target_tags = if is_scratchpad {
-        crate::types::TagMask::EMPTY
-    } else {
-        model
-            .monitors
-            .get(target_mon)
-            .map(|m| m.selected_tags())
-            .unwrap_or(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY))
-    };
-    let target_tag_idx = model
-        .monitors
-        .get(target_mon)
-        .and_then(|m| m.current_tag_number());
-
-    model.detach(win);
-    model.detach_z_order(win);
-    let client = model.clients.get_mut(&win)?;
-    client.monitor_id = target_mon;
-    if !is_scratchpad {
-        client.set_tag_mask(target_tags);
-        client.reset_sticky(target_tag_idx);
-    }
-    let needs_arrange = !client.mode.is_floating();
-    model.attach(win);
-    model.attach_z_order_top(win);
-    Some(ClientTransferOutcome {
-        is_scratchpad,
-        needs_arrange,
-    })
-}
-
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if ctx.core_mut().model_mut().monitors.sel_idx() == target_mon {
         return;
@@ -214,7 +170,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
         unfocus_win(ctx, win, true);
     }
 
-    let Some(outcome) = transfer_client_model(ctx.core_mut().model_mut(), win, target_mon) else {
+    let Some(outcome) = ctx.core_mut().model_mut().move_client_to_monitor(win, target_mon) else {
         return;
     };
     if let WmCtx::X11(x11) = ctx {

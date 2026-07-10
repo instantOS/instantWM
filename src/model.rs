@@ -213,6 +213,50 @@ impl WmModel {
             }
         }
     }
+
+    /// Move a client window to a target monitor in the data model.
+    pub fn move_client_to_monitor(
+        &mut self,
+        win: WindowId,
+        target_mon: MonitorId,
+    ) -> Option<ClientTransferOutcome> {
+        let client = self.clients.get(&win)?;
+        let is_scratchpad = client.is_scratchpad();
+        let target_tags = if is_scratchpad {
+            crate::types::TagMask::EMPTY
+        } else {
+            self.monitors
+                .get(target_mon)
+                .map(|m| m.selected_tags())
+                .unwrap_or(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY))
+        };
+        let target_tag_idx = self
+            .monitors
+            .get(target_mon)
+            .and_then(|m| m.current_tag_number());
+
+        self.detach(win);
+        self.detach_z_order(win);
+        let client = self.clients.get_mut(&win)?;
+        client.monitor_id = target_mon;
+        if !is_scratchpad {
+            client.set_tag_mask(target_tags);
+            client.reset_sticky(target_tag_idx);
+        }
+        let needs_arrange = !client.mode.is_floating();
+        self.attach(win);
+        self.attach_z_order_top(win);
+        Some(ClientTransferOutcome {
+            is_scratchpad,
+            needs_arrange,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ClientTransferOutcome {
+    pub is_scratchpad: bool,
+    pub needs_arrange: bool,
 }
 
 impl Default for WmModel {
