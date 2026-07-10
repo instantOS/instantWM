@@ -420,12 +420,12 @@ pub fn set_urgent_x11(
 }
 
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    if !ctx.core.config().window.decorhints {
+    if !ctx.core.config().window.decor_hints {
         return;
     }
 
     let motif_atom = ctx.x11_runtime.motifatom;
-    let borderpx = ctx.core.config().window.border_width_px;
+    let border_px = ctx.core.config().window.border_width_px;
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
@@ -465,7 +465,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         || (decorations & MWM_DECOR_BORDER) != 0
         || (decorations & MWM_DECOR_TITLE) != 0
     {
-        borderpx
+        border_px
     } else {
         0
     };

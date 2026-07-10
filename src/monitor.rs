@@ -409,8 +409,8 @@ fn make_monitor_for_output(
     pool: &mut Vec<Option<Monitor>>,
     old_to_new: &mut [Option<MonitorId>],
     template: &[TagNames],
-    showbar: bool,
-    topbar: bool,
+    show_bar: bool,
+    top_bar: bool,
     config: &RuntimeConfig,
     changed: &mut bool,
 ) -> Monitor {
@@ -440,7 +440,7 @@ fn make_monitor_for_output(
         }
         None => {
             *changed = true;
-            let mut m = Monitor::new_with_values(showbar, topbar);
+            let mut m = Monitor::new_with_values(show_bar, top_bar);
             m.init_tags(template);
             m.apply_output_layout(
                 new_id.index(),
@@ -533,7 +533,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     }
 
     let template = ctx.core().config().tag_template.clone();
-    let (showbar, topbar) = (ctx.core().config().bar.show, ctx.core().config().bar.top);
+    let (show_bar, top_bar) = (ctx.core().config().bar.show, ctx.core().config().bar.top);
 
     let (layout_width, layout_height) = output_layout_extent(&outputs);
     let mut changed =
@@ -559,8 +559,8 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
             &mut pool,
             &mut old_to_new,
             &template,
-            showbar,
-            topbar,
+            show_bar,
+            top_bar,
             &globals.config,
             &mut changed,
         );

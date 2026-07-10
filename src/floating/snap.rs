@@ -83,9 +83,9 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
     // Geometry of the target monitor.
     let (m_mx, m_mw, m_mh, m_wh, mony) = {
         let m = ctx.core.model().monitor(monitor_id)?;
-        let showbar = m.showbar_for_mask(m.selected_tags());
+        let show_bar = m.show_bar_for_mask(m.selected_tags());
         let mony = m.monitor_rect.y
-            + if showbar {
+            + if show_bar {
                 ctx.core.config().derived.bar_height
             } else {
                 0

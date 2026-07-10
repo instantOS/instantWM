@@ -421,11 +421,11 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             let selmon = ctx.core.model().selected_monitor();
             (selmon.monitor_id, selmon.gesture)
         };
-        let showbar = {
+        let show_bar = {
             let selmon = ctx.core.model_mut().selected_monitor_mut();
-            selmon.pertag_state().showbar
+            selmon.pertag_state().show_bar
         };
-        let in_bar = showbar
+        let in_bar = show_bar
             && ctx
                 .core
                 .g

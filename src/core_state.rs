@@ -21,8 +21,8 @@ pub struct DisplayConfig {
 pub struct WindowConfig {
     pub border_width_px: i32,
     pub snap_threshold: i32,
-    pub resizehints: bool,
-    pub decorhints: bool,
+    pub resize_hints: bool,
+    pub decor_hints: bool,
 }
 
 impl Default for WindowConfig {
@@ -30,8 +30,8 @@ impl Default for WindowConfig {
         Self {
             border_width_px: 1,
             snap_threshold: 32,
-            resizehints: true,
-            decorhints: false,
+            resize_hints: true,
+            decor_hints: false,
         }
     }
 }
@@ -732,19 +732,19 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
         derived,
         ..RuntimeConfig::default()
     };
-    next.window.border_width_px = cfg.borderpx;
+    next.window.border_width_px = cfg.border_px;
     next.input = cfg.input.clone();
     next.monitors = cfg.monitors.clone();
     next.window.snap_threshold = cfg.snap_threshold;
     next.bar.startmenu_size = cfg.startmenu_size;
-    next.systray.pinning = cfg.systraypinning;
-    next.systray.spacing = cfg.systrayspacing;
+    next.systray.pinning = cfg.systray_pinning;
+    next.systray.spacing = cfg.systray_spacing;
     next.systray.show = cfg.show_systray;
-    next.bar.show = cfg.showbar;
-    next.bar.top = cfg.topbar;
+    next.bar.show = cfg.show_bar;
+    next.bar.top = cfg.top_bar;
     next.bar.height = cfg.bar_height;
-    next.window.resizehints = cfg.resize_hints;
-    next.window.decorhints = cfg.decorhints;
+    next.window.resize_hints = cfg.resize_hints;
+    next.window.decor_hints = cfg.decor_hints;
     next.layout = crate::config::config_toml::LayoutConfig {
         inner_gap: cfg.layout.inner_gap.max(0),
         outer_gap: cfg.layout.outer_gap.max(0),

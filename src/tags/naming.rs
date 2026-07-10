@@ -20,7 +20,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     }
 
     let mon = ctx.core().model().selected_monitor();
-    let (numtags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
+    let (num_tags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
 
     if tagset == 0 {
         return;
@@ -29,7 +29,7 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
     // Apply the new (or default) name to every tag in the current tagset
     // on every monitor, so secondary monitors stay in sync.
     for mon in ctx.core_mut().model_mut().monitors.iter_all_mut() {
-        for (i, tag) in mon.tags.iter_mut().take(numtags.min(MAX_TAGS)).enumerate() {
+        for (i, tag) in mon.tags.iter_mut().take(num_tags.min(MAX_TAGS)).enumerate() {
             if (tagset & (1 << i)) == 0 {
                 continue;
             }

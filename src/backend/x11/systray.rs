@@ -217,7 +217,7 @@ pub fn update_systray(
         crate::backend::x11::draw::XFlush(x11_runtime.xlibdisplay.0);
     }
 
-    let (x, bar_y, _showbar, bar_win) = {
+    let (x, bar_y, _show_bar, bar_win) = {
         let m = systray_to_mon(core.model(), &core.config().systray, None);
         let mon = match core.model().monitor(m) {
             Some(mon) => mon,
@@ -227,7 +227,7 @@ pub fn update_systray(
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
             mon.bar_y,
-            mon.showbar_for_mask(mask),
+            mon.show_bar_for_mask(mask),
             mon.bar_win,
         )
     };
@@ -331,7 +331,7 @@ pub fn update_systray(
     };
 
     let bar_height = core.config().derived.bar_height;
-    let systrayspacing = core.config().systray.spacing;
+    let systray_spacing = core.config().systray.spacing;
     let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, i32, i32)> = icons
@@ -347,7 +347,7 @@ pub fn update_systray(
 
     let mut systray_width = 0u32;
     for _ in 0..icon_layout.len() {
-        systray_width += systrayspacing as u32;
+        systray_width += systray_spacing as u32;
     }
     for (_, icon_w, _) in &icon_layout {
         systray_width += *icon_w as u32;
@@ -364,7 +364,7 @@ pub fn update_systray(
             );
             let _ = conn.map_window(x11_icon_win);
 
-            w += systrayspacing as u32;
+            w += systray_spacing as u32;
 
             let _ = conn.configure_window(
                 x11_icon_win,
@@ -383,7 +383,7 @@ pub fn update_systray(
     let x11_bar_win: Window = bar_win.into();
 
     w = if systray_width > 0 {
-        systray_width + systrayspacing as u32
+        systray_width + systray_spacing as u32
     } else {
         1
     };

@@ -68,7 +68,7 @@ pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<Sna
     }
     if root.y
         <= mon.monitor_rect.y
-            + if mon.showbar_for_mask(mask) {
+            + if mon.show_bar_for_mask(mask) {
                 mon.bar_height
             } else {
                 5
@@ -83,7 +83,7 @@ pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<Sna
 pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
     let mon = model.selected_monitor();
     let mask = mon.selected_tags();
-    mon.showbar_for_mask(mask)
+    mon.show_bar_for_mask(mask)
         && mon.y_in_bar(root.y)
         && root.x >= mon.monitor_rect.x
         && root.x < mon.monitor_rect.x + mon.monitor_rect.w

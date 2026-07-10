@@ -64,10 +64,10 @@ fn collect_floating_wins(model: &crate::model::WmModel, mid: MonitorId) -> Vec<W
         return Vec::new();
     };
 
-    let numtags = mon.tags.len();
+    let num_tags = mon.tags.len();
     let mut wins = Vec::new();
 
-    for tag_idx in 0..numtags {
+    for tag_idx in 0..num_tags {
         // Skip tags that have a tiling layout — only purely-floating tags matter.
         let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
         let tag_is_floating = mon

@@ -280,7 +280,7 @@ fn sync_bar_config_to_monitors(wm: &mut Wm) {
         monitor.show_bar = show_bar;
         monitor.top_bar = top_bar;
         for state in monitor.per_tag.values_mut() {
-            state.showbar = show_bar;
+            state.show_bar = show_bar;
         }
     }
 }
@@ -339,10 +339,10 @@ mod tests {
         assert_eq!(wm.core.config.layout.inner_gap, 42);
 
         assert!(matches!(
-            do_set(&mut wm, "window.resizehints", "false"),
+            do_set(&mut wm, "window.resize_hints", "false"),
             Response::Ok
         ));
-        assert!(!wm.core.config.window.resizehints);
+        assert!(!wm.core.config.window.resize_hints);
 
         // Plain string fallback when value isn't valid JSON.
         assert!(matches!(

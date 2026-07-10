@@ -69,8 +69,8 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         launch_context,
     );
 
-    let borderpx = ctx.core.config().window.border_width_px;
-    apply_default_border(ctx.core.model_mut(), borderpx, w);
+    let border_px = ctx.core.config().window.border_width_px;
+    apply_default_border(ctx.core.model_mut(), border_px, w);
     let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.model(), w);
     clamp_client_to_work_area(ctx.core.model_mut(), w, mon_work_rect);
     let is_monocle = is_monocle_on_client_monitor(ctx.core.model(), w);
@@ -81,7 +81,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         &ctx.x11,
         ctx.x11_runtime,
         w,
-        borderpx,
+        border_px,
         mon_monitor_rect,
         is_monocle,
     );
@@ -243,10 +243,10 @@ fn read_u32_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> O
         .next()
 }
 
-fn apply_default_border(model: &mut crate::model::WmModel, borderpx: i32, w: WindowId) {
+fn apply_default_border(model: &mut crate::model::WmModel, border_px: i32, w: WindowId) {
     if let Some(client) = model.clients.get_mut(&w) {
-        client.border_width = borderpx;
-        client.old_border_width = borderpx;
+        client.border_width = border_px;
+        client.old_border_width = border_px;
     }
 }
 
@@ -285,7 +285,7 @@ fn configure_client_border(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     w: WindowId,
-    borderpx: i32,
+    border_px: i32,
     mon_monitor_rect: Rect,
     is_monocle: bool,
 ) {
@@ -300,7 +300,7 @@ fn configure_client_border(
     {
         0
     } else {
-        borderpx
+        border_px
     };
 
     client.border_width = border_width;

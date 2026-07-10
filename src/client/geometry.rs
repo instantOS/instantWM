@@ -203,7 +203,7 @@ pub fn apply_size_hints(
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
     let monitor = model.monitors.get(monitor_id);
-    let should_apply_hints = config.window.resizehints
+    let should_apply_hints = config.window.resize_hints
         || client.mode.is_floating()
         || is_floating_layout(model, monitor);
 

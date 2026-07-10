@@ -110,8 +110,8 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 
     let bar_height = ctx.core().config().derived.bar_height;
     let selmon = ctx.core_mut().model_mut().selected_monitor_mut();
-    selmon.pertag_state().showbar = !selmon.pertag_state().showbar;
-    selmon.show_bar = selmon.pertag_state().showbar;
+    selmon.pertag_state().show_bar = !selmon.pertag_state().show_bar;
+    selmon.show_bar = selmon.pertag_state().show_bar;
 
     selmon.update_bar_position(bar_height);
 

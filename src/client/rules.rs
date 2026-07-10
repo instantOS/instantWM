@@ -95,7 +95,7 @@ pub fn apply_rules(
                     None => continue,
                 };
                 let mask = client.tags;
-                Some((mon.monitor_rect, mon.work_rect, mon.showbar_for_mask(mask)))
+                Some((mon.monitor_rect, mon.work_rect, mon.show_bar_for_mask(mask)))
             };
 
             if let Some(c) = g.model.clients.get_mut(&win) {
@@ -151,7 +151,7 @@ pub fn handle_property_change(g: &mut CoreState, win: WindowId, props: &WindowPr
 /// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
 /// using the monitor information supplied via `mon_geo`.
 ///
-/// `mon_geo` is `(monitor_rect, work_rect, showbar)` and may be `None` when the
+/// `mon_geo` is `(monitor_rect, work_rect, show_bar)` and may be `None` when the
 /// client is not yet placed on any monitor (geometry adjustments are skipped).
 fn apply_float_rule(
     client: &mut crate::types::client::Client,
@@ -159,7 +159,7 @@ fn apply_float_rule(
     mon_geo: Option<(Rect, Rect, bool)>,
     bar_height: i32,
 ) {
-    let (monitor_rect, work_rect, showbar) = mon_geo.unwrap_or_default();
+    let (monitor_rect, work_rect, show_bar) = mon_geo.unwrap_or_default();
 
     match float_rule {
         RuleFloat::FloatCenter => {
@@ -170,7 +170,7 @@ fn apply_float_rule(
             client.geo.w = monitor_rect.w;
             client.geo.h = work_rect.h;
             client.geo.x = monitor_rect.x;
-            if showbar {
+            if show_bar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }
@@ -179,7 +179,7 @@ fn apply_float_rule(
         }
         RuleFloat::Float => {
             client.mode = ClientMode::Floating;
-            if showbar {
+            if show_bar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }

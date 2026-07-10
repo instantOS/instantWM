@@ -294,10 +294,10 @@ impl Monitor {
     /// Get or initialize state for the current tag mask.
     pub fn pertag_state(&mut self) -> &mut PertagState {
         let mask = self.selected_tags();
-        let default_showbar = self.show_bar;
+        let default_show_bar = self.show_bar;
         self.per_tag
             .entry(mask)
-            .or_insert_with(|| PertagState::new(default_showbar))
+            .or_insert_with(|| PertagState::new(default_show_bar))
     }
 
     /// Read the current pertag state, returning `None` if no entry exists yet.
@@ -459,14 +459,14 @@ impl Monitor {
 
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
-        self.showbar_for_mask(self.selected_tags()) && !self.has_external_bar_on_internal_bar_edge()
+        self.show_bar_for_mask(self.selected_tags()) && !self.has_external_bar_on_internal_bar_edge()
     }
 
     /// Returns showbar state for the given tag mask.
-    pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
+    pub fn show_bar_for_mask(&self, mask: TagMask) -> bool {
         self.per_tag
             .get(&mask)
-            .map(|s| s.showbar)
+            .map(|s| s.show_bar)
             .unwrap_or(self.show_bar)
     }
 
@@ -759,7 +759,7 @@ pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<Monitor
 pub struct PertagState {
     pub nmaster: i32,
     pub mfact: f32,
-    pub showbar: bool,
+    pub show_bar: bool,
     pub layouts: TagLayouts,
 }
 
@@ -770,11 +770,11 @@ impl Default for PertagState {
 }
 
 impl PertagState {
-    pub fn new(showbar: bool) -> Self {
+    pub fn new(show_bar: bool) -> Self {
         Self {
             nmaster: 1,
             mfact: 0.55,
-            showbar,
+            show_bar,
             layouts: TagLayouts::default(),
         }
     }

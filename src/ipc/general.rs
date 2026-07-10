@@ -94,7 +94,7 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> Response {
 }
 
 pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
-    let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
+    let val = arg.unwrap_or(crate::config::mod_consts::BORDER_PX as u32);
     if let Some(win) = wm.ctx().core().model().selected_win()
         && let Some(client) = wm.ctx().core_mut().model_mut().clients.get_mut(&win)
     {
