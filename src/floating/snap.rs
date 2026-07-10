@@ -23,73 +23,6 @@ use crate::geometry::MoveResizeOptions;
 
 use crate::types::*;
 
-/// Navigate the snap graph: given a current position and a direction, return
-/// the next snap position.
-fn snap_next(current: SnapPosition, direction: Direction) -> SnapPosition {
-    use Direction::*;
-    match (current, direction) {
-        // ── None ──────────────────────────────
-        (SnapPosition::None, Up) => SnapPosition::Maximized,
-        (SnapPosition::None, Right) => SnapPosition::Right,
-        (SnapPosition::None, Down) => SnapPosition::Bottom,
-        (SnapPosition::None, Left) => SnapPosition::Left,
-
-        // ── Top ───────────────────────────────
-        (SnapPosition::Top, Up) => SnapPosition::Maximized,
-        (SnapPosition::Top, Right) => SnapPosition::TopRight,
-        (SnapPosition::Top, Down) => SnapPosition::None,
-        (SnapPosition::Top, Left) => SnapPosition::TopLeft,
-
-        // ── TopRight ──────────────────────────
-        (SnapPosition::TopRight, Up) => SnapPosition::TopRight,
-        (SnapPosition::TopRight, Right) => SnapPosition::TopRight,
-        (SnapPosition::TopRight, Down) => SnapPosition::Right,
-        (SnapPosition::TopRight, Left) => SnapPosition::Top,
-
-        // ── Right ─────────────────────────────
-        (SnapPosition::Right, Up) => SnapPosition::TopRight,
-        (SnapPosition::Right, Right) => SnapPosition::Right,
-        (SnapPosition::Right, Down) => SnapPosition::BottomRight,
-        (SnapPosition::Right, Left) => SnapPosition::None,
-
-        // ── BottomRight ───────────────────────
-        (SnapPosition::BottomRight, Up) => SnapPosition::Right,
-        (SnapPosition::BottomRight, Right) => SnapPosition::BottomRight,
-        (SnapPosition::BottomRight, Down) => SnapPosition::BottomRight,
-        (SnapPosition::BottomRight, Left) => SnapPosition::Bottom,
-
-        // ── Bottom ────────────────────────────
-        (SnapPosition::Bottom, Up) => SnapPosition::None,
-        (SnapPosition::Bottom, Right) => SnapPosition::BottomRight,
-        (SnapPosition::Bottom, Down) => SnapPosition::Bottom,
-        (SnapPosition::Bottom, Left) => SnapPosition::BottomLeft,
-
-        // ── BottomLeft ────────────────────────
-        (SnapPosition::BottomLeft, Up) => SnapPosition::Left,
-        (SnapPosition::BottomLeft, Right) => SnapPosition::Bottom,
-        (SnapPosition::BottomLeft, Down) => SnapPosition::BottomLeft,
-        (SnapPosition::BottomLeft, Left) => SnapPosition::BottomLeft,
-
-        // ── Left ──────────────────────────────
-        (SnapPosition::Left, Up) => SnapPosition::TopLeft,
-        (SnapPosition::Left, Right) => SnapPosition::None,
-        (SnapPosition::Left, Down) => SnapPosition::BottomLeft,
-        (SnapPosition::Left, Left) => SnapPosition::Left,
-
-        // ── TopLeft ───────────────────────────
-        (SnapPosition::TopLeft, Up) => SnapPosition::TopLeft,
-        (SnapPosition::TopLeft, Right) => SnapPosition::Top,
-        (SnapPosition::TopLeft, Down) => SnapPosition::Left,
-        (SnapPosition::TopLeft, Left) => SnapPosition::Top,
-
-        // ── Maximized ─────────────────────────
-        (SnapPosition::Maximized, Up) => SnapPosition::Top,
-        (SnapPosition::Maximized, Right) => SnapPosition::Right,
-        (SnapPosition::Maximized, Down) => SnapPosition::None,
-        (SnapPosition::Maximized, Left) => SnapPosition::Left,
-    }
-}
-
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /// Navigate the snap graph in `direction` and apply the resulting snap position.
@@ -102,7 +35,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             let status = client.snap_status;
 
             // Save geometry before entering snap for the first time.
-            let new_snap = snap_next(status, direction);
+            let new_snap = status.next(direction);
 
             if status == SnapPosition::None && client.mode.is_floating() {
                 client.float_geo = client.geo;

@@ -31,22 +31,11 @@ pub(crate) fn commit_view_selection(
 ) -> Option<MonitorId> {
     let selmon_id = monitors.sel_idx();
     let mon = monitors.sel_mut_unchecked();
-    let previous_mask = mon.selected_tags();
-    if previous_mask == new_mask {
-        return None;
+    if mon.set_selected_tags_with_history(new_mask) {
+        Some(selmon_id)
+    } else {
+        None
     }
-
-    let previous_current_tag = mon.current_tag_number();
-    mon.sel_tags = !mon.sel_tags;
-    mon.set_selected_tags(new_mask);
-
-    if previous_current_tag != mon.current_tag_number()
-        && let Some(previous_current_tag) = previous_current_tag
-    {
-        mon.prev_tag = Some(previous_current_tag);
-    }
-
-    Some(selmon_id)
 }
 
 /// View tags using type-safe mask.

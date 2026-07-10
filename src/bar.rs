@@ -195,7 +195,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = if crate::overview::is_active_on_monitor(core.model(), m) {
+        let symbol = if core.model().is_overview_active_on(m) {
             "OVR"
         } else {
             m.layouts_for_mask(m.selected_tags()).symbol()
@@ -205,24 +205,6 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
     width + core.config().derived.bar_horizontal_padding
 }
 
-/// Check whether a root-space y-coordinate falls within the bar's vertical span.
-/// Does not check bar visibility — caller must do that separately.
-pub fn y_in_bar(mon: &Monitor, root_y: i32) -> bool {
-    let h = mon.bar_height.max(1);
-    root_y >= mon.bar_y && root_y < mon.bar_y + h
-}
-
-/// Check whether a root-space y-coordinate falls in the 4-pixel guard band
-/// immediately below the bar. Does not check bar visibility.
-pub fn y_in_guard_band(mon: &Monitor, root_y: i32) -> bool {
-    let bar_bottom = mon.bar_y + mon.bar_height.max(1);
-    root_y >= bar_bottom && root_y < bar_bottom + 4
-}
-
-/// Check whether the bar is visible on `mon` and `root_y` falls within it.
-pub fn monitor_bar_contains_y(model: &crate::model::WmModel, mon: &Monitor, root_y: i32) -> bool {
-    monitor_bar_visible(model, mon) && y_in_bar(mon, root_y)
-}
 
 pub fn clear_hover(ctx: &mut WmCtx) {
     if ctx.core().model().selected_monitor().gesture != Gesture::None {
@@ -243,7 +225,7 @@ pub fn resolve_bar_position_at_root(
     }
 
     let mon = core.model().monitor(monitor_id)?;
-    if !monitor_bar_contains_y(core.model(), mon, root.y) {
+    if !mon.bar_contains_y(core.model().clients.map(), root.y) {
         return None;
     }
 
@@ -251,19 +233,6 @@ pub fn resolve_bar_position_at_root(
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
 }
 
-pub(crate) fn monitor_has_real_fullscreen(
-    model: &crate::model::WmModel,
-    monitor: &Monitor,
-) -> bool {
-    let selected_tags = monitor.selected_tags();
-    monitor
-        .iter_clients(model.clients.map())
-        .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
-}
-
-pub(crate) fn monitor_bar_visible(model: &crate::model::WmModel, monitor: &Monitor) -> bool {
-    monitor.shows_bar() && !monitor_has_real_fullscreen(model, monitor)
-}
 
 #[cfg(test)]
 mod tests {
@@ -316,7 +285,7 @@ pub fn update_hover(
 }
 
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
-    if crate::overview::is_active(ctx.core().model()) {
+    if ctx.core().model().is_overview_active() {
         ctx.reset_mode();
         ctx.request_bar_update();
         return;

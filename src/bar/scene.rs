@@ -135,7 +135,7 @@ pub(crate) fn build_monitor_snapshots(
         let Some(mon) = core.model().monitor(monitor_id) else {
             continue;
         };
-        if !crate::bar::monitor_bar_visible(core.model(), mon) {
+        if !mon.bar_visible(core.model().clients.map()) {
             continue;
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
@@ -229,7 +229,7 @@ pub(crate) fn build_monitor_snapshots(
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: if crate::overview::is_active_on_monitor(core.model(), mon) {
+            layout_symbol: if core.model().is_overview_active_on(mon) {
                 "OVR".to_string()
             } else {
                 mon.layouts_for_mask(selected_tags).symbol().to_string()

@@ -223,6 +223,74 @@ pub enum SnapPosition {
     Maximized,
 }
 
+impl SnapPosition {
+    /// Navigate the snap graph: given a direction, return the next snap position.
+    pub fn next(self, direction: Direction) -> Self {
+        use Direction::*;
+        match (self, direction) {
+            // ── None ──────────────────────────────
+            (Self::None, Up) => Self::Maximized,
+            (Self::None, Right) => Self::Right,
+            (Self::None, Down) => Self::Bottom,
+            (Self::None, Left) => Self::Left,
+
+            // ── Top ───────────────────────────────
+            (Self::Top, Up) => Self::Maximized,
+            (Self::Top, Right) => Self::TopRight,
+            (Self::Top, Down) => Self::None,
+            (Self::Top, Left) => Self::TopLeft,
+
+            // ── TopRight ──────────────────────────
+            (Self::TopRight, Up) => Self::TopRight,
+            (Self::TopRight, Right) => Self::TopRight,
+            (Self::TopRight, Down) => Self::Right,
+            (Self::TopRight, Left) => Self::Top,
+
+            // ── Right ─────────────────────────────
+            (Self::Right, Up) => Self::TopRight,
+            (Self::Right, Right) => Self::Right,
+            (Self::Right, Down) => Self::BottomRight,
+            (Self::Right, Left) => Self::None,
+
+            // ── BottomRight ───────────────────────
+            (Self::BottomRight, Up) => Self::Right,
+            (Self::BottomRight, Right) => Self::BottomRight,
+            (Self::BottomRight, Down) => Self::BottomRight,
+            (Self::BottomRight, Left) => Self::Bottom,
+
+            // ── Bottom ────────────────────────────
+            (Self::Bottom, Up) => Self::None,
+            (Self::Bottom, Right) => Self::BottomRight,
+            (Self::Bottom, Down) => Self::Bottom,
+            (Self::Bottom, Left) => Self::BottomLeft,
+
+            // ── BottomLeft ────────────────────────
+            (Self::BottomLeft, Up) => Self::Left,
+            (Self::BottomLeft, Right) => Self::Bottom,
+            (Self::BottomLeft, Down) => Self::BottomLeft,
+            (Self::BottomLeft, Left) => Self::BottomLeft,
+
+            // ── Left ──────────────────────────────
+            (Self::Left, Up) => Self::TopLeft,
+            (Self::Left, Right) => Self::None,
+            (Self::Left, Down) => Self::BottomLeft,
+            (Self::Left, Left) => Self::Left,
+
+            // ── TopLeft ───────────────────────────
+            (Self::TopLeft, Up) => Self::TopLeft,
+            (Self::TopLeft, Right) => Self::Top,
+            (Self::TopLeft, Down) => Self::Left,
+            (Self::TopLeft, Left) => Self::Top,
+
+            // ── Maximized ─────────────────────────
+            (Self::Maximized, Up) => Self::Top,
+            (Self::Maximized, Right) => Self::Right,
+            (Self::Maximized, Down) => Self::None,
+            (Self::Maximized, Left) => Self::Left,
+        }
+    }
+}
+
 /// Direction for window resize operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ResizeDirection {

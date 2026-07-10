@@ -430,7 +430,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
                 .core
                 .g
                 .monitor(mon)
-                .is_some_and(|mon| crate::bar::y_in_bar(mon, root_y));
+                .is_some_and(|mon| mon.y_in_bar(root_y));
         if !in_bar && gesture != Gesture::None {
             crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
         }

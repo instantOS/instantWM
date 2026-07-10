@@ -200,6 +200,37 @@ impl Default for Monitor {
 }
 
 impl Monitor {
+    /// Check whether a root-space y-coordinate falls within the bar's vertical span.
+    /// Does not check bar visibility — caller must do that separately.
+    pub fn y_in_bar(&self, root_y: i32) -> bool {
+        let h = self.bar_height.max(1);
+        root_y >= self.bar_y && root_y < self.bar_y + h
+    }
+
+    /// Check whether a root-space y-coordinate falls in the 4-pixel guard band
+    /// immediately below the bar. Does not check bar visibility.
+    pub fn y_in_guard_band(&self, root_y: i32) -> bool {
+        let bar_bottom = self.bar_y + self.bar_height.max(1);
+        root_y >= bar_bottom && root_y < bar_bottom + 4
+    }
+
+    /// Check whether the bar is visible on this monitor.
+    pub fn bar_visible(&self, clients: &HashMap<WindowId, Client>) -> bool {
+        self.shows_bar() && !self.has_real_fullscreen(clients)
+    }
+
+    /// Check whether the monitor has a client in true fullscreen mode.
+    pub fn has_real_fullscreen(&self, clients: &HashMap<WindowId, Client>) -> bool {
+        let selected_tags = self.selected_tags();
+        self.iter_clients(clients)
+            .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
+    }
+
+    /// Check whether the bar is visible on this monitor and `root_y` falls within it.
+    pub fn bar_contains_y(&self, clients: &HashMap<WindowId, Client>, root_y: i32) -> bool {
+        self.bar_visible(clients) && self.y_in_bar(root_y)
+    }
+
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
@@ -241,6 +272,23 @@ impl Monitor {
     #[inline]
     pub fn set_selected_tags(&mut self, mask: TagMask) {
         self.tag_set[self.sel_tags as usize] = mask;
+    }
+
+    /// Set the currently selected tags for this monitor, updating history.
+    pub fn set_selected_tags_with_history(&mut self, new_mask: TagMask) -> bool {
+        if self.selected_tags() == new_mask {
+            return false;
+        }
+
+        let previous_current_tag = self.current_tag_number();
+        self.sel_tags = !self.sel_tags;
+        self.set_selected_tags(new_mask);
+        if previous_current_tag != self.current_tag_number()
+            && let Some(previous_current_tag) = previous_current_tag
+        {
+            self.prev_tag = Some(previous_current_tag);
+        }
+        true
     }
 
     /// Get or initialize state for the current tag mask.

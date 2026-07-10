@@ -69,7 +69,7 @@ pub fn apply_rules(
         g.behavior.specialnext = SpecialNext::None;
     } else {
         for rule in &rules {
-            if !rule_matches(rule, props) {
+            if !rule.matches(&props.class, &props.instance, &props.title) {
                 continue;
             }
 
@@ -148,35 +148,7 @@ pub fn handle_property_change(g: &mut CoreState, win: WindowId, props: &WindowPr
     apply_rules(g, win, props, existing_context)
 }
 
-/// Return `true` when `rule` matches all provided window identifiers.
-///
-/// Each criterion is optional; an absent criterion always matches.
-fn rule_matches(rule: &crate::types::Rule, props: &WindowProperties) -> bool {
-    let title_match = rule
-        .title
-        .as_ref()
-        .map(|t| bytes_contains(props.title.as_bytes(), t))
-        .unwrap_or(true);
-    let class_match = rule
-        .class
-        .as_ref()
-        .map(|c| bytes_contains(props.class.as_bytes(), c))
-        .unwrap_or(true);
-    let instance_match = rule
-        .instance
-        .as_ref()
-        .map(|i| bytes_contains(props.instance.as_bytes(), i))
-        .unwrap_or(true);
 
-    title_match && class_match && instance_match
-}
-
-/// Return `true` when `needle` appears as a contiguous subsequence of `haystack`.
-#[inline]
-fn bytes_contains(haystack: &[u8], needle: &str) -> bool {
-    let nb = needle.as_bytes();
-    haystack.windows(nb.len()).any(|w| w == nb)
-}
 
 /// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
 /// using the monitor information supplied via `mon_geo`.

@@ -22,7 +22,7 @@ use crate::wayland::input::pointer::drag::{
 use crate::wm::Wm;
 
 fn wayland_monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
-    crate::bar::monitor_bar_visible(&wm.core.model, mon)
+    mon.bar_visible(wm.core.model.clients.map())
 }
 
 /// Unified pointer motion event that abstracts over input source.
@@ -417,10 +417,10 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     .and_then(|mid| wm.core.monitor(mid))
     .map(|mon| {
         let bar_visible = wayland_monitor_bar_visible(wm, mon);
-        let in_bar = bar_visible && crate::bar::y_in_bar(mon, root.y);
+        let in_bar = bar_visible && mon.y_in_bar(root.y);
         let in_guard = bar_visible
             && !wm.core.drag.any_drag_active()
-            && crate::bar::y_in_guard_band(mon, root.y);
+            && mon.y_in_guard_band(root.y);
         (in_bar, in_guard)
     })
     .unwrap_or((false, false))

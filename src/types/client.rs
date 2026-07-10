@@ -233,6 +233,20 @@ impl Client {
         self.geo.total_height(self.border_width)
     }
 
+    /// Update border width and adjust geometry accordingly.
+    pub fn set_border_width(&mut self, new_bw: i32) {
+        let old_bw = self.border_width;
+        let d = old_bw - new_bw;
+        self.border_width = new_bw;
+
+        self.update_geometry(Rect {
+            x: self.geo.x,
+            y: self.geo.y,
+            w: self.geo.w + 2 * d,
+            h: self.geo.h + 2 * d,
+        });
+    }
+
     /// Check whether a proposed geometry is large enough and meaningfully
     /// different from the client's current geometry.
     pub fn accepts_distinct_rect(

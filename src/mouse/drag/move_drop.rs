@@ -84,7 +84,7 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
     let mon = model.selected_monitor();
     let mask = mon.selected_tags();
     mon.showbar_for_mask(mask)
-        && crate::bar::y_in_bar(mon, root.y)
+        && mon.y_in_bar(root.y)
         && root.x >= mon.monitor_rect.x
         && root.x < mon.monitor_rect.x + mon.monitor_rect.w
 }

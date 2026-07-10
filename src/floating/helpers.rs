@@ -31,7 +31,7 @@ pub fn check_floating(model: &WmModel, win: WindowId) -> bool {
         if client.mode.is_floating() {
             return true;
         }
-        if crate::overview::is_active(model) {
+        if model.is_overview_active() {
             return false;
         }
         if !model.selected_monitor().is_tiling_layout() {

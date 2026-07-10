@@ -4,7 +4,7 @@ use crate::client::{kill_client, shut_kill, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    key_resize, scratchpad_find, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    key_resize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
     scratchpad_toggle, set_scratchpad_direction, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
@@ -20,7 +20,7 @@ use crate::tags::{
     toggle_overview, win_view,
 };
 use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_bar, toggle_double_draw, toggle_mode, toggle_show_tags,
+    toggle_alt_tag, toggle_bar, toggle_mode, toggle_show_tags,
     toggle_sticky, unhide_all,
 };
 use crate::types::{
@@ -142,7 +142,7 @@ define_named_actions!(
         doc: "toggle scratchpad, creating it from current window if it doesn't exist",
         run: |ctx, _args| {
             const DEFAULT_NAME: &str = "instantwm_scratchpad";
-            if scratchpad_find(ctx.core().model(), DEFAULT_NAME).is_some() {
+            if ctx.core().model().scratchpad_find(DEFAULT_NAME).is_some() {
                 scratchpad_toggle(ctx, Some(DEFAULT_NAME));
             } else {
                 scratchpad_make(ctx, DEFAULT_NAME, None, None, ScratchpadInitialStatus::Shown);
@@ -153,9 +153,9 @@ define_named_actions!(
     ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
     ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { toggle_sticky(ctx, win); } } },
     ToggleAltTag => { name: "toggle_alt_tag", arg_example: None, doc: "toggle alt-tag mode", run: |ctx, _args| { toggle_alt_tag(ctx, ToggleAction::Toggle); } },
-    ToggleAnimated => { name: "toggle_animated", arg_example: None, doc: "toggle window animations", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| toggle_animated(behavior, ToggleAction::Toggle)); } },
+    ToggleAnimated => { name: "toggle_animated", arg_example: None, doc: "toggle window animations", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| behavior.toggle_animated(ToggleAction::Toggle)); } },
     ToggleShowTags => { name: "toggle_show_tags", arg_example: None, doc: "show/hide tag bar", run: |ctx, _args| { toggle_show_tags(ctx, ToggleAction::Toggle); } },
-    ToggleDoubleDraw => { name: "toggle_double_draw", arg_example: None, doc: "toggle double draw mode", run: |ctx, _args| { ctx.with_behavior_mut(toggle_double_draw); } },
+    ToggleDoubleDraw => { name: "toggle_double_draw", arg_example: None, doc: "toggle double draw mode", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| behavior.toggle_double_draw()); } },
     ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { if let Some(name) = args.first() { toggle_mode(ctx, name); } } },
     TogglePrefix => { name: "toggle_prefix", arg_example: None, doc: "toggle prefix mode (legacy alias for mode_toggle prefix)", run: |ctx, _args| { toggle_mode(ctx, "prefix"); } },
     UnhideAll => { name: "unhide_all", arg_example: None, doc: "show all hidden windows", run: |ctx, _args| { unhide_all(ctx); } },
@@ -173,7 +173,7 @@ define_named_actions!(
 );
 
 fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
-    if let Some(win) = scratchpad_find(ctx.core().model(), DEFAULT_EDGE_SCRATCHPAD_NAME) {
+    if let Some(win) = ctx.core().model().scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME) {
         set_scratchpad_direction(ctx, win, dir);
     }
 }

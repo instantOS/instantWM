@@ -290,7 +290,7 @@ pub fn scratchpad_make(
         return;
     };
 
-    if scratchpad_find(ctx.core().model(), name).is_some() {
+    if ctx.core().model().scratchpad_find(name).is_some() {
         return;
     }
 
@@ -373,7 +373,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
 }
 
 pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, String> {
-    let Some(found) = scratchpad_find(ctx.core().model(), name) else {
+    let Some(found) = ctx.core().model().scratchpad_find(name) else {
         return Err(format!("scratchpad '{}' not found", name));
     };
 
@@ -498,7 +498,7 @@ pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
 }
 
 pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
-    let Some(found) = scratchpad_find(ctx.core().model(), name) else {
+    let Some(found) = ctx.core().model().scratchpad_find(name) else {
         return;
     };
 
@@ -549,13 +549,13 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         None => return,
     };
 
-    let is_overview = crate::overview::is_active(ctx.core().model());
+    let is_overview = ctx.core().model().is_overview_active();
 
     if is_overview {
         return;
     }
 
-    let found = match scratchpad_find(ctx.core().model(), name) {
+    let found = match ctx.core().model().scratchpad_find(name) {
         Some(w) => w,
         None => return,
     };
@@ -644,18 +644,7 @@ pub fn scratchpad_list(model: &WmModel) -> String {
     out
 }
 
-pub fn scratchpad_find(model: &WmModel, name: &str) -> Option<WindowId> {
-    if name.is_empty() {
-        return None;
-    }
 
-    for c in model.clients.values() {
-        if c.is_scratchpad() && c.scratchpad.as_ref().is_some_and(|sp| sp.name == name) {
-            return Some(c.win);
-        }
-    }
-    None
-}
 
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
     let was_sticky = ctx
@@ -699,7 +688,7 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
 }
 
 pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
-    if let Some(existing) = scratchpad_find(ctx.core().model(), DEFAULT_EDGE_SCRATCHPAD_NAME) {
+    if let Some(existing) = ctx.core().model().scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME) {
         scratchpad_unmake(ctx, Some(existing));
     }
 

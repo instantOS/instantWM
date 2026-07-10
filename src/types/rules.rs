@@ -56,3 +56,32 @@ pub struct Rule {
     #[serde(default)]
     pub monitor: MonitorRule,
 }
+
+impl Rule {
+    /// Check if this rule matches the window identifiers.
+    pub fn matches(&self, class: &str, instance: &str, title: &str) -> bool {
+        let title_match = self
+            .title
+            .as_ref()
+            .map(|t| bytes_contains(title.as_bytes(), t))
+            .unwrap_or(true);
+        let class_match = self
+            .class
+            .as_ref()
+            .map(|c| bytes_contains(class.as_bytes(), c))
+            .unwrap_or(true);
+        let instance_match = self
+            .instance
+            .as_ref()
+            .map(|i| bytes_contains(instance.as_bytes(), i))
+            .unwrap_or(true);
+
+        title_match && class_match && instance_match
+    }
+}
+
+#[inline]
+fn bytes_contains(haystack: &[u8], needle: &str) -> bool {
+    let nb = needle.as_bytes();
+    haystack.windows(nb.len()).any(|w| w == nb)
+}

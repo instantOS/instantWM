@@ -70,6 +70,16 @@ impl WmModel {
         self.monitors.sel_mut()
     }
 
+    /// Return `true` if overview mode is active on the selected monitor.
+    pub fn is_overview_active(&self) -> bool {
+        self.selected_monitor().overview_state.is_some()
+    }
+
+    /// Return `true` if overview mode is active on the given monitor.
+    pub fn is_overview_active_on(&self, monitor: &crate::types::Monitor) -> bool {
+        monitor.overview_state.is_some() && self.selected_monitor_id() == monitor.id()
+    }
+
     /// Delegation to get a monitor by index.
     pub fn monitor(&self, id: MonitorId) -> Option<&crate::types::Monitor> {
         self.monitors.get(id)
@@ -109,6 +119,19 @@ impl WmModel {
                 mon.maximized = None;
             }
         }
+    }
+    /// Find a scratchpad by name.
+    pub fn scratchpad_find(&self, name: &str) -> Option<WindowId> {
+        if name.is_empty() {
+            return None;
+        }
+
+        for c in self.clients.values() {
+            if c.is_scratchpad() && c.scratchpad.as_ref().is_some_and(|sp| sp.name == name) {
+                return Some(c.win);
+            }
+        }
+        None
     }
 
     // -------------------------------------------------------------------------

@@ -526,7 +526,7 @@ impl<'a> WmCtx<'a> {
 
         let on_bar = c
             .monitor(self.core().model())
-            .is_some_and(|mon| crate::bar::monitor_bar_contains_y(self.core().model(), mon, ptr.y));
+            .is_some_and(|mon| mon.bar_contains_y(self.core().model().clients.map(), ptr.y));
 
         if in_window || on_bar {
             return;

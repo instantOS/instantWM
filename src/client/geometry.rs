@@ -263,7 +263,7 @@ fn is_floating_layout(model: &WmModel, monitor: Option<&Monitor>) -> bool {
         return true;
     };
 
-    if crate::overview::is_active_on_monitor(model, mon) {
+    if model.is_overview_active_on(mon) {
         return false;
     }
 

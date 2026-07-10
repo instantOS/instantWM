@@ -252,7 +252,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     };
 
-    if crate::overview::is_active_on_monitor(ctx.core().model(), monitor) {
+    if ctx.core().model().is_overview_active_on(monitor) {
         return;
     }
 

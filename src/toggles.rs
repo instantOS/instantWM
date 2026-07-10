@@ -1,6 +1,4 @@
-use crate::client::manager::ClientManager;
 use crate::contexts::WmCtx;
-use crate::core_state::WmBehavior;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
@@ -38,42 +36,6 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
-pub fn toggle_animated(behavior: &mut WmBehavior, action: ToggleAction) {
-    action.apply(&mut behavior.animated);
-}
-
-pub fn set_border_width(clients: &mut ClientManager, win: WindowId, width: i32) {
-    let new_bw = width;
-
-    if let Some(client) = clients.get_mut(&win) {
-        let old_bw = client.border_width;
-        let d = old_bw - new_bw;
-        client.border_width = new_bw;
-
-        client.update_geometry(Rect {
-            x: client.geo.x,
-            y: client.geo.y,
-            w: client.geo.w + 2 * d,
-            h: client.geo.h + 2 * d,
-        });
-    }
-}
-
-pub fn set_special_next(behavior: &mut WmBehavior, value: SpecialNext) {
-    behavior.specialnext = value;
-}
-
-pub fn toggle_focus_follows_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    action.apply(&mut behavior.focus_follows_mouse);
-}
-
-pub fn toggle_focus_follows_float_mouse(behavior: &mut WmBehavior, action: ToggleAction) {
-    action.apply(&mut behavior.focus_follows_float_mouse);
-}
-
-pub fn toggle_double_draw(behavior: &mut WmBehavior) {
-    behavior.double_draw = !behavior.double_draw;
-}
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
     if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {

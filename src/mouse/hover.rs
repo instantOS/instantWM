@@ -145,7 +145,7 @@ fn resize_target_for_window(
 
 fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
     let mon = model.selected_monitor();
-    crate::bar::monitor_bar_contains_y(model, mon, root_y)
+    mon.bar_contains_y(model.clients.map(), root_y)
 }
 
 // ── Cursor helpers ───────────────────────────────────────────────────────────
