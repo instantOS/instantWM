@@ -458,16 +458,11 @@ fn make_monitor_for_output(
 
 fn remap_client_monitor_ids(model: &mut crate::model::WmModel, old_to_new: &[Option<MonitorId>]) {
     for client in model.clients.values_mut() {
-        let oi = client.monitor_id.index();
-        if oi < old_to_new.len() {
-            if let Some(nid) = old_to_new[oi] {
-                client.monitor_id = nid;
-            } else {
-                client.monitor_id = MonitorId(0);
-            }
-        } else {
-            client.monitor_id = MonitorId(0);
-        }
+        client.monitor_id = old_to_new
+            .get(client.monitor_id.index())
+            .copied()
+            .flatten()
+            .unwrap_or(MonitorId(0));
     }
 }
 
@@ -476,12 +471,11 @@ fn remap_selected_monitor_after_sync(
     old_to_new: &[Option<MonitorId>],
     new_len: usize,
 ) -> MonitorId {
-    let old_sel_idx = sel_idx.index();
-    let new_sel = if old_sel_idx < old_to_new.len() {
-        old_to_new[old_sel_idx].unwrap_or(MonitorId(0))
-    } else {
-        MonitorId(0)
-    };
+    let new_sel = old_to_new
+        .get(sel_idx.index())
+        .copied()
+        .flatten()
+        .unwrap_or(MonitorId(0));
     if new_sel.index() < new_len {
         new_sel
     } else {
