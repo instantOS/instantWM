@@ -404,7 +404,7 @@ fn sync_runtime_screen_size(
 }
 
 fn make_monitor_for_output(
-    i: usize,
+    new_id: MonitorId,
     output: &BackendOutputInfo,
     pool: &mut Vec<Option<Monitor>>,
     old_to_new: &mut [Option<MonitorId>],
@@ -415,7 +415,7 @@ fn make_monitor_for_output(
     changed: &mut bool,
 ) -> Monitor {
     let (bh, hp, sm) = scaled_monitor_ui_metrics(config, output.scale);
-    match take_matching_monitor(pool, i, output) {
+    match take_matching_monitor(pool, new_id, output) {
         Some((j, mut m)) => {
             let geom_changed = m.monitor_rect != output.rect
                 || m.name != output.name
@@ -426,9 +426,9 @@ fn make_monitor_for_output(
             if geom_changed {
                 *changed = true;
             }
-            old_to_new[j] = Some(MonitorId(i));
+            old_to_new[j] = Some(new_id);
             m.apply_output_layout(
-                i,
+                new_id.index(),
                 output.name.clone(),
                 output.rect,
                 output.scale,
@@ -443,7 +443,7 @@ fn make_monitor_for_output(
             let mut m = Monitor::new_with_values(showbar, topbar);
             m.init_tags(template);
             m.apply_output_layout(
-                i,
+                new_id.index(),
                 output.name.clone(),
                 output.rect,
                 output.scale,
@@ -452,14 +452,6 @@ fn make_monitor_for_output(
                 sm,
             );
             m
-        }
-    }
-}
-
-fn destroy_bars_for_removed_monitors(ctx: &mut WmCtx, pool: &mut [Option<Monitor>]) {
-    for slot in pool.iter_mut() {
-        if let Some(m) = slot.as_ref() {
-            crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
         }
     }
 }
@@ -514,7 +506,7 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
 /// alignment for unnamed monitors.
 fn take_matching_monitor(
     pool: &mut [Option<Monitor>],
-    output_index: usize,
+    new_id: MonitorId,
     output: &BackendOutputInfo,
 ) -> Option<(usize, Monitor)> {
     if !output.name.is_empty() {
@@ -527,15 +519,15 @@ fn take_matching_monitor(
             }
         }
     }
-    if output_index < pool.len()
-        && let Some(m) = pool[output_index].as_ref()
+    if new_id.index() < pool.len()
+        && let Some(m) = pool[new_id.index()].as_ref()
     {
         let xin = output.name.starts_with("XINERAMA-");
         let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
         let both_empty = m.name.is_empty() && output.name.is_empty();
         if (xin && (m.name.is_empty() || m.name == output.name)) || slot_unlabeled || both_empty {
-            let mon = pool[output_index].take().expect("checked");
-            return Some((output_index, mon));
+            let mon = pool[new_id.index()].take().expect("checked");
+            return Some((new_id.index(), mon));
         }
     }
     None
@@ -570,7 +562,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let mut new_monitors = Vec::with_capacity(outputs.len());
     for (i, output) in outputs.iter().enumerate() {
         let mon = make_monitor_for_output(
-            i,
+            MonitorId(i),
             output,
             &mut pool,
             &mut old_to_new,
@@ -583,7 +575,11 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
         new_monitors.push(mon);
     }
 
-    destroy_bars_for_removed_monitors(ctx, &mut pool);
+    for slot in &mut pool {
+        if let Some(m) = slot.as_ref() {
+            crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
+        }
+    }
 
     for (i, m) in new_monitors.iter_mut().enumerate() {
         m.monitor_id = MonitorId(i);
