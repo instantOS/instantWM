@@ -28,12 +28,13 @@ pub(crate) struct VisibleTag<'a> {
 }
 
 pub(crate) fn visible_tags<'a>(
-    core: &CoreCtx,
+    globals: &crate::globals::Globals,
+    bar: &crate::bar::BarState,
     monitor: &'a Monitor,
     occupied: TagMask,
 ) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = core.globals().cfg.bar.horizontal_padding;
-    let show_alt = core.globals().tags.show_alternative_names;
+    let horizontal_padding = globals.cfg.bar.horizontal_padding;
+    let show_alt = globals.tags.show_alternative_names;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
@@ -52,7 +53,7 @@ pub(crate) fn visible_tags<'a>(
         } else {
             tag.name.as_str()
         };
-        let cached = core.bar.get_tag_width(slot);
+        let cached = bar.get_tag_width(slot);
         let width = if cached > 0 {
             cached
         } else {
@@ -83,7 +84,7 @@ pub fn get_tag_width(core: &CoreCtx) -> i32 {
     }
 
     let occupied = m.occupied_tags(core.globals().clients.map());
-    let tags_width: i32 = visible_tags(core, m, occupied)
+    let tags_width: i32 = visible_tags(core.globals(), core.bar, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
@@ -101,7 +102,7 @@ pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
 
     let occupied = m.occupied_tags(core.globals().clients.map());
     let mut acc = core.globals().cfg.bar.startmenu_size;
-    for t in visible_tags(core, m, occupied) {
+    for t in visible_tags(core.globals(), core.bar, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;

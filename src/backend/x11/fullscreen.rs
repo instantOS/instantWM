@@ -93,7 +93,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
             MoveResizeOptions::immediate(),
         );
 
-        wm_ctx.backend().raise_window_visual_only(win);
+        wm_ctx.window_backend().raise_window_visual_only(win);
     }
 
     // Restore the border width when leaving fake-fullscreen while still in

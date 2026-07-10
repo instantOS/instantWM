@@ -327,8 +327,11 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         return;
     }
 
-    let selected_monitor = ctx.core().globals().selected_monitor().clone();
-    let local_x = root.x - selected_monitor.work_rect.x;
+    let (monitor_id, work_x, bar_y) = {
+        let monitor = ctx.core().globals().selected_monitor();
+        (monitor.id(), monitor.work_rect.x, monitor.bar_y)
+    };
+    let local_x = root.x - work_x;
     let status_text = ctx.core().bar.runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
@@ -338,14 +341,14 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     let click_targets = ctx
         .core()
         .bar
-        .monitor_hit_cache(selected_monitor.id())
+        .monitor_hit_cache(monitor_id)
         .map(|h| h.status_click_targets.as_slice())
         .unwrap_or(&[]);
     status::emit_i3bar_status_click(
         &parsed,
         click_targets,
         local_x,
-        root.y - selected_monitor.bar_y,
+        root.y - bar_y,
         button_code,
         ctx.core().globals().cfg.bar.height,
         clean_state,

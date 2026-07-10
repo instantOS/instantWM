@@ -89,7 +89,6 @@ fn enter(ctx: &mut WmCtx<'_>) {
     save_all_floating(ctx, Some(selected_monitor_id));
     crate::focus::focus(ctx, None);
     ctx.core_mut()
-        .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 
@@ -150,7 +149,6 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     }
 
     ctx.core_mut()
-        .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 

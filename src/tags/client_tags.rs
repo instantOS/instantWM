@@ -27,9 +27,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         );
     }
     crate::focus::focus(ctx, None);
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
@@ -61,9 +59,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
     }
 
     crate::focus::focus(ctx, None);
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn follow_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {

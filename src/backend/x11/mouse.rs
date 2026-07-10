@@ -48,7 +48,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     };
 
     let wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-    let Some(start) = wm_ctx.backend().pointer_location() else {
+    let Some(start) = wm_ctx.pointer_backend().pointer_location() else {
         return;
     };
 

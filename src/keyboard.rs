@@ -264,9 +264,7 @@ pub fn space_toggle(ctx: &mut WmCtx) {
             }
 
             let selmon_id = ctx.core().globals().selected_monitor_id();
-            ctx.core_mut()
-                .globals_mut()
-                .queue_layout_for_monitor_urgent(selmon_id);
+            ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
         }
     } else {
         toggle_floating(ctx);

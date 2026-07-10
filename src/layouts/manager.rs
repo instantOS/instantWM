@@ -31,20 +31,21 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     }
 
     ctx.request_space_sync();
-    ctx.backend().flush();
+    ctx.window_backend().flush();
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let bar_height = ctx.core().globals().cfg.bar.height;
-    let animated = ctx.core().globals().behavior.animated;
-    let layout_cfg = &ctx.core().globals().cfg.layout;
-
-    let clients = ctx.core().globals().clients.map();
-    let Some(mut monitor) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
+    let plan = {
+        let globals = ctx.core_mut().globals_mut();
+        let bar_height = globals.cfg.bar.height;
+        let animated = globals.behavior.animated;
+        let layout_cfg = globals.cfg.layout;
+        let clients = globals.clients.map();
+        let Some(monitor) = globals.monitors.get_mut(monitor_id) else {
+            return;
+        };
+        monitor.compute_arrange(clients, &layout_cfg, bar_height, animated)
     };
-
-    let plan = monitor.compute_arrange(clients, layout_cfg, bar_height, animated);
 
     plan.apply(ctx, monitor_id);
 }
@@ -92,8 +93,8 @@ impl ArrangePlan {
             .filter(|m| m.current_layout().is_monocle())
             .and_then(|m| m.sel)
         {
-            ctx.backend().raise_window_visual_only(selected);
-            ctx.backend().flush();
+            ctx.window_backend().raise_window_visual_only(selected);
+            ctx.window_backend().flush();
         }
 
         // 5. Apply client moves (layout placements)
@@ -112,8 +113,8 @@ impl ArrangePlan {
             && let Some(selected) = monitor.sel
             && self.client_moves.iter().any(|o| o.win == selected)
         {
-            ctx.backend().raise_window_visual_only(selected);
-            ctx.backend().flush();
+            ctx.window_backend().raise_window_visual_only(selected);
+            ctx.window_backend().flush();
         }
     }
 }
@@ -263,8 +264,9 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let is_tiling = layout.is_tiling();
 
     if !is_tiling {
-        ctx.backend().raise_window_visual_only(selected_window);
-        ctx.backend().flush();
+        ctx.window_backend()
+            .raise_window_visual_only(selected_window);
+        ctx.window_backend().flush();
         return;
     }
 
@@ -272,8 +274,8 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let Some(stack) = compute_monitor_z_order(monitor, clients) else {
         return;
     };
-    ctx.backend().apply_z_order(&stack);
-    ctx.backend().flush();
+    ctx.window_backend().apply_z_order(&stack);
+    ctx.window_backend().flush();
 }
 
 pub(crate) fn compute_monitor_z_order(

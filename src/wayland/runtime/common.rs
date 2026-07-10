@@ -123,7 +123,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::RaiseWindow(win) => {
                 let mut ctx = wm.ctx();
                 ctx.core_mut().globals_mut().raise_client_in_z_order(win);
-                ctx.backend().raise_window_visual_only(win);
+                ctx.window_backend().raise_window_visual_only(win);
             }
             WmCommand::MapWindow(params) => handle_map_window(wm, state, params),
             WmCommand::UnmapWindow(_) => {}
@@ -241,7 +241,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                     let mut ctx = wm.ctx();
                     let g = ctx.core_mut().globals_mut();
                     crate::client::mode::set_fullscreen(g, win, fullscreen);
-                    g.queue_layout_for_client(win);
+                    ctx.core_mut().queue_layout_for_client(win);
                 }
                 wm.bar.mark_dirty();
                 state.request_space_sync();
@@ -266,7 +266,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 }
             }
             WmCommand::RequestSpaceSync => {
-                wm.g.queue_layout_for_all_monitors();
+                wm.work.layout.mark_all();
                 state.request_space_sync();
             }
             WmCommand::RequestBarRedraw => {
@@ -290,7 +290,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 if crate::backend::wayland::compositor::layer_shell::apply_available_rects(
                     wm, state,
                 ) {
-                    wm.g.queue_layout_for_all_monitors_urgent();
+                    wm.work.layout.mark_all_urgent();
                     wm.bar.mark_dirty();
                     state.request_render();
                 }
@@ -461,12 +461,12 @@ fn handle_map_window(
 
     g.attach(win);
     g.attach_z_order_top(win);
-    g.queue_layout_for_client(win);
 
     let should_focus = g
         .clients
         .get(&win)
         .is_some_and(|c| c.is_visible(g.monitor(c.monitor_id).unwrap().selected_tags()));
+    ctx.core_mut().queue_layout_for_client(win);
 
     if should_focus {
         state.activate_and_raise_window(win);
@@ -543,14 +543,21 @@ fn handle_update_xwayland_policy(
 
     crate::client::mode::set_fullscreen(g, win, is_fullscreen);
 
-    if let Some(client) = g.clients.get_mut(&win) {
+    let layout_changed = if let Some(client) = g.clients.get_mut(&win) {
         client.is_hidden = is_hidden;
 
         if is_above && !client.mode.is_floating() {
             client.float_geo = client.geo;
             client.mode = crate::types::ClientMode::Floating;
-            g.queue_layout_for_client(win);
+            true
+        } else {
+            false
         }
+    } else {
+        false
+    };
+    if layout_changed {
+        ctx.core_mut().queue_layout_for_client(win);
     }
 }
 

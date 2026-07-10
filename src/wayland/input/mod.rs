@@ -119,6 +119,6 @@ pub fn handle_resize(
     // `refresh_monitor_layout` resets each monitor's `available_rect` back to
     // its full output rect, so re-apply the layer-shell exclusive zones.
     let _ = crate::backend::wayland::compositor::layer_shell::apply_available_rects(wm, state);
-    wm.g.queue_layout_for_all_monitors_urgent();
+    wm.work.layout.mark_all_urgent();
     state.request_space_sync();
 }

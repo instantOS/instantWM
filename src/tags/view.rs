@@ -6,9 +6,7 @@ use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
 fn adjacent_scroll_mask(tagset: TagMask, dir: HorizontalDirection) -> Option<TagMask> {
@@ -27,25 +25,25 @@ fn adjacent_scroll_mask(tagset: TagMask, dir: HorizontalDirection) -> Option<Tag
     TagMask::single(next_tag)
 }
 
-fn commit_view_selection(ctx: &mut WmCtx, new_mask: TagMask) -> Option<MonitorId> {
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+fn commit_view_selection(
+    globals: &mut crate::globals::Globals,
+    new_mask: TagMask,
+) -> Option<MonitorId> {
+    let selmon_id = globals.selected_monitor_id();
+    let mon = globals.selected_monitor_mut();
+    let previous_mask = mon.selected_tags();
+    if previous_mask == new_mask {
+        return None;
+    }
 
+    let previous_current_tag = mon.current_tag_number();
+    mon.sel_tags = !mon.sel_tags;
+    mon.set_selected_tags(new_mask);
+
+    if previous_current_tag != mon.current_tag_number()
+        && let Some(previous_current_tag) = previous_current_tag
     {
-        let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
-        let previous_mask = mon.selected_tags();
-        if previous_mask == new_mask {
-            return None;
-        }
-
-        let previous_current_tag = mon.current_tag_number();
-        mon.sel_tags = !mon.sel_tags;
-        mon.set_selected_tags(new_mask);
-
-        if previous_current_tag != mon.current_tag_number()
-            && let Some(previous_current_tag) = previous_current_tag
-        {
-            mon.prev_tag = Some(previous_current_tag);
-        }
+        mon.prev_tag = Some(previous_current_tag);
     }
 
     Some(selmon_id)
@@ -59,7 +57,8 @@ pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let Some(selmon_id) = commit_view_selection(ctx, effective_mask) else {
+    let Some(selmon_id) = commit_view_selection(ctx.core_mut().globals_mut(), effective_mask)
+    else {
         return;
     };
 
@@ -73,7 +72,7 @@ pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let Some(selmon_id) = commit_view_selection(ctx, new_mask) else {
+    let Some(selmon_id) = commit_view_selection(ctx.core_mut().globals_mut(), new_mask) else {
         return;
     };
 
@@ -231,9 +230,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
         mon.prev_tag = current_tag;
     }
     crate::focus::focus(ctx, None);
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
@@ -255,9 +252,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
 
     view_tags(ctx, target_mask);
     crate::focus::focus(ctx, Some(win));
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
 #[cfg(test)]
@@ -300,7 +295,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
         return;
     };
 
-    let Some(selmon_id) = commit_view_selection(ctx, new_mask) else {
+    let Some(selmon_id) = commit_view_selection(ctx.core_mut().globals_mut(), new_mask) else {
         return;
     };
 
@@ -312,7 +307,7 @@ pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Optio
     let tagset = ctx.core().globals().selected_monitor().selected_tags();
 
     let new_mask = adjacent_scroll_mask(tagset, dir)?;
-    let selmon_id = commit_view_selection(ctx, new_mask)?;
+    let selmon_id = commit_view_selection(ctx.core_mut().globals_mut(), new_mask)?;
     crate::focus::focus(ctx, None);
     Some(selmon_id)
 }

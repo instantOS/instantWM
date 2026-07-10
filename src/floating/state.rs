@@ -31,31 +31,61 @@ impl WindowModeChange {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct WindowModePlan {
+    change: WindowModeChange,
+    border_width: i32,
+    clear_backend_border: bool,
+    restore_geometry: Option<Rect>,
+}
+
+fn update_window_mode(
+    globals: &mut crate::globals::Globals,
+    win: WindowId,
+    mode: BaseClientMode,
+) -> Option<WindowModePlan> {
+    let is_sole_client = globals.clients.len() <= 1;
+    let client = globals.clients.get_mut(&win)?;
+    match mode {
+        BaseClientMode::Floating => {
+            client.mode = ClientMode::Floating;
+            client.restore_border_width();
+            let border_width = client.border_width;
+            let restore_geometry = Some(client.effective_float_geo());
+            Some(WindowModePlan {
+                change: WindowModeChange::ChangedToFloating {
+                    restored_geometry: restore_geometry.is_some(),
+                },
+                border_width,
+                clear_backend_border: true,
+                restore_geometry,
+            })
+        }
+        BaseClientMode::Tiling => {
+            let clear_backend_border = client.enter_tiling(is_sole_client);
+            Some(WindowModePlan {
+                change: WindowModeChange::ChangedToTiling,
+                border_width: client.border_width,
+                clear_backend_border,
+                restore_geometry: None,
+            })
+        }
+    }
+}
+
 /// Set a window to floating or tiled mode.
 ///
 /// Handles border updates and geometry changes but not caller-owned animation.
 pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> WindowModeChange {
-    if !ctx.core().globals().clients.contains_key(&win) {
+    let Some(plan) = update_window_mode(ctx.core_mut().globals_mut(), win, mode) else {
         return WindowModeChange::MissingClient;
-    }
+    };
 
     match mode {
         BaseClientMode::Floating => {
-            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                client.mode = ClientMode::Floating;
-                client.restore_border_width();
-            }
-
-            // Restore borders and apply floating border scheme
-            ctx.set_border(win, 0);
-            if let Some(client) = ctx.core().globals().clients.get(&win) {
-                ctx.set_border(win, client.border_width);
-            }
             if let WmCtx::X11(x11) = ctx {
                 x11.x11.set_border_width(win, 0);
-                if let Some(client) = x11.core.globals().clients.get(&win) {
-                    x11.x11.set_border_width(win, client.border_width);
-                }
+                x11.x11.set_border_width(win, plan.border_width);
                 crate::backend::x11::floating::apply_floating_borderscheme(
                     &x11.x11,
                     win,
@@ -64,31 +94,18 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
             }
 
             // Apply saved float geometry
-            let saved_geo = ctx.core().globals().clients.effective_float_geo(win);
-            let Some(saved_geo) = saved_geo else {
-                return WindowModeChange::ChangedToFloating {
-                    restored_geometry: false,
-                };
-            };
-            ctx.move_resize(win, saved_geo, MoveResizeOptions::hinted_immediate(false));
-            WindowModeChange::ChangedToFloating {
-                restored_geometry: true,
+            if let Some(saved_geo) = plan.restore_geometry {
+                ctx.move_resize(win, saved_geo, MoveResizeOptions::hinted_immediate(false));
             }
+            plan.change
         }
         BaseClientMode::Tiling => {
-            let is_sole_client = ctx.core().globals().clients.len() <= 1;
-            let clear_border =
-                if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-                    client.enter_tiling(is_sole_client)
-                } else {
-                    false
-                };
-
-            // Border width clearing is X11-specific
-            if clear_border && let WmCtx::X11(x11) = ctx {
+            if plan.clear_backend_border
+                && let WmCtx::X11(x11) = ctx
+            {
                 x11.x11.set_border_width(win, 0);
             }
-            WindowModeChange::ChangedToTiling
+            plan.change
         }
     }
 }
@@ -196,6 +213,6 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 
     // Raise the newly maximized window above everything else.
     if ctx.core().globals().selected_monitor().maximized == Some(win) {
-        ctx.backend().raise_window_visual_only(win);
+        ctx.window_backend().raise_window_visual_only(win);
     }
 }

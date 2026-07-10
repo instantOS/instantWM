@@ -526,8 +526,7 @@ impl Client {
         crate::backend::x11::set_client_tag_prop(core.globals(), x11, x11_runtime, self.win);
         crate::backend::x11::focus::focus_soft_x11(core, x11, x11_runtime, None);
         let monitor_id = core.globals().selected_monitor_id();
-        core.globals_mut()
-            .queue_layout_for_monitor_urgent(monitor_id);
+        core.queue_layout_for_monitor_urgent(monitor_id);
     }
 }
 

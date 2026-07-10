@@ -270,8 +270,13 @@ fn focus_button_target(
 }
 
 fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
-    let core =
-        crate::contexts::CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let core = crate::contexts::CoreCtx::new(
+        &mut wm.g,
+        &mut wm.work,
+        &mut wm.running,
+        &mut wm.bar,
+        &mut wm.focus,
+    );
     let mon = core.globals().selected_monitor().clone();
     let local_x = root_x - mon.work_rect.x;
 

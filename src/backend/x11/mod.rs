@@ -11,8 +11,8 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::BackendOps;
 use crate::backend::x11::draw::{Cursor, Drw};
+use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::color::{BorderScheme, StatusScheme};
@@ -206,7 +206,7 @@ pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect>
     })
 }
 
-impl BackendOps for X11BackendRef<'_> {
+impl WindowOps for X11BackendRef<'_> {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;
@@ -279,14 +279,12 @@ impl BackendOps for X11BackendRef<'_> {
         self.conn.get_window_attributes(x11_win).is_ok()
     }
 
-    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
-        crate::backend::WindowProtocol::X11
-    }
-
     fn flush(&self) {
         let _ = self.conn.flush();
     }
+}
 
+impl PointerOps for X11BackendRef<'_> {
     fn pointer_location(&self) -> Option<Point> {
         let root = self.conn.setup().roots[self.screen_num].root;
         let reply = self.conn.query_pointer(root).ok()?.reply().ok()?;
@@ -306,6 +304,12 @@ impl BackendOps for X11BackendRef<'_> {
             y.round() as i16,
         );
         let _ = self.conn.flush();
+    }
+}
+
+impl OutputOps for X11BackendRef<'_> {
+    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
+        crate::backend::WindowProtocol::X11
     }
 
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {

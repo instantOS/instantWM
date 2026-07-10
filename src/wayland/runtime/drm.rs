@@ -435,8 +435,8 @@ fn run_event_loop(
                 loop_state.mark_all_dirty();
             }
 
-            if wm.g.pending.input_config {
-                wm.g.pending.input_config = false;
+            if wm.work.input_config {
+                wm.work.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(
                     &mut state.runtime.tracked_devices,
                     &wm.g.cfg.input,

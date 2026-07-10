@@ -29,7 +29,7 @@ pub fn apply_rules(
     win: WindowId,
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
-) {
+) -> bool {
     let before = rule_state_snapshot(g, win);
 
     // --- Initialise fields we are about to set -------------------------------
@@ -43,7 +43,7 @@ pub fn apply_rules(
         // not let those rule refreshes retag an existing scratchpad back into
         // a normal window.
         if c.scratchpad.is_some() {
-            return;
+            return false;
         }
 
         c.mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
@@ -113,9 +113,7 @@ pub fn apply_rules(
     // --- Clamp tags to the valid tag mask ------------------------------------
     clamp_client_tags(g, win, tag_mask, launch_context);
 
-    if before != rule_state_snapshot(g, win) {
-        g.queue_layout_for_client(win);
-    }
+    before != rule_state_snapshot(g, win)
 }
 
 /// Refresh rule-derived metadata after a backend property update.
@@ -126,7 +124,7 @@ pub fn apply_rules(
 ///
 /// Once a client has been promoted to a scratchpad, later protocol metadata
 /// churn must not retag it back into a normal window.
-pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProperties) {
+pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProperties) -> bool {
     if let Some(c) = g.clients.get_mut(&win)
         && !props.title.is_empty()
     {
@@ -134,7 +132,7 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
     }
 
     if g.clients.get(&win).is_some_and(|c| c.scratchpad.is_some()) {
-        return;
+        return false;
     }
 
     let existing_context = g.clients.get(&win).map(|c| LaunchContext {
@@ -143,7 +141,7 @@ pub fn handle_property_change(g: &mut Globals, win: WindowId, props: &WindowProp
         is_floating: c.mode.is_floating(),
     });
 
-    apply_rules(g, win, props, existing_context);
+    apply_rules(g, win, props, existing_context)
 }
 
 /// Return `true` when `rule` matches all provided window identifiers.

@@ -107,7 +107,7 @@ pub fn run() -> ! {
             // Winit has no libinput devices to reconfigure, but clear the
             // pending bit so it doesn't remain queued forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
-            wm.g.pending.input_config = false;
+            wm.work.input_config = false;
 
             let animation_tick = super::common::process_window_animations(state);
 

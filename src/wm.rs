@@ -4,10 +4,11 @@
 
 use crate::backend::Backend;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
-use crate::globals::Globals;
+use crate::globals::{Globals, PendingWork};
 
 pub struct Wm {
     pub g: Globals,
+    pub work: PendingWork,
     pub backend: Backend,
     pub running: bool,
     pub bar: crate::bar::BarState,
@@ -18,6 +19,7 @@ impl Wm {
     pub fn new(backend: Backend) -> Self {
         Self {
             g: Globals::default(),
+            work: PendingWork::default(),
             backend,
             running: true,
             bar: crate::bar::BarState::default(),
@@ -32,6 +34,7 @@ impl Wm {
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let core = CoreCtx::new(
             &mut self.g,
+            &mut self.work,
             &mut self.running,
             &mut self.bar,
             &mut self.focus,

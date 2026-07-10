@@ -1,4 +1,4 @@
-use crate::backend::BackendOps;
+use crate::backend::OutputOps;
 use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;

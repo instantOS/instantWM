@@ -9,11 +9,12 @@ use crate::backend::x11::X11RuntimeConfig;
 use crate::bar::BarState;
 use crate::client::focus::FocusState;
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
-use crate::globals::Globals;
-use crate::types::{Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::globals::{Globals, PendingWork};
+use crate::types::{MonitorId, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
 
 pub struct CoreCtx<'a> {
     g: &'a mut Globals,
+    work: &'a mut PendingWork,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
     pub focus: &'a mut FocusState,
@@ -22,12 +23,14 @@ pub struct CoreCtx<'a> {
 impl<'a> CoreCtx<'a> {
     pub fn new(
         g: &'a mut Globals,
+        work: &'a mut PendingWork,
         running: &'a mut bool,
         bar: &'a mut BarState,
         focus: &'a mut FocusState,
     ) -> Self {
         Self {
             g,
+            work,
             running,
             bar,
             focus,
@@ -46,9 +49,46 @@ impl<'a> CoreCtx<'a> {
         *self.running = false;
     }
 
+    // Scheduling is exposed by the orchestration context rather than the
+    // model. PendingWork is owned by Wm and borrowed independently of Globals.
+    pub fn queue_layout_for_all_monitors(&mut self) {
+        self.work.layout.mark_all();
+    }
+
+    pub fn queue_layout_for_all_monitors_urgent(&mut self) {
+        self.work.layout.mark_all_urgent();
+    }
+
+    pub fn queue_layout_for_monitor_urgent(&mut self, monitor_id: MonitorId) {
+        self.work.layout.mark_monitor_urgent(monitor_id);
+    }
+
+    pub fn queue_layout_for_client(&mut self, win: WindowId) {
+        self.work
+            .layout
+            .mark_monitor_opt(self.g.clients.monitor_id(win));
+    }
+
+    pub fn queue_monitor_config_apply(&mut self) {
+        self.work.monitor_config = true;
+    }
+
+    pub fn queue_input_config_apply(&mut self) {
+        self.work.input_config = true;
+    }
+
+    pub fn pending_work(&self) -> &PendingWork {
+        self.work
+    }
+
+    pub fn pending_work_mut(&mut self) -> &mut PendingWork {
+        self.work
+    }
+
     pub fn reborrow(&mut self) -> CoreCtx<'_> {
         CoreCtx {
             g: self.g,
+            work: self.work,
             running: self.running,
             bar: self.bar,
             focus: self.focus,
@@ -124,11 +164,24 @@ impl<'a> WmCtx<'a> {
         self.core_mut().quit();
     }
 
-    /// Get a borrowed backend view. Constructed on the fly — not a stored field.
-    pub fn backend(&self) -> &dyn crate::backend::BackendOps {
+    pub fn window_backend(&self) -> &dyn crate::backend::WindowOps {
         match self {
-            WmCtx::X11(ctx) => &ctx.x11 as &dyn crate::backend::BackendOps,
-            WmCtx::Wayland(ctx) => ctx.wayland as &dyn crate::backend::BackendOps,
+            WmCtx::X11(ctx) => &ctx.x11,
+            WmCtx::Wayland(ctx) => ctx.wayland,
+        }
+    }
+
+    pub fn pointer_backend(&self) -> &dyn crate::backend::PointerOps {
+        match self {
+            WmCtx::X11(ctx) => &ctx.x11,
+            WmCtx::Wayland(ctx) => ctx.wayland,
+        }
+    }
+
+    pub fn output_backend(&self) -> &dyn crate::backend::OutputOps {
+        match self {
+            WmCtx::X11(ctx) => &ctx.x11,
+            WmCtx::Wayland(ctx) => ctx.wayland,
         }
     }
 
@@ -157,7 +210,7 @@ impl<'a> WmCtx<'a> {
         {
             mon.z_order.raise(win);
         }
-        self.backend().raise_window_visual_only(win);
+        self.window_backend().raise_window_visual_only(win);
     }
 
     pub(crate) fn set_geometry_impl(
@@ -169,15 +222,15 @@ impl<'a> WmCtx<'a> {
         match self {
             WmCtx::X11(_) => {
                 if apply_mode == GeometryApplyMode::VisualOnly {
-                    self.backend().resize_window(win, rect);
-                    self.backend().flush();
+                    self.window_backend().resize_window(win, rect);
+                    self.window_backend().flush();
                     return;
                 }
 
                 // X11 clients may ignore or adjust resize requests (size hints).
                 // Query the actual geometry back and sync that into WM state.
-                self.backend().resize_window(win, rect);
-                self.backend().flush();
+                self.window_backend().resize_window(win, rect);
+                self.window_backend().flush();
                 let WmCtx::X11(x11) = self else {
                     unreachable!()
                 };
@@ -190,9 +243,9 @@ impl<'a> WmCtx<'a> {
                 if apply_mode == GeometryApplyMode::Logical {
                     crate::client::sync_client_geometry(self.core_mut().globals_mut(), win, rect);
                 }
-                self.backend().resize_window(win, rect);
+                self.window_backend().resize_window(win, rect);
                 if apply_mode == GeometryApplyMode::VisualOnly {
-                    self.backend().flush();
+                    self.window_backend().flush();
                 }
             }
         }
@@ -231,7 +284,7 @@ impl<'a> WmCtx<'a> {
             let mon = self.core().globals().selected_monitor();
             let target_x = (mon.work_rect.x + mon.work_rect.w / 2) as f64;
             let target_y = (mon.work_rect.y + mon.work_rect.h / 2) as f64;
-            self.backend().warp_pointer(target_x, target_y);
+            self.pointer_backend().warp_pointer(target_x, target_y);
             return;
         }
 
@@ -239,7 +292,7 @@ impl<'a> WmCtx<'a> {
             return;
         };
 
-        let Some(ptr) = self.backend().pointer_location() else {
+        let Some(ptr) = self.pointer_backend().pointer_location() else {
             return;
         };
 
@@ -260,7 +313,7 @@ impl<'a> WmCtx<'a> {
 
         let target_x = (c.geo.x + c.geo.w / 2) as f64;
         let target_y = (c.geo.y + c.geo.h / 2) as f64;
-        self.backend().warp_pointer(target_x, target_y);
+        self.pointer_backend().warp_pointer(target_x, target_y);
     }
 
     /// Returns true when running under Wayland.

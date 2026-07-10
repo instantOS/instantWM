@@ -18,9 +18,7 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
     focus(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
-        ctx.core_mut()
-            .globals_mut()
-            .queue_layout_for_monitor_urgent(mid);
+        ctx.core_mut().queue_layout_for_monitor_urgent(mid);
     }
 }
 
@@ -54,8 +52,8 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     // Raise the window immediately so it appears on top while the layout
     // catches up on the next arrange pass.
-    ctx.backend().raise_window_visual_only(win);
-    ctx.backend().flush();
+    ctx.window_backend().raise_window_visual_only(win);
+    ctx.window_backend().flush();
 
     let (is_tiling_mode, monitor_id) = ctx
         .core()

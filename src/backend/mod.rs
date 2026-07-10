@@ -75,12 +75,8 @@ pub enum BackendEvent {
     KeyPress { keycode: u32 },
 }
 
-/// Operations that every active backend must implement.
-///
-/// This deliberately contains only cross-backend window, pointer, and output
-/// operations. Protocol-specific features stay on their backend contexts;
-/// they must not be represented as silent default no-ops here.
-pub trait BackendOps {
+/// Window lifecycle and stacking effects shared by all backends.
+pub trait WindowOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
     fn raise_window_visual_only(&self, window: WindowId);
     fn apply_z_order(&self, windows: &[WindowId]);
@@ -94,7 +90,10 @@ pub trait BackendOps {
     /// This is a query method that returns state rather than performing an action.
     fn window_exists(&self, window: WindowId) -> bool;
     fn flush(&self);
+}
 
+/// Pointer queries and cursor movement.
+pub trait PointerOps {
     /// Get current pointer location in root coordinates.
     ///
     /// Returns `None` if the pointer position cannot be determined
@@ -103,7 +102,10 @@ pub trait BackendOps {
 
     /// Warp pointer to (x, y) in root coordinates.
     fn warp_pointer(&self, x: f64, y: f64);
+}
 
+/// Output discovery and configuration.
+pub trait OutputOps {
     /// Return the protocol/backend surface type for a managed window.
     fn window_protocol(&self, window: WindowId) -> WindowProtocol;
 
@@ -226,7 +228,7 @@ impl Backend {
     }
 }
 
-impl BackendOps for Backend {
+impl WindowOps for Backend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         match self {
             Backend::X11(data) => {
@@ -294,7 +296,9 @@ impl BackendOps for Backend {
             Backend::Wayland(data) => data.backend.flush(),
         }
     }
+}
 
+impl PointerOps for Backend {
     fn pointer_location(&self) -> Option<Point> {
         match self {
             Backend::X11(data) => {
@@ -312,7 +316,9 @@ impl BackendOps for Backend {
             Backend::Wayland(data) => data.backend.warp_pointer(x, y),
         }
     }
+}
 
+impl OutputOps for Backend {
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         match self {
             Backend::X11(data) => {

@@ -6,7 +6,7 @@ use crate::backend::x11::properties::set_client_state;
 use crate::constants::animation::DECORATIVE_SHOW_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{ClientMode, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -42,17 +42,7 @@ pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> 
 // ---------------------------------------------------------------------------
 
 pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
-    let mut operations: Vec<(WindowId, Rect, bool, ClientMode)> = Vec::new();
-
-    for mon in ctx.core.globals().monitors_iter_all() {
-        let selected_tags = mon.selected_tags();
-
-        for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
-            let is_visible = c.is_visible(selected_tags);
-            let geo = c.geo;
-            operations.push((win, geo, is_visible, c.mode));
-        }
-    }
+    let operations = crate::client::visibility::visibility_plan(ctx.core.globals());
 
     let has_tiling = ctx
         .core
@@ -60,7 +50,11 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
         .monitors_iter()
         .any(|(_, m)| m.is_tiling_layout());
 
-    for (win, geo, is_visible, mode) in operations {
+    for entry in operations {
+        let win = entry.win;
+        let geo = entry.rect;
+        let is_visible = entry.visible;
+        let mode = entry.mode;
         crate::animation::drop_x11_animation(ctx.x11_runtime, win);
 
         if is_visible {
@@ -90,14 +84,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
                 );
             }
         } else {
-            let w_val = geo.w
-                + 2 * ctx
-                    .core
-                    .globals()
-                    .clients
-                    .get(&win)
-                    .map(|c| c.border_width)
-                    .unwrap_or(0);
+            let w_val = geo.w + 2 * entry.border_width;
             let y = geo.y;
 
             let x11_win: Window = win.into();

@@ -223,8 +223,8 @@ fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
         crate::client::show_window(ctx, win);
     }
 
-    ctx.backend().map_window(win);
-    ctx.backend().flush();
+    ctx.window_backend().map_window(win);
+    ctx.window_backend().flush();
 
     was_hidden
 }
@@ -396,7 +396,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     if let Some(dir) = direction {
         let yoffset = selected_monitor_yoffset(ctx.core().globals(), tags);
         let (mon_rect, mon_ww, client_rect) = {
-            if !ctx.backend().window_exists(found) {
+            if !ctx.window_backend().window_exists(found) {
                 return Err(format!("scratchpad '{}' no longer exists", name));
             }
             let mon = ctx.core().globals().monitor(current_mon).unwrap();
@@ -428,7 +428,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     }
 
     crate::focus::focus(ctx, Some(found));
-    ctx.backend().raise_window_visual_only(found);
+    ctx.window_backend().raise_window_visual_only(found);
 
     if focusfollowsmouse {
         ctx.warp_cursor_to_client(found);

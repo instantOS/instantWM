@@ -28,7 +28,7 @@
 //! When the global `animated` flag is set, newly managed windows slide in from
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
-use crate::backend::BackendOps;
+use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::BROKEN;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
@@ -173,7 +173,9 @@ fn insert_client_and_apply_rules(
         == crate::backend::x11::constants::WM_STATE_ICONIC;
     core.globals_mut().clients.insert(w, c);
     let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
-    crate::client::apply_rules(core.globals_mut(), w, &props, launch_context);
+    if crate::client::apply_rules(core.globals_mut(), w, &props, launch_context) {
+        core.queue_layout_for_client(w);
+    }
 }
 
 fn read_launch_context_x11(
@@ -448,8 +450,8 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
     let monitor_id = c.monitor_id;
     arrange(ctx, Some(monitor_id));
     if !initially_hidden {
-        ctx.backend().map_window(w);
-        ctx.backend().flush();
+        ctx.window_backend().map_window(w);
+        ctx.window_backend().flush();
     }
     focus(ctx, None);
     c = ctx
@@ -497,8 +499,8 @@ fn run_manage_animation(
         .unwrap_or(false);
 
     if !is_tiling {
-        ctx.backend().raise_window_visual_only(w);
-        ctx.backend().flush();
+        ctx.window_backend().raise_window_visual_only(w);
+        ctx.window_backend().flush();
     } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
         arrange(ctx, Some(c.monitor_id));
     }

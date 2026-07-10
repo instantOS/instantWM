@@ -497,7 +497,13 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
-    let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let mut core = CoreCtx::new(
+        &mut wm.g,
+        &mut wm.work,
+        &mut wm.running,
+        &mut wm.bar,
+        &mut wm.focus,
+    );
 
     {
         let Backend::Wayland(data) = &mut wm.backend else {
@@ -542,7 +548,13 @@ pub fn build_bar_elements(
 
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.
 pub fn poll_wayland_systray(wm: &mut Wm) {
-    let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let mut core = CoreCtx::new(
+        &mut wm.g,
+        &mut wm.work,
+        &mut wm.running,
+        &mut wm.bar,
+        &mut wm.focus,
+    );
     let Backend::Wayland(data) = &mut wm.backend else {
         return;
     };

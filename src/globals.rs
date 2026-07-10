@@ -576,7 +576,7 @@ impl PendingLayoutWork {
 }
 
 /// Work queue consumed by runtime ticks.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PendingWork {
     /// Whether input configuration has changed and needs to be re-applied.
     pub input_config: bool,
@@ -586,24 +586,35 @@ pub struct PendingWork {
     pub layout: PendingLayoutWork,
 }
 
+impl Default for PendingWork {
+    fn default() -> Self {
+        let mut layout = PendingLayoutWork::default();
+        layout.mark_all();
+        Self {
+            input_config: false,
+            monitor_config: false,
+            layout,
+        }
+    }
+}
+
 pub struct Globals {
     // Runtime configuration (loaded from config files)
-    pub cfg: RuntimeConfig,
+    pub(crate) cfg: RuntimeConfig,
 
     // Runtime state (changes during WM operation)
-    pub monitors: MonitorManager,
-    pub clients: ClientManager,
-    pub tags: TagSet,
+    pub(crate) monitors: MonitorManager,
+    pub(crate) clients: ClientManager,
+    pub(crate) tags: TagSet,
 
     // Grouped subsystems
-    pub behavior: WmBehavior,
-    pub drag: DragState,
-    pub pending: PendingWork,
+    pub(crate) behavior: WmBehavior,
+    pub(crate) drag: DragState,
 
     /// XKB keyboard layout state.
-    pub keyboard_layout: KeyboardLayoutState,
+    pub(crate) keyboard_layout: KeyboardLayoutState,
     /// Recently spawned processes awaiting their first managed window.
-    pub pending_launches: VecDeque<crate::client::PendingLaunch>,
+    pub(crate) pending_launches: VecDeque<crate::client::PendingLaunch>,
 }
 
 impl Globals {
@@ -645,42 +656,6 @@ impl Globals {
     /// Shorthand to get the selected monitor mutably (Option version).
     pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut Monitor> {
         self.monitors.sel_mut()
-    }
-
-    // -------------------------------------------------------------------------
-    // Pending-work helpers
-    // -------------------------------------------------------------------------
-
-    /// Queue layout work for all monitors.
-    pub fn queue_layout_for_all_monitors(&mut self) {
-        self.pending.layout.mark_all();
-    }
-
-    /// Queue urgent layout work for all monitors (bypasses animation defers).
-    pub fn queue_layout_for_all_monitors_urgent(&mut self) {
-        self.pending.layout.mark_all_urgent();
-    }
-
-    /// Queue urgent layout work for a specific monitor.
-    pub fn queue_layout_for_monitor_urgent(&mut self, monitor_id: MonitorId) {
-        self.pending.layout.mark_monitor_urgent(monitor_id);
-    }
-
-    /// Queue layout work for a client's monitor, or all monitors if unknown.
-    pub fn queue_layout_for_client(&mut self, win: WindowId) {
-        self.pending
-            .layout
-            .mark_monitor_opt(self.clients.monitor_id(win));
-    }
-
-    /// Queue monitor-configuration application.
-    pub fn queue_monitor_config_apply(&mut self) {
-        self.pending.monitor_config = true;
-    }
-
-    /// Queue input-configuration application.
-    pub fn queue_input_config_apply(&mut self) {
-        self.pending.input_config = true;
     }
 
     /// Delegation to get a monitor by index.
@@ -860,8 +835,6 @@ mod tests {
 
 impl Default for Globals {
     fn default() -> Self {
-        let mut pending = PendingWork::default();
-        pending.layout.mark_all();
         Self {
             cfg: RuntimeConfig::default(),
             monitors: MonitorManager::new(),
@@ -869,51 +842,59 @@ impl Default for Globals {
             tags: TagSet::default(),
             behavior: WmBehavior::default(),
             drag: DragState::default(),
-            pending,
             keyboard_layout: KeyboardLayoutState::default(),
             pending_launches: VecDeque::new(),
         }
     }
 }
 
-/// Apply config values to the given `Globals` instance.
+/// Build and atomically install runtime configuration.
+///
+/// The complete value is assembled off to the side so readers never observe
+/// a partially-applied reload. Display geometry is backend-derived and is
+/// therefore preserved across config replacement.
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
-    g.cfg.window.border_width_px = cfg.borderpx;
-    g.cfg.input = cfg.input.clone();
-    g.cfg.monitors = cfg.monitors.clone();
-    g.cfg.window.snap_threshold = cfg.snap_threshold;
-    g.cfg.bar.startmenu_size = cfg.startmenu_size;
-    g.cfg.systray.pinning = cfg.systraypinning;
-    g.cfg.systray.spacing = cfg.systrayspacing;
-    g.cfg.systray.show = cfg.show_systray;
-    g.cfg.bar.show = cfg.showbar;
-    g.cfg.bar.top = cfg.topbar;
-    g.cfg.bar.height = cfg.bar_height;
-    g.cfg.window.resizehints = cfg.resize_hints;
-    g.cfg.window.decorhints = cfg.decorhints;
-    g.cfg.layout = crate::config::config_toml::LayoutConfig {
+    let display = g.cfg.display.clone();
+    let mut next = RuntimeConfig {
+        display,
+        ..RuntimeConfig::default()
+    };
+    next.window.border_width_px = cfg.borderpx;
+    next.input = cfg.input.clone();
+    next.monitors = cfg.monitors.clone();
+    next.window.snap_threshold = cfg.snap_threshold;
+    next.bar.startmenu_size = cfg.startmenu_size;
+    next.systray.pinning = cfg.systraypinning;
+    next.systray.spacing = cfg.systrayspacing;
+    next.systray.show = cfg.show_systray;
+    next.bar.show = cfg.showbar;
+    next.bar.top = cfg.topbar;
+    next.bar.height = cfg.bar_height;
+    next.window.resizehints = cfg.resize_hints;
+    next.window.decorhints = cfg.decorhints;
+    next.layout = crate::config::config_toml::LayoutConfig {
         inner_gap: cfg.layout.inner_gap.max(0),
         outer_gap: cfg.layout.outer_gap.max(0),
         smart_gaps: cfg.layout.smart_gaps,
         monocle_gaps: cfg.layout.monocle_gaps,
     };
 
-    g.cfg.colors.window = cfg.window_colors.clone();
-    g.cfg.colors.close_button = cfg.closebuttoncolors.clone();
-    g.cfg.colors.border = cfg.border_colors;
-    g.cfg.colors.status_bar = cfg.statusbarcolors;
+    next.colors.window = cfg.window_colors.clone();
+    next.colors.close_button = cfg.closebuttoncolors.clone();
+    next.colors.border = cfg.border_colors;
+    next.colors.status_bar = cfg.statusbarcolors;
 
-    g.cfg.bindings.keys = cfg.keys.clone();
-    g.cfg.bindings.desktop_keybinds = cfg.desktop_keybinds.clone();
-    g.cfg.bindings.modes = cfg.modes.clone();
-    g.cfg.bindings.buttons = cfg.buttons.clone();
-    g.cfg.bindings.rules = cfg.rules.clone();
-    g.cfg.fonts.fonts = cfg.fonts.clone();
-    g.cfg.external_commands = cfg.external_commands.clone();
-    g.cfg.status_command = cfg.status_command.clone();
-    g.cfg.cursor = cfg.cursor.clone();
-    g.cfg.exec_once = cfg.exec_once.clone();
-    g.cfg.exec = cfg.exec.clone();
+    next.bindings.keys = cfg.keys.clone();
+    next.bindings.desktop_keybinds = cfg.desktop_keybinds.clone();
+    next.bindings.modes = cfg.modes.clone();
+    next.bindings.buttons = cfg.buttons.clone();
+    next.bindings.rules = cfg.rules.clone();
+    next.fonts.fonts = cfg.fonts.clone();
+    next.external_commands = cfg.external_commands.clone();
+    next.status_command = cfg.status_command.clone();
+    next.cursor = cfg.cursor.clone();
+    next.exec_once = cfg.exec_once.clone();
+    next.exec = cfg.exec.clone();
 
     // Initialize keyboard layout state from config
     let mut layouts: Vec<KeyboardLayout> = cfg
@@ -958,7 +939,8 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
     };
 
     // Rebuild tag template so monitor creation picks up any config changes.
-    g.cfg.tag_template = build_tag_template(cfg);
+    next.tag_template = build_tag_template(cfg);
+    g.cfg = next;
 }
 
 /// Build the canonical tag template from config.

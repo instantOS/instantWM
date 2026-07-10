@@ -67,14 +67,14 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         "input" => {
             let resp = map_set(&mut g.cfg.input, "input", rest, value);
             if matches!(resp, Response::Ok) {
-                g.queue_input_config_apply();
+                wm.work.input_config = true;
             }
             return resp;
         }
         "monitors" => {
             let resp = map_set(&mut g.cfg.monitors, "monitors", rest, value);
             if matches!(resp, Response::Ok) {
-                g.queue_monitor_config_apply();
+                wm.work.monitor_config = true;
             }
             return resp;
         }
@@ -458,7 +458,7 @@ mod tests {
             Response::Ok
         ));
         assert!(wm.g.cfg.input.contains_key("type:touchpad"));
-        assert!(wm.g.pending.input_config);
+        assert!(wm.work.input_config);
 
         match do_get(&mut wm, "input.type:touchpad.pointer_accel") {
             Response::ConfigValue(v) => assert_eq!(v, "0.5"),
@@ -479,7 +479,7 @@ mod tests {
             Response::Ok
         ));
         assert!(wm.g.cfg.monitors.contains_key("DP-1"));
-        assert!(wm.g.pending.monitor_config);
+        assert!(wm.work.monitor_config);
         assert!(matches!(
             do_get(&mut wm, "monitors.nonexistent.scale"),
             Response::Err(_)
@@ -495,14 +495,14 @@ mod tests {
             Response::Err(_)
         ));
         assert!(!wm.g.cfg.input.contains_key("type:touchpad"));
-        assert!(!wm.g.pending.input_config);
+        assert!(!wm.work.input_config);
 
         assert!(matches!(
             do_set(&mut wm, "monitors.DP-1.scale", r#""large""#),
             Response::Err(_)
         ));
         assert!(!wm.g.cfg.monitors.contains_key("DP-1"));
-        assert!(!wm.g.pending.monitor_config);
+        assert!(!wm.work.monitor_config);
     }
 
     #[test]

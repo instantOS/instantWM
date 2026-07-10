@@ -54,7 +54,7 @@ pub mod commands;
 pub mod compositor;
 pub mod systray;
 
-use crate::backend::{BackendOps, WindowProtocol};
+use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
@@ -229,7 +229,7 @@ impl Default for WaylandBackend {
     }
 }
 
-impl BackendOps for WaylandBackend {
+impl WindowOps for WaylandBackend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }
@@ -262,7 +262,9 @@ impl BackendOps for WaylandBackend {
     fn flush(&self) {
         let _ = self.with_state(WaylandState::flush);
     }
+}
 
+impl PointerOps for WaylandBackend {
     fn pointer_location(&self) -> Option<Point> {
         self.with_state(|state: &mut WaylandState| {
             let loc = state.pointer.current_location();
@@ -275,7 +277,9 @@ impl BackendOps for WaylandBackend {
             state.request_warp(x, y);
         });
     }
+}
 
+impl OutputOps for WaylandBackend {
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
         self.window_protocol(window)
     }

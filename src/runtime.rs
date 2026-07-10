@@ -69,26 +69,26 @@ pub struct PendingWorkResult {
 pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkResult {
     let mut result = PendingWorkResult::default();
 
-    if wm.g.pending.monitor_config {
-        wm.g.pending.monitor_config = false;
+    if wm.work.monitor_config {
+        wm.work.monitor_config = false;
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
         result.monitor_config_applied = true;
     }
 
-    if !wm.g.pending.layout.is_pending() {
+    if !wm.work.layout.is_pending() {
         return result;
     }
 
     if options.defer_layout_while_animations_active
         && options.animations_active
-        && !wm.g.pending.layout.is_urgent()
+        && !wm.work.layout.is_urgent()
     {
         result.layout_deferred_for_animation = true;
         return result;
     }
 
-    let Some(targets) = wm.g.pending.layout.take_targets() else {
+    let Some(targets) = wm.work.layout.take_targets() else {
         return result;
     };
     result.layout_applied = apply_layout_targets(wm, targets);
@@ -266,8 +266,8 @@ mod tests {
     #[test]
     fn non_urgent_layout_can_be_deferred_for_animations() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.g.pending.layout.clear();
-        wm.g.pending.layout.mark_monitor(MonitorId(0));
+        wm.work.layout.clear();
+        wm.work.layout.mark_monitor(MonitorId(0));
 
         let result = process_pending_work(
             &mut wm,
@@ -278,14 +278,14 @@ mod tests {
         );
 
         assert!(result.layout_deferred_for_animation);
-        assert!(wm.g.pending.layout.is_pending());
+        assert!(wm.work.layout.is_pending());
     }
 
     #[test]
     fn urgent_layout_bypasses_animation_defer() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.g.pending.layout.clear();
-        wm.g.pending.layout.mark_monitor_urgent(MonitorId(0));
+        wm.work.layout.clear();
+        wm.work.layout.mark_monitor_urgent(MonitorId(0));
 
         let result = process_pending_work(
             &mut wm,
@@ -296,6 +296,6 @@ mod tests {
         );
 
         assert!(!result.layout_deferred_for_animation);
-        assert!(!wm.g.pending.layout.is_pending());
+        assert!(!wm.work.layout.is_pending());
     }
 }

@@ -81,7 +81,7 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             });
 
             // ── 4. Flush X11 connection ─────────────────────────────────
-            crate::backend::BackendOps::flush(&wm.backend);
+            crate::backend::WindowOps::flush(&wm.backend);
 
             // ── 5. Stop loop if WM is shutting down ─────────────────────
             if !wm.running {

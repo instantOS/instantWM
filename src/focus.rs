@@ -3,7 +3,7 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::BackendOps;
+use crate::backend::WindowOps;
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::globals::Globals;
 use crate::types::*;
@@ -551,9 +551,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     focus(ctx, Some(last_win));
 
     let monitor_id = ctx.core().globals().selected_monitor_id();
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(monitor_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
 /// Focus the next or previous client in the stack.

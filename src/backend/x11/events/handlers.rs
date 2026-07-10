@@ -194,9 +194,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
     crate::backend::x11::update_ewmh_desktop_props(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
-    ctx.core
-        .globals_mut()
-        .queue_layout_for_all_monitors_urgent();
+    ctx.core.queue_layout_for_all_monitors_urgent();
 }
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
@@ -534,7 +532,9 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         {
             let props =
                 crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
-            crate::client::handle_property_change(ctx.core.globals_mut(), event_win, &props);
+            if crate::client::handle_property_change(ctx.core.globals_mut(), event_win, &props) {
+                ctx.core.queue_layout_for_client(event_win);
+            }
         }
     };
 }
@@ -787,9 +787,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
             ctx.x11_runtime,
             win,
         );
-        ctx.core
-            .globals_mut()
-            .queue_layout_for_all_monitors_urgent();
+        ctx.core.queue_layout_for_all_monitors_urgent();
         return;
     }
 
@@ -823,13 +821,9 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
 
     if old_mon == Some(target_mon) {
-        ctx.core
-            .globals_mut()
-            .queue_layout_for_monitor_urgent(target_mon);
+        ctx.core.queue_layout_for_monitor_urgent(target_mon);
     } else {
-        ctx.core
-            .globals_mut()
-            .queue_layout_for_all_monitors_urgent();
+        ctx.core.queue_layout_for_all_monitors_urgent();
     }
 }
 

@@ -71,12 +71,11 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let selected_monitor_id = ctx.core().globals().selected_monitor_id();
     crate::focus::focus(ctx, None);
     ctx.core_mut()
-        .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    ctx.backend().raise_window_visual_only(win);
+    ctx.window_backend().raise_window_visual_only(win);
     let mon_w = ctx.core().globals().selected_monitor().monitor_rect.w;
     let geo = ctx
         .core()

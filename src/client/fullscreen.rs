@@ -21,7 +21,7 @@
 //! fullscreen) but the window remains in the normal layout stack with its
 //! border intact.
 
-use crate::backend::BackendOps;
+use crate::backend::WindowOps;
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -141,9 +141,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
                     }
                 }
                 let selmon_id = ctx.core().globals().selected_monitor_id();
-                ctx.core_mut()
-                    .globals_mut()
-                    .queue_layout_for_monitor_urgent(selmon_id);
+                ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
             }
         }
     }

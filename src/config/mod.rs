@@ -116,9 +116,8 @@ pub struct ModeConfig {
 
 /// All WM configuration in one place.
 ///
-/// Built by [`init_config`] and consumed by `init_globals` in `backend::x11::startup`.
-/// Fields are public so `init_globals` can move them into `Globals` without
-/// extra getters.
+/// Built by [`init_config`] and converted atomically into runtime configuration
+/// by `globals::apply_config`.
 #[derive(Debug, Clone)]
 pub struct Config {
     // --- Window geometry ---

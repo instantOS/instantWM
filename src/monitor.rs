@@ -162,53 +162,62 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
+#[derive(Clone, Copy, Debug)]
+struct ClientTransferOutcome {
+    is_scratchpad: bool,
+    needs_arrange: bool,
+}
+
+fn transfer_client_model(
+    globals: &mut Globals,
+    win: WindowId,
+    target_mon: MonitorId,
+) -> Option<ClientTransferOutcome> {
+    let client = globals.clients.get(&win)?;
+    let is_scratchpad = client.is_scratchpad();
+    let target_tags = if is_scratchpad {
+        crate::types::TagMask::EMPTY
+    } else {
+        globals
+            .monitors
+            .get(target_mon)
+            .map(|m| m.selected_tags())
+            .unwrap_or(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY))
+    };
+    let target_tag_idx = globals
+        .monitors
+        .get(target_mon)
+        .and_then(|m| m.current_tag_number());
+
+    globals.detach(win);
+    globals.detach_z_order(win);
+    let client = globals.clients.get_mut(&win)?;
+    client.monitor_id = target_mon;
+    if !is_scratchpad {
+        client.set_tag_mask(target_tags);
+        client.reset_sticky(target_tag_idx);
+    }
+    let needs_arrange = !client.mode.is_floating();
+    globals.attach(win);
+    globals.attach_z_order_top(win);
+    Some(ClientTransferOutcome {
+        is_scratchpad,
+        needs_arrange,
+    })
+}
+
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     if ctx.core_mut().globals_mut().monitors.sel_idx() == target_mon {
         return;
     }
 
-    let (is_scratchpad, target_tags, target_tag_idx) = {
-        let client = match ctx.core().globals().clients.get(&win) {
-            Some(c) => c,
-            None => return,
-        };
-        let is_scratchpad = client.is_scratchpad();
-        let tags = if !is_scratchpad {
-            ctx.core()
-                .globals()
-                .monitors
-                .get(target_mon)
-                .map(|m| m.selected_tags())
-                .unwrap_or(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY))
-        } else {
-            crate::types::TagMask::EMPTY
-        };
-        let target_tag_idx = ctx
-            .core()
-            .globals()
-            .monitors
-            .get(target_mon)
-            .and_then(|m| m.current_tag_number());
-        (is_scratchpad, tags, target_tag_idx)
-    };
-
     if ctx.core_mut().globals_mut().clients.contains_key(&win) {
         unfocus_win(ctx, win, true);
     }
 
-    ctx.core_mut().globals_mut().detach(win);
-    ctx.core_mut().globals_mut().detach_z_order(win);
-
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
-        client.monitor_id = target_mon;
-        if !is_scratchpad {
-            client.set_tag_mask(target_tags);
-            client.reset_sticky(target_tag_idx);
-        }
-    }
-
-    ctx.core_mut().globals_mut().attach(win);
-    ctx.core_mut().globals_mut().attach_z_order_top(win);
+    let Some(outcome) = transfer_client_model(ctx.core_mut().globals_mut(), win, target_mon) else {
+        return;
+    };
     if let WmCtx::X11(x11) = ctx {
         crate::backend::x11::set_client_tag_prop(
             x11.core.globals(),
@@ -220,20 +229,11 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
     focus(ctx, None);
 
-    let needs_arrange = ctx
-        .core()
-        .globals()
-        .clients
-        .get(&win)
-        .map(|c| !c.mode.is_floating())
-        .unwrap_or(false);
-    if needs_arrange {
-        ctx.core_mut()
-            .globals_mut()
-            .queue_layout_for_all_monitors_urgent();
+    if outcome.needs_arrange {
+        ctx.core_mut().queue_layout_for_all_monitors_urgent();
     }
 
-    if is_scratchpad {
+    if outcome.is_scratchpad {
         handle_scratchpad_transfer(ctx, win, target_mon);
     }
 }
@@ -314,7 +314,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     focus(ctx, Some(c_win));
 
-    ctx.backend().raise_window_visual_only(c_win);
+    ctx.window_backend().raise_window_visual_only(c_win);
     ctx.warp_cursor_to_client(c_win);
 }
 
@@ -323,13 +323,13 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
 
     // Apply wildcard first as fallback
     if let Some(wildcard_cfg) = monitors_cfg.get("*") {
-        ctx.backend().set_monitor_config("*", wildcard_cfg);
+        ctx.output_backend().set_monitor_config("*", wildcard_cfg);
     }
 
     // Apply specific configs
     for (name, config) in monitors_cfg {
         if name != "*" {
-            ctx.backend().set_monitor_config(&name, &config);
+            ctx.output_backend().set_monitor_config(&name, &config);
         }
     }
 
@@ -338,7 +338,7 @@ pub fn apply_monitor_config(ctx: &mut WmCtx) {
 
 pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     // Try the backend's get_outputs first (uses XRandR on X11, native on Wayland)
-    let outputs = ctx.backend().get_outputs();
+    let outputs = ctx.output_backend().get_outputs();
     if outputs.len() > 1 || (outputs.len() == 1 && outputs[0].name != "X11") {
         return sync_monitors_from_outputs(ctx, outputs);
     }
@@ -489,9 +489,9 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     if !changed {
         return;
     }
-    ctx.core_mut().globals_mut().queue_layout_for_all_monitors();
+    ctx.core_mut().queue_layout_for_all_monitors();
     ctx.core_mut().bar.mark_dirty();
-    if let Some(ptr) = ctx.backend().pointer_location()
+    if let Some(ptr) = ctx.pointer_backend().pointer_location()
         && let Some(m) = ctx.core().globals().monitors.find_monitor_at_pointer(ptr)
     {
         ctx.core_mut().globals_mut().monitors.set_sel_idx(m);
@@ -784,7 +784,5 @@ pub fn reorder_client(ctx: &mut WmCtx, win: WindowId, direction: VerticalDirecti
     }
 
     focus(ctx, Some(win));
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }

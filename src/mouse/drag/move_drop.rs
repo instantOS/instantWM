@@ -388,7 +388,7 @@ pub fn handle_bar_drop(
     grab_start_rect: Rect,
     pointer_override: Option<Point>,
 ) {
-    let Some(root) = pointer_override.or_else(|| ctx.backend().pointer_location()) else {
+    let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
         return;
     };
     if !point_is_on_bar(ctx.core().globals(), root) {
@@ -535,7 +535,7 @@ pub fn complete_move_drop(
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
 ) {
-    let pointer = pointer_override.or_else(|| ctx.backend().pointer_location());
+    let pointer = pointer_override.or_else(|| ctx.pointer_backend().pointer_location());
     let edge =
         edge_hint.or_else(|| pointer.and_then(|root| check_edge_snap(ctx.core().globals(), root)));
     let handled_edge = pointer

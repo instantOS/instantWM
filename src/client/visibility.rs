@@ -1,8 +1,35 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
-use crate::backend::BackendOps;
+use crate::backend::WindowOps;
 use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::types::WindowId;
+use crate::types::{ClientMode, Rect, WindowId};
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct VisibilityEntry {
+    pub win: WindowId,
+    pub rect: Rect,
+    pub border_width: i32,
+    pub mode: ClientMode,
+    pub visible: bool,
+}
+
+/// Snapshot visibility policy without performing backend I/O.
+pub(crate) fn visibility_plan(globals: &crate::globals::Globals) -> Vec<VisibilityEntry> {
+    let mut plan = Vec::new();
+    for mon in globals.monitors_iter_all() {
+        let selected_tags = mon.selected_tags();
+        for (win, client) in mon.iter_clients(globals.clients.map()) {
+            plan.push(VisibilityEntry {
+                win,
+                rect: client.geo,
+                border_width: client.border_width,
+                mode: client.mode,
+                visible: client.is_visible(selected_tags),
+            });
+        }
+    }
+    plan
+}
 
 // ---------------------------------------------------------------------------
 // Recursive show/hide pass
@@ -28,21 +55,11 @@ pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
-    let mut operations: Vec<(WindowId, bool)> = Vec::new();
-
-    for mon in ctx.core.globals().monitors_iter_all() {
-        let selected_tags = mon.selected_tags();
-        for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
-            let is_visible = c.is_visible(selected_tags);
-            operations.push((win, is_visible));
-        }
-    }
-
-    for (win, is_visible) in operations {
-        if is_visible {
-            ctx.wayland.map_window(win);
+    for entry in visibility_plan(ctx.core.globals()) {
+        if entry.visible {
+            ctx.wayland.map_window(entry.win);
         } else {
-            ctx.wayland.unmap_window(win);
+            ctx.wayland.unmap_window(entry.win);
         }
     }
 }
@@ -63,9 +80,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
     }
 
     crate::focus::focus(ctx, Some(win));
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(monitor_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
@@ -115,9 +130,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         .monitor(monitor_id)
         .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win));
     crate::focus::focus(ctx, snext);
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(monitor_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
 fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {

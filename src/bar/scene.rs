@@ -112,7 +112,15 @@ pub(crate) fn build_monitor_snapshots(
             Some(status_text)
         }
     };
-    let monitors: Vec<Monitor> = core.globals().monitors_iter_all().cloned().collect();
+    let selected_status_items = if include_status_items {
+        status_text
+            .as_deref()
+            .map(|text| core.bar.status_items_for_text(text).to_vec())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let monitor_ids: Vec<MonitorId> = core.globals().monitors_iter().map(|(id, _)| id).collect();
     let mut monitor_stats: HashMap<MonitorId, crate::bar::model::ClientBarStats> = HashMap::new();
     for client in core.globals().clients.values() {
         let entry = monitor_stats.entry(client.monitor_id).or_default();
@@ -123,8 +131,11 @@ pub(crate) fn build_monitor_snapshots(
     }
 
     let mut snapshots = Vec::new();
-    for mon in monitors {
-        if !crate::bar::monitor_bar_visible(core.globals(), &mon) {
+    for monitor_id in monitor_ids {
+        let Some(mon) = core.globals().monitor(monitor_id) else {
+            continue;
+        };
+        if !crate::bar::monitor_bar_visible(core.globals(), mon) {
             continue;
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
@@ -139,10 +150,12 @@ pub(crate) fn build_monitor_snapshots(
             Gesture::None
         };
         let mut tags = Vec::new();
-        for tag in crate::tags::bar::visible_tags(core, &mon, stats.occupied_tags) {
+        for tag in
+            crate::tags::bar::visible_tags(core.globals(), core.bar, mon, stats.occupied_tags)
+        {
             let is_hover = gesture == Gesture::Tag(tag.slot);
             let mut scheme = core.globals().tag_scheme(
-                &mon,
+                mon,
                 tag.tag_index as u32,
                 stats.occupied_tags,
                 stats.urgent_tags,
@@ -191,11 +204,8 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             None
         };
-        let status_items = if include_status_items {
-            status_text
-                .as_deref()
-                .map(|text| core.bar.status_items_for_text(text).to_vec())
-                .unwrap_or_default()
+        let status_items = if is_selected_monitor {
+            selected_status_items.clone()
         } else {
             Vec::new()
         };
@@ -220,7 +230,7 @@ pub(crate) fn build_monitor_snapshots(
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: if crate::overview::is_active_on_monitor(core.globals(), &mon) {
+            layout_symbol: if crate::overview::is_active_on_monitor(core.globals(), mon) {
                 "OVR".to_string()
             } else {
                 mon.layouts_for_mask(selected_tags).symbol().to_string()

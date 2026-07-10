@@ -145,11 +145,9 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     }
 
     let selmon_id = ctx.core().globals().selected_monitor_id();
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(selmon_id);
+    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 
     // Raise so the window is immediately visible on the new monitor.
     ctx.raise_client(win);
-    ctx.backend().flush();
+    ctx.window_backend().flush();
 }

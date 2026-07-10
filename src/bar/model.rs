@@ -116,7 +116,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
 
     // ── Tag ranges ────────────────────────────────────────────────────────
     let occupied = mon.occupied_tags(core.globals().clients.map());
-    let visible = crate::tags::bar::visible_tags(core, mon, occupied);
+    let visible = crate::tags::bar::visible_tags(core.globals(), core.bar, mon, occupied);
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
     let mut acc = mon.startmenu_size;
     for tag in &visible {
