@@ -504,24 +504,22 @@ fn take_matching_monitor(
     output: &BackendOutputInfo,
 ) -> Option<(usize, Monitor)> {
     if !output.name.is_empty() {
-        for j in 0..pool.len() {
-            if let Some(m) = pool[j].as_ref()
-                && m.name == output.name
-            {
-                let mon = pool[j].take().expect("checked");
-                return Some((j, mon));
-            }
+        if let Some((j, slot)) = pool
+            .iter_mut()
+            .enumerate()
+            .find(|(_, slot)| slot.as_ref().is_some_and(|m| m.name == output.name))
+        {
+            return Some((j, slot.take().unwrap()));
         }
     }
-    if new_id.index() < pool.len()
-        && let Some(m) = pool[new_id.index()].as_ref()
+    if let Some(slot) = pool.get_mut(new_id.index())
+        && let Some(m) = slot.as_ref()
     {
         let xin = output.name.starts_with("XINERAMA-");
         let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
         let both_empty = m.name.is_empty() && output.name.is_empty();
         if (xin && (m.name.is_empty() || m.name == output.name)) || slot_unlabeled || both_empty {
-            let mon = pool[new_id.index()].take().expect("checked");
-            return Some((new_id.index(), mon));
+            return Some((new_id.index(), slot.take().unwrap()));
         }
     }
     None

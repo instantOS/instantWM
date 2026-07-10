@@ -825,16 +825,12 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::moni
     let num_tags = cfg.num_tags;
     let mut template = Vec::with_capacity(num_tags);
     for i in 0..num_tags {
-        let name = if i < cfg.tag_names.len() {
-            cfg.tag_names[i].clone()
-        } else {
-            format!("{}", i + 1)
-        };
-        let alt_name = if i < cfg.tag_alt_names.len() {
-            cfg.tag_alt_names[i].clone()
-        } else {
-            String::new()
-        };
+        let name = cfg
+            .tag_names
+            .get(i)
+            .cloned()
+            .unwrap_or_else(|| format!("{}", i + 1));
+        let alt_name = cfg.tag_alt_names.get(i).cloned().unwrap_or_default();
         template.push(crate::types::monitor::TagNames { name, alt_name });
     }
     template
