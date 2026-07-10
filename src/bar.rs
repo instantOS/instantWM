@@ -9,7 +9,6 @@ pub mod wayland;
 pub use renderer::reset_bar_common;
 
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::globals::Globals;
 use crate::types::*;
 
 /// Bar-owned runtime data shared by both render backends.
@@ -196,14 +195,14 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = if crate::overview::is_active_on_monitor(core.globals(), m) {
+        let symbol = if crate::overview::is_active_on_monitor(core.model(), m) {
             "OVR"
         } else {
             m.layouts_for_mask(m.selected_tags()).symbol()
         };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
-    width + core.globals().cfg.derived.bar_horizontal_padding
+    width + core.config().derived.bar_horizontal_padding
 }
 
 /// Check whether a root-space y-coordinate falls within the bar's vertical span.
@@ -221,13 +220,13 @@ pub fn y_in_guard_band(mon: &Monitor, root_y: i32) -> bool {
 }
 
 /// Check whether the bar is visible on `mon` and `root_y` falls within it.
-pub fn monitor_bar_contains_y(globals: &Globals, mon: &Monitor, root_y: i32) -> bool {
-    monitor_bar_visible(globals, mon) && y_in_bar(mon, root_y)
+pub fn monitor_bar_contains_y(model: &crate::model::WmModel, mon: &Monitor, root_y: i32) -> bool {
+    monitor_bar_visible(model, mon) && y_in_bar(mon, root_y)
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
-    if ctx.core().globals().selected_monitor().gesture != Gesture::None {
-        reset_bar_common(ctx.core_mut().globals_mut());
+    if ctx.core().model().selected_monitor().gesture != Gesture::None {
+        reset_bar_common(ctx.core_mut().model_mut());
         ctx.request_bar_update();
     }
 }
@@ -238,13 +237,13 @@ pub fn resolve_bar_position_at_root(
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
     let rect = crate::mouse::pointer::point_rect(root);
-    let monitor_id = crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &rect)?;
-    if sync_selected_monitor && monitor_id != core.globals().selected_monitor_id() {
-        core.globals_mut().set_selected_monitor(monitor_id);
+    let monitor_id = crate::types::find_monitor_by_rect(core.model().monitors.monitors(), &rect)?;
+    if sync_selected_monitor && monitor_id != core.model().selected_monitor_id() {
+        core.model_mut().set_selected_monitor(monitor_id);
     }
 
-    let mon = core.globals().monitor(monitor_id)?;
-    if !monitor_bar_contains_y(core.globals(), mon, root.y) {
+    let mon = core.model().monitor(monitor_id)?;
+    if !monitor_bar_contains_y(core.model(), mon, root.y) {
         return None;
     }
 
@@ -252,15 +251,18 @@ pub fn resolve_bar_position_at_root(
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
 }
 
-pub(crate) fn monitor_has_real_fullscreen(globals: &Globals, monitor: &Monitor) -> bool {
+pub(crate) fn monitor_has_real_fullscreen(
+    model: &crate::model::WmModel,
+    monitor: &Monitor,
+) -> bool {
     let selected_tags = monitor.selected_tags();
     monitor
-        .iter_clients(globals.clients.map())
+        .iter_clients(model.clients.map())
         .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
 }
 
-pub(crate) fn monitor_bar_visible(globals: &Globals, monitor: &Monitor) -> bool {
-    monitor.shows_bar() && !monitor_has_real_fullscreen(globals, monitor)
+pub(crate) fn monitor_bar_visible(model: &crate::model::WmModel, monitor: &Monitor) -> bool {
+    monitor.shows_bar() && !monitor_has_real_fullscreen(model, monitor)
 }
 
 #[cfg(test)]
@@ -295,18 +297,18 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        reset_bar_common(ctx.core_mut().globals_mut());
+        reset_bar_common(ctx.core_mut().model_mut());
         ctx.request_bar_update();
     }
 
-    let old_gesture = ctx.core().globals().selected_monitor().gesture;
+    let old_gesture = ctx.core().model().selected_monitor().gesture;
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
         pos.to_gesture()
     };
     if old_gesture != gesture {
-        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
+        ctx.core_mut().model_mut().selected_monitor_mut().gesture = gesture;
         ctx.request_bar_update();
     }
 
@@ -314,7 +316,7 @@ pub fn update_hover(
 }
 
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
-    if crate::overview::is_active(ctx.core().globals()) {
+    if crate::overview::is_active(ctx.core().model()) {
         ctx.reset_mode();
         ctx.request_bar_update();
         return;
@@ -328,7 +330,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     }
 
     let (monitor_id, work_x, bar_y) = {
-        let monitor = ctx.core().globals().selected_monitor();
+        let monitor = ctx.core().model().selected_monitor();
         (monitor.id(), monitor.work_rect.x, monitor.bar_y)
     };
     let local_x = root.x - work_x;
@@ -350,7 +352,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         local_x,
         root.y - bar_y,
         button_code,
-        ctx.core().globals().cfg.derived.bar_height,
+        ctx.core().config().derived.bar_height,
         clean_state,
     );
 }

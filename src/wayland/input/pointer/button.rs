@@ -271,13 +271,13 @@ fn focus_button_target(
 
 fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
     let core = crate::contexts::CoreCtx::new(
-        &mut wm.g,
+        &mut wm.core,
         &mut wm.work,
         &mut wm.running,
         &mut wm.bar,
         &mut wm.focus,
     );
-    let mon = core.globals().selected_monitor().clone();
+    let mon = core.model().selected_monitor().clone();
     let local_x = root_x - mon.work_rect.x;
 
     let should_close = match &mut wm.backend {
@@ -318,18 +318,19 @@ fn handle_button_release(
         forward_button(state, pointer_handle, button);
     }
 
-    if wm.g.drag.tag.active && button.wm_button == Some(wm.g.drag.tag.button) {
+    if wm.core.drag.tag.active && button.wm_button == Some(wm.core.drag.tag.button) {
         let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
         let mut ctx = wm.ctx();
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
 
-    if wm.g.drag.interactive.active && button.wm_button == Some(wm.g.drag.interactive.button) {
+    if wm.core.drag.interactive.active && button.wm_button == Some(wm.core.drag.interactive.button)
+    {
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_finish(&mut ctx);
     }
 
-    if wm.g.drag.gesture.active
+    if wm.core.drag.gesture.active
         && let Some(btn) = button.wm_button
     {
         let mut ctx = wm.ctx();
@@ -352,9 +353,9 @@ fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
 }
 
 fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
-    (wm.g.drag.interactive.active && released_btn == Some(wm.g.drag.interactive.button))
-        || (wm.g.drag.tag.active && released_btn == Some(wm.g.drag.tag.button))
-        || (wm.g.drag.gesture.active && released_btn == Some(wm.g.drag.gesture.button))
+    (wm.core.drag.interactive.active && released_btn == Some(wm.core.drag.interactive.button))
+        || (wm.core.drag.tag.active && released_btn == Some(wm.core.drag.tag.button))
+        || (wm.core.drag.gesture.active && released_btn == Some(wm.core.drag.gesture.button))
 }
 
 /// Find the window under the pointer.

@@ -30,7 +30,7 @@ pub(crate) fn run_matching(
     policy: MatchPolicy,
 ) -> bool {
     let mut matched = false;
-    let buttons = ctx.core().globals().cfg.bindings.buttons.clone();
+    let buttons = ctx.core().config().bindings.buttons.clone();
     for binding in &buttons {
         if !binding.matches(event.target) || binding.button != event.button {
             continue;

@@ -113,8 +113,8 @@ pub fn handle_resize(
     state.space.map_output(output, output_loc);
     layer_map_for_output(output).arrange();
 
-    wm.g.cfg.derived.display.width = safe_w;
-    wm.g.cfg.derived.display.height = safe_h;
+    wm.core.config.derived.display.width = safe_w;
+    wm.core.config.derived.display.height = safe_h;
     refresh_monitor_layout(&mut wm.ctx());
     // `refresh_monitor_layout` resets each monitor's `available_rect` back to
     // its full output rect, so re-apply the layer-shell exclusive zones.

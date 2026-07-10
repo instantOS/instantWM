@@ -10,7 +10,7 @@ use calloop::generic::Generic;
 use calloop::timer::{TimeoutAction, Timer};
 use calloop::{Interest, Mode, PostAction};
 
-use crate::globals::LayoutWorkTargets;
+use crate::core_state::LayoutWorkTargets;
 use crate::wm::Wm;
 
 // ── Event-loop tick helpers ─────────────────────────────────────────────
@@ -96,7 +96,7 @@ pub fn process_pending_work(wm: &mut Wm, options: TickOptions) -> PendingWorkRes
 }
 
 fn apply_layout_targets(wm: &mut Wm, targets: LayoutWorkTargets) -> bool {
-    if wm.g.clients.is_empty() {
+    if wm.core.model.clients.is_empty() {
         return false;
     }
 
@@ -154,7 +154,7 @@ pub fn init_keyboard_layout(wm: &mut Wm) {
 
 /// Spawn the configured status bar command, or the built-in default.
 pub fn spawn_status_bar(wm: &Wm) {
-    if let Some(ref cmd) = wm.g.cfg.status_command {
+    if let Some(ref cmd) = wm.core.config.status_command {
         crate::bar::status::spawn_status_command(cmd);
     } else {
         crate::bar::status::spawn_default_status();
@@ -168,8 +168,8 @@ pub fn spawn_status_bar(wm: &Wm) {
 /// [`late_init_x11`].
 pub fn run_startup_commands(wm: &Wm) {
     crate::startup::autostart::run_autostart();
-    crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec_once);
-    crate::startup::autostart::run_exec_commands(&wm.g.cfg.exec);
+    crate::startup::autostart::run_exec_commands(&wm.core.config.exec_once);
+    crate::startup::autostart::run_exec_commands(&wm.core.config.exec);
 }
 
 /// X11 late startup sequence.

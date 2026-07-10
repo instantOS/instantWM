@@ -26,15 +26,15 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     }
 
     let (action, transient) = resolve_key_action(
-        ctx.core().globals().cfg.bindings.keys.as_slice(),
+        ctx.core().config().bindings.keys.as_slice(),
         ctx.core()
-            .globals()
-            .cfg
+            .state()
+            .config
             .bindings
             .desktop_keybinds
             .as_slice(),
-        &ctx.core().globals().cfg.bindings.modes,
-        ctx.core().globals().selected_win(),
+        &ctx.core().config().bindings.modes,
+        ctx.core().model().selected_win(),
         &current_mode,
         keysym,
         cleaned,
@@ -123,9 +123,9 @@ fn resolve_key_action(
 
 pub fn up_press(ctx: &mut WmCtx) {
     let (selected_window, is_floating) = {
-        let mon = ctx.core().globals().selected_monitor();
+        let mon = ctx.core().model().selected_monitor();
         let sel = mon.sel;
-        let is_floating = sel.is_some_and(|w| ctx.core().globals().clients.is_floating(w));
+        let is_floating = sel.is_some_and(|w| ctx.core().model().clients.is_floating(w));
         (sel, is_floating)
     };
 
@@ -149,12 +149,13 @@ pub fn down_press(ctx: &mut WmCtx) {
     }
 
     let (selected_window, snap_status, is_floating) = {
-        let mon = ctx.core().globals().selected_monitor();
+        let mon = ctx.core().model().selected_monitor();
         let sel = mon.sel;
         let (snap_status, is_floating) = sel
             .and_then(|w| {
                 ctx.core()
-                    .globals()
+                    .state()
+                    .model
                     .clients
                     .get(&w)
                     .map(|c| (c.snap_status, c.mode.is_floating()))
@@ -180,20 +181,20 @@ pub fn down_press(ctx: &mut WmCtx) {
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = crate::overview::is_active(ctx.core().globals());
+    let is_overview = crate::overview::is_active(ctx.core().model());
 
     if is_overview {
         direction_focus(ctx, VerticalDirection::Up.into());
         return;
     }
 
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.core().globals().selected_win() {
+        if let Some(win) = ctx.core().model().selected_win() {
             if let WmCtx::X11(x11_ctx) = ctx {
                 crate::backend::x11::focus::refresh_border_color_x11(
-                    x11_ctx.core.globals(),
+                    x11_ctx.core.state(),
                     &x11_ctx.x11,
                     x11_ctx.x11_runtime,
                     win,
@@ -209,17 +210,17 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
-    let is_overview = crate::overview::is_active(ctx.core().globals());
+    let is_overview = crate::overview::is_active(ctx.core().model());
 
     if is_overview {
         direction_focus(ctx, VerticalDirection::Down.into());
         return;
     }
 
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        if let Some(win) = ctx.core().globals().selected_win() {
+        if let Some(win) = ctx.core().model().selected_win() {
             change_snap(ctx, win, Direction::Down);
         }
         return;
@@ -229,20 +230,21 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 }
 
 pub fn space_toggle(ctx: &mut WmCtx) {
-    if crate::overview::is_active(ctx.core().globals()) {
+    if crate::overview::is_active(ctx.core().model()) {
         return;
     }
 
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
 
     if !has_tiling {
-        let Some(win) = ctx.core().globals().selected_win() else {
+        let Some(win) = ctx.core().model().selected_win() else {
             return;
         };
 
         let snap_status = {
             ctx.core()
-                .globals()
+                .state()
+                .model
                 .clients
                 .get(&win)
                 .map(|c| c.snap_status)
@@ -252,18 +254,18 @@ pub fn space_toggle(ctx: &mut WmCtx) {
         if snap_status != SnapPosition::None {
             reset_snap(ctx, win);
         } else {
-            let border_width = ctx.core().globals().cfg.window.border_width_px;
+            let border_width = ctx.core().config().window.border_width_px;
             ctx.set_border(win, border_width);
             if let WmCtx::X11(x11) = ctx {
                 x11.x11.set_border_width(win, border_width);
             }
 
-            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
                 client.save_floating_geometry();
                 client.snap_status = SnapPosition::Maximized;
             }
 
-            let selmon_id = ctx.core().globals().selected_monitor_id();
+            let selmon_id = ctx.core().model().selected_monitor_id();
             ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
         }
     } else {

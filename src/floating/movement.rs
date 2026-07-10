@@ -6,12 +6,12 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo, border_width) = match ctx.core().globals().clients.get(&win) {
+    let (is_floating, geo, border_width) = match ctx.core().model().clients.get(&win) {
         Some(c) => (c.mode.is_floating(), c.geo, c.border_width),
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().model()) && !is_floating {
         return;
     }
 
@@ -20,7 +20,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let mut new_x = geo.x + dx;
     let mut new_y = geo.y + dy;
 
-    let mon_rect = ctx.core().globals().selected_monitor().monitor_rect;
+    let mon_rect = ctx.core().model().selected_monitor().monitor_rect;
 
     new_x = new_x.max(mon_rect.x);
     new_y = new_y.max(mon_rect.y);
@@ -45,14 +45,14 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let (is_floating, geo) = match ctx.core().globals().clients.get(&win) {
+    let (is_floating, geo) = match ctx.core().model().clients.get(&win) {
         Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
 
     super::snap::reset_snap(ctx, win);
 
-    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().model()) && !is_floating {
         return;
     }
 
@@ -78,29 +78,30 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     if ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .is_some_and(|c| c.is_edge_scratchpad())
     {
         return;
     }
-    let (geo, is_floating) = match ctx.core().globals().clients.get(&win) {
+    let (geo, is_floating) = match ctx.core().model().clients.get(&win) {
         Some(c) => (c.geo, c.mode.is_floating()),
         None => return,
     };
 
-    if super::helpers::has_tiling_layout(ctx.core().globals()) && !is_floating {
+    if super::helpers::has_tiling_layout(ctx.core().model()) && !is_floating {
         return;
     }
 
-    let bar_height = ctx.core().globals().cfg.derived.bar_height;
+    let bar_height = ctx.core().config().derived.bar_height;
     let (work_rect, mon_rect, _showbar) = {
-        let mon = ctx.core().globals().selected_monitor();
+        let mon = ctx.core().model().selected_monitor();
         (mon.work_rect, mon.monitor_rect, mon.selected_tags())
     };
     let showbar = {
-        let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
+        let mon = ctx.core_mut().model_mut().selected_monitor_mut();
         mon.pertag_state().showbar
     };
 

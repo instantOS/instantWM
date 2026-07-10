@@ -7,7 +7,7 @@ use crate::layouts::arrange;
 use crate::types::*;
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(rect) = ctx.core().globals().clients.effective_float_geo(win) {
+    if let Some(rect) = ctx.core().model().clients.effective_float_geo(win) {
         ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
     }
 }
@@ -32,20 +32,20 @@ impl WindowModeChange {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct WindowModePlan {
-    change: WindowModeChange,
-    border_width: i32,
-    clear_backend_border: bool,
-    restore_geometry: Option<Rect>,
+pub(crate) struct WindowModePlan {
+    pub(crate) change: WindowModeChange,
+    pub(crate) border_width: i32,
+    pub(crate) clear_backend_border: bool,
+    pub(crate) restore_geometry: Option<Rect>,
 }
 
-fn update_window_mode(
-    globals: &mut crate::globals::Globals,
+pub(crate) fn update_window_mode(
+    clients: &mut crate::client::manager::ClientManager,
     win: WindowId,
     mode: BaseClientMode,
 ) -> Option<WindowModePlan> {
-    let is_sole_client = globals.clients.len() <= 1;
-    let client = globals.clients.get_mut(&win)?;
+    let is_sole_client = clients.len() <= 1;
+    let client = clients.get_mut(&win)?;
     match mode {
         BaseClientMode::Floating => {
             client.mode = ClientMode::Floating;
@@ -77,7 +77,7 @@ fn update_window_mode(
 ///
 /// Handles border updates and geometry changes but not caller-owned animation.
 pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> WindowModeChange {
-    let Some(plan) = update_window_mode(ctx.core_mut().globals_mut(), win, mode) else {
+    let Some(plan) = update_window_mode(&mut ctx.core_mut().model_mut().clients, win, mode) else {
         return WindowModeChange::MissingClient;
     };
 
@@ -111,17 +111,18 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = ctx.core().model().selected_monitor();
     let selected_window = match mon.sel {
         Some(sel)
             if !ctx
                 .core()
-                .globals()
+                .state()
+                .model
                 .clients
                 .get(&sel)
                 .is_some_and(|c| c.is_edge_scratchpad()) =>
         {
-            if let Some(c) = ctx.core().globals().clients.get(&sel)
+            if let Some(c) = ctx.core().model().clients.get(&sel)
                 && c.mode.is_true_fullscreen()
             {
                 return;
@@ -135,7 +136,8 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let (is_floating, is_fixed) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| (c.mode.is_floating(), c.is_fixed_size))
@@ -149,7 +151,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     // Animate when going to floating mode
     if mode_change.should_animate_float_restore()
-        && let Some(saved_geo) = ctx.core().globals().clients.effective_float_geo(win)
+        && let Some(saved_geo) = ctx.core().model().clients.effective_float_geo(win)
     {
         ctx.move_resize(
             win,
@@ -158,7 +160,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         );
     }
 
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let selmon_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 }
 
@@ -176,9 +178,9 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// only applied on X11, since Wayland geometry is driven by the compositor
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
-    let maximized_win = ctx.core().globals().selected_monitor().maximized;
-    let selected_window = ctx.core().globals().selected_win();
-    let animated = ctx.core().globals().behavior.animated;
+    let maximized_win = ctx.core().model().selected_monitor().maximized;
+    let selected_window = ctx.core().model().selected_win();
+    let animated = ctx.core().behavior().animated;
 
     let enter = maximized_win.is_none();
     let win = if enter {
@@ -188,11 +190,11 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     };
     let Some(win) = win else { return };
 
-    let outcome = crate::client::mode::set_maximized(ctx.core_mut().globals_mut(), win, enter);
+    let outcome = crate::client::mode::set_maximized(ctx.core_mut().model_mut(), win, enter);
 
     if let Some(crate::client::mode::MaximizedOutcome::Exited { base }) = outcome
         && (base == BaseClientMode::Floating
-            || !super::helpers::has_tiling_layout(ctx.core().globals()))
+            || !super::helpers::has_tiling_layout(ctx.core().model()))
     {
         restore_floating_geometry(ctx, win);
         if let WmCtx::X11(x11) = ctx {
@@ -202,17 +204,199 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 
     // Run the layout pass.  Disable animations temporarily so the
     // maximize/restore is instantaneous rather than sliding.
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let selmon_id = ctx.core().model().selected_monitor_id();
     if animated {
-        ctx.core_mut().globals_mut().behavior.animated = false;
+        ctx.core_mut().behavior_mut().animated = false;
         arrange(ctx, Some(selmon_id));
-        ctx.core_mut().globals_mut().behavior.animated = true;
+        ctx.core_mut().behavior_mut().animated = true;
     } else {
         arrange(ctx, Some(selmon_id));
     }
 
     // Raise the newly maximized window above everything else.
-    if ctx.core().globals().selected_monitor().maximized == Some(win) {
+    if ctx.core().model().selected_monitor().maximized == Some(win) {
         ctx.window_backend().raise_window_visual_only(win);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WindowModeChange;
+    use super::update_window_mode;
+    use crate::client::manager::ClientManager;
+    use crate::types::*;
+
+    fn make_client(win: WindowId, tags: TagMask, mode: ClientMode) -> Client {
+        Client {
+            win,
+            tags,
+            monitor_id: MonitorId(0),
+            mode,
+            geo: Rect {
+                x: 0,
+                y: 0,
+                w: 100,
+                h: 100,
+            },
+            float_geo: Rect {
+                x: 10,
+                y: 10,
+                w: 200,
+                h: 200,
+            },
+            border_width: 2,
+            old_border_width: 4,
+            ..Client::default()
+        }
+    }
+
+    fn make_client_manager(clients: Vec<Client>) -> ClientManager {
+        let mut mgr = ClientManager::new();
+        for c in clients {
+            mgr.insert(c.win, c);
+        }
+        mgr
+    }
+
+    #[test]
+    fn mode_change_to_floating_returns_plan() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        let mut clients = make_client_manager(vec![make_client(win, tag, ClientMode::Tiling)]);
+
+        let plan = update_window_mode(&mut clients, win, BaseClientMode::Floating);
+        assert!(plan.is_some());
+        let p = plan.unwrap();
+        assert_eq!(
+            p.change,
+            WindowModeChange::ChangedToFloating {
+                restored_geometry: true
+            }
+        );
+        assert_eq!(p.border_width, 4); // restored from old_border_width
+        assert!(p.clear_backend_border);
+        assert_eq!(
+            p.restore_geometry,
+            Some(Rect {
+                x: 10,
+                y: 10,
+                w: 200,
+                h: 200
+            })
+        );
+
+        // Check model state
+        let client = clients.get(&win).unwrap();
+        assert_eq!(client.mode, ClientMode::Floating);
+        assert_eq!(client.border_width, 4);
+    }
+
+    #[test]
+    fn mode_change_to_tiling_returns_plan() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        let mut clients = make_client_manager(vec![make_client(win, tag, ClientMode::Floating)]);
+
+        let plan = update_window_mode(&mut clients, win, BaseClientMode::Tiling);
+        assert!(plan.is_some());
+        let p = plan.unwrap();
+        assert_eq!(p.change, WindowModeChange::ChangedToTiling);
+        assert_eq!(p.border_width, 0);
+        assert!(p.clear_backend_border);
+
+        // Check model state
+        let client = clients.get(&win).unwrap();
+        assert_eq!(client.mode, ClientMode::Tiling);
+        assert_eq!(
+            client.float_geo,
+            Rect {
+                x: 0,
+                y: 0,
+                w: 100,
+                h: 100
+            }
+        ); // saved from geo
+    }
+
+    #[test]
+    fn mode_change_missing_client_returns_none() {
+        let mut clients = ClientManager::new();
+        let plan = update_window_mode(&mut clients, WindowId(99), BaseClientMode::Floating);
+        assert!(plan.is_none());
+    }
+
+    #[test]
+    fn mode_change_to_floating_from_floating_is_idempotent() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        let mut client = make_client(win, tag, ClientMode::Floating);
+        client.float_geo = Rect {
+            x: 20,
+            y: 20,
+            w: 300,
+            h: 300,
+        };
+        let mut clients = make_client_manager(vec![client]);
+
+        let plan = update_window_mode(&mut clients, win, BaseClientMode::Floating);
+        assert!(plan.is_some());
+        let p = plan.unwrap();
+        assert_eq!(
+            p.change,
+            WindowModeChange::ChangedToFloating {
+                restored_geometry: true
+            }
+        );
+
+        let client = clients.get(&win).unwrap();
+        assert_eq!(client.mode, ClientMode::Floating);
+    }
+
+    #[test]
+    fn mode_change_to_floating_with_no_saved_float_geo() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        let mut client = make_client(win, tag, ClientMode::Tiling);
+        // float_geo is zero (default) — should fall back to current geo
+        client.float_geo = Rect::default();
+        let mut clients = make_client_manager(vec![client]);
+
+        let plan = update_window_mode(&mut clients, win, BaseClientMode::Floating);
+        assert!(plan.is_some());
+        let p = plan.unwrap();
+        assert_eq!(
+            p.change,
+            WindowModeChange::ChangedToFloating {
+                restored_geometry: true
+            }
+        );
+        assert_eq!(
+            p.restore_geometry,
+            Some(Rect {
+                x: 0,
+                y: 0,
+                w: 100,
+                h: 100
+            })
+        );
+    }
+
+    #[test]
+    fn mode_change_sole_client_tiling_clears_border() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        let mut client = make_client(win, tag, ClientMode::Floating);
+        client.snap_status = SnapPosition::None;
+        client.border_width = 2;
+        client.old_border_width = 2;
+        let mut clients = make_client_manager(vec![client]);
+
+        let plan = update_window_mode(&mut clients, win, BaseClientMode::Tiling);
+        assert!(plan.is_some());
+        let p = plan.unwrap();
+        assert!(p.clear_backend_border);
+        // With only one client, border width should be zeroed
+        let client = clients.get(&win).unwrap();
+        assert_eq!(client.border_width, 0);
     }
 }

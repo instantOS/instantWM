@@ -135,7 +135,7 @@ pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
     for update in result.monitor_updates {
         core.bar
             .replace_hit_cache(update.monitor_id, update.output.hit_cache);
-        if let Some(mon) = core.globals_mut().monitor_mut(update.monitor_id) {
+        if let Some(mon) = core.model_mut().monitor_mut(update.monitor_id) {
             mon.bar_clients_width = update.output.bar_clients_width;
             mon.activeoffset = update.output.activeoffset;
         }

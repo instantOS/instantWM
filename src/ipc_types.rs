@@ -38,8 +38,8 @@ impl From<&str> for KeyboardLayout {
     }
 }
 
-impl From<crate::globals::KeyboardLayout> for KeyboardLayout {
-    fn from(l: crate::globals::KeyboardLayout) -> Self {
+impl From<crate::core_state::KeyboardLayout> for KeyboardLayout {
+    fn from(l: crate::core_state::KeyboardLayout) -> Self {
         Self {
             name: l.name,
             variant: l.variant,

@@ -62,7 +62,7 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     match cmd.spawn() {
         Ok(child) => {
             crate::client::record_pending_launch(
-                &mut wm.g,
+                &mut wm.core.pending_launches,
                 Some(child.id()),
                 Some(metadata.startup_id),
                 metadata.context,
@@ -95,9 +95,9 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> Response {
 
 pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
     let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
-    if let Some(win) = wm.ctx().core().globals().selected_win() {
+    if let Some(win) = wm.ctx().core().model().selected_win() {
         set_border_width(
-            &mut wm.ctx().core_mut().globals_mut().clients,
+            &mut wm.ctx().core_mut().model_mut().clients,
             win,
             val as i32,
         );
@@ -106,7 +106,7 @@ pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
 }
 
 pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
-    set_special_next(&mut wm.ctx().core_mut().globals_mut().behavior, mode);
+    set_special_next(&mut wm.ctx().core_mut().behavior_mut(), mode);
     Response::ok()
 }
 
@@ -127,9 +127,9 @@ pub fn get_status(wm: &Wm) -> Response {
         build_commit: env!("INSTANTWM_BUILD_COMMIT").to_string(),
         backend: backend.to_string(),
         running: wm.running,
-        monitors: wm.g.monitors.len(),
-        windows: wm.g.clients.len(),
-        tags: wm.g.tags.num_tags,
+        monitors: wm.core.model.monitors.len(),
+        windows: wm.core.model.clients.len(),
+        tags: wm.core.model.tags.num_tags,
     };
 
     Response::Status(info)

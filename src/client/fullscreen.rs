@@ -42,7 +42,8 @@ use crate::types::WindowId;
 pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
     let snapshot = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| (c.mode, c.monitor_id, c.old_geo));
@@ -64,14 +65,14 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
         }
 
         // Shared: save border width, flip client mode.
-        let outcome = crate::client::mode::set_fullscreen(ctx.core_mut().globals_mut(), win, true);
+        let outcome = crate::client::mode::set_fullscreen(ctx.core_mut().model_mut(), win, true);
 
         if let Some(crate::client::mode::FullscreenOutcome::Entered { was_floating }) = outcome
             && !mode.is_fake_fullscreen()
         {
             let mon_rect = ctx
                 .core()
-                .globals()
+                .state()
                 .monitor(monitor_id)
                 .map(|m| m.monitor_rect)
                 .unwrap_or_default();
@@ -107,12 +108,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             );
             crate::backend::x11::fullscreen::restore_border_x11(
                 &ctx_x11.x11,
-                ctx_x11.core.globals(),
+                ctx_x11.core.model(),
                 win,
             );
         }
 
-        crate::client::mode::set_fullscreen(ctx.core_mut().globals_mut(), win, false);
+        crate::client::mode::set_fullscreen(ctx.core_mut().model_mut(), win, false);
 
         // Shared: restore old geometry and re-layout.
         if !mode.is_fake_fullscreen() {
@@ -132,15 +133,15 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(ctx_x11) => crate::backend::x11::fullscreen::toggle_fake_fullscreen_x11(ctx_x11),
         WmCtx::Wayland(_) => {
-            if let Some(win) = ctx.core().globals().selected_win() {
-                if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            if let Some(win) = ctx.core().model().selected_win() {
+                if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
                     if client.mode.is_fake_fullscreen() {
                         client.mode = client.mode.restored();
                     } else {
                         client.mode = client.mode.as_fake_fullscreen();
                     }
                 }
-                let selmon_id = ctx.core().globals().selected_monitor_id();
+                let selmon_id = ctx.core().model().selected_monitor_id();
                 ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
             }
         }

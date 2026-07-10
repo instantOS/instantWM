@@ -79,7 +79,7 @@ impl ClientZOrder {
 pub struct Monitor {
     /// Position of this monitor in the global monitors Vec (its `MonitorId`).
     ///
-    /// This is set by `Globals` whenever the monitor is inserted or the vec is
+    /// This is set by `CoreState` whenever the monitor is inserted or the vec is
     /// compacted after a removal.  Code should read it via `Monitor::id()`
     /// rather than accessing the field directly.
     pub(crate) monitor_id: MonitorId,
@@ -217,9 +217,9 @@ impl Monitor {
         }
     }
 
-    /// Return the `MonitorId` (index into `Globals::monitors`) of this monitor.
+    /// Return the `MonitorId` (index into `CoreState::monitors`) of this monitor.
     ///
-    /// This is kept in sync by `Globals` whenever monitors are added or removed,
+    /// This is kept in sync by `CoreState` whenever monitors are added or removed,
     /// so it is always valid for the lifetime of the monitor.
     #[inline]
     pub fn id(&self) -> MonitorId {
@@ -640,7 +640,7 @@ impl Monitor {
     ) -> crate::types::BarPosition {
         use crate::bar::model::{build_fallback_hit_cache, hit_test};
 
-        let is_selmon = core.globals().selected_monitor().num == self.num;
+        let is_selmon = core.model().selected_monitor().num == self.num;
 
         // Prefer the pre-built hit cache populated during rendering; fall back to
         // computing a temporary one from the same utility functions.

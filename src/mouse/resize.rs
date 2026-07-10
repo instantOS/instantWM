@@ -66,10 +66,10 @@ pub(crate) fn compute_axis_resize(
 }
 
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
-    let Some(win) = ctx.core().globals().selected_win() else {
+    let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
-    let is_blocked = match ctx.core().globals().clients.get(&win) {
+    let is_blocked = match ctx.core().model().clients.get(&win) {
         Some(c) => c.mode.is_true_fullscreen(),
         None => return,
     };
@@ -83,7 +83,8 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
     let Some((geo, is_floating)) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| (c.geo, c.mode.is_floating()))
@@ -92,13 +93,13 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     };
 
     // Promote tiled windows to floating before starting the resize.
-    let has_tiling = ctx.core().globals().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
     if !is_floating && has_tiling {
         toggle_floating(ctx);
-        let selmon_id = ctx.core().globals().selected_monitor_id();
+        let selmon_id = ctx.core().model().selected_monitor_id();
         crate::layouts::arrange(ctx, Some(selmon_id));
         // Re-read geometry after the layout change.
-        let Some(new_geo) = ctx.core().globals().clients.geo(win) else {
+        let Some(new_geo) = ctx.core().model().clients.geo(win) else {
             return;
         };
 
@@ -151,7 +152,8 @@ fn begin_wayland_super_resize(
     // is moving.
     let bw = wl
         .core
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| c.border_width)
@@ -162,8 +164,8 @@ fn begin_wayland_super_resize(
     wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
 
     let root = Point::new(warp_x, warp_y);
-    wl.core.globals_mut().drag.interactive =
-        crate::globals::DragInteraction::new_resize(win, btn, dir, root, geo);
+    wl.core.drag_state_mut().interactive =
+        crate::core_state::DragInteraction::new_resize(win, btn, dir, root, geo);
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
     crate::focus::focus(&mut WmCtx::Wayland(wl.reborrow()), Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());
@@ -181,11 +183,11 @@ pub fn resize_mouse_directional(
     direction: Option<ResizeDirection>,
     btn: MouseButton,
 ) {
-    let Some(win) = ctx.core.globals().selected_win() else {
+    let Some(win) = ctx.core.model().selected_win() else {
         return;
     };
     let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) =
-        match ctx.core.globals().clients.get(&win) {
+        match ctx.core.model().clients.get(&win) {
             Some(c) => (
                 c.mode.is_true_fullscreen(),
                 c.geo.x,
@@ -205,14 +207,14 @@ pub fn resize_mouse_directional(
 
     with_wm_ctx_x11(ctx, |ctx| {
         ctx.raise_client(win);
-        let selmon_id = ctx.core().globals().selected_monitor_id();
+        let selmon_id = ctx.core().model().selected_monitor_id();
         crate::layouts::sync_monitor_z_order(ctx, selmon_id);
     });
 
     let start = ctx.x11.pointer_location().unwrap_or_default();
-    let geo = ctx.core.globals().clients.geo(win).unwrap_or_default();
-    ctx.core.globals_mut().drag.interactive =
-        crate::globals::DragInteraction::new_resize(win, btn, dir, start, geo);
+    let geo = ctx.core.model().clients.geo(win).unwrap_or_default();
+    ctx.core.drag_state_mut().interactive =
+        crate::core_state::DragInteraction::new_resize(win, btn, dir, start, geo);
 
     crate::backend::x11::grab::mouse_drag_loop(
         ctx,
@@ -242,10 +244,10 @@ pub fn resize_mouse_directional(
                     affects_bottom,
                 );
 
-                let snap = ctx.core.globals().cfg.window.snap_threshold;
+                let snap = ctx.core.config().window.snap_threshold;
 
-                let should_toggle = if let Some(client) = ctx.core.globals().clients.get(&win) {
-                    let has_tiling = ctx.core.globals().selected_monitor().is_tiling_layout();
+                let should_toggle = if let Some(client) = ctx.core.model().clients.get(&win) {
+                    let has_tiling = ctx.core.model().selected_monitor().is_tiling_layout();
 
                     !client.mode.is_floating()
                         && has_tiling
@@ -258,11 +260,11 @@ pub fn resize_mouse_directional(
                 if should_toggle {
                     with_wm_ctx_x11(ctx, toggle_floating);
                 } else {
-                    let is_floating = match ctx.core.globals().clients.get(&win) {
+                    let is_floating = match ctx.core.model().clients.get(&win) {
                         Some(c) => c.mode.is_floating(),
                         None => return false,
                     };
-                    let has_tiling = ctx.core.globals().selected_monitor().is_tiling_layout();
+                    let has_tiling = ctx.core.model().selected_monitor().is_tiling_layout();
 
                     if !has_tiling || is_floating {
                         with_wm_ctx_x11(ctx, |ctx| {
@@ -304,7 +306,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    let Some(geo) = ctx.core().globals().clients.geo(win) else {
+    let Some(geo) = ctx.core().model().clients.geo(win) else {
         return;
     };
 
@@ -323,7 +325,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 }
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let (is_fullscreen, orig_geo) = match ctx.core.globals().clients.get(&win) {
+    let (is_fullscreen, orig_geo) = match ctx.core.model().clients.get(&win) {
         Some(c) => (c.mode.is_fullscreen(), c.geo),
         None => return,
     };
@@ -333,13 +335,13 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
 
     {
         let mut tmp = WmCtx::X11(ctx.reborrow());
-        let selmon_id = tmp.core().globals().selected_monitor_id();
+        let selmon_id = tmp.core().model().selected_monitor_id();
         crate::layouts::sync_monitor_z_order(&mut tmp, selmon_id);
     }
 
     let start = ctx.x11.pointer_location().unwrap_or_default();
-    let geo = ctx.core.globals().clients.geo(win).unwrap_or_default();
-    ctx.core.globals_mut().drag.interactive = crate::globals::DragInteraction::new_resize(
+    let geo = ctx.core.model().clients.geo(win).unwrap_or_default();
+    ctx.core.drag_state_mut().interactive = crate::core_state::DragInteraction::new_resize(
         win,
         btn,
         ResizeDirection::BottomRight,
@@ -373,7 +375,8 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
 
                 if let Some((client_geo, sh, min_aspect, max_aspect)) = ctx
                     .core
-                    .globals()
+                    .state()
+                    .model
                     .clients
                     .get(&win)
                     .map(|c| (c.geo, c.size_hints, c.min_aspect, c.max_aspect))

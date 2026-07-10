@@ -28,16 +28,16 @@ fn grab_keys_for_key<C: Connection>(
 
 /// Grab all X11 keybindings for the current config.
 pub fn grab_keys_x11(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
     let conn = x11.conn;
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
-    let keys = globals.cfg.bindings.keys.as_slice();
-    let desktop_keybinds = globals.cfg.bindings.desktop_keybinds.as_slice();
-    let modes = &globals.cfg.bindings.modes;
+    let keys = globals.config.bindings.keys.as_slice();
+    let desktop_keybinds = globals.config.bindings.desktop_keybinds.as_slice();
+    let modes = &globals.config.bindings.modes;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 

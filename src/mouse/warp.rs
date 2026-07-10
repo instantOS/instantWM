@@ -30,7 +30,7 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let Some(c) = ctx.core().globals().clients.get(&win).cloned() else {
+    let Some(c) = ctx.core().model().clients.get(&win).cloned() else {
         return;
     };
 
@@ -56,7 +56,7 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.
 pub fn warp_to_focus(ctx: &mut WmCtx) {
-    if let Some(win) = ctx.core().globals().selected_win() {
+    if let Some(win) = ctx.core().model().selected_win() {
         ctx.warp_cursor_to_client(win);
     }
 }

@@ -34,8 +34,8 @@ pub fn run() -> ! {
 
     let output_size = backend.window_size();
     let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
-    wm.g.cfg.derived.display.width = initial_w;
-    wm.g.cfg.derived.display.height = initial_h;
+    wm.core.config.derived.display.width = initial_w;
+    wm.core.config.derived.display.height = initial_h;
     refresh_monitor_layout(&mut wm.ctx());
     state.push_command(WmCommand::SyncLayerExclusiveZones);
 

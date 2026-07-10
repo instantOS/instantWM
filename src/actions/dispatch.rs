@@ -28,7 +28,7 @@ fn button_target_client(
             }
             _ => None,
         })
-        .or_else(|| core.globals().selected_win())
+        .or_else(|| core.model().selected_win())
 }
 
 pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
@@ -45,21 +45,21 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
             }
         }
         KeyAction::SetClientTag { tag_idx } => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         KeyAction::FollowClientTag { tag_idx } => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
         }
         KeyAction::ToggleClientTag { tag_idx } => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
@@ -110,21 +110,21 @@ pub fn execute_button_action(
             }
         }
         ButtonAction::SetSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         ButtonAction::ToggleSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
         ButtonAction::FollowSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::follow_tag(ctx, win, mask);
@@ -163,7 +163,7 @@ pub fn execute_button_action(
         }
         ButtonAction::SidebarGestureBegin => sidebar_gesture_begin(ctx, arg.btn),
         ButtonAction::ReorderSelected { up } => {
-            if let Some(win) = ctx.core().globals().selected_win() {
+            if let Some(win) = ctx.core().model().selected_win() {
                 reorder_client(
                     ctx,
                     win,

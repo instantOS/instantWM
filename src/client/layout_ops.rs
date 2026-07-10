@@ -12,9 +12,9 @@ use crate::focus::focus;
 // ---------------------------------------------------------------------------
 
 fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
-    ctx.core_mut().globals_mut().detach(win);
-    ctx.core_mut().globals_mut().attach(win);
-    let monitor_id = ctx.core().globals().clients.monitor_id(win);
+    ctx.core_mut().model_mut().detach(win);
+    ctx.core_mut().model_mut().attach(win);
+    let monitor_id = ctx.core().model().clients.monitor_id(win);
     focus(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
@@ -40,13 +40,13 @@ fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
 ///   window is promoted instead (if one exists).  If there is no next tiled
 ///   window the function returns early.
 pub fn zoom(ctx: &mut WmCtx) {
-    if crate::overview::is_active(ctx.core().globals()) {
+    if crate::overview::is_active(ctx.core().model()) {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::ToSelectedWindow);
         ctx.request_bar_update();
         return;
     }
 
-    let Some(win) = ctx.core().globals().selected_win() else {
+    let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
 
@@ -57,13 +57,14 @@ pub fn zoom(ctx: &mut WmCtx) {
 
     let (is_tiling_mode, monitor_id) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| (c.mode.is_tiling(), c.monitor_id))
         .unwrap_or((false, crate::types::MonitorId(0)));
 
-    let Some(mon) = ctx.core().globals().monitor(monitor_id) else {
+    let Some(mon) = ctx.core().model().monitor(monitor_id) else {
         return;
     };
 
@@ -75,10 +76,10 @@ pub fn zoom(ctx: &mut WmCtx) {
     // Find the current master (first tiled client on the monitor).
     let first_on_monitor = mon.clients.first().copied();
     let first_tiled =
-        first_on_monitor.and_then(|w| mon.next_tiled(ctx.core().globals().clients.map(), Some(w)));
+        first_on_monitor.and_then(|w| mon.next_tiled(ctx.core().model().clients.map(), Some(w)));
 
     if first_tiled == Some(win) {
-        let next = mon.next_tiled(ctx.core().globals().clients.map(), first_tiled);
+        let next = mon.next_tiled(ctx.core().model().clients.map(), first_tiled);
 
         // Nothing to promote if there is only one tiled window.
         if next.is_none() {

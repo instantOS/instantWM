@@ -5,7 +5,6 @@ use crate::constants::animation::{
     DISTANCE_THRESHOLD, FRAME_SLEEP_MICROS, X11_ANIM_FULL_THRESHOLD, X11_ANIM_REDUCE_THRESHOLD,
 };
 use crate::contexts::WmCtx;
-use crate::globals::Globals;
 use crate::types::{Rect, WindowId};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -95,18 +94,24 @@ pub(crate) enum GeometryApplyMode {
     VisualOnly,
 }
 
-fn current_client_rect(g: &Globals, win: WindowId) -> Option<Rect> {
-    g.clients
+fn current_client_rect(model: &crate::model::WmModel, win: WindowId) -> Option<Rect> {
+    model
+        .clients
         .get(&win)
         .map(|c| if c.geo.is_valid() { c.geo } else { c.old_geo })
 }
 
-fn monitor_size_for_client(g: &Globals, win: WindowId) -> (i32, i32) {
-    g.clients
+fn monitor_size_for_client(
+    model: &crate::model::WmModel,
+    display: &crate::core_state::DisplayConfig,
+    win: WindowId,
+) -> (i32, i32) {
+    model
+        .clients
         .get(&win)
-        .and_then(|c| g.monitors.get(c.monitor_id))
+        .and_then(|c| model.monitors.get(c.monitor_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
-        .unwrap_or((g.cfg.derived.display.width, g.cfg.derived.display.height))
+        .unwrap_or((display.width, display.height))
 }
 
 fn animation_duration(frames: i32) -> Duration {
@@ -202,24 +207,26 @@ fn apply_resize_policies(
     let changed = match ctx {
         WmCtx::X11(x11_ctx) => {
             let outcome = crate::client::geometry::apply_size_hints(
-                x11_ctx.core.globals_mut(),
+                x11_ctx.core.model(),
+                x11_ctx.core.config(),
                 win,
                 &mut adjusted,
                 interact,
             );
             if outcome.should_apply_icccm {
                 crate::backend::x11::geometry::apply_icccm_size_hints_x11(
-                    x11_ctx.core.globals_mut(),
+                    x11_ctx.core.model_mut(),
                     &x11_ctx.x11,
                     win,
                     &mut adjusted,
                 );
             }
-            crate::client::geometry::size_hints_changed(x11_ctx.core.globals(), win, &adjusted)
+            crate::client::geometry::size_hints_changed(x11_ctx.core.model(), win, &adjusted)
         }
         WmCtx::Wayland(wl_ctx) => {
             let outcome = crate::client::geometry::apply_size_hints(
-                wl_ctx.core.globals_mut(),
+                wl_ctx.core.model(),
+                wl_ctx.core.config(),
                 win,
                 &mut adjusted,
                 interact,
@@ -228,7 +235,7 @@ fn apply_resize_policies(
         }
     };
 
-    let client_count = ctx.core().globals().clients.len();
+    let client_count = ctx.core().model().clients.len();
     if changed || client_count == 1 {
         Some(adjusted)
     } else {
@@ -253,7 +260,11 @@ pub(crate) fn move_resize(
         return;
     }
 
-    let (mon_w, mon_h) = monitor_size_for_client(ctx.core().globals(), win);
+    let (mon_w, mon_h) = monitor_size_for_client(
+        ctx.core().model(),
+        &ctx.core().config().derived.display,
+        win,
+    );
     let final_rect = target.clamped_to_monitor(mon_w, mon_h);
 
     match options.mode {
@@ -267,7 +278,7 @@ pub(crate) fn move_resize(
             crate::animation::cancel_animation(ctx, win);
 
             let from = match options.mode {
-                MoveResizeMode::AnimateTo => current_client_rect(ctx.core().globals(), win),
+                MoveResizeMode::AnimateTo => current_client_rect(ctx.core().model(), win),
                 MoveResizeMode::Immediate => unreachable!(),
                 MoveResizeMode::AnimateFrom(from) => Some(from),
             };
@@ -281,7 +292,8 @@ pub(crate) fn move_resize(
             if from == final_rect {
                 if ctx
                     .core()
-                    .globals()
+                    .state()
+                    .model
                     .clients
                     .get(&win)
                     .is_some_and(|c| c.geo != final_rect)
@@ -291,7 +303,7 @@ pub(crate) fn move_resize(
                 return;
             }
 
-            let animated = ctx.core().globals().behavior.animated;
+            let animated = ctx.core().behavior().animated;
             let effective_frames =
                 effective_animation_frames(active_animation_count(ctx), options.frames);
 
@@ -310,7 +322,7 @@ pub(crate) fn move_resize(
             }
 
             if options.mode == MoveResizeMode::AnimateTo {
-                crate::client::sync_client_geometry(ctx.core_mut().globals_mut(), win, final_rect);
+                crate::client::sync_client_geometry(ctx.core_mut().model_mut(), win, final_rect);
             }
 
             enqueue_window_animation(ctx, win, from, final_rect, effective_frames);

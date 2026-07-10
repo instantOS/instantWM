@@ -3,7 +3,7 @@ use crate::ipc_types::{InputCommand, Response};
 use crate::wm::Wm;
 
 pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
-    let inputs = &mut wm.g.cfg.input;
+    let inputs = &mut wm.core.config.input;
     match cmd {
         InputCommand::List(identifier) => {
             let mut entries: Vec<(String, &crate::config::config_toml::InputConfig)> =

@@ -347,16 +347,16 @@ impl Client {
     /// Resolve the monitor this client currently belongs to.
     pub fn monitor<'a>(
         &self,
-        globals: &'a crate::globals::Globals,
+        model: &'a crate::model::WmModel,
     ) -> Option<&'a crate::types::Monitor> {
-        globals.monitor(self.monitor_id)
+        model.monitor(self.monitor_id)
     }
 
     /// Get the monitor's size (width, height) for this client.
     ///
     /// Returns `(0, 0)` if the client is not assigned to a monitor.
-    pub fn monitor_size(&self, globals: &crate::globals::Globals) -> (i32, i32) {
-        self.monitor(globals)
+    pub fn monitor_size(&self, model: &crate::model::WmModel) -> (i32, i32) {
+        self.monitor(model)
             .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
             .unwrap_or((0, 0))
     }
@@ -513,7 +513,7 @@ impl Client {
         x11: &crate::backend::x11::X11BackendRef,
         x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     ) {
-        let tag_mask = core.globals().tags.mask();
+        let tag_mask = core.model().tags.mask();
         let effective_mask = mask & tag_mask;
 
         if effective_mask.is_empty() {
@@ -523,9 +523,9 @@ impl Client {
         self.clear_sticky_if_scratchpad();
         self.set_tag_mask(effective_mask);
 
-        crate::backend::x11::set_client_tag_prop(core.globals(), x11, x11_runtime, self.win);
+        crate::backend::x11::set_client_tag_prop(core.state(), x11, x11_runtime, self.win);
         crate::backend::x11::focus::focus_soft_x11(core, x11, x11_runtime, None);
-        let monitor_id = core.globals().selected_monitor_id();
+        let monitor_id = core.model().selected_monitor_id();
         core.queue_layout_for_monitor_urgent(monitor_id);
     }
 }

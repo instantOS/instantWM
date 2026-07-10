@@ -1,10 +1,9 @@
-use crate::client::manager::ClientManager;
+use crate::client::PendingLaunch;
 use crate::config::ModeConfig;
 use crate::config::commands::ExternalCommands;
-use crate::monitor::MonitorManager;
+use crate::model::WmModel;
 use crate::types::*;
-use std::collections::BTreeSet;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 // ---------------------------------------------------------------------------
 // Sub-structs for RuntimeConfig
@@ -149,6 +148,101 @@ impl Default for RuntimeConfig {
             cursor: crate::config::config_toml::CursorConfig::default(),
             exec_once: Vec::new(),
             exec: Vec::new(),
+        }
+    }
+}
+
+/// Backend-neutral state owned by the window manager.
+///
+/// The authoritative client/monitor/tag graph lives in `model`; configuration
+/// and transient interaction state are deliberately kept alongside it rather
+/// than inside it. Keeping these categories in one aggregate gives `CoreCtx`
+/// a single borrow boundary without mixing backend resources into core state.
+pub struct CoreState {
+    pub model: WmModel,
+    pub config: RuntimeConfig,
+    pub behavior: WmBehavior,
+    pub drag: DragState,
+    pub keyboard_layout: KeyboardLayoutState,
+    pub pending_launches: VecDeque<PendingLaunch>,
+}
+
+impl Default for CoreState {
+    fn default() -> Self {
+        Self {
+            model: WmModel::default(),
+            config: RuntimeConfig::default(),
+            behavior: WmBehavior::default(),
+            drag: DragState::default(),
+            keyboard_layout: KeyboardLayoutState::default(),
+            pending_launches: VecDeque::new(),
+        }
+    }
+}
+
+impl CoreState {
+    pub fn selected_win(&self) -> Option<WindowId> {
+        self.model.selected_win()
+    }
+    pub fn selected_monitor_id(&self) -> MonitorId {
+        self.model.selected_monitor_id()
+    }
+    pub fn set_selected_monitor(&mut self, id: MonitorId) {
+        self.model.set_selected_monitor(id);
+    }
+    pub fn selected_monitor(&self) -> &Monitor {
+        self.model.selected_monitor()
+    }
+    pub fn selected_monitor_mut(&mut self) -> &mut Monitor {
+        self.model.selected_monitor_mut()
+    }
+    pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut Monitor> {
+        self.model.selected_monitor_mut_opt()
+    }
+    pub fn monitor(&self, id: MonitorId) -> Option<&Monitor> {
+        self.model.monitor(id)
+    }
+    pub fn monitor_mut(&mut self, id: MonitorId) -> Option<&mut Monitor> {
+        self.model.monitor_mut(id)
+    }
+    pub fn monitors_iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
+        self.model.monitors_iter()
+    }
+    pub fn monitors_iter_all(&self) -> impl Iterator<Item = &Monitor> {
+        self.model.monitors_iter_all()
+    }
+    pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
+        self.model.monitors_iter_all_mut()
+    }
+    pub fn clear_maximized_for(&mut self, win: WindowId) {
+        self.model.clear_maximized_for(win);
+    }
+    pub fn attach(&mut self, win: WindowId) {
+        self.model.attach(win);
+    }
+    pub fn detach(&mut self, win: WindowId) {
+        self.model.detach(win);
+    }
+    pub fn attach_z_order_top(&mut self, win: WindowId) {
+        self.model.attach_z_order_top(win);
+    }
+    pub fn detach_z_order(&mut self, win: WindowId) {
+        self.model.detach_z_order(win);
+    }
+    pub fn raise_client_in_z_order(&mut self, win: WindowId) {
+        self.model.raise_client_in_z_order(win);
+    }
+
+    pub fn normalize_current_mode(&mut self) {
+        if self.behavior.current_mode != "default"
+            && self.behavior.current_mode != crate::overview::OVERVIEW_MODE_NAME
+            && !self
+                .config
+                .bindings
+                .modes
+                .contains_key(&self.behavior.current_mode)
+        {
+            self.behavior.current_mode = "default".to_string();
         }
     }
 }
@@ -616,263 +710,14 @@ impl PendingWork {
     }
 }
 
-pub struct Globals {
-    // Runtime configuration (loaded from config files)
-    pub(crate) cfg: RuntimeConfig,
-
-    // Runtime state (changes during WM operation)
-    pub(crate) monitors: MonitorManager,
-    pub(crate) clients: ClientManager,
-    pub(crate) tags: TagSet,
-
-    // Grouped subsystems
-    pub(crate) behavior: WmBehavior,
-    pub(crate) drag: DragState,
-
-    /// XKB keyboard layout state.
-    pub(crate) keyboard_layout: KeyboardLayoutState,
-    /// Recently spawned processes awaiting their first managed window.
-    pub(crate) pending_launches: VecDeque<crate::client::PendingLaunch>,
-}
-
-impl Globals {
-    // -------------------------------------------------------------------------
-    // Selected-monitor convenience helpers
-    // -------------------------------------------------------------------------
-
-    /// Return the window currently selected on the selected monitor, if any.
-    #[inline]
-    pub fn selected_win(&self) -> Option<WindowId> {
-        self.monitors.sel().and_then(|m| m.sel)
-    }
-
-    /// Return the ID of the currently selected monitor.
-    pub fn selected_monitor_id(&self) -> MonitorId {
-        self.monitors.sel_idx()
-    }
-
-    /// Change the currently selected monitor.
-    pub fn set_selected_monitor(&mut self, id: MonitorId) {
-        self.monitors.set_sel_idx(id);
-    }
-
-    /// Shorthand to get the selected monitor.
-    pub fn selected_monitor(&self) -> &Monitor {
-        self.monitors.sel_unchecked()
-    }
-
-    /// Shorthand to get the selected monitor mutably.
-    pub fn selected_monitor_mut(&mut self) -> &mut Monitor {
-        self.monitors.sel_mut_unchecked()
-    }
-
-    /// Shorthand to get the selected monitor (Option version for cases that need it).
-    pub fn selected_monitor_opt(&self) -> Option<&Monitor> {
-        self.monitors.sel()
-    }
-
-    /// Shorthand to get the selected monitor mutably (Option version).
-    pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut Monitor> {
-        self.monitors.sel_mut()
-    }
-
-    /// Delegation to get a monitor by index.
-    pub fn monitor(&self, id: MonitorId) -> Option<&Monitor> {
-        self.monitors.get(id)
-    }
-
-    /// Delegation to get a mutable monitor by index.
-    pub fn monitor_mut(&mut self, id: MonitorId) -> Option<&mut Monitor> {
-        self.monitors.get_mut(id)
-    }
-
-    /// Delegation to iterate over monitors.
-    pub fn monitors_iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
-        self.monitors.iter()
-    }
-
-    /// Iterate over all monitors (without index).
-    pub fn monitors_iter_all(&self) -> impl Iterator<Item = &Monitor> {
-        self.monitors.iter_all()
-    }
-
-    /// Delegation to iterate over monitors mutably.
-    pub fn monitors_iter_mut(&mut self) -> impl Iterator<Item = (MonitorId, &mut Monitor)> {
-        self.monitors.iter_mut()
-    }
-
-    /// Iterate over all monitors mutably (without index).
-    pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
-        self.monitors.iter_all_mut()
-    }
-
-    /// Clear the maximized reference on any monitor that holds `win`.
-    pub fn clear_maximized_for(&mut self, win: WindowId) {
-        for mon in self.monitors_iter_all_mut() {
-            if mon.maximized == Some(win) {
-                mon.maximized = None;
-            }
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Client List Management (Attach/Detach)
-    // -------------------------------------------------------------------------
-
-    /// Attach `win` to its assigned monitor's focus list.
-    pub fn attach(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win)
-            && let Some(mon) = self.monitors.get_mut(mid)
-        {
-            mon.clients.insert(0, win);
-        }
-    }
-
-    /// Detach `win` from its assigned monitor's focus list.
-    pub fn detach(&mut self, win: WindowId) {
-        let monitor_id = self.clients.monitor_id(win);
-        if let Some(mid) = monitor_id
-            && let Some(mon) = self.monitors.get_mut(mid)
-            && mon.clients.contains(&win)
-        {
-            mon.clients.retain(|&w| w != win);
-            return;
-        }
-
-        // Fallback: search all monitors if not found on the assigned one.
-        for mon in self.monitors.iter_all_mut() {
-            if mon.clients.contains(&win) {
-                mon.clients.retain(|&w| w != win);
-            }
-        }
-    }
-
-    /// Attach `win` to the top of its assigned monitor's persistent z-order.
-    ///
-    /// Does **not** modify `mon.sel` — callers are responsible for
-    /// deciding selection via `focus_soft` or explicit assignment.
-    pub fn attach_z_order_top(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win)
-            && let Some(mon) = self.monitors.get_mut(mid)
-        {
-            mon.z_order.attach_top(win);
-        }
-    }
-
-    /// Detach `win` from its assigned monitor's persistent z-order.
-    ///
-    /// Pure list operation — does **not** modify `mon.sel`.
-    /// Callers are responsible for focus recovery (e.g. `focus_soft`,
-    /// `restore_focus_after_overlay`, or explicit `mon.sel` assignment).
-    pub fn detach_z_order(&mut self, win: WindowId) {
-        let monitor_id = self.clients.monitor_id(win);
-
-        let handle_monitor = |mon: &mut crate::types::Monitor| -> bool { mon.z_order.remove(win) };
-
-        if let Some(mid) = monitor_id
-            && let Some(mon) = self.monitors.get_mut(mid)
-            && handle_monitor(mon)
-        {
-            return;
-        }
-
-        // Fallback: search all monitors if not found on the assigned one.
-        for mon in self.monitors.iter_all_mut() {
-            if handle_monitor(mon) {
-                return;
-            }
-        }
-    }
-
-    /// Move `win` to the top of its monitor's persistent z-order.
-    ///
-    /// The backend may also have its own native stacking structure (X11 server
-    /// order, Smithay `Space`, etc.). This keeps the backend-agnostic model in
-    /// sync so later z-order syncs, focus recovery, and focus-stack traversal do not
-    /// rebuild z-order from stale state.
-    pub fn raise_client_in_z_order(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win)
-            && let Some(mon) = self.monitors.get_mut(mid)
-            && mon.z_order.raise(win)
-        {
-            return;
-        }
-
-        // Fallback: search all monitors if the client's monitor assignment is
-        // stale during a transfer or teardown path.
-        for mon in self.monitors.iter_all_mut() {
-            if mon.z_order.raise(win) {
-                return;
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{LayoutWorkTargets, PendingLayoutWork};
-    use crate::types::MonitorId;
-
-    #[test]
-    fn pending_layout_returns_sorted_monitor_targets() {
-        let mut pending = PendingLayoutWork::default();
-        pending.mark_monitor(MonitorId(3));
-        pending.mark_monitor(MonitorId(1));
-        pending.mark_monitor(MonitorId(2));
-
-        let targets = pending.take_targets();
-        assert_eq!(
-            targets,
-            Some(LayoutWorkTargets::Monitors(vec![
-                MonitorId(1),
-                MonitorId(2),
-                MonitorId(3),
-            ]))
-        );
-        assert!(!pending.is_pending());
-    }
-
-    #[test]
-    fn pending_layout_all_overrides_specific_targets() {
-        let mut pending = PendingLayoutWork::default();
-        pending.mark_monitor(MonitorId(2));
-        pending.mark_all();
-        pending.mark_monitor(MonitorId(1)); // ignored while all-monitors is set
-
-        assert_eq!(pending.take_targets(), Some(LayoutWorkTargets::AllMonitors));
-        assert!(!pending.is_pending());
-    }
-
-    #[test]
-    fn pending_layout_none_monitor_marks_all() {
-        let mut pending = PendingLayoutWork::default();
-        pending.mark_monitor_opt(None);
-        assert_eq!(pending.take_targets(), Some(LayoutWorkTargets::AllMonitors));
-    }
-}
-
-impl Default for Globals {
-    fn default() -> Self {
-        Self {
-            cfg: RuntimeConfig::default(),
-            monitors: MonitorManager::new(),
-            clients: ClientManager::new(),
-            tags: TagSet::default(),
-            behavior: WmBehavior::default(),
-            drag: DragState::default(),
-            keyboard_layout: KeyboardLayoutState::default(),
-            pending_launches: VecDeque::new(),
-        }
-    }
-}
-
 /// Build and atomically install runtime configuration.
 ///
 /// The complete value is assembled off to the side so readers never observe
 /// a partially-applied reload. Display geometry is backend-derived and is
 /// therefore preserved across config replacement.
-pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
-    let derived = g.cfg.derived.clone();
+pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
+    let config = &mut state.config;
+    let derived = config.derived.clone();
     let mut next = RuntimeConfig {
         derived,
         ..RuntimeConfig::default()
@@ -948,7 +793,7 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
         .clone()
         .or_else(|| std::env::var("XKB_DEFAULT_MODEL").ok());
 
-    g.keyboard_layout = KeyboardLayoutState {
+    state.keyboard_layout = KeyboardLayoutState {
         layouts,
         options,
         model,
@@ -958,7 +803,8 @@ pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
 
     // Rebuild tag template so monitor creation picks up any config changes.
     next.tag_template = build_tag_template(cfg);
-    g.cfg = next;
+    *config = next;
+    apply_tags_config(&mut state.model, &mut state.config, cfg);
 }
 
 /// Build the canonical tag template from config.
@@ -984,191 +830,18 @@ pub fn build_tag_template(cfg: &crate::config::Config) -> Vec<crate::types::moni
     template
 }
 
-/// Apply tag configuration to the given `Globals` instance.
-pub fn apply_tags_config(g: &mut Globals, cfg: &crate::config::Config) {
+/// Apply tag configuration.
+fn apply_tags_config(
+    model: &mut crate::model::WmModel,
+    config: &mut RuntimeConfig,
+    cfg: &crate::config::Config,
+) {
     let template = build_tag_template(cfg);
-    g.tags.colors = cfg.tag_colors.clone();
-    g.tags.num_tags = cfg.num_tags;
-    g.cfg.tag_template = template.clone();
+    model.tags.colors = cfg.tag_colors.clone();
+    model.tags.num_tags = cfg.num_tags;
+    config.tag_template = template.clone();
     // Initialise any monitors that already exist (re-init on config reload).
-    for (_i, mon) in g.monitors.iter_mut() {
+    for (_i, mon) in model.monitors_iter_mut() {
         mon.init_tags(&template);
-    }
-}
-
-impl Globals {
-    /// Get the status bar color scheme.
-    pub fn status_scheme(&self) -> crate::bar::paint::BarScheme {
-        let c = &self.cfg.colors.status_bar;
-        crate::bar::paint::BarScheme {
-            fg: c.fg,
-            bg: c.bg,
-            detail: c.detail,
-        }
-    }
-
-    /// Get the tag hover fill scheme.
-    pub fn tag_hover_fill_scheme(&self) -> crate::bar::paint::BarScheme {
-        use crate::config::{SchemeHover, SchemeTag};
-
-        let colors = self
-            .tags
-            .colors
-            .colors_for(SchemeHover::Hover, SchemeTag::Filled);
-        crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
-            detail: colors.detail,
-        }
-    }
-
-    /// Get the color scheme for a tag.
-    pub fn tag_scheme(
-        &self,
-        m: &Monitor,
-        tag_index: u32,
-        occupied_tags: TagMask,
-        urgent_tags: TagMask,
-        is_hover: bool,
-    ) -> crate::bar::paint::BarScheme {
-        use crate::config::{SchemeHover, SchemeTag};
-
-        let tag_num = tag_index as usize + 1;
-        let tag_role = if urgent_tags.contains(tag_num) {
-            SchemeTag::Urgent
-        } else if occupied_tags.contains(tag_num) {
-            let selmon = self.selected_monitor();
-            let sel_has_tag = selmon
-                .sel
-                .and_then(|selected_window| {
-                    self.clients
-                        .get(&selected_window)
-                        .map(|c| c.tags.contains(tag_num))
-                })
-                .unwrap_or(false);
-
-            let is_selected = selmon.num == m.num;
-
-            if is_selected && sel_has_tag {
-                SchemeTag::Focus
-            } else if m.selected_tags().contains(tag_num) {
-                SchemeTag::NoFocus
-            } else if !m.showtags {
-                SchemeTag::Filled
-            } else {
-                SchemeTag::Inactive
-            }
-        } else if m.selected_tags().contains(tag_num) {
-            SchemeTag::Empty
-        } else {
-            SchemeTag::Inactive
-        };
-
-        let colors = self.tags.colors.colors_for(
-            if is_hover {
-                SchemeHover::Hover
-            } else {
-                SchemeHover::NoHover
-            },
-            tag_role,
-        );
-        crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
-            detail: colors.detail,
-        }
-    }
-
-    /// Get the color scheme for a client window.
-    pub fn window_scheme(&self, c: &Client, is_hover: bool) -> crate::bar::paint::BarScheme {
-        use crate::config::{SchemeHover, SchemeWin};
-
-        let selmon = self.selected_monitor();
-        let is_selected = selmon.sel == Some(c.win);
-        let is_edge_scratchpad = c.is_edge_scratchpad();
-
-        let window_role = if is_selected {
-            if is_edge_scratchpad {
-                SchemeWin::EdgeScratchpadFocus
-            } else if c.is_sticky {
-                SchemeWin::StickyFocus
-            } else {
-                SchemeWin::Focus
-            }
-        } else if is_edge_scratchpad {
-            SchemeWin::EdgeScratchpad
-        } else if c.is_sticky {
-            SchemeWin::Sticky
-        } else if c.is_minimized() {
-            SchemeWin::Minimized
-        } else if c.is_urgent {
-            SchemeWin::Urgent
-        } else {
-            SchemeWin::Normal
-        };
-
-        let colors = self.cfg.colors.window.colors_for(
-            if is_hover {
-                SchemeHover::Hover
-            } else {
-                SchemeHover::NoHover
-            },
-            window_role,
-        );
-        crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
-            detail: colors.detail,
-        }
-    }
-
-    /// Get the close button color scheme.
-    pub fn close_button_scheme(
-        &self,
-        is_hover: bool,
-        is_locked: bool,
-        is_fullscreen: bool,
-    ) -> crate::bar::paint::BarScheme {
-        use crate::config::{SchemeClose, SchemeHover};
-
-        let close_role = if is_locked {
-            SchemeClose::Locked
-        } else if is_fullscreen {
-            SchemeClose::Fullscreen
-        } else {
-            SchemeClose::Normal
-        };
-
-        let colors = self.cfg.colors.close_button.colors_for(
-            if is_hover {
-                SchemeHover::Hover
-            } else {
-                SchemeHover::NoHover
-            },
-            close_role,
-        );
-        crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
-            detail: colors.detail,
-        }
-    }
-
-    /// Reset `current_mode` to `"default"` if it refers to a mode that no longer exists.
-    pub fn normalize_current_mode(&mut self) {
-        if self.behavior.current_mode == "default"
-            || self.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        {
-            return;
-        }
-
-        if !self
-            .cfg
-            .bindings
-            .modes
-            .contains_key(&self.behavior.current_mode)
-        {
-            self.behavior.current_mode = "default".to_string();
-        }
     }
 }

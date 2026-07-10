@@ -44,15 +44,16 @@ fn send_xembed_event(
 pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
-    let buttons_clone = ctx.core.globals().cfg.bindings.buttons.clone();
-    let mut selmon_id = ctx.core.globals().selected_monitor_id();
-    let focusfollowsmouse = ctx.core.globals().behavior.focus_follows_mouse;
+    let buttons_clone = ctx.core.config().bindings.buttons.clone();
+    let mut selmon_id = ctx.core.model().selected_monitor_id();
+    let focusfollowsmouse = ctx.core.behavior().focus_follows_mouse;
 
     if let Some(clicked_mon) = ctx
         .core
-        .globals()
+        .g
+        .model
         .monitors
-        .find_monitor_for(event_win, ctx.core.globals().clients.map())
+        .find_monitor_for(event_win, ctx.core.model().clients.map())
         && selmon_id != clicked_mon
         && (focusfollowsmouse || e.detail <= 3)
     {
@@ -62,7 +63,8 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
     let target_window = ctx
         .core
-        .globals()
+        .g
+        .model
         .clients
         .contains_key(&event_win)
         .then_some(event_win);
@@ -75,7 +77,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
-            if let Some(monitor_id) = ctx.core.globals().clients.monitor_id(event_win) {
+            if let Some(monitor_id) = ctx.core.model().clients.monitor_id(event_win) {
                 crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
@@ -120,7 +122,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let _ = conn.flush();
 
     if button_target == ButtonTarget::Root
-        && let Some(mon) = ctx.core.globals().monitor(selmon_id)
+        && let Some(mon) = ctx.core.model().monitor(selmon_id)
         && mon.sel.is_some()
         && let Some(btn) = MouseButton::from_x11_detail(e.detail)
         && crate::mouse::commit_x11_hover_offer(ctx, btn)
@@ -146,7 +148,7 @@ pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
 
 /// Handle incoming X11 client messages.
 pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
-    let showsystray = ctx.core.globals().cfg.systray.show;
+    let showsystray = ctx.core.config().systray.show;
     let systray_win = ctx.systray.as_ref().map(|s| s.win).unwrap_or_default();
     let net_system_tray_op = ctx.x11_runtime.netatom.system_tray_op;
     let net_wm_state = ctx.x11_runtime.netatom.wm_state;
@@ -168,7 +170,7 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     }
 
-    if !ctx.core.globals().clients.contains_key(&event_win) {
+    if !ctx.core.model().clients.contains_key(&event_win) {
         return;
     };
 
@@ -188,19 +190,19 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
         return;
     };
 
-    ctx.core.globals_mut().cfg.derived.display.width = e.width as i32;
-    ctx.core.globals_mut().cfg.derived.display.height = e.height as i32;
+    ctx.core.config_mut().derived.display.width = e.width as i32;
+    ctx.core.config_mut().derived.display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
-    crate::backend::x11::update_ewmh_desktop_props(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::update_ewmh_desktop_props(ctx.core.g, &ctx.x11, ctx.x11_runtime);
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
     ctx.core.queue_layout_for_all_monitors_urgent();
 }
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.globals().clients.contains_key(&event_win) {
-        crate::backend::x11::focus::configure_x11(ctx.core.globals(), &ctx.x11, event_win);
+    if ctx.core.model().clients.contains_key(&event_win) {
+        crate::backend::x11::focus::configure_x11(ctx.core.g, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -220,7 +222,7 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.globals().clients.contains_key(&event_win) {
+    if ctx.core.model().clients.contains_key(&event_win) {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
     } else if let Some(icon) = crate::backend::x11::systray::win_to_systray_icon(
@@ -232,15 +234,15 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         // the bar and redraw the systray — matching the C code's sequence of
         // removesystrayicon(c) → resizebar_win(selmon) → updatesystray().
         crate::backend::x11::systray::remove_systray_icon(
-            ctx.core.globals_mut(),
+            ctx.core.g,
             ctx.systray.as_deref_mut(),
             icon,
         );
         // Get monitor reference for resize_bar_win
-        let selmon_idx = ctx.core.globals().selected_monitor_id();
-        if let Some(mon) = ctx.core.globals().monitor(selmon_idx).cloned() {
+        let selmon_idx = ctx.core.model().selected_monitor_id();
+        if let Some(mon) = ctx.core.model().monitor(selmon_idx).cloned() {
             crate::backend::x11::bar::resize_bar_win(
-                ctx.core.globals(),
+                ctx.core.g,
                 &ctx.x11,
                 ctx.x11_runtime,
                 ctx.systray.as_deref(),
@@ -263,7 +265,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    let focusfollowsfloatmouse = ctx.core.globals().behavior.focus_follows_float_mouse;
+    let focusfollowsfloatmouse = ctx.core.behavior().focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
 
@@ -273,17 +275,17 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 2. Snapshot selection state before any changes
-    let selected_monitor = ctx.core.globals().selected_monitor();
+    let selected_monitor = ctx.core.model().selected_monitor();
     let selected_window = selected_monitor.sel;
     let is_floating_sel = {
         let is_floating = selected_window
-            .and_then(|w| ctx.core.globals().clients.get(&w))
+            .and_then(|w| ctx.core.model().clients.get(&w))
             .map(|c| c.mode.is_floating())
             .unwrap_or(false);
         let has_tiling = selected_monitor.is_tiling_layout();
         is_floating || !has_tiling
     };
-    let entering_client = ctx.core.globals().clients.contains_key(&event_win);
+    let entering_client = ctx.core.model().clients.contains_key(&event_win);
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
@@ -310,7 +312,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                     return;
                 }
                 if let Some(newc) = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
-                    ctx.core.globals(),
+                    ctx.core.g,
                     ctx.x11.conn,
                     ctx.x11_runtime.root,
                 ) && Some(newc) != selected_window
@@ -324,7 +326,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
 
     // 4. Determine what's actually under the cursor
     let topmost_win_under_cursor = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
-        ctx.core.globals(),
+        ctx.core.g,
         ctx.x11.conn,
         ctx.x11_runtime.root,
     );
@@ -346,13 +348,15 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(monitor_id) = ctx
         .core
-        .globals()
+        .g
+        .model
         .monitors
-        .find_monitor_for(event_win, ctx.core.globals().clients.map())
+        .find_monitor_for(event_win, ctx.core.model().clients.map())
     {
         let is_bar_win = ctx
             .core
-            .globals()
+            .g
+            .model
             .monitors
             .get(monitor_id)
             .is_some_and(|m| event_win == m.bar_win);
@@ -368,9 +372,9 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
 }
 
 pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
-    if let Some(selected_window) = ctx.core.globals().selected_win() {
+    if let Some(selected_window) = ctx.core.model().selected_win() {
         crate::backend::x11::focus::set_focus_x11(
-            ctx.core.globals(),
+            ctx.core.g,
             &ctx.x11,
             ctx.x11_runtime,
             selected_window,
@@ -379,7 +383,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::backend::x11::keyboard::grab_keys_x11(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::keyboard::grab_keys_x11(ctx.core.g, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
@@ -398,7 +402,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         return;
     };
 
-    if !ctx.core.globals().clients.contains_key(&event_win)
+    if !ctx.core.model().clients.contains_key(&event_win)
         && !is_override_redirect(&ctx.x11, event_win)
     {
         let (geo, border_width) = get_win_geometry(&ctx.x11, event_win);
@@ -414,17 +418,17 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     if event_win != root_win {
         let root_y = e.root_y as i32;
         let (mon, gesture) = {
-            let selmon = ctx.core.globals().selected_monitor();
+            let selmon = ctx.core.model().selected_monitor();
             (selmon.monitor_id, selmon.gesture)
         };
         let showbar = {
-            let selmon = ctx.core.globals_mut().selected_monitor_mut();
+            let selmon = ctx.core.model_mut().selected_monitor_mut();
             selmon.pertag_state().showbar
         };
         let in_bar = showbar
             && ctx
                 .core
-                .globals()
+                .g
                 .monitor(mon)
                 .is_some_and(|mon| crate::bar::y_in_bar(mon, root_y));
         if !in_bar && gesture != Gesture::None {
@@ -437,7 +441,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root_y = e.root_y as i32;
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.globals().behavior.focus_follows_mouse
+    if ctx.core.behavior().focus_follows_mouse
         && crate::focus::select_monitor_at_pointer(
             &mut WmCtx::X11(ctx.reborrow()),
             Point::new(root_x, root_y),
@@ -448,10 +452,10 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     // Early-out: cursor is below the bar area.
     let (monitor_y, bar_height, current_gesture) = {
-        let mon = ctx.core.globals().selected_monitor();
+        let mon = ctx.core.model().selected_monitor();
         (
             mon.monitor_rect.y,
-            ctx.core.globals().cfg.derived.bar_height,
+            ctx.core.config().derived.bar_height,
             mon.gesture,
         )
     };
@@ -478,7 +482,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     };
 
     // Cache tag-strip width only when we are actually in the bar hot path.
-    ctx.core.globals_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
+    ctx.core.model_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
 
     let pos = crate::bar::update_hover(
         &mut WmCtx::X11(ctx.reborrow()),
@@ -511,10 +515,10 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if ctx.core.globals().clients.contains_key(&event_win) {
+    if ctx.core.model().clients.contains_key(&event_win) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
-                if let Some(c) = ctx.core.globals_mut().clients.get_mut(&event_win) {
+                if let Some(c) = ctx.core.model_mut().clients.get_mut(&event_win) {
                     c.size_hints_dirty = false;
                 }
             }
@@ -532,7 +536,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         {
             let props =
                 crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
-            if crate::client::handle_property_change(ctx.core.globals_mut(), event_win, &props) {
+            if crate::client::handle_property_change(ctx.core.g, event_win, &props) {
                 ctx.core.queue_layout_for_client(event_win);
             }
         }
@@ -557,7 +561,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.globals().clients.contains_key(&event_win) {
+    if ctx.core.model().clients.contains_key(&event_win) {
         if e.response_type & 0x80 != 0 {
             crate::backend::x11::set_client_state(
                 &ctx.x11,
@@ -595,7 +599,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
-    let selmon_id = ctx.core.globals().selected_monitor_id();
+    let selmon_id = ctx.core.model().selected_monitor_id();
     let systray_win_opt = ctx.systray.as_ref().map(|s| s.win);
     let statusescheme_bg_pixel = ctx.x11_runtime.statusscheme.bg.color.pixel as u32;
 
@@ -644,19 +648,15 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     };
 
     {
-        ctx.core.globals_mut().clients.insert(icon_win, client);
+        ctx.core.model_mut().clients.insert(icon_win, client);
         if let Some(ref mut systray) = ctx.systray {
             systray.icons.insert(0, icon_win);
         }
     };
 
-    crate::backend::x11::update_size_hints_x11(ctx.core.globals_mut(), &ctx.x11, icon_win);
+    crate::backend::x11::update_size_hints_x11(ctx.core.model_mut(), &ctx.x11, icon_win);
     crate::backend::x11::systray::update_systray_icon_geom(
-        ctx.core.globals_mut(),
-        &ctx.x11,
-        icon_win,
-        geo.w,
-        geo.h,
+        ctx.core.g, &ctx.x11, icon_win, geo.w, geo.h,
     );
 
     let conn = ctx.x11.conn;
@@ -714,9 +714,9 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         XEMBED_EMBEDDED_VERSION as i64,
     );
 
-    if let Some(mon) = ctx.core.globals().monitor(selmon_id).cloned() {
+    if let Some(mon) = ctx.core.model().monitor(selmon_id).cloned() {
         crate::backend::x11::bar::resize_bar_win(
-            ctx.core.globals(),
+            ctx.core.g,
             &ctx.x11,
             ctx.x11_runtime,
             ctx.systray.as_deref(),
@@ -745,7 +745,8 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
 
     let is_fullscreen = ctx
         .core
-        .globals()
+        .g
+        .model
         .clients
         .get(&win)
         .map(|c| c.mode.is_fullscreen())
@@ -762,7 +763,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
 fn handle_current_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let desktop = e.data.as_data32()[0];
     let Some((monitor_id, tag_index)) =
-        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.globals(), desktop)
+        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.model(), desktop)
     else {
         return;
     };
@@ -778,21 +779,16 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     let desktop = e.data.as_data32()[0];
 
     if desktop == u32::MAX {
-        if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
             client.is_sticky = true;
         }
-        crate::backend::x11::set_client_tag_prop(
-            ctx.core.globals(),
-            &ctx.x11,
-            ctx.x11_runtime,
-            win,
-        );
+        crate::backend::x11::set_client_tag_prop(ctx.core.g, &ctx.x11, ctx.x11_runtime, win);
         ctx.core.queue_layout_for_all_monitors_urgent();
         return;
     }
 
     let Some((target_mon, tag_index)) =
-        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.globals(), desktop)
+        crate::backend::x11::properties::monitor_tag_for_desktop(ctx.core.model(), desktop)
     else {
         return;
     };
@@ -800,12 +796,12 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     };
 
-    let old_mon = ctx.core.globals().clients.monitor_id(win);
+    let old_mon = ctx.core.model().clients.monitor_id(win);
     {
-        let globals = ctx.core.globals_mut();
+        let globals = &mut ctx.core.g;
         globals.detach(win);
         globals.detach_z_order(win);
-        if let Some(client) = globals.clients.get_mut(&win) {
+        if let Some(client) = globals.model.clients.get_mut(&win) {
             client.monitor_id = target_mon;
             client.is_sticky = false;
             client.clear_sticky_if_scratchpad();
@@ -817,7 +813,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         globals.attach_z_order_top(win);
     }
 
-    crate::backend::x11::set_client_tag_prop(ctx.core.globals(), &ctx.x11, ctx.x11_runtime, win);
+    crate::backend::x11::set_client_tag_prop(ctx.core.g, &ctx.x11, ctx.x11_runtime, win);
     crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), None);
 
     if old_mon == Some(target_mon) {
@@ -828,12 +824,12 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
 }
 
 fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let is_hidden = ctx.core.globals().clients.is_hidden(win);
+    let is_hidden = ctx.core.model().clients.is_hidden(win);
     if is_hidden {
         crate::client::show_window(&mut WmCtx::X11(ctx.reborrow()), win);
     };
 
-    if let Some(c) = ctx.core.globals().clients.get(&win) {
+    if let Some(c) = ctx.core.model().clients.get(&win) {
         let monitor_id = c.monitor_id;
         crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
         crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(win));

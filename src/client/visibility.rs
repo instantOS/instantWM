@@ -1,7 +1,9 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
 use crate::backend::WindowOps;
+use crate::client::manager::ClientManager;
 use crate::contexts::{WmCtx, WmCtxWayland};
+use crate::monitor::MonitorManager;
 use crate::types::{ClientMode, Rect, WindowId};
 
 #[derive(Clone, Copy, Debug)]
@@ -14,11 +16,14 @@ pub(crate) struct VisibilityEntry {
 }
 
 /// Snapshot visibility policy without performing backend I/O.
-pub(crate) fn visibility_plan(globals: &crate::globals::Globals) -> Vec<VisibilityEntry> {
+pub(crate) fn visibility_plan(
+    monitors: &MonitorManager,
+    clients: &ClientManager,
+) -> Vec<VisibilityEntry> {
     let mut plan = Vec::new();
-    for mon in globals.monitors_iter_all() {
+    for mon in monitors.iter_all() {
         let selected_tags = mon.selected_tags();
-        for (win, client) in mon.iter_clients(globals.clients.map()) {
+        for (win, client) in mon.iter_clients(clients.map()) {
             plan.push(VisibilityEntry {
                 win,
                 rect: client.geo,
@@ -55,7 +60,8 @@ pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
-    for entry in visibility_plan(ctx.core.globals()) {
+    let globals = ctx.core.state();
+    for entry in visibility_plan(&globals.model.monitors, &globals.model.clients) {
         if entry.visible {
             ctx.wayland.map_window(entry.win);
         } else {
@@ -65,7 +71,7 @@ pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
 }
 
 pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         if !c.is_hidden {
             return;
         }
@@ -84,7 +90,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
-    let scratchpad_name = ctx.core().globals().clients.get(&win).and_then(|c| {
+    let scratchpad_name = ctx.core().model().clients.get(&win).and_then(|c| {
         if c.is_scratchpad() {
             Some(c.scratchpad.as_ref().unwrap().name.clone())
         } else {
@@ -100,7 +106,7 @@ pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(c) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         if c.is_hidden {
             return;
         }
@@ -115,7 +121,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
             }
         }
 
-        if let Some(c_mut) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        if let Some(c_mut) = ctx.core_mut().model_mut().clients.get_mut(&win) {
             c_mut.is_hidden = true;
         }
 
@@ -126,7 +132,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 
     let snext = ctx
         .core()
-        .globals()
+        .state()
         .monitor(monitor_id)
         .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win));
     crate::focus::focus(ctx, snext);
@@ -136,4 +142,167 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
     ctx.wayland.unmap_window(win);
     ctx.wayland.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::visibility_plan;
+    use crate::client::manager::ClientManager;
+    use crate::monitor::MonitorManager;
+    use crate::types::*;
+
+    fn make_client(
+        win: WindowId,
+        tags: TagMask,
+        mon: MonitorId,
+        hidden: bool,
+        sticky: bool,
+    ) -> Client {
+        Client {
+            win,
+            tags,
+            monitor_id: mon,
+            is_hidden: hidden,
+            is_sticky: sticky,
+            mode: ClientMode::Tiling,
+            geo: Rect {
+                x: 0,
+                y: 0,
+                w: 100,
+                h: 100,
+            },
+            ..Client::default()
+        }
+    }
+
+    /// Build a single monitor with given selected tags and client list.
+    fn make_monitor(id: usize, selected: TagMask, client_wins: Vec<WindowId>) -> Monitor {
+        let mut mon = Monitor::default();
+        mon.monitor_id = MonitorId(id);
+        mon.set_selected_tags(selected);
+        mon.clients = client_wins;
+        mon
+    }
+
+    fn make_monitor_manager(monitors: Vec<Monitor>) -> MonitorManager {
+        let mut mgr = MonitorManager::new();
+        for m in monitors {
+            mgr.push(m);
+        }
+        mgr
+    }
+
+    fn make_client_manager(clients: Vec<Client>) -> ClientManager {
+        let mut mgr = ClientManager::new();
+        for c in clients {
+            mgr.insert(c.win, c);
+        }
+        mgr
+    }
+
+    #[test]
+    fn visibility_returns_clients_on_active_tag() {
+        let win1 = WindowId(1);
+        let win2 = WindowId(2);
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+
+        let clients = make_client_manager(vec![
+            make_client(win1, tag1, MonitorId(0), false, false),
+            make_client(win2, tag2, MonitorId(0), false, false),
+        ]);
+        let mon = make_monitor(0, tag1, vec![win1, win2]);
+        let mons = make_monitor_manager(vec![mon]);
+
+        let plan = visibility_plan(&mons, &clients);
+        assert_eq!(plan.len(), 2);
+
+        // win1 is on tag1 (active) -> visible
+        // win2 is on tag2 (inactive) but in the same monitor's client list -> not visible
+        assert_eq!(plan[0].win, win1);
+        assert!(plan[0].visible);
+        assert_eq!(plan[1].win, win2);
+        assert!(!plan[1].visible);
+    }
+
+    #[test]
+    fn visibility_hidden_clients_are_not_visible() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+
+        let clients = make_client_manager(vec![make_client(win, tag, MonitorId(0), true, false)]);
+        let mon = make_monitor(0, tag, vec![win]);
+        let mons = make_monitor_manager(vec![mon]);
+
+        let plan = visibility_plan(&mons, &clients);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].win, win);
+        assert!(!plan[0].visible, "hidden client should not be visible");
+    }
+
+    #[test]
+    fn visibility_sticky_clients_visible_on_any_tag() {
+        let win = WindowId(1);
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+
+        let clients = make_client_manager(vec![make_client(win, tag1, MonitorId(0), false, true)]);
+        let mon = make_monitor(0, tag2, vec![win]);
+        let mons = make_monitor_manager(vec![mon]);
+
+        let plan = visibility_plan(&mons, &clients);
+        assert_eq!(plan.len(), 1);
+        assert!(
+            plan[0].visible,
+            "sticky client should be visible on any tag"
+        );
+    }
+
+    #[test]
+    fn visibility_multiple_monitors() {
+        let win1 = WindowId(1);
+        let win2 = WindowId(2);
+        let tag = TagMask::single(1).unwrap();
+
+        let clients = make_client_manager(vec![
+            make_client(win1, tag, MonitorId(0), false, false),
+            make_client(win2, tag, MonitorId(1), false, false),
+        ]);
+        let mon0 = make_monitor(0, tag, vec![win1]);
+        let mon1 = make_monitor(1, tag, vec![win2]);
+        let mons = make_monitor_manager(vec![mon0, mon1]);
+
+        let plan = visibility_plan(&mons, &clients);
+        assert_eq!(plan.len(), 2);
+        assert!(plan[0].visible);
+        assert!(plan[1].visible);
+    }
+
+    #[test]
+    fn visibility_preserves_geometry_and_mode() {
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        let rect = Rect {
+            x: 50,
+            y: 50,
+            w: 200,
+            h: 300,
+        };
+
+        let mut client = make_client(win, tag, MonitorId(0), false, false);
+        client.geo = rect;
+        client.border_width = 2;
+        client.mode = ClientMode::Floating;
+
+        let clients = make_client_manager(vec![client]);
+        let mon = make_monitor(0, tag, vec![win]);
+        let mons = make_monitor_manager(vec![mon]);
+
+        let plan = visibility_plan(&mons, &clients);
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].rect, rect);
+        assert_eq!(plan[0].border_width, 2);
+        assert_eq!(plan[0].mode, ClientMode::Floating);
+        assert!(plan[0].visible);
+    }
 }

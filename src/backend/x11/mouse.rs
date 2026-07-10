@@ -55,7 +55,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     // Use override from title drag if available (preserves pre-drag floating dimensions),
     // otherwise get the current client geometry.
     let grab_start_rect = float_restore_geo
-        .or_else(|| ctx.core.globals().clients.geo(win))
+        .or_else(|| ctx.core.model().clients.geo(win))
         .unwrap_or_default();
 
     let mut state = MoveState {
@@ -65,13 +65,13 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         edge_snap_indicator: None,
     };
 
-    ctx.core.globals_mut().drag.interactive =
-        crate::globals::DragInteraction::new_move(win, btn, start, grab_start_rect);
+    ctx.core.drag_state_mut().interactive =
+        crate::core_state::DragInteraction::new_move(win, btn, start, grab_start_rect);
 
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
         if let BackendEvent::Motion { root_x, root_y, .. } = event {
             let root = Point::new(*root_x as i32, *root_y as i32);
-            ctx.core.globals_mut().drag.interactive.last_root_point = root;
+            ctx.core.drag_state_mut().interactive.last_root_point = root;
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
             on_motion(&mut wm_ctx, win, root, root, &mut state);
         }
@@ -89,7 +89,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
 }
 
 pub fn get_cursor_client_win_with_conn(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,
 ) -> Option<WindowId> {
@@ -100,7 +100,7 @@ pub fn get_cursor_client_win_with_conn(
     }
 
     let win = WindowId::from(reply.child);
-    if globals.clients.contains_key(&win) {
+    if globals.model.clients.contains_key(&win) {
         Some(win)
     } else {
         None

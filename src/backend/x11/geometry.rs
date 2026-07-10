@@ -1,27 +1,27 @@
 //! X11-specific geometry helpers.
 
 use crate::backend::x11::X11BackendRef;
-use crate::globals::Globals;
+use crate::model::WmModel;
 use crate::types::{Rect, WindowId};
 
 /// Apply ICCCM size hints for an X11 client.
 pub fn apply_icccm_size_hints_x11(
-    globals: &mut Globals,
+    model: &mut WmModel,
     x11: &X11BackendRef,
     win: WindowId,
     geo: &mut Rect,
 ) {
-    let needs_update = globals
+    let needs_update = model
         .clients
         .get(&win)
         .map(|c| !c.size_hints_dirty)
         .unwrap_or(false);
 
     if needs_update {
-        crate::backend::x11::client::update_size_hints_x11(globals, x11, win);
+        crate::backend::x11::client::update_size_hints_x11(model, x11, win);
     }
 
-    let client = match globals.clients.get(&win) {
+    let client = match model.clients.get(&win) {
         Some(c) => c,
         None => return,
     };

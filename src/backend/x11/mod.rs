@@ -282,6 +282,10 @@ impl WindowOps for X11BackendRef<'_> {
     fn flush(&self) {
         let _ = self.conn.flush();
     }
+
+    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
+        crate::backend::WindowProtocol::X11
+    }
 }
 
 impl PointerOps for X11BackendRef<'_> {
@@ -308,10 +312,6 @@ impl PointerOps for X11BackendRef<'_> {
 }
 
 impl OutputOps for X11BackendRef<'_> {
-    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
-        crate::backend::WindowProtocol::X11
-    }
-
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         let root = self.conn.setup().roots[self.screen_num].root;
         randr::set_monitor_config(self.conn, root, name, config);

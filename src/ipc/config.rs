@@ -30,17 +30,17 @@ fn get(wm: &Wm, key: &str) -> Response {
     let Some((section, rest)) = key.split_once('.') else {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
     };
-    let g = &wm.g;
+    let g = &wm.core;
     let val = match section {
-        "window" => field_get(&g.cfg.window, rest),
-        "bar" => field_get(&g.cfg.bar, rest),
-        "systray" => field_get(&g.cfg.systray, rest),
-        "layout" => field_get(&g.cfg.layout, rest),
-        "colors" => field_get(&g.cfg.colors, rest),
-        "cursor" => field_get(&g.cfg.cursor, rest),
-        "fonts" => field_get(&g.cfg.fonts, rest),
-        "input" => return map_get(&g.cfg.input, "input", rest),
-        "monitors" => return map_get(&g.cfg.monitors, "monitors", rest),
+        "window" => field_get(&g.config.window, rest),
+        "bar" => field_get(&g.config.bar, rest),
+        "systray" => field_get(&g.config.systray, rest),
+        "layout" => field_get(&g.config.layout, rest),
+        "colors" => field_get(&g.config.colors, rest),
+        "cursor" => field_get(&g.config.cursor, rest),
+        "fonts" => field_get(&g.config.fonts, rest),
+        "input" => return map_get(&g.config.input, "input", rest),
+        "monitors" => return map_get(&g.config.monitors, "monitors", rest),
         "display" => {
             return Response::err("display.* is derived from outputs and not exposed at runtime");
         }
@@ -55,24 +55,24 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
     };
 
-    let g = &mut wm.g;
+    let g = &mut wm.core;
     let result = match section {
-        "window" => parse_then_set(&mut g.cfg.window, rest, value),
-        "bar" => parse_then_set(&mut g.cfg.bar, rest, value),
-        "systray" => parse_then_set(&mut g.cfg.systray, rest, value),
-        "layout" => parse_then_set(&mut g.cfg.layout, rest, value),
-        "colors" => parse_then_set(&mut g.cfg.colors, rest, value),
-        "cursor" => parse_then_set(&mut g.cfg.cursor, rest, value),
-        "fonts" => parse_then_set(&mut g.cfg.fonts, rest, value),
+        "window" => parse_then_set(&mut g.config.window, rest, value),
+        "bar" => parse_then_set(&mut g.config.bar, rest, value),
+        "systray" => parse_then_set(&mut g.config.systray, rest, value),
+        "layout" => parse_then_set(&mut g.config.layout, rest, value),
+        "colors" => parse_then_set(&mut g.config.colors, rest, value),
+        "cursor" => parse_then_set(&mut g.config.cursor, rest, value),
+        "fonts" => parse_then_set(&mut g.config.fonts, rest, value),
         "input" => {
-            let resp = map_set(&mut g.cfg.input, "input", rest, value);
+            let resp = map_set(&mut g.config.input, "input", rest, value);
             if matches!(resp, Response::Ok) {
                 wm.work.queue_input_config_apply();
             }
             return resp;
         }
         "monitors" => {
-            let resp = map_set(&mut g.cfg.monitors, "monitors", rest, value);
+            let resp = map_set(&mut g.config.monitors, "monitors", rest, value);
             if matches!(resp, Response::Ok) {
                 wm.work.queue_monitor_config_apply();
             }
@@ -91,19 +91,19 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
 }
 
 fn list(wm: &Wm) -> Response {
-    let g = &wm.g;
+    let g = &wm.core;
     let mut entries = Vec::new();
-    collect(&g.cfg.window, "window", &mut entries);
-    collect(&g.cfg.bar, "bar", &mut entries);
-    collect(&g.cfg.systray, "systray", &mut entries);
-    collect(&g.cfg.layout, "layout", &mut entries);
-    collect(&g.cfg.colors, "colors", &mut entries);
-    collect(&g.cfg.cursor, "cursor", &mut entries);
-    collect(&g.cfg.fonts, "fonts", &mut entries);
-    for (id, cfg) in &g.cfg.input {
+    collect(&g.config.window, "window", &mut entries);
+    collect(&g.config.bar, "bar", &mut entries);
+    collect(&g.config.systray, "systray", &mut entries);
+    collect(&g.config.layout, "layout", &mut entries);
+    collect(&g.config.colors, "colors", &mut entries);
+    collect(&g.config.cursor, "cursor", &mut entries);
+    collect(&g.config.fonts, "fonts", &mut entries);
+    for (id, cfg) in &g.config.input {
         collect(cfg, &format!("input.{id}"), &mut entries);
     }
-    for (id, cfg) in &g.cfg.monitors {
+    for (id, cfg) in &g.config.monitors {
         collect(cfg, &format!("monitors.{id}"), &mut entries);
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
@@ -239,7 +239,7 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
                 crate::backend::x11::startup::init_drw_and_schemes(wm);
             }
             if let crate::backend::Backend::Wayland(data) = &mut wm.backend {
-                crate::wayland::common::apply_bar_metrics(&mut wm.g, data);
+                crate::wayland::common::apply_bar_metrics(&mut wm.core, data);
             }
             let mut ctx = wm.ctx();
             ctx.request_bar_update();
@@ -274,9 +274,9 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
 }
 
 fn sync_bar_config_to_monitors(wm: &mut Wm) {
-    let show_bar = wm.g.cfg.bar.show;
-    let top_bar = wm.g.cfg.bar.top;
-    for monitor in wm.g.monitors_iter_all_mut() {
+    let show_bar = wm.core.config.bar.show;
+    let top_bar = wm.core.config.bar.top;
+    for monitor in wm.core.monitors_iter_all_mut() {
         monitor.show_bar = show_bar;
         monitor.top_bar = top_bar;
         for state in monitor.per_tag.values_mut() {
@@ -336,20 +336,20 @@ mod tests {
             do_set(&mut wm, "layout.inner_gap", "42"),
             Response::Ok
         ));
-        assert_eq!(wm.g.cfg.layout.inner_gap, 42);
+        assert_eq!(wm.core.config.layout.inner_gap, 42);
 
         assert!(matches!(
             do_set(&mut wm, "window.resizehints", "false"),
             Response::Ok
         ));
-        assert!(!wm.g.cfg.window.resizehints);
+        assert!(!wm.core.config.window.resizehints);
 
         // Plain string fallback when value isn't valid JSON.
         assert!(matches!(
             do_set(&mut wm, "cursor.theme", "my-cursor"),
             Response::Ok
         ));
-        assert_eq!(wm.g.cfg.cursor.theme, "my-cursor");
+        assert_eq!(wm.core.config.cursor.theme, "my-cursor");
 
         match do_get(&mut wm, "layout.inner_gap") {
             Response::ConfigValue(v) => assert_eq!(v, "42"),
@@ -400,7 +400,7 @@ mod tests {
             do_set(&mut wm, "cursor.theme", "my-cursor"),
             Response::Ok
         ));
-        assert_eq!(wm.g.cfg.cursor.theme, "my-cursor");
+        assert_eq!(wm.core.config.cursor.theme, "my-cursor");
 
         // Bare non-JSON value into a numeric field is rejected as parse
         // error, not silently coerced to a string and then mis-typed.
@@ -418,7 +418,8 @@ mod tests {
         let resp = do_set(&mut wm, "monitors.DP-1.position", "0,0");
         assert!(matches!(resp, Response::Ok), "got {resp:?}");
         assert_eq!(
-            wm.g.cfg
+            wm.core
+                .config
                 .monitors
                 .get("DP-1")
                 .and_then(|m| m.position.as_deref()),
@@ -463,7 +464,7 @@ mod tests {
             do_set(&mut wm, "input.type:touchpad.pointer_accel", "0.5"),
             Response::Ok
         ));
-        assert!(wm.g.cfg.input.contains_key("type:touchpad"));
+        assert!(wm.core.config.input.contains_key("type:touchpad"));
         assert!(wm.work.input_config);
 
         match do_get(&mut wm, "input.type:touchpad.pointer_accel") {
@@ -484,7 +485,7 @@ mod tests {
             do_set(&mut wm, "monitors.DP-1.scale", "2.0"),
             Response::Ok
         ));
-        assert!(wm.g.cfg.monitors.contains_key("DP-1"));
+        assert!(wm.core.config.monitors.contains_key("DP-1"));
         assert!(wm.work.monitor_config);
         assert!(matches!(
             do_get(&mut wm, "monitors.nonexistent.scale"),
@@ -500,14 +501,14 @@ mod tests {
             do_set(&mut wm, "input.type:touchpad.pointer_accel", r#""fast""#),
             Response::Err(_)
         ));
-        assert!(!wm.g.cfg.input.contains_key("type:touchpad"));
+        assert!(!wm.core.config.input.contains_key("type:touchpad"));
         assert!(!wm.work.input_config);
 
         assert!(matches!(
             do_set(&mut wm, "monitors.DP-1.scale", r#""large""#),
             Response::Err(_)
         ));
-        assert!(!wm.g.cfg.monitors.contains_key("DP-1"));
+        assert!(!wm.core.config.monitors.contains_key("DP-1"));
         assert!(!wm.work.monitor_config);
     }
 
@@ -518,11 +519,11 @@ mod tests {
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
         monitor.work_rect = monitor.monitor_rect;
-        wm.g.monitors.push(monitor);
+        wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
 
-        let monitor = wm.g.monitor(crate::types::MonitorId(0)).unwrap();
+        let monitor = wm.core.monitor(crate::types::MonitorId(0)).unwrap();
         assert_eq!(monitor.bar_height, 32);
         assert_eq!(monitor.bar_y, 0);
         assert_eq!(monitor.work_rect, Rect::new(0, 32, 800, 568));
@@ -535,17 +536,17 @@ mod tests {
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
         monitor.work_rect = monitor.monitor_rect;
-        wm.g.monitors.push(monitor);
+        wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
         assert!(matches!(do_set(&mut wm, "bar.show", "false"), Response::Ok));
-        let monitor = wm.g.monitor(crate::types::MonitorId(0)).unwrap();
+        let monitor = wm.core.monitor(crate::types::MonitorId(0)).unwrap();
         assert!(!monitor.show_bar);
         assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 600));
 
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
         assert!(matches!(do_set(&mut wm, "bar.top", "false"), Response::Ok));
-        let monitor = wm.g.monitor(crate::types::MonitorId(0)).unwrap();
+        let monitor = wm.core.monitor(crate::types::MonitorId(0)).unwrap();
         assert!(monitor.show_bar);
         assert!(!monitor.top_bar);
         assert_eq!(monitor.bar_y, 568);

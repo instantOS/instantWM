@@ -117,7 +117,7 @@ pub struct ModeConfig {
 /// All WM configuration in one place.
 ///
 /// Built by [`init_config`] and converted atomically into runtime configuration
-/// by `globals::apply_config`.
+/// by `core_state::apply_config`.
 #[derive(Debug, Clone)]
 pub struct Config {
     // --- Window geometry ---

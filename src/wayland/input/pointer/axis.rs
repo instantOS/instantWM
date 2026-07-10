@@ -46,7 +46,7 @@ pub fn handle_pointer_axis_raw(
     time: u32,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
 
     let root = RootPoint::new(
         pointer_location.x.round() as i32,
@@ -110,7 +110,7 @@ pub fn handle_pointer_axis<B: InputBackend>(
     event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
 
     let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());

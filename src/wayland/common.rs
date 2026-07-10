@@ -50,7 +50,7 @@ use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
-use crate::globals::Globals;
+use crate::core_state::CoreState;
 use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
 use crate::wm::Wm;
 
@@ -221,7 +221,7 @@ mod tests {
 /// Reads `config.toml`, applies tag/key configuration, sets bar metrics, and
 /// calls `update_geom` so that monitor layout is valid before the first frame.
 ///
-/// The caller is responsible for setting `wm.g.cfg.screen_width` /
+/// The caller is responsible for setting `wm.core.config.screen_width` /
 /// `screen_height` to the actual output dimensions afterwards (e.g. from the
 /// winit window size or DRM connector mode).  The values written here
 /// Wayland-specific globals initialization.
@@ -232,10 +232,10 @@ mod tests {
 /// Apply font-derived bar metrics to the runtime config and bar painter.
 ///
 /// Computes `bar_height` and `horizontal_padding` from the font config and
-/// applies them to the given `Globals`. Also updates the bar painter's font
+/// applies them to the given `CoreState`. Also updates the bar painter's font
 /// size. Shared by both startup (`init_wayland_globals`) and reload.
-pub fn apply_bar_metrics(g: &mut Globals, data: &mut WaylandBackendData) {
-    let font_size = wayland_font_size_from_config(&g.cfg.fonts.fonts);
+pub fn apply_bar_metrics(g: &mut CoreState, data: &mut WaylandBackendData) {
+    let font_size = wayland_font_size_from_config(&g.config.fonts.fonts);
     let font_height = wayland_font_height_from_size(font_size);
 
     data.bar_painter.set_font_size(font_size);
@@ -246,21 +246,20 @@ pub fn apply_bar_metrics(g: &mut Globals, data: &mut WaylandBackendData) {
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
     // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
     // rounded up) when the user has not explicitly set bar_height in config.
-    g.cfg.derived.bar_height = if g.cfg.bar.height > 0 {
-        g.cfg.bar.height.max(min_bar_height)
+    g.config.derived.bar_height = if g.config.bar.height > 0 {
+        g.config.bar.height.max(min_bar_height)
     } else {
         (font_height + 12).max(min_bar_height)
     };
-    g.cfg.derived.bar_horizontal_padding = font_height;
+    g.config.derived.bar_horizontal_padding = font_height;
 }
 
-pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
+pub fn init_wayland_globals(g: &mut CoreState, wayland: &mut WaylandBackendData) {
     let cfg = init_config(crate::backend::BackendKind::Wayland);
-    g.cfg.derived.display.width = 1280;
-    g.cfg.derived.display.height = 800;
-    crate::globals::apply_config(g, &cfg);
-    crate::globals::apply_tags_config(g, &cfg);
-    g.cfg.bar.show = true;
+    g.config.derived.display.width = 1280;
+    g.config.derived.display.height = 800;
+    crate::core_state::apply_config(g, &cfg);
+    g.config.bar.show = true;
 
     apply_bar_metrics(g, wayland);
 
@@ -480,7 +479,7 @@ pub fn spawn_wayland_smoke_window() {
 
 /// Build the `MemoryRenderBufferRenderElement` list for the status bar.
 ///
-/// Returns an empty `Vec` when `wm.g.cfg.showbar` is `false`.
+/// Returns an empty `Vec` when `wm.core.config.showbar` is `false`.
 ///
 /// The caller is responsible for adding the returned elements to its own
 /// custom-element list under the appropriate backend-specific wrapper variant
@@ -489,12 +488,12 @@ pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandState,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    if !wm.g.cfg.bar.show {
+    if !wm.core.config.bar.show {
         return Vec::new();
     }
 
     let mut core = CoreCtx::new(
-        &mut wm.g,
+        &mut wm.core,
         &mut wm.work,
         &mut wm.running,
         &mut wm.bar,
@@ -545,7 +544,7 @@ pub fn build_bar_elements(
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.
 pub fn poll_wayland_systray(wm: &mut Wm) {
     let mut core = CoreCtx::new(
-        &mut wm.g,
+        &mut wm.core,
         &mut wm.work,
         &mut wm.running,
         &mut wm.bar,
@@ -581,7 +580,7 @@ pub fn build_fixed_scene_elements(
     state: &mut WaylandState,
 ) -> std::rc::Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
-    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.g, state);
+    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
 
     if !wm.bar.needs_redraw()
         && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
@@ -593,7 +592,11 @@ pub fn build_fixed_scene_elements(
 
     let elements = std::rc::Rc::new(FixedSceneElements {
         bar_buffers: build_bar_buffers(wm, state),
-        borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),
+        borders: crate::wayland::render::borders::render_border_elements(
+            &wm.core.model,
+            &wm.core.config.colors.border,
+            state,
+        ),
     });
 
     if !wm.bar.needs_redraw() {
@@ -819,17 +822,19 @@ pub fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
 
 pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
     let output_name = output.name();
-    let Some(monitor) =
-        wm.g.monitors
-            .monitors()
-            .iter()
-            .find(|m| m.name == output_name)
+    let Some(monitor) = wm
+        .core
+        .model
+        .monitors
+        .monitors()
+        .iter()
+        .find(|m| m.name == output_name)
     else {
         return false;
     };
     let selected_tags = monitor.selected_tags();
     monitor
-        .iter_clients(wm.g.clients.map())
+        .iter_clients(wm.core.model.clients.map())
         .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
 }
 

@@ -439,7 +439,7 @@ fn run_event_loop(
                 wm.work.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(
                     &mut state.runtime.tracked_devices,
-                    &wm.g.cfg.input,
+                    &wm.core.config.input,
                 );
             }
 
@@ -706,18 +706,18 @@ fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) ->
 }
 
 fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
-    let Some(mon) = wm.g.monitors_iter_all().find(|m| m.name == output_name) else {
+    let Some(mon) = wm.core.monitors_iter_all().find(|m| m.name == output_name) else {
         return false;
     };
-    if wm.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        && wm.g.selected_monitor_id() == mon.id()
+    if wm.core.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
+        && wm.core.selected_monitor_id() == mon.id()
     {
         return false;
     }
 
     let selected = mon.selected_tags();
     let mut visible_clients = mon
-        .iter_clients(wm.g.clients.map())
+        .iter_clients(wm.core.model.clients.map())
         .filter(|(_, client)| client.is_visible(selected) && !client.is_scratchpad());
 
     let Some((_, first_client)) = visible_clients.next() else {

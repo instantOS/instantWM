@@ -2,10 +2,10 @@ use crate::contexts::WmCtx;
 use crate::types::AltCursor;
 
 pub fn set_cursor_style(ctx: &mut WmCtx, style: AltCursor) {
-    if ctx.core().globals().behavior.requested_cursor == style {
+    if ctx.core().behavior().requested_cursor == style {
         return;
     }
-    ctx.core_mut().globals_mut().behavior.requested_cursor = style;
+    ctx.core_mut().behavior_mut().requested_cursor = style;
     match ctx {
         WmCtx::X11(x11) => {
             crate::backend::x11::mouse::set_x11_root_cursor(&x11.x11, x11.x11_runtime, style);

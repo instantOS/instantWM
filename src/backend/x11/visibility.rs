@@ -42,13 +42,11 @@ pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> 
 // ---------------------------------------------------------------------------
 
 pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
-    let operations = crate::client::visibility::visibility_plan(ctx.core.globals());
+    let g = ctx.core.state();
+    let operations =
+        crate::client::visibility::visibility_plan(&g.model.monitors, &g.model.clients);
 
-    let has_tiling = ctx
-        .core
-        .globals()
-        .monitors_iter()
-        .any(|(_, m)| m.is_tiling_layout());
+    let has_tiling = g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
 
     for entry in operations {
         let win = entry.win;
@@ -106,7 +104,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
 // ---------------------------------------------------------------------------
 
 pub fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
+    let Rect { x, y, w, h } = match ctx.core.model().clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };

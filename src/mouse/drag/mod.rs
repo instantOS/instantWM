@@ -84,7 +84,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             let Some(root) = wl.wayland.pointer_location() else {
                 return;
             };
-            let (geo, is_floating) = match wl.core.globals().clients.get(&win) {
+            let (geo, is_floating) = match wl.core.model().clients.get(&win) {
                 Some(c) => (c.geo, c.mode.is_floating()),
                 None => return,
             };
@@ -96,12 +96,12 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                     win,
                     crate::types::BaseClientMode::Floating,
                 );
-                let selmon_id = wl.core.globals().selected_monitor_id();
+                let selmon_id = wl.core.model().selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
 
-            wl.core.globals_mut().drag.interactive =
-                crate::globals::DragInteraction::new_move(win, MouseButton::Left, root, geo);
+            wl.core.drag_state_mut().interactive =
+                crate::core_state::DragInteraction::new_move(win, MouseButton::Left, root, geo);
             crate::mouse::set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
                 crate::types::AltCursor::Move,
@@ -122,7 +122,7 @@ pub fn finish_drag_move(
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
 ) {
-    ctx.core_mut().globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction::default();
     clear_bar_hover(ctx);
     complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
 }
@@ -132,7 +132,7 @@ pub fn finish_drag_move(
 /// Clears the active drag state, resets the cursor to the default, handles
 /// potential monitor switch, and re-raises the client so it stays on top.
 pub fn finish_drag_resize(ctx: &mut WmCtx, win: WindowId) {
-    ctx.core_mut().globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction::default();
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);

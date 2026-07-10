@@ -264,7 +264,7 @@ pub fn render_bar_buffers(
         crate::backend::wayland::systray::get_wayland_systray_width_with_state(
             core,
             wayland_systray,
-            core.globals().selected_monitor().bar_height,
+            core.model().selected_monitor().bar_height,
         );
     let _ = scale;
 

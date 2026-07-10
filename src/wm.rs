@@ -1,13 +1,9 @@
-//! Window-manager root object.
-//!
-//! `Wm` owns all runtime state and the active backend.
-
 use crate::backend::Backend;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxWayland, WmCtxX11};
-use crate::globals::{Globals, PendingWork};
+use crate::core_state::{CoreState, PendingWork};
 
 pub struct Wm {
-    pub g: Globals,
+    pub core: CoreState,
     pub work: PendingWork,
     pub backend: Backend,
     pub running: bool,
@@ -18,7 +14,7 @@ pub struct Wm {
 impl Wm {
     pub fn new(backend: Backend) -> Self {
         Self {
-            g: Globals::default(),
+            core: CoreState::default(),
             work: PendingWork::default(),
             backend,
             running: true,
@@ -33,7 +29,7 @@ impl Wm {
 
     pub fn ctx(&mut self) -> WmCtx<'_> {
         let core = CoreCtx::new(
-            &mut self.g,
+            &mut self.core,
             &mut self.work,
             &mut self.running,
             &mut self.bar,

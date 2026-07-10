@@ -262,6 +262,10 @@ impl WindowOps for WaylandBackend {
     fn flush(&self) {
         let _ = self.with_state(WaylandState::flush);
     }
+
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        self.window_protocol(window)
+    }
 }
 
 impl PointerOps for WaylandBackend {
@@ -280,10 +284,6 @@ impl PointerOps for WaylandBackend {
 }
 
 impl OutputOps for WaylandBackend {
-    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        self.window_protocol(window)
-    }
-
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         let name_str = name.to_owned();
         let config_clone = config.clone();

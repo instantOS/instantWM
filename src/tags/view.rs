@@ -25,12 +25,12 @@ fn adjacent_scroll_mask(tagset: TagMask, dir: HorizontalDirection) -> Option<Tag
     TagMask::single(next_tag)
 }
 
-fn commit_view_selection(
-    globals: &mut crate::globals::Globals,
+pub(crate) fn commit_view_selection(
+    monitors: &mut crate::monitor::MonitorManager,
     new_mask: TagMask,
 ) -> Option<MonitorId> {
-    let selmon_id = globals.selected_monitor_id();
-    let mon = globals.selected_monitor_mut();
+    let selmon_id = monitors.sel_idx();
+    let mon = monitors.sel_mut_unchecked();
     let previous_mask = mon.selected_tags();
     if previous_mask == new_mask {
         return None;
@@ -51,14 +51,14 @@ fn commit_view_selection(
 
 /// View tags using type-safe mask.
 pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
-    let tagmask = ctx.core().globals().tags.mask();
+    let tagmask = ctx.core().model().tags.mask();
     let effective_mask = mask & tagmask;
     if effective_mask.is_empty() {
         return;
     }
 
-    let Some(selmon_id) = commit_view_selection(ctx.core_mut().globals_mut(), effective_mask)
-    else {
+    let g = ctx.core_mut().state_mut();
+    let Some(selmon_id) = commit_view_selection(&mut g.model.monitors, effective_mask) else {
         return;
     };
 
@@ -66,13 +66,14 @@ pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
-    let tagmask = ctx.core().globals().tags.mask();
-    let new_mask = ctx.core().globals().selected_monitor().selected_tags() ^ (mask & tagmask);
+    let tagmask = ctx.core().model().tags.mask();
+    let new_mask = ctx.core().model().selected_monitor().selected_tags() ^ (mask & tagmask);
     if new_mask.is_empty() {
         return;
     }
 
-    let Some(selmon_id) = commit_view_selection(ctx.core_mut().globals_mut(), new_mask) else {
+    let g = ctx.core_mut().state_mut();
+    let Some(selmon_id) = commit_view_selection(&mut g.model.monitors, new_mask) else {
         return;
     };
 
@@ -97,13 +98,13 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
         None => return,
     };
 
-    let valid_mask = ctx.core().globals().tags.mask();
+    let valid_mask = ctx.core().model().tags.mask();
     let clicked_mask = clicked_mask & valid_mask;
     if clicked_mask.is_empty() {
         return;
     }
 
-    let current = ctx.core().globals().selected_monitor().selected_tags();
+    let current = ctx.core().model().selected_monitor().selected_tags();
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -116,8 +117,8 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 }
 
 pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
-    let mon = ctx.core().globals().selected_monitor();
-    let (tagset, numtags) = (mon.selected_tags(), ctx.core().globals().tags.count());
+    let mon = ctx.core().model().selected_monitor();
+    let (tagset, numtags) = (mon.selected_tags(), ctx.core().model().tags.count());
 
     let mut next_mask = tagset;
     let mut found = false;
@@ -128,10 +129,10 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
             HorizontalDirection::Left => tagset.rotate_right(step as usize, numtags),
         };
 
-        let clients = ctx.core().globals().selected_monitor().clients.clone();
+        let clients = ctx.core().model().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx.core().globals().clients.get(&win)
+            if let Some(c) = ctx.core().model().clients.get(&win)
                 && c.tags.intersects(next_mask)
             {
                 found = true;
@@ -155,7 +156,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
 }
 
 pub fn last_view(ctx: &mut WmCtx) {
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = ctx.core().model().selected_monitor();
     let (current_tag, prev_tag) = (mon.current_tag_number(), mon.prev_tag);
 
     if current_tag == prev_tag {
@@ -169,19 +170,20 @@ pub fn last_view(ctx: &mut WmCtx) {
 }
 
 pub fn win_view(ctx: &mut WmCtx) {
-    let Some(win) = ctx.core().globals().selected_win() else {
+    let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
 
     let tag_mask = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .tag_mask(win)
         .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY));
 
     if tag_mask.is_scratchpad_only() {
-        let current_tag = ctx.core().globals().selected_monitor().current_tag_number();
+        let current_tag = ctx.core().model().selected_monitor().current_tag_number();
         if let Some(mask) = current_tag.and_then(TagMask::single) {
             view_tags(ctx, mask);
         }
@@ -193,10 +195,10 @@ pub fn win_view(ctx: &mut WmCtx) {
 }
 
 pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    let tagmask = ctx.core().globals().tags.mask();
+    let selmon_id = ctx.core().model().selected_monitor_id();
+    let tagmask = ctx.core().model().tags.mask();
     let newtag = mask & tagmask;
-    let mon = ctx.core().globals().selected_monitor();
+    let mon = ctx.core().model().selected_monitor();
     let (current_tag, current_tagset) = (mon.current_tag_number(), mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
@@ -204,8 +206,8 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let target_idx = newtag.first_tag().unwrap_or(0);
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
-        let m = ctx.core().globals().selected_monitor();
-        for (win, c) in m.iter_clients(ctx.core().globals().clients.map()) {
+        let m = ctx.core().model().selected_monitor();
+        for (win, c) in m.iter_clients(ctx.core().model().clients.map()) {
             let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
                 result.push(win);
@@ -214,7 +216,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
         result
     };
     for win in clients_to_swap {
-        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
             let ctags = client.tags;
             let new_tags = ctags ^ current_tagset ^ newtag;
             client.set_tag_mask(if new_tags.is_empty() {
@@ -224,7 +226,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
             });
         }
     }
-    let mon = ctx.core_mut().globals_mut().selected_monitor_mut();
+    let mon = ctx.core_mut().model_mut().selected_monitor_mut();
     mon.set_selected_tags(newtag);
     if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
@@ -234,11 +236,11 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
-    let selmon_id = ctx.core().globals().selected_monitor_id();
-    let selected_window = ctx.core().globals().selected_win();
+    let selmon_id = ctx.core().model().selected_monitor_id();
+    let selected_window = ctx.core().model().selected_win();
     let Some(win) = selected_window else { return };
 
-    let prev_tag = ctx.core().globals().selected_monitor().prev_tag;
+    let prev_tag = ctx.core().model().selected_monitor().prev_tag;
 
     if prev_tag.is_none() {
         return;
@@ -246,7 +248,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
 
     let target_mask = prev_tag.and_then(TagMask::single).unwrap_or(TagMask::EMPTY);
 
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         client.set_tag_mask(target_mask);
     }
 
@@ -288,14 +290,99 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod view_selection_tests {
+    use super::commit_view_selection;
+    use crate::core_state::CoreState;
+    use crate::monitor::MonitorManager;
+    use crate::types::*;
+
+    fn make_globals_with_one_monitor(selected: TagMask) -> CoreState {
+        let mut g = CoreState::default();
+        let mut mmgr = MonitorManager::new();
+        let mut mon = Monitor::default();
+        mon.monitor_id = MonitorId(0);
+        mon.set_selected_tags(selected);
+        mmgr.push(mon);
+        mmgr.set_sel_idx(MonitorId(0));
+        g.model.monitors = mmgr;
+        g.model.tags.num_tags = 9;
+        g
+    }
+
+    #[test]
+    fn commit_view_changes_selection() {
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+        let mut g = make_globals_with_one_monitor(tag1);
+
+        let result = commit_view_selection(&mut g.model.monitors, tag2);
+        assert_eq!(result, Some(MonitorId(0)));
+
+        let mon = g.monitor(MonitorId(0)).unwrap();
+        assert_eq!(mon.selected_tags(), tag2);
+    }
+
+    #[test]
+    fn commit_view_same_mask_returns_none() {
+        let tag1 = TagMask::single(1).unwrap();
+        let mut g = make_globals_with_one_monitor(tag1);
+
+        let result = commit_view_selection(&mut g.model.monitors, tag1);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn commit_view_updates_prev_tag() {
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+        let mut g = make_globals_with_one_monitor(tag1);
+
+        // First change: tag1 -> tag2
+        // tag1 (bit 0) has first_tag() = Some(1), tag2 (bit 1) has first_tag() = Some(2)
+        // prev_tag should become Some(1) (the previous current_tag_number)
+        let _ = commit_view_selection(&mut g.model.monitors, tag2);
+        let mon = g.monitor(MonitorId(0)).unwrap();
+        assert_eq!(mon.prev_tag, Some(1));
+
+        // Second change: tag2 -> tag3
+        // prev_tag should become Some(2) (the previous current_tag_number)
+        let tag3 = TagMask::single(3).unwrap();
+        let _ = commit_view_selection(&mut g.model.monitors, tag3);
+        let mon_after = g.monitor(MonitorId(0)).unwrap();
+        assert_eq!(mon_after.prev_tag, Some(2));
+    }
+
+    #[test]
+    fn commit_view_no_prev_tag_when_stays_same_number() {
+        // If the current tag number doesn't change, prev_tag should not update
+        let multi_tag = TagMask::single(1).unwrap() | TagMask::single(2).unwrap();
+        let tag3 = TagMask::single(3).unwrap();
+        let mut g = make_globals_with_one_monitor(multi_tag);
+
+        // multi-tag view -> single tag: should set prev tag since current_tag_number changes
+        // prev_tag becomes Some(1) because the previous current_tag_number was... None
+        // (multi-tag has no single current_tag_number)
+        let result = commit_view_selection(&mut g.model.monitors, tag3);
+        assert!(result.is_some());
+
+        let mon = g.monitor(MonitorId(0)).unwrap();
+        // current_tag_number was None (multi-tag), now Some(3) (single tag 3)
+        // Since previous_current_tag was None, the guard `let Some(previous_current_tag) = previous_current_tag`
+        // fails, so prev_tag is NOT updated
+        assert_eq!(mon.prev_tag, None);
+    }
+}
+
 pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let tagset = ctx.core().globals().selected_monitor().selected_tags();
+    let tagset = ctx.core().model().selected_monitor().selected_tags();
 
     let Some(new_mask) = adjacent_scroll_mask(tagset, dir) else {
         return;
     };
 
-    let Some(selmon_id) = commit_view_selection(ctx.core_mut().globals_mut(), new_mask) else {
+    let g = ctx.core_mut().state_mut();
+    let Some(selmon_id) = commit_view_selection(&mut g.model.monitors, new_mask) else {
         return;
     };
 
@@ -304,10 +391,11 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
 /// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
-    let tagset = ctx.core().globals().selected_monitor().selected_tags();
+    let tagset = ctx.core().model().selected_monitor().selected_tags();
 
     let new_mask = adjacent_scroll_mask(tagset, dir)?;
-    let selmon_id = commit_view_selection(ctx.core_mut().globals_mut(), new_mask)?;
+    let g = ctx.core_mut().state_mut();
+    let selmon_id = commit_view_selection(&mut g.model.monitors, new_mask)?;
     crate::focus::focus(ctx, None);
     Some(selmon_id)
 }

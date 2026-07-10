@@ -14,14 +14,15 @@ mod constants;
 mod contexts;
 mod geometry;
 
+mod core_state;
 mod floating;
 mod focus;
-mod globals;
 pub mod ipc;
 pub mod ipc_types;
 mod keyboard;
 mod keyboard_layout;
 pub mod layouts;
+mod model;
 mod monitor;
 mod mouse;
 mod overview;

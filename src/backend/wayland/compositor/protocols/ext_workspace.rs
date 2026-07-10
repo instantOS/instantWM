@@ -119,6 +119,7 @@ pub fn refresh(state: &mut WaylandState) {
                         protocol_state.last_occupied_tags.get(&output_name).copied();
 
                     if let Some(mon) = globals
+                        .model
                         .monitors
                         .monitors
                         .iter()
@@ -127,14 +128,14 @@ pub fn refresh(state: &mut WaylandState) {
                         // Compute urgent_mask for this monitor
                         let mut urgent_mask = crate::types::TagMask::EMPTY;
                         for &win in &mon.clients {
-                            if let Some(c) = globals.clients.get(&win)
+                            if let Some(c) = globals.model.clients.get(&win)
                                 && c.is_urgent
                             {
                                 urgent_mask = urgent_mask | c.tags;
                             }
                         }
 
-                        let occupied_mask = mon.occupied_tags(globals.clients.map());
+                        let occupied_mask = mon.occupied_tags(globals.model.clients.map());
 
                         if Some(mon.selected_tags()) != last_tag
                             || Some(urgent_mask) != last_urgent
@@ -195,6 +196,7 @@ pub fn refresh(state: &mut WaylandState) {
     if let Some(globals) = state.globals() {
         for output_name in &active_output_names {
             if let Some(mon) = globals
+                .model
                 .monitors
                 .monitors
                 .iter()
@@ -205,7 +207,7 @@ pub fn refresh(state: &mut WaylandState) {
                 // Urgency mapping: A tag is urgent if any client placed on it has is_urgent == true.
                 let mut urgent_mask = crate::types::TagMask::EMPTY;
                 for &win in &mon.clients {
-                    if let Some(c) = globals.clients.get(&win)
+                    if let Some(c) = globals.model.clients.get(&win)
                         && c.is_urgent
                     {
                         urgent_mask = urgent_mask | c.tags;
@@ -214,7 +216,7 @@ pub fn refresh(state: &mut WaylandState) {
                 current_urgent_tags.insert(output_name.clone(), urgent_mask);
 
                 // Occupied tags mapping
-                let occupied = mon.occupied_tags(globals.clients.map());
+                let occupied = mon.occupied_tags(globals.model.clients.map());
                 current_occupied_tags.insert(output_name.clone(), occupied);
             }
         }
@@ -225,6 +227,7 @@ pub fn refresh(state: &mut WaylandState) {
     if let Some(globals) = state.globals() {
         for output_name in &active_output_names {
             if let Some(mon) = globals
+                .model
                 .monitors
                 .monitors
                 .iter()

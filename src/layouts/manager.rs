@@ -21,7 +21,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     } else {
         crate::client::apply_visibility(ctx);
 
-        let mon_indices: Vec<MonitorId> = (0..ctx.core().globals().monitors.count())
+        let mon_indices: Vec<MonitorId> = (0..ctx.core().model().monitors.count())
             .map(MonitorId)
             .collect();
         for idx in mon_indices {
@@ -36,12 +36,12 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let plan = {
-        let globals = ctx.core_mut().globals_mut();
-        let bar_height = globals.cfg.derived.bar_height;
+        let globals = ctx.core_mut().state_mut();
+        let bar_height = globals.config.derived.bar_height;
         let animated = globals.behavior.animated;
-        let layout_cfg = globals.cfg.layout;
-        let clients = globals.clients.map();
-        let Some(monitor) = globals.monitors.get_mut(monitor_id) else {
+        let layout_cfg = globals.config.layout;
+        let clients = globals.model.clients.map();
+        let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
             return;
         };
         monitor.compute_arrange(clients, &layout_cfg, bar_height, animated)
@@ -54,7 +54,7 @@ impl ArrangePlan {
     fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         // 1. Save floating geometry for overview mode
         for &win in &self.save_geo {
-            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
                 client.save_floating_geometry();
             }
         }
@@ -68,7 +68,7 @@ impl ArrangePlan {
         }
 
         // 3. Apply monitor updates
-        if let Some(m) = ctx.core_mut().globals_mut().monitor_mut(monitor_id) {
+        if let Some(m) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
             m.clientcount = self.monitor_updates.clientcount;
             m.nmaster = self.monitor_updates.nmaster;
             m.mfact = self.monitor_updates.mfact;
@@ -88,7 +88,7 @@ impl ArrangePlan {
         //    so it doesn't briefly render beneath siblings during animation.
         if let Some(selected) = ctx
             .core()
-            .globals()
+            .state()
             .monitor(monitor_id)
             .filter(|m| m.current_layout().is_monocle())
             .and_then(|m| m.sel)
@@ -109,7 +109,7 @@ impl ArrangePlan {
 
         // 7. Raise selected window in overview mode
         if self.is_overview
-            && let Some(monitor) = ctx.core().globals().monitor(monitor_id)
+            && let Some(monitor) = ctx.core().model().monitor(monitor_id)
             && let Some(selected) = monitor.sel
             && self.client_moves.iter().any(|o| o.win == selected)
         {
@@ -248,11 +248,11 @@ fn border_width_for_layout_client(
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update();
 
-    let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
+    let Some(monitor) = ctx.core().model().monitor(monitor_id) else {
         return;
     };
 
-    if crate::overview::is_active_on_monitor(ctx.core().globals(), monitor) {
+    if crate::overview::is_active_on_monitor(ctx.core().model(), monitor) {
         return;
     }
 
@@ -270,7 +270,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let clients = ctx.core().globals().clients.map();
+    let clients = ctx.core().model().clients.map();
     let Some(stack) = compute_monitor_z_order(monitor, clients) else {
         return;
     };
@@ -358,24 +358,24 @@ pub(crate) fn compute_monitor_z_order(
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
     m.pertag_state().layouts.set_layout(layout);
     finish_layout_change(ctx);
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
     m.pertag_state().layouts.toggle_slot();
     finish_layout_change(ctx);
 }
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx.core().globals().selected_monitor().current_layout();
+    let current_layout = ctx.core().model().selected_monitor().current_layout();
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
     let current_idx = all_layouts
@@ -397,10 +397,10 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
 pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = ctx
         .core()
-        .globals()
+        .state()
         .selected_monitor()
-        .tiled_client_count(ctx.core().globals().clients.map()) as i32;
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
+        .tiled_client_count(ctx.core().model().clients.map()) as i32;
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
     if delta > 0 && m.nmaster >= ccount {
         m.nmaster = ccount;
     } else {
@@ -408,7 +408,7 @@ pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
         m.nmaster = new_nmaster;
     }
     m.pertag_state().nmaster = m.nmaster;
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
 
@@ -418,7 +418,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
     }
     let is_tiling = ctx
         .core()
-        .globals()
+        .state()
         .selected_monitor()
         .current_layout()
         .is_tiling();
@@ -426,7 +426,7 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let current_mfact = ctx.core().globals().selected_monitor().mfact;
+    let current_mfact = ctx.core().model().selected_monitor().mfact;
     let new_mfact = if mfact_val < 1.0 {
         mfact_val + current_mfact
     } else {
@@ -436,25 +436,25 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let animation_on = ctx.core().globals().behavior.animated
+    let animation_on = ctx.core().behavior().animated
         && ctx
             .core()
-            .globals()
+            .state()
             .selected_monitor()
-            .tiled_client_count(ctx.core().globals().clients.map())
+            .tiled_client_count(ctx.core().model().clients.map())
             > 1;
     if animation_on {
-        ctx.core_mut().globals_mut().behavior.animated = false;
+        ctx.core_mut().behavior_mut().animated = false;
     }
 
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
     m.mfact = new_mfact;
     m.pertag_state().mfact = new_mfact;
 
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
     if animation_on {
-        ctx.core_mut().globals_mut().behavior.animated = true;
+        ctx.core_mut().behavior_mut().animated = true;
     }
 }
 

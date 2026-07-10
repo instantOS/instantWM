@@ -21,7 +21,6 @@
 use crate::contexts::WmCtx;
 use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
-use crate::globals::Globals;
 use crate::mouse::monitor::handle_monitor_switch;
 use crate::types::*;
 
@@ -64,8 +63,8 @@ pub fn parse_slop_output(output: &str) -> Option<Rect> {
 ///   (i.e. not wildly off-screen).
 /// * At least one dimension differs by more than 20 px from the current
 ///   geometry (prevents no-op resizes).
-pub fn is_valid_window_size(g: &Globals, rect: &Rect, c_win: WindowId) -> bool {
-    let Some(c) = g.clients.get(&c_win) else {
+pub fn is_valid_window_size(model: &crate::model::WmModel, rect: &Rect, c_win: WindowId) -> bool {
+    let Some(c) = model.clients.get(&c_win) else {
         return false;
     };
 
@@ -82,7 +81,8 @@ pub fn is_valid_window_size(g: &Globals, rect: &Rect, c_win: WindowId) -> bool {
 pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     let is_floating = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&c_win)
         .map(|c| c.mode.is_floating())
@@ -109,7 +109,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(win) = ctx.core().globals().selected_win() else {
+    let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
 
@@ -125,7 +125,7 @@ pub fn draw_window(ctx: &mut WmCtx) {
         return;
     };
 
-    if !is_valid_window_size(ctx.core().globals(), &rect, win) {
+    if !is_valid_window_size(ctx.core().model(), &rect, win) {
         return;
     }
 

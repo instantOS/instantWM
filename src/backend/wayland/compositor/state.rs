@@ -57,7 +57,7 @@ use smithay::{
 use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
-use crate::globals::Globals;
+use crate::core_state::CoreState;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
@@ -97,7 +97,7 @@ impl smithay::reexports::wayland_server::backend::ClientData for WaylandClientSt
 ///
 /// This struct owns all Smithay protocol state objects and is the target
 /// of every `delegate_*!` macro.  It also bridges into instantWM's
-/// `Globals` for shared WM state (tags, clients, config, etc.).
+/// `CoreState` for shared WM state (tags, clients, config, etc.).
 pub struct WaylandState {
     // -- Wayland infrastructure --
     pub display_handle: DisplayHandle,
@@ -452,13 +452,13 @@ impl WaylandState {
 
     /// Attach the WM to this state.
     pub fn attach_wm(&mut self, wm: &mut Wm) {
-        self.cursor_config = wm.g.cfg.cursor.clone();
+        self.cursor_config = wm.core.config.cursor.clone();
         self.wm = Some(NonNull::from(wm));
     }
 
     #[inline]
-    pub(super) fn globals(&self) -> Option<&Globals> {
-        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
+    pub(super) fn globals(&self) -> Option<&CoreState> {
+        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().core })
     }
 
     /// Get a mutable pointer to the WM for calloop source callbacks.
@@ -479,7 +479,7 @@ impl WaylandState {
         self.command_queue.borrow_mut().push(command);
     }
 
-    /// Sync the Smithay space from the Globals state.
+    /// Sync the Smithay space from the CoreState state.
     pub fn sync_space_from_globals(&mut self) {
         let dead_windows: Vec<WindowId> = self
             .window_index
@@ -518,7 +518,7 @@ impl WaylandState {
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
-                let client = g.clients.get(&marker.id)?;
+                let client = g.model.clients.get(&marker.id)?;
                 Some((marker.id, client.geo))
             })
             .collect();

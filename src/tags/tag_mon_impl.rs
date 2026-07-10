@@ -26,8 +26,8 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     let (selected_window, has_multiple_mons) = {
         (
-            ctx.core().globals().selected_win(),
-            ctx.core().globals().monitors.len() > 1,
+            ctx.core().model().selected_win(),
+            ctx.core().model().monitors.len() > 1,
         )
     };
 
@@ -37,8 +37,8 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     }
 
     let Some(target_id) = crate::types::monitor::find_monitor_by_direction(
-        ctx.core().globals().monitors.monitors(),
-        ctx.core().globals().selected_monitor_id(),
+        ctx.core().model().monitors.monitors(),
+        ctx.core().model().selected_monitor_id(),
         direction,
     ) else {
         return;
@@ -50,7 +50,8 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     // -----------------------------------------------------------------------
     let is_floating = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| c.mode.is_floating())
@@ -78,7 +79,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         src_work_area_width,
         src_work_area_height,
     ) = {
-        let mon = ctx.core().globals().selected_monitor();
+        let mon = ctx.core().model().selected_monitor();
         let (monitor_x, monitor_y, work_area_width, work_area_height) = (
             mon.monitor_rect.x,
             mon.monitor_rect.y,
@@ -88,7 +89,8 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
 
         let (win_x, win_y) = ctx
             .core()
-            .globals()
+            .state()
+            .model
             .clients
             .get(&win)
             .map(|c| (c.geo.x, c.geo.y))
@@ -120,7 +122,8 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     // Target monitor geometry.
     let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .monitors
         .get(target_id)
         .map(|m| {
@@ -139,12 +142,12 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     }
 
     // Apply proportional position on the new monitor.
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
         client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }
 
-    let selmon_id = ctx.core().globals().selected_monitor_id();
+    let selmon_id = ctx.core().model().selected_monitor_id();
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 
     // Raise so the window is immediately visible on the new monitor.

@@ -98,7 +98,7 @@ pub fn dispatch_libinput_event(
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
-            configure_device(&mut device, &wm.g.cfg.input);
+            configure_device(&mut device, &wm.core.config.input);
             state.runtime.tracked_devices.push(device);
             false
         }

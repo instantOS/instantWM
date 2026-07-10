@@ -89,6 +89,9 @@ pub trait WindowOps {
     /// Returns `true` if the window exists, `false` otherwise.
     /// This is a query method that returns state rather than performing an action.
     fn window_exists(&self, window: WindowId) -> bool;
+
+    /// Return the protocol/backend surface type for a managed window.
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol;
     fn flush(&self);
 }
 
@@ -106,9 +109,6 @@ pub trait PointerOps {
 
 /// Output discovery and configuration.
 pub trait OutputOps {
-    /// Return the protocol/backend surface type for a managed window.
-    fn window_protocol(&self, window: WindowId) -> WindowProtocol;
-
     /// Set monitor configuration. Every active backend owns output policy.
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig);
 
@@ -290,6 +290,15 @@ impl WindowOps for Backend {
         }
     }
 
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        match self {
+            Backend::X11(data) => {
+                X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window)
+            }
+            Backend::Wayland(data) => data.backend.window_protocol(window),
+        }
+    }
+
     fn flush(&self) {
         match self {
             Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).flush(),
@@ -319,15 +328,6 @@ impl PointerOps for Backend {
 }
 
 impl OutputOps for Backend {
-    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window)
-            }
-            Backend::Wayland(data) => data.backend.window_protocol(window),
-        }
-    }
-
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         match self {
             Backend::X11(data) => {

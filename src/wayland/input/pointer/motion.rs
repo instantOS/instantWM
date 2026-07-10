@@ -22,7 +22,7 @@ use crate::wayland::input::pointer::drag::{
 use crate::wm::Wm;
 
 fn wayland_monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
-    crate::bar::monitor_bar_visible(&wm.g, mon)
+    crate::bar::monitor_bar_visible(&wm.core.model, mon)
 }
 
 /// Unified pointer motion event that abstracts over input source.
@@ -211,8 +211,8 @@ pub fn handle_pointer_motion(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     event: MotionEvent,
 ) {
-    let output_width = wm.g.cfg.derived.display.width;
-    let output_height = wm.g.cfg.derived.display.height;
+    let output_width = wm.core.config.derived.display.width;
+    let output_height = wm.core.config.derived.display.height;
 
     let current_location = state.runtime.pointer_location;
 
@@ -346,7 +346,7 @@ pub fn dispatch_pointer_motion(
     // client scans and no button binding dispatch on motion.
     // Only check when no window is under the cursor — a window covering the
     // sidebar area must receive events normally.
-    if !wm.g.drag.any_drag_active() {
+    if !wm.core.drag.any_drag_active() {
         if hovered_win.is_none() {
             let ctx = wm.ctx();
             if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx
@@ -355,7 +355,7 @@ pub fn dispatch_pointer_motion(
             {
                 return;
             }
-        } else if wm.g.drag.hover_offer.is_sidebar() {
+        } else if wm.core.drag.hover_offer.is_sidebar() {
             let ctx = wm.ctx();
             if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
                 clear_hover_offer(&mut WmCtx::Wayland(ctx.reborrow()));
@@ -369,7 +369,7 @@ pub fn dispatch_pointer_motion(
         root_x,
         root_y,
         hovered_win,
-        !wm.g.drag.any_drag_active(),
+        !wm.core.drag.any_drag_active(),
     );
 
     // Phase 6: Update pointer focus based on drag state
@@ -406,7 +406,7 @@ pub fn dispatch_pointer_motion(
 /// Compute whether the pointer is in the bar area or guard band below it.
 fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     crate::types::find_monitor_by_rect(
-        wm.g.monitors.monitors(),
+        wm.core.model.monitors.monitors(),
         &Rect {
             x: root.x,
             y: root.y,
@@ -414,12 +414,13 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
             h: 1,
         },
     )
-    .and_then(|mid| wm.g.monitor(mid))
+    .and_then(|mid| wm.core.monitor(mid))
     .map(|mon| {
         let bar_visible = wayland_monitor_bar_visible(wm, mon);
         let in_bar = bar_visible && crate::bar::y_in_bar(mon, root.y);
-        let in_guard =
-            bar_visible && !wm.g.drag.any_drag_active() && crate::bar::y_in_guard_band(mon, root.y);
+        let in_guard = bar_visible
+            && !wm.core.drag.any_drag_active()
+            && crate::bar::y_in_guard_band(mon, root.y);
         (in_bar, in_guard)
     })
     .unwrap_or((false, false))
@@ -507,7 +508,7 @@ fn handle_bar_motion(
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
-    let is_drag = wm.g.drag.any_drag_active();
+    let is_drag = wm.core.drag.any_drag_active();
     if (in_bar_band || bar_pos.is_some()) && !is_drag {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
@@ -542,11 +543,18 @@ fn update_hover_resize_state(
         return false;
     }
 
-    let selected_floating =
-        wm.g.selected_win()
-            .and_then(|win| wm.g.clients.get(&win).map(|c| (win, c.mode.is_floating())))
-            .is_some_and(|(_, is_floating)| is_floating);
-    let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.g.selected_win());
+    let selected_floating = wm
+        .core
+        .selected_win()
+        .and_then(|win| {
+            wm.core
+                .model
+                .clients
+                .get(&win)
+                .map(|c| (win, c.mode.is_floating()))
+        })
+        .is_some_and(|(_, is_floating)| is_floating);
+    let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.core.selected_win());
 
     let ctx = wm.ctx();
     let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
@@ -590,7 +598,7 @@ fn update_pointer_focus(
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {
             return;
         };
-        if ctx.core.globals().selected_win() != Some(lock_win) {
+        if ctx.core.model().selected_win() != Some(lock_win) {
             crate::focus::focus(
                 &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
                 Some(lock_win),
@@ -619,19 +627,19 @@ fn handle_wm_drag_motion(
     root_y: i32,
 ) {
     let mut ctx = wm.ctx();
-    if ctx.core().globals().drag.tag.active
+    if ctx.core().drag_state().tag.active
         && !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y)
     {
         let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
-    if ctx.core().globals().drag.interactive.active {
+    if ctx.core().drag_state().interactive.active {
         crate::mouse::title_drag_motion(
             &mut ctx,
             crate::types::geometry::Point::new(root_x, root_y),
         );
     }
-    if ctx.core().globals().drag.gesture.active {
+    if ctx.core().drag_state().gesture.active {
         crate::mouse::update_sidebar_gesture(&mut ctx, root_y);
     }
 }

@@ -81,7 +81,7 @@ pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
 }
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let old_selected_tags = ctx.core().globals().selected_monitor().selected_tags();
+    let old_selected_tags = ctx.core().model().selected_monitor().selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {
         return;
     };
@@ -89,7 +89,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
     crate::layouts::arrange(ctx, Some(selmon_id));
 
     let (monitor_rect, selected_tags, clients) = {
-        let Some(monitor) = ctx.core().globals().monitor(selmon_id) else {
+        let Some(monitor) = ctx.core().model().monitor(selmon_id) else {
             return;
         };
         (
@@ -101,7 +101,7 @@ pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
     let mut animation_targets = Vec::new();
     for win in clients {
-        let Some(client) = ctx.core().globals().clients.get(&win).cloned() else {
+        let Some(client) = ctx.core().model().clients.get(&win).cloned() else {
             continue;
         };
         if !client.is_visible(selected_tags)
