@@ -455,9 +455,12 @@ pub fn systray_to_mon(
     let target = config.pinning.min(n);
 
     if config.pinning > n {
-        MonitorId(0)
+        model.monitors.first().unwrap_or(model.selected_monitor_id())
     } else {
-        MonitorId(target.saturating_sub(1))
+        model
+            .monitors
+            .id_at_position(target.saturating_sub(1))
+            .unwrap_or(model.selected_monitor_id())
     }
 }
 

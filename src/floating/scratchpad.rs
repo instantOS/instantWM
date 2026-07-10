@@ -145,7 +145,7 @@ pub struct ScratchpadInfo {
 }
 
 impl ScratchpadInfo {
-    pub(crate) fn from_client(c: &crate::types::client::Client) -> Option<Self> {
+    pub(crate) fn from_client(c: &crate::types::client::Client, monitor_position: usize) -> Option<Self> {
         if !c.is_scratchpad() {
             return None;
         }
@@ -154,7 +154,7 @@ impl ScratchpadInfo {
             name: sp.name.clone(),
             visible: c.is_sticky,
             window_id: Some(c.win.0),
-            monitor: Some(c.monitor_id.index()),
+            monitor: Some(monitor_position),
             x: Some(c.geo.x),
             y: Some(c.geo.y),
             width: Some(c.geo.w),
@@ -576,7 +576,10 @@ pub fn collect_scratchpad_info(model: &WmModel) -> Vec<ScratchpadInfo> {
     model
         .clients
         .values()
-        .filter_map(ScratchpadInfo::from_client)
+        .filter_map(|c| {
+            let pos = model.monitors.position_of(c.monitor_id).unwrap_or(0);
+            ScratchpadInfo::from_client(c, pos)
+        })
         .collect()
 }
 

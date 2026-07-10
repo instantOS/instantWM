@@ -267,7 +267,7 @@ mod tests {
     fn non_urgent_layout_can_be_deferred_for_animations() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
         wm.work.layout.clear();
-        wm.work.layout.mark_monitor(MonitorId(0));
+        wm.work.layout.mark_monitor(MonitorId::default());
 
         let result = process_pending_work(
             &mut wm,
@@ -285,7 +285,7 @@ mod tests {
     fn urgent_layout_bypasses_animation_defer() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
         wm.work.layout.clear();
-        wm.work.layout.mark_monitor_urgent(MonitorId(0));
+        wm.work.layout.mark_monitor_urgent(MonitorId::default());
 
         let result = process_pending_work(
             &mut wm,

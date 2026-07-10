@@ -21,9 +21,8 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     } else {
         crate::client::apply_visibility(ctx);
 
-        let mon_indices: Vec<MonitorId> = (0..ctx.core().model().monitors.len())
-            .map(MonitorId)
-            .collect();
+        let mon_indices: Vec<MonitorId> =
+            ctx.core().model().monitors.iter().map(|(id, _)| id).collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
             sync_monitor_z_order(ctx, idx);

@@ -437,17 +437,18 @@ impl WindowInfo {
         c: &crate::types::client::Client,
         valid_tag_mask: TagMask,
         protocol: WindowProtocol,
+        monitor_position: usize,
     ) -> Self {
         Self {
             id: c.win.0 as u64,
             title: c.name.clone(),
             protocol,
-            monitor: c.monitor_id.index(),
+            monitor: monitor_position,
             tags: c.tags & valid_tag_mask,
             geometry: c.geo.into(),
             border_width: c.border_width,
             state: c.into(),
-            scratchpad: ScratchpadInfo::from_client(c),
+            scratchpad: ScratchpadInfo::from_client(c, monitor_position),
             size_hints: SizeHintsInfo::try_from(c).ok(),
         }
     }

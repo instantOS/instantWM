@@ -77,11 +77,8 @@ impl ClientZOrder {
 /// geometry, tag state, client lists, and UI configuration.
 #[derive(Debug, Clone)]
 pub struct Monitor {
-    /// Position of this monitor in the global monitors Vec (its `MonitorId`).
-    ///
-    /// This is set by `CoreState` whenever the monitor is inserted or the vec is
-    /// compacted after a removal.  Code should read it via `Monitor::id()`
-    /// rather than accessing the field directly.
+    /// Stable identifier of this monitor, assigned by `MonitorManager` on
+    /// insertion and never changed afterwards. Read via `Monitor::id()`.
     pub(crate) monitor_id: MonitorId,
     /// Master factor for tiling layouts (0.0 to 1.0).
     pub master_factor: f32,
@@ -161,7 +158,7 @@ pub struct Monitor {
 impl Default for Monitor {
     fn default() -> Self {
         Self {
-            monitor_id: MonitorId(0),
+            monitor_id: MonitorId::default(),
             master_factor: 0.55,
             master_count: 1,
             num: 0,
@@ -243,15 +240,12 @@ impl Monitor {
             clientcount: 0,
             prev_tag: Some(1),
             tags: Vec::new(),
-            monitor_id: MonitorId(0),
+            monitor_id: MonitorId::default(),
             ..Default::default()
         }
     }
 
-    /// Return the `MonitorId` (index into `CoreState::monitors`) of this monitor.
-    ///
-    /// This is kept in sync by `CoreState` whenever monitors are added or removed,
-    /// so it is always valid for the lifetime of the monitor.
+    /// Return the stable [`MonitorId`] of this monitor.
     #[inline]
     pub fn id(&self) -> MonitorId {
         self.monitor_id
@@ -765,51 +759,51 @@ impl Monitor {
 }
 
 /// Find a monitor in a given direction from the current one.
-pub fn find_monitor_by_direction(
-    monitors: &[Monitor],
+///
+/// `monitors` is iterated in spatial order. Direction wraps around as a ring.
+pub fn find_monitor_by_direction<'a>(
+    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
     current: MonitorId,
     direction: MonitorDirection,
 ) -> Option<MonitorId> {
-    if monitors.is_empty() {
+    let order: Vec<MonitorId> = monitors.into_iter().map(|(id, _)| id).collect();
+    if order.is_empty() {
         return None;
     }
-    if monitors.len() <= 1 {
+    if order.len() <= 1 {
         return Some(current);
     }
 
-    let current = current.index();
-
-    if direction.is_next() {
-        if current + 1 >= monitors.len() {
-            Some(MonitorId(0))
-        } else {
-            Some(MonitorId(current + 1))
-        }
-    } else if current == 0 {
-        Some(MonitorId(monitors.len() - 1))
+    let pos = order.iter().position(|&id| id == current)?;
+    let len = order.len();
+    let new_pos = if direction.is_next() {
+        (pos + 1) % len
+    } else if pos == 0 {
+        len - 1
     } else {
-        Some(MonitorId(current - 1))
-    }
+        pos - 1
+    };
+
+    Some(order[new_pos])
 }
 
 /// Find the monitor that contains the given rectangle (by maximum intersection area).
-pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<MonitorId> {
-    if monitors.is_empty() {
-        return None;
-    }
-
-    let mut best_idx = 0;
+pub fn find_monitor_by_rect<'a>(
+    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
+    rect: &Rect,
+) -> Option<MonitorId> {
+    let mut best_id = None;
     let mut max_area = 0;
 
-    for (i, m) in monitors.iter().enumerate() {
+    for (id, m) in monitors {
         let area = m.intersect_area(rect);
         if area > max_area {
             max_area = area;
-            best_idx = i;
+            best_id = Some(id);
         }
     }
 
-    Some(MonitorId(best_idx))
+    best_id
 }
 
 /// Runtime state restored when a tag mask is revisited.

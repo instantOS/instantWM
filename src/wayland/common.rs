@@ -826,8 +826,7 @@ pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
         .core
         .model
         .monitors
-        .monitors()
-        .iter()
+        .iter_all()
         .find(|m| m.name == output_name)
     else {
         return false;

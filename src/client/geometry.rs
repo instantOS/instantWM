@@ -314,7 +314,7 @@ mod tests {
 
         let mut client = Client::default();
         client.win = WindowId::from(1_u32);
-        client.monitor_id = MonitorId(0);
+        client.monitor_id = MonitorId::default();
         client.set_tag_mask(TagMask::single(1).unwrap());
         client.mode = crate::types::ClientMode::Floating;
         client.border_width = border_width;
@@ -393,7 +393,7 @@ mod tests {
         );
         let mut parent = Client::default();
         parent.win = WindowId::from(2_u32);
-        parent.monitor_id = MonitorId(0);
+        parent.monitor_id = MonitorId::default();
         parent.geo = Rect::new(500, 300, 800, 600);
         globals.model.clients.insert(parent.win, parent);
 

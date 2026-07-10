@@ -67,7 +67,7 @@ pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
         .clients
         .get(&win)
         .map(|c| (c.mode, c.monitor_id, c.old_border_width))
-        .unwrap_or((ClientMode::Tiling, crate::types::MonitorId(0), 0));
+        .unwrap_or((ClientMode::Tiling, crate::types::MonitorId::default(), 0));
 
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.

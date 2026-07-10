@@ -29,8 +29,8 @@ pub(crate) fn commit_view_selection(
     monitors: &mut crate::monitor::MonitorManager,
     new_mask: TagMask,
 ) -> Option<MonitorId> {
-    let selected_monitor_id = monitors.selected_idx();
-    let mon = monitors.selected_mut_unchecked();
+    let selected_monitor_id = monitors.selected();
+    let mon = monitors.selected_monitor_mut_unchecked();
     if mon.set_selected_tags_with_history(new_mask) {
         Some(selected_monitor_id)
     } else {
@@ -290,10 +290,10 @@ mod view_selection_tests {
         let mut g = CoreState::default();
         let mut mmgr = MonitorManager::new();
         let mut mon = Monitor::default();
-        mon.monitor_id = MonitorId(0);
+        mon.monitor_id = MonitorId::from_raw(0);
         mon.set_selected_tags(selected);
         mmgr.push(mon);
-        mmgr.set_selected_idx(MonitorId(0));
+        mmgr.set_selected(MonitorId::from_raw(0));
         g.model.monitors = mmgr;
         g.model.tags.num_tags = 9;
         g
@@ -306,9 +306,9 @@ mod view_selection_tests {
         let mut g = make_globals_with_one_monitor(tag1);
 
         let result = commit_view_selection(&mut g.model.monitors, tag2);
-        assert_eq!(result, Some(MonitorId(0)));
+        assert_eq!(result, Some(MonitorId::from_raw(0)));
 
-        let mon = g.monitor(MonitorId(0)).unwrap();
+        let mon = g.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon.selected_tags(), tag2);
     }
 
@@ -331,14 +331,14 @@ mod view_selection_tests {
         // tag1 (bit 0) has first_tag() = Some(1), tag2 (bit 1) has first_tag() = Some(2)
         // prev_tag should become Some(1) (the previous current_tag_number)
         let _ = commit_view_selection(&mut g.model.monitors, tag2);
-        let mon = g.monitor(MonitorId(0)).unwrap();
+        let mon = g.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon.prev_tag, Some(1));
 
         // Second change: tag2 -> tag3
         // prev_tag should become Some(2) (the previous current_tag_number)
         let tag3 = TagMask::single(3).unwrap();
         let _ = commit_view_selection(&mut g.model.monitors, tag3);
-        let mon_after = g.monitor(MonitorId(0)).unwrap();
+        let mon_after = g.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon_after.prev_tag, Some(2));
     }
 
@@ -355,7 +355,7 @@ mod view_selection_tests {
         let result = commit_view_selection(&mut g.model.monitors, tag3);
         assert!(result.is_some());
 
-        let mon = g.monitor(MonitorId(0)).unwrap();
+        let mon = g.monitor(MonitorId::from_raw(0)).unwrap();
         // current_tag_number was None (multi-tag), now Some(3) (single tag 3)
         // Since previous_current_tag was None, the guard `let Some(previous_current_tag) = previous_current_tag`
         // fails, so prev_tag is NOT updated

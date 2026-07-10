@@ -406,7 +406,7 @@ pub fn dispatch_pointer_motion(
 /// Compute whether the pointer is in the bar area or guard band below it.
 fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     crate::types::find_monitor_by_rect(
-        wm.core.model.monitors.monitors(),
+        wm.core.model.monitors.iter(),
         &Rect {
             x: root.x,
             y: root.y,

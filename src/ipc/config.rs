@@ -523,7 +523,7 @@ mod tests {
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
 
-        let monitor = wm.core.monitor(crate::types::MonitorId(0)).unwrap();
+        let monitor = wm.core.monitor(wm.core.model.monitors.first().unwrap()).unwrap();
         assert_eq!(monitor.bar_height, 32);
         assert_eq!(monitor.bar_y, 0);
         assert_eq!(monitor.work_rect, Rect::new(0, 32, 800, 568));
@@ -540,13 +540,13 @@ mod tests {
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
         assert!(matches!(do_set(&mut wm, "bar.show", "false"), Response::Ok));
-        let monitor = wm.core.monitor(crate::types::MonitorId(0)).unwrap();
+        let monitor = wm.core.monitor(wm.core.model.monitors.first().unwrap()).unwrap();
         assert!(!monitor.show_bar);
         assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 600));
 
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
         assert!(matches!(do_set(&mut wm, "bar.top", "false"), Response::Ok));
-        let monitor = wm.core.monitor(crate::types::MonitorId(0)).unwrap();
+        let monitor = wm.core.monitor(wm.core.model.monitors.first().unwrap()).unwrap();
         assert!(monitor.show_bar);
         assert!(!monitor.top_bar);
         assert_eq!(monitor.bar_y, 568);

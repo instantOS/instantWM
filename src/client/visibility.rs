@@ -178,7 +178,7 @@ mod tests {
     /// Build a single monitor with given selected tags and client list.
     fn make_monitor(id: usize, selected: TagMask, client_wins: Vec<WindowId>) -> Monitor {
         let mut mon = Monitor::default();
-        mon.monitor_id = MonitorId(id);
+        mon.monitor_id = MonitorId::from_raw(id as u64);
         mon.set_selected_tags(selected);
         mon.clients = client_wins;
         mon
@@ -208,8 +208,8 @@ mod tests {
         let tag2 = TagMask::single(2).unwrap();
 
         let clients = make_client_manager(vec![
-            make_client(win1, tag1, MonitorId(0), false, false),
-            make_client(win2, tag2, MonitorId(0), false, false),
+            make_client(win1, tag1, MonitorId::from_raw(0), false, false),
+            make_client(win2, tag2, MonitorId::from_raw(0), false, false),
         ]);
         let mon = make_monitor(0, tag1, vec![win1, win2]);
         let mons = make_monitor_manager(vec![mon]);
@@ -230,7 +230,7 @@ mod tests {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = make_client_manager(vec![make_client(win, tag, MonitorId(0), true, false)]);
+        let clients = make_client_manager(vec![make_client(win, tag, MonitorId::from_raw(0), true, false)]);
         let mon = make_monitor(0, tag, vec![win]);
         let mons = make_monitor_manager(vec![mon]);
 
@@ -246,7 +246,7 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = make_client_manager(vec![make_client(win, tag1, MonitorId(0), false, true)]);
+        let clients = make_client_manager(vec![make_client(win, tag1, MonitorId::from_raw(0), false, true)]);
         let mon = make_monitor(0, tag2, vec![win]);
         let mons = make_monitor_manager(vec![mon]);
 
@@ -265,8 +265,8 @@ mod tests {
         let tag = TagMask::single(1).unwrap();
 
         let clients = make_client_manager(vec![
-            make_client(win1, tag, MonitorId(0), false, false),
-            make_client(win2, tag, MonitorId(1), false, false),
+            make_client(win1, tag, MonitorId::from_raw(0), false, false),
+            make_client(win2, tag, MonitorId::from_raw(1), false, false),
         ]);
         let mon0 = make_monitor(0, tag, vec![win1]);
         let mon1 = make_monitor(1, tag, vec![win2]);
@@ -289,7 +289,7 @@ mod tests {
             h: 300,
         };
 
-        let mut client = make_client(win, tag, MonitorId(0), false, false);
+        let mut client = make_client(win, tag, MonitorId::from_raw(0), false, false);
         client.geo = rect;
         client.border_width = 2;
         client.mode = ClientMode::Floating;

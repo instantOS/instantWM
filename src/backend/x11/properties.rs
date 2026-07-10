@@ -82,11 +82,12 @@ pub fn desktop_for_monitor_tag(
     tag_index: usize,
 ) -> Option<u32> {
     let tag_count = globals.model.tags.count().max(1);
-    if tag_index == 0 || tag_index > tag_count || globals.monitor(monitor_id).is_none() {
+    if tag_index == 0 || tag_index > tag_count {
         return None;
     }
+    let position = globals.model.monitors.position_of(monitor_id)?;
 
-    Some((monitor_id.index() * tag_count + (tag_index - 1)) as u32)
+    Some((position * tag_count + (tag_index - 1)) as u32)
 }
 
 pub fn monitor_tag_for_desktop(
@@ -95,10 +96,10 @@ pub fn monitor_tag_for_desktop(
 ) -> Option<(MonitorId, usize)> {
     let tag_count = model.tags.count().max(1);
     let desktop = desktop as usize;
-    let monitor_id = MonitorId::new(desktop / tag_count);
+    let monitor_id = model.monitors.id_at_position(desktop / tag_count)?;
     let tag_index = desktop % tag_count + 1;
 
-    if tag_index == 0 || tag_index > tag_count || model.monitor(monitor_id).is_none() {
+    if tag_index == 0 || tag_index > tag_count {
         return None;
     }
 
@@ -187,7 +188,7 @@ fn current_desktop(globals: &crate::core_state::CoreState) -> Option<u32> {
 fn desktop_names(globals: &crate::core_state::CoreState) -> Vec<u8> {
     let mut names = Vec::new();
 
-    for (monitor_id, monitor) in globals.monitors_iter() {
+    for (pos, (_monitor_id, monitor)) in globals.monitors_iter().enumerate() {
         for tag_index in 1..=globals.model.tags.count().max(1) {
             let tag_name = monitor
                 .tags
@@ -195,7 +196,7 @@ fn desktop_names(globals: &crate::core_state::CoreState) -> Vec<u8> {
                 .map(|tag| tag.name.as_str())
                 .unwrap_or("");
             let name = if globals.model.monitors.len() > 1 {
-                format!("{}:{}", monitor_id.index() + 1, tag_name)
+                format!("{}:{}", pos + 1, tag_name)
             } else {
                 tag_name.to_string()
             };

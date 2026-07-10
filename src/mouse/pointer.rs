@@ -56,7 +56,7 @@ pub fn right_sidebar_rect(monitor_rect: Rect, bar_height: i32) -> Rect {
 /// Cheap sidebar-only hit test for pointer motion.
 pub fn sidebar_target_at(model: &WmModel, root: Point) -> Option<SidebarTarget> {
     let monitor_id =
-        crate::types::find_monitor_by_rect(model.monitors.monitors(), &point_rect(root))?;
+        crate::types::find_monitor_by_rect(model.monitors.iter(), &point_rect(root))?;
     let mon = model.monitor(monitor_id)?;
     let rect = right_sidebar_rect(mon.monitor_rect, mon.bar_height);
     rect.contains_point(root).then_some(SidebarTarget {
@@ -88,7 +88,7 @@ pub fn button_region_at(
     }
 
     let monitor_id =
-        crate::types::find_monitor_by_rect(core.model().monitors.monitors(), &point_rect(root))
+        crate::types::find_monitor_by_rect(core.model().monitors.iter(), &point_rect(root))
             .unwrap_or_else(|| core.model().selected_monitor_id());
     if monitor_id != core.model().selected_monitor_id() {
         core.model_mut().set_selected_monitor(monitor_id);

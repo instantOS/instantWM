@@ -230,7 +230,7 @@ mod tests {
         Client {
             win,
             tags,
-            monitor_id: MonitorId(0),
+            monitor_id: MonitorId::default(),
             mode,
             geo: Rect {
                 x: 0,

@@ -38,7 +38,7 @@ fn plan_send_to_monitor(
     }
 
     let target_id = crate::types::monitor::find_monitor_by_direction(
-        model.monitors.monitors(),
+        model.monitors.iter(),
         model.selected_monitor_id(),
         direction,
     )?;
@@ -159,10 +159,8 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
         client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }
 
-    let selmon_id = ctx.core().model().selected_monitor_id();
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
-
-    // Raise so the window is immediately visible on the new monitor.
+    // Raise so the window is immediately visible on the new monitor. The layout
+    // refresh for the affected monitors is handled by `transfer_client`.
     ctx.raise_client(win);
     ctx.window_backend().flush();
 }
@@ -175,23 +173,31 @@ mod tests {
 
     fn model_with_selected_client(mode: ClientMode, monitor_count: usize) -> WmModel {
         let mut model = WmModel::new();
+        let mut selected_id = None;
 
         for _ in 0..monitor_count {
-            model.monitors.push(Monitor::default());
+            let id = model.monitors.push(Monitor::default());
+            if selected_id.is_none() {
+                selected_id = Some(id);
+            }
         }
-        model.monitors.set_selected_idx(MonitorId(0));
+
+        let Some(selected_id) = selected_id else {
+            return model;
+        };
+        model.monitors.set_selected(selected_id);
 
         let win = WindowId(42);
         let mut client = Client {
             win,
-            monitor_id: MonitorId(0),
+            monitor_id: selected_id,
             mode,
             ..Client::default()
         };
         client.tags = model.selected_monitor().selected_tags();
         model.clients.insert(win, client);
 
-        if let Some(mon) = model.monitors.get_mut(MonitorId(0)) {
+        if let Some(mon) = model.monitors.get_mut(selected_id) {
             mon.selected = Some(win);
             mon.clients.push(win);
         }
@@ -217,12 +223,19 @@ mod tests {
     #[test]
     fn planner_uses_floating_strategy_for_floating_clients() {
         let model = model_with_selected_client(ClientMode::Floating, 2);
+        let selected_id = model.selected_monitor_id();
+        let target_id = crate::types::monitor::find_monitor_by_direction(
+            model.monitors.iter(),
+            selected_id,
+            MonitorDirection::NEXT,
+        )
+        .unwrap();
 
         assert_eq!(
             plan_send_to_monitor(&model, MonitorDirection::NEXT),
             Some(SendToMonitorPlan {
                 win: WindowId(42),
-                target_id: MonitorId(1),
+                target_id,
                 strategy: SendToMonitorStrategy::FloatingProportional,
             })
         );
@@ -231,12 +244,19 @@ mod tests {
     #[test]
     fn planner_uses_direct_transfer_for_tiled_clients() {
         let model = model_with_selected_client(ClientMode::Tiling, 2);
+        let selected_id = model.selected_monitor_id();
+        let target_id = crate::types::monitor::find_monitor_by_direction(
+            model.monitors.iter(),
+            selected_id,
+            MonitorDirection::NEXT,
+        )
+        .unwrap();
 
         assert_eq!(
             plan_send_to_monitor(&model, MonitorDirection::NEXT),
             Some(SendToMonitorPlan {
                 win: WindowId(42),
-                target_id: MonitorId(1),
+                target_id,
                 strategy: SendToMonitorStrategy::DirectTransfer,
             })
         );

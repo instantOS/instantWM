@@ -240,7 +240,7 @@ fn clamp_client_tags(
         .clients
         .get(&win)
         .map(|c| (c.monitor_id, c.tags))
-        .unwrap_or((crate::types::MonitorId(0), TagMask::EMPTY));
+        .unwrap_or((crate::types::MonitorId::default(), TagMask::EMPTY));
 
     let Some(mon) = g.monitor(client_mon_id) else {
         return;
@@ -277,7 +277,7 @@ mod tests {
         let win = WindowId(42);
         let client = Client {
             win,
-            monitor_id: MonitorId(0),
+            monitor_id: MonitorId::default(),
             tags: TagMask::single(2).unwrap(),
             ..Default::default()
         };
@@ -349,7 +349,7 @@ mod tests {
         let win = WindowId(42);
         let client = Client {
             win,
-            monitor_id: MonitorId(0),
+            monitor_id: MonitorId::default(),
             mode: ClientMode::Floating,
             ..Default::default()
         };

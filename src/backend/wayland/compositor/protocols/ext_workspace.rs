@@ -121,8 +121,7 @@ pub fn refresh(state: &mut WaylandState) {
                     if let Some(mon) = globals
                         .model
                         .monitors
-                        .monitors
-                        .iter()
+                        .iter_all()
                         .find(|m| m.name == output_name)
                     {
                         // Compute urgent_mask for this monitor
@@ -198,8 +197,7 @@ pub fn refresh(state: &mut WaylandState) {
             if let Some(mon) = globals
                 .model
                 .monitors
-                .monitors
-                .iter()
+                .iter_all()
                 .find(|m| m.name == *output_name)
             {
                 current_tags.insert(output_name.clone(), mon.selected_tags());
@@ -229,8 +227,7 @@ pub fn refresh(state: &mut WaylandState) {
             if let Some(mon) = globals
                 .model
                 .monitors
-                .monitors
-                .iter()
+                .iter_all()
                 .find(|m| m.name == *output_name)
             {
                 let selected_tags = mon.selected_tags();

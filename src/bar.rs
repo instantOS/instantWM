@@ -10,6 +10,7 @@ pub use renderer::reset_bar_common;
 
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
+use std::collections::HashMap;
 
 /// Bar-owned runtime data shared by both render backends.
 #[derive(Debug, Clone, Default)]
@@ -31,7 +32,7 @@ pub struct BarState {
     /// Layout symbol width
     pub layout_symbol_width: i32,
     /// Per-monitor hit-test geometry built during bar rendering.
-    hit_cache: Vec<MonitorHitCache>,
+    hit_cache: HashMap<MonitorId, MonitorHitCache>,
     status_cache_text: String,
     status_cache: status::ParsedStatus,
     status_cache_parsed: bool,
@@ -131,35 +132,25 @@ impl BarState {
     }
 
     pub fn begin_monitor_hit_cache(&mut self, monitor_id: crate::types::MonitorId) {
-        let monitor_id = monitor_id.index();
-        if self.hit_cache.len() <= monitor_id {
-            self.hit_cache
-                .resize_with(monitor_id + 1, MonitorHitCache::default);
-        }
-        self.hit_cache[monitor_id] = MonitorHitCache::default();
+        self.hit_cache.insert(monitor_id, MonitorHitCache::default());
     }
 
     pub fn monitor_hit_cache_mut(
         &mut self,
         monitor_id: crate::types::MonitorId,
     ) -> Option<&mut MonitorHitCache> {
-        self.hit_cache.get_mut(monitor_id.index())
+        self.hit_cache.get_mut(&monitor_id)
     }
 
     pub fn monitor_hit_cache(
         &self,
         monitor_id: crate::types::MonitorId,
     ) -> Option<&MonitorHitCache> {
-        self.hit_cache.get(monitor_id.index())
+        self.hit_cache.get(&monitor_id)
     }
 
     pub fn replace_hit_cache(&mut self, monitor_id: crate::types::MonitorId, hit: MonitorHitCache) {
-        let monitor_id = monitor_id.index();
-        if self.hit_cache.len() <= monitor_id {
-            self.hit_cache
-                .resize_with(monitor_id + 1, MonitorHitCache::default);
-        }
-        self.hit_cache[monitor_id] = hit;
+        self.hit_cache.insert(monitor_id, hit);
     }
 
     pub fn prepare_status_for_render(&mut self, text: &str) {
@@ -218,7 +209,7 @@ pub fn resolve_bar_position_at_root(
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
     let rect = crate::mouse::pointer::point_rect(root);
-    let monitor_id = crate::types::find_monitor_by_rect(core.model().monitors.monitors(), &rect)?;
+    let monitor_id = crate::types::find_monitor_by_rect(core.model().monitors.iter(), &rect)?;
     if sync_selected_monitor && monitor_id != core.model().selected_monitor_id() {
         core.model_mut().set_selected_monitor(monitor_id);
     }

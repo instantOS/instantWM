@@ -21,7 +21,7 @@ pub(super) fn render_key(
 }
 
 fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBarSnapshot) {
-    snapshot.monitor_id.index().hash(hasher);
+    snapshot.monitor_id.hash(hasher);
     snapshot.rect.x.hash(hasher);
     snapshot.rect.y.hash(hasher);
     snapshot.rect.w.hash(hasher);

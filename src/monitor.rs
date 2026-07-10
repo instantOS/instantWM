@@ -11,10 +11,17 @@ use crate::types::*;
 use std::collections::HashMap;
 
 /// Manages the collection of monitors and the current selection.
+///
+/// Each monitor is assigned a stable [`MonitorId`] when it is created. The id
+/// persists across output hotplug and reordering, so references held by clients,
+/// the current selection, and transient interaction state (drags, gestures) stay
+/// valid without remapping. Spatial ordering is tracked separately and queried
+/// via [`position_of`](Self::position_of) / [`id_at_position`](Self::id_at_position).
 #[derive(Default)]
 pub struct MonitorManager {
-    pub monitors: Vec<Monitor>,
-    pub selected_monitor_idx: MonitorId,
+    monitors: Vec<Monitor>,
+    next_id: u64,
+    selected: MonitorId,
 }
 
 impl MonitorManager {
@@ -23,46 +30,73 @@ impl MonitorManager {
     }
 
     // -------------------------------------------------------------------------
-    // Data Accessors
+    // Selection
     // -------------------------------------------------------------------------
 
-    pub fn selected_idx(&self) -> MonitorId {
-        self.selected_monitor_idx
+    pub fn selected(&self) -> MonitorId {
+        self.selected
     }
 
-    pub fn set_selected_idx(&mut self, idx: MonitorId) {
-        if idx.index() < self.monitors.len() {
-            self.selected_monitor_idx = idx;
+    pub fn set_selected(&mut self, id: MonitorId) {
+        if self.contains(id) {
+            self.selected = id;
         }
     }
 
-    pub fn get(&self, idx: MonitorId) -> Option<&Monitor> {
-        self.monitors.get(idx.index())
+    // -------------------------------------------------------------------------
+    // Lookup by stable id
+    // -------------------------------------------------------------------------
+
+    pub fn get(&self, id: MonitorId) -> Option<&Monitor> {
+        self.monitors.iter().find(|m| m.monitor_id == id)
     }
 
-    pub fn get_mut(&mut self, idx: MonitorId) -> Option<&mut Monitor> {
-        self.monitors.get_mut(idx.index())
+    pub fn get_mut(&mut self, id: MonitorId) -> Option<&mut Monitor> {
+        self.monitors.iter_mut().find(|m| m.monitor_id == id)
     }
 
-    pub fn selected(&self) -> Option<&Monitor> {
-        self.monitors.get(self.selected_monitor_idx.index())
+    pub fn contains(&self, id: MonitorId) -> bool {
+        self.monitors.iter().any(|m| m.monitor_id == id)
     }
 
-    pub fn selected_unchecked(&self) -> &Monitor {
-        self.monitors
-            .get(self.selected_monitor_idx.index())
-            .expect("no monitors")
+    pub fn selected_monitor(&self) -> Option<&Monitor> {
+        self.get(self.selected)
     }
 
-    pub fn selected_mut(&mut self) -> Option<&mut Monitor> {
-        self.monitors.get_mut(self.selected_monitor_idx.index())
+    pub fn selected_monitor_unchecked(&self) -> &Monitor {
+        self.get(self.selected).expect("no monitors")
     }
 
-    pub fn selected_mut_unchecked(&mut self) -> &mut Monitor {
-        self.monitors
-            .get_mut(self.selected_monitor_idx.index())
-            .expect("no monitors")
+    pub fn selected_monitor_mut(&mut self) -> Option<&mut Monitor> {
+        self.get_mut(self.selected)
     }
+
+    pub fn selected_monitor_mut_unchecked(&mut self) -> &mut Monitor {
+        self.get_mut(self.selected).expect("no monitors")
+    }
+
+    // -------------------------------------------------------------------------
+    // Spatial position (distinct from identity)
+    // -------------------------------------------------------------------------
+
+    /// Return the 0-based spatial position of `id` in the display order.
+    pub fn position_of(&self, id: MonitorId) -> Option<usize> {
+        self.monitors.iter().position(|m| m.monitor_id == id)
+    }
+
+    /// Return the [`MonitorId`] at spatial position `pos`, if any.
+    pub fn id_at_position(&self, pos: usize) -> Option<MonitorId> {
+        self.monitors.get(pos).map(|m| m.monitor_id)
+    }
+
+    /// Return the id of the first monitor in display order.
+    pub fn first(&self) -> Option<MonitorId> {
+        self.monitors.first().map(|m| m.monitor_id)
+    }
+
+    // -------------------------------------------------------------------------
+    // Sizing
+    // -------------------------------------------------------------------------
 
     pub fn len(&self) -> usize {
         self.monitors.len()
@@ -74,14 +108,15 @@ impl MonitorManager {
 
     pub fn clear(&mut self) {
         self.monitors.clear();
-        self.selected_monitor_idx = MonitorId(0);
+        self.selected = MonitorId::default();
     }
 
+    // -------------------------------------------------------------------------
+    // Iteration (spatial order)
+    // -------------------------------------------------------------------------
+
     pub fn iter(&self) -> impl Iterator<Item = (MonitorId, &Monitor)> {
-        self.monitors
-            .iter()
-            .enumerate()
-            .map(|(idx, monitor)| (MonitorId(idx), monitor))
+        self.monitors.iter().map(|m| (m.monitor_id, m))
     }
 
     pub fn iter_all(&self) -> impl Iterator<Item = &Monitor> {
@@ -89,25 +124,63 @@ impl MonitorManager {
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (MonitorId, &mut Monitor)> {
-        self.monitors
-            .iter_mut()
-            .enumerate()
-            .map(|(idx, monitor)| (MonitorId(idx), monitor))
+        self.monitors.iter_mut().map(|m| (m.monitor_id, m))
     }
 
     pub fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.monitors.iter_mut()
     }
 
+    /// Read-only access to all monitors as a slice, in spatial order.
+    pub fn as_slice(&self) -> &[Monitor] {
+        &self.monitors
+    }
+
+    // -------------------------------------------------------------------------
+    // Insertion
+    // -------------------------------------------------------------------------
+
+    /// Insert a monitor, assigning it a fresh stable [`MonitorId`].
+    ///
+    /// If this is the first monitor, it becomes the selected monitor.
     pub fn push(&mut self, mut m: Monitor) -> MonitorId {
-        let id = MonitorId(self.monitors.len());
+        let id = self.alloc_id();
         m.monitor_id = id;
+        let was_empty = self.monitors.is_empty();
         self.monitors.push(m);
+        if was_empty {
+            self.selected = id;
+        }
         id
     }
 
-    pub fn monitors(&self) -> &[Monitor] {
-        &self.monitors
+    fn alloc_id(&mut self) -> MonitorId {
+        let id = MonitorId::from_raw(self.next_id);
+        self.next_id += 1;
+        id
+    }
+
+    /// Drain all monitors out, returning them in spatial order. The id counter
+    /// and selection are preserved. Used by `sync_monitors_from_outputs` to
+    /// rebuild the list while keeping id allocation monotonic.
+    pub(crate) fn drain(&mut self) -> Vec<Monitor> {
+        std::mem::take(&mut self.monitors)
+    }
+
+    /// Restore a rebuilt monitor list. Each monitor must already carry its
+    /// stable `monitor_id` (reused for matched monitors, freshly allocated for
+    /// new ones). The selection is preserved if its monitor is still present,
+    /// otherwise falls back to the first monitor.
+    pub(crate) fn restore(&mut self, monitors: Vec<Monitor>) {
+        self.monitors = monitors;
+        if !self.contains(self.selected) {
+            self.selected = self.first().unwrap_or_default();
+        }
+    }
+
+    /// Allocate a fresh stable id without inserting a monitor.
+    pub(crate) fn allocate_id(&mut self) -> MonitorId {
+        self.alloc_id()
     }
 
     pub fn find_monitor_for(
@@ -129,7 +202,7 @@ impl MonitorManager {
     }
 
     pub fn find_id_by_rect(&self, rect: &Rect) -> Option<MonitorId> {
-        crate::types::find_monitor_by_rect(&self.monitors, rect).or(Some(self.selected_monitor_idx))
+        crate::types::find_monitor_by_rect(self.iter(), rect).or(Some(self.selected))
     }
 
     pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
@@ -166,6 +239,17 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
     focus(ctx, None);
 
+    // Refresh the two monitors whose client sets changed. Floating transfers do
+    // not arrange (`move_client_to_monitor` sets `needs_arrange = false`), so
+    // this unconditional refresh is what actually updates the bar/geometry for
+    // moved floating clients; callers must not assume the queue below covers it.
+    if let Some(src) = current_mon {
+        if src != target_mon {
+            ctx.core_mut().queue_layout_for_monitor_urgent(src);
+        }
+    }
+    ctx.core_mut().queue_layout_for_monitor_urgent(target_mon);
+
     if outcome.needs_arrange {
         ctx.core_mut().queue_layout_for_all_monitors_urgent();
     }
@@ -177,17 +261,17 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
 
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
     let target = {
-        let mgr = &ctx.core_mut().model_mut().monitors;
-        if mgr.monitors.len() <= 1 {
+        let mgr = &ctx.core().model().monitors;
+        if mgr.len() <= 1 {
             return;
         }
-        match find_monitor_by_direction(&mgr.monitors, mgr.selected_monitor_idx, direction) {
+        match find_monitor_by_direction(mgr.iter(), mgr.selected(), direction) {
             Some(id) => id,
             None => return,
         }
     };
 
-    if target == ctx.core_mut().model_mut().monitors.selected_idx() {
+    if target == ctx.core().model().monitors.selected() {
         return;
     }
 
@@ -196,23 +280,26 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         .state_mut()
         .model
         .monitors
-        .selected()
+        .selected_monitor()
         .and_then(|m| m.selected)
     {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.core_mut().model_mut().monitors.set_selected_idx(target);
+    ctx.core_mut().model_mut().monitors.set_selected(target);
     focus(ctx, None);
 }
 
-pub fn focus_n_mon(ctx: &mut WmCtx, index: MonitorId) {
+pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
     let target = {
-        let mgr = &ctx.core_mut().model_mut().monitors;
-        if mgr.monitors.len() <= 1 {
+        let mgr = &ctx.core().model().monitors;
+        if mgr.len() <= 1 {
             return;
         }
-        MonitorId(index.index().min(mgr.monitors.len() - 1))
+        match mgr.id_at_position(position.min(mgr.len() - 1)) {
+            Some(id) => id,
+            None => return,
+        }
     };
 
     if let Some(win) = ctx
@@ -220,13 +307,13 @@ pub fn focus_n_mon(ctx: &mut WmCtx, index: MonitorId) {
         .state_mut()
         .model
         .monitors
-        .selected()
+        .selected_monitor()
         .and_then(|m| m.selected)
     {
         unfocus_win(ctx, win, false);
     }
 
-    ctx.core_mut().model_mut().monitors.set_selected_idx(target);
+    ctx.core_mut().model_mut().monitors.set_selected(target);
     focus(ctx, None);
 }
 
@@ -236,7 +323,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
         .state_mut()
         .model
         .monitors
-        .selected()
+        .selected_monitor()
         .and_then(|m| m.selected)
     {
         Some(w) => w,
@@ -250,7 +337,7 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
             .state_mut()
             .model
             .monitors
-            .set_selected_idx(monitor_id);
+            .set_selected(monitor_id);
     }
 
     focus(ctx, Some(c_win));
@@ -346,84 +433,32 @@ fn sync_runtime_screen_size(
     }
 }
 
-fn make_monitor_for_output(
-    new_id: MonitorId,
+fn apply_output_to_monitor(
+    m: &mut Monitor,
+    position: usize,
     output: &BackendOutputInfo,
-    pool: &mut Vec<Option<Monitor>>,
-    old_to_new: &mut [Option<MonitorId>],
-    template: &[TagNames],
-    show_bar: bool,
-    top_bar: bool,
-    config: &RuntimeConfig,
-    changed: &mut bool,
-) -> Monitor {
-    let (bh, hp, sm) = scaled_monitor_ui_metrics(config, output.scale);
-    match take_matching_monitor(pool, new_id, output) {
-        Some((j, mut m)) => {
-            let geom_changed = m.monitor_rect != output.rect
-                || m.name != output.name
-                || (m.ui_scale - output.scale).abs() > f64::EPSILON
-                || m.bar_height != bh
-                || m.horizontal_padding != hp
-                || m.startmenu_size != sm;
-            if geom_changed {
-                *changed = true;
-            }
-            old_to_new[j] = Some(new_id);
-            m.apply_output_layout(
-                new_id.index(),
-                output.name.clone(),
-                output.rect,
-                output.scale,
-                bh,
-                hp,
-                sm,
-            );
-            m
-        }
-        None => {
-            *changed = true;
-            let mut m = Monitor::new_with_values(show_bar, top_bar);
-            m.init_tags(template);
-            m.apply_output_layout(
-                new_id.index(),
-                output.name.clone(),
-                output.rect,
-                output.scale,
-                bh,
-                hp,
-                sm,
-            );
-            m
-        }
-    }
+    bh: i32,
+    hp: i32,
+    sm: i32,
+) {
+    m.apply_output_layout(
+        position,
+        output.name.clone(),
+        output.rect,
+        output.scale,
+        bh,
+        hp,
+        sm,
+    );
 }
 
-fn remap_client_monitor_ids(model: &mut crate::model::WmModel, old_to_new: &[Option<MonitorId>]) {
-    for client in model.clients.values_mut() {
-        client.monitor_id = old_to_new
-            .get(client.monitor_id.index())
-            .copied()
-            .flatten()
-            .unwrap_or(MonitorId(0));
-    }
-}
-
-fn remap_selected_monitor_after_sync(
-    selected_idx: MonitorId,
-    old_to_new: &[Option<MonitorId>],
-    new_len: usize,
-) -> MonitorId {
-    let new_sel = old_to_new
-        .get(selected_idx.index())
-        .copied()
-        .flatten()
-        .unwrap_or(MonitorId(0));
-    if new_sel.index() < new_len {
-        new_sel
-    } else {
-        MonitorId(0)
-    }
+fn output_geom_changed(m: &Monitor, output: &BackendOutputInfo, bh: i32, hp: i32, sm: i32) -> bool {
+    m.monitor_rect != output.rect
+        || m.name != output.name
+        || (m.ui_scale - output.scale).abs() > f64::EPSILON
+        || m.bar_height != bh
+        || m.horizontal_padding != hp
+        || m.startmenu_size != sm
 }
 
 fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
@@ -435,41 +470,67 @@ fn notify_monitor_layout_changed(ctx: &mut WmCtx, changed: bool) {
     if let Some(ptr) = ctx.pointer_backend().pointer_location()
         && let Some(m) = ctx.core().model().monitors.find_monitor_at_pointer(ptr)
     {
-        ctx.core_mut().model_mut().monitors.set_selected_idx(m);
+        ctx.core_mut().model_mut().monitors.set_selected(m);
     }
 }
 
-/// Match an existing monitor to this output: prefer stable output name, then Xinerama / slot
-/// alignment for unnamed monitors.
+/// Match an existing monitor to this output: prefer stable output name, then
+/// Xinerama / slot alignment for unnamed monitors. `position` is the spatial
+/// index of the output (used only for the same-slot fallback).
 fn take_matching_monitor(
     pool: &mut [Option<Monitor>],
-    new_id: MonitorId,
+    position: usize,
     output: &BackendOutputInfo,
-) -> Option<(usize, Monitor)> {
+) -> Option<Monitor> {
     if !output.name.is_empty() {
-        if let Some((j, slot)) = pool
+        if let Some((_, slot)) = pool
             .iter_mut()
             .enumerate()
             .find(|(_, slot)| slot.as_ref().is_some_and(|m| m.name == output.name))
         {
-            return Some((j, slot.take().unwrap()));
+            return Some(slot.take().unwrap());
         }
     }
-    if let Some(slot) = pool.get_mut(new_id.index())
+    if let Some(slot) = pool.get_mut(position)
         && let Some(m) = slot.as_ref()
     {
         let xin = output.name.starts_with("XINERAMA-");
         let slot_unlabeled = m.name.is_empty() && !output.name.is_empty();
         let both_empty = m.name.is_empty() && output.name.is_empty();
         if (xin && (m.name.is_empty() || m.name == output.name)) || slot_unlabeled || both_empty {
-            return Some((new_id.index(), slot.take().unwrap()));
+            return Some(slot.take().unwrap());
         }
     }
     None
 }
 
-/// Rebuilds the monitor list from backend outputs, preserving workspace state by **output name**
-/// (with Xinerama / unnamed-slot fallbacks). Remaps `Client::monitor_id` when indices shift.
+/// Move clients whose monitor has disappeared onto a surviving monitor,
+/// updating both ownership and per-monitor membership lists.
+fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorId) {
+    let stale_wins: Vec<WindowId> = model
+        .clients
+        .values()
+        .filter(|c| !model.monitors.contains(c.monitor_id))
+        .map(|c| c.win)
+        .collect();
+
+    for win in stale_wins {
+        model.detach(win);
+        model.detach_z_order(win);
+        if let Some(client) = model.clients.get_mut(&win) {
+            client.monitor_id = survivor;
+        }
+        model.attach(win);
+        model.attach_z_order_top(win);
+    }
+}
+
+/// Rebuilds the monitor list from backend outputs.
+///
+/// Matched monitors **keep their stable `MonitorId`** (keyed by output name,
+/// with Xinerama / unnamed-slot fallbacks), so clients, the selection, and any
+/// captured ids stay valid without remapping. Genuinely removed monitors have
+/// their clients re-homed onto a survivor. Brand-new outputs get a fresh id.
 fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) -> bool {
     if outputs.is_empty() {
         return false;
@@ -482,51 +543,60 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let mut changed =
         sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_width, layout_height);
 
-    let old_count = ctx.core().model().monitors.len();
-    let selected_idx = ctx.core().model().monitors.selected_monitor_idx;
+    // Pre-compute per-output UI metrics while we hold an immutable config borrow.
+    let metrics: Vec<(i32, i32, i32)> = outputs
+        .iter()
+        .map(|o| scaled_monitor_ui_metrics(ctx.core().config(), o.scale))
+        .collect();
 
+    let old_count = ctx.core().model().monitors.len();
     if old_count != outputs.len() {
         changed = true;
     }
 
-    let olds = std::mem::take(&mut ctx.core_mut().model_mut().monitors.monitors);
-    let mut old_to_new: Vec<Option<MonitorId>> = vec![None; olds.len()];
-    let mut pool: Vec<Option<Monitor>> = olds.into_iter().map(Some).collect();
+    // Drain old monitors into a pool. They keep their stable ids + workspace
+    // state; matched ones are reused, the rest are dropped after the rebuild.
+    let old_monitors = ctx.core_mut().state_mut().model.monitors.drain();
+    let mut pool: Vec<Option<Monitor>> = old_monitors.into_iter().map(Some).collect();
 
-    let globals = ctx.core().state();
     let mut new_monitors = Vec::with_capacity(outputs.len());
     for (i, output) in outputs.iter().enumerate() {
-        let mon = make_monitor_for_output(
-            MonitorId(i),
-            output,
-            &mut pool,
-            &mut old_to_new,
-            &template,
-            show_bar,
-            top_bar,
-            &globals.config,
-            &mut changed,
-        );
-        new_monitors.push(mon);
+        let (bh, hp, sm) = metrics[i];
+        match take_matching_monitor(&mut pool, i, output) {
+            Some(mut m) => {
+                if output_geom_changed(&m, output, bh, hp, sm) {
+                    changed = true;
+                }
+                // Keep the reused monitor's stable id and workspace state.
+                apply_output_to_monitor(&mut m, i, output, bh, hp, sm);
+                new_monitors.push(m);
+            }
+            None => {
+                changed = true;
+                let id = ctx.core_mut().state_mut().model.monitors.allocate_id();
+                let mut m = Monitor::new_with_values(show_bar, top_bar);
+                m.monitor_id = id;
+                m.init_tags(&template);
+                apply_output_to_monitor(&mut m, i, output, bh, hp, sm);
+                new_monitors.push(m);
+            }
+        }
     }
 
+    // Destroy orphaned monitors' bar windows.
     for slot in &mut pool {
         if let Some(m) = slot.as_ref() {
             crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
         }
     }
 
-    for (i, m) in new_monitors.iter_mut().enumerate() {
-        m.monitor_id = MonitorId(i);
-    }
-    ctx.core_mut().model_mut().monitors.monitors = new_monitors;
-    let new_len = ctx.core().model().monitors.len();
+    // Restore the rebuilt list. The selection is preserved if its monitor still
+    // exists; otherwise the manager falls back to the first monitor.
+    ctx.core_mut().state_mut().model.monitors.restore(new_monitors);
 
-    {
-        let g = ctx.core_mut().state_mut();
-        remap_client_monitor_ids(&mut g.model, &old_to_new);
-        g.model.monitors.selected_monitor_idx =
-            remap_selected_monitor_after_sync(selected_idx, &old_to_new, new_len);
+    // Re-home any clients whose monitor was removed onto the first survivor.
+    if let Some(survivor) = ctx.core().model().monitors.first() {
+        rehome_orphaned_clients(&mut ctx.core_mut().state_mut().model, survivor);
     }
 
     notify_monitor_layout_changed(ctx, changed);
@@ -566,7 +636,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
     }
 
     let sp_name = client.scratchpad.as_ref().unwrap().name.clone();
-    let current_mon = ctx.core_mut().model_mut().monitors.selected_idx();
+    let current_mon = ctx.core_mut().model_mut().monitors.selected();
 
     if let Some(selected_window) = ctx
         .core_mut()
@@ -582,7 +652,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .state_mut()
         .model
         .monitors
-        .set_selected_idx(target_mon);
+        .set_selected(target_mon);
 
     let _ = crate::floating::scratchpad_show_name(ctx, &sp_name);
 
@@ -600,7 +670,7 @@ fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: Monito
         .state_mut()
         .model
         .monitors
-        .set_selected_idx(current_mon);
+        .set_selected(current_mon);
 
     focus(ctx, None);
 }
@@ -612,10 +682,10 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         ctx.core_mut().config_mut().bar.top,
     );
     mon.init_tags(&template);
-    ctx.core_mut().model_mut().monitors.push(mon);
+    let id = ctx.core_mut().model_mut().monitors.push(mon);
     let (bar_height, horizontal_padding, startmenu_size) =
         scaled_monitor_ui_metrics(ctx.core().config(), 1.0);
-    if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(MonitorId(0)) {
+    if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(id) {
         m.num = 0;
         let rect = Rect {
             x: 0,
@@ -633,11 +703,15 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         .state_mut()
         .model
         .monitors
-        .set_selected_idx(MonitorId(0));
+        .set_selected(id);
     true
 }
 
 fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
+    let first_id = match ctx.core().state().model.monitors.first() {
+        Some(id) => id,
+        None => return false,
+    };
     let (bar_height, horizontal_padding, startmenu_size) =
         scaled_monitor_ui_metrics(ctx.core().config(), 1.0);
     let needs_update = ctx
@@ -645,7 +719,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         .state()
         .model
         .monitors
-        .get(MonitorId(0))
+        .get(first_id)
         .map(|m| {
             m.monitor_rect.w != sw
                 || m.monitor_rect.h != sh
@@ -658,7 +732,7 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         return false;
     }
 
-    if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(MonitorId(0)) {
+    if let Some(m) = ctx.core_mut().model_mut().monitors.get_mut(first_id) {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.available_rect = m.monitor_rect;

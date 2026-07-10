@@ -173,7 +173,7 @@ impl<'a> CoreCtx<'a> {
         let tag_role = if urgent_tags.contains(tag_num) {
             SchemeTag::Urgent
         } else if occupied_tags.contains(tag_num) {
-            let selected_monitor = self.g.model.monitors.selected();
+            let selected_monitor = self.g.model.monitors.selected_monitor();
             let sel_has_tag = selected_monitor
                 .and_then(|m| {
                     m.selected.and_then(|selected_window| {
@@ -223,7 +223,7 @@ impl<'a> CoreCtx<'a> {
         c: &crate::types::Client,
         is_hover: bool,
     ) -> crate::bar::paint::BarScheme {
-        let selected_monitor = self.g.model.monitors.selected();
+        let selected_monitor = self.g.model.monitors.selected_monitor();
         let is_selected = selected_monitor.and_then(|s| s.selected) == Some(c.win);
         let is_edge_scratchpad = c.is_edge_scratchpad();
 

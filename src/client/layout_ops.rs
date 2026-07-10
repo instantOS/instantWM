@@ -62,7 +62,7 @@ pub fn zoom(ctx: &mut WmCtx) {
         .clients
         .get(&win)
         .map(|c| (c.mode.is_tiling(), c.monitor_id))
-        .unwrap_or((false, crate::types::MonitorId(0)));
+        .unwrap_or((false, crate::types::MonitorId::default()));
 
     let Some(mon) = ctx.core().model().monitor(monitor_id) else {
         return;

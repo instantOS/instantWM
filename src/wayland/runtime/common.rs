@@ -301,10 +301,9 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                     .state()
                     .model
                     .monitors
-                    .monitors
                     .iter()
-                    .position(|m| m.name == monitor_name)
-                    .map(crate::types::MonitorId::from);
+                    .find(|(_, m)| m.name == monitor_name)
+                    .map(|(id, _)| id);
                 if let Some(mid) = mon_id {
                     crate::focus::select_monitor(&mut ctx, mid);
 

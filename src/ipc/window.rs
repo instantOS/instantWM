@@ -42,7 +42,15 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let tag_mask = wm.core.model.tags.mask();
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win)))
+        .map(|c| {
+            let mon_pos = wm
+                .core
+                .model
+                .monitors
+                .position_of(c.monitor_id)
+                .unwrap_or(0);
+            WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win), mon_pos)
+        })
         .collect();
 
     Response::WindowList(windows)
@@ -67,10 +75,17 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     };
 
     let tag_mask = wm.core.model.tags.mask();
+    let mon_pos = wm
+        .core
+        .model
+        .monitors
+        .position_of(c.monitor_id)
+        .unwrap_or(0);
     Response::WindowInfo(WindowInfo::from_client(
         c,
         tag_mask,
         wm.backend.window_protocol(c.win),
+        mon_pos,
     ))
 }
 
@@ -139,15 +154,14 @@ fn resolve_resize_monitor(
         None => Ok(current_monitor_id),
         Some("focused") => Ok(wm.core.selected_monitor_id()),
         Some(raw) => {
-            let monitor_id = crate::types::MonitorId(
-                raw.parse::<usize>()
-                    .map_err(|_| format!("invalid monitor '{}'", raw))?,
-            );
-            if wm.core.monitor(monitor_id).is_some() {
-                Ok(monitor_id)
-            } else {
-                Err(format!("monitor {} not found", monitor_id.index()))
-            }
+            let pos = raw
+                .parse::<usize>()
+                .map_err(|_| format!("invalid monitor '{}'", raw))?;
+            wm.core
+                .model
+                .monitors
+                .id_at_position(pos)
+                .ok_or_else(|| format!("monitor {pos} not found"))
         }
     }
 }
