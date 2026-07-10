@@ -34,7 +34,7 @@ pub fn draw_bar(
         return;
     }
     let work_rect_w = monitor.work_rect.w;
-    let bar_height = core.globals().cfg.bar.height;
+    let bar_height = core.globals().cfg.derived.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
@@ -95,7 +95,7 @@ pub fn draw_bars_x11(
             Some(m) => m.work_rect.w,
             None => continue,
         };
-        let bar_height = core.globals().cfg.bar.height;
+        let bar_height = core.globals().cfg.derived.bar_height;
         if work_rect_w <= 0 || bar_height <= 0 {
             continue;
         }
@@ -149,7 +149,7 @@ pub fn resize_bar_win(
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
-    let bar_height = globals.cfg.bar.height;
+    let bar_height = globals.cfg.derived.bar_height;
     let showsystray = globals.cfg.systray.show;
     let is_selmon = globals.selected_monitor().num == m.num;
 
@@ -181,7 +181,7 @@ pub fn update_bars(
     use crate::bar::color::rgba_to_u32;
 
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = globals.cfg.bar.height;
+        let bar_height = globals.cfg.derived.bar_height;
         let showsystray = globals.cfg.systray.show;
         let status_bg = rgba_to_u32(globals.cfg.colors.status_bar.bg);
         let xlibdisplay = x11_runtime.xlibdisplay.0;

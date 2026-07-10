@@ -62,7 +62,7 @@ pub fn update_systray_icon_geom(
     w: i32,
     h: i32,
 ) {
-    let bar_height = globals.cfg.bar.height;
+    let bar_height = globals.cfg.derived.bar_height;
 
     let (geo_x, geo_y) = globals
         .clients
@@ -229,7 +229,7 @@ pub fn update_systray(
 
     if !systray_exists {
         let root = x11_runtime.root;
-        let bar_height = core.globals().cfg.bar.height;
+        let bar_height = core.globals().cfg.derived.bar_height;
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
@@ -321,7 +321,7 @@ pub fn update_systray(
         None => return,
     };
 
-    let bar_height = core.globals().cfg.bar.height;
+    let bar_height = core.globals().cfg.derived.bar_height;
     let systrayspacing = core.globals().cfg.systray.spacing;
     let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 

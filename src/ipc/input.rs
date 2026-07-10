@@ -111,6 +111,6 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             });
         }
     }
-    wm.work.input_config = true;
+    wm.work.queue_input_config_apply();
     Response::ok()
 }

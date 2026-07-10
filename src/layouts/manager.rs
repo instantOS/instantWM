@@ -37,7 +37,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let plan = {
         let globals = ctx.core_mut().globals_mut();
-        let bar_height = globals.cfg.bar.height;
+        let bar_height = globals.cfg.derived.bar_height;
         let animated = globals.behavior.animated;
         let layout_cfg = globals.cfg.layout;
         let clients = globals.clients.map();

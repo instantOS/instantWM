@@ -70,11 +70,11 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn queue_monitor_config_apply(&mut self) {
-        self.work.monitor_config = true;
+        self.work.queue_monitor_config_apply();
     }
 
     pub fn queue_input_config_apply(&mut self) {
-        self.work.input_config = true;
+        self.work.queue_input_config_apply();
     }
 
     pub fn pending_work(&self) -> &PendingWork {

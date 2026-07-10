@@ -203,7 +203,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
-    width + core.globals().cfg.bar.horizontal_padding
+    width + core.globals().cfg.derived.bar_horizontal_padding
 }
 
 /// Check whether a root-space y-coordinate falls within the bar's vertical span.
@@ -350,7 +350,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         local_x,
         root.y - bar_y,
         button_code,
-        ctx.core().globals().cfg.bar.height,
+        ctx.core().globals().cfg.derived.bar_height,
         clean_state,
     );
 }

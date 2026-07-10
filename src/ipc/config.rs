@@ -67,14 +67,14 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         "input" => {
             let resp = map_set(&mut g.cfg.input, "input", rest, value);
             if matches!(resp, Response::Ok) {
-                wm.work.input_config = true;
+                wm.work.queue_input_config_apply();
             }
             return resp;
         }
         "monitors" => {
             let resp = map_set(&mut g.cfg.monitors, "monitors", rest, value);
             if matches!(resp, Response::Ok) {
-                wm.work.monitor_config = true;
+                wm.work.queue_monitor_config_apply();
             }
             return resp;
         }
@@ -235,6 +235,12 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
     match section {
         "bar" => {
             sync_bar_config_to_monitors(wm);
+            if matches!(wm.backend, crate::backend::Backend::X11(_)) {
+                crate::backend::x11::startup::init_drw_and_schemes(wm);
+            }
+            if let crate::backend::Backend::Wayland(data) = &mut wm.backend {
+                crate::wayland::common::apply_bar_metrics(&mut wm.g, data);
+            }
             let mut ctx = wm.ctx();
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);

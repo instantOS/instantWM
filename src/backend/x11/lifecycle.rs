@@ -285,7 +285,7 @@ fn configure_client_border(
     mon_monitor_rect: Rect,
     is_monocle: bool,
 ) {
-    let bar_height = g.cfg.bar.height;
+    let bar_height = g.cfg.derived.bar_height;
 
     let Some(client) = g.clients.get_mut(&w) else {
         return;
@@ -392,7 +392,7 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
         .get(&w)
         .map(|client| {
             (
-                ctx.core().globals().cfg.display.width,
+                ctx.core().globals().cfg.derived.display.width,
                 client.geo.x,
                 client.geo.y,
                 client.geo.w,

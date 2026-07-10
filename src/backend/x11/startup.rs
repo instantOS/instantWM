@@ -101,8 +101,8 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
     if let Some(data) = wm.backend.x11_data_mut() {
         data.x11_runtime.root = root;
     }
-    wm.g.cfg.display.width = screen.width_in_pixels as i32;
-    wm.g.cfg.display.height = screen.height_in_pixels as i32;
+    wm.g.cfg.derived.display.width = screen.width_in_pixels as i32;
+    wm.g.cfg.derived.display.height = screen.height_in_pixels as i32;
 
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
@@ -247,8 +247,8 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
     data.x11_runtime.draw = Some(drw);
-    wm.g.cfg.bar.height = bar_height as i32;
-    wm.g.cfg.bar.horizontal_padding = font_height as i32;
+    wm.g.cfg.derived.bar_height = bar_height as i32;
+    wm.g.cfg.derived.bar_horizontal_padding = font_height as i32;
 }
 
 fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {

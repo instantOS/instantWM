@@ -351,8 +351,22 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 
     // Final fallback to single monitor
-    let sw = ctx.core_mut().globals_mut().cfg.display.width.max(1);
-    let sh = ctx.core_mut().globals_mut().cfg.display.height.max(1);
+    let sw = ctx
+        .core_mut()
+        .globals_mut()
+        .cfg
+        .derived
+        .display
+        .width
+        .max(1);
+    let sh = ctx
+        .core_mut()
+        .globals_mut()
+        .cfg
+        .derived
+        .display
+        .height
+        .max(1);
 
     if ctx.core_mut().globals_mut().monitors.is_empty() {
         init_single_monitor(ctx, sw, sh)
@@ -382,9 +396,9 @@ fn sync_runtime_screen_size(
     layout_width: i32,
     layout_height: i32,
 ) -> bool {
-    if cfg.display.width != layout_width || cfg.display.height != layout_height {
-        cfg.display.width = layout_width;
-        cfg.display.height = layout_height;
+    if cfg.derived.display.width != layout_width || cfg.derived.display.height != layout_height {
+        cfg.derived.display.width = layout_width;
+        cfg.derived.display.height = layout_height;
         true
     } else {
         false
@@ -610,8 +624,8 @@ fn scaled_i32(value: i32, scale: f64) -> i32 {
 
 fn scaled_monitor_ui_metrics(globals: &crate::globals::Globals, scale: f64) -> (i32, i32, i32) {
     (
-        scaled_i32(globals.cfg.bar.height, scale).max(1),
-        scaled_i32(globals.cfg.bar.horizontal_padding, scale).max(1),
+        scaled_i32(globals.cfg.derived.bar_height, scale).max(1),
+        scaled_i32(globals.cfg.derived.bar_horizontal_padding, scale).max(1),
         scaled_i32(globals.cfg.bar.startmenu_size, scale).max(1),
     )
 }

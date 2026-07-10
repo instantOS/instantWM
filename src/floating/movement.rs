@@ -94,7 +94,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let bar_height = ctx.core().globals().cfg.bar.height;
+    let bar_height = ctx.core().globals().cfg.derived.bar_height;
     let (work_rect, mon_rect, _showbar) = {
         let mon = ctx.core().globals().selected_monitor();
         (mon.work_rect, mon.monitor_rect, mon.selected_tags())

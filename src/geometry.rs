@@ -106,7 +106,7 @@ fn monitor_size_for_client(g: &Globals, win: WindowId) -> (i32, i32) {
         .get(&win)
         .and_then(|c| g.monitors.get(c.monitor_id))
         .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
-        .unwrap_or((g.cfg.display.width, g.cfg.display.height))
+        .unwrap_or((g.cfg.derived.display.width, g.cfg.derived.display.height))
 }
 
 fn animation_duration(frames: i32) -> Duration {

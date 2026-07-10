@@ -10,8 +10,8 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     crate::globals::apply_config(&mut wm.g, &cfg);
     crate::globals::apply_tags_config(&mut wm.g, &cfg);
     wm.g.normalize_current_mode();
-    wm.work.monitor_config = true;
-    wm.work.input_config = true;
+    wm.work.queue_monitor_config_apply();
+    wm.work.queue_input_config_apply();
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
@@ -24,7 +24,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
         reload_x11(wm);
     }
     if let Backend::Wayland(data) = &mut wm.backend {
-        reload_wayland(&mut wm.g, data, &cfg);
+        reload_wayland(&mut wm.g, data);
     }
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
@@ -33,12 +33,8 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     Ok(())
 }
 
-fn reload_wayland(
-    g: &mut crate::globals::Globals,
-    data: &mut crate::backend::WaylandBackendData,
-    cfg: &config::Config,
-) {
-    crate::wayland::common::apply_bar_metrics(g, data, cfg);
+fn reload_wayland(g: &mut crate::globals::Globals, data: &mut crate::backend::WaylandBackendData) {
+    crate::wayland::common::apply_bar_metrics(g, data);
 }
 
 fn reload_x11(wm: &mut Wm) {
@@ -95,14 +91,14 @@ mod tests {
         reload_config(&mut wm).unwrap();
 
         assert!(
-            wm.g.cfg.bar.height > 0,
+            wm.g.cfg.derived.bar_height > 0,
             "bar_height should be computed from font metrics, got {}",
-            wm.g.cfg.bar.height
+            wm.g.cfg.derived.bar_height
         );
         assert!(
-            wm.g.cfg.bar.horizontal_padding > 0,
+            wm.g.cfg.derived.bar_horizontal_padding > 0,
             "horizontal_padding should be set from font height, got {}",
-            wm.g.cfg.bar.horizontal_padding
+            wm.g.cfg.derived.bar_horizontal_padding
         );
     }
 

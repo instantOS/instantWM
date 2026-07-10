@@ -57,7 +57,7 @@ pub fn apply_rules(
     let special_next = g.behavior.specialnext;
     let rules = g.cfg.bindings.rules.clone();
     let tag_mask = g.tags.mask();
-    let bar_height = g.cfg.bar.height;
+    let bar_height = g.cfg.derived.bar_height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if special_next != SpecialNext::None {

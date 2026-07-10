@@ -184,7 +184,7 @@ fn attach_client_to_monitor_top(g: &mut Globals, win: WindowId, monitor_id: Moni
 fn selected_monitor_yoffset(g: &Globals, tags: crate::types::TagMask) -> i32 {
     let mon = g.selected_monitor();
     let showbar = mon.showbar_for_mask(tags);
-    let bar_height = g.cfg.bar.height;
+    let bar_height = g.cfg.derived.bar_height;
     let mut offset = if showbar { bar_height } else { 0 };
     for (_win, c) in mon.iter_clients(g.clients.map()) {
         if c.tags.intersects(tags) && c.mode.is_true_fullscreen() {

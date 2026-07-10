@@ -221,7 +221,7 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = globals.cfg.bar.height;
+    let bar_height = globals.cfg.derived.bar_height;
     rect.enforce_minimum(bar_height, bar_height);
 
     SizeHintsOutcome {
@@ -249,7 +249,12 @@ fn clamp_position_to_bounds(
     total_h: i32,
 ) {
     if interact {
-        let screen = Rect::new(0, 0, globals.cfg.display.width, globals.cfg.display.height);
+        let screen = Rect::new(
+            0,
+            0,
+            globals.cfg.derived.display.width,
+            globals.cfg.derived.display.height,
+        );
         geo.clamp_position(&screen, total_w, total_h);
     } else if let Some(wr) = work_rect {
         geo.clamp_position(&wr, total_w, total_h);

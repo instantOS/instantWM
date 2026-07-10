@@ -120,7 +120,7 @@ fn set_monitor_config(
     };
 
     wm.g.cfg.monitors.insert(resolved_id, config);
-    wm.work.monitor_config = true;
+    wm.work.queue_monitor_config_apply();
     Response::ok()
 }
 

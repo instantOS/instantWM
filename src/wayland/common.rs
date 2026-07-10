@@ -234,12 +234,8 @@ mod tests {
 /// Computes `bar_height` and `horizontal_padding` from the font config and
 /// applies them to the given `Globals`. Also updates the bar painter's font
 /// size. Shared by both startup (`init_wayland_globals`) and reload.
-pub fn apply_bar_metrics(
-    g: &mut Globals,
-    data: &mut WaylandBackendData,
-    cfg: &crate::config::Config,
-) {
-    let font_size = wayland_font_size_from_config(&cfg.fonts);
+pub fn apply_bar_metrics(g: &mut Globals, data: &mut WaylandBackendData) {
+    let font_size = wayland_font_size_from_config(&g.cfg.fonts.fonts);
     let font_height = wayland_font_height_from_size(font_size);
 
     data.bar_painter.set_font_size(font_size);
@@ -250,23 +246,23 @@ pub fn apply_bar_metrics(
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
     // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
     // rounded up) when the user has not explicitly set bar_height in config.
-    g.cfg.bar.height = if cfg.bar_height > 0 {
-        cfg.bar_height.max(min_bar_height)
+    g.cfg.derived.bar_height = if g.cfg.bar.height > 0 {
+        g.cfg.bar.height.max(min_bar_height)
     } else {
         (font_height + 12).max(min_bar_height)
     };
-    g.cfg.bar.horizontal_padding = font_height;
+    g.cfg.derived.bar_horizontal_padding = font_height;
 }
 
 pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
     let cfg = init_config(crate::backend::BackendKind::Wayland);
-    g.cfg.display.width = 1280;
-    g.cfg.display.height = 800;
+    g.cfg.derived.display.width = 1280;
+    g.cfg.derived.display.height = 800;
     crate::globals::apply_config(g, &cfg);
     crate::globals::apply_tags_config(g, &cfg);
     g.cfg.bar.show = true;
 
-    apply_bar_metrics(g, wayland, &cfg);
+    apply_bar_metrics(g, wayland);
 
     // Monitor geometry will be set up after the compositor is ready via update_geom
 }

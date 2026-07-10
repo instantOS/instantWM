@@ -188,8 +188,8 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
         return;
     };
 
-    ctx.core.globals_mut().cfg.display.width = e.width as i32;
-    ctx.core.globals_mut().cfg.display.height = e.height as i32;
+    ctx.core.globals_mut().cfg.derived.display.width = e.width as i32;
+    ctx.core.globals_mut().cfg.derived.display.height = e.height as i32;
 
     crate::monitor::refresh_monitor_layout(&mut WmCtx::X11(ctx.reborrow()));
     crate::backend::x11::update_ewmh_desktop_props(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
@@ -451,7 +451,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         let mon = ctx.core.globals().selected_monitor();
         (
             mon.monitor_rect.y,
-            ctx.core.globals().cfg.bar.height,
+            ctx.core.globals().cfg.derived.bar_height,
             mon.gesture,
         )
     };

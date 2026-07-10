@@ -43,7 +43,6 @@ pub struct BarConfig {
     pub show: bool,
     pub top: bool,
     pub height: i32,
-    pub horizontal_padding: i32,
     pub startmenu_size: i32,
 }
 
@@ -53,10 +52,17 @@ impl Default for BarConfig {
             show: true,
             top: true,
             height: 0,
-            horizontal_padding: 0,
             startmenu_size: 0,
         }
     }
+}
+
+/// Backend-derived runtime configuration / state.
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct BackendDerived {
+    pub display: DisplayConfig,
+    pub bar_height: i32,
+    pub bar_horizontal_padding: i32,
 }
 
 /// System tray settings.
@@ -105,7 +111,7 @@ pub struct FontConfig {
 
 /// Runtime configuration - composed from sub-structs.
 pub struct RuntimeConfig {
-    pub display: DisplayConfig,
+    pub derived: BackendDerived,
     pub window: WindowConfig,
     pub bar: BarConfig,
     pub systray: SystrayConfig,
@@ -127,7 +133,7 @@ pub struct RuntimeConfig {
 impl Default for RuntimeConfig {
     fn default() -> Self {
         Self {
-            display: DisplayConfig::default(),
+            derived: BackendDerived::default(),
             window: WindowConfig::default(),
             bar: BarConfig::default(),
             systray: SystrayConfig::default(),
@@ -150,7 +156,7 @@ impl Default for RuntimeConfig {
 impl Clone for RuntimeConfig {
     fn clone(&self) -> Self {
         Self {
-            display: self.display.clone(),
+            derived: self.derived.clone(),
             window: self.window.clone(),
             bar: self.bar.clone(),
             systray: self.systray.clone(),
@@ -598,6 +604,18 @@ impl Default for PendingWork {
     }
 }
 
+impl PendingWork {
+    /// Queue applying the monitor configuration.
+    pub fn queue_monitor_config_apply(&mut self) {
+        self.monitor_config = true;
+    }
+
+    /// Queue applying the input configuration.
+    pub fn queue_input_config_apply(&mut self) {
+        self.input_config = true;
+    }
+}
+
 pub struct Globals {
     // Runtime configuration (loaded from config files)
     pub(crate) cfg: RuntimeConfig,
@@ -854,9 +872,9 @@ impl Default for Globals {
 /// a partially-applied reload. Display geometry is backend-derived and is
 /// therefore preserved across config replacement.
 pub fn apply_config(g: &mut Globals, cfg: &crate::config::Config) {
-    let display = g.cfg.display.clone();
+    let derived = g.cfg.derived.clone();
     let mut next = RuntimeConfig {
-        display,
+        derived,
         ..RuntimeConfig::default()
     };
     next.window.border_width_px = cfg.borderpx;
