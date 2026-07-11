@@ -128,7 +128,12 @@ pub fn scan(ctx: &mut WmCtxX11<'_>) {
         tree_reply.children
     };
 
-    let (managed, transients) = classify_windows(&ctx.core.model().clients, &ctx.x11, ctx.x11_runtime, children);
+    let (managed, transients) = classify_windows(
+        &ctx.core.model().clients,
+        &ctx.x11,
+        ctx.x11_runtime,
+        children,
+    );
 
     for win in managed.into_iter().chain(transients) {
         let (geo, border_width) = get_win_geometry(&ctx.x11, win);

@@ -87,8 +87,7 @@ pub(crate) fn build_monitor_snapshots(
     let selected_monitor_num = core.model().selected_monitor().num;
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
-    let base_font_size =
-        crate::wayland::common::font_size_from_config(&core.config().fonts.fonts);
+    let base_font_size = crate::wayland::common::font_size_from_config(&core.config().fonts.fonts);
     let drag_bar_active = core.drag_state().bar_active;
     let current_mode = core.behavior().current_mode.clone();
     let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {

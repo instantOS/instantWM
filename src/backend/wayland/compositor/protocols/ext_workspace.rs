@@ -40,9 +40,7 @@ pub struct ExtWorkspaceUserData {
 pub struct ExtWorkspaceGroupUserData {
     pub manager: ExtWorkspaceManagerV1,
     pub output_name: String,
-    pub sent_outputs: Mutex<
-        HashSet<smithay::reexports::wayland_server::backend::ObjectId>,
-    >,
+    pub sent_outputs: Mutex<HashSet<smithay::reexports::wayland_server::backend::ObjectId>>,
 }
 
 pub struct ExtWorkspaceManagerState {

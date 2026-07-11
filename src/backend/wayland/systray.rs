@@ -810,10 +810,7 @@ fn call_menu_event(conn: &Connection, service: &str, menu_path: &str, id: i32) -
     Ok(())
 }
 
-fn upsert_item(
-    wayland_systray: &mut WaylandSystray,
-    item: WaylandSystrayItem,
-) -> bool {
+fn upsert_item(wayland_systray: &mut WaylandSystray, item: WaylandSystrayItem) -> bool {
     if let Some(existing) = wayland_systray
         .items
         .iter_mut()

@@ -1,10 +1,10 @@
 use crate::actions::{ButtonAction, KeyAction};
 use crate::client::{close_win, kill_client};
 use crate::contexts::WmCtx;
-use crate::model::WmModel;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
 };
+use crate::model::WmModel;
 use crate::mouse::{
     drag_tag, resize_aspect_mouse, resize_mouse_from_cursor, sidebar_gesture_begin,
     window_title_mouse_handler,
@@ -131,7 +131,7 @@ pub fn execute_button_action(
         }
         ButtonAction::ClientMoveDrag => match ctx {
             WmCtx::X11(ctx_x11) => {
-                if let Some(win) = button_target_client(&ctx_x11.core.model(), &arg) {
+                if let Some(win) = button_target_client(ctx_x11.core.model(), &arg) {
                     let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
                     crate::focus::focus(&mut wm_ctx, Some(win));
                 }

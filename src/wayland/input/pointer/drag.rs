@@ -81,10 +81,7 @@ pub fn hover_resize_drag_begin(
 }
 
 /// Update bar hover gesture highlighting during a Wayland move drag.
-fn update_move_bar_hover(
-    ctx: &mut crate::contexts::WmCtxWayland<'_>,
-    root: Point,
-) -> bool {
+fn update_move_bar_hover(ctx: &mut crate::contexts::WmCtxWayland<'_>, root: Point) -> bool {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
     crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root)
 }
@@ -94,10 +91,7 @@ fn update_move_bar_hover(
 /// This is the single motion handler for **all** active drags once
 /// `dragging == true`, regardless of how the drag was initiated (title
 /// bar, hover border, keyboard shortcut, Super+button, etc.).
-pub fn hover_resize_drag_motion(
-    ctx: &mut WmCtxWayland<'_>,
-    root: Point,
-) -> bool {
+pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool {
     if !ctx.core.drag_state().interactive.active || !ctx.core.drag_state().interactive.dragging {
         return false;
     }

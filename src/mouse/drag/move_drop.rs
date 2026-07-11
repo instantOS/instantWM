@@ -21,13 +21,7 @@ pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, pos: &mut Point) {
     snap_window_to_monitor_edges(ctx.core().state(), c.win, c.geo.w, c.geo.h, pos);
 }
 
-pub fn snap_window_to_monitor_edges(
-    g: &CoreState,
-    win: WindowId,
-    w: i32,
-    h: i32,
-    pos: &mut Point,
-) {
+pub fn snap_window_to_monitor_edges(g: &CoreState, win: WindowId, w: i32, h: i32, pos: &mut Point) {
     let snap = g.config.window.snap_threshold;
     let mon = g.selected_monitor();
     let bw = g

@@ -16,9 +16,7 @@ use crate::types::Point as RootPoint;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wayland::input::bar::update_bar_hit_state;
-use crate::wayland::input::pointer::drag::{
-    active_drag_window, hover_resize_drag_motion,
-};
+use crate::wayland::input::pointer::drag::{active_drag_window, hover_resize_drag_motion};
 use crate::wm::Wm;
 
 fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
@@ -300,7 +298,10 @@ pub fn dispatch_pointer_motion(
     time_msec: u32,
 ) {
     let pointer_location = state.runtime.pointer_location;
-    let root = RootPoint::new(pointer_location.x.round() as i32, pointer_location.y.round() as i32);
+    let root = RootPoint::new(
+        pointer_location.x.round() as i32,
+        pointer_location.y.round() as i32,
+    );
 
     // Get active drag window once - used in multiple phases
     let active_drag_window = active_drag_window(wm);
@@ -362,12 +363,8 @@ pub fn dispatch_pointer_motion(
     }
 
     // Phase 5: Update hover resize state for floating windows
-    let suppress_hover_focus = update_hover_resize_state(
-        wm,
-        root,
-        hovered_win,
-        !wm.core.drag.any_drag_active(),
-    );
+    let suppress_hover_focus =
+        update_hover_resize_state(wm, root, hovered_win, !wm.core.drag.any_drag_active());
 
     // Phase 6: Update pointer focus based on drag state
     update_pointer_focus(
@@ -468,7 +465,10 @@ fn handle_resize_drag_motion(
     let pointer_location = state.runtime.pointer_location;
     if !hover_resize_drag_motion(
         ctx,
-        RootPoint::new(pointer_location.x.round() as i32, pointer_location.y.round() as i32),
+        RootPoint::new(
+            pointer_location.x.round() as i32,
+            pointer_location.y.round() as i32,
+        ),
     ) {
         return false;
     }
@@ -555,19 +555,13 @@ fn update_hover_resize_state(
     };
 
     if !selected_floating {
-        let _ = update_selected_resize_offer_at(
-            &mut WmCtx::Wayland(ctx.reborrow()),
-            root,
-        );
+        let _ = update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root);
         return false;
     }
 
     let mut suppress_hover_focus = !hovered_is_selected;
-    let selected_offer = update_selected_resize_offer_at(
-        &mut WmCtx::Wayland(ctx.reborrow()),
-        root,
-    )
-    .is_some();
+    let selected_offer =
+        update_selected_resize_offer_at(&mut WmCtx::Wayland(ctx.reborrow()), root).is_some();
     if selected_offer {
         suppress_hover_focus = true;
     } else if !hovered_is_selected {
@@ -602,12 +596,7 @@ fn update_pointer_focus(
             return;
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
-        crate::focus::hover_focus_target(
-            &mut wm_ctx,
-            hovered_win,
-            false,
-            Some(root),
-        );
+        crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false, Some(root));
     }
 }
 
@@ -618,9 +607,7 @@ fn handle_wm_drag_motion(
     root: RootPoint,
 ) {
     let mut ctx = wm.ctx();
-    if ctx.core().drag_state().tag.active
-        && !crate::mouse::drag_tag_motion(&mut ctx, root)
-    {
+    if ctx.core().drag_state().tag.active && !crate::mouse::drag_tag_motion(&mut ctx, root) {
         let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }

@@ -114,9 +114,7 @@ impl Button {
             (ButtonTarget::Bar(binding), ButtonTarget::Bar(actual)) => {
                 mem::discriminant(&binding) == mem::discriminant(&actual)
             }
-            (binding, actual) => {
-                mem::discriminant(&binding) == mem::discriminant(&actual)
-            }
+            (binding, actual) => mem::discriminant(&binding) == mem::discriminant(&actual),
         }
     }
 }

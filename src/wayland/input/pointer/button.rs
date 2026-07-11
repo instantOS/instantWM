@@ -13,9 +13,7 @@ use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
 use crate::wayland::input::bar::handle_bar_click;
-use crate::wayland::input::pointer::drag::{
-    hover_resize_drag_begin, hover_resize_drag_finish,
-};
+use crate::wayland::input::pointer::drag::{hover_resize_drag_begin, hover_resize_drag_finish};
 
 /// Internal helper for handling pointer button from raw values.
 pub fn handle_pointer_button_raw(

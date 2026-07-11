@@ -85,13 +85,7 @@ pub fn handle_bar_click(
     run_bar_bindings(wayland_ctx, pos, button, root, clean_state);
 }
 
-pub fn handle_bar_scroll(
-    wm: &mut Wm,
-    pos: BarPosition,
-    delta: f64,
-    root: Point,
-    clean_state: u32,
-) {
+pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point, clean_state: u32) {
     let button = if delta > 0.0 {
         MouseButton::ScrollUp
     } else {

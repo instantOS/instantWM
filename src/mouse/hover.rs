@@ -126,10 +126,7 @@ fn resize_target_for_window(
     if !c.mode.is_floating() && has_tiling {
         return None;
     }
-    if !c
-        .geo
-        .contains_resize_border_point(root, RESIZE_BORDER_ZONE)
-    {
+    if !c.geo.contains_resize_border_point(root, RESIZE_BORDER_ZONE) {
         return None;
     }
 
@@ -237,11 +234,7 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
 ///
 /// Returns `true` when the pointer is over a resize offer zone and the caller
 /// should stop processing the motion event.
-pub fn update_floating_resize_offer_at(
-    ctx: &mut WmCtx,
-    root: Point,
-    do_focus: bool,
-) -> bool {
+pub fn update_floating_resize_offer_at(ctx: &mut WmCtx, root: Point, do_focus: bool) -> bool {
     if let Some(target) = hover_resize_target_at(ctx.core().model(), root) {
         offer_hover_resize(ctx, target);
         // Only focus when: do_focus requested AND no visible tiled clients.
@@ -446,11 +439,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                                 let mut wm_ctx_x11 = ctx.reborrow();
                                 let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                                 super::warp::warp_into(&mut wmctx, win);
-                                crate::backend::x11::mouse::move_mouse(
-                                    &mut wm_ctx_x11,
-                                    btn,
-                                    None,
-                                );
+                                crate::backend::x11::mouse::move_mouse(&mut wm_ctx_x11, btn, None);
                             } else {
                                 let dir = get_resize_direction(w, h, win_x, win_y);
                                 warp_pointer_resize(&mut wm_ctx, win, dir);

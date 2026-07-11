@@ -576,10 +576,7 @@ where
     focus_fn(target);
 }
 
-fn get_visible_stack(
-    mon: &Monitor,
-    clients: &HashMap<WindowId, Client>,
-) -> Vec<WindowId> {
+fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
     let mut stack = Vec::new();
     let selected = mon.selected_tags();
 

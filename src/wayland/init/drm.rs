@@ -54,12 +54,7 @@ pub fn init_gpu(
 fn open_primary_gpu(
     session: &mut LibSeatSession,
     seat_name: &str,
-) -> (
-    PathBuf,
-    DrmDevice,
-    DrmDeviceNotifier,
-    DrmDeviceFd,
-) {
+) -> (PathBuf, DrmDevice, DrmDeviceNotifier, DrmDeviceFd) {
     let gpus = smithay::backend::udev::all_gpus(seat_name).unwrap_or_default();
     let mut primary_gpu_path = None;
     let mut drm_device = None;

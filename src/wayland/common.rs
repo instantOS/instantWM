@@ -557,10 +557,7 @@ pub fn poll_systray(wm: &mut Wm) {
     };
 
     if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
-        let dirty = runtime.poll_events(
-            &mut data.wayland_systray,
-            &mut data.wayland_systray_menu,
-        );
+        let dirty = runtime.poll_events(&mut data.wayland_systray, &mut data.wayland_systray_menu);
         if dirty {
             core.bar.mark_dirty();
         }
@@ -576,10 +573,7 @@ pub struct FixedSceneElements {
 }
 
 /// Build the shared scene pieces that do not depend on the target output.
-pub fn build_fixed_scene_elements(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-) -> Rc<FixedSceneElements> {
+pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
     let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
 

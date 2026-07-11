@@ -260,15 +260,19 @@ pub fn render_bar_buffers(
     let snapshots =
         scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)), false);
     // Cache the systray width so status bar layout can account for it.
-    core.bar.runtime.systray_width =
-        crate::backend::wayland::systray::systray_width(
-            &core.config().systray,
-            wayland_systray,
-            core.model().selected_monitor().bar_height,
-        );
+    core.bar.runtime.systray_width = crate::backend::wayland::systray::systray_width(
+        &core.config().systray,
+        wayland_systray,
+        core.model().selected_monitor().bar_height,
+    );
     let _ = scale;
 
-    let key = hash::render_key(core.config().bar.show, core.config().systray.show, &snapshots, wayland_systray_menu);
+    let key = hash::render_key(
+        core.config().bar.show,
+        core.config().systray.show,
+        &snapshots,
+        wayland_systray_menu,
+    );
     async_render::poll_result(core, painter);
 
     if painter.cached_key != key {

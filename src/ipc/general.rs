@@ -21,10 +21,7 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
             Err(e) => Response::err(format!("Failed to spawn swaybg: {}", e)),
         }
     } else {
-        let status = Command::new("feh")
-            .arg("--bg-fill")
-            .arg(&path)
-            .spawn();
+        let status = Command::new("feh").arg("--bg-fill").arg(&path).spawn();
         match status {
             Ok(_) => Response::Message(format!("Wallpaper set to {}", path)),
             Err(e) => Response::err(format!("Failed to spawn feh: {}", e)),
