@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use std::ptr::NonNull;
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
@@ -271,19 +271,8 @@ impl WaylandState {
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, data| {
-                    let dispatch_result = catch_unwind(AssertUnwindSafe(|| unsafe {
-                        display.get_mut().dispatch_clients(data)
-                    }));
-                    match dispatch_result {
-                        Ok(Ok(_)) => {}
-                        Ok(Err(err)) => {
-                            log::warn!("wayland dispatch_clients error: {}", err);
-                        }
-                        Err(_) => {
-                            log::error!(
-                                "wayland client dispatch panicked (invalid client request); continuing"
-                            );
-                        }
+                    if let Err(err) = unsafe { display.get_mut().dispatch_clients(data) } {
+                        log::warn!("wayland dispatch error: {}", err);
                     }
                     Ok(PostAction::Continue)
                 },
