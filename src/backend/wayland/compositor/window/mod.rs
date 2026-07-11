@@ -57,6 +57,20 @@ impl WaylandState {
         let new_w = committed.size.w.max(1);
         let new_h = committed.size.h.max(1);
 
+        // A client can commit a buffer for an older configure after a newer
+        // tiled size has already been requested (this is common during
+        // Firefox startup).  Do not let the configure de-duplication cache
+        // make that stale buffer permanent: the next space sync must resend
+        // the still-authoritative WM size.
+        if self
+            .last_configured_size
+            .get(&window)
+            .is_some_and(|&size| size != (new_w, new_h))
+        {
+            self.last_configured_size.remove(&window);
+            self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
+        }
+
         self.push_command(
             crate::backend::wayland::commands::WmCommand::UpdateWindowSize {
                 win: window,

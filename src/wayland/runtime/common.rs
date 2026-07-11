@@ -220,6 +220,12 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 let mut ctx = wm.ctx();
                 let g = ctx.core_mut().state_mut();
                 if let Some(client) = g.model.clients.get(&win)
+                    // Tiled, maximized, and fullscreen geometry is owned by
+                    // the WM. In particular, a native Wayland client may
+                    // commit a stale startup buffer after the layout has
+                    // already selected its final size; copying that size
+                    // back here would overwrite the layout target.
+                    && client.mode.is_floating()
                     && (client.geo.w != w || client.geo.h != h)
                 {
                     let rect = crate::types::Rect {
