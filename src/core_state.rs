@@ -3,7 +3,8 @@ use crate::config::ModeConfig;
 use crate::config::commands::ExternalCommands;
 use crate::model::WmModel;
 use crate::types::*;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::env;
 
 // ---------------------------------------------------------------------------
 // Sub-structs for RuntimeConfig
@@ -96,7 +97,7 @@ pub struct ColorConfig {
 pub struct BindingConfig {
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
-    pub modes: std::collections::HashMap<String, ModeConfig>,
+    pub modes: HashMap<String, ModeConfig>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
 }
@@ -121,8 +122,8 @@ pub struct RuntimeConfig {
     pub external_commands: ExternalCommands,
     /// Template tag list cloned into every new monitor.
     pub tag_template: Vec<crate::types::monitor::TagNames>,
-    pub input: std::collections::HashMap<String, crate::config::config_toml::InputConfig>,
-    pub monitors: std::collections::HashMap<String, crate::config::config_toml::MonitorConfig>,
+    pub input: HashMap<String, crate::config::config_toml::InputConfig>,
+    pub monitors: HashMap<String, crate::config::config_toml::MonitorConfig>,
     pub status_command: Option<String>,
     pub cursor: crate::config::config_toml::CursorConfig,
     pub exec_once: Vec<String>,
@@ -142,8 +143,8 @@ impl Default for RuntimeConfig {
             fonts: FontConfig::default(),
             external_commands: crate::config::commands::default_commands(),
             tag_template: Vec::new(),
-            input: std::collections::HashMap::new(),
-            monitors: std::collections::HashMap::new(),
+            input: HashMap::new(),
+            monitors: HashMap::new(),
             status_command: None,
             cursor: crate::config::config_toml::CursorConfig::default(),
             exec_once: Vec::new(),
@@ -781,9 +782,9 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
 
     if layouts.is_empty() {
         // Fallback to environment variables (standard Wayland convention)
-        let layout = std::env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
+        let layout = env::var("XKB_DEFAULT_LAYOUT").unwrap_or_default();
         if !layout.is_empty() {
-            let variant = std::env::var("XKB_DEFAULT_VARIANT").ok();
+            let variant = env::var("XKB_DEFAULT_VARIANT").ok();
             layouts.push(KeyboardLayout {
                 name: layout,
                 variant,
@@ -797,11 +798,11 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
     let options = cfg
         .keyboard_options
         .clone()
-        .or_else(|| std::env::var("XKB_DEFAULT_OPTIONS").ok());
+        .or_else(|| env::var("XKB_DEFAULT_OPTIONS").ok());
     let model = cfg
         .keyboard_model
         .clone()
-        .or_else(|| std::env::var("XKB_DEFAULT_MODEL").ok());
+        .or_else(|| env::var("XKB_DEFAULT_MODEL").ok());
 
     state.keyboard_layout = KeyboardLayoutState {
         layouts,

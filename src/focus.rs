@@ -8,6 +8,7 @@ use crate::contexts::{CoreCtx, WmCtx};
 use crate::core_state::CoreState;
 use crate::model::WmModel;
 use crate::types::*;
+use std::collections::HashMap;
 
 /// Result of resolving a focus target, containing both the target window
 /// and information needed for state updates.
@@ -416,7 +417,7 @@ pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: 
 
 fn get_directional_candidates(
     clients: &[WindowId],
-    globals_map: &std::collections::HashMap<WindowId, Client>,
+    globals_map: &HashMap<WindowId, Client>,
     selected_tags: TagMask,
     source_win: WindowId,
     source_center: crate::types::Point,
@@ -577,7 +578,7 @@ where
 
 fn get_visible_stack(
     mon: &Monitor,
-    clients: &std::collections::HashMap<WindowId, Client>,
+    clients: &HashMap<WindowId, Client>,
 ) -> Vec<WindowId> {
     let mut stack = Vec::new();
     let selected = mon.selected_tags();

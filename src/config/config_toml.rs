@@ -9,7 +9,7 @@ use crate::types::{
 };
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -44,13 +44,13 @@ pub struct ThemeConfig {
     /// Keyboard layout configuration.
     pub keyboard: KeyboardConfig,
     /// Input configuration (mouse, touchpad).
-    pub input: std::collections::HashMap<String, InputConfig>,
+    pub input: HashMap<String, InputConfig>,
     /// Monitor configuration.
-    pub monitors: std::collections::HashMap<String, MonitorConfig>,
+    pub monitors: HashMap<String, MonitorConfig>,
     /// Background command to execute for reading status bar text, typically `i3status-rs`
     pub status_command: Option<String>,
     /// User-defined modes (sway-like modes).
-    pub modes: std::collections::HashMap<String, ModeSpec>,
+    pub modes: HashMap<String, ModeSpec>,
     /// Cursor configuration (Wayland only).
     pub cursor: CursorConfig,
     /// Layout geometry configuration.
@@ -78,10 +78,10 @@ impl Default for ThemeConfig {
             keybinds: Vec::new(),
             desktop_keybinds: Vec::new(),
             keyboard: KeyboardConfig::default(),
-            input: std::collections::HashMap::new(),
-            monitors: std::collections::HashMap::new(),
+            input: HashMap::new(),
+            monitors: HashMap::new(),
             status_command: None,
-            modes: std::collections::HashMap::new(),
+            modes: HashMap::new(),
             cursor: CursorConfig::default(),
             layout: LayoutConfig::default(),
             rules: Vec::new(),

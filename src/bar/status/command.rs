@@ -1,6 +1,9 @@
 use super::{flush_i3bar_click_events, parse::parse_i3bar_json, parse_i3bar_header};
+use std::mem;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
+use std::time::Duration;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -80,7 +83,7 @@ fn default_status_text() -> String {
 
     let time_str = unsafe {
         let secs_i64 = secs as libc::time_t;
-        let mut tm: libc::tm = std::mem::zeroed();
+        let mut tm: libc::tm = mem::zeroed();
         libc::localtime_r(&secs_i64, &mut tm);
         format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
     };
@@ -95,10 +98,7 @@ pub(crate) fn spawn_default_status() {
         return;
     };
 
-    std::thread::spawn(move || {
-        use std::thread;
-        use std::time::Duration;
-
+    thread::spawn(move || {
         thread::sleep(Duration::from_millis(500));
 
         loop {
@@ -117,7 +117,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
     };
 
     let cmd_str = cmd.to_string();
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         use std::io::{BufRead, BufReader};
         use std::process::{Command, Stdio};
 
@@ -172,12 +172,12 @@ pub(crate) fn spawn_status_command(cmd: &str) {
                     if header.click_events
                         && let Some(mut stdin) = child_stdin.take()
                     {
-                        std::thread::spawn(move || {
+                        thread::spawn(move || {
                             let mut first_click_event = true;
                             while flush_i3bar_click_events(&mut stdin, &mut first_click_event)
                                 .is_ok()
                             {
-                                std::thread::sleep(std::time::Duration::from_millis(25));
+                                thread::sleep(Duration::from_millis(25));
                             }
                         });
                     }

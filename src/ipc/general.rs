@@ -5,11 +5,12 @@ use crate::tags::send_to_monitor;
 
 use crate::types::{MonitorDirection, SpecialNext};
 use crate::wm::Wm;
+use std::process::Command;
 
 pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
     if wm.ctx().is_wayland() {
-        let _ = std::process::Command::new("killall").arg("swaybg").status();
-        let status = std::process::Command::new("swaybg")
+        let _ = Command::new("killall").arg("swaybg").status();
+        let status = Command::new("swaybg")
             .arg("-i")
             .arg(&path)
             .arg("-m")
@@ -20,7 +21,7 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
             Err(e) => Response::err(format!("Failed to spawn swaybg: {}", e)),
         }
     } else {
-        let status = std::process::Command::new("feh")
+        let status = Command::new("feh")
             .arg("--bg-fill")
             .arg(&path)
             .spawn();
@@ -47,7 +48,7 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     if command.trim().is_empty() {
         return Response::err("spawn requires a command");
     }
-    let mut cmd = std::process::Command::new("sh");
+    let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(&command);
     let metadata = {
         let ctx = wm.ctx();

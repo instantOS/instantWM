@@ -6,6 +6,7 @@ use crate::focus::{direction_focus, focus_stack};
 
 use crate::types::*;
 use crate::types::{Direction, StackDirection, VerticalDirection};
+use std::collections::HashMap;
 
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
@@ -85,7 +86,7 @@ fn find_matching_action(
 fn resolve_key_action(
     keys: &[Key],
     desktop_keybinds: &[Key],
-    modes: &std::collections::HashMap<String, ModeConfig>,
+    modes: &HashMap<String, ModeConfig>,
     selected_client: Option<WindowId>,
     current_mode: &str,
     keysym: u32,
@@ -194,7 +195,7 @@ mod tests {
             keysym: 42,
             action: named(NamedAction::FocusPrev),
         };
-        let mut modes = std::collections::HashMap::new();
+        let mut modes = HashMap::new();
         modes.insert(
             "resize".to_string(),
             ModeConfig {
@@ -225,7 +226,7 @@ mod tests {
         let resolved = resolve_key_action(
             &[],
             &[desktop_key],
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
             None,
             "default",
             9,
@@ -246,7 +247,7 @@ mod tests {
                 keysym: 9,
                 action: named(NamedAction::ToggleLayout),
             }],
-            &std::collections::HashMap::new(),
+            &HashMap::new(),
             Some(WindowId(1)),
             "default",
             9,

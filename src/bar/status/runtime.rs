@@ -1,4 +1,5 @@
 use super::I3ClickEvent;
+use std::io;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Mutex, OnceLock};
 
@@ -106,11 +107,11 @@ fn try_recv_i3bar_click_event() -> Option<I3ClickEvent> {
     }
 }
 
-pub(crate) fn write_i3bar_click_event<W: std::io::Write>(
+pub(crate) fn write_i3bar_click_event<W: io::Write>(
     mut writer: W,
     event: &I3ClickEvent,
     first_event: &mut bool,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     if *first_event {
         writer.write_all(b"{\"version\":1,\"click_events\":true}\n[\n")?;
         *first_event = false;
@@ -118,14 +119,14 @@ pub(crate) fn write_i3bar_click_event<W: std::io::Write>(
         writer.write_all(b",\n")?;
     }
 
-    serde_json::to_writer(&mut writer, event).map_err(std::io::Error::other)?;
+    serde_json::to_writer(&mut writer, event).map_err(io::Error::other)?;
     writer.write_all(b"\n")
 }
 
-pub(crate) fn flush_i3bar_click_events<W: std::io::Write>(
+pub(crate) fn flush_i3bar_click_events<W: io::Write>(
     writer: &mut W,
     first_event: &mut bool,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     while let Some(event) = try_recv_i3bar_click_event() {
         write_i3bar_click_event(&mut *writer, &event, first_event)?;
     }

@@ -15,10 +15,12 @@ use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::env;
+use std::mem;
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
@@ -95,7 +97,7 @@ impl DrmLoopState {
     }
 
     fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
-        let mut taken = std::mem::take(&mut self.taken_render_flags);
+        let mut taken = mem::take(&mut self.taken_render_flags);
         taken.clear();
         for (&crtc, flag) in &mut self.render_flags {
             taken.insert(crtc, *flag);
@@ -246,12 +248,12 @@ pub fn run() -> ! {
     state.runtime.render_ping = Some(retry_ping.clone());
     retry_ping.ping(); // Wake loop once to render the initial frame
 
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
     crate::runtime::spawn_status_bar(&wm);
 
-    let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
+    let (led_state_tx, led_state_rx) = mpsc::channel();
     state.runtime.led_state_tx = Some(led_state_tx);
 
     run_event_loop(
@@ -276,8 +278,8 @@ pub fn run() -> ! {
 
 /// Initialize cursor manager from environment or defaults.
 fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
-    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
-    let cursor_size = std::env::var("XCURSOR_SIZE")
+    let cursor_theme = env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
+    let cursor_size = env::var("XCURSOR_SIZE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(config.size);
@@ -396,8 +398,8 @@ fn run_event_loop(
     cursor_manager: &CursorManager,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
-    start_time: std::time::Instant,
-    led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
+    start_time: Instant,
+    led_state_rx: mpsc::Receiver<smithay::input::keyboard::LedState>,
     runtime_event_rx: mpsc::Receiver<DrmRuntimeEvent>,
     retry_ping: calloop::ping::Ping,
 ) {
@@ -564,7 +566,7 @@ fn arm_empty_frame_callback_timer(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &DrmLoopState,
     entry: &OutputSurfaceEntry,
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) {
     let crtc = entry.crtc;
     let armed = Rc::clone(&loop_state.empty_frame_callback_crtcs);
@@ -605,7 +607,7 @@ fn process_frame_callback_requests(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &DrmLoopState,
     output_surfaces: &[OutputSurfaceEntry],
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) {
     if !state.take_frame_callbacks_pending() {
         return;
@@ -807,7 +809,7 @@ fn render_outputs(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &mut DrmLoopState,
     render_failures: &mut HashMap<crtc::Handle, u32>,
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) {
     let render_flags = loop_state.take_render_flags();
     let session_active = loop_state.session_active;

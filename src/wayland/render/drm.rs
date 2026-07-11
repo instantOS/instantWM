@@ -26,6 +26,9 @@ use smithay::desktop::utils::{
 use smithay::output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel};
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::{self, connector, crtc};
+use std::fmt;
+use std::time::Instant;
+
 use smithay::utils::{Buffer as BufferCoords, Physical, Point, Rectangle};
 
 use crate::backend::BackendVrrSupport;
@@ -326,7 +329,7 @@ pub fn render_drm_output(
     entry: &mut OutputSurfaceEntry,
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
-    start_time: std::time::Instant,
+    start_time: Instant,
     fixed_scene: Option<Rc<FixedSceneElements>>,
     suppress_upper_layers: bool,
 ) -> RenderOutcome {
@@ -411,7 +414,7 @@ fn build_drm_cursor_elements(
     entry: &OutputSurfaceEntry,
     cursor_manager: &CursorManager,
     pointer_location: Point<f64, smithay::utils::Logical>,
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) -> Vec<DrmExtras> {
     let local_pointer = Point::from((
         pointer_location.x - entry.x_offset as f64,
@@ -586,7 +589,7 @@ fn submit_drm_capture_requests<B, F>(
 ) -> bool
 where
     B: AllocatorBuffer + AsDmabuf,
-    <B as AsDmabuf>::Error: std::fmt::Debug,
+    <B as AsDmabuf>::Error: fmt::Debug,
     F: Framebuffer,
     DrmExtras: RenderElement<GlesRenderer>,
     GlesRenderer: Blit,
@@ -685,7 +688,7 @@ fn submit_dmabuf_image_captures<B, F>(
     filter_ids: &[Id],
 ) where
     B: AllocatorBuffer + AsDmabuf,
-    <B as AsDmabuf>::Error: std::fmt::Debug,
+    <B as AsDmabuf>::Error: fmt::Debug,
     F: Framebuffer,
     DrmExtras: RenderElement<GlesRenderer>,
     GlesRenderer: Blit,
@@ -753,7 +756,7 @@ fn submit_offscreen_capture<B, F>(
 ) -> bool
 where
     B: AllocatorBuffer + AsDmabuf,
-    <B as AsDmabuf>::Error: std::fmt::Debug,
+    <B as AsDmabuf>::Error: fmt::Debug,
     F: Framebuffer,
     DrmExtras: RenderElement<GlesRenderer>,
     GlesRenderer: Blit,

@@ -6,8 +6,9 @@
 //! - Active/Urgent state is synchronized from monitor selected_tags bitmasks and client urgency flags.
 //! - Client requests to activate a workspace are queued into `WmCommand` tag switch actions.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
+use std::sync::Mutex;
 
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::ext::workspace::v1::server::{
@@ -39,8 +40,8 @@ pub struct ExtWorkspaceUserData {
 pub struct ExtWorkspaceGroupUserData {
     pub manager: ExtWorkspaceManagerV1,
     pub output_name: String,
-    pub sent_outputs: std::sync::Mutex<
-        std::collections::HashSet<smithay::reexports::wayland_server::backend::ObjectId>,
+    pub sent_outputs: Mutex<
+        HashSet<smithay::reexports::wayland_server::backend::ObjectId>,
     >,
 }
 
@@ -476,7 +477,7 @@ impl ExtWorkspaceGroupData {
             ExtWorkspaceGroupUserData {
                 manager: manager.clone(),
                 output_name: output.name(),
-                sent_outputs: std::sync::Mutex::new(std::collections::HashSet::new()),
+                sent_outputs: Mutex::new(HashSet::new()),
             },
         ) {
             Ok(g) => g,

@@ -4,6 +4,7 @@ use instantwm::ipc_types::{
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
     SpecialNext, TagCommand, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
+use std::process;
 use std::str::FromStr;
 
 const DEFAULT_SCRATCHPAD_NAME: &str = "instantwm_scratchpad";
@@ -397,7 +398,7 @@ impl From<CommandKind> for IpcCommand {
                             "off" | "disable" | "disabled" => false,
                             _ => {
                                 eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-                                std::process::exit(1);
+                                process::exit(1);
                             }
                         };
                         MonitorCommand::Set {
@@ -589,7 +590,7 @@ impl From<CommandKind> for IpcCommand {
                     "off" | "disable" | "disabled" => false,
                     _ => {
                         eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-                        std::process::exit(1);
+                        process::exit(1);
                     }
                 };
                 IpcCommand::Monitor(MonitorCommand::Set {

@@ -101,6 +101,8 @@ use crate::types::{
     BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
     TagColorConfigs, WindowColorConfigs,
 };
+use std::collections::HashMap;
+
 use generated_keybinds::build_default_keybinds;
 
 /// Mode configuration with keybinds and optional description.
@@ -177,7 +179,7 @@ pub struct Config {
     // --- Bindings ---
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
-    pub modes: std::collections::HashMap<String, ModeConfig>,
+    pub modes: HashMap<String, ModeConfig>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub fonts: Vec<String>,
@@ -196,9 +198,9 @@ pub struct Config {
     pub keyboard_swapescape: bool,
 
     // --- Input configuration ---
-    pub input: std::collections::HashMap<String, config_toml::InputConfig>,
+    pub input: HashMap<String, config_toml::InputConfig>,
     /// Monitor configuration.
-    pub monitors: std::collections::HashMap<String, config_toml::MonitorConfig>,
+    pub monitors: HashMap<String, config_toml::MonitorConfig>,
     pub status_command: Option<String>,
     pub cursor: config_toml::CursorConfig,
 
@@ -233,7 +235,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         keybind_config::merge_keybinds(defaults.desktop_keybinds, &theme.desktop_keybinds)
     };
 
-    let mut modes = std::collections::HashMap::new();
+    let mut modes = HashMap::new();
 
     // Helper for merging mode keybinds
     let merge_mode = |spec: Option<&config_toml::ModeSpec>,

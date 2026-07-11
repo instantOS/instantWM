@@ -15,7 +15,9 @@
 //! - Render backend trait (`RenderBackend`) for abstracting buffer/cursor operations
 //! - Layer shell element counting (`count_upper_layer_render_elements`)
 
+use std::env;
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -279,21 +281,21 @@ pub fn init_globals(g: &mut CoreState, wayland: &mut WaylandBackendData) {
 /// same set of variables.
 pub fn apply_session_env(socket_name: &str) {
     unsafe {
-        std::env::set_var("WAYLAND_DISPLAY", socket_name);
-        std::env::set_var("XDG_SESSION_TYPE", "wayland");
-        std::env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
-        std::env::set_var("XDG_SESSION_DESKTOP", "instantwm");
-        std::env::set_var("DESKTOP_SESSION", "instantwm");
-        std::env::remove_var("DISPLAY");
-        std::env::set_var("GDK_BACKEND", "wayland");
-        std::env::set_var("QT_QPA_PLATFORM", "wayland");
-        std::env::set_var("SDL_VIDEODRIVER", "wayland");
-        std::env::set_var("CLUTTER_BACKEND", "wayland");
+        env::set_var("WAYLAND_DISPLAY", socket_name);
+        env::set_var("XDG_SESSION_TYPE", "wayland");
+        env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
+        env::set_var("XDG_SESSION_DESKTOP", "instantwm");
+        env::set_var("DESKTOP_SESSION", "instantwm");
+        env::remove_var("DISPLAY");
+        env::set_var("GDK_BACKEND", "wayland");
+        env::set_var("QT_QPA_PLATFORM", "wayland");
+        env::set_var("SDL_VIDEODRIVER", "wayland");
+        env::set_var("CLUTTER_BACKEND", "wayland");
     }
 }
 
 pub fn ensure_dbus_session() {
-    if std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok() {
+    if env::var("DBUS_SESSION_BUS_ADDRESS").is_ok() {
         return;
     }
 
@@ -313,7 +315,7 @@ pub fn ensure_dbus_session() {
     let addr = String::from_utf8_lossy(&output.stdout);
     let addr = addr.trim();
     if !addr.is_empty() {
-        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", addr) };
+        unsafe { env::set_var("DBUS_SESSION_BUS_ADDRESS", addr) };
         log::info!("Started D-Bus session bus: {addr}");
     }
 }
@@ -422,7 +424,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         |_| (),
     ) {
         Ok((xwayland, client)) => {
-            unsafe { std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
+            unsafe { env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
             let handle_for_wm = loop_handle.clone();
             if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
             {
@@ -431,7 +433,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                     display_number,
                 } => {
                     data.xdisplay = Some(display_number);
-                    unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
+                    unsafe { env::set_var("DISPLAY", format!(":{display_number}")) };
                     match X11Wm::start_wm(
                         handle_for_wm.clone(),
                         &data.display_handle,
@@ -461,7 +463,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
 /// launch during development / smoke-testing. Set
 /// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
 pub fn spawn_smoke_window() {
-    if std::env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
+    if env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
         return;
     }
     std::thread::spawn(|| {
@@ -577,7 +579,7 @@ pub struct FixedSceneElements {
 pub fn build_fixed_scene_elements(
     wm: &mut Wm,
     state: &mut WaylandState,
-) -> std::rc::Rc<FixedSceneElements> {
+) -> Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
     let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
 
@@ -589,7 +591,7 @@ pub fn build_fixed_scene_elements(
         return elements.clone();
     }
 
-    let elements = std::rc::Rc::new(FixedSceneElements {
+    let elements = Rc::new(FixedSceneElements {
         bar_buffers: build_bar_buffers(wm, state),
         borders: crate::wayland::render::borders::render_border_elements(
             &wm.core.model,

@@ -189,8 +189,8 @@ pub fn update_bars(
         let selected_monitor_id = globals.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
-        let mut systray_widths: std::collections::HashMap<MonitorId, u32> =
-            std::collections::HashMap::new();
+        let mut systray_widths: HashMap<MonitorId, u32> =
+            HashMap::new();
         if showsystray {
             systray_widths.insert(
                 selected_monitor_id,

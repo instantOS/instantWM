@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::mem;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::NonNull;
 
@@ -565,7 +566,7 @@ impl WaylandState {
 
     #[inline]
     pub fn take_space_sync_pending(&mut self) -> bool {
-        std::mem::take(&mut self.runtime.space_sync_pending)
+        mem::take(&mut self.runtime.space_sync_pending)
     }
 
     #[inline]
@@ -576,12 +577,12 @@ impl WaylandState {
 
     #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.runtime.render_dirty)
+        mem::take(&mut self.runtime.render_dirty)
     }
 
     #[inline]
     pub fn take_frame_callbacks_pending(&mut self) -> bool {
-        std::mem::take(&mut self.runtime.frame_callbacks_pending)
+        mem::take(&mut self.runtime.frame_callbacks_pending)
     }
 
     pub fn set_output_vrr_support(
