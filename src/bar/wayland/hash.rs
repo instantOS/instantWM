@@ -28,6 +28,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.rect.w.hash(hasher);
     snapshot.rect.h.hash(hasher);
     snapshot.font_size.to_bits().hash(hasher);
+    snapshot.font_families.hash(hasher);
     snapshot.is_selected_monitor.hash(hasher);
     hash_scheme(hasher, &snapshot.status_scheme);
     snapshot.startmenu_size.hash(hasher);

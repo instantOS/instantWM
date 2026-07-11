@@ -158,6 +158,7 @@ fn render_snapshot(
         }
 
         painter.set_font_size(mon.font_size);
+        painter.set_font_families(&mon.font_families);
         painter.begin(
             Scale::from(1.0),
             mon.rect.x,

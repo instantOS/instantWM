@@ -40,6 +40,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
     pub font_size: f32,
+    pub font_families: Vec<String>,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
     pub startmenu_size: i32,
@@ -88,6 +89,8 @@ pub(crate) fn build_monitor_snapshots(
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
     let base_font_size = crate::wayland::common::font_size_from_config(&core.config().fonts.fonts);
+    let font_families =
+        crate::wayland::common::font_families_from_config(&core.config().fonts.fonts);
     let drag_bar_active = core.drag_state().bar_active;
     let current_mode = core.behavior().current_mode.clone();
     let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {
@@ -223,6 +226,7 @@ pub(crate) fn build_monitor_snapshots(
             monitor_id: mon.id(),
             rect: Rect::new(mon.work_rect.x, mon.bar_y, mon.work_rect.w, mon.bar_height),
             font_size,
+            font_families: font_families.clone(),
             is_selected_monitor,
             status_scheme: core.status_scheme(),
             startmenu_size: mon.startmenu_size,

@@ -76,6 +76,10 @@ impl WaylandBarPainter {
         self.text.set_font_size(font_size);
     }
 
+    pub fn set_font_families(&mut self, families: &[String]) {
+        self.text.set_font_families(families);
+    }
+
     pub fn set_render_ping(
         &mut self,
         render_ping: Option<smithay::reexports::calloop::ping::Ping>,
