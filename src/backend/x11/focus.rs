@@ -319,8 +319,8 @@ pub struct X11FocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
-    fn unfocus_current(&self, ctx: &CoreCtx<'_>, current: WindowId) {
-        unfocus_win_x11(ctx.state(), self.x11, &*self.x11_runtime, current, false);
+    fn unfocus_current(&self, state: &CoreState, current: WindowId) {
+        unfocus_win_x11(state, self.x11, &*self.x11_runtime, current, false);
     }
 
     fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId) {
@@ -340,7 +340,7 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         set_focus_x11(ctx.state_mut(), self.x11, &*self.x11_runtime, win);
     }
 
-    fn focus_none(&self, _ctx: &CoreCtx<'_>) {
+    fn focus_none(&self) {
         let _ = self.x11.conn.set_input_focus(
             InputFocus::POINTER_ROOT,
             self.x11_runtime.root,
@@ -353,8 +353,8 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         let _ = self.x11.conn.flush();
     }
 
-    fn on_desktop_binding_state_changed(&self, ctx: &CoreCtx<'_>) {
-        crate::backend::x11::keyboard::grab_keys_x11(ctx.state(), self.x11, &*self.x11_runtime);
+    fn on_desktop_binding_state_changed(&self, state: &CoreState) {
+        crate::backend::x11::keyboard::grab_keys_x11(state, self.x11, &*self.x11_runtime);
     }
 }
 

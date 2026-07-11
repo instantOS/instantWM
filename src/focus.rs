@@ -5,6 +5,8 @@
 
 use crate::backend::WindowOps;
 use crate::contexts::{CoreCtx, WmCtx};
+use crate::core_state::CoreState;
+use crate::model::WmModel;
 use crate::types::*;
 
 /// Result of resolving a focus target, containing both the target window
@@ -16,12 +18,12 @@ struct FocusTargetResult {
 }
 
 fn is_focusable_on_monitor(
-    ctx: &CoreCtx<'_>,
+    model: &WmModel,
     sel_mon_id: MonitorId,
     selected: TagMask,
     win: WindowId,
 ) -> bool {
-    ctx.model()
+    model
         .clients
         .get(&win)
         .is_some_and(|c| c.monitor_id == sel_mon_id && c.is_visible(selected))
@@ -29,31 +31,31 @@ fn is_focusable_on_monitor(
 
 /// Resolve the focus target based on the requested window and current state.
 /// Returns `None` if there are no monitors (early exit case).
-fn resolve_focus_target(ctx: &CoreCtx<'_>, win: Option<WindowId>) -> Option<FocusTargetResult> {
-    if ctx.model().monitors.is_empty() {
+fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusTargetResult> {
+    if model.monitors.is_empty() {
         return None;
     }
 
-    let sel_mon_id = ctx.model().selected_monitor_id();
-    let mon = ctx.model().selected_monitor();
+    let sel_mon_id = model.selected_monitor_id();
+    let mon = model.selected_monitor();
     let selected = mon.selected_tags();
     let current_sel = mon.selected;
 
     // Use the requested window if it's visible, otherwise walk the stack
     // to find the first visible non-hidden client.
-    let mut target = win.filter(|&w| is_focusable_on_monitor(ctx, sel_mon_id, selected, w));
+    let mut target = win.filter(|&w| is_focusable_on_monitor(model, sel_mon_id, selected, w));
 
     if target.is_none() {
         // Try focus history first.
         if let Some(&hist_win) = mon.tag_focus_history.get(&selected)
-            && is_focusable_on_monitor(ctx, sel_mon_id, selected, hist_win)
+            && is_focusable_on_monitor(model, sel_mon_id, selected, hist_win)
         {
             target = Some(hist_win);
         }
 
         // Fallback to top of stack.
         if target.is_none() {
-            target = mon.first_visible_client(ctx.model().clients.map());
+            target = mon.first_visible_client(model.clients.map());
         }
     }
 
@@ -65,16 +67,16 @@ fn resolve_focus_target(ctx: &CoreCtx<'_>, win: Option<WindowId>) -> Option<Focu
 }
 
 /// Update monitor state after focus target resolution.
-fn update_focus_state(ctx: &mut CoreCtx<'_>, result: FocusTargetResult) -> Option<WindowId> {
+fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<WindowId> {
     let FocusTargetResult {
         target, sel_mon_id, ..
     } = result;
 
     let target_is_tiled = target
-        .and_then(|win| ctx.model().clients.get(&win))
+        .and_then(|win| model.clients.get(&win))
         .is_some_and(|client| !client.mode.is_floating());
 
-    if let Some(mon) = ctx.model_mut().monitor_mut(sel_mon_id) {
+    if let Some(mon) = model.monitor_mut(sel_mon_id) {
         mon.selected = target;
         if let Some(t) = target {
             mon.tag_focus_history.insert(mon.selected_tags(), t);
@@ -85,7 +87,7 @@ fn update_focus_state(ctx: &mut CoreCtx<'_>, result: FocusTargetResult) -> Optio
     }
 
     if let Some(t) = target {
-        ctx.model_mut().raise_client_in_z_order(t);
+        model.raise_client_in_z_order(t);
     }
     target
 }
@@ -94,10 +96,10 @@ fn update_focus_state(ctx: &mut CoreCtx<'_>, result: FocusTargetResult) -> Optio
 /// This allows the common focus logic to call backend-specific operations
 /// without duplicating the surrounding logic.
 pub(crate) trait FocusBackendOps {
-    fn unfocus_current(&self, ctx: &CoreCtx<'_>, current: WindowId);
+    fn unfocus_current(&self, state: &CoreState, current: WindowId);
     fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId);
-    fn focus_none(&self, ctx: &CoreCtx<'_>);
-    fn on_desktop_binding_state_changed(&self, ctx: &CoreCtx<'_>);
+    fn focus_none(&self);
+    fn on_desktop_binding_state_changed(&self, state: &CoreState);
     fn needs_focus_refresh(&self, _target: Option<WindowId>) -> bool {
         false
     }
@@ -108,7 +110,7 @@ struct WaylandFocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
-    fn unfocus_current(&self, _ctx: &CoreCtx<'_>, _current: WindowId) {}
+    fn unfocus_current(&self, _state: &CoreState, _current: WindowId) {}
 
     fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId) {
         let is_urgent = ctx
@@ -123,11 +125,11 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
         self.wayland.set_focus(win);
     }
 
-    fn focus_none(&self, _ctx: &CoreCtx<'_>) {
+    fn focus_none(&self) {
         self.wayland.clear_keyboard_focus();
     }
 
-    fn on_desktop_binding_state_changed(&self, _ctx: &CoreCtx<'_>) {}
+    fn on_desktop_binding_state_changed(&self, _state: &CoreState) {}
 
     fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
         match target {
@@ -151,7 +153,7 @@ pub(crate) fn focus_generic(
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
 ) -> anyhow::Result<FocusOutcome> {
-    let result = match resolve_focus_target(core, win) {
+    let result = match resolve_focus_target(core.model(), win) {
         Some(r) => r,
         None => {
             return Ok(FocusOutcome {
@@ -165,7 +167,7 @@ pub(crate) fn focus_generic(
     let sel_mon_id = result.sel_mon_id;
     let desktop_bindings_before =
         crate::keyboard::desktop_bindings_enabled(current_sel, &core.behavior().current_mode);
-    let target = update_focus_state(core, result);
+    let target = update_focus_state(core.model_mut(), result);
     let desktop_bindings_after =
         crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
 
@@ -175,11 +177,11 @@ pub(crate) fn focus_generic(
         && let Some(cur_win) = current_sel
     {
         core.focus.last_client = cur_win;
-        backend.unfocus_current(core, cur_win);
+        backend.unfocus_current(core.state(), cur_win);
     }
 
     if desktop_bindings_before != desktop_bindings_after {
-        backend.on_desktop_binding_state_changed(core);
+        backend.on_desktop_binding_state_changed(core.state());
     }
 
     let focus_changed = current_sel != target;
@@ -192,7 +194,7 @@ pub(crate) fn focus_generic(
         }
     } else if focus_changed {
         core.bar.mark_dirty();
-        backend.focus_none(core);
+        backend.focus_none();
     }
 
     Ok(FocusOutcome {
