@@ -112,10 +112,10 @@ pub mod startup;
 pub mod systray;
 pub mod visibility;
 
-pub use client::update_size_hints_x11;
+pub use client::update_size_hints;
 pub use properties::{
     set_client_state, set_client_tag_prop, update_client_list, update_ewmh_desktop_props,
-    update_motif_hints, update_window_type, update_wm_hints, window_properties_x11,
+    update_motif_hints, update_window_type, update_wm_hints, window_properties,
 };
 
 pub struct X11Backend {

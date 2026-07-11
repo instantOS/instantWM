@@ -83,7 +83,7 @@ pub fn handle_resize(
     w: i32,
     h: i32,
 ) {
-    let (safe_w, safe_h) = crate::wayland::common::sanitize_wayland_size(w, h);
+    let (safe_w, safe_h) = crate::wayland::common::sanitize_size(w, h);
     let mode = OutputMode {
         size: (safe_w, safe_h).into(),
         refresh: 60_000,

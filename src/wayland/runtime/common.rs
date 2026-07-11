@@ -1,7 +1,7 @@
 //! Shared Wayland runtime setup and per-tick logic for all backends.
 //!
 //! Bootstrap uses [`create_wayland_wm_boxed`] and [`new_wayland_event_loop_and_state`], then
-//! [`attach_wayland_backend_state`], [`attach_gles_renderer_and_protocols`], and the socket /
+//! [`attach_backend_state`], [`attach_gles_renderer_and_protocols`], and the socket /
 //! autostart helpers. DRM inserts session/GPU/libinput between socket setup and autostart.
 //!
 //! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
@@ -17,12 +17,12 @@ use smithay::reexports::calloop::{EventLoop, LoopHandle};
 use smithay::reexports::wayland_server::Display;
 use smithay::wayland::seat::WaylandFocus;
 
-/// D-Bus session, boxed [`Wm`] with Wayland backend, and [`crate::wayland::common::init_wayland_globals`].
+/// D-Bus session, boxed [`Wm`] with Wayland backend, and [`crate::wayland::common::init_globals`].
 pub(crate) fn create_wayland_wm_boxed() -> Box<Wm> {
     crate::wayland::common::ensure_dbus_session();
     let mut wm = Box::new(Wm::new(WmBackend::new_wayland(WaylandBackend::new())));
     if let Some(wayland) = wm.backend.wayland_data_mut() {
-        crate::wayland::common::init_wayland_globals(&mut wm.core, wayland);
+        crate::wayland::common::init_globals(&mut wm.core, wayland);
     }
     wm
 }
@@ -53,19 +53,19 @@ pub fn attach_gles_renderer_and_protocols(
 }
 
 /// Wire the Smithay compositor state into [`WaylandBackend`].
-pub fn attach_wayland_backend_state(wm: &mut Box<Wm>, state: &mut WaylandState) {
+pub fn attach_backend_state(wm: &mut Box<Wm>, state: &mut WaylandState) {
     if let WmBackend::Wayland(data) = &mut wm.backend {
         data.backend.attach_state(state);
     }
 }
 
 /// Listening socket, XWayland spawn, and StatusNotifier systray thread — shared by both runtimes.
-pub fn setup_wayland_listen_socket_xwayland_systray(
+pub fn setup_listen_socket(
     loop_handle: &LoopHandle<'static, WaylandState>,
     state: &WaylandState,
     wm: &mut Box<Wm>,
 ) {
-    let _socket_name = crate::wayland::common::setup_wayland_socket(loop_handle, state);
+    let _socket_name = crate::wayland::common::setup_socket(loop_handle, state);
     crate::wayland::common::spawn_xwayland(state, loop_handle);
     if let WmBackend::Wayland(data) = &mut wm.backend {
         data.wayland_systray_runtime =
@@ -74,12 +74,12 @@ pub fn setup_wayland_listen_socket_xwayland_systray(
 }
 
 /// Startup commands, smoke window, IPC listener registration, and status-bar ping source.
-pub fn wayland_autostart_ipc_status_ping(
+pub fn autostart_ipc_status_ping(
     loop_handle: &LoopHandle<'static, WaylandState>,
     wm: &crate::wm::Wm,
 ) -> Option<crate::ipc::IpcServer> {
     crate::runtime::run_startup_commands(wm);
-    crate::wayland::common::spawn_wayland_smoke_window();
+    crate::wayland::common::spawn_smoke_window();
     let ipc_server = crate::ipc::IpcServer::bind().ok();
     crate::runtime::register_ipc_source(loop_handle, &ipc_server);
     let (status_ping, status_ping_source) = calloop::ping::make_ping().expect("status ping");
@@ -431,7 +431,7 @@ fn handle_map_window(
     }
 
     if let Some(toplevel) = element.as_ref().and_then(|e| e.toplevel()) {
-        state.apply_xdg_toplevel_floating_policy(&toplevel.clone());
+        state.apply_floating_policy(&toplevel.clone());
     }
 
     let requested_geo = g.model.clients.get(&win).unwrap().geo;
@@ -513,7 +513,7 @@ fn handle_begin_resize(
     let mut ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
         let point = state.runtime.pointer_location;
-        crate::wayland::input::pointer::drag::wayland_hover_resize_drag_begin(
+        crate::wayland::input::pointer::drag::hover_resize_drag_begin(
             wl_ctx,
             crate::types::Point::new(point.x.round() as i32, point.y.round() as i32),
             crate::types::MouseButton::Left,

@@ -12,9 +12,9 @@ use crate::types::{MouseButton, Point as RootPoint};
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::handle_wayland_bar_click;
+use crate::wayland::input::bar::handle_bar_click;
 use crate::wayland::input::pointer::drag::{
-    wayland_hover_resize_drag_begin, wayland_hover_resize_drag_finish,
+    hover_resize_drag_begin, hover_resize_drag_finish,
 };
 
 /// Internal helper for handling pointer button from raw values.
@@ -159,7 +159,7 @@ fn handle_button_press(
 
     match pointer_region {
         PointerRegion::Bar { pos, .. } => {
-            handle_wayland_bar_click(
+            handle_bar_click(
                 wm,
                 pos,
                 button.button_code,
@@ -171,7 +171,7 @@ fn handle_button_press(
         }
         PointerRegion::Sidebar(_) => {
             if let Some(btn) = button.wm_button {
-                let _ = consume_wayland_pointer_binding(
+                let _ = consume_pointer_binding(
                     wm,
                     pointer_region,
                     btn,
@@ -200,7 +200,7 @@ fn handle_button_press(
 
     let consumed = !on_layer_surface
         && button.wm_button.is_some_and(|btn| {
-            consume_wayland_pointer_binding(
+            consume_pointer_binding(
                 wm,
                 pointer_region,
                 btn,
@@ -211,7 +211,7 @@ fn handle_button_press(
 
     if !consumed {
         forward_button(state, pointer_handle, button);
-        close_wayland_systray_menu_if_outside(wm, state, button.root.x);
+        close_systray_menu_if_outside(wm, state, button.root.x);
     }
 
     false
@@ -223,7 +223,7 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     };
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        wayland_hover_resize_drag_begin(&mut ctx, button.root, btn)
+        hover_resize_drag_begin(&mut ctx, button.root, btn)
     } else {
         false
     }
@@ -269,7 +269,7 @@ fn focus_button_target(
     false
 }
 
-fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
+fn close_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
     let core = crate::contexts::CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
@@ -283,7 +283,7 @@ fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, 
     let should_close = match &mut wm.backend {
         Backend::Wayland(data) => {
             data.wayland_systray_menu.as_ref().is_some()
-                && crate::backend::wayland::systray::hit_test_wayland_systray_menu_item(
+                && crate::backend::wayland::systray::hit_test_menu_item(
                     core.config().systray.spacing,
                     &data.wayland_systray,
                     data.wayland_systray_menu.as_ref(),
@@ -346,7 +346,7 @@ fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     };
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        wayland_hover_resize_drag_finish(&mut ctx, btn)
+        hover_resize_drag_finish(&mut ctx, btn)
     } else {
         false
     }
@@ -396,7 +396,7 @@ fn find_hovered_window_for_surface(
         .flatten()
 }
 
-fn consume_wayland_pointer_binding(
+fn consume_pointer_binding(
     wm: &mut Wm,
     region: PointerRegion,
     btn: MouseButton,

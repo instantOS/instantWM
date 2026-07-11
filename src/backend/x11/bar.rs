@@ -68,7 +68,7 @@ pub fn draw_bar(
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
-pub fn draw_bars_x11(
+pub fn draw_bars(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
@@ -130,7 +130,7 @@ pub fn draw_bars_x11(
     core.bar.mark_drawn();
 }
 
-pub fn reset_bar_x11(
+pub fn reset_bar(
     core: &mut CoreCtx,
     _x11_runtime: &mut X11RuntimeConfig,
     _systray: Option<&Systray>,

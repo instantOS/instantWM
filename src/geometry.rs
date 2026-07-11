@@ -214,7 +214,7 @@ fn apply_resize_policies(
                 interact,
             );
             if outcome.should_apply_icccm {
-                crate::backend::x11::geometry::apply_icccm_size_hints_x11(
+                crate::backend::x11::geometry::apply_icccm_size_hints(
                     x11_ctx.core.model_mut(),
                     &x11_ctx.x11,
                     win,

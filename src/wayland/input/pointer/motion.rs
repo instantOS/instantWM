@@ -15,13 +15,13 @@ use crate::types::BarPosition;
 use crate::types::Point as RootPoint;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
-use crate::wayland::input::bar::update_wayland_bar_hit_state;
+use crate::wayland::input::bar::update_bar_hit_state;
 use crate::wayland::input::pointer::drag::{
-    wayland_active_drag_window, wayland_hover_resize_drag_motion,
+    active_drag_window, hover_resize_drag_motion,
 };
 use crate::wm::Wm;
 
-fn wayland_monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
+fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
     mon.bar_visible(wm.core.model.clients.map())
 }
 
@@ -303,7 +303,7 @@ pub fn dispatch_pointer_motion(
     let root = RootPoint::new(pointer_location.x.round() as i32, pointer_location.y.round() as i32);
 
     // Get active drag window once - used in multiple phases
-    let active_drag_window = wayland_active_drag_window(wm);
+    let active_drag_window = active_drag_window(wm);
 
     // Phase 1: Compute bar/guard band hit detection
     let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root);
@@ -327,7 +327,7 @@ pub fn dispatch_pointer_motion(
     }
 
     // Phase 4: Handle bar interaction (early return path)
-    let bar_pos = update_wayland_bar_hit_state(wm, root, false);
+    let bar_pos = update_bar_hit_state(wm, root, false);
     if handle_bar_motion(
         wm,
         state,
@@ -412,7 +412,7 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
     )
     .and_then(|mid| wm.core.monitor(mid))
     .map(|mon| {
-        let bar_visible = wayland_monitor_bar_visible(wm, mon);
+        let bar_visible = monitor_bar_visible(wm, mon);
         let in_bar = bar_visible && mon.y_in_bar(root.y);
         let in_guard =
             bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
@@ -466,7 +466,7 @@ fn handle_resize_drag_motion(
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
-    if !wayland_hover_resize_drag_motion(
+    if !hover_resize_drag_motion(
         ctx,
         RootPoint::new(pointer_location.x.round() as i32, pointer_location.y.round() as i32),
     ) {

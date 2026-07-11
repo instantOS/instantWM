@@ -261,7 +261,7 @@ pub fn render_bar_buffers(
         scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)), false);
     // Cache the systray width so status bar layout can account for it.
     core.bar.runtime.systray_width =
-        crate::backend::wayland::systray::get_wayland_systray_width_with_state(
+        crate::backend::wayland::systray::systray_width(
             &core.config().systray,
             wayland_systray,
             core.model().selected_monitor().bar_height,

@@ -3,7 +3,7 @@ use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
 
-pub fn update_wayland_bar_hit_state(
+pub fn update_bar_hit_state(
     wm: &mut Wm,
     root: Point,
     reset_start_menu: bool,
@@ -12,7 +12,7 @@ pub fn update_wayland_bar_hit_state(
     crate::bar::update_hover(&mut ctx, root, reset_start_menu, true)
 }
 
-pub fn handle_wayland_bar_click(
+pub fn handle_bar_click(
     wm: &mut Wm,
     pos: BarPosition,
     button_code: u32,
@@ -82,10 +82,10 @@ pub fn handle_wayland_bar_click(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    run_wayland_bar_bindings(wayland_ctx, pos, button, root, clean_state);
+    run_bar_bindings(wayland_ctx, pos, button, root, clean_state);
 }
 
-pub fn handle_wayland_bar_scroll(
+pub fn handle_bar_scroll(
     wm: &mut Wm,
     pos: BarPosition,
     delta: f64,
@@ -101,10 +101,10 @@ pub fn handle_wayland_bar_scroll(
     let crate::contexts::WmCtx::Wayland(ref mut wayland_ctx) = ctx else {
         return;
     };
-    run_wayland_bar_bindings(wayland_ctx, pos, button, root, clean_state);
+    run_bar_bindings(wayland_ctx, pos, button, root, clean_state);
 }
 
-fn run_wayland_bar_bindings(
+fn run_bar_bindings(
     ctx: &mut WmCtxWayland<'_>,
     pos: BarPosition,
     btn: MouseButton,

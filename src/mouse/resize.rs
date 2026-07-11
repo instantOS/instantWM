@@ -145,7 +145,7 @@ fn begin_wayland_super_resize(
 ) {
     // Warp the cursor to the nearest edge/corner for this direction so the
     // visual position of the cursor matches what is being dragged.  The resize
-    // math in wayland_hover_resize_drag_motion uses root_x/root_y directly
+    // math in hover_resize_drag_motion uses root_x/root_y directly
     // against the window edges, so the first motion event is correct regardless
     // of where the cursor started — but warping gives immediate visual feedback
     // and prevents the cursor sitting in the middle of the window while a corner

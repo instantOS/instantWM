@@ -19,7 +19,7 @@ fn force_close(ctx: &mut WmCtx, win: WindowId) {
     match ctx {
         WmCtx::X11(ctx_x11) => {
             let wmatom_delete = ctx_x11.x11_runtime.wmatom.delete;
-            crate::backend::x11::kill::force_close_x11(ctx_x11, win, wmatom_delete);
+            crate::backend::x11::kill::force_close(ctx_x11, win, wmatom_delete);
         }
         WmCtx::Wayland(wl) => {
             let _ = wl.wayland.close_window(win);

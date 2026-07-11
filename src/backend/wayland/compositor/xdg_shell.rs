@@ -45,7 +45,7 @@ impl WaylandState {
         };
         let properties = self.window_properties(win);
         self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
-        self.apply_xdg_toplevel_floating_policy(&surface);
+        self.apply_floating_policy(&surface);
         self.update_foreign_toplevel(win);
         self.request_bar_redraw();
     }
@@ -65,7 +65,7 @@ impl WaylandState {
         })
     }
 
-    pub(crate) fn apply_xdg_toplevel_floating_policy(&mut self, surface: &ToplevelSurface) {
+    pub(crate) fn apply_floating_policy(&mut self, surface: &ToplevelSurface) {
         let has_parent = surface.parent().is_some();
         let wants_floating = self.xdg_toplevel_wants_floating(surface);
         let Some(win) = self.window_id_for_toplevel(surface) else {
@@ -276,7 +276,7 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn parent_changed(&mut self, surface: ToplevelSurface) {
-        self.apply_xdg_toplevel_floating_policy(&surface);
+        self.apply_floating_policy(&surface);
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {

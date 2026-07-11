@@ -261,7 +261,7 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
             x11_runtime,
             ..
         }) => {
-            crate::backend::x11::focus::unfocus_win_x11(
+            crate::backend::x11::focus::unfocus_win(
                 core.state(),
                 x11,
                 x11_runtime,

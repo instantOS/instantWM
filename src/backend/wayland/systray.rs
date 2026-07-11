@@ -264,7 +264,7 @@ impl WaylandSystrayRuntime {
     }
 }
 
-pub fn get_wayland_systray_width_with_state(
+pub fn systray_width(
     systray: &crate::core_state::SystrayConfig,
     wayland_systray: &WaylandSystray,
     bar_height: i32,
@@ -286,7 +286,7 @@ pub fn get_wayland_systray_width_with_state(
     width
 }
 
-pub fn hit_test_wayland_systray_menu_item(
+pub fn hit_test_menu_item(
     spacing: i32,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,

@@ -102,7 +102,7 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
     };
 
     if btn == MouseButton::Right || move_from_top_middle {
-        crate::backend::x11::mouse::move_mouse_x11(ctx, btn, None);
+        crate::backend::x11::mouse::move_mouse(ctx, btn, None);
     } else {
         resize_mouse_directional(ctx, Some(dir), btn);
     }
@@ -184,7 +184,7 @@ pub fn selected_hover_resize_target_at(
 
 /// Find a visible tiled window at point (`x`, `y`), skipping `skip_win`.
 ///
-/// Unlike [`get_cursor_client_win`] (which uses `query_pointer` and returns the
+/// Unlike [`cursor_client_win`] (which uses `query_pointer` and returns the
 /// topmost X11 window), this walks the monitor's client list directly. This is
 /// needed when a floating window is stacked on top: `query_pointer` would return
 /// the floating window, but we want the tiled window *behind* it.
@@ -386,7 +386,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                         .unwrap_or(false);
                     if !in_resize_border {
                         let sel = wm_ctx.core().model().selected_win();
-                        let target = get_cursor_client_win(&mut wm_ctx)
+                        let target = cursor_client_win(&mut wm_ctx)
                             .filter(|&w| Some(w) != sel)
                             .or_else(|| {
                                 let p = wm_ctx.pointer_backend().pointer_location()?;
@@ -436,7 +436,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                             let mut wm_ctx_x11 = ctx.reborrow();
                             let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                             super::warp::warp_into(&mut wmctx, win);
-                            crate::backend::x11::mouse::move_mouse_x11(&mut wm_ctx_x11, btn, None);
+                            crate::backend::x11::mouse::move_mouse(&mut wm_ctx_x11, btn, None);
                         }
                         MouseButton::Left => {
                             if geo.is_at_top_middle_edge(
@@ -446,7 +446,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                                 let mut wm_ctx_x11 = ctx.reborrow();
                                 let mut wmctx = WmCtx::X11(wm_ctx_x11.reborrow());
                                 super::warp::warp_into(&mut wmctx, win);
-                                crate::backend::x11::mouse::move_mouse_x11(
+                                crate::backend::x11::mouse::move_mouse(
                                     &mut wm_ctx_x11,
                                     btn,
                                     None,
@@ -495,7 +495,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
         };
 
         // Must have a different, tiled window under the cursor
-        let hovered_win = match get_cursor_client_win(&mut wm_ctx) {
+        let hovered_win = match cursor_client_win(&mut wm_ctx) {
             Some(w) if w != selected_window => w,
             _ => return false,
         };
@@ -564,10 +564,10 @@ fn query_pointer_on_win(
 /// cursor, respecting stacking order. This ensures that if multiple windows
 /// overlap, the topmost (visible) one is returned, not just any window whose
 /// geometry contains the cursor.
-fn get_cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
+fn cursor_client_win(ctx: &mut WmCtx) -> Option<WindowId> {
     let (conn, root, core) = match ctx {
         WmCtx::X11(x11) => (x11.x11.conn, x11.x11_runtime.root, &mut x11.core),
         WmCtx::Wayland(_) => return None,
     };
-    crate::backend::x11::mouse::get_cursor_client_win_with_conn(core.state(), conn, root)
+    crate::backend::x11::mouse::cursor_client_win(core.state(), conn, root)
 }

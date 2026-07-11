@@ -143,7 +143,7 @@ pub fn ungrab(x11: &X11BackendRef) {
 
 fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
     if ctx.core.bar.needs_redraw() {
-        crate::backend::x11::bar::draw_bars_x11(
+        crate::backend::x11::bar::draw_bars(
             &mut ctx.core,
             ctx.x11_runtime,
             ctx.systray.as_deref(),
@@ -152,7 +152,7 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
 }
 
 /// Convert an X11 event to a backend-agnostic [`BackendEvent`].
-fn x11_event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
+fn event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
     match event {
         x11rb::protocol::Event::MotionNotify(m) => Some(BackendEvent::Motion {
             root: Point::new(m.root_x as i32, m.root_y as i32),
@@ -180,7 +180,7 @@ fn call_on_event<F>(
 where
     F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
 {
-    if let Some(be) = x11_event_to_backend(event) {
+    if let Some(be) = event_to_backend(event) {
         on_event(ctx, &be)
     } else {
         true

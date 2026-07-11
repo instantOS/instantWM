@@ -126,7 +126,7 @@ pub fn draw_x11_bars_if_dirty(wm: &mut Wm) {
 
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::backend::x11::bar::draw_bars_x11(
+        crate::backend::x11::bar::draw_bars(
             &mut x11_ctx.core,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref(),
@@ -164,7 +164,7 @@ pub fn spawn_status_bar(wm: &Wm) {
 /// Run autostart, user-defined `exec_once` and `exec` commands.
 ///
 /// Called by each backend during startup. The Wayland backends call this
-/// from [`wayland_autostart_ipc_status_ping`], while X11 calls it from
+/// from [`autostart_ipc_status_ping`], while X11 calls it from
 /// [`late_init_x11`].
 pub fn run_startup_commands(wm: &Wm) {
     crate::startup::autostart::run_autostart();

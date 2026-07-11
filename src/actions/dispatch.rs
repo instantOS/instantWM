@@ -135,7 +135,7 @@ pub fn execute_button_action(
                     let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
                     crate::focus::focus(&mut wm_ctx, Some(win));
                 }
-                crate::backend::x11::mouse::move_mouse_x11(ctx_x11, arg.btn, None)
+                crate::backend::x11::mouse::move_mouse(ctx_x11, arg.btn, None)
             }
             WmCtx::Wayland(_) => {
                 if let Some(win) = button_target_client(ctx.core().model(), &arg) {

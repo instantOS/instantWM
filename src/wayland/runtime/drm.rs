@@ -25,7 +25,7 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::send_frame_callbacks;
-use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
+use crate::wayland::common::{build_fixed_scene_elements, poll_systray};
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
@@ -132,7 +132,7 @@ pub fn run() -> ! {
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
-    super::common::attach_wayland_backend_state(&mut wm, &mut state);
+    super::common::attach_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
@@ -186,7 +186,7 @@ pub fn run() -> ! {
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
-    super::common::setup_wayland_listen_socket_xwayland_systray(&loop_handle, &state, &mut wm);
+    super::common::setup_listen_socket(&loop_handle, &state, &mut wm);
 
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
@@ -233,7 +233,7 @@ pub fn run() -> ! {
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
 
-    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
 
     // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
@@ -820,7 +820,7 @@ fn render_outputs(
             .iter()
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
         let fixed_scene = if needs_any_render && !state.is_locked() {
-            poll_wayland_systray(wm);
+            poll_systray(wm);
             Some(build_fixed_scene_elements(wm, state))
         } else {
             None

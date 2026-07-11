@@ -12,7 +12,7 @@
 //! | Function                            | Description                                               |
 //! |-------------------------------------|-----------------------------------------------------------|
 //! | [`begin_keyboard_move`]             | Keyboard-initiated window drag (works on X11 and Wayland) |
-//! | [`crate::backend::x11::mouse::move_mouse_x11`] | Drag the focused window to a new position (X11 only) |
+//! | [`crate::backend::x11::mouse::move_mouse`] | Drag the focused window to a new position (X11 only) |
 //! | [`sidebar_gesture_begin`]           | Vertical-swipe gesture recogniser on the sidebar edge     |
 //! | [`drag_tag`]                        | Drag across the tag bar to switch/move tags               |
 //! | [`window_title_mouse_handler`]      | Left-click/drag on a window title bar entry               |
@@ -53,7 +53,7 @@ pub mod title;
 
 /// Keyboard-initiated window move — works on both X11 and Wayland.
 ///
-/// On **X11** this is identical to calling [`crate::backend::x11::mouse::move_mouse_x11`]
+/// On **X11** this is identical to calling [`crate::backend::x11::mouse::move_mouse`]
 /// directly: the pointer is grabbed and a synchronous event loop drives the drag
 /// until the button is released.
 ///
@@ -61,7 +61,7 @@ pub mod title;
 /// equivalent in the protocol).  Instead we arm the `DragInteraction`
 /// machinery in move mode at the current pointer
 /// position.  Subsequent `MotionNotify` events delivered through calloop then
-/// drive the drag, and `wayland_hover_resize_drag_finish` (called on button
+/// drive the drag, and `hover_resize_drag_finish` (called on button
 /// release inside `handle_pointer_button`) performs the drop logic via the
 /// shared `complete_move_drop` helper.
 ///
@@ -76,7 +76,7 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(x11) => {
             // X11: synchronous grab loop, unchanged behaviour.
-            crate::backend::x11::mouse::move_mouse_x11(x11, MouseButton::Left, None);
+            crate::backend::x11::mouse::move_mouse(x11, MouseButton::Left, None);
         }
         WmCtx::Wayland(wl) => {
             // Wayland: arm the hover-resize state in move mode so that calloop

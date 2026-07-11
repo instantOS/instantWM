@@ -19,7 +19,7 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 {
+pub fn get_state(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
@@ -41,7 +41,7 @@ pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> 
 // Visibility apply
 // ---------------------------------------------------------------------------
 
-pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
+pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
     let g = ctx.core.state();
     let operations =
         crate::client::visibility::visibility_plan(&g.model.monitors, &g.model.clients);
@@ -103,7 +103,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
 // Show (unminimize)
 // ---------------------------------------------------------------------------
 
-pub fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let Rect { x, y, w, h } = match ctx.core.model().clients.get(&win) {
         Some(c) => c.geo,
         None => return,
@@ -132,7 +132,7 @@ pub fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 // Hide (minimize)
 // ---------------------------------------------------------------------------
 
-pub fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+pub fn hide(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let root = ctx.x11_runtime.root;
     let x11_win: Window = win.into();
 

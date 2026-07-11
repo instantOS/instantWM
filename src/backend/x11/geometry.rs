@@ -5,7 +5,7 @@ use crate::model::WmModel;
 use crate::types::{Rect, WindowId};
 
 /// Apply ICCCM size hints for an X11 client.
-pub fn apply_icccm_size_hints_x11(
+pub fn apply_icccm_size_hints(
     model: &mut WmModel,
     x11: &X11BackendRef,
     win: WindowId,
@@ -18,7 +18,7 @@ pub fn apply_icccm_size_hints_x11(
         .unwrap_or(false);
 
     if needs_update {
-        crate::backend::x11::client::update_size_hints_x11(model, x11, win);
+        crate::backend::x11::client::update_size_hints(model, x11, win);
     }
 
     let client = match model.clients.get(&win) {

@@ -285,7 +285,7 @@ pub fn update_client_list(
     let _ = conn.flush();
 }
 
-pub fn window_properties_x11(
+pub fn window_properties(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -342,7 +342,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 }
 
-pub fn set_urgent_x11(
+pub fn set_urgent(
     model: &mut crate::model::WmModel,
     x11: &X11BackendRef,
     win: WindowId,

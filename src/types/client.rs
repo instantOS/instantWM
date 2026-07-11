@@ -528,7 +528,7 @@ impl Client {
         self.set_tag_mask(effective_mask);
 
         crate::backend::x11::set_client_tag_prop(core.state(), x11, x11_runtime, self.win);
-        crate::backend::x11::focus::focus_soft_x11(core, x11, x11_runtime, None);
+        crate::backend::x11::focus::focus_soft(core, x11, x11_runtime, None);
         let monitor_id = core.model().selected_monitor_id();
         core.queue_layout_for_monitor_urgent(monitor_id);
     }

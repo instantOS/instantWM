@@ -9,7 +9,7 @@ use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
 use crate::wm::Wm;
 
 /// Get the active drag window (if any).
-pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
+pub fn active_drag_window(wm: &Wm) -> Option<WindowId> {
     if wm.core.drag.interactive.active {
         return Some(wm.core.drag.interactive.win);
     }
@@ -17,7 +17,7 @@ pub fn wayland_active_drag_window(wm: &Wm) -> Option<WindowId> {
 }
 
 /// Begin hover resize/move/close action based on button pressed in border zone.
-pub fn wayland_hover_resize_drag_begin(
+pub fn hover_resize_drag_begin(
     ctx: &mut WmCtxWayland<'_>,
     position: Point,
     btn: MouseButton,
@@ -81,7 +81,7 @@ pub fn wayland_hover_resize_drag_begin(
 }
 
 /// Update bar hover gesture highlighting during a Wayland move drag.
-fn update_wayland_move_bar_hover(
+fn update_move_bar_hover(
     ctx: &mut crate::contexts::WmCtxWayland<'_>,
     root: Point,
 ) -> bool {
@@ -94,7 +94,7 @@ fn update_wayland_move_bar_hover(
 /// This is the single motion handler for **all** active drags once
 /// `dragging == true`, regardless of how the drag was initiated (title
 /// bar, hover border, keyboard shortcut, Super+button, etc.).
-pub fn wayland_hover_resize_drag_motion(
+pub fn hover_resize_drag_motion(
     ctx: &mut WmCtxWayland<'_>,
     root: Point,
 ) -> bool {
@@ -106,7 +106,7 @@ pub fn wayland_hover_resize_drag_motion(
 
     match drag.drag_type {
         crate::core_state::DragType::Move => {
-            let on_bar = update_wayland_move_bar_hover(ctx, root);
+            let on_bar = update_move_bar_hover(ctx, root);
 
             let mut new_pos = Point::new(
                 drag.win_start_geo.x + (root.x - drag.start_point.x),
@@ -181,7 +181,7 @@ pub fn wayland_hover_resize_drag_motion(
 /// Handles **all** `dragging == true` finishes regardless of how the drag
 /// was initiated.  Returns `false` for click-without-drag interactions so
 /// `title_drag_finish` can handle the click action.
-pub fn wayland_hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) -> bool {
+pub fn hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) -> bool {
     if !ctx.core.drag_state().interactive.active
         || !ctx.core.drag_state().interactive.dragging
         || ctx.core.drag_state().interactive.button != btn

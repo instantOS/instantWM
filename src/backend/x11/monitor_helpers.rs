@@ -8,7 +8,7 @@ use x11rb::protocol::xinerama;
 use x11rb::protocol::xproto::*;
 
 /// Destroy an X11 bar window for a monitor.
-pub fn destroy_monitor_bar_x11(ctx: &mut WmCtx, bar_win: WindowId) {
+pub fn destroy_monitor_bar(ctx: &mut WmCtx, bar_win: WindowId) {
     if bar_win != WindowId::default()
         && let WmCtx::X11(x11) = ctx
     {
@@ -19,7 +19,7 @@ pub fn destroy_monitor_bar_x11(ctx: &mut WmCtx, bar_win: WindowId) {
 }
 
 /// Raise a client window above siblings on X11.
-pub fn raise_client_window_x11(x11: &X11BackendRef<'_>, win: WindowId) {
+pub fn raise_client_window(x11: &X11BackendRef<'_>, win: WindowId) {
     let x11_win: Window = win.into();
     let _ = configure_window(
         x11.conn,

@@ -93,7 +93,7 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
         ctx.set_current_mode(mode);
     }
     if let WmCtx::X11(x11) = ctx {
-        crate::backend::x11::keyboard::grab_keys_x11(x11.core.state(), &x11.x11, x11.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys(x11.core.state(), &x11.x11, x11.x11_runtime);
     }
     let _selmon_id = ctx.core().model().selected_monitor_id();
     ctx.request_bar_update();

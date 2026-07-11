@@ -589,7 +589,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     // Destroy orphaned monitors' bar windows.
     for slot in &mut pool {
         if let Some(m) = slot.as_ref() {
-            crate::backend::x11::monitor_helpers::destroy_monitor_bar_x11(ctx, m.bar_win);
+            crate::backend::x11::monitor_helpers::destroy_monitor_bar(ctx, m.bar_win);
         }
     }
 

@@ -89,7 +89,7 @@ pub fn update_systray_icon_geom(
         false,
     );
     if outcome.should_apply_icccm {
-        crate::backend::x11::geometry::apply_icccm_size_hints_x11(
+        crate::backend::x11::geometry::apply_icccm_size_hints(
             &mut globals.model,
             x11,
             icon_win,

@@ -39,7 +39,7 @@ pub fn set_x11_root_cursor(
 /// Grab → event loop → release handling. This is the X11-specific synchronous
 /// implementation. For the backend-agnostic keyboard shortcut, use
 /// [`crate::mouse::drag::begin_keyboard_move`] instead.
-pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Option<Rect>) {
+pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Option<Rect>) {
     let Some(win) = ({
         let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
         prepare_drag_target(&mut wm_ctx)
@@ -88,7 +88,7 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
     );
 }
 
-pub fn get_cursor_client_win_with_conn(
+pub fn cursor_client_win(
     globals: &crate::core_state::CoreState,
     conn: &x11rb::rust_connection::RustConnection,
     root: x11rb::protocol::xproto::Window,

@@ -27,7 +27,7 @@ fn send_xembed_event(
 ) {
     let xembed_atom = ctx.x11_runtime.xatom.xembed;
     let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
-    crate::backend::x11::focus::send_event_x11(
+    crate::backend::x11::focus::send_event(
         &ctx.x11,
         ctx.x11_runtime,
         icon_win,
@@ -41,7 +41,7 @@ fn send_xembed_event(
     );
 }
 
-pub fn button_press_x11(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
+pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.config().bindings.buttons.clone();
@@ -202,7 +202,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
     if ctx.core.model().clients.contains_key(&event_win) {
-        crate::backend::x11::focus::configure_x11(ctx.core.g, &ctx.x11, event_win);
+        crate::backend::x11::focus::configure(ctx.core.g, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
         let _ = conn.configure_window(
@@ -261,7 +261,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// Handle EnterNotify events for focus-follows-mouse behavior.
 ///
 /// This is the Rust equivalent of the C code's `enternotify` and `handle_floating_focus`.
-/// The key insight is that when floating windows overlap, we must use `get_cursor_client_win`
+/// The key insight is that when floating windows overlap, we must use `cursor_client_win`
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
@@ -311,7 +311,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
                 if resize_offer_result.consumed_event() {
                     return;
                 }
-                if let Some(newc) = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
+                if let Some(newc) = crate::backend::x11::mouse::cursor_client_win(
                     ctx.core.g,
                     ctx.x11.conn,
                     ctx.x11_runtime.root,
@@ -325,7 +325,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 4. Determine what's actually under the cursor
-    let topmost_win_under_cursor = crate::backend::x11::mouse::get_cursor_client_win_with_conn(
+    let topmost_win_under_cursor = crate::backend::x11::mouse::cursor_client_win(
         ctx.core.g,
         ctx.x11.conn,
         ctx.x11_runtime.root,
@@ -373,7 +373,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
 
 pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
     if let Some(selected_window) = ctx.core.model().selected_win() {
-        crate::backend::x11::focus::set_focus_x11(
+        crate::backend::x11::focus::set_focus(
             ctx.core.g,
             &ctx.x11,
             ctx.x11_runtime,
@@ -383,7 +383,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
-    crate::backend::x11::keyboard::grab_keys_x11(ctx.core.g, &ctx.x11, ctx.x11_runtime);
+    crate::backend::x11::keyboard::grab_keys(ctx.core.g, &ctx.x11, ctx.x11_runtime);
 }
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
@@ -533,7 +533,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             || e.atom == u32::from(AtomEnum::WM_CLASS)
         {
             let props =
-                crate::backend::x11::window_properties_x11(&ctx.x11, ctx.x11_runtime, event_win);
+                crate::backend::x11::window_properties(&ctx.x11, ctx.x11_runtime, event_win);
             if crate::client::handle_property_change(ctx.core.g, event_win, &props) {
                 ctx.core.queue_layout_for_client(event_win);
             }
@@ -652,7 +652,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         }
     };
 
-    crate::backend::x11::update_size_hints_x11(ctx.core.model_mut(), &ctx.x11, icon_win);
+    crate::backend::x11::update_size_hints(ctx.core.model_mut(), &ctx.x11, icon_win);
     crate::backend::x11::systray::update_systray_icon_geom(
         ctx.core.g, &ctx.x11, icon_win, geo.w, geo.h,
     );

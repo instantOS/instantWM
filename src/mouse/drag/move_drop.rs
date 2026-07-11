@@ -88,7 +88,7 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
         && root.x < mon.monitor_rect.x + mon.monitor_rect.w
 }
 
-// ── move_mouse_x11 helpers ────────────────────────────────────────────────────
+// ── move_mouse helpers ────────────────────────────────────────────────────
 
 /// State threaded through the move-mouse event loop.
 pub struct MoveState {
@@ -102,7 +102,7 @@ pub struct MoveState {
     pub edge_snap_indicator: Option<SnapPosition>,
 }
 
-/// Perform the pre-flight checks for [`crate::backend::x11::mouse::move_mouse_x11`].
+/// Perform the pre-flight checks for [`crate::backend::x11::mouse::move_mouse`].
 ///
 /// Returns the window to drag, or `None` if the drag should be aborted.
 /// As a side effect:
@@ -249,7 +249,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     on_bar
 }
 
-/// Process a single throttled `MotionNotify` event during [`crate::backend::x11::mouse::move_mouse_x11`].
+/// Process a single throttled `MotionNotify` event during [`crate::backend::x11::mouse::move_mouse`].
 pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, state: &mut MoveState) {
     state.cursor_on_bar = update_bar_hover(ctx, root, state);
     state.edge_snap_indicator = check_edge_snap(ctx.core().model(), root);

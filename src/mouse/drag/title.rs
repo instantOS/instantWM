@@ -140,7 +140,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 
     if ctx.core().drag_state().interactive.dragging {
         // Once dragging is active the unified handler
-        // (wayland_hover_resize_drag_motion) drives the interaction.
+        // (hover_resize_drag_motion) drives the interaction.
         return false;
     }
 
@@ -186,7 +186,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         if let WmCtx::X11(x11) = ctx {
             let mut wmctx = WmCtx::X11(x11.reborrow());
             warp::warp_into(&mut wmctx, win);
-            crate::backend::x11::mouse::move_mouse_x11(x11, btn, Some(float_restore_geo));
+            crate::backend::x11::mouse::move_mouse(x11, btn, Some(float_restore_geo));
         }
     }
     true
@@ -196,7 +196,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 /// drag threshold).  Performs the click action (focus / hide / zoom).
 ///
 /// When the drag threshold *was* exceeded (`dragging == true`), the
-/// unified `wayland_hover_resize_drag_finish` handles the drop instead.
+/// unified `hover_resize_drag_finish` handles the drop instead.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
     if !ctx.core_mut().drag_state_mut().interactive.active
         || ctx.core_mut().drag_state_mut().interactive.dragging
@@ -239,7 +239,7 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
 /// Left-click / drag handler for a window title bar entry.
 ///
 /// Click: hidden → show+focus; focused → hide; otherwise → focus.
-/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`crate::backend::x11::mouse::move_mouse_x11`].
+/// Drag > [`DRAG_THRESHOLD`]: show, focus, warp, hand off to [`crate::backend::x11::mouse::move_mouse`].
 /// Right Click: same as above but allows zoom to master and bottom-right resize on drag.
 ///
 /// On Wayland, starts the async state machine and returns immediately.

@@ -462,7 +462,7 @@ impl<'a> WmCtx<'a> {
                 let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
                 crate::client::sync_client_geometry(x11.core.model_mut(), win, actual);
 
-                crate::backend::x11::focus::configure_x11(x11.core.g, &x11.x11, win);
+                crate::backend::x11::focus::configure(x11.core.g, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {

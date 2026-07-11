@@ -51,7 +51,7 @@ pub(crate) fn visibility_plan(
 pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
     match ctx {
         crate::contexts::WmCtx::X11(ctx_x11) => {
-            crate::backend::x11::visibility::apply_visibility_x11(ctx_x11);
+            crate::backend::x11::visibility::apply_visibility(ctx_x11);
         }
         crate::contexts::WmCtx::Wayland(ctx_wayland) => {
             apply_visibility_wayland(ctx_wayland);
@@ -82,7 +82,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
     };
 
     if let WmCtx::X11(ctx_x11) = ctx {
-        crate::backend::x11::visibility::show_x11(ctx_x11, win);
+        crate::backend::x11::visibility::show(ctx_x11, win);
     }
 
     crate::focus::focus(ctx, Some(win));
@@ -114,7 +114,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
 
         match ctx {
             WmCtx::X11(ctx_x11) => {
-                crate::backend::x11::visibility::hide_x11(ctx_x11, win);
+                crate::backend::x11::visibility::hide(ctx_x11, win);
             }
             WmCtx::Wayland(ctx_wl) => {
                 hide_wayland(ctx_wl, win);

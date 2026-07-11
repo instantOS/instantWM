@@ -32,7 +32,7 @@ use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::BROKEN;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::backend::x11::focus::{grab_buttons_x11, unfocus_win_x11};
+use crate::backend::x11::focus::{grab_buttons, unfocus_win};
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
     update_motif_hints, update_window_type, update_wm_hints,
@@ -55,10 +55,10 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
-    let trans = get_transient_for_hint_x11(&ctx.x11, w);
+    let trans = get_transient_for_hint(&ctx.x11, w);
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
-    let launch_context = read_launch_context_x11(ctx.core.pending_launches_mut(), &ctx.x11, w);
+    let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, w);
     assign_initial_monitor_and_tags(ctx.core.state_mut(), &mut client, trans, launch_context);
     insert_client_and_apply_rules(
         &mut ctx.core,
@@ -89,7 +89,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     apply_manage_hints(ctx, w);
     snapshot_float_geo(ctx.core.model_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
-    grab_buttons_x11(ctx.core.state(), &ctx.x11, ctx.x11_runtime, w, false);
+    grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.model_mut(), w, trans.is_some()) {
         if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.model(), w, trans) {
@@ -174,26 +174,26 @@ fn insert_client_and_apply_rules(
     mut c: Client,
     launch_context: Option<crate::client::LaunchContext>,
 ) {
-    c.is_hidden = crate::backend::x11::visibility::get_state_x11(x11, x11_cfg.wmatom.state, w)
+    c.is_hidden = crate::backend::x11::visibility::get_state(x11, x11_cfg.wmatom.state, w)
         == crate::backend::x11::constants::WM_STATE_ICONIC;
     core.model_mut().clients.insert(w, c);
-    let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
+    let props = crate::backend::x11::window_properties(x11, x11_cfg, w);
     if crate::client::apply_rules(core.state_mut(), w, &props, launch_context) {
         core.queue_layout_for_client(w);
     }
 }
 
-fn read_launch_context_x11(
+fn read_launch_context(
     pending_launches: &mut std::collections::VecDeque<crate::client::PendingLaunch>,
     x11: &X11BackendRef<'_>,
     w: WindowId,
 ) -> Option<crate::client::LaunchContext> {
-    let startup_id = read_string_prop_x11(x11, w, "_NET_STARTUP_ID");
-    let pid = read_u32_prop_x11(x11, w, "_NET_WM_PID");
+    let startup_id = read_string_prop(x11, w, "_NET_STARTUP_ID");
+    let pid = read_u32_prop(x11, w, "_NET_WM_PID");
     crate::client::take_pending_launch(pending_launches, pid, startup_id.as_deref())
 }
 
-fn read_string_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<String> {
+fn read_string_prop(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<String> {
     let atom = x11
         .conn
         .intern_atom(false, atom_name.as_bytes())
@@ -222,7 +222,7 @@ fn read_string_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -
     Some(String::from_utf8_lossy(&reply.value[..len]).into_owned()).filter(|s| !s.is_empty())
 }
 
-fn read_u32_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<u32> {
+fn read_u32_prop(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<u32> {
     let atom = x11
         .conn
         .intern_atom(false, atom_name.as_bytes())
@@ -315,9 +315,9 @@ fn configure_client_border(
 }
 
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
-    crate::backend::x11::focus::configure_x11(ctx_x11.core.state(), &ctx_x11.x11, w);
+    crate::backend::x11::focus::configure(ctx_x11.core.state(), &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
-    crate::backend::x11::update_size_hints_x11(ctx_x11.core.model_mut(), &ctx_x11.x11, w);
+    crate::backend::x11::update_size_hints(ctx_x11.core.model_mut(), &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(
         ctx_x11.core.model_mut(),
@@ -436,7 +436,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
         && let WmCtx::X11(ctx_x11) = ctx
     {
         ctx_x11.core.focus.last_client = selected_window;
-        unfocus_win_x11(
+        unfocus_win(
             ctx_x11.core.state(),
             &ctx_x11.x11,
             ctx_x11.x11_runtime,
@@ -715,7 +715,7 @@ fn read_wm_desktop_hint(
     }
 }
 
-fn get_transient_for_hint_x11(x11: &X11BackendRef, w: WindowId) -> Option<WindowId> {
+fn get_transient_for_hint(x11: &X11BackendRef, w: WindowId) -> Option<WindowId> {
     let x11_win: Window = w.into();
 
     x11.conn

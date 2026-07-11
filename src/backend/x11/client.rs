@@ -7,7 +7,7 @@ use x11rb::properties::WmSizeHints;
 
 /// Read `WM_NORMAL_HINTS` from the X server and populate the client's size hints,
 /// `min_aspect`, `max_aspect`, and `isfixed`.
-pub fn update_size_hints_x11(model: &mut WmModel, x11: &X11BackendRef, win: WindowId) {
+pub fn update_size_hints(model: &mut WmModel, x11: &X11BackendRef, win: WindowId) {
     let hints = match WmSizeHints::get_normal_hints(x11.conn, win.into()) {
         Ok(cookie) => match cookie.reply_unchecked() {
             Ok(hints) => hints,

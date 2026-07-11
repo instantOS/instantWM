@@ -188,7 +188,7 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
     };
 
     match event {
-        x11rb::protocol::Event::ButtonPress(e) => handlers::button_press_x11(&mut ctx, &e),
+        x11rb::protocol::Event::ButtonPress(e) => handlers::button_press(&mut ctx, &e),
         x11rb::protocol::Event::ClientMessage(e) => handlers::client_message(&mut ctx, &e),
         x11rb::protocol::Event::ConfigureNotify(e) => handlers::configure_notify(&mut ctx, &e),
         x11rb::protocol::Event::ConfigureRequest(e) => handlers::configure_request(&mut ctx, &e),
@@ -198,9 +198,9 @@ pub fn dispatch_event(wm: &mut Wm, event: x11rb::protocol::Event) {
         x11rb::protocol::Event::Expose(e) => handlers::expose(&mut ctx, &e),
         x11rb::protocol::Event::FocusIn(e) => handlers::focus_in(&mut ctx, &e),
         x11rb::protocol::Event::KeyPress(e) => {
-            crate::backend::x11::keyboard::key_press_x11(&mut ctx, &e)
+            crate::backend::x11::keyboard::key_press(&mut ctx, &e)
         }
-        x11rb::protocol::Event::KeyRelease(_) => crate::backend::x11::keyboard::key_release_x11(),
+        x11rb::protocol::Event::KeyRelease(_) => crate::backend::x11::keyboard::key_release(),
         x11rb::protocol::Event::MappingNotify(e) => handlers::mapping_notify(&mut ctx, &e),
         x11rb::protocol::Event::MapRequest(e) => handlers::map_request(&mut ctx, &e),
         x11rb::protocol::Event::MotionNotify(e) => handlers::motion_notify(&mut ctx, &e),

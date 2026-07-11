@@ -32,7 +32,7 @@ pub fn set_fullscreen_atoms(
 }
 
 /// Remove border from an X11 window (for entering fullscreen).
-pub fn remove_border_x11(x11: &X11BackendRef<'_>, win: WindowId) {
+pub fn remove_border(x11: &X11BackendRef<'_>, win: WindowId) {
     let x11_win: Window = win.into();
     let _ = x11
         .conn
@@ -41,7 +41,7 @@ pub fn remove_border_x11(x11: &X11BackendRef<'_>, win: WindowId) {
 }
 
 /// Restore border width on an X11 window (for exiting fullscreen).
-pub fn restore_border_x11(x11: &X11BackendRef<'_>, model: &crate::model::WmModel, win: WindowId) {
+pub fn restore_border(x11: &X11BackendRef<'_>, model: &crate::model::WmModel, win: WindowId) {
     let x11_win: Window = win.into();
     let restored_border = model
         .clients
@@ -55,7 +55,7 @@ pub fn restore_border_x11(x11: &X11BackendRef<'_>, model: &crate::model::WmModel
 }
 
 /// Toggle fake-fullscreen on the selected client (X11 backend).
-pub fn toggle_fake_fullscreen_x11(ctx_x11: &mut WmCtxX11<'_>) {
+pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
     let Some(win) = ctx_x11.core.model().selected_win() else {
         return;
     };

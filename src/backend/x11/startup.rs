@@ -89,7 +89,7 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.systray.as_deref_mut(),
         );
-        crate::backend::x11::keyboard::grab_keys_x11(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
         crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
     }
 }

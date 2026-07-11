@@ -134,7 +134,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     if !has_tiling {
         if let Some(win) = ctx.core().model().selected_win() {
             if let WmCtx::X11(x11_ctx) = ctx {
-                crate::backend::x11::focus::refresh_border_color_x11(
+                crate::backend::x11::focus::refresh_border_color(
                     x11_ctx.core.state(),
                     &x11_ctx.x11,
                     x11_ctx.x11_runtime,

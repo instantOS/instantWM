@@ -87,7 +87,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
 
             // Backend-specific: remove border, enforce geometry, raise.
             if let WmCtx::X11(ctx_x11) = ctx {
-                crate::backend::x11::fullscreen::remove_border_x11(&ctx_x11.x11, win);
+                crate::backend::x11::fullscreen::remove_border(&ctx_x11.x11, win);
                 ctx_x11.x11.configure_window_geometry(win, mon_rect);
                 ctx_x11.x11.raise_window_visual_only(win);
             }
@@ -106,7 +106,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
                 win,
                 fullscreen,
             );
-            crate::backend::x11::fullscreen::restore_border_x11(
+            crate::backend::x11::fullscreen::restore_border(
                 &ctx_x11.x11,
                 ctx_x11.core.model(),
                 win,
@@ -131,7 +131,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
 
 pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
     match ctx {
-        WmCtx::X11(ctx_x11) => crate::backend::x11::fullscreen::toggle_fake_fullscreen_x11(ctx_x11),
+        WmCtx::X11(ctx_x11) => crate::backend::x11::fullscreen::toggle_fake_fullscreen(ctx_x11),
         WmCtx::Wayland(_) => {
             if let Some(win) = ctx.core().model().selected_win() {
                 if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {

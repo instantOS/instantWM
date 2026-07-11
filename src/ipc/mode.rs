@@ -46,7 +46,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             apply_mode_change(wm, name.clone());
 
             if let WmCtx::X11(x11) = &mut wm.ctx() {
-                crate::backend::x11::keyboard::grab_keys_x11(
+                crate::backend::x11::keyboard::grab_keys(
                     x11.core.state(),
                     &x11.x11,
                     x11.x11_runtime,
@@ -73,7 +73,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             apply_mode_change(wm, new_mode.clone());
 
             if let WmCtx::X11(x11) = &mut wm.ctx() {
-                crate::backend::x11::keyboard::grab_keys_x11(
+                crate::backend::x11::keyboard::grab_keys(
                     x11.core.state(),
                     &x11.x11,
                     x11.x11_runtime,
