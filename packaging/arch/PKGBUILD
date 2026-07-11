@@ -19,6 +19,7 @@ depends=(
     'libxdamage'
     'libxcomposite'
     'libxrender'
+    'libxft'
     'libxi'
     'libxres'
     'libxvmc'
