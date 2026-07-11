@@ -8,6 +8,10 @@ use cosmic_text::{
 use super::pixels;
 
 const TEXT_CACHE_LIMIT: usize = 2048;
+// Many patched-font icons paint slightly beyond their nominal advance. Keep
+// enough tracking on those glyphs that the following normal-font run cannot
+// start inside the icon's ink bounds.
+const ICON_LETTER_SPACING_EM: f32 = 0.12;
 pub(super) const DEFAULT_FONT_SIZE: f32 = 14.0;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -239,19 +243,26 @@ impl TextRasterizer {
             let next_private = is_private_use(ch);
             if next_private != private {
                 let family = if private { icon_family } else { primary };
-                spans.push((
-                    &text[start..index],
-                    Attrs::new().family(Family::Name(family)),
-                ));
+                let attrs = attrs_for_run(family, private);
+                spans.push((&text[start..index], attrs));
                 start = index;
                 private = next_private;
             }
         }
         if start < text.len() {
             let family = if private { icon_family } else { primary };
-            spans.push((&text[start..], Attrs::new().family(Family::Name(family))));
+            spans.push((&text[start..], attrs_for_run(family, private)));
         }
         buffer.set_rich_text(spans, &default_attrs, Shaping::Advanced, None);
+    }
+}
+
+fn attrs_for_run(family: &str, private: bool) -> Attrs<'_> {
+    let attrs = Attrs::new().family(Family::Name(family));
+    if private {
+        attrs.letter_spacing(ICON_LETTER_SPACING_EM)
+    } else {
+        attrs
     }
 }
 
