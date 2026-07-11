@@ -10,9 +10,8 @@ use crate::backend::x11::constants::{
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
 };
 use crate::client::rules::WindowProperties;
-use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::client::set_fullscreen;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
 use crate::types::{ClientMode, MonitorId, Rect, WindowId};
 use x11rb::connection::Connection;
@@ -286,18 +285,6 @@ pub fn update_client_list(
     let _ = conn.flush();
 }
 
-pub fn update_title_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    let name = window_properties_x11(x11, x11_runtime, win).title;
-    if let Some(client) = core.model_mut().clients.get_mut(&win) {
-        client.name = name;
-    }
-}
-
 pub fn window_properties_x11(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
@@ -312,18 +299,6 @@ pub fn window_properties_x11(
         class: String::from_utf8_lossy(&class_bytes).into_owned(),
         instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
         title,
-    }
-}
-
-pub fn apply_rules_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    let props = window_properties_x11(x11, x11_runtime, win);
-    if apply_rules_generic(core.state_mut(), win, &props, None) {
-        core.queue_layout_for_client(win);
     }
 }
 

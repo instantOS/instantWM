@@ -20,7 +20,7 @@
 //!
 //! A new window inherits its monitor from its transient-for parent when one
 //! exists; otherwise it goes to the currently selected monitor. After
-//! [`crate::backend::x11::apply_rules_x11`] runs, the assignment may be
+//! [`crate::client::apply_rules`] runs, the assignment may be
 //! overridden again by a matching rule.
 //!
 //! # Animation
