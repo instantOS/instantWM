@@ -130,9 +130,9 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     crate::layouts::sync_monitor_z_order(ctx, selmon_id);
 
     // Un-snap: surface the real window first; the user re-drags after.
-    let is_snapped = match ctx.core().model().clients.get(&selected_window) {
-        Some(c) => c.snap_status != SnapPosition::None,
-        None => return None,
+    let is_snapped = {
+        let c = ctx.core().model().clients.get(&selected_window)?;
+        c.snap_status != SnapPosition::None
     };
     if is_snapped {
         reset_snap(ctx, selected_window);

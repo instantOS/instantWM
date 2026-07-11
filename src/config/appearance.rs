@@ -12,21 +12,54 @@ use crate::types::{
 type Rgba = [f32; 4];
 
 #[derive(Clone, Copy)]
-struct Palette {
-    bg: Rgba,
-    text: Rgba,
-    black: Rgba,
+struct Accent {
+    fill: Rgba,
+    detail: Rgba,
+    hover_fill: Rgba,
+    hover_detail: Rgba,
+}
+
+impl Accent {
+    const fn solid(fill: &str, hover_fill: &str) -> Self {
+        Self {
+            fill: hex(fill),
+            detail: hex(fill),
+            hover_fill: hex(hover_fill),
+            hover_detail: hex(hover_fill),
+        }
+    }
+
+    const fn layered(fill: &str, detail: &str, hover_fill: &str, hover_detail: &str) -> Self {
+        Self {
+            fill: hex(fill),
+            detail: hex(detail),
+            hover_fill: hex(hover_fill),
+            hover_detail: hex(hover_detail),
+        }
+    }
+}
+
+/// Semantic colours consumed by instantWM's UI states.
+///
+/// Theme authors choose colours by purpose, rather than matching a particular
+/// theme's hue names. For example, `focused` may be green in one theme and
+/// purple in another without making the field name misleading.
+#[derive(Clone, Copy)]
+struct ThemePalette {
+    background: Rgba,
+    foreground: Rgba,
+    foreground_on_accent: Rgba,
+    background_hover: Rgba,
     surface: Rgba,
     surface_hover: Rgba,
-    bg_hover: Rgba,
-    blue: Rgba,
-    blue_hover: Rgba,
-    green: Rgba,
-    green_hover: Rgba,
-    yellow: Rgba,
-    yellow_hover: Rgba,
-    red: Rgba,
-    red_hover: Rgba,
+    /// Filled tags, focused title surface, and focused tiled border.
+    primary: Accent,
+    /// Active/focused tags, sticky focus, and focused floating border.
+    focused: Accent,
+    /// Sticky/unfocused-active states and snap indicators.
+    special: Accent,
+    /// Urgent states and close buttons.
+    urgent: Accent,
 }
 
 const fn hex(hex: &str) -> Rgba {
@@ -48,52 +81,92 @@ const fn hex(hex: &str) -> Rgba {
     ]
 }
 
-fn palette(theme: ColorTheme) -> Palette {
-    let values = match theme {
-        ColorTheme::Instantos => [
-            "121212", "dfdfdf", "000000", "384252", "4c5564", "1c1c1c", "89b3f7", "a1c2f9",
-            "81c995", "99d3aa", "fdd663", "fddd82", "f28b82", "f4a19a",
-        ],
-        ColorTheme::CatppuccinLatte => [
-            "eff1f5", "4c4f69", "dce0e8", "ccd0da", "bcc0cc", "e6e9ef", "1e66f5", "7287fd",
-            "40a02b", "70b433", "df8e1d", "fead3d", "d20f39", "e64553",
-        ],
-        ColorTheme::CatppuccinFrappe => [
-            "303446", "c6d0f5", "232634", "414559", "51576d", "292c3c", "8caaee", "babbf1",
-            "a6d189", "b5d49a", "e5c890", "efcf8e", "e78284", "ea999c",
-        ],
-        ColorTheme::CatppuccinMacchiato => [
-            "24273a", "cad3f5", "181926", "363a4f", "494d64", "1e2030", "8aadf4", "b7bdf8",
-            "a6da95", "b8df9f", "eed49f", "f5dcaa", "ed8796", "f49da6",
-        ],
-        ColorTheme::CatppuccinMocha => [
-            "1e1e2e", "cdd6f4", "11111b", "313244", "45475a", "181825", "89b4fa", "b4befe",
-            "a6e3a1", "b9e6b5", "f9e2af", "f5e0b5", "f38ba8", "f5a2b8",
-        ],
-        ColorTheme::Nord => [
-            "2e3440", "eceff4", "242933", "3b4252", "4c566a", "343b49", "81a1c1", "88c0d0",
-            "a3be8c", "b1c89d", "ebcb8b", "efd49f", "bf616a", "cf7b83",
-        ],
-        ColorTheme::Gruvbox => [
-            "282828", "ebdbb2", "1d2021", "3c3836", "504945", "32302f", "83a598", "8ec07c",
-            "b8bb26", "98971a", "fabd2f", "d79921", "fb4934", "cc241d",
-        ],
-    };
-    Palette {
-        bg: hex(values[0]),
-        text: hex(values[1]),
-        black: hex(values[2]),
-        surface: hex(values[3]),
-        surface_hover: hex(values[4]),
-        bg_hover: hex(values[5]),
-        blue: hex(values[6]),
-        blue_hover: hex(values[7]),
-        green: hex(values[8]),
-        green_hover: hex(values[9]),
-        yellow: hex(values[10]),
-        yellow_hover: hex(values[11]),
-        red: hex(values[12]),
-        red_hover: hex(values[13]),
+fn palette(theme: ColorTheme) -> ThemePalette {
+    match theme {
+        ColorTheme::Instantos => ThemePalette {
+            background: hex("121212"),
+            foreground: hex("dfdfdf"),
+            foreground_on_accent: hex("000000"),
+            background_hover: hex("1c1c1c"),
+            surface: hex("384252"),
+            surface_hover: hex("4c5564"),
+            primary: Accent::layered("89b3f7", "536dfe", "a1c2f9", "758afe"),
+            focused: Accent::layered("81c995", "1e8e3e", "99d3aa", "4ba465"),
+            special: Accent::layered("fdd663", "f9ab00", "fddd82", "f9bb33"),
+            urgent: Accent::layered("f28b82", "d93025", "f4a19a", "e05951"),
+        },
+        ColorTheme::CatppuccinLatte => ThemePalette {
+            background: hex("eff1f5"),
+            foreground: hex("4c4f69"),
+            foreground_on_accent: hex("dce0e8"),
+            background_hover: hex("e6e9ef"),
+            surface: hex("ccd0da"),
+            surface_hover: hex("bcc0cc"),
+            primary: Accent::solid("1e66f5", "7287fd"),
+            focused: Accent::solid("40a02b", "70b433"),
+            special: Accent::solid("df8e1d", "fead3d"),
+            urgent: Accent::solid("d20f39", "e64553"),
+        },
+        ColorTheme::CatppuccinFrappe => ThemePalette {
+            background: hex("303446"),
+            foreground: hex("c6d0f5"),
+            foreground_on_accent: hex("232634"),
+            background_hover: hex("292c3c"),
+            surface: hex("414559"),
+            surface_hover: hex("51576d"),
+            primary: Accent::solid("8caaee", "babbf1"),
+            focused: Accent::solid("a6d189", "b5d49a"),
+            special: Accent::solid("e5c890", "efcf8e"),
+            urgent: Accent::solid("e78284", "ea999c"),
+        },
+        ColorTheme::CatppuccinMacchiato => ThemePalette {
+            background: hex("24273a"),
+            foreground: hex("cad3f5"),
+            foreground_on_accent: hex("181926"),
+            background_hover: hex("1e2030"),
+            surface: hex("363a4f"),
+            surface_hover: hex("494d64"),
+            primary: Accent::solid("8aadf4", "b7bdf8"),
+            focused: Accent::solid("a6da95", "b8df9f"),
+            special: Accent::solid("eed49f", "f5dcaa"),
+            urgent: Accent::solid("ed8796", "f49da6"),
+        },
+        ColorTheme::CatppuccinMocha => ThemePalette {
+            background: hex("1e1e2e"),
+            foreground: hex("cdd6f4"),
+            foreground_on_accent: hex("11111b"),
+            background_hover: hex("181825"),
+            surface: hex("313244"),
+            surface_hover: hex("45475a"),
+            primary: Accent::solid("89b4fa", "b4befe"),
+            focused: Accent::solid("a6e3a1", "b9e6b5"),
+            special: Accent::solid("f9e2af", "f5e0b5"),
+            urgent: Accent::solid("f38ba8", "f5a2b8"),
+        },
+        ColorTheme::Nord => ThemePalette {
+            background: hex("2e3440"),
+            foreground: hex("eceff4"),
+            foreground_on_accent: hex("242933"),
+            background_hover: hex("343b49"),
+            surface: hex("3b4252"),
+            surface_hover: hex("4c566a"),
+            primary: Accent::solid("81a1c1", "88c0d0"),
+            focused: Accent::solid("a3be8c", "b1c89d"),
+            special: Accent::solid("ebcb8b", "efd49f"),
+            urgent: Accent::solid("bf616a", "cf7b83"),
+        },
+        ColorTheme::Gruvbox => ThemePalette {
+            background: hex("282828"),
+            foreground: hex("ebdbb2"),
+            foreground_on_accent: hex("1d2021"),
+            background_hover: hex("32302f"),
+            surface: hex("3c3836"),
+            surface_hover: hex("504945"),
+            primary: Accent::solid("83a598", "8ec07c"),
+            focused: Accent::solid("b8bb26", "98971a"),
+            special: Accent::solid("fabd2f", "d79921"),
+            urgent: Accent::solid("fb4934", "cc241d"),
+        },
     }
 }
 
@@ -101,110 +174,111 @@ fn palette(theme: ColorTheme) -> Palette {
 pub fn colors(theme: ColorTheme) -> ColorConfig {
     let p = palette(theme);
     let scheme = ColorSchemeRgba::new;
-    let mut colors = ColorConfig {
+    ColorConfig {
         tag: TagColorConfigs {
             no_hover: TagColorSet {
-                inactive: scheme(p.text, p.bg, p.bg),
-                filled: scheme(p.text, p.surface, p.blue),
-                focus: scheme(p.black, p.green, p.green),
-                nofocus: scheme(p.black, p.yellow, p.yellow),
-                empty: scheme(p.black, p.red, p.red),
-                urgent: scheme(p.black, p.red, p.red),
+                inactive: scheme(p.foreground, p.background, p.background),
+                filled: scheme(p.foreground, p.surface, p.primary.detail),
+                focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
+                nofocus: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                empty: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+                urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
             },
             hover: TagColorSet {
-                inactive: scheme(p.text, p.bg_hover, p.bg),
-                filled: scheme(p.text, p.surface_hover, p.blue_hover),
-                focus: scheme(p.black, p.green_hover, p.green_hover),
-                nofocus: scheme(p.black, p.yellow_hover, p.yellow_hover),
-                empty: scheme(p.black, p.red_hover, p.red_hover),
-                urgent: scheme(p.black, p.red_hover, p.red_hover),
+                inactive: scheme(p.foreground, p.background_hover, p.background),
+                filled: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
+                focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.hover_fill,
+                    p.focused.hover_detail,
+                ),
+                nofocus: scheme(
+                    p.foreground_on_accent,
+                    p.special.hover_fill,
+                    p.special.hover_detail,
+                ),
+                empty: scheme(
+                    p.foreground_on_accent,
+                    p.urgent.hover_fill,
+                    p.urgent.hover_detail,
+                ),
+                urgent: scheme(
+                    p.foreground_on_accent,
+                    p.urgent.hover_fill,
+                    p.urgent.hover_detail,
+                ),
             },
         },
         window: WindowColorConfigs {
             no_hover: WindowColorSet {
-                focus: scheme(p.text, p.surface, p.blue),
-                normal: scheme(p.text, p.bg, p.bg),
-                minimized: scheme(p.surface, p.bg, p.bg),
-                sticky: scheme(p.black, p.yellow, p.yellow),
-                sticky_focus: scheme(p.black, p.green, p.green),
-                edge_scratchpad: scheme(p.black, p.yellow, p.yellow),
-                edge_scratchpad_focus: scheme(p.black, p.green, p.green),
-                urgent: scheme(p.black, p.red, p.red),
+                focus: scheme(p.foreground, p.surface, p.primary.detail),
+                normal: scheme(p.foreground, p.background, p.background),
+                minimized: scheme(p.surface, p.background, p.background),
+                sticky: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                sticky_focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
+                edge_scratchpad: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                edge_scratchpad_focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.fill,
+                    p.focused.detail,
+                ),
+                urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
             },
             hover: WindowColorSet {
-                focus: scheme(p.text, p.surface_hover, p.blue_hover),
-                normal: scheme(p.text, p.bg_hover, p.bg_hover),
-                minimized: scheme(p.surface_hover, p.bg, p.bg),
-                sticky: scheme(p.black, p.yellow_hover, p.yellow_hover),
-                sticky_focus: scheme(p.black, p.green_hover, p.green_hover),
-                edge_scratchpad: scheme(p.black, p.yellow_hover, p.yellow_hover),
-                edge_scratchpad_focus: scheme(p.black, p.green_hover, p.green_hover),
-                urgent: scheme(p.black, p.red_hover, p.red_hover),
+                focus: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
+                normal: scheme(p.foreground, p.background_hover, p.background_hover),
+                minimized: scheme(p.surface_hover, p.background, p.background),
+                sticky: scheme(
+                    p.foreground_on_accent,
+                    p.special.hover_fill,
+                    p.special.hover_detail,
+                ),
+                sticky_focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.hover_fill,
+                    p.focused.hover_detail,
+                ),
+                edge_scratchpad: scheme(
+                    p.foreground_on_accent,
+                    p.special.hover_fill,
+                    p.special.hover_detail,
+                ),
+                edge_scratchpad_focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.hover_fill,
+                    p.focused.hover_detail,
+                ),
+                urgent: scheme(
+                    p.foreground_on_accent,
+                    p.urgent.hover_fill,
+                    p.urgent.hover_detail,
+                ),
             },
         },
         close_button: CloseButtonColorConfigs {
             no_hover: CloseButtonColorSet {
-                normal: scheme(p.text, p.red, p.red),
-                locked: scheme(p.text, p.yellow, p.yellow),
-                fullscreen: scheme(p.text, p.red, p.red),
+                normal: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
+                locked: scheme(p.foreground, p.special.fill, p.special.detail),
+                fullscreen: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
             },
             hover: CloseButtonColorSet {
-                normal: scheme(p.text, p.red_hover, p.red_hover),
-                locked: scheme(p.text, p.yellow_hover, p.yellow_hover),
-                fullscreen: scheme(p.text, p.red_hover, p.red_hover),
+                normal: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
+                locked: scheme(p.foreground, p.special.hover_fill, p.special.hover_detail),
+                fullscreen: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
             },
         },
         border: BorderColorConfig {
             normal: p.surface,
-            tile_focus: p.blue,
-            float_focus: p.green,
-            snap: p.yellow,
+            tile_focus: p.primary.fill,
+            float_focus: p.focused.fill,
+            snap: p.special.fill,
         },
         status: StatusColorConfig {
-            fg: p.text,
-            bg: p.bg,
-            detail: p.bg,
+            fg: p.foreground,
+            bg: p.background,
+            detail: p.background,
         },
-    };
-    if theme == ColorTheme::Instantos {
-        let blue = hex("536dfe");
-        let blue_hover = hex("758afe");
-        let green = hex("1e8e3e");
-        let green_hover = hex("4ba465");
-        let yellow = hex("f9ab00");
-        let yellow_hover = hex("f9bb33");
-        let red = hex("d93025");
-        let red_hover = hex("e05951");
-        colors.tag.no_hover.filled.detail = blue;
-        colors.tag.no_hover.focus.detail = green;
-        colors.tag.no_hover.nofocus.detail = yellow;
-        colors.tag.no_hover.empty.detail = red;
-        colors.tag.no_hover.urgent.detail = red;
-        colors.tag.hover.filled.detail = blue_hover;
-        colors.tag.hover.focus.detail = green_hover;
-        colors.tag.hover.nofocus.detail = yellow_hover;
-        colors.tag.hover.empty.detail = red_hover;
-        colors.tag.hover.urgent.detail = red_hover;
-        colors.window.no_hover.focus.detail = blue;
-        colors.window.no_hover.sticky.detail = yellow;
-        colors.window.no_hover.sticky_focus.detail = green;
-        colors.window.no_hover.edge_scratchpad.detail = yellow;
-        colors.window.no_hover.edge_scratchpad_focus.detail = green;
-        colors.window.no_hover.urgent.detail = red;
-        colors.window.hover.focus.detail = blue_hover;
-        colors.window.hover.sticky.detail = yellow_hover;
-        colors.window.hover.sticky_focus.detail = green_hover;
-        colors.window.hover.edge_scratchpad.detail = yellow_hover;
-        colors.window.hover.edge_scratchpad_focus.detail = green_hover;
-        colors.window.hover.urgent.detail = red_hover;
-        colors.close_button.no_hover.normal.detail = red;
-        colors.close_button.no_hover.locked.detail = yellow;
-        colors.close_button.no_hover.fullscreen.detail = red;
-        colors.close_button.hover.normal.detail = red_hover;
-        colors.close_button.hover.locked.detail = yellow_hover;
-        colors.close_button.hover.fullscreen.detail = red_hover;
     }
-    colors
 }
 
 pub fn get_tag_colors() -> TagColorConfigs {
