@@ -267,12 +267,9 @@ pub fn window_title_mouse_handler(
                 cursor,
                 false,
                 |ctx, event| {
-                    if let BackendEvent::Motion { root_x, root_y, .. } = event {
+                    if let BackendEvent::Motion { root, .. } = event {
                         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-                        if title_drag_motion(
-                            &mut wm_ctx,
-                            Point::new(*root_x as i32, *root_y as i32),
-                        ) {
+                        if title_drag_motion(&mut wm_ctx, *root) {
                             return false;
                         }
                     }

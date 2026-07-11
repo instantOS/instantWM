@@ -16,9 +16,9 @@ use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
 
 use crate::mouse::monitor::handle_client_monitor_switch;
 
-/// Snap `new_x`/`new_y` to the work-area edges of `selmon` when within `globals.config.window.snap_threshold` pixels.
-pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, new_x: &mut i32, new_y: &mut i32) {
-    snap_window_to_monitor_edges(ctx.core().state(), c.win, c.geo.w, c.geo.h, new_x, new_y);
+/// Snap `pos` to the work-area edges of `selmon` when within `globals.config.window.snap_threshold` pixels.
+pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, pos: &mut Point) {
+    snap_window_to_monitor_edges(ctx.core().state(), c.win, c.geo.w, c.geo.h, pos);
 }
 
 pub fn snap_window_to_monitor_edges(
@@ -26,8 +26,7 @@ pub fn snap_window_to_monitor_edges(
     win: WindowId,
     w: i32,
     h: i32,
-    new_x: &mut i32,
-    new_y: &mut i32,
+    pos: &mut Point,
 ) {
     let snap = g.config.window.snap_threshold;
     let mon = g.selected_monitor();
@@ -40,16 +39,16 @@ pub fn snap_window_to_monitor_edges(
     let width = w + bw * 2;
     let height = h + bw * 2;
 
-    if (mon.work_rect.x - *new_x).abs() < snap {
-        *new_x = mon.work_rect.x;
-    } else if (mon.work_rect.x + mon.work_rect.w - (*new_x + width)).abs() < snap {
-        *new_x = mon.work_rect.x + mon.work_rect.w - width;
+    if (mon.work_rect.x - pos.x).abs() < snap {
+        pos.x = mon.work_rect.x;
+    } else if (mon.work_rect.x + mon.work_rect.w - (pos.x + width)).abs() < snap {
+        pos.x = mon.work_rect.x + mon.work_rect.w - width;
     }
 
-    if (mon.work_rect.y - *new_y).abs() < snap {
-        *new_y = mon.work_rect.y;
-    } else if (mon.work_rect.y + mon.work_rect.h - (*new_y + height)).abs() < snap {
-        *new_y = mon.work_rect.y + mon.work_rect.h - height;
+    if (mon.work_rect.y - pos.y).abs() < snap {
+        pos.y = mon.work_rect.y;
+    } else if (mon.work_rect.y + mon.work_rect.h - (pos.y + height)).abs() < snap {
+        pos.y = mon.work_rect.y + mon.work_rect.h - height;
     }
 }
 
@@ -255,8 +254,10 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     state.cursor_on_bar = update_bar_hover(ctx, root, state);
     state.edge_snap_indicator = check_edge_snap(ctx.core().model(), root);
 
-    let mut new_x = state.grab_start_rect.x + (event.x - state.start_point.x);
-    let mut new_y = state.grab_start_rect.y + (event.y - state.start_point.y);
+    let mut new_pos = Point::new(
+        state.grab_start_rect.x + (event.x - state.start_point.x),
+        state.grab_start_rect.y + (event.y - state.start_point.y),
+    );
 
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
@@ -264,7 +265,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
             let mon = ctx.core().model().selected_monitor();
             mon.bar_y + mon.bar_height
         };
-        new_y = bar_bottom;
+        new_pos.y = bar_bottom;
     }
 
     let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
@@ -278,8 +279,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
         ctx,
         win,
         event,
-        &mut new_x,
-        &mut new_y,
+        &mut new_pos,
         state,
         has_tiling,
         &mut is_floating,
@@ -288,13 +288,13 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
 
     if !has_tiling || is_floating {
         if let Some(client) = ctx.core().model().clients.get(&win).cloned() {
-            snap_to_monitor_edges(ctx, &client, &mut new_x, &mut new_y);
+            snap_to_monitor_edges(ctx, &client, &mut new_pos);
         }
         ctx.move_resize(
             win,
             Rect {
-                x: new_x,
-                y: new_y,
+                x: new_pos.x,
+                y: new_pos.y,
                 w: drag_geo.w,
                 h: drag_geo.h,
             },
@@ -307,8 +307,7 @@ fn maybe_promote_tiled_drag_to_floating(
     ctx: &mut WmCtx,
     win: WindowId,
     event: Point,
-    new_x: &mut i32,
-    new_y: &mut i32,
+    pos: &mut Point,
     state: &mut MoveState,
     has_tiling: bool,
     is_floating: &mut bool,
@@ -317,7 +316,7 @@ fn maybe_promote_tiled_drag_to_floating(
     let snap = ctx.core().config().window.snap_threshold;
     if *is_floating
         || !has_tiling
-        || ((*new_x - drag_geo.x).abs() <= snap && (*new_y - drag_geo.y).abs() <= snap)
+        || ((pos.x - drag_geo.x).abs() <= snap && (pos.y - drag_geo.y).abs() <= snap)
     {
         return;
     }
@@ -346,17 +345,17 @@ fn maybe_promote_tiled_drag_to_floating(
     arrange(ctx, Some(selmon_id));
 
     // The window's width is changing (tiled → floating), so the old
-    // `grab_start_x`-based `new_x` would leave the window at x≈0 while the cursor
+    // `grab_start_x`-based `pos.x` would leave the window at x≈0 while the cursor
     // is far to the right. Re-center under cursor and rebase drag anchors.
-    *new_x = event.x - float_w / 2;
-    state.grab_start_rect.x = *new_x;
-    state.grab_start_rect.y = *new_y;
+    pos.x = event.x - float_w / 2;
+    state.grab_start_rect.x = pos.x;
+    state.grab_start_rect.y = pos.y;
     state.start_point = event;
 
     *is_floating = true;
     *drag_geo = Rect {
-        x: *new_x,
-        y: *new_y,
+        x: pos.x,
+        y: pos.y,
         w: float_w,
         h: float_h,
     };

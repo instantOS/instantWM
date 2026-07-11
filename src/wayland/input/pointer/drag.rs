@@ -83,11 +83,10 @@ pub fn wayland_hover_resize_drag_begin(
 /// Update bar hover gesture highlighting during a Wayland move drag.
 fn update_wayland_move_bar_hover(
     ctx: &mut crate::contexts::WmCtxWayland<'_>,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
 ) -> bool {
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
-    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, Point::new(root_x, root_y))
+    crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root)
 }
 
 /// Handle interactive drag motion (move or resize) on Wayland.
@@ -97,27 +96,28 @@ fn update_wayland_move_bar_hover(
 /// bar, hover border, keyboard shortcut, Super+button, etc.).
 pub fn wayland_hover_resize_drag_motion(
     ctx: &mut WmCtxWayland<'_>,
-    root_x: i32,
-    root_y: i32,
+    root: Point,
 ) -> bool {
     if !ctx.core.drag_state().interactive.active || !ctx.core.drag_state().interactive.dragging {
         return false;
     }
     let drag = ctx.core.drag_state().interactive.clone();
-    ctx.core.drag_state_mut().interactive.last_root_point = Point::new(root_x, root_y);
+    ctx.core.drag_state_mut().interactive.last_root_point = root;
 
     match drag.drag_type {
         crate::core_state::DragType::Move => {
-            let on_bar = update_wayland_move_bar_hover(ctx, root_x, root_y);
+            let on_bar = update_wayland_move_bar_hover(ctx, root);
 
-            let mut new_x = drag.win_start_geo.x + (root_x - drag.start_point.x);
-            let mut new_y = drag.win_start_geo.y + (root_y - drag.start_point.y);
+            let mut new_pos = Point::new(
+                drag.win_start_geo.x + (root.x - drag.start_point.x),
+                drag.win_start_geo.y + (root.y - drag.start_point.y),
+            );
 
             // While hovering over the bar, keep the window just below it.
             if on_bar {
                 let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
                 let mon = wm_ctx.core().model().selected_monitor();
-                new_y = mon.bar_y + mon.bar_height;
+                new_pos.y = mon.bar_y + mon.bar_height;
             }
 
             crate::mouse::drag::snap_window_to_monitor_edges(
@@ -125,29 +125,28 @@ pub fn wayland_hover_resize_drag_motion(
                 drag.win,
                 drag.win_start_geo.w.max(1),
                 drag.win_start_geo.h.max(1),
-                &mut new_x,
-                &mut new_y,
+                &mut new_pos,
             );
             crate::contexts::WmCtx::Wayland(ctx.reborrow()).move_resize(
                 drag.win,
                 Rect {
-                    x: new_x,
-                    y: new_y,
+                    x: new_pos.x,
+                    y: new_pos.y,
                     w: drag.win_start_geo.w.max(1),
                     h: drag.win_start_geo.h.max(1),
                 },
                 MoveResizeOptions::hinted_immediate(true),
             );
             if let Some(client) = ctx.core.model_mut().clients.get_mut(&drag.win) {
-                client.float_geo.x = new_x;
-                client.float_geo.y = new_y;
+                client.float_geo.x = new_pos.x;
+                client.float_geo.y = new_pos.y;
             }
             true
         }
         crate::core_state::DragType::Resize(dir) => {
             let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
             let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
-                root_x,
+                root.x,
                 drag.win_start_geo.x,
                 drag.win_start_geo.x + drag.win_start_geo.w,
                 0,
@@ -155,7 +154,7 @@ pub fn wayland_hover_resize_drag_motion(
                 affects_right,
             );
             let (new_y, new_h) = crate::mouse::resize::compute_axis_resize(
-                root_y,
+                root.y,
                 drag.win_start_geo.y,
                 drag.win_start_geo.y + drag.win_start_geo.h,
                 0,

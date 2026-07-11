@@ -62,8 +62,7 @@ pub enum WindowProtocol {
 pub enum BackendEvent {
     /// Pointer motion.
     Motion {
-        root_x: f64,
-        root_y: f64,
+        root: Point,
         /// Modifier key mask (X11: `state` field, Wayland: modifier flags).
         modifiers: u32,
     },

@@ -437,14 +437,13 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         return;
     }
 
-    let root_x = e.root_x as i32;
-    let root_y = e.root_y as i32;
+    let root = Point::new(e.root_x as i32, e.root_y as i32);
 
     // Handle focus-follows-mouse monitor switching
     if ctx.core.behavior().focus_follows_mouse
         && crate::focus::select_monitor_at_pointer(
             &mut WmCtx::X11(ctx.reborrow()),
-            Point::new(root_x, root_y),
+            root,
         )
     {
         return;
@@ -460,18 +459,17 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         )
     };
 
-    if root_y >= monitor_y + bar_height {
+    if root.y >= monitor_y + bar_height {
         if crate::mouse::update_floating_resize_offer_at(
             &mut WmCtx::X11(ctx.reborrow()),
-            root_x,
-            root_y,
+            root,
             true,
         ) {
             return;
         }
         if crate::mouse::update_sidebar_offer_at(
             &mut WmCtx::X11(ctx.reborrow()),
-            Point::new(root_x, root_y),
+            root,
         )
         .affects_pointer_handling()
         {
@@ -486,7 +484,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     let pos = crate::bar::update_hover(
         &mut WmCtx::X11(ctx.reborrow()),
-        Point::new(root_x, root_y),
+        root,
         false,
         false,
     );

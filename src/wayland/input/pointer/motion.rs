@@ -300,14 +300,13 @@ pub fn dispatch_pointer_motion(
     time_msec: u32,
 ) {
     let pointer_location = state.runtime.pointer_location;
-    let root_x = pointer_location.x.round() as i32;
-    let root_y = pointer_location.y.round() as i32;
+    let root = RootPoint::new(pointer_location.x.round() as i32, pointer_location.y.round() as i32);
 
     // Get active drag window once - used in multiple phases
     let active_drag_window = wayland_active_drag_window(wm);
 
     // Phase 1: Compute bar/guard band hit detection
-    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, RootPoint::new(root_x, root_y));
+    let (in_bar_band, in_bar_guard_band) = compute_bar_hit(wm, root);
 
     // Phase 2: Resolve pointer focus and hovered window
     let (pointer_focus, hovered_win) =
@@ -328,7 +327,6 @@ pub fn dispatch_pointer_motion(
     }
 
     // Phase 4: Handle bar interaction (early return path)
-    let root = RootPoint::new(root_x, root_y);
     let bar_pos = update_wayland_bar_hit_state(wm, root, false);
     if handle_bar_motion(
         wm,
@@ -366,8 +364,7 @@ pub fn dispatch_pointer_motion(
     // Phase 5: Update hover resize state for floating windows
     let suppress_hover_focus = update_hover_resize_state(
         wm,
-        root_x,
-        root_y,
+        root,
         hovered_win,
         !wm.core.drag.any_drag_active(),
     );
@@ -378,12 +375,11 @@ pub fn dispatch_pointer_motion(
         active_drag_window,
         hovered_win,
         suppress_hover_focus,
-        root_x,
-        root_y,
+        root,
     );
 
     // Phase 7: Handle tag/title drag motion
-    handle_wm_drag_motion(wm, keyboard_handle, root_x, root_y);
+    handle_wm_drag_motion(wm, keyboard_handle, root);
 
     // Phase 8: Dispatch final motion event to Smithay
     let focus =
@@ -472,8 +468,7 @@ fn handle_resize_drag_motion(
     let pointer_location = state.runtime.pointer_location;
     if !wayland_hover_resize_drag_motion(
         ctx,
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
+        RootPoint::new(pointer_location.x.round() as i32, pointer_location.y.round() as i32),
     ) {
         return false;
     }
@@ -533,8 +528,7 @@ fn handle_bar_motion(
 /// Returns whether to suppress hover focus.
 fn update_hover_resize_state(
     wm: &mut Wm,
-    root_x: i32,
-    root_y: i32,
+    root: RootPoint,
     hovered_win: Option<crate::types::WindowId>,
     no_active_drag: bool,
 ) -> bool {
@@ -563,7 +557,7 @@ fn update_hover_resize_state(
     if !selected_floating {
         let _ = update_selected_resize_offer_at(
             &mut WmCtx::Wayland(ctx.reborrow()),
-            RootPoint::new(root_x, root_y),
+            root,
         );
         return false;
     }
@@ -571,7 +565,7 @@ fn update_hover_resize_state(
     let mut suppress_hover_focus = !hovered_is_selected;
     let selected_offer = update_selected_resize_offer_at(
         &mut WmCtx::Wayland(ctx.reborrow()),
-        RootPoint::new(root_x, root_y),
+        root,
     )
     .is_some();
     if selected_offer {
@@ -589,8 +583,7 @@ fn update_pointer_focus(
     active_drag_window: Option<crate::types::WindowId>,
     hovered_win: Option<crate::types::WindowId>,
     suppress_hover_focus: bool,
-    root_x: i32,
-    root_y: i32,
+    root: RootPoint,
 ) {
     if let Some(lock_win) = active_drag_window {
         let ctx = wm.ctx();
@@ -613,7 +606,7 @@ fn update_pointer_focus(
             &mut wm_ctx,
             hovered_win,
             false,
-            Some(RootPoint::new(root_x, root_y)),
+            Some(root),
         );
     }
 }
@@ -622,23 +615,19 @@ fn update_pointer_focus(
 fn handle_wm_drag_motion(
     wm: &mut Wm,
     keyboard_handle: &KeyboardHandle<WaylandState>,
-    root_x: i32,
-    root_y: i32,
+    root: RootPoint,
 ) {
     let mut ctx = wm.ctx();
     if ctx.core().drag_state().tag.active
-        && !crate::mouse::drag_tag_motion(&mut ctx, root_x, root_y)
+        && !crate::mouse::drag_tag_motion(&mut ctx, root)
     {
         let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
     if ctx.core().drag_state().interactive.active {
-        crate::mouse::title_drag_motion(
-            &mut ctx,
-            crate::types::geometry::Point::new(root_x, root_y),
-        );
+        crate::mouse::title_drag_motion(&mut ctx, root);
     }
     if ctx.core().drag_state().gesture.active {
-        crate::mouse::update_sidebar_gesture(&mut ctx, root_y);
+        crate::mouse::update_sidebar_gesture(&mut ctx, root.y);
     }
 }

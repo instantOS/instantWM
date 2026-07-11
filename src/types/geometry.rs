@@ -7,10 +7,7 @@ use super::input::SnapPosition;
 /// Parsed monitor position configuration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MonitorPosition {
-    Absolute {
-        x: i32,
-        y: i32,
-    },
+    Absolute(Point),
     Relative {
         relation: RelativePosition,
         output: String,
@@ -39,7 +36,7 @@ impl MonitorPosition {
         if let Some((x_str, y_str)) = value.split_once(',') {
             let x = x_str.trim().parse().ok()?;
             let y = y_str.trim().parse().ok()?;
-            return Some(Self::Absolute { x, y });
+            return Some(Self::Absolute(Point::new(x, y)));
         }
 
         let (relation, output) = value.split_once(':')?;
@@ -68,7 +65,7 @@ impl MonitorPosition {
         outputs: impl IntoIterator<Item = (&'a str, Rect)>,
     ) -> Option<(i32, i32)> {
         match self {
-            Self::Absolute { x, y } => Some((*x, *y)),
+            Self::Absolute(pos) => Some((pos.x, pos.y)),
             Self::Relative { relation, output } => {
                 let reference = outputs
                     .into_iter()
@@ -404,7 +401,7 @@ mod tests {
     fn parses_absolute_monitor_position() {
         assert_eq!(
             MonitorPosition::parse("1920,0"),
-            Some(MonitorPosition::Absolute { x: 1920, y: 0 })
+            Some(MonitorPosition::Absolute(Point::new(1920, 0)))
         );
     }
 

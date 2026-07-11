@@ -4,7 +4,7 @@ use crate::backend::BackendEvent;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::contexts::WmCtxX11;
 use crate::mouse::drag::{MoveState, on_motion, prepare_drag_target};
-use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
+use crate::types::{AltCursor, MouseButton, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{self, ConnectionExt};
 
@@ -69,8 +69,8 @@ pub fn move_mouse_x11(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: O
         crate::core_state::DragInteraction::new_move(win, btn, start, grab_start_rect);
 
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let BackendEvent::Motion { root_x, root_y, .. } = event {
-            let root = Point::new(*root_x as i32, *root_y as i32);
+        if let BackendEvent::Motion { root, .. } = event {
+            let root = *root;
             ctx.core.drag_state_mut().interactive.last_root_point = root;
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
             on_motion(&mut wm_ctx, win, root, root, &mut state);

@@ -354,7 +354,7 @@ pub struct TagDragState {
     /// Whether cursor is still on the bar.
     pub cursor_on_bar: bool,
     /// Last motion coordinates + modifier state (for release handling).
-    pub last_motion: Option<(i32, i32, u32)>,
+    pub last_motion: Option<(Point, u32)>,
     /// The mouse button that started the drag.
     pub button: MouseButton,
 }

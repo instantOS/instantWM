@@ -29,7 +29,7 @@
 use crate::backend::BackendEvent;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::contexts::WmCtxX11;
-use crate::types::{AltCursor, MouseButton, WindowId};
+use crate::types::{AltCursor, MouseButton, Point, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -155,8 +155,7 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
 fn x11_event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
     match event {
         x11rb::protocol::Event::MotionNotify(m) => Some(BackendEvent::Motion {
-            root_x: m.root_x as f64,
-            root_y: m.root_y as f64,
+            root: Point::new(m.root_x as i32, m.root_y as i32),
             modifiers: u16::from(m.state) as u32,
         }),
         x11rb::protocol::Event::ButtonRelease(br) => MouseButton::from_x11_detail(br.detail)

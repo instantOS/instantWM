@@ -222,9 +222,9 @@ pub fn resize_mouse_directional(
         AltCursor::Resize(dir),
         false,
         |ctx, event| {
-            if let BackendEvent::Motion { root_x, root_y, .. } = event {
-                let pointer_x = *root_x as i32;
-                let pointer_y = *root_y as i32;
+            if let BackendEvent::Motion { root, .. } = event {
+                let pointer_x = root.x;
+                let pointer_y = root.y;
 
                 let (new_x, new_w) = compute_axis_resize(
                     pointer_x,
@@ -355,9 +355,9 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         AltCursor::Resize(ResizeDirection::BottomRight),
         false,
         |ctx, event| {
-            if let BackendEvent::Motion { root_x, root_y, .. } = event {
+            if let BackendEvent::Motion { root, .. } = event {
                 let (_, raw_nw) = compute_axis_resize(
-                    *root_x as i32,
+                    root.x,
                     orig_geo.x,
                     orig_geo.x + orig_geo.w,
                     0,
@@ -365,7 +365,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
                     true,
                 );
                 let (_, raw_nh) = compute_axis_resize(
-                    *root_y as i32,
+                    root.y,
                     orig_geo.y,
                     orig_geo.y + orig_geo.h,
                     0,

@@ -82,7 +82,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
 ///
 /// Updates gesture highlighting and detects when the cursor leaves the bar.
 /// Returns `false` if the cursor left the bar (caller should finish the drag).
-pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
+pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     if !ctx.core().drag_state().tag.active {
         return false;
     }
@@ -95,16 +95,16 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root_x: i32, root_y: i32) -> bool {
         mon.bar_y + mon.bar_height + 1
     };
 
-    if root_y > bar_bottom {
+    if root.y > bar_bottom {
         ctx.core_mut().drag_state_mut().tag.cursor_on_bar = false;
         return false;
     }
 
     // Store last motion for release handling.  Modifier state is not available
     // from root coords alone; the caller sets it via drag_tag_finish.
-    ctx.core_mut().drag_state_mut().tag.last_motion = Some((root_x, root_y, 0));
+    ctx.core_mut().drag_state_mut().tag.last_motion = Some((root, 0));
 
-    let local_x = root_x - mon_mx;
+    let local_x = root.x - mon_mx;
     let new_gesture = {
         let core = ctx.core();
         core.state()
@@ -146,11 +146,11 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
     // Clear state first so re-entrant calls are safe.
     ctx.core_mut().drag_state_mut().tag.active = false;
 
-    if cursor_on_bar && let Some((x, _, _)) = last_motion {
+    if cursor_on_bar && let Some((root, _)) = last_motion {
         let position = {
             let core = ctx.core();
             let mon = core.model().selected_monitor();
-            let local_x = x - mon.work_rect.x;
+            let local_x = root.x - mon.work_rect.x;
             mon.bar_position_at_x(core, local_x)
         };
 
@@ -207,20 +207,12 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
 
     // ── X11 synchronous grab loop ─────────────────────────────────────────
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let BackendEvent::Motion {
-            root_x,
-            root_y,
-            modifiers,
-        } = event
-        {
-            let root_x = *root_x as i32;
-            let root_y = *root_y as i32;
-
+        if let BackendEvent::Motion { root, modifiers } = event {
             // Store motion with modifier state for release handling.
-            ctx.core.drag_state_mut().tag.last_motion = Some((root_x, root_y, *modifiers));
+            ctx.core.drag_state_mut().tag.last_motion = Some((*root, *modifiers));
 
             let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-            return drag_tag_motion(&mut wm_ctx, root_x, root_y);
+            return drag_tag_motion(&mut wm_ctx, *root);
         }
         true
     });
@@ -231,7 +223,7 @@ pub fn drag_tag(ctx: &mut WmCtxX11, bar_pos: BarPosition, btn: MouseButton, _cli
             .drag
             .tag
             .last_motion
-            .map(|(_, _, m)| m)
+            .map(|(_, m)| m)
             .unwrap_or(0)
     };
 
