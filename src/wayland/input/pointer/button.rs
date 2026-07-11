@@ -284,7 +284,7 @@ fn close_wayland_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, 
         Backend::Wayland(data) => {
             data.wayland_systray_menu.as_ref().is_some()
                 && crate::backend::wayland::systray::hit_test_wayland_systray_menu_item(
-                    &core,
+                    core.config().systray.spacing,
                     &data.wayland_systray,
                     data.wayland_systray_menu.as_ref(),
                     &mon,

@@ -543,7 +543,7 @@ pub fn build_bar_elements(
 
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.
 pub fn poll_wayland_systray(wm: &mut Wm) {
-    let mut core = CoreCtx::new(
+    let core = CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
         &mut wm.running,
@@ -556,7 +556,6 @@ pub fn poll_wayland_systray(wm: &mut Wm) {
 
     if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
         let dirty = runtime.poll_events(
-            &mut core,
             &mut data.wayland_systray,
             &mut data.wayland_systray_menu,
         );

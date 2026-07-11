@@ -414,11 +414,11 @@ pub fn update_systray(
 
 /// Convert window to systray icon using dependency injection.
 pub fn win_to_systray_icon(
-    core: &CoreCtx,
+    systray_show: bool,
     systray: Option<&Systray>,
     win: WindowId,
 ) -> Option<WindowId> {
-    if !core.config().systray.show {
+    if !systray_show {
         return None;
     }
 

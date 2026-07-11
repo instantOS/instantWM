@@ -47,7 +47,7 @@ impl ClientBarStats {
 pub(crate) fn hit_test(
     hit: &MonitorHitCache,
     monitor: &Monitor,
-    core: &CoreCtx,
+    systray_show: bool,
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
@@ -55,7 +55,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.config().systray.show && is_selected_monitor {
+    if systray_show && is_selected_monitor {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {

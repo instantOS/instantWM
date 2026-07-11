@@ -6,13 +6,14 @@ use crate::bar::paint::BarScheme;
 use crate::bar::scene;
 
 pub(super) fn render_key(
-    core: &crate::contexts::CoreCtx,
+    bar_show: bool,
+    systray_show: bool,
     snapshots: &[scene::MonitorBarSnapshot],
     wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
-    core.config().bar.show.hash(&mut hasher);
-    core.config().systray.show.hash(&mut hasher);
+    bar_show.hash(&mut hasher);
+    systray_show.hash(&mut hasher);
     wayland_systray_menu.is_some().hash(&mut hasher);
     for snapshot in snapshots {
         hash_monitor_snapshot(&mut hasher, snapshot);

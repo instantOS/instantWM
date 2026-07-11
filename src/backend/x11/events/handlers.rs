@@ -226,7 +226,7 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
     } else if let Some(icon) = crate::backend::x11::systray::win_to_systray_icon(
-        &ctx.core,
+        ctx.core.config().systray.show,
         ctx.systray.as_deref(),
         event_win,
     ) {
@@ -389,7 +389,7 @@ pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
-        &ctx.core,
+        ctx.core.config().systray.show,
         ctx.systray.as_deref(),
         event_win,
     ) {
@@ -500,7 +500,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
-        &ctx.core,
+        ctx.core.config().systray.show,
         ctx.systray.as_deref(),
         event_win,
     ) {
@@ -544,7 +544,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
 pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
-        &ctx.core,
+        ctx.core.config().systray.show,
         ctx.systray.as_deref(),
         event_win,
     ) {
@@ -572,7 +572,7 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
             unmanage(&mut tmp, event_win, false);
         }
     } else if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
-        &ctx.core,
+        ctx.core.config().systray.show,
         ctx.systray.as_deref(),
         event_win,
     ) {

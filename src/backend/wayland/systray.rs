@@ -196,7 +196,6 @@ impl WaylandSystrayRuntime {
 
     pub fn poll_events(
         &self,
-        core: &mut CoreCtx,
         wayland_systray: &mut WaylandSystray,
         wayland_systray_menu: &mut Option<WaylandSystrayMenu>,
     ) -> bool {
@@ -204,7 +203,7 @@ impl WaylandSystrayRuntime {
         loop {
             match self.evt_rx.try_recv() {
                 Ok(SystrayEvt::ItemUpsert(item)) => {
-                    changed |= upsert_item(core, wayland_systray, item);
+                    changed |= upsert_item(wayland_systray, item);
                 }
                 Ok(SystrayEvt::ItemRemoved(service, path)) => {
                     let before = wayland_systray.items.len();
@@ -266,11 +265,11 @@ impl WaylandSystrayRuntime {
 }
 
 pub fn get_wayland_systray_width_with_state(
-    core: &CoreCtx,
+    systray: &crate::core_state::SystrayConfig,
     wayland_systray: &WaylandSystray,
     bar_height: i32,
 ) -> i32 {
-    if !core.config().systray.show {
+    if !systray.show {
         return 0;
     }
     let items = &wayland_systray.items;
@@ -278,7 +277,7 @@ pub fn get_wayland_systray_width_with_state(
         return 0;
     }
     let icon_h = bar_height.max(1);
-    let spacing = core.config().systray.spacing.max(0);
+    let spacing = systray.spacing.max(0);
     let mut width = spacing;
     for item in items {
         let iw = scale_icon_width(item.icon_w, item.icon_h, icon_h);
@@ -288,13 +287,13 @@ pub fn get_wayland_systray_width_with_state(
 }
 
 pub fn hit_test_wayland_systray_menu_item(
-    core: &CoreCtx,
+    spacing: i32,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &Monitor,
     local_x: i32,
 ) -> Option<usize> {
-    let layout = systray_layout(core, wayland_systray, wayland_systray_menu, mon);
+    let layout = systray_layout(spacing, wayland_systray, wayland_systray_menu, mon);
     for slot in &layout.menu_slots {
         if local_x >= slot.start && local_x < slot.end {
             return Some(slot.idx);
@@ -594,13 +593,13 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
 }
 
 fn systray_layout(
-    core: &CoreCtx,
+    spacing: i32,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &Monitor,
 ) -> SystrayLayout {
     let icon_h = mon.bar_height.max(1);
-    let spacing = core.config().systray.spacing.max(0);
+    let spacing = spacing.max(0);
     let mut tray_total_w = 0;
     if !wayland_systray.items.is_empty() {
         tray_total_w = spacing;
@@ -812,7 +811,6 @@ fn call_menu_event(conn: &Connection, service: &str, menu_path: &str, id: i32) -
 }
 
 fn upsert_item(
-    _core: &mut CoreCtx,
     wayland_systray: &mut WaylandSystray,
     item: WaylandSystrayItem,
 ) -> bool {

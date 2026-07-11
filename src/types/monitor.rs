@@ -755,7 +755,7 @@ impl Monitor {
             }
         };
 
-        hit_test(hit, self, core, is_selmon, local_x)
+        hit_test(hit, self, core.config().systray.show, is_selmon, local_x)
     }
 }
 
