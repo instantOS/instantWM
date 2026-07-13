@@ -23,13 +23,11 @@ pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, pos: &mut Point) {
 
 pub fn snap_window_to_monitor_edges(g: &CoreState, win: WindowId, w: i32, h: i32, pos: &mut Point) {
     let snap = g.config.window.snap_threshold;
-    let mon = g.selected_monitor();
-    let bw = g
-        .model
-        .clients
-        .get(&win)
-        .map(|client| client.border_width.max(0))
-        .unwrap_or(0);
+    let Some(view) = g.model.client_view(win) else {
+        return;
+    };
+    let mon = view.monitor;
+    let bw = view.client.border_width.max(0);
     let width = w + bw * 2;
     let height = h + bw * 2;
 
@@ -109,7 +107,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         let mon = g.selected_monitor();
         mon.selected?
     };
-    let c = ctx.core().model().clients.get(&sel)?;
+    let c = ctx.core().model().client(sel)?;
     let is_true_fullscreen = c.mode.is_true_fullscreen();
     let is_edge_scratchpad = c.is_edge_scratchpad();
     let is_maximized = c.mode.is_maximized();
@@ -131,7 +129,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 
     // Un-snap: surface the real window first; the user re-drags after.
     let is_snapped = {
-        let c = ctx.core().model().clients.get(&selected_window)?;
+        let c = ctx.core().model().client(selected_window)?;
         c.snap_status != SnapPosition::None
     };
     if is_snapped {
@@ -151,7 +149,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         if !has_tiling {
             let mon = ctx.core().model().selected_monitor();
             let bar_height = mon.bar_height;
-            if let Some(c) = ctx.core().model().clients.get(&selected_window) {
+            if let Some(c) = ctx.core().model().client(selected_window) {
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.y >= mon.monitor_rect.y + bar_height - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
@@ -264,7 +262,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
 
     let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
 
-    let (mut is_floating, mut drag_geo) = match ctx.core().model().clients.get(&win) {
+    let (mut is_floating, mut drag_geo) = match ctx.core().model().client(win) {
         Some(c) => (c.mode.is_floating(), c.geo),
         None => return,
     };
@@ -281,7 +279,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     );
 
     if !has_tiling || is_floating {
-        if let Some(client) = ctx.core().model().clients.get(&win).cloned() {
+        if let Some(client) = ctx.core().model().client(win).cloned() {
             snap_to_monitor_edges(ctx, &client, &mut new_pos);
         }
         ctx.move_resize(
@@ -318,17 +316,11 @@ fn maybe_promote_tiled_drag_to_floating(
     // Resolve float dimensions before touching state.
     // If the window was never floating, float_geo will be zeroed; fall
     // back to the current tiled dimensions so the window doesn't collapse.
-    let (float_w, float_h) = {
-        ctx.core()
-            .state()
-            .model
-            .clients
-            .get(&win)
-            .map(|c| {
-                let eff = c.effective_float_geo();
-                (eff.w, eff.h)
-            })
-            .unwrap_or((drag_geo.w, drag_geo.h))
+    let Some((float_w, float_h)) = ctx.core().model().client(win).map(|client| {
+        let effective = client.effective_float_geo();
+        (effective.w, effective.h)
+    }) else {
+        return;
     };
 
     // Flip isfloating + restore border — zero configure_window calls.
@@ -399,7 +391,7 @@ pub fn handle_bar_drop(
 
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
-    let was_floating = match ctx.core().model().clients.get(&win) {
+    let was_floating = match ctx.core().model().client(win) {
         Some(c) => c.mode.is_floating(),
         None => return,
     };
@@ -424,8 +416,7 @@ pub fn handle_bar_drop(
             .core()
             .state()
             .model
-            .clients
-            .get(&win)
+            .client(win)
             .is_some_and(|c| c.mode.is_true_fullscreen())
         {
             let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);
@@ -452,7 +443,7 @@ pub fn handle_bar_drop(
     //
     // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
-    if was_floating && let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if was_floating && let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.float_geo.w = grab_start_rect.w;
         client.float_geo.h = grab_start_rect.h;
     }
@@ -504,7 +495,7 @@ pub fn apply_edge_drop(
             shift_tag(ctx, HorizontalDirection::Right.into(), 1);
         }
 
-        if let Some(c) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
             c.mode = ClientMode::Tiling;
         }
         let selmon_id = ctx.core().model().selected_monitor_id();
@@ -549,18 +540,16 @@ pub fn promote_to_floating(
     ctx: &mut WmCtx,
     win: WindowId,
     center_under_ptr: Option<Point>,
-) -> (Rect, bool) {
+) -> Option<(Rect, bool)> {
     let (is_floating, geo) = ctx
         .core()
         .state()
         .model
-        .clients
-        .get(&win)
-        .map(|c| (c.mode.is_floating(), c.geo))
-        .unwrap_or((false, Rect::default()));
+        .client(win)
+        .map(|c| (c.mode.is_floating(), c.geo))?;
 
     if is_floating {
-        return (geo, false);
+        return Some((geo, false));
     }
 
     let _ = set_window_mode(ctx, win, BaseClientMode::Floating);
@@ -571,13 +560,12 @@ pub fn promote_to_floating(
         .core()
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| {
             let eff = c.effective_float_geo();
             (eff.w, eff.h)
         })
-        .unwrap_or((geo.w, geo.h));
+        .expect("set_window_mode preserves the client");
 
     let (target_x, target_y) = if let Some(root) = center_under_ptr {
         (root.x - target_w / 2, root.y)
@@ -592,5 +580,5 @@ pub fn promote_to_floating(
         h: target_h,
     };
     ctx.move_resize(win, new_geo, MoveResizeOptions::hinted_immediate(true));
-    (new_geo, true)
+    Some((new_geo, true))
 }

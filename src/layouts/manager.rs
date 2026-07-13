@@ -58,7 +58,7 @@ impl ArrangePlan {
     fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         // 1. Save floating geometry for overview mode
         for &win in &self.save_geo {
-            if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
                 client.save_floating_geometry();
             }
         }

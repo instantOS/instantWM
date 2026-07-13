@@ -23,7 +23,7 @@ use crate::types::{Client, Monitor, Rect, WindowId};
 /// now. Shared state lives here so backend callbacks do not each reinvent the
 /// `geo` / `old_geo` / `float_geo` update contract.
 pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
-    if let Some(client) = model.clients.get_mut(&win) {
+    if let Some(client) = model.client_mut(win) {
         client.update_geometry(rect);
     }
 }
@@ -47,17 +47,16 @@ pub fn resolve_floating_placement(
     kind: FloatingPlacementKind,
     parent: Option<WindowId>,
 ) -> Rect {
-    let Some(client) = model.clients.get(&win) else {
+    let Some(view) = model.client_view(win) else {
         return requested;
     };
+    let client = view.client;
     if !client.mode.is_floating() {
         return requested;
     }
 
-    let Some(work_rect) = model.monitor(client.monitor_id).map(|m| m.work_rect) else {
-        return requested;
-    };
-    let parent_rect = parent.and_then(|parent| model.clients.get(&parent).map(|c| c.geo));
+    let work_rect = view.monitor.work_rect;
+    let parent_rect = parent.and_then(|parent| model.client(parent).map(|client| client.geo));
 
     resolve_floating_placement_for_client(client, work_rect, requested, kind, parent_rect)
 }
@@ -138,7 +137,7 @@ pub fn sane_floating_spawn_rect(
     win: WindowId,
     parent: Option<WindowId>,
 ) -> Option<Rect> {
-    let client = model.clients.get(&win)?;
+    let client = model.client(win)?;
     if !client.mode.is_floating() {
         return None;
     }
@@ -188,8 +187,8 @@ pub fn apply_size_hints(
     rect: &mut Rect,
     interact: bool,
 ) -> SizeHintsOutcome {
-    let client = match model.clients.get(&win) {
-        Some(c) => c,
+    let view = match model.client_view(win) {
+        Some(view) => view,
         None => {
             return SizeHintsOutcome {
                 changed: false,
@@ -197,14 +196,13 @@ pub fn apply_size_hints(
             };
         }
     };
+    let client = view.client;
 
     let old_geo = client.geo;
     let border_width = client.border_width;
-    let monitor_id = client.monitor_id;
-    let monitor = model.monitors.get(monitor_id);
     let should_apply_hints = config.window.resize_hints
         || client.mode.is_floating()
-        || is_floating_layout(model, monitor);
+        || is_floating_layout(model, view.monitor);
 
     // Phase 1: Ensure positive dimensions.
     rect.w = rect.w.max(1);
@@ -214,7 +212,7 @@ pub fn apply_size_hints(
     clamp_position_to_bounds(
         &config.derived.display,
         rect,
-        monitor.map(|m| m.work_rect),
+        Some(view.monitor.work_rect),
         interact,
         old_geo.total_width(border_width),
         old_geo.total_height(border_width),
@@ -233,8 +231,7 @@ pub fn apply_size_hints(
 /// Check if the given rect differs from the client's current stored geometry.
 pub(crate) fn size_hints_changed(model: &WmModel, win: WindowId, rect: &Rect) -> bool {
     model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| rect.differs_from(&c.geo))
         .unwrap_or(false)
 }
@@ -257,16 +254,12 @@ fn clamp_position_to_bounds(
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(model: &WmModel, monitor: Option<&Monitor>) -> bool {
-    let Some(mon) = monitor else {
-        return true;
-    };
-
-    if model.is_overview_active_on(mon) {
+fn is_floating_layout(model: &WmModel, monitor: &Monitor) -> bool {
+    if model.is_overview_active_on(monitor) {
         return false;
     }
 
-    !mon.is_tiling_layout()
+    !monitor.is_tiling_layout()
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +408,7 @@ mod tests {
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
     let target = {
         let core = ctx.core();
-        let c = match core.model().clients.get(&win) {
+        let c = match core.model().client(win) {
             Some(c) => c,
             None => return,
         };

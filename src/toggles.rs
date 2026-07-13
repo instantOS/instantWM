@@ -27,7 +27,7 @@ pub fn toggle_alt_tag(ctx: &mut WmCtx, action: ToggleAction) {
 }
 
 pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.is_sticky = !client.is_sticky;
         client.monitor_id
     } else {
@@ -37,7 +37,7 @@ pub fn toggle_sticky(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.is_locked = !client.is_locked;
     } else {
         return;

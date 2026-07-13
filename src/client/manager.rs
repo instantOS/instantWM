@@ -1,6 +1,6 @@
 //! Structured data and low-level logic for clients.
 
-use crate::types::{Client, MonitorId, TagMask, WindowId};
+use crate::types::{Client, WindowId};
 use std::collections::HashMap;
 
 #[derive(Default)]
@@ -59,29 +59,5 @@ impl ClientManager {
 
     pub fn iter(&self) -> std::collections::hash_map::Iter<'_, WindowId, Client> {
         self.clients.iter()
-    }
-
-    pub fn monitor_id(&self, win: WindowId) -> Option<MonitorId> {
-        self.clients.get(&win).map(|c| c.monitor_id)
-    }
-
-    pub fn is_hidden(&self, win: WindowId) -> bool {
-        self.clients.get(&win).is_some_and(|c| c.is_hidden)
-    }
-
-    pub fn is_locked(&self, win: WindowId) -> bool {
-        self.clients.get(&win).is_none_or(|c| c.is_locked)
-    }
-
-    pub fn geo(&self, win: WindowId) -> Option<crate::types::Rect> {
-        self.clients.get(&win).map(|c| c.geo)
-    }
-
-    pub fn tag_mask(&self, win: WindowId) -> Option<TagMask> {
-        self.clients.get(&win).map(|c| c.tags)
-    }
-
-    pub fn effective_float_geo(&self, win: WindowId) -> Option<crate::types::Rect> {
-        self.clients.get(&win).map(|c| c.effective_float_geo())
     }
 }

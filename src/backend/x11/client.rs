@@ -15,7 +15,7 @@ pub fn update_size_hints(model: &mut WmModel, x11: &X11BackendRef, win: WindowId
         },
         Err(_) => None,
     };
-    let Some(c) = model.clients.get_mut(&win) else {
+    let Some(c) = model.client_mut(win) else {
         return;
     };
     crate::backend::x11::policy::apply_size_hints_to_client(c, hints);

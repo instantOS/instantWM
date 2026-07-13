@@ -6,7 +6,18 @@
 
 use crate::client::manager::ClientManager;
 use crate::monitor::MonitorManager;
-use crate::types::{MonitorId, TagSet, WindowId};
+use crate::types::{Client, Monitor, MonitorId, TagSet, WindowId};
+
+/// A managed client together with the monitor it is assigned to.
+///
+/// The fields are intentionally public within the crate: this view resolves
+/// the model relationship once, while callers remain free to select exactly
+/// the state they need without a matrix of projection helpers.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ClientView<'a> {
+    pub client: &'a Client,
+    pub monitor: &'a Monitor,
+}
 
 /// Authoritative window-manager model state.
 ///
@@ -28,6 +39,31 @@ impl WmModel {
             monitors: MonitorManager::new(),
             tags: TagSet::default(),
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Client lookup
+    // -------------------------------------------------------------------------
+
+    /// Return a managed client by window ID.
+    pub fn client(&self, win: WindowId) -> Option<&Client> {
+        self.clients.get(&win)
+    }
+
+    /// Return a managed client mutably by window ID.
+    pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
+        self.clients.get_mut(&win)
+    }
+
+    /// Resolve a managed client and its assigned monitor as one coherent view.
+    ///
+    /// Returns `None` when either the client is unknown or its monitor
+    /// assignment is stale. Callers that only need client state should use
+    /// [`Self::client`] so those two cases remain distinguishable.
+    pub(crate) fn client_view(&self, win: WindowId) -> Option<ClientView<'_>> {
+        let client = self.client(win)?;
+        let monitor = self.monitor(client.monitor_id)?;
+        Some(ClientView { client, monitor })
     }
 
     // -------------------------------------------------------------------------
@@ -140,7 +176,7 @@ impl WmModel {
 
     /// Attach `win` to its assigned monitor's focus list.
     pub fn attach(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win)
+        if let Some(mid) = self.client(win).map(|client| client.monitor_id)
             && let Some(mon) = self.monitors.get_mut(mid)
         {
             mon.clients.insert(0, win);
@@ -149,7 +185,7 @@ impl WmModel {
 
     /// Detach `win` from its assigned monitor's focus list.
     pub fn detach(&mut self, win: WindowId) {
-        let monitor_id = self.clients.monitor_id(win);
+        let monitor_id = self.client(win).map(|client| client.monitor_id);
         if let Some(mid) = monitor_id
             && let Some(mon) = self.monitors.get_mut(mid)
             && mon.clients.contains(&win)
@@ -168,7 +204,7 @@ impl WmModel {
 
     /// Attach `win` to the top of its assigned monitor's persistent z-order.
     pub fn attach_z_order_top(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win)
+        if let Some(mid) = self.client(win).map(|client| client.monitor_id)
             && let Some(mon) = self.monitors.get_mut(mid)
         {
             mon.z_order.attach_top(win);
@@ -177,7 +213,7 @@ impl WmModel {
 
     /// Detach `win` from its assigned monitor's persistent z-order.
     pub fn detach_z_order(&mut self, win: WindowId) {
-        let monitor_id = self.clients.monitor_id(win);
+        let monitor_id = self.client(win).map(|client| client.monitor_id);
 
         let handle_monitor = |mon: &mut crate::types::Monitor| -> bool { mon.z_order.remove(win) };
 
@@ -198,7 +234,7 @@ impl WmModel {
 
     /// Move `win` to the top of its monitor's persistent z-order.
     pub fn raise_client_in_z_order(&mut self, win: WindowId) {
-        if let Some(mid) = self.clients.monitor_id(win)
+        if let Some(mid) = self.client(win).map(|client| client.monitor_id)
             && let Some(mon) = self.monitors.get_mut(mid)
             && mon.z_order.raise(win)
         {
@@ -236,24 +272,19 @@ impl WmModel {
         win: WindowId,
         target_mon: MonitorId,
     ) -> Option<ClientTransferOutcome> {
-        let client = self.clients.get(&win)?;
+        let client = self.client(win)?;
         let is_scratchpad = client.is_scratchpad();
+        let target_monitor = self.monitors.get(target_mon)?;
         let target_tags = if is_scratchpad {
             crate::types::TagMask::EMPTY
         } else {
-            self.monitors
-                .get(target_mon)
-                .map(|m| m.selected_tags())
-                .unwrap_or(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY))
+            target_monitor.selected_tags()
         };
-        let target_tag_idx = self
-            .monitors
-            .get(target_mon)
-            .and_then(|m| m.current_tag_number());
+        let target_tag_idx = target_monitor.current_tag_number();
 
         self.detach(win);
         self.detach_z_order(win);
-        let client = self.clients.get_mut(&win)?;
+        let client = self.client_mut(win)?;
         client.monitor_id = target_mon;
         if !is_scratchpad {
             client.set_tag_mask(target_tags);
@@ -278,5 +309,78 @@ pub struct ClientTransferOutcome {
 impl Default for WmModel {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Rect;
+
+    #[test]
+    fn client_view_resolves_client_and_assigned_monitor() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor {
+            monitor_rect: Rect::new(1920, 0, 2560, 1440),
+            ..Monitor::default()
+        });
+        let win = WindowId(42);
+        model.clients.insert(
+            win,
+            Client {
+                win,
+                monitor_id,
+                geo: Rect::new(2000, 100, 800, 600),
+                ..Client::default()
+            },
+        );
+
+        let view = model.client_view(win).expect("client view");
+
+        assert_eq!(view.client.win, win);
+        assert_eq!(view.client.geo, Rect::new(2000, 100, 800, 600));
+        assert_eq!(view.monitor.id(), monitor_id);
+        assert_eq!(view.monitor.monitor_rect, Rect::new(1920, 0, 2560, 1440));
+    }
+
+    #[test]
+    fn client_view_requires_a_valid_client_monitor_relationship() {
+        let mut model = WmModel::new();
+        let win = WindowId(7);
+        model.clients.insert(
+            win,
+            Client {
+                win,
+                monitor_id: MonitorId::from_raw(999),
+                ..Client::default()
+            },
+        );
+
+        assert!(model.client(win).is_some());
+        assert!(model.client_view(win).is_none());
+        assert!(model.client_view(WindowId(8)).is_none());
+    }
+
+    #[test]
+    fn invalid_transfer_target_does_not_modify_client_assignment() {
+        let mut model = WmModel::new();
+        let source = model.monitors.push(Monitor::default());
+        let win = WindowId(9);
+        model.clients.insert(
+            win,
+            Client {
+                win,
+                monitor_id: source,
+                ..Client::default()
+            },
+        );
+
+        let outcome = model.move_client_to_monitor(win, MonitorId::from_raw(999));
+
+        assert!(outcome.is_none());
+        assert_eq!(
+            model.client(win).map(|client| client.monitor_id),
+            Some(source)
+        );
     }
 }

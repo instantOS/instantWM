@@ -94,24 +94,29 @@ pub(crate) enum GeometryApplyMode {
     VisualOnly,
 }
 
-fn current_client_rect(model: &crate::model::WmModel, win: WindowId) -> Option<Rect> {
-    model
-        .clients
-        .get(&win)
-        .map(|c| if c.geo.is_valid() { c.geo } else { c.old_geo })
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ClientGeometry {
+    current_rect: Rect,
+    monitor_rect: Rect,
 }
 
-fn monitor_size_for_client(
-    model: &crate::model::WmModel,
-    display: &crate::core_state::DisplayConfig,
-    win: WindowId,
-) -> (i32, i32) {
-    model
-        .clients
-        .get(&win)
-        .and_then(|c| model.monitors.get(c.monitor_id))
-        .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
-        .unwrap_or((display.width, display.height))
+/// Snapshot the client and assigned-monitor geometry needed by a resize.
+///
+/// Returning owned rectangles ends the model borrow before backend or
+/// animation state is mutated. A stale monitor assignment is an invalid model
+/// relationship, not a reason to treat the virtual display as one monitor.
+fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<ClientGeometry> {
+    let view = model.client_view(win)?;
+    let current_rect = if view.client.geo.is_valid() {
+        view.client.geo
+    } else {
+        view.client.old_geo
+    };
+
+    Some(ClientGeometry {
+        current_rect,
+        monitor_rect: view.monitor.monitor_rect,
+    })
 }
 
 fn animation_duration(frames: i32) -> Duration {
@@ -260,12 +265,13 @@ pub(crate) fn move_resize(
         return;
     }
 
-    let (mon_w, mon_h) = monitor_size_for_client(
-        ctx.core().model(),
-        &ctx.core().config().derived.display,
-        win,
+    let Some(client_geometry) = client_geometry(ctx.core().model(), win) else {
+        return;
+    };
+    let final_rect = target.clamped_to_monitor(
+        client_geometry.monitor_rect.w,
+        client_geometry.monitor_rect.h,
     );
-    let final_rect = target.clamped_to_monitor(mon_w, mon_h);
 
     match options.mode {
         MoveResizeMode::Immediate => {
@@ -278,12 +284,9 @@ pub(crate) fn move_resize(
             crate::animation::cancel_animation(ctx, win);
 
             let from = match options.mode {
-                MoveResizeMode::AnimateTo => current_client_rect(ctx.core().model(), win),
+                MoveResizeMode::AnimateTo => client_geometry.current_rect,
                 MoveResizeMode::Immediate => unreachable!(),
-                MoveResizeMode::AnimateFrom(from) => Some(from),
-            };
-            let Some(from) = from else {
-                return;
+                MoveResizeMode::AnimateFrom(from) => from,
             };
             if !from.is_valid() {
                 return;
@@ -292,11 +295,9 @@ pub(crate) fn move_resize(
             if from == final_rect {
                 if ctx
                     .core()
-                    .state()
-                    .model
-                    .clients
-                    .get(&win)
-                    .is_some_and(|c| c.geo != final_rect)
+                    .model()
+                    .client(win)
+                    .is_some_and(|client| client.geo != final_rect)
                 {
                     ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 }
@@ -327,5 +328,81 @@ pub(crate) fn move_resize(
 
             enqueue_window_animation(ctx, win, from, final_rect, effective_frames);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::WmModel;
+    use crate::types::{Client, Monitor};
+
+    #[test]
+    fn client_geometry_uses_assigned_monitor_not_virtual_layout_extent() {
+        let mut model = WmModel::new();
+        let left = model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        model.monitors.push(Monitor {
+            monitor_rect: Rect::new(1920, 0, 2560, 1440),
+            ..Monitor::default()
+        });
+        let win = WindowId(11);
+        model.clients.insert(
+            win,
+            Client {
+                win,
+                monitor_id: left,
+                geo: Rect::new(100, 100, 800, 600),
+                ..Client::default()
+            },
+        );
+
+        let geometry = client_geometry(&model, win).expect("client geometry");
+
+        assert_eq!(geometry.current_rect, Rect::new(100, 100, 800, 600));
+        assert_eq!(geometry.monitor_rect, Rect::new(0, 0, 1920, 1080));
+    }
+
+    #[test]
+    fn client_geometry_falls_back_to_previous_valid_client_rect() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            ..Monitor::default()
+        });
+        let win = WindowId(12);
+        model.clients.insert(
+            win,
+            Client {
+                win,
+                monitor_id,
+                geo: Rect::default(),
+                old_geo: Rect::new(10, 20, 640, 480),
+                ..Client::default()
+            },
+        );
+
+        let geometry = client_geometry(&model, win).expect("client geometry");
+
+        assert_eq!(geometry.current_rect, Rect::new(10, 20, 640, 480));
+    }
+
+    #[test]
+    fn client_geometry_rejects_stale_monitor_assignment() {
+        let mut model = WmModel::new();
+        let win = WindowId(13);
+        model.clients.insert(
+            win,
+            Client {
+                win,
+                monitor_id: crate::types::MonitorId::from_raw(1234),
+                geo: Rect::new(10, 20, 640, 480),
+                ..Client::default()
+            },
+        );
+
+        assert!(client_geometry(&model, win).is_none());
     }
 }

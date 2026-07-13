@@ -86,31 +86,18 @@ fn prune_pending_launches(pending_launches: &mut VecDeque<PendingLaunch>) {
     pending_launches.retain(|launch| now.duration_since(launch.recorded_at) <= PENDING_LAUNCH_TTL);
 }
 
-/// Initial tag mask for a newly managed client on `monitor_id`.
-///
-/// This mirrors DWM semantics: a new client appears on all tags currently
-/// visible on its target monitor.
-pub fn initial_tags_for_monitor(model: &WmModel, monitor_id: MonitorId) -> TagMask {
-    model
-        .monitor(monitor_id)
-        .map(|m| m.selected_tags())
-        .filter(|tags| !tags.is_empty())
-        .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY))
-}
-
 /// Select `win` on its assigned monitor.
 ///
 /// This is WM policy, not backend policy: backends may discover a new window
 /// or an activation request, but the choice to make that window the monitor's
 /// selected client lives in shared state.
 pub fn select_client(model: &mut WmModel, win: WindowId) {
-    let Some(monitor_id) = model.clients.monitor_id(win) else {
+    let Some((monitor_id, is_tiled)) = model
+        .client(win)
+        .map(|client| (client.monitor_id, client.mode.is_tiling()))
+    else {
         return;
     };
-    let is_tiled = model
-        .clients
-        .get(&win)
-        .is_some_and(|client| client.mode.is_tiling());
     if let Some(mon) = model.monitor_mut(monitor_id) {
         mon.selected = Some(win);
         if is_tiled {

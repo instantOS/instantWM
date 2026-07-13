@@ -126,7 +126,7 @@ pub fn refresh(state: &mut WaylandState) {
                         // Compute urgent_mask for this monitor
                         let mut urgent_mask = crate::types::TagMask::EMPTY;
                         for &win in &mon.clients {
-                            if let Some(c) = globals.model.clients.get(&win)
+                            if let Some(c) = globals.model.client(win)
                                 && c.is_urgent
                             {
                                 urgent_mask = urgent_mask | c.tags;
@@ -204,7 +204,7 @@ pub fn refresh(state: &mut WaylandState) {
                 // Urgency mapping: A tag is urgent if any client placed on it has is_urgent == true.
                 let mut urgent_mask = crate::types::TagMask::EMPTY;
                 for &win in &mon.clients {
-                    if let Some(c) = globals.model.clients.get(&win)
+                    if let Some(c) = globals.model.client(win)
                         && c.is_urgent
                     {
                         urgent_mask = urgent_mask | c.tags;

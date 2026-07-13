@@ -68,17 +68,16 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
         let Some(marker) = window.user_data().get::<WindowIdMarker>() else {
             continue;
         };
-        let Some(c) = model.clients.get(&marker.id) else {
+        let Some(view) = model.client_view(marker.id) else {
             continue;
         };
+        let c = view.client;
 
         let size = window.geometry().size;
         let content_size = (size.w.max(1), size.h.max(1));
 
-        let (is_visible, is_tiling_layout) = c
-            .monitor(model)
-            .map(|m| (c.is_visible(m.selected_tags()), m.is_tiling_layout()))
-            .unwrap_or((false, true));
+        let is_visible = c.is_visible(view.monitor.selected_tags());
+        let is_tiling_layout = view.monitor.is_tiling_layout();
 
         windows.push(WindowBorderInfo {
             id: marker.id,
@@ -225,7 +224,7 @@ pub fn get_borders_hash(model: &WmModel, state: &WaylandState) -> u64 {
     for window in state.space.elements() {
         if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
             marker.id.hash(&mut hasher);
-            if let Some(c) = model.clients.get(&marker.id) {
+            if let Some(c) = model.client(marker.id) {
                 c.geo.x.hash(&mut hasher);
                 c.geo.y.hash(&mut hasher);
                 c.border_width.hash(&mut hasher);

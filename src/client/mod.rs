@@ -63,8 +63,8 @@ pub use kill::{close_win, kill_client, shut_kill};
 
 // -- Lifecycle ---------------------------------------------------------------
 pub use lifecycle::{
-    LaunchContext, PendingLaunch, current_launch_context, initial_tags_for_monitor, new_startup_id,
-    record_pending_launch, select_client, take_pending_launch,
+    LaunchContext, PendingLaunch, current_launch_context, new_startup_id, record_pending_launch,
+    select_client, take_pending_launch,
 };
 
 // -- Layout operations -------------------------------------------------------

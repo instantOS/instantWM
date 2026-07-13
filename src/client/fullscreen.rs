@@ -40,14 +40,16 @@ use crate::types::WindowId;
 /// For the Wayland backend the compositor owns the fullscreen geometry and
 /// stacking, so this function just updates the mode and queues a layout.
 pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
-    let snapshot = ctx
-        .core()
-        .state()
-        .model
-        .clients
-        .get(&win)
-        .map(|c| (c.mode, c.monitor_id, c.old_geo));
-    let Some((mode, monitor_id, old_geo)) = snapshot else {
+    let Some((mode, monitor_id, old_geo, monitor_rect)) =
+        ctx.core().model().client_view(win).map(|view| {
+            (
+                view.client.mode,
+                view.client.monitor_id,
+                view.client.old_geo,
+                view.monitor.monitor_rect,
+            )
+        })
+    else {
         return;
     };
 
@@ -70,17 +72,10 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
         if let Some(crate::client::mode::FullscreenOutcome::Entered { was_floating }) = outcome
             && !mode.is_fake_fullscreen()
         {
-            let mon_rect = ctx
-                .core()
-                .state()
-                .monitor(monitor_id)
-                .map(|m| m.monitor_rect)
-                .unwrap_or_default();
-
             if !was_floating {
                 ctx.move_resize(
                     win,
-                    mon_rect,
+                    monitor_rect,
                     MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
                 );
             }
@@ -88,7 +83,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             // Backend-specific: remove border, enforce geometry, raise.
             if let WmCtx::X11(ctx_x11) = ctx {
                 crate::backend::x11::fullscreen::remove_border(&ctx_x11.x11, win);
-                ctx_x11.x11.configure_window_geometry(win, mon_rect);
+                ctx_x11.x11.configure_window_geometry(win, monitor_rect);
                 ctx_x11.x11.raise_window_visual_only(win);
             }
         }
@@ -134,7 +129,7 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
         WmCtx::X11(ctx_x11) => crate::backend::x11::fullscreen::toggle_fake_fullscreen(ctx_x11),
         WmCtx::Wayland(_) => {
             if let Some(win) = ctx.core().model().selected_win() {
-                if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+                if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
                     if client.mode.is_fake_fullscreen() {
                         client.mode = client.mode.restored();
                     } else {

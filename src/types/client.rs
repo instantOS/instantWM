@@ -358,23 +358,6 @@ impl Client {
         self.is_urgent = false;
     }
 
-    /// Resolve the monitor this client currently belongs to.
-    pub fn monitor<'a>(
-        &self,
-        model: &'a crate::model::WmModel,
-    ) -> Option<&'a crate::types::Monitor> {
-        model.monitor(self.monitor_id)
-    }
-
-    /// Get the monitor's size (width, height) for this client.
-    ///
-    /// Returns `(0, 0)` if the client is not assigned to a monitor.
-    pub fn monitor_size(&self, model: &crate::model::WmModel) -> (i32, i32) {
-        self.monitor(model)
-            .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
-            .unwrap_or((0, 0))
-    }
-
     /// Returns the floating geometry if valid, otherwise falls back to current geometry.
     ///
     /// When a window has never been floated, `float_geo` is zeroed. This method

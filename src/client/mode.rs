@@ -13,7 +13,9 @@ pub enum MaximizedOutcome {
         #[cfg_attr(not(test), allow(dead_code))]
         base: BaseClientMode,
     },
-    Exited { base: BaseClientMode },
+    Exited {
+        base: BaseClientMode,
+    },
 }
 
 /// Outcome of a fullscreen state transition.
@@ -35,8 +37,9 @@ pub fn set_maximized(model: &mut WmModel, win: WindowId, enter: bool) -> Option<
 }
 
 fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
-    let client = model.clients.get_mut(&win)?;
+    let client = model.client_mut(win)?;
     let base = client.mode.base_mode();
+    let monitor_id = client.monitor_id;
 
     // Save float geo if not already floating.
     if !client.mode.is_floating() {
@@ -46,10 +49,8 @@ fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOu
     client.mode = client.mode.as_maximized();
 
     // Update mon.maximized. Try the window's monitor first, fall back to selected.
-    if let Some(mid) = model.clients.monitor_id(win) {
-        if let Some(mon) = model.monitor_mut(mid) {
-            mon.maximized = Some(win);
-        }
+    if let Some(mon) = model.monitor_mut(monitor_id) {
+        mon.maximized = Some(win);
     } else if let Some(mon) = model.selected_monitor_mut_opt() {
         mon.maximized = Some(win);
     }
@@ -58,7 +59,7 @@ fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOu
 }
 
 fn set_maximized_exit(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
-    let client = model.clients.get_mut(&win)?;
+    let client = model.client_mut(win)?;
     let base = client.mode.base_mode();
     client.mode = client.mode.restored();
     model.clear_maximized_for(win);
@@ -82,7 +83,7 @@ pub fn set_fullscreen(
 }
 
 fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
-    let client = model.clients.get_mut(&win)?;
+    let client = model.client_mut(win)?;
     let was_floating = client.mode.is_floating();
     client.mode = client.mode.as_fullscreen();
     client.save_border_width();
@@ -91,7 +92,7 @@ fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<Fullscreen
 }
 
 fn set_fullscreen_exit(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
-    let client = model.clients.get_mut(&win)?;
+    let client = model.client_mut(win)?;
     client.mode = client.mode.restored();
     client.restore_border_width();
     Some(FullscreenOutcome::Exited)

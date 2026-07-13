@@ -71,7 +71,7 @@ pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
 }
 
 pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
         if !c.is_hidden {
             return;
         }
@@ -90,7 +90,7 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
-    let scratchpad_name = ctx.core().model().clients.get(&win).and_then(|c| {
+    let scratchpad_name = ctx.core().model().client(win).and_then(|c| {
         if c.is_scratchpad() {
             Some(c.scratchpad.as_ref().unwrap().name.clone())
         } else {
@@ -106,7 +106,7 @@ pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
-    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
         if c.is_hidden {
             return;
         }
@@ -121,7 +121,7 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
             }
         }
 
-        if let Some(c_mut) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(c_mut) = ctx.core_mut().model_mut().client_mut(win) {
             c_mut.is_hidden = true;
         }
 

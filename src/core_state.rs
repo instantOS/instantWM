@@ -643,14 +643,6 @@ impl PendingLayoutWork {
         self.urgent = true;
     }
 
-    pub fn mark_monitor_opt(&mut self, monitor_id: Option<MonitorId>) {
-        if let Some(monitor_id) = monitor_id {
-            self.mark_monitor(monitor_id);
-        } else {
-            self.mark_all();
-        }
-    }
-
     pub fn is_pending(&self) -> bool {
         self.all_monitors || !self.monitors.is_empty()
     }

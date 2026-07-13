@@ -59,7 +59,9 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
     let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, w);
-    assign_initial_monitor_and_tags(ctx.core.state_mut(), &mut client, trans, launch_context);
+    if !assign_initial_monitor_and_tags(ctx.core.state_mut(), &mut client, trans, launch_context) {
+        return;
+    }
     insert_client_and_apply_rules(
         &mut ctx.core,
         &ctx.x11,
@@ -140,16 +142,15 @@ fn assign_initial_monitor_and_tags(
     c: &mut Client,
     trans: Option<WindowId>,
     launch_context: Option<crate::client::LaunchContext>,
-) {
-    let trans_client = trans.filter(|win| g.model.clients.contains_key(win));
-    if let Some(tc_win) = trans_client
-        && let Some(tc) = g.model.clients.get(&tc_win)
-    {
-        c.monitor_id = tc.monitor_id;
-        c.set_tag_mask(tc.tags);
-        return;
+) -> bool {
+    if let Some(view) = trans.and_then(|win| g.model.client_view(win)) {
+        c.monitor_id = view.monitor.id();
+        c.set_tag_mask(view.client.tags);
+        return true;
     }
-    if let Some(launch_context) = launch_context {
+    if let Some(launch_context) = launch_context
+        && g.model.monitor(launch_context.monitor_id).is_some()
+    {
         c.monitor_id = launch_context.monitor_id;
         c.set_tag_mask(launch_context.tags);
         c.mode = if launch_context.is_floating {
@@ -157,13 +158,14 @@ fn assign_initial_monitor_and_tags(
         } else {
             ClientMode::Tiling
         };
-        return;
+        return true;
     }
-    c.monitor_id = g.selected_monitor_id();
-    c.set_tag_mask(crate::client::initial_tags_for_monitor(
-        &g.model,
-        c.monitor_id,
-    ));
+    let Some(selected_monitor) = g.model.selected_monitor_opt() else {
+        return false;
+    };
+    c.monitor_id = selected_monitor.id();
+    c.set_tag_mask(selected_monitor.selected_tags());
+    true
 }
 
 fn insert_client_and_apply_rules(
@@ -244,22 +246,21 @@ fn read_u32_prop(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Optio
 }
 
 fn apply_default_border(model: &mut crate::model::WmModel, border_px: i32, w: WindowId) {
-    if let Some(client) = model.clients.get_mut(&w) {
+    if let Some(client) = model.client_mut(w) {
         client.border_width = border_px;
         client.old_border_width = border_px;
     }
 }
 
 fn monitor_rects_for_client(model: &crate::model::WmModel, w: WindowId) -> (Rect, Rect) {
-    let monitor_id = model.clients.monitor_id(w);
-    monitor_id
-        .and_then(|mid| model.monitor(mid))
-        .map(|m| (m.work_rect, m.monitor_rect))
-        .unwrap_or((Rect::default(), Rect::default()))
+    let view = model
+        .client_view(w)
+        .expect("newly managed client must have an assigned monitor");
+    (view.monitor.work_rect, view.monitor.monitor_rect)
 }
 
 fn clamp_client_to_work_area(model: &mut crate::model::WmModel, w: WindowId, mon_work_rect: Rect) {
-    if let Some(client) = model.clients.get_mut(&w) {
+    if let Some(client) = model.client_mut(w) {
         if client.geo.x + client.total_width() > mon_work_rect.x + mon_work_rect.w {
             client.geo.x = mon_work_rect.x + mon_work_rect.w - client.total_width();
         }
@@ -272,11 +273,9 @@ fn clamp_client_to_work_area(model: &mut crate::model::WmModel, w: WindowId, mon
 }
 
 fn is_monocle_on_client_monitor(model: &crate::model::WmModel, w: WindowId) -> bool {
-    let monitor_id = model.clients.monitor_id(w);
-    monitor_id
-        .and_then(|mid| model.monitor(mid))
-        .map(|mon| mon.is_monocle_layout())
-        .unwrap_or(false)
+    model
+        .client_view(w)
+        .is_some_and(|view| view.monitor.is_monocle_layout())
 }
 
 fn configure_client_border(
@@ -289,7 +288,7 @@ fn configure_client_border(
     mon_monitor_rect: Rect,
     is_monocle: bool,
 ) {
-    let Some(client) = model.clients.get_mut(&w) else {
+    let Some(client) = model.client_mut(w) else {
         return;
     };
 
@@ -336,7 +335,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
 }
 
 fn snapshot_float_geo(model: &mut crate::model::WmModel, w: WindowId, mon_monitor_rect: Rect) {
-    if let Some(client) = model.clients.get_mut(&w) {
+    if let Some(client) = model.client_mut(w) {
         client.float_geo.x = client.geo.x;
         client.float_geo.y = if client.geo.y >= mon_monitor_rect.y {
             client.geo.y
@@ -364,7 +363,7 @@ fn initialize_floating_state(
     w: WindowId,
     has_transient_parent: bool,
 ) -> bool {
-    if let Some(client) = model.clients.get_mut(&w) {
+    if let Some(client) = model.client_mut(w) {
         if !client.mode.is_floating() {
             client.mode = if has_transient_parent || client.is_fixed_size {
                 ClientMode::Floating
@@ -395,8 +394,7 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
         .core()
         .state()
         .model
-        .clients
-        .get(&w)
+        .client(w)
         .map(|client| {
             (
                 ctx.core().config().derived.display.width,
@@ -425,8 +423,7 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
         .core()
         .state()
         .model
-        .clients
-        .get(&w)
+        .client(w)
         .map(|c| c.is_hidden)
         .unwrap_or(false);
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
@@ -452,10 +449,9 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
         .core()
         .state()
         .model
-        .clients
-        .get(&w)
+        .client(w)
         .cloned()
-        .unwrap_or_default();
+        .expect("managed client must exist before arrange");
     let monitor_id = c.monitor_id;
     arrange(ctx, Some(monitor_id));
     if !initially_hidden {
@@ -467,10 +463,9 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
         .core()
         .state()
         .model
-        .clients
-        .get(&w)
+        .client(w)
         .cloned()
-        .unwrap_or_default();
+        .expect("managed client must exist after arrange");
     c
 }
 
@@ -501,13 +496,9 @@ fn run_manage_animation(
 
     let is_tiling = ctx
         .core()
-        .state()
-        .model
-        .clients
-        .get(&w)
-        .and_then(|c| c.monitor(ctx.core().model()))
-        .map(|mon| mon.is_tiling_layout())
-        .unwrap_or(false);
+        .model()
+        .client_view(w)
+        .is_some_and(|view| view.monitor.is_tiling_layout());
 
     if !is_tiling {
         ctx.window_backend().raise_window_visual_only(w);
@@ -530,7 +521,7 @@ fn run_manage_animation(
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let monitor_id = ctx.core.model().clients.monitor_id(win);
+    let monitor_id = ctx.core.model().client(win).map(|client| client.monitor_id);
 
     ctx.core.model_mut().clear_maximized_for(win);
 
@@ -660,7 +651,7 @@ fn read_client_info(
         .find(|(_i, m)| m.num as u32 == mon_num)
         .map(|(i, _)| i);
 
-    if let Some(client) = model.clients.get_mut(&w) {
+    if let Some(client) = model.client_mut(w) {
         client.set_tag_mask(crate::types::TagMask::from_bits(tags));
         if let Some(mid) = target_mon {
             client.monitor_id = mid;
@@ -692,7 +683,7 @@ fn read_wm_desktop_hint(
     let Some(desktop) = data.next() else { return };
 
     if desktop == u32::MAX {
-        if let Some(client) = model.clients.get_mut(&w) {
+        if let Some(client) = model.client_mut(w) {
             client.is_sticky = true;
         }
         return;
@@ -707,7 +698,7 @@ fn read_wm_desktop_hint(
         return;
     };
 
-    if let Some(client) = model.clients.get_mut(&w) {
+    if let Some(client) = model.client_mut(w) {
         client.monitor_id = monitor_id;
         client.is_sticky = false;
         client.clear_sticky_if_scratchpad();

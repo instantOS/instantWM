@@ -91,7 +91,7 @@ pub fn commit_x11_hover_offer(ctx: &mut WmCtxX11, btn: MouseButton) -> bool {
             crate::focus::focus(&mut wm_ctx, Some(win));
         }
 
-        let Some(c) = wm_ctx.core().model().clients.get(&win) else {
+        let Some(c) = wm_ctx.core().model().client(win) else {
             return false;
         };
         wm_ctx
@@ -115,7 +115,7 @@ fn resize_target_for_window(
     win: WindowId,
     root: Point,
 ) -> Option<HoverResizeTarget> {
-    let c = model.clients.get(&win)?;
+    let c = model.client(win)?;
     let mon = model.selected_monitor();
     let selected_tags = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
@@ -148,7 +148,7 @@ fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
 
 /// Warp the pointer to the edge/corner of `win` described by `dir`.
 fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let Some(c) = ctx.core().model().clients.get(&win) else {
+    let Some(c) = ctx.core().model().client(win) else {
         return;
     };
     let (x_off, y_off) = dir.warp_offset(c.geo.w, c.geo.h, c.border_width);
@@ -407,7 +407,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                         return false;
                     };
                     let (geo, w, h) = {
-                        let Some(c) = ctx.core.model().clients.get(&win) else {
+                        let Some(c) = ctx.core.model().client(win) else {
                             return false;
                         };
                         (c.geo, c.geo.w, c.geo.h)
@@ -478,7 +478,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             None => return false,
         };
         let is_tiling_layout = wm_ctx.core().model().selected_monitor().is_tiling_layout();
-        let sel_geo = match wm_ctx.core().model().clients.get(&selected_window) {
+        let sel_geo = match wm_ctx.core().model().client(selected_window) {
             Some(c) if c.mode.is_floating() || !is_tiling_layout => c.geo,
             _ => return false,
         };
@@ -496,8 +496,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             .core()
             .state()
             .model
-            .clients
-            .get(&hovered_win)
+            .client(hovered_win)
             .map(|c| !c.mode.is_floating())
             .unwrap_or(false);
         if !hovered_is_tiled {

@@ -35,7 +35,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
 
     let wins_to_save = collect_floating_wins(ctx.core().model(), mon_id);
     for win in wins_to_save {
-        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             client.save_floating_geometry();
         }
     }

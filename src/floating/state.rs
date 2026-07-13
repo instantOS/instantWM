@@ -7,7 +7,12 @@ use crate::layouts::arrange;
 use crate::types::*;
 
 pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
-    if let Some(rect) = ctx.core().model().clients.effective_float_geo(win) {
+    if let Some(rect) = ctx
+        .core()
+        .model()
+        .client(win)
+        .map(Client::effective_float_geo)
+    {
         ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
     }
 }
@@ -107,11 +112,10 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
                 .core()
                 .state()
                 .model
-                .clients
-                .get(&sel)
+                .client(sel)
                 .is_some_and(|c| c.is_edge_scratchpad()) =>
         {
-            if let Some(c) = ctx.core().model().clients.get(&sel)
+            if let Some(c) = ctx.core().model().client(sel)
                 && c.mode.is_true_fullscreen()
             {
                 return;
@@ -123,14 +127,15 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     let Some(win) = selected_window else { return };
 
-    let (is_floating, is_fixed) = ctx
+    let Some((is_floating, is_fixed)) = ctx
         .core()
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| (c.mode.is_floating(), c.is_fixed_size))
-        .unwrap_or((false, false));
+    else {
+        return;
+    };
     let target_mode = if !is_floating || is_fixed {
         BaseClientMode::Floating
     } else {
@@ -140,7 +145,11 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 
     // Animate when going to floating mode
     if mode_change.should_animate_float_restore()
-        && let Some(saved_geo) = ctx.core().model().clients.effective_float_geo(win)
+        && let Some(saved_geo) = ctx
+            .core()
+            .model()
+            .client(win)
+            .map(Client::effective_float_geo)
     {
         ctx.move_resize(
             win,

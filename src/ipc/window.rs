@@ -33,7 +33,7 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
 fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id;
     let mut wins: Vec<_> = if let Some(win) = target {
-        wm.core.model.clients.get(&win).into_iter().collect()
+        wm.core.model.client(win).into_iter().collect()
     } else {
         wm.core.model.clients.values().collect()
     };
@@ -42,14 +42,9 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let tag_mask = wm.core.model.tags.mask();
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| {
-            let mon_pos = wm
-                .core
-                .model
-                .monitors
-                .position_of(c.monitor_id)
-                .unwrap_or(0);
-            WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win), mon_pos)
+        .filter_map(|c| {
+            let mon_pos = wm.core.model.monitors.position_of(c.monitor_id)?;
+            WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win), mon_pos).into()
         })
         .collect();
 
@@ -70,17 +65,15 @@ fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let Some(win) = target else {
         return Response::err("no target window");
     };
-    let Some(c) = wm.core.model.clients.get(&win) else {
-        return Response::err("window not found");
+    let Some(view) = wm.core.model.client_view(win) else {
+        return Response::err("window or assigned monitor not found");
     };
 
     let tag_mask = wm.core.model.tags.mask();
-    let mon_pos = wm
-        .core
-        .model
-        .monitors
-        .position_of(c.monitor_id)
-        .unwrap_or(0);
+    let Some(mon_pos) = wm.core.model.monitors.position_of(view.monitor.id()) else {
+        return Response::err("assigned monitor has no display position");
+    };
+    let c = view.client;
     Response::WindowInfo(WindowInfo::from_client(
         c,
         tag_mask,
@@ -103,7 +96,7 @@ fn resize_window(
         return Response::err("no target window");
     };
 
-    let (current_monitor_id, is_floating) = match wm.core.model.clients.get(&win) {
+    let (current_monitor_id, is_floating) = match wm.core.model.client(win) {
         Some(c) => (c.monitor_id, c.mode.is_floating()),
         None => return Response::err("window not found"),
     };

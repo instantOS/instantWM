@@ -114,9 +114,9 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn queue_layout_for_client(&mut self, win: WindowId) {
-        self.work
-            .layout
-            .mark_monitor_opt(self.g.model.clients.monitor_id(win));
+        if let Some(monitor_id) = self.g.model.client(win).map(|client| client.monitor_id) {
+            self.work.layout.mark_monitor(monitor_id);
+        }
     }
 
     pub fn queue_monitor_config_apply(&mut self) {
@@ -179,8 +179,7 @@ impl<'a> CoreCtx<'a> {
                     m.selected.and_then(|selected_window| {
                         self.g
                             .model
-                            .clients
-                            .get(&selected_window)
+                            .client(selected_window)
                             .map(|c| c.tags.contains(tag_num))
                     })
                 })
@@ -430,7 +429,11 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        if let Some(mid) = self.core().model().clients.monitor_id(win)
+        if let Some(mid) = self
+            .core()
+            .model()
+            .client(win)
+            .map(|client| client.monitor_id)
             && let Some(mon) = self.core_mut().model_mut().monitor_mut(mid)
         {
             mon.z_order.raise(win);
@@ -481,7 +484,7 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {
-        if let Some(client) = self.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(client) = self.core_mut().model_mut().client_mut(win) {
             client.border_width = width.max(0);
         }
     }
@@ -509,7 +512,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        let Some(c) = self.core().model().clients.get(&win).cloned() else {
+        let Some(c) = self.core().model().client(win).cloned() else {
             return;
         };
 
@@ -524,9 +527,10 @@ impl<'a> WmCtx<'a> {
                 && ptr.x < c.geo.x + c.geo.w + c.border_width * 2
                 && ptr.y < c.geo.y + c.geo.h + c.border_width * 2);
 
-        let on_bar = c
-            .monitor(self.core().model())
-            .is_some_and(|mon| mon.bar_contains_y(self.core().model().clients.map(), ptr.y));
+        let on_bar = self.core().model().client_view(win).is_some_and(|view| {
+            view.monitor
+                .bar_contains_y(self.core().model().clients.map(), ptr.y)
+        });
 
         if in_window || on_bar {
             return;

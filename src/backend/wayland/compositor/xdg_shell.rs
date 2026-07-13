@@ -507,7 +507,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
                 .surface
                 .as_ref()
                 .and_then(|surface| self.window_id_for_surface(surface))
-                .and_then(|source_win| g.model.clients.get(&source_win))
+                .and_then(|source_win| g.model.client(source_win))
                 .map(|client| crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
@@ -532,14 +532,10 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
             .get::<crate::client::LaunchContext>()
             .copied();
         if let Some(win) = self.window_id_for_surface(&surface) {
-            let is_currently_visible =
-                self.globals()
-                    .and_then(|g| {
-                        g.model.clients.get(&win).and_then(|c| {
-                            c.monitor(&g.model).map(|m| c.is_visible(m.selected_tags()))
-                        })
-                    })
-                    .unwrap_or(false);
+            let is_currently_visible = self
+                .globals()
+                .and_then(|g| g.model.client_view(win))
+                .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
 
             self.push_command(super::super::commands::WmCommand::ActivateWindow(win));
             self.request_bar_redraw();

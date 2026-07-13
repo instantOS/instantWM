@@ -97,8 +97,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
                 ctx.core()
                     .state()
                     .model
-                    .clients
-                    .get(&win)
+                    .client(win)
                     .map(|c| c.tags.without_scratchpad())
                     .filter(|tags| !tags.is_empty())
             });

@@ -53,11 +53,13 @@ impl WaylandState {
         if let Some(element) = self.window_index.get(&window).cloned() {
             let is_mapped = self.space.elements().any(|w| w == &element);
             if !is_mapped {
-                let loc: Point<i32, Logical> = self
+                let Some(loc): Option<Point<i32, Logical>> = self
                     .globals()
-                    .and_then(|g| g.model.clients.get(&window))
+                    .and_then(|g| g.model.client(window))
                     .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
-                    .unwrap_or(Point::from((0, 0)));
+                else {
+                    return;
+                };
                 self.drop_window_animation(window);
                 self.space.map_element(element.clone(), loc, false);
 

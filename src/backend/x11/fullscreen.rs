@@ -44,8 +44,7 @@ pub fn remove_border(x11: &X11BackendRef<'_>, win: WindowId) {
 pub fn restore_border(x11: &X11BackendRef<'_>, model: &crate::model::WmModel, win: WindowId) {
     let x11_win: Window = win.into();
     let restored_border = model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| c.border_width.max(0) as u32)
         .unwrap_or(0);
     let _ = x11.conn.configure_window(
@@ -60,26 +59,29 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
         return;
     };
 
-    let (mode, monitor_id, old_border_width) = ctx_x11
+    let Some((mode, monitor_id, old_border_width)) = ctx_x11
         .core
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| (c.mode, c.monitor_id, c.old_border_width))
-        .unwrap_or((ClientMode::Tiling, crate::types::MonitorId::default(), 0));
+    else {
+        return;
+    };
 
     // Transitioning from fake-fullscreen → real-fullscreen: resize to fill the
     // monitor and raise the window.
     if mode.is_fake_fullscreen() {
         let border_px = ctx_x11.core.config().window.border_width_px;
 
-        let mon_rect = ctx_x11
+        let Some(mon_rect) = ctx_x11
             .core
             .state()
             .monitor(monitor_id)
             .map(|m| m.monitor_rect)
-            .unwrap_or_default();
+        else {
+            return;
+        };
 
         let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
         wm_ctx.move_resize(
@@ -99,7 +101,7 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
     // Restore the border width when leaving fake-fullscreen while still in
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
-    if let Some(client) = ctx_x11.core.model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx_x11.core.model_mut().client_mut(win) {
         match client.mode {
             ClientMode::FakeFullscreen { .. } => client.mode = client.mode.as_fullscreen(),
             ClientMode::TrueFullscreen { .. } => client.mode = client.mode.as_fake_fullscreen(),

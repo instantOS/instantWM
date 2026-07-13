@@ -27,7 +27,7 @@ pub fn has_tiling_layout(model: &WmModel) -> bool {
 /// used after restoring a saved geometry so the window manager picks up the
 /// correct position.
 pub fn apply_size(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let geo = ctx.core.model().clients.get(&win).map(|c| c.geo);
+    let geo = ctx.core.model().client(win).map(|c| c.geo);
     if let Some(mut rect) = geo {
         rect.x += 1;
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());

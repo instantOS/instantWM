@@ -33,7 +33,7 @@ pub fn apply_rules(
     let before = rule_state_snapshot(g, win);
 
     // --- Initialise fields we are about to set -------------------------------
-    if let Some(c) = g.model.clients.get_mut(&win) {
+    if let Some(c) = g.model.client_mut(win) {
         if !props.title.is_empty() {
             c.name = props.title.clone();
         }
@@ -62,7 +62,7 @@ pub fn apply_rules(
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next
-            && let Some(c) = g.model.clients.get_mut(&win)
+            && let Some(c) = g.model.client_mut(win)
         {
             c.mode = ClientMode::Floating;
         }
@@ -75,30 +75,23 @@ pub fn apply_rules(
 
             // Special case: Onboard (on-screen keyboard) is always sticky.
             if rule.class.as_deref() == Some("Onboard")
-                && let Some(c) = g.model.clients.get_mut(&win)
+                && let Some(c) = g.model.client_mut(win)
             {
                 c.is_sticky = true;
             }
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
             let mon_geo = {
-                let client = match g.model.clients.get(&win) {
-                    Some(c) => c,
+                let view = match g.model.client_view(win) {
+                    Some(view) => view,
                     None => continue,
                 };
-                let mid = match g.model.clients.monitor_id(win) {
-                    Some(m) => m,
-                    None => continue,
-                };
-                let mon = match g.monitor(mid) {
-                    Some(m) => m,
-                    None => continue,
-                };
-                let mask = client.tags;
-                Some((mon.monitor_rect, mon.work_rect, mon.show_bar_for_mask(mask)))
+                let mon = view.monitor;
+                let mask = view.client.tags;
+                (mon.monitor_rect, mon.work_rect, mon.show_bar_for_mask(mask))
             };
 
-            if let Some(c) = g.model.clients.get_mut(&win) {
+            if let Some(c) = g.model.client_mut(win) {
                 if let Some(ref float_rule) = rule.isfloating {
                     apply_float_rule(c, float_rule, mon_geo, bar_height);
                 }
@@ -125,21 +118,17 @@ pub fn apply_rules(
 /// Once a client has been promoted to a scratchpad, later protocol metadata
 /// churn must not retag it back into a normal window.
 pub fn handle_property_change(g: &mut CoreState, win: WindowId, props: &WindowProperties) -> bool {
-    if let Some(c) = g.model.clients.get_mut(&win)
+    if let Some(c) = g.model.client_mut(win)
         && !props.title.is_empty()
     {
         c.name = props.title.clone();
     }
 
-    if g.model
-        .clients
-        .get(&win)
-        .is_some_and(|c| c.scratchpad.is_some())
-    {
+    if g.model.client(win).is_some_and(|c| c.scratchpad.is_some()) {
         return false;
     }
 
-    let existing_context = g.model.clients.get(&win).map(|c| LaunchContext {
+    let existing_context = g.model.client(win).map(|c| LaunchContext {
         monitor_id: c.monitor_id,
         tags: c.tags,
         is_floating: c.mode.is_floating(),
@@ -149,17 +138,14 @@ pub fn handle_property_change(g: &mut CoreState, win: WindowId, props: &WindowPr
 }
 
 /// Apply a `RuleFloat` variant to `client`, optionally adjusting its geometry
-/// using the monitor information supplied via `mon_geo`.
-///
-/// `mon_geo` is `(monitor_rect, work_rect, show_bar)` and may be `None` when the
-/// client is not yet placed on any monitor (geometry adjustments are skipped).
+/// using the supplied monitor geometry.
 fn apply_float_rule(
     client: &mut crate::types::client::Client,
     float_rule: &RuleFloat,
-    mon_geo: Option<(Rect, Rect, bool)>,
+    mon_geo: (Rect, Rect, bool),
     bar_height: i32,
 ) {
-    let (monitor_rect, work_rect, show_bar) = mon_geo.unwrap_or_default();
+    let (monitor_rect, work_rect, show_bar) = mon_geo;
 
     match float_rule {
         RuleFloat::FloatCenter => {
@@ -201,7 +187,7 @@ fn apply_monitor_rule(g: &mut CoreState, win: WindowId, rule: &crate::types::Rul
         .map(|(i, _)| i);
 
     if let Some(mid) = target_mid
-        && let Some(c) = g.model.clients.get_mut(&win)
+        && let Some(c) = g.model.client_mut(win)
     {
         c.monitor_id = mid;
     }
@@ -217,7 +203,7 @@ struct RuleStateSnapshot {
 }
 
 fn rule_state_snapshot(g: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
-    let c = g.model.clients.get(&win)?;
+    let c = g.model.client(win)?;
     Some(RuleStateSnapshot {
         is_floating: c.mode.is_floating(),
         is_sticky: c.is_sticky,
@@ -235,26 +221,21 @@ fn clamp_client_tags(
     tag_mask: TagMask,
     launch_context: Option<LaunchContext>,
 ) {
-    let (client_mon_id, client_tags) = g
-        .model
-        .clients
-        .get(&win)
-        .map(|c| (c.monitor_id, c.tags))
-        .unwrap_or((crate::types::MonitorId::default(), TagMask::EMPTY));
-
-    let Some(mon) = g.monitor(client_mon_id) else {
+    let Some(view) = g.model.client_view(win) else {
         return;
     };
+    let client_tags = view.client.tags;
+    let monitor_tags = view.monitor.selected_tags();
 
     let mut final_tags = client_tags & tag_mask;
     if final_tags.is_empty() {
         final_tags = launch_context
             .map(|ctx| ctx.tags & tag_mask)
             .filter(|tags| !tags.is_empty())
-            .unwrap_or_else(|| mon.selected_tags());
+            .unwrap_or(monitor_tags);
     }
 
-    if let Some(c) = g.model.clients.get_mut(&win) {
+    if let Some(c) = g.model.client_mut(win) {
         c.set_tag_mask(final_tags);
     }
 }
@@ -292,11 +273,7 @@ mod tests {
             },
         );
 
-        let client = g
-            .model
-            .clients
-            .get(&win)
-            .expect("client should still exist");
+        let client = g.model.client(win).expect("client should still exist");
         assert_eq!(client.tags, TagMask::single(2).unwrap());
         assert_eq!(client.name, "updated");
     }
@@ -321,11 +298,7 @@ mod tests {
             },
         );
 
-        let client = g
-            .model
-            .clients
-            .get(&win)
-            .expect("client should still exist");
+        let client = g.model.client(win).expect("client should still exist");
         assert!(client.mode.is_floating());
     }
 
@@ -365,11 +338,7 @@ mod tests {
             },
         );
 
-        let client = g
-            .model
-            .clients
-            .get(&win)
-            .expect("client should still exist");
+        let client = g.model.client(win).expect("client should still exist");
         assert!(!client.mode.is_floating()); // Should be tiling now
     }
 }

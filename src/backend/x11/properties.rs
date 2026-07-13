@@ -47,11 +47,12 @@ pub fn set_client_tag_prop(
 ) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    let Some(c) = globals.model.clients.get(&win) else {
+    let Some(view) = globals.model.client_view(win) else {
         return;
     };
 
-    let mon_num = c.monitor(&globals.model).map(|m| m.num as u32).unwrap_or(0);
+    let c = view.client;
+    let mon_num = view.monitor.num as u32;
 
     let mut data = [0u8; 8];
     data[..4].copy_from_slice(&c.tags.bits().to_ne_bytes());
@@ -240,7 +241,7 @@ fn set_wm_desktop_prop(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(client) = globals.model.clients.get(&win) else {
+    let Some(client) = globals.model.client(win) else {
         return;
     };
 
@@ -316,7 +317,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     if wtype.contains(&atom_dialog)
-        && let Some(client) = ctx_x11.core.model_mut().clients.get_mut(&win)
+        && let Some(client) = ctx_x11.core.model_mut().client_mut(win)
     {
         client.mode = if crate::backend::x11::policy::should_float_for_x11_type(Some(
             smithay::xwayland::xwm::WmWindowType::Dialog,
@@ -337,7 +338,7 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         Err(_) => None,
     };
 
-    if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core.model_mut().client_mut(win) {
         crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
     }
 }
@@ -373,14 +374,15 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         return;
     }
 
-    let (c_w, c_h, c_x, c_y) = ctx
+    let Some((c_w, c_h, c_x, c_y)) = ctx
         .core
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| (c.total_width(), c.total_height(), c.geo.x, c.geo.y))
-        .unwrap_or((0, 0, 0, 0));
+    else {
+        return;
+    };
 
     let decorations = motif.get(MWM_HINTS_DECORATIONS_FIELD).copied().unwrap_or(0);
 
@@ -393,7 +395,7 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         0
     };
 
-    if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core.model_mut().client_mut(win) {
         client.border_width = new_bw;
         client.old_border_width = new_bw;
     }

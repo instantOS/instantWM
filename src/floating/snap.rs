@@ -31,7 +31,7 @@ use crate::types::*;
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
     let (monitor_id, _snap_status) =
-        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             let status = client.snap_status;
 
             // Save geometry before entering snap for the first time.
@@ -76,7 +76,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 /// - All other positions split the monitor into halves or quarters.
 fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
     let (snap_status, saved_geo, border_width) = {
-        let c = ctx.core.model().clients.get(&win)?;
+        let c = ctx.core.model().client(win)?;
         (c.snap_status, c.float_geo, c.border_width)
     };
 
@@ -101,7 +101,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
 
     // Restore border width for all positions except Maximized (which needs bw=0).
     if snap_status != SnapPosition::Maximized
-        && let Some(client) = ctx.core.model_mut().clients.get_mut(&win)
+        && let Some(client) = ctx.core.model_mut().client_mut(win)
     {
         client.restore_border_width();
     }
@@ -163,7 +163,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
             h: m_mh / 2,
         },
         SnapPosition::Maximized => {
-            if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core.model_mut().client_mut(win) {
                 client.save_border_width();
                 client.border_width = 0;
             }
@@ -180,7 +180,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
 /// Apply the window's current [`SnapPosition`] by animating it into the
 /// corresponding screen region on monitor `monitor_id`.
 pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
-    let snap_status = match ctx.core.model().clients.get(&win) {
+    let snap_status = match ctx.core.model().client(win) {
         Some(c) => c.snap_status,
         None => return,
     };
@@ -207,7 +207,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 /// Does nothing if the window is not snapped or if it is in a tiling layout
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
-    let (is_floating, snap_status) = match ctx.core().model().clients.get(&win) {
+    let (is_floating, snap_status) = match ctx.core().model().client(win) {
         Some(c) => (c.mode.is_floating(), c.snap_status),
         None => return,
     };
@@ -219,7 +219,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     let tiling = super::helpers::has_tiling_layout(ctx.core().model());
 
     if is_floating || !tiling {
-        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             client.snap_status = SnapPosition::None;
             client.restore_border_width();
         }
@@ -242,7 +242,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
 /// Returns immediately if `snap_status` is [`SnapPosition::None`] or the
 /// client window is not found.
 fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
-    let c = match ctx.core().model().clients.get(&win) {
+    let c = match ctx.core().model().client(win) {
         Some(c) => c,
         None => return,
     };

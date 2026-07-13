@@ -24,7 +24,7 @@ pub fn configure(globals: &crate::core_state::CoreState, x11: &X11BackendRef, wi
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let Some(c) = globals.model.clients.get(&win) else {
+    let Some(c) = globals.model.client(win) else {
         return;
     };
 
@@ -108,7 +108,7 @@ pub fn refresh_border_color(
     focused: bool,
 ) {
     let scheme = &x11_runtime.borderscheme;
-    let Some(c) = globals.model.clients.get(&win) else {
+    let Some(c) = globals.model.client(win) else {
         return;
     };
 
@@ -142,7 +142,7 @@ pub fn set_focus(
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(c) = globals.model.clients.get(&win) else {
+    let Some(c) = globals.model.client(win) else {
         return;
     };
 
@@ -327,12 +327,11 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         let is_urgent = ctx
             .state()
             .model
-            .clients
-            .get(&win)
+            .client(win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
         if is_urgent {
-            if let Some(c) = ctx.model_mut().clients.get_mut(&win) {
+            if let Some(c) = ctx.model_mut().client_mut(win) {
                 c.clear_urgency();
             }
             clear_urgency_hint(self.x11, win);

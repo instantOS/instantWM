@@ -77,7 +77,7 @@ impl WaylandState {
                     } else {
                         false
                     }
-                } else if let Some(c) = globals.model.clients.get(&win_id) {
+                } else if let Some(c) = globals.model.client(win_id) {
                     let bw = c.border_width;
                     root_x >= c.geo.x
                         && root_x < c.geo.x + c.geo.w + 2 * bw
@@ -219,7 +219,7 @@ impl WaylandState {
                 }
             } else {
                 // Fall back to managed windows with borders
-                if let Some(c) = globals.model.clients.get(&win_id) {
+                if let Some(c) = globals.model.client(win_id) {
                     let bw = c.border_width;
                     // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
                     if root_x >= c.geo.x

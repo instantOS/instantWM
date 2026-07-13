@@ -545,7 +545,7 @@ impl WaylandState {
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
-                let client = g.model.clients.get(&marker.id)?;
+                let client = g.model.client(marker.id)?;
                 Some((marker.id, client.geo))
             })
             .collect();

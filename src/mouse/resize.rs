@@ -69,7 +69,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
-    let is_blocked = match ctx.core().model().clients.get(&win) {
+    let is_blocked = match ctx.core().model().client(win) {
         Some(c) => c.mode.is_true_fullscreen(),
         None => return,
     };
@@ -85,8 +85,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         .core()
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| (c.geo, c.mode.is_floating()))
     else {
         return;
@@ -99,7 +98,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         let selmon_id = ctx.core().model().selected_monitor_id();
         crate::layouts::arrange(ctx, Some(selmon_id));
         // Re-read geometry after the layout change.
-        let Some(new_geo) = ctx.core().model().clients.geo(win) else {
+        let Some(new_geo) = ctx.core().model().client(win).map(|client| client.geo) else {
             return;
         };
 
@@ -150,14 +149,9 @@ fn begin_wayland_super_resize(
     // of where the cursor started — but warping gives immediate visual feedback
     // and prevents the cursor sitting in the middle of the window while a corner
     // is moving.
-    let bw = wl
-        .core
-        .state()
-        .model
-        .clients
-        .get(&win)
-        .map(|c| c.border_width)
-        .unwrap_or(0);
+    let Some(bw) = wl.core.state().model.client(win).map(|c| c.border_width) else {
+        return;
+    };
     let (x_off, y_off) = dir.warp_offset(geo.w, geo.h, bw);
     let warp_x = geo.x + x_off;
     let warp_y = geo.y + y_off;
@@ -187,7 +181,7 @@ pub fn resize_mouse_directional(
         return;
     };
     let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) =
-        match ctx.core.model().clients.get(&win) {
+        match ctx.core.model().client(win) {
             Some(c) => (
                 c.mode.is_true_fullscreen(),
                 c.geo.x,
@@ -211,8 +205,12 @@ pub fn resize_mouse_directional(
         crate::layouts::sync_monitor_z_order(ctx, selmon_id);
     });
 
-    let start = ctx.x11.pointer_location().unwrap_or_default();
-    let geo = ctx.core.model().clients.geo(win).unwrap_or_default();
+    let Some(start) = ctx.x11.pointer_location() else {
+        return;
+    };
+    let Some(geo) = ctx.core.model().client(win).map(|client| client.geo) else {
+        return;
+    };
     ctx.core.drag_state_mut().interactive =
         crate::core_state::DragInteraction::new_resize(win, btn, dir, start, geo);
 
@@ -246,7 +244,7 @@ pub fn resize_mouse_directional(
 
                 let snap = ctx.core.config().window.snap_threshold;
 
-                let should_toggle = if let Some(client) = ctx.core.model().clients.get(&win) {
+                let should_toggle = if let Some(client) = ctx.core.model().client(win) {
                     let has_tiling = ctx.core.model().selected_monitor().is_tiling_layout();
 
                     !client.mode.is_floating()
@@ -260,7 +258,7 @@ pub fn resize_mouse_directional(
                 if should_toggle {
                     with_wm_ctx_x11(ctx, toggle_floating);
                 } else {
-                    let is_floating = match ctx.core.model().clients.get(&win) {
+                    let is_floating = match ctx.core.model().client(win) {
                         Some(c) => c.mode.is_floating(),
                         None => return false,
                     };
@@ -306,7 +304,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    let Some(geo) = ctx.core().model().clients.geo(win) else {
+    let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
         return;
     };
 
@@ -325,7 +323,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 }
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
-    let (is_fullscreen, orig_geo) = match ctx.core.model().clients.get(&win) {
+    let (is_fullscreen, orig_geo) = match ctx.core.model().client(win) {
         Some(c) => (c.mode.is_fullscreen(), c.geo),
         None => return,
     };
@@ -339,8 +337,12 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         crate::layouts::sync_monitor_z_order(&mut tmp, selmon_id);
     }
 
-    let start = ctx.x11.pointer_location().unwrap_or_default();
-    let geo = ctx.core.model().clients.geo(win).unwrap_or_default();
+    let Some(start) = ctx.x11.pointer_location() else {
+        return;
+    };
+    let Some(geo) = ctx.core.model().client(win).map(|client| client.geo) else {
+        return;
+    };
     ctx.core.drag_state_mut().interactive = crate::core_state::DragInteraction::new_resize(
         win,
         btn,
@@ -377,8 +379,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
                     .core
                     .state()
                     .model
-                    .clients
-                    .get(&win)
+                    .client(win)
                     .map(|c| (c.geo, c.size_hints, c.min_aspect, c.max_aspect))
                 {
                     let mut nw = raw_nw;

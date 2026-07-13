@@ -44,8 +44,7 @@ fn plan_send_to_monitor(
     )?;
 
     let strategy = if model
-        .clients
-        .get(&win)
+        .client(win)
         .is_some_and(|client| client.mode.is_floating())
     {
         SendToMonitorStrategy::FloatingProportional
@@ -83,39 +82,25 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 /// Move a floating client to `target_id`, preserving its relative position.
 fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
     // Snapshot source geometry before transfer_client() transfers ownership.
-    let (
+    let Some((
         client_x,
         client_y,
         src_monitor_x,
         src_monitor_y,
         src_work_area_width,
         src_work_area_height,
-    ) = {
-        let mon = ctx.core().model().selected_monitor();
-        let (monitor_x, monitor_y, work_area_width, work_area_height) = (
-            mon.monitor_rect.x,
-            mon.monitor_rect.y,
-            mon.work_rect.w,
-            mon.work_rect.h,
-        );
-
-        let (win_x, win_y) = ctx
-            .core()
-            .state()
-            .model
-            .clients
-            .get(&win)
-            .map(|c| (c.geo.x, c.geo.y))
-            .unwrap_or((0, 0));
-
+    )) = ctx.core().model().client_view(win).map(|view| {
         (
-            win_x,
-            win_y,
-            monitor_x,
-            monitor_y,
-            work_area_width,
-            work_area_height,
+            view.client.geo.x,
+            view.client.geo.y,
+            view.monitor.monitor_rect.x,
+            view.monitor.monitor_rect.y,
+            view.monitor.work_rect.w,
+            view.monitor.work_rect.h,
         )
+    })
+    else {
+        return;
     };
 
     // Fractional position on the source monitor (clamped to avoid division by
@@ -132,13 +117,8 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     };
 
     // Target monitor geometry.
-    let (tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height) = ctx
-        .core()
-        .state()
-        .model
-        .monitors
-        .get(target_id)
-        .map(|m| {
+    let Some((tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height)) =
+        ctx.core().model().monitor(target_id).map(|m| {
             (
                 m.monitor_rect.x,
                 m.monitor_rect.y,
@@ -146,7 +126,9 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
                 m.work_rect.h,
             )
         })
-        .unwrap_or((0, 0, 0, 0));
+    else {
+        return;
+    };
 
     // Transfer the client to the target monitor.
     {
@@ -154,7 +136,7 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     }
 
     // Apply proportional position on the new monitor.
-    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
         client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
     }

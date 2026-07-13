@@ -64,7 +64,7 @@ pub fn parse_slop_output(output: &str) -> Option<Rect> {
 /// * At least one dimension differs by more than 20 px from the current
 ///   geometry (prevents no-op resizes).
 pub fn is_valid_window_size(model: &crate::model::WmModel, rect: &Rect, c_win: WindowId) -> bool {
-    let Some(c) = model.clients.get(&c_win) else {
+    let Some(c) = model.client(c_win) else {
         return false;
     };
 
@@ -83,8 +83,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         .core()
         .state()
         .model
-        .clients
-        .get(&c_win)
+        .client(c_win)
         .map(|c| c.mode.is_floating())
         .unwrap_or(false);
 

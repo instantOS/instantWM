@@ -27,7 +27,7 @@ pub fn title_drag_begin(
     suppress_click_action: bool,
 ) -> bool {
     if btn == MouseButton::Right {
-        let is_true_fullscreen = match ctx.core().model().clients.get(&win) {
+        let is_true_fullscreen = match ctx.core().model().client(win) {
             Some(c) => c.mode.is_true_fullscreen(),
             None => return false,
         };
@@ -38,7 +38,7 @@ pub fn title_drag_begin(
     }
 
     let sel = ctx.core().model().selected_win();
-    let (win_start_geo, drop_restore_geo) = match ctx.core().model().clients.get(&win) {
+    let (win_start_geo, drop_restore_geo) = match ctx.core().model().client(win) {
         Some(c) => {
             let restore = c.restore_geo_for_float();
             (c.geo, restore)
@@ -50,7 +50,11 @@ pub fn title_drag_begin(
         win,
         button: btn,
         was_focused: sel == Some(win),
-        was_hidden: ctx.core_mut().model_mut().clients.is_hidden(win),
+        was_hidden: ctx
+            .core()
+            .model()
+            .client(win)
+            .is_some_and(|client| client.is_hidden),
         start_point: click_root,
         win_start_geo,
         drop_restore_geo,
@@ -72,14 +76,16 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
 
     if is_right_click {
         // Right-click: promote to floating, set up resize mode, warp cursor.
-        let (current_geo, _) = promote_to_floating(ctx, win, None);
+        let Some((current_geo, _)) = promote_to_floating(ctx, win, None) else {
+            return false;
+        };
 
         let hit_x = start_point.x - current_geo.x;
         let hit_y = start_point.y - current_geo.y;
         let dir =
             crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
 
-        let bw = match ctx.core().model().clients.get(&win) {
+        let bw = match ctx.core().model().client(win) {
             Some(c) => c.border_width,
             None => return true,
         };
@@ -104,7 +110,9 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
 
     // Left-click: promote to floating (centering under pointer if newly floated),
     // and keep title drag active so calloop drives it.
-    let (current_geo, anchor_rebased) = promote_to_floating(ctx, win, Some(root));
+    let Some((current_geo, anchor_rebased)) = promote_to_floating(ctx, win, Some(root)) else {
+        return false;
+    };
 
     if anchor_rebased {
         ctx.core_mut().drag_state_mut().interactive.win_start_geo = current_geo;
@@ -171,7 +179,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     ctx.core_mut().drag_state_mut().interactive.active = false;
 
     if is_right_click {
-        if let Some(c) = ctx.core().model().clients.get(&win) {
+        if let Some(c) = ctx.core().model().client(win) {
             let (x_off, y_off) =
                 ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
             ctx.pointer_backend()

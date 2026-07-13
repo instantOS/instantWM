@@ -315,7 +315,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::UpdateWindowSize { win, w, h } => {
                 let mut ctx = wm.ctx();
                 let g = ctx.core_mut().state_mut();
-                if let Some(client) = g.model.clients.get(&win)
+                if let Some(client) = g.model.client(win)
                     // Tiled, maximized, and fullscreen geometry is owned by
                     // the WM. In particular, a native Wayland client may
                     // commit a stale startup buffer after the layout has
@@ -358,7 +358,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 let _ = crate::floating::scratchpad_show_name(&mut ctx, &name);
             }
             WmCommand::SetWindowGeometry { win, rect } => {
-                if let Some(client) = wm.core.model.clients.get_mut(&win) {
+                if let Some(client) = wm.core.model.client_mut(win) {
                     client.geo = rect;
                     client.float_geo = rect;
                 }
@@ -477,11 +477,21 @@ fn handle_map_window(
             client.mode = crate::types::ClientMode::Floating;
         }
     } else {
-        client.monitor_id = g.selected_monitor_id();
-        client.set_tag_mask(crate::client::lifecycle::initial_tags_for_monitor(
-            &g.model,
-            client.monitor_id,
-        ));
+        let Some(selected_monitor) = g.model.selected_monitor_opt() else {
+            return;
+        };
+        client.monitor_id = selected_monitor.id();
+        client.set_tag_mask(selected_monitor.selected_tags());
+    }
+
+    // Pending launch contexts can outlive an output. Normalize that stale
+    // relationship once, before any geometry or visibility policy uses it.
+    if g.monitor(client.monitor_id).is_none() {
+        let Some(selected_monitor) = g.model.selected_monitor_opt() else {
+            return;
+        };
+        client.monitor_id = selected_monitor.id();
+        client.set_tag_mask(selected_monitor.selected_tags());
     }
 
     if let Some(hints) = x11_hints {
@@ -495,10 +505,9 @@ fn handle_map_window(
         client.geo = geo;
         client.float_geo = geo;
     } else {
-        let monitor_rect = g
-            .monitor(client.monitor_id)
-            .map(|m| m.work_rect)
-            .unwrap_or_default();
+        let Some(monitor_rect) = g.monitor(client.monitor_id).map(|m| m.work_rect) else {
+            return;
+        };
         client.geo = crate::types::Rect::new(
             monitor_rect.x,
             monitor_rect.y,
@@ -523,7 +532,7 @@ fn handle_map_window(
     });
 
     if should_float {
-        if let Some(c) = g.model.clients.get_mut(&win)
+        if let Some(c) = g.model.client_mut(win)
             && !c.mode.is_floating()
         {
             c.float_geo = c.geo;
@@ -536,7 +545,11 @@ fn handle_map_window(
         state.apply_floating_policy(&toplevel.clone());
     }
 
-    let requested_geo = g.model.clients.get(&win).unwrap().geo;
+    let requested_geo = g
+        .model
+        .client(win)
+        .expect("client was inserted immediately above")
+        .geo;
     crate::client::resolve_and_sync_floating_geometry(
         &mut g.model,
         win,
@@ -565,9 +578,8 @@ fn handle_map_window(
 
     let should_focus = g
         .model
-        .clients
-        .get(&win)
-        .is_some_and(|c| c.is_visible(g.monitor(c.monitor_id).unwrap().selected_tags()));
+        .client_view(win)
+        .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
     ctx.core_mut().queue_layout_for_client(win);
 
     if should_focus {
@@ -589,19 +601,13 @@ fn handle_activate_window(wm: &mut Wm, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
     let is_currently_visible = ctx
         .core()
-        .state()
-        .model
-        .clients
-        .get(&win)
-        .and_then(|c| {
-            c.monitor(ctx.core().model())
-                .map(|m| c.is_visible(m.selected_tags()))
-        })
-        .unwrap_or(false);
+        .model()
+        .client_view(win)
+        .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
 
     if is_currently_visible {
         crate::focus::activate_client(&mut ctx, win);
-    } else if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    } else if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.is_urgent = true;
     }
 }
@@ -639,14 +645,14 @@ fn handle_update_xwayland_policy(
 ) {
     let mut ctx = wm.ctx();
     let g = ctx.core_mut().state_mut();
-    if let Some(client) = g.model.clients.get_mut(&win) {
+    if let Some(client) = g.model.client_mut(win) {
         crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
         crate::backend::x11::policy::apply_size_hints_to_client(client, size_hints);
     }
 
     crate::client::mode::set_fullscreen(&mut g.model, win, is_fullscreen);
 
-    let layout_changed = if let Some(client) = g.model.clients.get_mut(&win) {
+    let layout_changed = if let Some(client) = g.model.client_mut(win) {
         client.is_hidden = is_hidden;
 
         if is_above && !client.mode.is_floating() {
@@ -669,12 +675,9 @@ fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: boo
     if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
         let work_rect = ctx_wayland
             .core
-            .state()
-            .model
-            .clients
-            .monitor_id(win)
-            .and_then(|mid| ctx_wayland.core.model().monitor(mid))
-            .map(|mon| mon.work_rect);
+            .model()
+            .client_view(win)
+            .map(|view| view.monitor.work_rect);
         let outcome =
             crate::client::mode::set_maximized(ctx_wayland.core.model_mut(), win, maximized);
         if maximized {
@@ -686,7 +689,7 @@ fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: boo
                 );
             }
         } else if let (Some(crate::client::mode::MaximizedOutcome::Exited { .. }), Some(client)) =
-            (outcome, ctx_wayland.core.model().clients.get(&win))
+            (outcome, ctx_wayland.core.model().client(win))
         {
             let restore_rect = client.float_geo;
             crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(

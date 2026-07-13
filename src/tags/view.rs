@@ -121,7 +121,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
         let clients = ctx.core().model().selected_monitor().clients.clone();
 
         for &win in &clients {
-            if let Some(c) = ctx.core().model().clients.get(&win)
+            if let Some(c) = ctx.core().model().client(win)
                 && c.tags.intersects(next_mask)
             {
                 found = true;
@@ -163,13 +163,9 @@ pub fn win_view(ctx: &mut WmCtx) {
         return;
     };
 
-    let tag_mask = ctx
-        .core()
-        .state()
-        .model
-        .clients
-        .tag_mask(win)
-        .unwrap_or(TagMask::single(1).unwrap_or(TagMask::EMPTY));
+    let Some(tag_mask) = ctx.core().model().client(win).map(|client| client.tags) else {
+        return;
+    };
 
     if tag_mask.is_scratchpad_only() {
         let current_tag = ctx.core().model().selected_monitor().current_tag_number();
@@ -205,7 +201,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
         result
     };
     for win in clients_to_swap {
-        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             let ctags = client.tags;
             let new_tags = ctags ^ current_tagset ^ newtag;
             client.set_tag_mask(if new_tags.is_empty() {
@@ -229,15 +225,17 @@ pub fn follow_view(ctx: &mut WmCtx) {
     let selected_window = ctx.core().model().selected_win();
     let Some(win) = selected_window else { return };
 
-    let prev_tag = ctx.core().model().selected_monitor().prev_tag;
-
-    if prev_tag.is_none() {
+    let Some(target_mask) = ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .prev_tag
+        .and_then(TagMask::single)
+    else {
         return;
-    }
+    };
 
-    let target_mask = prev_tag.and_then(TagMask::single).unwrap_or(TagMask::EMPTY);
-
-    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.set_tag_mask(target_mask);
     }
 

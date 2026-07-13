@@ -542,8 +542,7 @@ fn update_hover_resize_state(
         .and_then(|win| {
             wm.core
                 .model
-                .clients
-                .get(&win)
+                .client(win)
                 .map(|c| (win, c.mode.is_floating()))
         })
         .is_some_and(|(_, is_floating)| is_floating);

@@ -12,8 +12,7 @@ pub fn apply_icccm_size_hints(
     geo: &mut Rect,
 ) {
     let needs_update = model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| !c.size_hints_dirty)
         .unwrap_or(false);
 
@@ -21,7 +20,7 @@ pub fn apply_icccm_size_hints(
         crate::backend::x11::client::update_size_hints(model, x11, win);
     }
 
-    let client = match model.clients.get(&win) {
+    let client = match model.client(win) {
         Some(c) => c,
         None => return,
     };

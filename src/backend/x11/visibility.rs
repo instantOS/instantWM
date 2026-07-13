@@ -104,7 +104,7 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
 // ---------------------------------------------------------------------------
 
 pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.model().clients.get(&win) {
+    let Rect { x, y, w, h } = match ctx.core.model().client(win) {
         Some(c) => c.geo,
         None => return,
     };

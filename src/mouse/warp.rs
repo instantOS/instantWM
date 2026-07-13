@@ -30,7 +30,7 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let Some(c) = ctx.core().model().clients.get(&win).cloned() else {
+    let Some(c) = ctx.core().model().client(win).cloned() else {
         return;
     };
 

@@ -44,7 +44,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let target_tags = ctx.core().model().selected_monitor().current_tag_number();
 
     // Get mutable borrow for reset_sticky, then drop it
-    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.reset_sticky(target_tags);
     }
 
@@ -53,7 +53,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     }
 
     // Re-borrow for tag mask update
-    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         match dir {
             Direction::Left if current_tag > 1 => {
                 client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() >> offset));
@@ -77,14 +77,9 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     ctx.window_backend().raise_window_visual_only(win);
     let mon_w = ctx.core().model().selected_monitor().monitor_rect.w;
-    let geo = ctx
-        .core()
-        .state()
-        .model
-        .clients
-        .get(&win)
-        .map(|c| c.geo)
-        .unwrap_or_default();
+    let Some(geo) = ctx.core().state().model.client(win).map(|c| c.geo) else {
+        return;
+    };
 
     let anim_dx = (mon_w / 10)
         * match dir {

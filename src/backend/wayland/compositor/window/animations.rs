@@ -92,7 +92,7 @@ impl WaylandState {
         };
         let Some(border_width) = self
             .globals()
-            .and_then(|g| g.model.clients.get(&window_id).map(|c| c.border_width))
+            .and_then(|g| g.model.client(window_id).map(|c| c.border_width))
         else {
             return;
         };
@@ -275,10 +275,12 @@ impl WaylandState {
         let Some(anim) = self.window_animations.get(&win) else {
             return false;
         };
-        let border_width = self
+        let Some(border_width) = self
             .globals()
-            .and_then(|g| g.model.clients.get(&win).map(|c| c.border_width))
-            .unwrap_or(0);
+            .and_then(|g| g.model.client(win).map(|c| c.border_width))
+        else {
+            return false;
+        };
         let inner_target = Rect {
             x: outer_target.x + border_width,
             y: outer_target.y + border_width,

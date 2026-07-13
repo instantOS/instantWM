@@ -41,12 +41,15 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
         }
         (gesture.monitor_id, gesture.last_y)
     };
-    let threshold = ctx
+    let Some(threshold) = ctx
         .core()
-        .state()
+        .model()
         .monitor(monitor_id)
         .map(|mon| (mon.monitor_rect.h / 30).max(1))
-        .unwrap_or(1);
+    else {
+        ctx.core_mut().drag_state_mut().gesture.active = false;
+        return;
+    };
 
     if (last_y - root_y).abs() <= threshold {
         return;

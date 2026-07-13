@@ -14,7 +14,11 @@ use crate::focus::focus;
 fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
     ctx.core_mut().model_mut().detach(win);
     ctx.core_mut().model_mut().attach(win);
-    let monitor_id = ctx.core().model().clients.monitor_id(win);
+    let monitor_id = ctx
+        .core()
+        .model()
+        .client(win)
+        .map(|client| client.monitor_id);
     focus(ctx, Some(win));
 
     if let Some(mid) = monitor_id {
@@ -55,23 +59,16 @@ pub fn zoom(ctx: &mut WmCtx) {
     ctx.window_backend().raise_window_visual_only(win);
     ctx.window_backend().flush();
 
-    let (is_tiling_mode, monitor_id) = ctx
-        .core()
-        .state()
-        .model
-        .clients
-        .get(&win)
-        .map(|c| (c.mode.is_tiling(), c.monitor_id))
-        .unwrap_or((false, crate::types::MonitorId::default()));
-
-    let Some(mon) = ctx.core().model().monitor(monitor_id) else {
+    let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
 
     // Only meaningful in a tiling layout with a non-floating window.
-    if !mon.is_tiling_layout() || !is_tiling_mode {
+    if !view.monitor.is_tiling_layout() || !view.client.mode.is_tiling() {
         return;
     }
+
+    let mon = view.monitor;
 
     // Find the current master (first tiled client on the monitor).
     let first_on_monitor = mon.clients.first().copied();

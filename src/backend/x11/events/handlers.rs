@@ -77,7 +77,12 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
-            if let Some(monitor_id) = ctx.core.model().clients.monitor_id(event_win) {
+            if let Some(monitor_id) = ctx
+                .core
+                .model()
+                .client(event_win)
+                .map(|client| client.monitor_id)
+            {
                 crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
             }
         }
@@ -279,7 +284,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let selected_window = selected_monitor.selected;
     let is_floating_sel = {
         let is_floating = selected_window
-            .and_then(|w| ctx.core.model().clients.get(&w))
+            .and_then(|w| ctx.core.model().client(w))
             .map(|c| c.mode.is_floating())
             .unwrap_or(false);
         let has_tiling = selected_monitor.is_tiling_layout();
@@ -516,7 +521,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     if ctx.core.model().clients.contains_key(&event_win) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
-                if let Some(c) = ctx.core.model_mut().clients.get_mut(&event_win) {
+                if let Some(c) = ctx.core.model_mut().client_mut(event_win) {
                     c.size_hints_dirty = false;
                 }
             }
@@ -739,8 +744,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let is_mapped = ctx
         .core
         .model()
-        .clients
-        .get(&icon_win)
+        .client(icon_win)
         .map(|c| !c.tags.is_empty())
         .unwrap_or(false);
     if is_mapped {
@@ -762,8 +766,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
         .core
         .g
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| c.mode.is_fullscreen())
         .unwrap_or(false);
 
@@ -794,7 +797,7 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     let desktop = e.data.as_data32()[0];
 
     if desktop == u32::MAX {
-        if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core.model_mut().client_mut(win) {
             client.is_sticky = true;
         }
         crate::backend::x11::set_client_tag_prop(ctx.core.g, &ctx.x11, ctx.x11_runtime, win);
@@ -811,12 +814,12 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
         return;
     };
 
-    let old_mon = ctx.core.model().clients.monitor_id(win);
+    let old_mon = ctx.core.model().client(win).map(|client| client.monitor_id);
     {
         let globals = &mut ctx.core.g;
         globals.detach(win);
         globals.detach_z_order(win);
-        if let Some(client) = globals.model.clients.get_mut(&win) {
+        if let Some(client) = globals.model.client_mut(win) {
             client.monitor_id = target_mon;
             client.is_sticky = false;
             client.clear_sticky_if_scratchpad();
@@ -839,12 +842,16 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
 }
 
 fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let is_hidden = ctx.core.model().clients.is_hidden(win);
+    let is_hidden = ctx
+        .core
+        .model()
+        .client(win)
+        .is_some_and(|client| client.is_hidden);
     if is_hidden {
         crate::client::show_window(&mut WmCtx::X11(ctx.reborrow()), win);
     };
 
-    if let Some(c) = ctx.core.model().clients.get(&win) {
+    if let Some(c) = ctx.core.model().client(win) {
         let monitor_id = c.monitor_id;
         crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
         crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(win));

@@ -23,7 +23,7 @@ pub fn get_systray_width(globals: &crate::core_state::CoreState, systray: Option
     let mut w: u32 = 0;
     if let Some(systray) = systray {
         for &icon_win in &systray.icons {
-            if let Some(c) = globals.model.clients.get(&icon_win) {
+            if let Some(c) = globals.model.client(icon_win) {
                 if !c.tags.is_empty() {
                     w += c.geo.w as u32 + globals.config.systray.spacing as u32;
                 }
@@ -65,12 +65,13 @@ pub fn update_systray_icon_geom(
 ) {
     let bar_height = globals.config.derived.bar_height;
 
-    let (geo_x, geo_y) = globals
+    let Some((geo_x, geo_y)) = globals
         .model
-        .clients
-        .get(&icon_win)
+        .client(icon_win)
         .map(|client| (client.geo.x, client.geo.y))
-        .unwrap_or((0, 0));
+    else {
+        return;
+    };
 
     let new_geo_h = bar_height;
     let new_geo_w = if w == h {
@@ -100,7 +101,7 @@ pub fn update_systray_icon_geom(
     }
 
     // Now update the client with the computed values
-    if let Some(client) = globals.model.clients.get_mut(&icon_win) {
+    if let Some(client) = globals.model.client_mut(icon_win) {
         client.geo.x = rect.x;
         client.geo.y = rect.y;
         client.geo.w = rect.w;
@@ -147,7 +148,7 @@ pub fn update_systray_icon_state(
     }
 
     let (current_tags, _has_systray) = {
-        if let Some(client) = core.model_mut().clients.get_mut(&icon_win) {
+        if let Some(client) = core.model_mut().client_mut(icon_win) {
             (client.tags, systray.is_some())
         } else {
             return;
@@ -155,7 +156,7 @@ pub fn update_systray_icon_state(
     };
 
     if (flags & XEMBED_MAPPED) != 0 && current_tags.is_empty() {
-        if let Some(client) = core.model_mut().clients.get_mut(&icon_win) {
+        if let Some(client) = core.model_mut().client_mut(icon_win) {
             client.tags = crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY);
         }
 
@@ -179,7 +180,7 @@ pub fn update_systray_icon_state(
         );
         set_client_state(x11, x11_runtime, icon_win, 1);
     } else if (flags & XEMBED_MAPPED) == 0 && !current_tags.is_empty() {
-        if let Some(client) = core.model_mut().clients.get_mut(&icon_win) {
+        if let Some(client) = core.model_mut().client_mut(icon_win) {
             client.tags = crate::types::TagMask::EMPTY;
         }
 

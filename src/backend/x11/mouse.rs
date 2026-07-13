@@ -54,9 +54,11 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
 
     // Use override from title drag if available (preserves pre-drag floating dimensions),
     // otherwise get the current client geometry.
-    let grab_start_rect = float_restore_geo
-        .or_else(|| ctx.core.model().clients.geo(win))
-        .unwrap_or_default();
+    let Some(grab_start_rect) =
+        float_restore_geo.or_else(|| ctx.core.model().client(win).map(|client| client.geo))
+    else {
+        return;
+    };
 
     let mut state = MoveState {
         start_point: start,

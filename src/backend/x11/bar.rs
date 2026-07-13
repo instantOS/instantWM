@@ -82,11 +82,9 @@ pub fn draw_bars(
             .collect();
 
     for i in monitor_ids {
-        let bar_win = core
-            .state()
-            .monitor(i)
-            .map(|m| m.bar_win)
-            .unwrap_or_default();
+        let Some(bar_win) = core.model().monitor(i).map(|monitor| monitor.bar_win) else {
+            continue;
+        };
         if bar_win == WindowId::default() {
             continue;
         }

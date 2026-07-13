@@ -195,14 +195,15 @@ impl MonitorManager {
         }
 
         if let Some(c) = clients.get(&w) {
-            return Some(c.monitor_id);
+            return self.contains(c.monitor_id).then_some(c.monitor_id);
         }
 
         None
     }
 
     pub fn find_id_by_rect(&self, rect: &Rect) -> Option<MonitorId> {
-        crate::types::find_monitor_by_rect(self.iter(), rect).or(Some(self.selected))
+        crate::types::find_monitor_by_rect(self.iter(), rect)
+            .or_else(|| self.selected_monitor().map(Monitor::id))
     }
 
     pub fn find_monitor_at_pointer(&self, ptr: Point) -> Option<MonitorId> {
@@ -221,14 +222,19 @@ impl MonitorManager {
 // -----------------------------------------------------------------------------
 
 pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    let current_mon = ctx.core().model().clients.get(&win).map(|c| c.monitor_id);
-    if current_mon == Some(target_mon) {
+    let Some(current_mon) = ctx
+        .core()
+        .model()
+        .client_view(win)
+        .map(|view| view.monitor.id())
+    else {
+        return;
+    };
+    if current_mon == target_mon || ctx.core().model().monitor(target_mon).is_none() {
         return;
     }
 
-    if ctx.core_mut().model_mut().clients.contains_key(&win) {
-        unfocus_win(ctx, win, true);
-    }
+    unfocus_win(ctx, win, true);
 
     let Some(outcome) = ctx
         .core_mut()
@@ -247,11 +253,7 @@ pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
     // not arrange (`move_client_to_monitor` sets `needs_arrange = false`), so
     // this unconditional refresh is what actually updates the bar/geometry for
     // moved floating clients; callers must not assume the queue below covers it.
-    if let Some(src) = current_mon
-        && src != target_mon
-    {
-        ctx.core_mut().queue_layout_for_monitor_urgent(src);
-    }
+    ctx.core_mut().queue_layout_for_monitor_urgent(current_mon);
     ctx.core_mut().queue_layout_for_monitor_urgent(target_mon);
 
     if outcome.needs_arrange {
@@ -336,7 +338,12 @@ pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) 
 
     crate::tags::send_to_monitor(ctx, direction);
 
-    if let Some(monitor_id) = ctx.core().model().clients.monitor_id(c_win) {
+    if let Some(monitor_id) = ctx
+        .core()
+        .model()
+        .client(c_win)
+        .map(|client| client.monitor_id)
+    {
         ctx.core_mut()
             .state_mut()
             .model
@@ -520,7 +527,7 @@ fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorI
     for win in stale_wins {
         model.detach(win);
         model.detach_z_order(win);
-        if let Some(client) = model.clients.get_mut(&win) {
+        if let Some(client) = model.client_mut(win) {
             client.monitor_id = survivor;
         }
         model.attach(win);
@@ -635,7 +642,7 @@ fn scaled_monitor_ui_metrics(config: &RuntimeConfig, scale: f64) -> (i32, i32, i
 // -----------------------------------------------------------------------------
 
 fn handle_scratchpad_transfer(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    let Some(client) = ctx.core().model().clients.get(&win) else {
+    let Some(client) = ctx.core().model().client(win) else {
         return;
     };
     if !client.is_scratchpad() || client.is_sticky {

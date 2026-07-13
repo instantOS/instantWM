@@ -25,8 +25,7 @@ fn is_focusable_on_monitor(
     win: WindowId,
 ) -> bool {
     model
-        .clients
-        .get(&win)
+        .client(win)
         .is_some_and(|c| c.monitor_id == sel_mon_id && c.is_visible(selected))
 }
 
@@ -74,7 +73,7 @@ fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<
     } = result;
 
     let target_is_tiled = target
-        .and_then(|win| model.clients.get(&win))
+        .and_then(|win| model.client(win))
         .is_some_and(|client| !client.mode.is_floating());
 
     if let Some(mon) = model.monitor_mut(sel_mon_id) {
@@ -116,11 +115,10 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
     fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId) {
         let is_urgent = ctx
             .model()
-            .clients
-            .get(&win)
+            .client(win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
-        if is_urgent && let Some(c) = ctx.model_mut().clients.get_mut(&win) {
+        if is_urgent && let Some(c) = ctx.model_mut().client_mut(win) {
             c.clear_urgency();
         }
         self.wayland.set_focus(win);
@@ -292,7 +290,11 @@ pub fn hover_focus_target(
     }
 
     if let Some(win) = hovered_win
-        && let Some(mid) = ctx.core().model().clients.monitor_id(win)
+        && let Some(mid) = ctx
+            .core()
+            .model()
+            .client(win)
+            .map(|client| client.monitor_id)
         && select_monitor(ctx, mid)
     {
         // After switching monitors, continue with the hovered window so both
@@ -335,8 +337,7 @@ fn should_hover_focus(
     }
     // Respect the "don't focus floating windows on hover" setting.
     let hovered_is_floating = model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|c| c.mode.is_floating())
         .unwrap_or(false);
     let has_tiling = model.selected_monitor().is_tiling_layout();
@@ -365,7 +366,12 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
 }
 
 pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
-    let Some(monitor_id) = ctx.core().model().clients.monitor_id(win) else {
+    let Some(monitor_id) = ctx
+        .core()
+        .model()
+        .client(win)
+        .map(|client| client.monitor_id)
+    else {
         return false;
     };
     select_monitor(ctx, monitor_id)
@@ -381,8 +387,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
         .core()
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map(|client| (client.monitor_id, client.tags))
     else {
         return false;
@@ -500,7 +505,7 @@ fn get_direction_focus_candidate(
     }
     let mon = model.selected_monitor();
     let source_win = mon.selected?;
-    let source_client = model.clients.get(&source_win)?;
+    let source_client = model.client(source_win)?;
     let source_center = source_client.geo.center();
 
     let selected = mon.selected_tags();
@@ -522,7 +527,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
     let last_win = last_client_win;
 
-    let last_client = match ctx.core().model().clients.get(&last_win) {
+    let last_client = match ctx.core().model().client(last_win) {
         Some(c) => c.clone(),
         None => return,
     };

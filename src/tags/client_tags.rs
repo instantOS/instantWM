@@ -11,7 +11,7 @@ pub fn set_client_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         return;
     }
 
-    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.clear_sticky_if_scratchpad();
         client.set_tag_mask(effective_mask);
     } else {
@@ -47,7 +47,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         .collect();
 
     for win in clients_on_tag {
-        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             client.clear_sticky_if_scratchpad();
             client.set_tag_mask(effective_mask);
         }
@@ -68,8 +68,7 @@ pub fn toggle_tag(ctx: &mut WmCtx, win: WindowId, mask: TagMask) {
         .core()
         .state()
         .model
-        .clients
-        .get(&win)
+        .client(win)
         .map_or(TagMask::EMPTY, |c| c.tags);
     if current_tags.is_scratchpad_only() {
         set_client_tag(ctx, win, mask);
