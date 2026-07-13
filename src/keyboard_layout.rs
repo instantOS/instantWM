@@ -7,6 +7,7 @@
 
 use crate::contexts::WmCtx;
 use crate::core_state::KeyboardLayout;
+use crate::types::input::StackDirection;
 use std::process::Command;
 
 /// Apply the keyboard layout at the given index using `setxkbmap`.
@@ -94,16 +95,16 @@ pub fn set_keyboard_layout_by_name(ctx: &mut WmCtx, name: &str) -> bool {
     }
 }
 
-/// Cycle to the next keyboard layout.
+/// Cycle to the next or previous keyboard layout.
 /// Returns the status string of the new layout, or an empty string if no layouts are configured.
-pub fn cycle_keyboard_layout(ctx: &mut WmCtx, forward: bool) -> String {
+pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> String {
     let state = &ctx.core().keyboard_layout();
     if state.is_empty() {
         return String::new();
     }
     let len = state.len();
     let current = state.current;
-    let next = if forward {
+    let next = if direction.is_forward() {
         (current + 1) % len
     } else if current == 0 {
         len - 1
