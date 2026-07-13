@@ -112,7 +112,7 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
         current - 1
     };
     set_keyboard_layout(ctx, next);
-    keyboard_layout_status(&ctx.core().keyboard_layout())
+    keyboard_layout_status(ctx.core().keyboard_layout())
 }
 
 /// Get the current keyboard layout status as a formatted string.

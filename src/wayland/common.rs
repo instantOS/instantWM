@@ -10,9 +10,8 @@
 //! - Session environment variables (`apply_session_env`)
 //! - Wayland listening socket setup (`setup_socket`)
 //! - XWayland spawn + wiring (`spawn_xwayland`)
-//! - Bar render-element building (`build_bar_elements`)
+//! - Bar buffer and shared scene-element building
 //! - Frame callback dispatch (`send_frame_callbacks`)
-//! - Render backend trait (`RenderBackend`) for abstracting buffer/cursor operations
 //! - Layer shell element counting (`count_upper_layer_render_elements`)
 
 use std::env;
@@ -539,30 +538,6 @@ pub fn build_bar_buffers(
             data.wayland_systray_menu.as_ref(),
         )
     }
-}
-
-pub fn build_bar_elements(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    renderer: &mut GlesRenderer,
-) -> Vec<MemoryRenderBufferRenderElement<GlesRenderer>> {
-    let bar_buffers = build_bar_buffers(wm, state);
-    let mut elements = Vec::new();
-    for (buffer, x, y) in bar_buffers {
-        match MemoryRenderBufferRenderElement::from_buffer(
-            renderer,
-            (x as f64, y as f64),
-            &buffer,
-            None,
-            None,
-            None,
-            Kind::Unspecified,
-        ) {
-            Ok(elem) => elements.push(elem),
-            Err(e) => log::warn!("bar buffer upload failed: {:?}", e),
-        }
-    }
-    elements
 }
 
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.

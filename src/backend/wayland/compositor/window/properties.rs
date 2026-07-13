@@ -109,42 +109,6 @@ impl WaylandState {
         }
     }
 
-    /// Ensure a client exists for the given window.
-    pub(crate) fn ensure_client_for_window(&mut self, window: WindowId) {
-        if self
-            .globals()
-            .is_some_and(|g| g.model.clients.contains_key(&window))
-        {
-            return;
-        }
-
-        let properties = self.window_properties(window);
-        let element = self.find_window(window);
-
-        let x11_info = element
-            .as_ref()
-            .and_then(|e| e.x11_surface())
-            .map(|x11| (x11.pid(), x11.startup_id()));
-
-        let initial_geo = element
-            .map(|e| e.geometry())
-            .filter(|geo| geo.size.w > 0 && geo.size.h > 0)
-            .map(|geo| crate::types::Rect::new(geo.loc.x, geo.loc.y, geo.size.w, geo.size.h));
-
-        self.push_command(crate::backend::wayland::commands::WmCommand::MapWindow(
-            crate::backend::wayland::commands::MapWindowParams {
-                win: window,
-                properties,
-                initial_geo,
-                launch_pid: x11_info.as_ref().and_then(|i| i.0),
-                launch_startup_id: x11_info.and_then(|i| i.1),
-                x11_hints: None,
-                x11_size_hints: None,
-                parent: None,
-            },
-        ));
-    }
-
     /// Get the window ID for a toplevel surface.
     pub(crate) fn window_id_for_toplevel(&self, surface: &ToplevelSurface) -> Option<WindowId> {
         let wl_surface = surface.wl_surface();

@@ -7,9 +7,8 @@ use std::thread;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::{OwnedValue, Value};
 
-use crate::contexts::CoreCtx;
 use crate::types::{
-    Monitor, MouseButton, Point, Rect, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
+    Monitor, MouseButton, Point, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
     WaylandSystrayMenuItem,
 };
 
@@ -293,8 +292,7 @@ pub fn hit_test_menu_item(
     mon: &Monitor,
     local_x: i32,
 ) -> Option<usize> {
-    let layout = systray_layout(spacing, wayland_systray, wayland_systray_menu, mon);
-    for slot in &layout.menu_slots {
+    for slot in menu_hit_slots(spacing, wayland_systray, wayland_systray_menu, mon) {
         if local_x >= slot.start && local_x < slot.end {
             return Some(slot.idx);
         }
@@ -592,12 +590,12 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
     Some((id.to_string(), "/StatusNotifierItem".to_string()))
 }
 
-fn systray_layout(
+fn menu_hit_slots(
     spacing: i32,
     wayland_systray: &WaylandSystray,
     wayland_systray_menu: Option<&WaylandSystrayMenu>,
     mon: &Monitor,
-) -> SystrayLayout {
+) -> Vec<HitSlot> {
     let icon_h = mon.bar_height.max(1);
     let spacing = spacing.max(0);
     let mut tray_total_w = 0;
@@ -609,98 +607,35 @@ fn systray_layout(
     }
     let tray_start_x = mon.work_rect.w - tray_total_w;
 
-    let mut tray_slots = Vec::new();
-    let mut x = tray_start_x + spacing;
-    for (idx, item) in wayland_systray.items.iter().enumerate() {
-        let w = scale_icon_width(item.icon_w, item.icon_h, icon_h);
-        if w > 0 && item.icon_w > 0 && item.icon_h > 0 {
-            tray_slots.push(HitSlot {
+    let Some(menu) = wayland_systray_menu else {
+        return Vec::new();
+    };
+    let menu_total_w = menu
+        .items
+        .iter()
+        .map(|item| item.width.max(24))
+        .sum::<i32>();
+    let mut x = (tray_start_x - menu_total_w).max(0);
+    menu.items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| {
+            let width = item.width.max(24);
+            let slot = HitSlot {
                 idx,
                 start: x,
-                end: x + w,
-            });
-        }
-        x += w + spacing;
-    }
-
-    let mut menu_total_w = 0;
-    let mut menu_slots = Vec::new();
-    let mut menu_start_x = 0;
-    if let Some(menu) = wayland_systray_menu {
-        for item in &menu.items {
-            menu_total_w += item.width.max(24);
-        }
-        menu_start_x = (tray_start_x - menu_total_w).max(0);
-        let mut mx = menu_start_x;
-        for (idx, item) in menu.items.iter().enumerate() {
-            let w = item.width.max(24);
-            menu_slots.push(HitSlot {
-                idx,
-                start: mx,
-                end: mx + w,
-            });
-            mx += w;
-        }
-    }
-
-    SystrayLayout {
-        tray_total_w,
-        tray_start_x,
-        tray_slots,
-        menu_total_w,
-        menu_start_x,
-        menu_slots,
-    }
-}
-
-fn draw_menu_overlay(
-    core: &CoreCtx,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-    menu: &WaylandSystrayMenu,
-    layout: &SystrayLayout,
-) {
-    if layout.menu_slots.is_empty() {
-        return;
-    }
-    let mut scheme = core.status_scheme();
-    painter.set_scheme(scheme.clone());
-    let item_h = core.model().selected_monitor().bar_height.max(1);
-    for (row, item) in menu.items.iter().enumerate() {
-        let Some(slot) = layout.menu_slots.get(row) else {
-            continue;
-        };
-        let x = slot.start;
-        let w = slot.end - slot.start;
-        let y = 0;
-        if item.separator {
-            painter.rect(Rect::new(x + 3, y + item_h / 2, w - 6, 1), true, false);
-            continue;
-        }
-        if !item.enabled {
-            scheme.fg[3] = 0.6;
-            painter.set_scheme(scheme.clone());
-        }
-        painter.text(Rect::new(x, y, w, item_h), 8, &item.label, false, 0);
-        if !item.enabled {
-            scheme.fg[3] = 1.0;
-            painter.set_scheme(scheme.clone());
-        }
-    }
+                end: x + width,
+            };
+            x += width;
+            slot
+        })
+        .collect()
 }
 
 struct HitSlot {
     idx: usize,
     start: i32,
     end: i32,
-}
-
-struct SystrayLayout {
-    tray_total_w: i32,
-    tray_start_x: i32,
-    tray_slots: Vec<HitSlot>,
-    menu_total_w: i32,
-    menu_start_x: i32,
-    menu_slots: Vec<HitSlot>,
 }
 
 fn open_menu_from_item(

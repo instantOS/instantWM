@@ -112,17 +112,14 @@ pub fn run() -> ! {
             }
 
             // ── 2. Shared tick: layout, IPC, monitor config ─────────────
-            super::common::event_loop_tick(&mut wm, state, &mut ipc_server);
+            super::common::event_loop_tick_and_request_render(&mut wm, state, &mut ipc_server);
 
             // Winit has no libinput devices to reconfigure, but clear the
             // pending bit so it doesn't remain queued forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
             wm.work.input_config = false;
 
-            let animation_tick = super::common::process_window_animations(state);
-            if animation_tick.needs_redraw() {
-                state.request_render();
-            }
+            super::common::process_window_animations_and_request_render(state);
 
             // The async bar renderer wakes us with a bare render ping after a
             // result is ready.  While the bar is dirty, consume that wakeup by
@@ -144,10 +141,10 @@ pub fn run() -> ! {
 
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
-            if let Some(keyboard_handle) = state.seat.get_keyboard() {
-                if apply_pending_warp(&mut wm, state, &pointer_handle, &keyboard_handle) {
-                    state.request_render();
-                }
+            if let Some(keyboard_handle) = state.seat.get_keyboard()
+                && apply_pending_warp(&mut wm, state, &pointer_handle, &keyboard_handle)
+            {
+                state.request_render();
             }
 
             let render_requested = match state.take_render_targets() {

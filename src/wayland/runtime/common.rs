@@ -4,7 +4,7 @@
 //! [`attach_backend_state`], [`attach_gles_renderer_and_protocols`], and the socket /
 //! autostart helpers. DRM inserts session/GPU/libinput between socket setup and autostart.
 //!
-//! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
+//! Per-tick logic lives here as well so DRM and winit share scheduling policy.
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -183,24 +183,27 @@ pub fn autostart_ipc_status_ping(
     ipc_server
 }
 
-/// Run the shared Wayland per-tick housekeeping and return detailed outcome.
-pub fn event_loop_tick(
+/// Run the shared Wayland tick and convert model changes into one compositor
+/// redraw request. DRM and winit then consume that request using their own
+/// output submission machinery.
+pub(crate) fn event_loop_tick_and_request_render(
     wm: &mut Wm,
     state: &mut WaylandState,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
-) -> crate::runtime::TickResult {
+) {
     drain_command_queue(wm, state);
-
     crate::backend::wayland::compositor::protocols::ext_workspace::refresh(state);
-
-    crate::runtime::event_loop_tick_with_options(
+    let tick = crate::runtime::event_loop_tick_with_options(
         wm,
         ipc_server,
         crate::runtime::TickOptions {
             defer_layout_while_animations_active: true,
             animations_active: state.has_active_window_animations(),
         },
-    )
+    );
+    if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
+        state.request_render();
+    }
 }
 
 fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
@@ -695,23 +698,9 @@ fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: boo
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[must_use]
-pub enum AnimationTick {
-    Idle,
-    SpaceSynced,
-    AnimationAdvanced,
-    SpaceSyncedAndAnimationAdvanced,
-}
-
-impl AnimationTick {
-    pub fn needs_redraw(self) -> bool {
-        !matches!(self, AnimationTick::Idle)
-    }
-}
-
-/// Run compositor-space sync and animation progression in one place.
-pub fn process_window_animations(state: &mut WaylandState) -> AnimationTick {
+/// Run compositor-space sync and animation progression in one place, then
+/// preserve the resulting redraw in the shared Wayland scheduler.
+pub(crate) fn process_window_animations_and_request_render(state: &mut WaylandState) {
     let space_synced = if state.take_space_sync_pending() {
         state.sync_space_from_globals();
         true
@@ -725,10 +714,7 @@ pub fn process_window_animations(state: &mut WaylandState) -> AnimationTick {
         false
     };
 
-    match (space_synced, animation_advanced) {
-        (false, false) => AnimationTick::Idle,
-        (true, false) => AnimationTick::SpaceSynced,
-        (false, true) => AnimationTick::AnimationAdvanced,
-        (true, true) => AnimationTick::SpaceSyncedAndAnimationAdvanced,
+    if space_synced || animation_advanced {
+        state.request_render();
     }
 }

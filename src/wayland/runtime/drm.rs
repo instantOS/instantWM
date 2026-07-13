@@ -432,7 +432,6 @@ fn run_event_loop(
                 output_surfaces,
                 &monotonic_clock,
             );
-            process_commit_redraws(state, loop_state, output_surfaces);
             process_frame_callback_requests(
                 state,
                 &loop_handle,
@@ -440,7 +439,9 @@ fn run_event_loop(
                 output_surfaces,
                 start_time,
             );
-            process_common_tick(ipc_server, wm, state, loop_state);
+            super::common::event_loop_tick_and_request_render(wm, state, ipc_server);
+            super::common::process_window_animations_and_request_render(state);
+            process_commit_redraws(state, loop_state, output_surfaces);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
             sync_output_enabled_from_state(state, output_surfaces, loop_state);
 
@@ -467,8 +468,6 @@ fn run_event_loop(
                     }
                 }
             }
-
-            process_animations(state, loop_state);
 
             // Arm an on-demand animation timer when animations are active.
             anim_guard.ensure_armed(
@@ -564,17 +563,6 @@ fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
     }
 }
 
-fn arm_empty_frame_callback_timer(
-    loop_handle: &LoopHandle<'_, WaylandState>,
-    loop_state: &DrmLoopState,
-    entry: &OutputSurfaceEntry,
-    start_time: Instant,
-) {
-    loop_state
-        .frame_callback_timers
-        .arm(entry.crtc, loop_handle, &entry.output, start_time);
-}
-
 /// Promote compositor-side redraw requests into DRM output dirties.
 fn process_commit_redraws(
     state: &mut WaylandState,
@@ -609,28 +597,9 @@ fn process_frame_callback_requests(
     }
 
     for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
-        arm_empty_frame_callback_timer(loop_handle, loop_state, entry, start_time);
-    }
-}
-
-/// Run the shared Wayland tick, then apply DRM-specific invalidation.
-fn process_common_tick(
-    ipc_server: &mut Option<crate::ipc::IpcServer>,
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    loop_state: &mut DrmLoopState,
-) {
-    let tick = super::common::event_loop_tick(wm, state, ipc_server);
-    if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
-        loop_state.mark_all_dirty();
-    }
-}
-
-/// Process window animations and pending compositor-space sync.
-fn process_animations(state: &mut WaylandState, loop_state: &mut DrmLoopState) {
-    if super::common::process_window_animations(state).needs_redraw() {
-        // DRM-specific: mark all outputs dirty after space sync
-        loop_state.mark_all_dirty();
+        loop_state
+            .frame_callback_timers
+            .arm(entry.crtc, loop_handle, &entry.output, start_time);
     }
 }
 
@@ -863,7 +832,12 @@ fn render_outputs(
                     }
                 }
                 RenderOutcome::EmptyFrame => {
-                    arm_empty_frame_callback_timer(loop_handle, loop_state, entry, start_time);
+                    loop_state.frame_callback_timers.arm(
+                        entry.crtc,
+                        loop_handle,
+                        &entry.output,
+                        start_time,
+                    );
                     render_failures.remove(&entry.crtc);
                 }
                 RenderOutcome::Failed => {

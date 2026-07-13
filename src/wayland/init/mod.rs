@@ -1,8 +1,6 @@
 //! Wayland backend initialization.
 //!
-//! This module contains backend-specific initialization code for:
-//! - Winit (nested) backend
-//! - DRM/KMS (standalone) backend
+//! The nested winit backend initializes directly in its runtime.  Only the
+//! safety-sensitive DRM/GPU setup is kept in a separate module.
 
 pub mod drm;
-pub mod winit;

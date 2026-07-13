@@ -84,8 +84,8 @@ fn resolve_floating_placement_for_client(
     let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
 
     // Center on parent when: (a) the window is off-screen, or (b) the
-    // position is the (0,0) placeholder that ensure_client_for_window sets
-    // for newly managed Wayland surfaces that have no app-provided position.
+    // position is the (0,0) placeholder used for newly managed Wayland
+    // surfaces that have no app-provided position.
     let needs_parent_placement =
         fully_outside_x || fully_outside_y || (requested.x == 0 && requested.y == 0);
     let used_parent_position = if matches!(kind, FloatingPlacementKind::New)
