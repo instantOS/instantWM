@@ -208,13 +208,50 @@ pub struct WaylandOutputMetadata {
     pub vrr_enabled: bool,
 }
 
+/// Outputs invalidated by compositor-side work since the last render tick.
+///
+/// The shared WM continues to identify monitors with its own IDs.  This
+/// Wayland-local type preserves Smithay's output provenance until the DRM or
+/// winit runtime translates it into backend render work.
+#[derive(Debug, Default)]
+pub enum PendingRenderTargets {
+    #[default]
+    None,
+    Outputs(HashSet<String>),
+    All,
+}
+
+impl PendingRenderTargets {
+    fn invalidate_all(&mut self) -> bool {
+        if matches!(self, Self::All) {
+            return false;
+        }
+        *self = Self::All;
+        true
+    }
+
+    fn invalidate_output(&mut self, output_name: String) -> bool {
+        match self {
+            Self::None => {
+                *self = Self::Outputs(HashSet::from([output_name]));
+                true
+            }
+            Self::Outputs(outputs) => {
+                outputs.insert(output_name);
+                false
+            }
+            Self::All => false,
+        }
+    }
+}
+
 pub struct WaylandRuntimeState {
     pub tracked_devices: Vec<smithay::reexports::input::Device>,
     pub pending_screencopies: Vec<PendingScreencopy>,
     pub pending_image_captures: Vec<PendingImageCapture>,
     pub image_copy_sessions: Vec<ImageCopySession>,
     pub space_sync_pending: bool,
-    pub render_dirty: bool,
+    pub render_targets: PendingRenderTargets,
     pub frame_callbacks_pending: bool,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
@@ -242,7 +279,7 @@ impl Default for WaylandRuntimeState {
             pending_image_captures: Vec::new(),
             image_copy_sessions: Vec::new(),
             space_sync_pending: true,
-            render_dirty: false,
+            render_targets: PendingRenderTargets::None,
             frame_callbacks_pending: false,
             render_ping: None,
             output_metadata: HashMap::new(),
@@ -527,12 +564,45 @@ impl WaylandState {
 
     #[inline]
     pub fn request_render(&mut self) {
-        if self.runtime.render_dirty {
+        if !self.runtime.render_targets.invalidate_all() {
             log::debug!("request_render: ping skipped, already dirty");
-        } else if let Some(render_ping) = &self.runtime.render_ping {
+            return;
+        }
+        self.ping_render_loop();
+    }
+
+    /// Request a redraw for exactly one Smithay output.
+    #[inline]
+    pub fn request_output_render(&mut self, output: &smithay::output::Output) {
+        self.request_output_name_render(output.name());
+    }
+
+    /// Request redraws for the outputs Smithay currently associates with a
+    /// mapped window.  An unmapped window falls back to a global redraw so an
+    /// initial map cannot be lost between protocol commit and space sync.
+    pub fn request_window_render(&mut self, window: &Window) {
+        let outputs = self.space.outputs_for_element(window);
+        if outputs.is_empty() {
+            self.request_render();
+            return;
+        }
+        for output in outputs {
+            self.request_output_render(&output);
+        }
+    }
+
+    #[inline]
+    fn request_output_name_render(&mut self, output_name: String) {
+        if self.runtime.render_targets.invalidate_output(output_name) {
+            self.ping_render_loop();
+        }
+    }
+
+    #[inline]
+    fn ping_render_loop(&self) {
+        if let Some(render_ping) = &self.runtime.render_ping {
             render_ping.ping();
         }
-        self.runtime.render_dirty = true;
     }
 
     #[inline]
@@ -565,8 +635,8 @@ impl WaylandState {
     }
 
     #[inline]
-    pub fn take_render_dirty(&mut self) -> bool {
-        mem::take(&mut self.runtime.render_dirty)
+    pub fn take_render_targets(&mut self) -> PendingRenderTargets {
+        mem::take(&mut self.runtime.render_targets)
     }
 
     #[inline]
@@ -657,5 +727,33 @@ impl WaylandState {
     /// Notify the idle manager of user activity.
     pub fn notify_activity(&mut self) {
         self.idle_notify_manager_state.notify_activity(&self.seat);
+    }
+}
+
+#[cfg(test)]
+mod render_target_tests {
+    use super::PendingRenderTargets;
+
+    #[test]
+    fn output_invalidations_accumulate_without_becoming_global() {
+        let mut targets = PendingRenderTargets::None;
+        assert!(targets.invalidate_output("DP-1".into()));
+        assert!(!targets.invalidate_output("HDMI-A-1".into()));
+
+        let PendingRenderTargets::Outputs(outputs) = targets else {
+            panic!("expected targeted output invalidation");
+        };
+        assert_eq!(outputs.len(), 2);
+        assert!(outputs.contains("DP-1"));
+        assert!(outputs.contains("HDMI-A-1"));
+    }
+
+    #[test]
+    fn global_invalidation_supersedes_output_targets() {
+        let mut targets = PendingRenderTargets::None;
+        targets.invalidate_output("DP-1".into());
+        assert!(targets.invalidate_all());
+        assert!(!targets.invalidate_output("HDMI-A-1".into()));
+        assert!(matches!(targets, PendingRenderTargets::All));
     }
 }

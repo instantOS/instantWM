@@ -395,7 +395,7 @@ impl Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{MonitorPosition, Rect, RelativePosition};
+    use super::{MonitorPosition, Point, Rect, RelativePosition};
 
     #[test]
     fn parses_absolute_monitor_position() {

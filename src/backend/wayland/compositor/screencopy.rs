@@ -325,10 +325,10 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             with_damage,
         });
 
-        // Always schedule one render so live screencasts can deliver an initial
-        // frame even when the output is otherwise idle. `copy_with_damage`
-        // clients will still wait for real damage after that first frame.
-        state.request_render();
+        // Schedule only the captured output. Legacy wlr-screencopy frames are
+        // one-shot objects, so this implementation conservatively reports the
+        // copied region as damaged for `copy_with_damage` requests.
+        state.request_output_render(output);
     }
 }
 

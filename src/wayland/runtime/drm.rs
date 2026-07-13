@@ -13,20 +13,17 @@ use smithay::reexports::input::Libinput;
 use smithay::reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback;
 use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::mem;
 use std::process::exit;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
-use crate::wayland::common::send_frame_callbacks;
 use crate::wayland::common::{build_fixed_scene_elements, poll_systray};
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
@@ -49,7 +46,7 @@ struct DrmLoopState {
     render_flags: HashMap<crtc::Handle, bool>,
     taken_render_flags: HashMap<crtc::Handle, bool>,
     pending_crtcs: HashSet<crtc::Handle>,
-    empty_frame_callback_crtcs: Rc<RefCell<HashSet<crtc::Handle>>>,
+    frame_callback_timers: super::common::FrameCallbackTimerGuard<crtc::Handle>,
     presentation_seq: HashMap<crtc::Handle, u64>,
     last_bar_update_seq: u64,
 }
@@ -65,7 +62,7 @@ impl DrmLoopState {
             render_flags,
             taken_render_flags: HashMap::new(),
             pending_crtcs: HashSet::new(),
-            empty_frame_callback_crtcs: Rc::new(RefCell::new(HashSet::new())),
+            frame_callback_timers: super::common::FrameCallbackTimerGuard::default(),
             presentation_seq: output_surfaces
                 .iter()
                 .map(|entry| (entry.crtc, 0))
@@ -237,15 +234,31 @@ pub fn run() -> ! {
 
     let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
 
-    // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
+    // Retry pings only wake the loop; the DRM loop state already remembers
+    // which CRTC needs another attempt.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
     event_loop
         .handle()
-        .insert_source(retry_ping_source, |_, _, state| {
-            state.runtime.render_dirty = true;
-        })
+        .insert_source(retry_ping_source, |_, _, _| {})
         .expect("ping source");
-    state.runtime.render_ping = Some(retry_ping.clone());
+
+    // Compositor redraw pings preserve a target set installed by
+    // `request_output_render`.  A bare ping (for example, completion of the
+    // asynchronous bar worker) falls back to invalidating all outputs.
+    let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("render ping");
+    event_loop
+        .handle()
+        .insert_source(render_ping_source, |_, _, state| {
+            if matches!(
+                state.runtime.render_targets,
+                crate::backend::wayland::compositor::PendingRenderTargets::None
+            ) {
+                state.runtime.render_targets =
+                    crate::backend::wayland::compositor::PendingRenderTargets::All;
+            }
+        })
+        .expect("render ping source");
+    state.runtime.render_ping = Some(render_ping);
     retry_ping.ping(); // Wake loop once to render the initial frame
 
     let start_time = Instant::now();
@@ -419,7 +432,7 @@ fn run_event_loop(
                 output_surfaces,
                 &monotonic_clock,
             );
-            process_commit_redraws(state, loop_state);
+            process_commit_redraws(state, loop_state, output_surfaces);
             process_frame_callback_requests(
                 state,
                 &loop_handle,
@@ -551,53 +564,35 @@ fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
     }
 }
 
-fn output_frame_callback_delay(entry: &OutputSurfaceEntry) -> Duration {
-    entry
-        .output
-        .current_mode()
-        .and_then(|mode| {
-            let refresh = u64::try_from(mode.refresh).ok()?;
-            (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
-        })
-        .unwrap_or_else(|| Duration::from_millis(16))
-}
-
 fn arm_empty_frame_callback_timer(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &DrmLoopState,
     entry: &OutputSurfaceEntry,
     start_time: Instant,
 ) {
-    let crtc = entry.crtc;
-    let armed = Rc::clone(&loop_state.empty_frame_callback_crtcs);
-    if !armed.borrow_mut().insert(crtc) {
-        return;
-    }
-
-    let output = entry.output.clone();
-    let delay = output_frame_callback_delay(entry);
-    let armed_for_timer = Rc::clone(&armed);
-    if let Err(err) = loop_handle.insert_source(
-        calloop::timer::Timer::from_duration(delay),
-        move |_, _, state| {
-            if armed_for_timer.borrow_mut().remove(&crtc) {
-                send_frame_callbacks(state, &output, start_time.elapsed());
-            }
-            calloop::timer::TimeoutAction::Drop
-        },
-    ) {
-        armed.borrow_mut().remove(&crtc);
-        log::warn!(
-            "failed to arm empty-frame callback timer for {:?}: {err}",
-            crtc
-        );
-    }
+    loop_state
+        .frame_callback_timers
+        .arm(entry.crtc, loop_handle, &entry.output, start_time);
 }
 
 /// Promote compositor-side redraw requests into DRM output dirties.
-fn process_commit_redraws(state: &mut WaylandState, loop_state: &mut DrmLoopState) {
-    if state.take_render_dirty() {
-        loop_state.mark_all_dirty();
+fn process_commit_redraws(
+    state: &mut WaylandState,
+    loop_state: &mut DrmLoopState,
+    output_surfaces: &[OutputSurfaceEntry],
+) {
+    use crate::backend::wayland::compositor::PendingRenderTargets;
+
+    match state.take_render_targets() {
+        PendingRenderTargets::None => {}
+        PendingRenderTargets::All => loop_state.mark_all_dirty(),
+        PendingRenderTargets::Outputs(outputs) => {
+            for entry in output_surfaces {
+                if outputs.contains(&entry.output.name()) {
+                    loop_state.mark_dirty(entry.crtc);
+                }
+            }
+        }
     }
 }
 
@@ -856,10 +851,7 @@ fn render_outputs(
 
             match rendered {
                 RenderOutcome::Submitted => {
-                    loop_state
-                        .empty_frame_callback_crtcs
-                        .borrow_mut()
-                        .remove(&entry.crtc);
+                    loop_state.frame_callback_timers.disarm(&entry.crtc);
                     loop_state.pending_crtcs.insert(entry.crtc);
                     if let Some(failed_frames) = render_failures.remove(&entry.crtc)
                         && failed_frames >= 3

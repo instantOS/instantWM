@@ -6,6 +6,13 @@
 //!
 //! Per-tick logic: [`event_loop_tick`], [`process_window_animations`].
 
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
+
 use crate::backend::Backend as WmBackend;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::wayland::compositor::WaylandState;
@@ -13,9 +20,95 @@ use crate::wm::Wm;
 use smithay::backend::egl::EGLDisplay;
 use smithay::backend::renderer::ImportDma;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::output::Output;
 use smithay::reexports::calloop::{EventLoop, LoopHandle};
 use smithay::reexports::wayland_server::Display;
 use smithay::wayland::seat::WaylandFocus;
+
+/// Coalesces callback-only surface commits and delivers them at output refresh
+/// cadence without forcing either rendering backend to submit an empty frame.
+#[derive(Debug)]
+pub(crate) struct FrameCallbackTimerGuard<K> {
+    armed: Rc<RefCell<HashMap<K, u64>>>,
+    next_generation: Cell<u64>,
+}
+
+impl<K> Default for FrameCallbackTimerGuard<K> {
+    fn default() -> Self {
+        Self {
+            armed: Rc::new(RefCell::new(HashMap::new())),
+            next_generation: Cell::new(0),
+        }
+    }
+}
+
+impl<K> FrameCallbackTimerGuard<K>
+where
+    K: Clone + Debug + Eq + Hash + 'static,
+{
+    pub(crate) fn arm(
+        &self,
+        key: K,
+        loop_handle: &LoopHandle<'_, WaylandState>,
+        output: &Output,
+        start_time: Instant,
+    ) {
+        if self.armed.borrow().contains_key(&key) {
+            return;
+        }
+
+        let generation = self.next_generation.get().wrapping_add(1);
+        self.next_generation.set(generation);
+        self.armed.borrow_mut().insert(key.clone(), generation);
+
+        let output = output.clone();
+        let delay = output_frame_callback_delay(&output);
+        let armed_for_timer = Rc::clone(&self.armed);
+        let timer_key = key.clone();
+        if let Err(err) = loop_handle.insert_source(
+            smithay::reexports::calloop::timer::Timer::from_duration(delay),
+            move |_, _, state| {
+                let is_current = armed_for_timer
+                    .borrow()
+                    .get(&timer_key)
+                    .is_some_and(|current| *current == generation);
+                if is_current {
+                    armed_for_timer.borrow_mut().remove(&timer_key);
+                    crate::wayland::common::send_frame_callbacks(
+                        state,
+                        &output,
+                        start_time.elapsed(),
+                    );
+                }
+                smithay::reexports::calloop::timer::TimeoutAction::Drop
+            },
+        ) {
+            let is_current = self
+                .armed
+                .borrow()
+                .get(&key)
+                .is_some_and(|current| *current == generation);
+            if is_current {
+                self.armed.borrow_mut().remove(&key);
+            }
+            log::warn!("failed to arm frame-callback timer for {key:?}: {err}");
+        }
+    }
+
+    pub(crate) fn disarm(&self, key: &K) {
+        self.armed.borrow_mut().remove(key);
+    }
+}
+
+fn output_frame_callback_delay(output: &Output) -> Duration {
+    output
+        .current_mode()
+        .and_then(|mode| {
+            let refresh = u64::try_from(mode.refresh).ok()?;
+            (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
+        })
+        .unwrap_or_else(|| Duration::from_millis(16))
+}
 
 /// D-Bus session, boxed [`Wm`] with Wayland backend, and [`crate::wayland::common::init_globals`].
 pub(crate) fn create_wayland_wm_boxed() -> Box<Wm> {

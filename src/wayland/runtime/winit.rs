@@ -56,9 +56,18 @@ pub fn run() -> ! {
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle
-        .insert_source(render_ping_source, |_, _, _| {})
+        .insert_source(render_ping_source, |_, _, state| {
+            if matches!(
+                state.runtime.render_targets,
+                crate::backend::wayland::compositor::PendingRenderTargets::None
+            ) {
+                state.runtime.render_targets =
+                    crate::backend::wayland::compositor::PendingRenderTargets::All;
+            }
+        })
         .expect("render ping source");
     state.runtime.render_ping = Some(render_ping);
+    state.request_render();
 
     // ── Winit event source ──────────────────────────────────────────────
     // Insert the winit event loop as a calloop source so host window
@@ -88,6 +97,7 @@ pub fn run() -> ! {
     // ── Animation timer (on-demand) ─────────────────────────────────────
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
     let loop_handle_for_timer = event_loop.handle();
+    let frame_callback_timers = super::common::FrameCallbackTimerGuard::<()>::default();
 
     let loop_signal: LoopSignal = event_loop.get_signal();
     event_loop
@@ -110,6 +120,16 @@ pub fn run() -> ! {
             wm.work.input_config = false;
 
             let animation_tick = super::common::process_window_animations(state);
+            if animation_tick.needs_redraw() {
+                state.request_render();
+            }
+
+            // The async bar renderer wakes us with a bare render ping after a
+            // result is ready.  While the bar is dirty, consume that wakeup by
+            // rebuilding the cached Smithay memory elements.
+            if wm.bar.needs_redraw() {
+                state.request_render();
+            }
 
             // ── 3. Arm animation timer if needed ────────────────────────
             anim_guard.ensure_armed(
@@ -125,20 +145,34 @@ pub fn run() -> ! {
             // Apply any compositor-side cursor warp requested during this tick
             // (e.g. from a warp-to-focus keybinding or IPC command).
             if let Some(keyboard_handle) = state.seat.get_keyboard() {
-                apply_pending_warp(&mut wm, state, &pointer_handle, &keyboard_handle);
+                if apply_pending_warp(&mut wm, state, &pointer_handle, &keyboard_handle) {
+                    state.request_render();
+                }
             }
 
-            render_frame(
-                &mut wm,
-                state,
-                &mut backend,
-                &output,
-                &mut damage_tracker,
-                start_time,
-            );
+            let render_requested = match state.take_render_targets() {
+                crate::backend::wayland::compositor::PendingRenderTargets::None => false,
+                crate::backend::wayland::compositor::PendingRenderTargets::All => true,
+                crate::backend::wayland::compositor::PendingRenderTargets::Outputs(outputs) => {
+                    outputs.contains(&output.name())
+                }
+            };
+            let callbacks_requested = state.take_frame_callbacks_pending();
+            let submitted = render_requested
+                && render_frame(
+                    &mut wm,
+                    state,
+                    &mut backend,
+                    &output,
+                    &mut damage_tracker,
+                    start_time,
+                );
 
-            if animation_tick.needs_redraw() {
-                state.request_render();
+            if submitted {
+                frame_callback_timers.disarm(&());
+            }
+            if (callbacks_requested || render_requested) && !submitted {
+                frame_callback_timers.arm((), &loop_handle_for_timer, &output, start_time);
             }
 
             if state.display_handle.flush_clients().is_err() {

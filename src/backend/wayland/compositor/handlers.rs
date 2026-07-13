@@ -95,30 +95,45 @@ impl CompositorHandler for WaylandState {
             let _ = popup_surface.send_configure();
         }
 
-        // Skip sync subsurfaces - they don't receive their own commits
-        if is_sync_subsurface(surface) {
-            service_surface_commit(self, commit_kind);
-            return;
-        }
-
         // Find the root surface by walking up the surface tree
         let mut root = surface.clone();
         while let Some(parent) = get_parent(&root) {
             root = parent;
         }
 
-        // Only call on_commit for the root surface, not for subsurfaces
-        if surface != &root {
-            service_surface_commit(self, commit_kind);
-            return;
-        }
-
+        // Ask Smithay which outputs contain the root window rather than
+        // reconstructing that relationship from geometry in the runtime.
         let committed_window = self
             .space
             .elements()
             .find(|w| w.wl_surface().as_deref() == Some(&root))
             .cloned();
-        if let Some(window) = committed_window {
+        let committed_layer_output = super::layer_shell::layer_output_for_surface(self, &root);
+
+        // Skip sync subsurfaces - they don't receive their own commits.
+        // Their render request still targets the parent window's outputs.
+        if is_sync_subsurface(surface) {
+            service_surface_commit(
+                self,
+                commit_kind,
+                committed_window.as_ref(),
+                committed_layer_output.as_ref(),
+            );
+            return;
+        }
+
+        // Only call on_commit for the root surface, not for subsurfaces
+        if surface != &root {
+            service_surface_commit(
+                self,
+                commit_kind,
+                committed_window.as_ref(),
+                committed_layer_output.as_ref(),
+            );
+            return;
+        }
+
+        if let Some(window) = committed_window.as_ref() {
             window.on_commit();
             if let Some(id) = window
                 .user_data()
@@ -129,9 +144,15 @@ impl CompositorHandler for WaylandState {
             }
         }
 
-        super::layer_shell::handle_layer_commit(self, surface);
+        let committed_layer_output =
+            super::layer_shell::handle_layer_commit(self, surface).or(committed_layer_output);
 
-        service_surface_commit(self, commit_kind);
+        service_surface_commit(
+            self,
+            commit_kind,
+            committed_window.as_ref(),
+            committed_layer_output.as_ref(),
+        );
     }
 }
 
@@ -158,9 +179,20 @@ fn surface_commit_render_service(
     })
 }
 
-fn service_surface_commit(state: &mut WaylandState, service: SurfaceCommitService) {
+fn service_surface_commit(
+    state: &mut WaylandState,
+    service: SurfaceCommitService,
+    window: Option<&smithay::desktop::Window>,
+    layer_output: Option<&smithay::output::Output>,
+) {
     match service {
-        SurfaceCommitService::Render => state.request_render(),
+        SurfaceCommitService::Render => match window {
+            Some(window) => state.request_window_render(window),
+            None => match layer_output {
+                Some(output) => state.request_output_render(output),
+                None => state.request_render(),
+            },
+        },
         SurfaceCommitService::FrameCallbacks => state.request_frame_callbacks(),
         SurfaceCommitService::None => {}
     }

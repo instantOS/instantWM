@@ -817,7 +817,6 @@ fn collect_presentation_feedback(
     render_states: &RenderElementStates,
 ) -> OutputPresentationFeedback {
     let mut output_feedback = OutputPresentationFeedback::new(&entry.output);
-    let output_geo = state.space.output_geometry(&entry.output);
     let surface_flags =
         |surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
          _: &smithay::wayland::compositor::SurfaceData| {
@@ -837,16 +836,7 @@ fn collect_presentation_feedback(
         return output_feedback;
     }
 
-    for window in state.space.elements() {
-        if let Some(out_geo) = output_geo
-            && let Some(win_loc) = state.space.element_location(window)
-        {
-            let win_rect = Rectangle::new(win_loc, window.geometry().size);
-            if !out_geo.overlaps(win_rect) {
-                continue;
-            }
-        }
-
+    for window in state.space.elements_for_output(&entry.output) {
         window.take_presentation_feedback(
             &mut output_feedback,
             surface_primary_scanout_output,

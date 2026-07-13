@@ -31,7 +31,7 @@ pub fn render_frame(
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
     start_time: std::time::Instant,
-) {
+) -> bool {
     // Backend-specific: apply cursor via window API
     let cursor_presentation = resolve_cursor_presentation(
         &state.cursor_image_status,
@@ -136,11 +136,26 @@ pub fn render_frame(
     // Drop framebuffer before we can use backend again
     drop(framebuffer);
 
-    // Backend-specific: submit buffer
-    backend.submit(damage.as_deref()).ok();
+    // `submit(None)` means an unrestricted swap, not "skip this frame".
+    // Smithay's damage tracker returns `None` when the scene is unchanged, so
+    // only swap when it reports actual damage.
+    let submitted = if let Some(damage) = damage.as_deref() {
+        match backend.submit(Some(damage)) {
+            Ok(()) => true,
+            Err(err) => {
+                log::warn!("winit frame submission failed: {err}");
+                false
+            }
+        }
+    } else {
+        false
+    };
 
-    // Shared: send frame callbacks
-    send_frame_callbacks(state, output, start_time.elapsed());
+    if submitted {
+        // Shared: frame callbacks follow a buffer submitted for presentation.
+        send_frame_callbacks(state, output, start_time.elapsed());
+    }
+    submitted
 }
 
 // Backend-specific: cursor handling via winit window API

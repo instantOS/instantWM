@@ -102,12 +102,12 @@ impl ImageCopyCaptureHandler for WaylandState {
             .pending_image_captures
             .push(PendingImageCapture {
                 transform: output.current_transform(),
-                output,
+                output: output.clone(),
                 overlay_cursor: session.draw_cursor(),
                 size,
                 frame,
             });
-        self.request_render();
+        self.request_output_render(&output);
     }
 
     fn frame_aborted(&mut self, frame: FrameRef) {

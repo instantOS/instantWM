@@ -32,7 +32,6 @@ use smithay::backend::renderer::element::{
     RenderElementStates, default_primary_scanout_output_compare,
 };
 use smithay::backend::renderer::gles::GlesRenderer;
-use smithay::desktop::PopupManager;
 use smithay::desktop::utils::{
     send_frames_surface_tree, surface_primary_scanout_output,
     update_surface_primary_scanout_output, with_surfaces_surface_tree,
@@ -44,7 +43,6 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::with_states;
-use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
@@ -696,11 +694,10 @@ pub fn build_common_scene_elements_from_fixed(
 /// Must be called once per rendered frame, after the buffer has been submitted
 /// for scanout, so that clients know when to draw the next frame.
 ///
-/// Only windows whose geometry intersects the output receive callbacks,
-/// preventing off-screen windows from committing empty-damage frames in a
-/// busy loop (an approach borrowed from niri's per-output frame throttling).
+/// Smithay's `Space` owns window/output overlap tracking, and `Window::send_frame`
+/// owns surface-tree and popup traversal.  Keeping those responsibilities in
+/// Smithay also keeps callback delivery aligned with output enter/leave state.
 pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
-    let output_geo = state.space.output_geometry(output);
     let throttle = output.current_mode().and_then(|mode| {
         let refresh = u64::try_from(mode.refresh).ok()?;
         (refresh > 0).then(|| Duration::from_nanos(1_000_000_000_000u64 / refresh))
@@ -720,38 +717,8 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         return;
     }
 
-    for window in state.space.elements() {
-        // Only notify windows that are actually visible on this output.
-        if let Some(out_geo) = output_geo
-            && let Some(win_loc) = state.space.element_location(window)
-        {
-            let win_size = window.geometry().size;
-            let win_rect = smithay::utils::Rectangle::new(win_loc, win_size);
-            if !out_geo.overlaps(win_rect) {
-                continue;
-            }
-        }
-
-        if let Some(wl_surface) = window.wl_surface() {
-            send_frames_surface_tree(
-                &wl_surface,
-                output,
-                elapsed,
-                throttle,
-                surface_primary_scanout_output,
-            );
-            if let Some(toplevel) = window.toplevel() {
-                for (popup, _) in PopupManager::popups_for_surface(toplevel.wl_surface()) {
-                    send_frames_surface_tree(
-                        popup.wl_surface(),
-                        output,
-                        elapsed,
-                        throttle,
-                        surface_primary_scanout_output,
-                    );
-                }
-            }
-        }
+    for window in state.space.elements_for_output(output) {
+        window.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
     }
 
     // Layer surfaces for this output only.
@@ -772,8 +739,6 @@ pub fn update_primary_scanout_output(
     output: &Output,
     render_states: &RenderElementStates,
 ) {
-    let output_geo = state.space.output_geometry(output);
-
     if state.is_locked() {
         let output_name = output.name();
         if let Some(lock_surface) = state.lock_surfaces.get(&output_name) {
@@ -791,16 +756,7 @@ pub fn update_primary_scanout_output(
         return;
     }
 
-    for window in state.space.elements() {
-        if let Some(out_geo) = output_geo
-            && let Some(win_loc) = state.space.element_location(window)
-        {
-            let win_rect = smithay::utils::Rectangle::new(win_loc, window.geometry().size);
-            if !out_geo.overlaps(win_rect) {
-                continue;
-            }
-        }
-
+    for window in state.space.elements_for_output(output) {
         window.with_surfaces(|surface, data| {
             let _ = update_surface_primary_scanout_output(
                 surface,

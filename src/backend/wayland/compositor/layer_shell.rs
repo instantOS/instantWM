@@ -49,8 +49,9 @@ fn focus_layer_if_requested(
 pub(super) fn handle_layer_commit(
     state: &mut WaylandState,
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) {
+) -> Option<Output> {
     let mut layer_surface = None;
+    let mut layer_output = None;
     for output in state.space.outputs() {
         let mut map = layer_map_for_output(output);
         if let Some(layer) = map
@@ -71,6 +72,7 @@ pub(super) fn handle_layer_commit(
                 layer.layer_surface().send_configure();
             }
             layer_surface = Some(surface.clone());
+            layer_output = Some(output.clone());
             break;
         }
     }
@@ -79,8 +81,24 @@ pub(super) fn handle_layer_commit(
         // Exclusive zones may have changed on commit, so re-derive each
         // monitor's `available_rect`.
         state.push_command(WmCommand::SyncLayerExclusiveZones);
+        if let Some(output) = layer_output.as_ref() {
+            state.request_output_render(output);
+        }
     }
-    state.request_render();
+    layer_output
+}
+
+/// Return the output whose Smithay layer map owns `surface`.
+pub(super) fn layer_output_for_surface(
+    state: &WaylandState,
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> Option<Output> {
+    state.space.outputs().find_map(|output| {
+        let map = layer_map_for_output(output);
+        map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+            .is_some()
+            .then(|| output.clone())
+    })
 }
 
 /// Build a map from output name to the global (compositor-space) rectangle
@@ -160,7 +178,7 @@ impl WlrLayerShellHandler for WaylandState {
         map.arrange();
         drop(map);
         self.push_command(WmCommand::SyncLayerExclusiveZones);
-        self.request_render();
+        self.request_output_render(&target_output);
     }
 
     fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
@@ -179,6 +197,7 @@ impl WlrLayerShellHandler for WaylandState {
                 }
             });
 
+        let mut affected_outputs = Vec::new();
         for output in self.space.outputs().cloned().collect::<Vec<_>>() {
             let mut map = layer_map_for_output(&output);
             let layers: Vec<_> = map
@@ -186,6 +205,9 @@ impl WlrLayerShellHandler for WaylandState {
                 .filter(|l| l.wl_surface() == wl_surface)
                 .cloned()
                 .collect();
+            if !layers.is_empty() {
+                affected_outputs.push(output.clone());
+            }
             for layer in layers {
                 map.unmap_layer(&layer);
             }
@@ -201,6 +223,8 @@ impl WlrLayerShellHandler for WaylandState {
         self.restore_focus_after_overlay();
         // Reclaim the space that this layer surface had exclusively reserved.
         self.push_command(WmCommand::SyncLayerExclusiveZones);
-        self.request_render();
+        for output in affected_outputs {
+            self.request_output_render(&output);
+        }
     }
 }
