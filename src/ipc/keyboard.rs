@@ -15,7 +15,7 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             Response::Message(status)
         }
         KeyboardCommand::Status => {
-            let status = keyboard_layout::keyboard_layout_status(&ctx);
+            let status = keyboard_layout::keyboard_layout_status(&ctx.core().keyboard_layout());
             Response::Message(status)
         }
         KeyboardCommand::List => {

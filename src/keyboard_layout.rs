@@ -6,7 +6,7 @@
 //! keybindings or IPC.
 
 use crate::contexts::WmCtx;
-use crate::core_state::KeyboardLayout;
+use crate::core_state::{KeyboardLayout, KeyboardLayoutState};
 use crate::types::input::StackDirection;
 use std::process::Command;
 
@@ -112,12 +112,11 @@ pub fn cycle_keyboard_layout(ctx: &mut WmCtx, direction: StackDirection) -> Stri
         current - 1
     };
     set_keyboard_layout(ctx, next);
-    keyboard_layout_status(ctx)
+    keyboard_layout_status(&ctx.core().keyboard_layout())
 }
 
 /// Get the current keyboard layout status as a formatted string.
-pub fn keyboard_layout_status(ctx: &WmCtx) -> String {
-    let state = &ctx.core().keyboard_layout();
+pub fn keyboard_layout_status(state: &KeyboardLayoutState) -> String {
     if state.is_empty() {
         return "no layouts configured".to_string();
     }
