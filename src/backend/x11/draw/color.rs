@@ -6,15 +6,6 @@
 use super::ffi::{XRenderColor, XftColor};
 use std::os::raw::c_ulong;
 
-// ── Color indices into a color scheme ────────────────────────────────────────
-
-/// Index of the foreground color within a scheme slice.
-pub const COL_FG: usize = 0;
-/// Index of the background color within a scheme slice.
-pub const COL_BG: usize = 1;
-/// Index of the detail / accent color within a scheme slice.
-pub const COL_DETAIL: usize = 2;
-
 // ── Color ──────────────────────────────────────────────────────────────────────
 
 /// A single allocated X11/Xft color.

@@ -31,8 +31,7 @@ pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FloatingPlacementKind {
     New,
-    AppRequest,
-    BackendObserved,
+    Other,
 }
 
 /// Resolve a floating window rectangle before it becomes authoritative WM state.
@@ -376,7 +375,7 @@ mod tests {
             &globals.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 500, 300),
-            FloatingPlacementKind::AppRequest,
+            FloatingPlacementKind::Other,
             None,
         );
 

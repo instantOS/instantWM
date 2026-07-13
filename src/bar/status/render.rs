@@ -2,7 +2,6 @@ use super::TEXT_PADDING;
 use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
-use crate::contexts::CoreCtx;
 use crate::types::{Monitor, Rect};
 
 #[derive(Debug, Clone, Copy)]

@@ -1,20 +1,14 @@
 //! X11 pointer-grab helpers.
 //!
-//! Two distinct concepts live here:
-//!
-//! * **Button grabs** ([`grab_buttons`]) – passive grabs registered on a
-//!   client window so the WM receives button-press events even when that
-//!   window is not focused.
-//!
-//! * **Pointer grabs** ([`grab_pointer`], [`ungrab_ctx`]) – active, modal grabs
-//!   used during interactive move/resize loops.  Every drag loop in
-//!   `drag.rs` and `resize.rs` calls [`grab_pointer`] at the start and
-//!   [`ungrab_ctx`] when it exits.
+//! This module handles active, modal pointer grabs ([`grab_pointer`], [`ungrab`])
+//! used during interactive move/resize loops.  Every drag loop in
+//! `drag.rs` and `resize.rs` calls [`grab_pointer`] at the start and
+//! [`ungrab`] when it exits.
 //!
 //! # Typical drag loop skeleton
 //!
 //! ```text
-//! if !grab_pointer(ctx, cursor_index) { return; }
+//! if !grab_pointer(ctx, x11_runtime, cursor) { return; }
 //! loop {
 //!     let Some(event) = wait_event(ctx) else { break };
 //!     match event {
@@ -29,7 +23,7 @@
 use crate::backend::BackendEvent;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::contexts::WmCtxX11;
-use crate::types::{AltCursor, MouseButton, Point, WindowId};
+use crate::types::{AltCursor, MouseButton, Point};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
@@ -289,51 +283,3 @@ pub fn mouse_drag_loop<F>(
     ungrab(&ctx.x11);
 }
 
-// ── Passive button grabs ──────────────────────────────────────────────────────
-
-/// Register (or clear) passive button grabs on a client window.
-///
-/// * When `focused` is **`true`**: all existing grabs are removed.
-/// * When `focused` is **`false`**: grabs are installed for buttons 1 and 3
-///   with every combination of NumLock and CapsLock modifiers.
-pub fn grab_buttons(
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    c_win: WindowId,
-    focused: bool,
-) {
-    let conn = x11.conn;
-    let x11_win: Window = c_win.into();
-
-    // Always start clean.
-    let _ = conn.ungrab_button(0u8.into(), x11_win, ModMask::from(0u16));
-
-    if focused {
-        return;
-    }
-
-    let numlockmask = x11_runtime.numlockmask as u16;
-
-    let modifier_variants: [u16; 4] = [
-        0,
-        numlockmask,
-        ModMask::LOCK.bits(),
-        numlockmask | ModMask::LOCK.bits(),
-    ];
-
-    for &mods in &modifier_variants {
-        for &button in &[1u8, 3u8] {
-            let _ = conn.grab_button(
-                false,
-                x11_win,
-                EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE,
-                GrabMode::SYNC,
-                GrabMode::SYNC,
-                x11rb::NONE,
-                x11rb::NONE,
-                button.into(),
-                ModMask::from(mods),
-            );
-        }
-    }
-}

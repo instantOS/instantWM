@@ -9,7 +9,10 @@ use crate::types::{BaseClientMode, WindowId};
 
 /// Outcome of a maximize state transition.
 pub enum MaximizedOutcome {
-    Entered { base: BaseClientMode },
+    Entered {
+        #[cfg_attr(not(test), allow(dead_code))]
+        base: BaseClientMode,
+    },
     Exited { base: BaseClientMode },
 }
 

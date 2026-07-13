@@ -7,7 +7,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::{
     BROKEN, MWM_DECOR_ALL, MWM_DECOR_BORDER, MWM_DECOR_TITLE, MWM_HINTS_DECORATIONS,
-    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
+    MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD,
 };
 use crate::client::rules::WindowProperties;
 use crate::client::set_fullscreen;
@@ -342,59 +342,6 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     }
 }
 
-pub fn set_urgent(
-    model: &mut crate::model::WmModel,
-    x11: &X11BackendRef,
-    win: WindowId,
-    urg: bool,
-) {
-    let conn = x11.conn;
-
-    if let Some(client) = model.clients.get_mut(&win) {
-        client.is_urgent = urg;
-    }
-
-    let data: Vec<u8> = {
-        let x11_win: Window = win.into();
-        let Ok(cookie) =
-            conn.get_property(false, x11_win, AtomEnum::WM_HINTS, AtomEnum::WM_HINTS, 0, 9)
-        else {
-            return;
-        };
-        let Ok(reply) = cookie.reply() else { return };
-        reply.value8().map(|v| v.collect()).unwrap_or_default()
-    };
-
-    if data.len() < 4 {
-        return;
-    }
-
-    let flags = u32::from_ne_bytes([data[0], data[1], data[2], data[3]]);
-    let new_flags = if urg {
-        flags | WM_HINTS_URGENCY_HINT
-    } else {
-        flags & !WM_HINTS_URGENCY_HINT
-    };
-
-    let mut new_data = vec![0u8; data.len().max(36)];
-    new_data[..4].copy_from_slice(&new_flags.to_ne_bytes());
-    if data.len() > 4 {
-        new_data[4..data.len()].copy_from_slice(&data[4..]);
-    }
-
-    let x11_win: Window = win.into();
-    let _ = conn.change_property(
-        PropMode::REPLACE,
-        x11_win,
-        AtomEnum::WM_HINTS,
-        AtomEnum::WM_HINTS,
-        8u8,
-        new_data.len() as u32,
-        &new_data,
-    );
-    let _ = conn.flush();
-}
-
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     if !ctx.core.config().window.decor_hints {
         return;
@@ -462,17 +409,6 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         },
         MoveResizeOptions::hinted_immediate(false),
     );
-}
-
-pub fn get_atom_prop(
-    conn: &x11rb::rust_connection::RustConnection,
-    win: Window,
-    atom: u32,
-) -> Option<u32> {
-    conn.get_property(false, win, atom, AtomEnum::ATOM, 0, 1)
-        .ok()
-        .and_then(|cookie| cookie.reply().ok())
-        .and_then(|reply| reply.value32().and_then(|mut it| it.next()))
 }
 
 pub fn get_atom_props(

@@ -133,7 +133,7 @@ pub(crate) fn build_monitor_snapshots(
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
 
-        let stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
+        let mut stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = if is_selected_monitor {

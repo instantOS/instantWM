@@ -383,6 +383,7 @@ pub fn focus_in(ctx: &mut WmCtxX11<'_>, _e: &FocusInEvent) {
 }
 
 pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
+    crate::backend::x11::keyboard::update_num_lock_mask(&ctx.x11, ctx.x11_runtime);
     crate::backend::x11::keyboard::grab_keys(ctx.core.g, &ctx.x11, ctx.x11_runtime);
 }
 

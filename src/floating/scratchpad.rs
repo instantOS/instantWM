@@ -5,7 +5,7 @@ use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
 use crate::model::WmModel;
 use crate::types::input::EdgeDirection;
-use crate::types::{ClientMode, MonitorId, Rect, TagMask, WindowId};
+use crate::types::{MonitorId, Rect, TagMask, WindowId};
 use bincode::{Decode, Encode};
 
 const EDGE_MARGIN_X: i32 = 20;

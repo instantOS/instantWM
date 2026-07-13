@@ -6,10 +6,8 @@
 
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::BORDER_MULTIPLIER;
-use crate::contexts::WmCtx;
-use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutKind;
-use crate::types::{Monitor, Rect, WindowId};
+use crate::types::{Monitor, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct LayoutPlacement {

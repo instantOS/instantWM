@@ -130,15 +130,6 @@ pub fn draw_bars(
     core.bar.mark_drawn();
 }
 
-pub fn reset_bar(
-    core: &mut CoreCtx,
-    _x11_runtime: &mut X11RuntimeConfig,
-    _systray: Option<&Systray>,
-) {
-    crate::bar::renderer::reset_bar_common(core.model_mut());
-    core.bar.mark_dirty();
-}
-
 /// Resize bar window with dependency injection.
 pub fn resize_bar_win(
     globals: &crate::core_state::CoreState,

@@ -1,6 +1,6 @@
 //! Pointer button handling.
 
-use smithay::backend::input::{ButtonState, InputBackend, PointerButtonEvent};
+use smithay::backend::input::ButtonState;
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
 use smithay::utils::{Point, SERIAL_COUNTER};
@@ -60,52 +60,6 @@ pub fn handle_pointer_button_raw(
     pointer.frame(state);
 }
 
-/// Handle pointer button events.
-pub fn handle_pointer_button<B: InputBackend>(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    event: impl PointerButtonEvent<B>,
-    pointer_location: Point<f64, smithay::utils::Logical>,
-) {
-    let serial = SERIAL_COUNTER.next_serial();
-    let root = RootPoint::new(
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    );
-    let wm_button = MouseButton::from_wayland_code(event.button_code());
-
-    let button = ButtonPress {
-        serial,
-        time: event.time_msec(),
-        button_code: event.button_code(),
-        state: event.state(),
-        root,
-        wm_button,
-        pointer_location,
-    };
-
-    if state.is_locked() {
-        forward_button(state, pointer_handle, button);
-        pointer_handle.frame(state);
-        return;
-    }
-
-    let handled = match button.state {
-        ButtonState::Pressed => {
-            handle_button_press(wm, state, pointer_handle, keyboard_handle, button)
-        }
-        ButtonState::Released => {
-            handle_button_release(wm, state, pointer_handle, keyboard_handle, button)
-        }
-    };
-    if handled {
-        return;
-    }
-
-    pointer_handle.frame(state);
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers

@@ -18,16 +18,6 @@ pub fn destroy_monitor_bar(ctx: &mut WmCtx, bar_win: WindowId) {
     }
 }
 
-/// Raise a client window above siblings on X11.
-pub fn raise_client_window(x11: &X11BackendRef<'_>, win: WindowId) {
-    let x11_win: Window = win.into();
-    let _ = configure_window(
-        x11.conn,
-        x11_win,
-        &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
-    );
-}
-
 /// Query Xinerama screen information and return outputs (no monitor sync).
 pub fn xinerama_outputs(x11: &X11BackendRef<'_>) -> Option<Vec<BackendOutputInfo>> {
     let conn = x11.conn;
