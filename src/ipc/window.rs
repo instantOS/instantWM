@@ -44,7 +44,12 @@ fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
         .iter()
         .filter_map(|c| {
             let mon_pos = wm.core.model.monitors.position_of(c.monitor_id)?;
-            WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win), mon_pos).into()
+            Some(WindowInfo::from_client(
+                c,
+                tag_mask,
+                wm.backend.window_protocol(c.win),
+                mon_pos,
+            ))
         })
         .collect();
 

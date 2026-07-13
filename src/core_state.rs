@@ -603,7 +603,6 @@ impl WmBehavior {
     pub fn toggle_focus_follows_float_mouse(&mut self, action: ToggleAction) {
         action.apply(&mut self.focus_follows_float_mouse);
     }
-
 }
 
 /// Batched layout targets waiting to be arranged.

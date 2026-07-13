@@ -6,21 +6,15 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let Some((is_floating, geo, border_width, mon_rect, has_tiling)) =
-        ctx.core().model().client_view(win).map(|view| {
-            (
-                view.client.mode.is_floating(),
-                view.client.geo,
-                view.client.border_width,
-                view.monitor.monitor_rect,
-                view.monitor.is_tiling_layout(),
-            )
-        })
-    else {
+    let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
+    let is_floating = view.client.mode.is_floating();
+    let geo = view.client.geo;
+    let border_width = view.client.border_width;
+    let mon_rect = view.monitor.monitor_rect;
 
-    if has_tiling && !is_floating {
+    if view.monitor.is_tiling_layout() && !is_floating {
         return;
     }
 
@@ -52,15 +46,12 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    let Some((is_floating, geo, has_tiling)) = ctx.core().model().client_view(win).map(|view| {
-        (
-            view.client.mode.is_floating(),
-            view.client.geo,
-            view.monitor.is_tiling_layout(),
-        )
-    }) else {
+    let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
+    let is_floating = view.client.mode.is_floating();
+    let geo = view.client.geo;
+    let has_tiling = view.monitor.is_tiling_layout();
 
     super::snap::reset_snap(ctx, win);
 
@@ -88,33 +79,19 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
 }
 
 pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
-    let Some((
-        geo,
-        is_floating,
-        is_edge_scratchpad,
-        work_rect,
-        mon_rect,
-        bar_height,
-        show_bar,
-        has_tiling,
-    )) = ctx.core().model().client_view(win).map(|view| {
-        (
-            view.client.geo,
-            view.client.mode.is_floating(),
-            view.client.is_edge_scratchpad(),
-            view.monitor.work_rect,
-            view.monitor.monitor_rect,
-            view.monitor.bar_height,
-            view.monitor.show_bar_for_mask(view.client.tags),
-            view.monitor.is_tiling_layout(),
-        )
-    })
-    else {
+    let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
-    if is_edge_scratchpad {
+    if view.client.is_edge_scratchpad() {
         return;
     }
+    let geo = view.client.geo;
+    let is_floating = view.client.mode.is_floating();
+    let work_rect = view.monitor.work_rect;
+    let mon_rect = view.monitor.monitor_rect;
+    let bar_height = view.monitor.bar_height;
+    let show_bar = view.monitor.show_bar_for_mask(view.client.tags);
+    let has_tiling = view.monitor.is_tiling_layout();
 
     if has_tiling && !is_floating {
         return;

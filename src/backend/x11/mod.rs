@@ -118,7 +118,6 @@ pub use properties::{
     update_motif_hints, update_window_type, update_wm_hints, window_properties,
 };
 
-
 /// Borrowed view of the X11 backend.
 pub struct X11BackendRef<'a> {
     pub conn: &'a RustConnection,

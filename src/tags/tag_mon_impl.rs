@@ -82,26 +82,15 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 /// Move a floating client to `target_id`, preserving its relative position.
 fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::MonitorId) {
     // Snapshot source geometry before transfer_client() transfers ownership.
-    let Some((
-        client_x,
-        client_y,
-        src_monitor_x,
-        src_monitor_y,
-        src_work_area_width,
-        src_work_area_height,
-    )) = ctx.core().model().client_view(win).map(|view| {
-        (
-            view.client.geo.x,
-            view.client.geo.y,
-            view.monitor.monitor_rect.x,
-            view.monitor.monitor_rect.y,
-            view.monitor.work_rect.w,
-            view.monitor.work_rect.h,
-        )
-    })
-    else {
+    let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
+    let client_x = view.client.geo.x;
+    let client_y = view.client.geo.y;
+    let src_monitor_x = view.monitor.monitor_rect.x;
+    let src_monitor_y = view.monitor.monitor_rect.y;
+    let src_work_area_width = view.monitor.work_rect.w;
+    let src_work_area_height = view.monitor.work_rect.h;
 
     // Fractional position on the source monitor (clamped to avoid division by
     // zero on degenerate monitors).
@@ -117,18 +106,13 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     };
 
     // Target monitor geometry.
-    let Some((tgt_monitor_x, tgt_monitor_y, tgt_work_area_width, tgt_work_area_height)) =
-        ctx.core().model().monitor(target_id).map(|m| {
-            (
-                m.monitor_rect.x,
-                m.monitor_rect.y,
-                m.work_rect.w,
-                m.work_rect.h,
-            )
-        })
-    else {
+    let Some(target_monitor) = ctx.core().model().monitor(target_id) else {
         return;
     };
+    let tgt_monitor_x = target_monitor.monitor_rect.x;
+    let tgt_monitor_y = target_monitor.monitor_rect.y;
+    let tgt_work_area_width = target_monitor.work_rect.w;
+    let tgt_work_area_height = target_monitor.work_rect.h;
 
     // Transfer the client to the target monitor.
     {
