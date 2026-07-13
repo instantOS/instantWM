@@ -184,10 +184,6 @@ impl BarPainter for WaylandBarPainter {
         self.scheme = Some(scheme);
     }
 
-    fn scheme(&self) -> Option<&BarScheme> {
-        self.scheme.as_ref()
-    }
-
     fn rect(&mut self, bounds: Rect, filled: bool, invert: bool) {
         if !filled || bounds.w <= 0 || bounds.h <= 0 {
             return;

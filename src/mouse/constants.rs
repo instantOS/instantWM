@@ -26,15 +26,6 @@ pub const OVERLAY_ZONE_WIDTH: i32 = 50;
 /// rectangles in [`crate::mouse::slop::is_valid_window_size`].
 pub const SLOP_MARGIN: i32 = 40;
 
-// ── Refresh-rate throttling ───────────────────────────────────────────────────
-
-/// High-frequency motion-event cap (events per second) used when
-/// `globals.doubledraw` is enabled.
-pub const REFRESH_RATE_HI: u32 = 240;
-
-/// Default motion-event cap (events per second).
-pub const REFRESH_RATE_LO: u32 = 120;
-
 // ── X11 keycodes ─────────────────────────────────────────────────────────────
 
 /// X11 hardware keycode for the Escape key, used to abort hover-resize.

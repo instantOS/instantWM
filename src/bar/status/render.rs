@@ -11,54 +11,6 @@ struct StatusLayout {
     total_width: i32,
 }
 
-/// Draw the status bar.
-///
-/// The `systray_width` parameter is pre-calculated by the caller to avoid
-/// backend-specific dependencies in this function.
-pub(crate) fn draw_status_bar(
-    ctx: &mut CoreCtx,
-    systray_width: i32,
-    m: &Monitor,
-    bar_height: i32,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) -> (i32, i32, Vec<StatusClickTarget>) {
-    let mode = ctx.behavior().current_mode.clone();
-    let stext_owned: String;
-    let stext = if mode == crate::overview::OVERVIEW_MODE_NAME {
-        stext_owned = "mode: overview".to_string();
-        stext_owned.as_str()
-    } else if !mode.is_empty() && mode != "default" {
-        let mode_display = ctx
-            .state()
-            .config
-            .bindings
-            .modes
-            .get(&mode)
-            .and_then(|m| m.description.as_ref())
-            .map(|s| s.as_str())
-            .unwrap_or(&mode);
-        stext_owned = format!("mode: {}", mode_display);
-        stext_owned.as_str()
-    } else {
-        stext_owned = ctx.bar.runtime.status_text.clone();
-        stext_owned.as_str()
-    };
-
-    if stext.is_empty() {
-        return (0, 0, Vec::new());
-    }
-
-    let items = ctx.bar.status_items_for_text(stext).to_vec();
-    draw_status_items(
-        systray_width,
-        m,
-        bar_height,
-        items.as_slice(),
-        ctx.status_scheme(),
-        painter,
-    )
-}
-
 pub(crate) fn hit_test_i3_click_target(
     click_targets: &[StatusClickTarget],
     local_x: i32,

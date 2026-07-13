@@ -4,7 +4,6 @@ use crate::types::{
     CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, Monitor, MonitorId,
     Rect, WindowId,
 };
-use std::collections::HashMap;
 
 const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
@@ -123,14 +122,6 @@ pub(crate) fn build_monitor_snapshots(
         Vec::new()
     };
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
-    let mut monitor_stats: HashMap<MonitorId, crate::bar::model::ClientBarStats> = HashMap::new();
-    for client in core.model().clients.values() {
-        let entry = monitor_stats.entry(client.monitor_id).or_default();
-        entry.occupied_tags = entry.occupied_tags | client.tags;
-        if client.is_urgent {
-            entry.urgent_tags = entry.urgent_tags | client.tags;
-        }
-    }
 
     let mut snapshots = Vec::new();
     for monitor_id in monitor_ids {
@@ -142,8 +133,7 @@ pub(crate) fn build_monitor_snapshots(
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
 
-        let mut stats = monitor_stats.get(&mon.id()).copied().unwrap_or_default();
-        stats.occupied_tags = stats.occupied_tags.without_scratchpad();
+        let stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = if is_selected_monitor {

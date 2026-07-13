@@ -1,12 +1,11 @@
 //! Tag bar rendering helpers.
 //!
-//! These functions answer three questions the bar needs on every redraw:
+//! These functions answer two questions the bar needs on every redraw:
 //!
 //! * [`visible_tags_ctx`] – which tags should be drawn, and with what label/width?
 //! * [`get_tag_width`] – how many pixels wide is the entire tag strip?
-//! * [`get_tag_at_x`] – which tag (if any) lives at a given X coordinate?
 //!
-//! All three share a single iteration through [`visible_tags_ctx`], which resolves
+//! Both share a single iteration through [`visible_tags_ctx`], which resolves
 //! tag-index remapping, skip logic, display names, and widths in one place.
 
 use crate::contexts::CoreCtx;
@@ -89,25 +88,4 @@ pub fn get_tag_width(core: &CoreCtx) -> i32 {
         .map(|t| t.width)
         .sum();
     core.config().bar.startmenu_size + tags_width
-}
-
-/// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
-///
-/// `click_x` is relative to the left edge of the bar window.
-pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
-    let m = core.model().selected_monitor();
-    if m.tags.is_empty() {
-        return -1;
-    }
-
-    let occupied = m.occupied_tags(core.model().clients.map());
-    let mut acc = core.config().bar.startmenu_size;
-    for t in visible_tags(core.state(), core.bar, m, occupied) {
-        acc += t.width;
-        if acc > click_x {
-            return t.tag_index as i32;
-        }
-    }
-
-    -1
 }

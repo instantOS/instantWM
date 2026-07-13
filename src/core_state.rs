@@ -569,7 +569,6 @@ pub struct WmBehavior {
     /// truth; this field only lets cursor application/reset code avoid treating
     /// the backend cursor as an implicit mode flag.
     pub requested_cursor: AltCursor,
-    pub double_draw: bool,
     pub specialnext: SpecialNext,
     /// Current active mode (sway-like modes).
     pub current_mode: String,
@@ -582,7 +581,6 @@ impl Default for WmBehavior {
             focus_follows_mouse: true,
             focus_follows_float_mouse: true,
             requested_cursor: AltCursor::Default,
-            double_draw: false,
             specialnext: SpecialNext::None,
             current_mode: "default".to_string(),
         }
@@ -606,9 +604,6 @@ impl WmBehavior {
         action.apply(&mut self.focus_follows_float_mouse);
     }
 
-    pub fn toggle_double_draw(&mut self) {
-        self.double_draw = !self.double_draw;
-    }
 }
 
 /// Batched layout targets waiting to be arranged.

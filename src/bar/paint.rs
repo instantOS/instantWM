@@ -35,7 +35,6 @@ impl BarScheme {
 pub trait BarPainter {
     fn text_width(&mut self, text: &str) -> i32;
     fn set_scheme(&mut self, scheme: BarScheme);
-    fn scheme(&self) -> Option<&BarScheme>;
     fn rect(&mut self, bounds: Rect, filled: bool, invert: bool);
     fn text(
         &mut self,

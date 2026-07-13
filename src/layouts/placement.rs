@@ -66,17 +66,6 @@ impl LayoutPlacement {
         }
     }
 
-    pub(crate) fn place(
-        self,
-        ctx: &mut WmCtx<'_>,
-        win: WindowId,
-        slot: Rect,
-        border_width: i32,
-        options: MoveResizeOptions,
-    ) {
-        ctx.move_resize(win, self.client_rect(slot, border_width), options);
-    }
-
     fn apply_inner_gap(self, slot: Rect) -> Rect {
         if self.inner_gap <= 0 {
             return slot;

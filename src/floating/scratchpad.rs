@@ -258,25 +258,6 @@ fn scratchpad_names(model: &WmModel, visible: bool) -> Vec<String> {
         .collect()
 }
 
-pub fn unhide_one(ctx: &mut WmCtx) -> bool {
-    let clients: Vec<WindowId> = ctx.core().model().clients.keys().copied().collect();
-
-    for win in clients {
-        let should_unhide = ctx
-            .core()
-            .state()
-            .model
-            .clients
-            .get(&win)
-            .is_some_and(|c| c.is_hidden && !c.is_scratchpad());
-        if should_unhide {
-            crate::client::show_window(ctx, win);
-            return true;
-        }
-    }
-    false
-}
-
 pub fn scratchpad_make(
     ctx: &mut WmCtx,
     name: &str,
@@ -584,70 +565,6 @@ pub fn collect_scratchpad_info(model: &WmModel) -> Vec<ScratchpadInfo> {
             ScratchpadInfo::from_client(c, pos)
         })
         .collect()
-}
-
-pub fn scratchpad_list_json(model: &WmModel) -> String {
-    let scratchpads = collect_scratchpad_info(model);
-    serde_json::to_string_pretty(&scratchpads).unwrap_or_else(|_| "[]".to_string())
-}
-
-/// List all scratchpads with detailed information.
-///
-/// Returns a formatted string like:
-/// ```text
-/// * term     visible    window: 12345    monitor: 0    800x600+100+50    floating
-///   music    hidden     window: 67890    monitor: 1    400x300+200+100
-/// ```
-pub fn scratchpad_list(model: &WmModel) -> String {
-    let scratchpads = collect_scratchpad_info(model);
-
-    if scratchpads.is_empty() {
-        return "no scratchpads".to_string();
-    }
-
-    let mut out = String::new();
-
-    for sp in scratchpads {
-        if !out.is_empty() {
-            out.push('\n');
-        }
-
-        let marker = if sp.visible { "* " } else { "  " };
-        let status = if sp.visible { "visible" } else { "hidden" };
-
-        let geometry =
-            if let (Some(w), Some(h), Some(x), Some(y)) = (sp.width, sp.height, sp.x, sp.y) {
-                format!("{}x{}+{}+{}", w, h, x, y)
-            } else {
-                "unknown geometry".to_string()
-            };
-
-        let window_str = if let Some(wid) = sp.window_id {
-            format!("window: {}", wid)
-        } else {
-            "no window".to_string()
-        };
-
-        let monitor_str = if let Some(mon) = sp.monitor {
-            format!("monitor: {}", mon)
-        } else {
-            "no monitor".to_string()
-        };
-
-        let flags = match sp.mode {
-            ClientMode::TrueFullscreen { .. } | ClientMode::FakeFullscreen { .. } => " fullscreen",
-            ClientMode::Floating => " floating",
-            ClientMode::Tiling => " tiled",
-            ClientMode::Maximized { .. } => " maximized",
-        };
-
-        out.push_str(&format!(
-            "{}{:<12} {:<8}  {:<18} {:<14} {}{}",
-            marker, sp.name, status, window_str, monitor_str, geometry, flags
-        ));
-    }
-
-    out
 }
 
 pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeDirection) {
