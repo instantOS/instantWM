@@ -493,6 +493,16 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         ctx.systray.as_deref(),
         event_win,
     ) {
+        if e.atom == ctx.x11_runtime.xatom.xembed_info {
+            crate::backend::x11::systray::update_systray_icon_state(
+                &mut ctx.core,
+                &ctx.x11,
+                ctx.x11_runtime,
+                ctx.systray.as_deref(),
+                event_win,
+                Some(e),
+            );
+        }
         crate::backend::x11::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
@@ -711,13 +721,30 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         );
     };
 
+    crate::backend::x11::systray::update_systray_icon_state(
+        &mut ctx.core,
+        &ctx.x11,
+        ctx.x11_runtime,
+        ctx.systray.as_deref(),
+        icon_win,
+        None,
+    );
     crate::backend::x11::systray::update_systray(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
         ctx.systray.as_deref_mut(),
     );
-    crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, icon_win, 1);
+    let is_mapped = ctx
+        .core
+        .model()
+        .clients
+        .get(&icon_win)
+        .map(|c| !c.tags.is_empty())
+        .unwrap_or(false);
+    if is_mapped {
+        crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, icon_win, 1);
+    }
 }
 
 fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: WindowId) {
