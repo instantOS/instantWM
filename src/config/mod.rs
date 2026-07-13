@@ -167,6 +167,8 @@ pub struct Config {
     pub num_tags: usize,
 
     // --- Color tables ---
+    /// Active built-in colour theme (the base the `*_colors` tables derive from).
+    pub theme: config_toml::ColorTheme,
     /// `[hover][SchemeWin]`
     pub window_colors: WindowColorConfigs,
     /// `[hover][SchemeClose]`
@@ -318,6 +320,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
 
         // --- Appearance (from TOML if present, else palette defaults) ---
         fonts: theme.fonts,
+        theme: theme.theme,
         tag_colors: theme.colors.tag,
         window_colors: theme.colors.window,
         closebuttoncolors: theme.colors.close_button,

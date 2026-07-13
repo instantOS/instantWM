@@ -1,4 +1,5 @@
 use clap::{ArgAction, Parser, Subcommand};
+use instantwm::config::config_toml::ColorTheme;
 use instantwm::ipc_types::{
     ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind,
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
@@ -289,6 +290,13 @@ pub enum CommandKind {
     Layout {
         name: Option<String>,
     },
+    /// Get or set the colour theme. With no argument, prints the current theme.
+    /// Pass a theme name (e.g. `nord`) to switch, or `--list`/`-l` to list them.
+    Theme {
+        name: Option<String>,
+        #[arg(long, short = 'l')]
+        list: bool,
+    },
     Border {
         width: Option<u32>,
     },
@@ -469,6 +477,24 @@ impl From<CommandKind> for IpcCommand {
                 let layout = LayoutKind::from_str(&name)
                     .expect("invalid layout name (use 'layout list' to see layouts)");
                 IpcCommand::Layout(layout)
+            }
+            CommandKind::Theme { name, list } => {
+                if list {
+                    IpcCommand::ListThemes
+                } else if let Some(name) = name {
+                    match ColorTheme::from_name(&name) {
+                        Some(theme) => IpcCommand::SetTheme(theme),
+                        None => {
+                            eprintln!(
+                                "invalid theme name '{name}' \
+                                 (use 'instantwmctl theme --list' to see themes)"
+                            );
+                            process::exit(2);
+                        }
+                    }
+                } else {
+                    IpcCommand::GetTheme
+                }
             }
             CommandKind::Border { width } => IpcCommand::Border(width),
             CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),

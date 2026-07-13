@@ -328,6 +328,9 @@ pub enum IpcCommand {
     Input(InputCommand),
     Mode(ModeCommand),
     Config(ConfigCommand),
+    GetTheme,
+    SetTheme(crate::config::config_toml::ColorTheme),
+    ListThemes,
     Quit,
 }
 
@@ -566,6 +569,10 @@ pub enum Response {
     ConfigValue(String),
     ConfigList(Vec<(String, String)>),
     Message(String),
+    /// Active colour theme name (kebab-case), e.g. `nord`.
+    Theme(String),
+    /// Available colour theme names.
+    ThemeList(Vec<String>),
 }
 
 impl Response {

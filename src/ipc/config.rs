@@ -250,19 +250,7 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
         }
-        "colors" | "fonts" => {
-            // X11 schemes/fontset are baked into the Drw at startup; rebuild
-            // them so the new values are visible without a full reload. On
-            // Wayland the bar painter pulls colours/fonts on each redraw, so
-            // marking the bar dirty is enough.
-            if matches!(wm.backend, crate::backend::Backend::X11(_)) {
-                crate::backend::x11::startup::init_drw_and_schemes(wm);
-            }
-            wm.bar.mark_dirty();
-            let mut ctx = wm.ctx();
-            ctx.request_bar_update();
-            crate::layouts::manager::arrange(&mut ctx, None);
-        }
+        "colors" | "fonts" => recolor(wm),
         // TODO: cursor.size/theme needs the Wayland CursorManager to be
         // rebuilt before it takes effect. Until that lands, treat it as a
         // bar-only refresh and rely on the next reload for the real change.
@@ -283,6 +271,22 @@ fn sync_bar_config_to_monitors(wm: &mut Wm) {
             state.show_bar = show_bar;
         }
     }
+}
+
+/// Push colour/font changes to the screen after `wm.core.config.colors` (or the
+/// tag colours) have been mutated.
+///
+/// X11 bakes schemes/fonts into the Drw at startup, so they must be rebuilt for
+/// the new values to show without a full reload. On Wayland the bar painter
+/// reads colours/fonts on every redraw, so marking the bar dirty is enough.
+pub(crate) fn recolor(wm: &mut Wm) {
+    if matches!(wm.backend, crate::backend::Backend::X11(_)) {
+        crate::backend::x11::startup::init_drw_and_schemes(wm);
+    }
+    wm.bar.mark_dirty();
+    let mut ctx = wm.ctx();
+    ctx.request_bar_update();
+    crate::layouts::manager::arrange(&mut ctx, None);
 }
 
 #[cfg(test)]

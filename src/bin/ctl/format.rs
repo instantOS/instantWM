@@ -23,6 +23,26 @@ pub fn format_response(response: &Response, json: bool) {
         Response::ConfigValue(val) => format_config_value(val, json),
         Response::ConfigList(entries) => format_config_list(entries, json),
         Response::Message(msg) => print!("{}", msg),
+        Response::Theme(name) => format_theme(name, json),
+        Response::ThemeList(themes) => format_theme_list(themes, json),
+    }
+}
+
+fn format_theme(name: &str, json: bool) {
+    if json {
+        println!("{}", serde_json::json!({ "theme": name }));
+    } else {
+        println!("{}", name);
+    }
+}
+
+fn format_theme_list(themes: &[String], json: bool) {
+    if json {
+        println!("{}", serde_json::to_string_pretty(themes).unwrap());
+    } else {
+        for theme in themes {
+            println!("{}", theme);
+        }
     }
 }
 

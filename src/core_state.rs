@@ -117,6 +117,8 @@ pub struct RuntimeConfig {
     pub systray: SystrayConfig,
     pub layout: crate::config::config_toml::LayoutConfig,
     pub colors: ColorConfig,
+    /// Active built-in colour theme (the base `colors` was derived from).
+    pub theme: crate::config::config_toml::ColorTheme,
     pub bindings: BindingConfig,
     pub fonts: FontConfig,
     pub external_commands: ExternalCommands,
@@ -139,6 +141,7 @@ impl Default for RuntimeConfig {
             systray: SystrayConfig::default(),
             layout: crate::config::config_toml::LayoutConfig::default(),
             colors: ColorConfig::default(),
+            theme: crate::config::config_toml::ColorTheme::default(),
             bindings: BindingConfig::default(),
             fonts: FontConfig::default(),
             external_commands: crate::config::commands::default_commands(),
@@ -245,6 +248,7 @@ impl Clone for RuntimeConfig {
             systray: self.systray.clone(),
             layout: self.layout,
             colors: self.colors.clone(),
+            theme: self.theme,
             bindings: self.bindings.clone(),
             fonts: self.fonts.clone(),
             external_commands: self.external_commands.clone(),
@@ -743,6 +747,7 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
     next.colors.close_button = cfg.closebuttoncolors.clone();
     next.colors.border = cfg.border_colors;
     next.colors.status_bar = cfg.statusbarcolors;
+    next.theme = cfg.theme;
 
     next.bindings.keys = cfg.keys.clone();
     next.bindings.desktop_keybinds = cfg.desktop_keybinds.clone();

@@ -96,7 +96,7 @@ impl Default for ThemeConfig {
 }
 
 /// A built-in base colour theme. Names use kebab-case in TOML.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Decode, Encode)]
 #[serde(rename_all = "kebab-case")]
 pub enum ColorTheme {
     #[default]
@@ -107,6 +107,37 @@ pub enum ColorTheme {
     CatppuccinMocha,
     Nord,
     Gruvbox,
+}
+
+impl ColorTheme {
+    /// All built-in themes, in the order shown by `instantwmctl theme --list`.
+    pub const ALL: &[ColorTheme] = &[
+        ColorTheme::Instantos,
+        ColorTheme::CatppuccinLatte,
+        ColorTheme::CatppuccinFrappe,
+        ColorTheme::CatppuccinMacchiato,
+        ColorTheme::CatppuccinMocha,
+        ColorTheme::Nord,
+        ColorTheme::Gruvbox,
+    ];
+
+    /// The kebab-case name used in TOML and on the CLI, e.g. `catppuccin-mocha`.
+    ///
+    /// Derived from the enum's serde representation so the name can never drift
+    /// from what the config parser accepts.
+    pub fn name(self) -> String {
+        toml::Value::try_from(self)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_owned))
+            .expect("ColorTheme always serialises to a TOML string")
+    }
+
+    /// Parse a kebab-case name, or `None` if it isn't a known theme.
+    pub fn from_name(name: &str) -> Option<ColorTheme> {
+        toml::Value::String(name.to_string())
+            .try_into::<ColorTheme>()
+            .ok()
+    }
 }
 
 /// Layout geometry configuration.
@@ -329,12 +360,24 @@ pub fn load_config_file() -> ThemeConfig {
 }
 
 fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> {
-    let theme = config
-        .get("theme")
-        .cloned()
-        .map(|value| value.try_into::<ColorTheme>().map_err(|e| e.to_string()))
-        .transpose()?
-        .unwrap_or_default();
+    let theme = match config.get("theme").cloned() {
+        None => ColorTheme::default(),
+        Some(value) => match value.clone().try_into::<ColorTheme>() {
+            Ok(theme) => theme,
+            Err(_) => {
+                eprintln!(
+                    "instantwm: unknown theme {value}, falling back to the default theme"
+                );
+                // Drop the bad key so ThemeConfig deserialisation succeeds;
+                // the struct is `#[serde(default)]`, so the field resolves to
+                // the default theme and every other setting still loads.
+                if let Some(table) = config.as_table_mut() {
+                    table.remove("theme");
+                }
+                ColorTheme::default()
+            }
+        },
+    };
     let mut base = toml::Value::try_from(crate::config::appearance::colors(theme))
         .map_err(|e| e.to_string())?;
     if let Some(overrides) = config.get_mut("colors") {
@@ -531,5 +574,30 @@ mod theme_tests {
         ] {
             parse(&format!("theme = {name:?}"));
         }
+    }
+
+    #[test]
+    fn theme_name_helpers_round_trip_every_variant() {
+        for theme in ColorTheme::ALL {
+            assert_eq!(ColorTheme::from_name(&theme.name()), Some(*theme));
+        }
+        assert_eq!(ColorTheme::from_name("not-a-theme"), None);
+    }
+
+    #[test]
+    fn invalid_theme_falls_back_without_discarding_other_settings() {
+        let config = parse(
+            r#"
+            theme = "does-not-exist"
+
+            [layout]
+            inner_gap = 7
+            "#,
+        );
+        // Bad theme name is a warning, not a hard error: it falls back to the
+        // default theme…
+        assert_eq!(config.theme, ColorTheme::Instantos);
+        // …and the rest of the config still loads.
+        assert_eq!(config.layout.inner_gap, 7);
     }
 }
