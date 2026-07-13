@@ -4,8 +4,8 @@ use crate::client::{kill_client, shut_kill, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    key_resize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_toggle,
-    set_scratchpad_direction, toggle_floating, toggle_maximized,
+    key_resize, moveresize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    scratchpad_toggle, set_scratchpad_direction, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -107,6 +107,10 @@ define_named_actions!(
     KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "resize floating window down", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
     KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "resize floating window left", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
     KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "resize floating window right", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
+    KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "move floating window up", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Up.into()); } } },
+    KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "move floating window down", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Down.into()); } } },
+    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move floating window left", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, HorizontalDirection::Left.into()); } } },
+    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move floating window right", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, HorizontalDirection::Right.into()); } } },
     PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() && ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Previous) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } },
     PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() && ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Next) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } },
     LastView => { name: "last_view", arg_example: None, doc: "view previously viewed tags", run: |ctx, _args| { last_view(ctx); } },

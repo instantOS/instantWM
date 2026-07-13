@@ -93,25 +93,24 @@ fn resolve_key_action(
     cleaned: u16,
     numlockmask: u32,
 ) -> Option<KeyResolution> {
+    let find = |binds: &[Key]| find_matching_action(binds, keysym, cleaned, numlockmask);
+
     if !current_mode.is_empty() && current_mode != "default" {
         let mode_cfg = modes.get(current_mode);
         let transient = mode_cfg.is_some_and(|m| m.transient);
-        if let Some(action) = mode_cfg
-            .and_then(|mode| {
-                find_matching_action(mode.keybinds.as_slice(), keysym, cleaned, numlockmask)
-            })
-            .or_else(|| find_matching_action(keys, keysym, cleaned, numlockmask))
-            .or_else(|| find_matching_action(desktop_keybinds, keysym, cleaned, numlockmask))
-        {
-            return Some(KeyResolution { action, transient });
-        }
-        return None;
+        // Priority: mode bindings → global bindings → desktop bindings
+        let action = mode_cfg
+            .and_then(|mode| find(&mode.keybinds))
+            .or_else(|| find(keys))
+            .or_else(|| find(desktop_keybinds));
+        return action.map(|action| KeyResolution { action, transient });
     }
 
-    find_matching_action(keys, keysym, cleaned, numlockmask)
+    // Default mode: global bindings → desktop bindings (if enabled)
+    find(keys)
         .or_else(|| {
             if desktop_bindings_enabled(selected_client, current_mode) {
-                find_matching_action(desktop_keybinds, keysym, cleaned, numlockmask)
+                find(desktop_keybinds)
             } else {
                 None
             }

@@ -560,22 +560,6 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
-/// Focus the next or previous client in the stack.
-pub fn focus_stack_direction<F>(model: &crate::model::WmModel, forward: bool, focus_fn: F)
-where
-    F: FnOnce(Option<WindowId>),
-{
-    let target = get_stack_focus_target(
-        model,
-        if forward {
-            StackDirection::Next
-        } else {
-            StackDirection::Previous
-        },
-    );
-    focus_fn(target);
-}
-
 fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
     let mut stack = Vec::new();
     let selected = mon.selected_tags();
