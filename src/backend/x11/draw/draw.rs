@@ -950,9 +950,18 @@ impl Drw {
 
                 // Find which font in the fallback chain can render this char.
                 while !charexists {
-                    let font_count = self.fonts.as_ref().unwrap().len();
+                    let font_count = self
+                        .fonts
+                        .as_ref()
+                        .expect("font cache must be initialized before drawing")
+                        .len();
                     for cur_idx in 0..font_count {
-                        let cur_font = self.fonts.as_ref().unwrap().get(cur_idx).unwrap();
+                        let cur_font = self
+                            .fonts
+                            .as_ref()
+                            .expect("font cache must be initialized before drawing")
+                            .get(cur_idx)
+                            .expect("font index out of bounds within font cache");
 
                         charexists = unsafe {
                             XftCharExists(self.display, cur_font.xfont, utf8codepoint) != 0
@@ -1010,7 +1019,12 @@ impl Drw {
                         fg_color.expect("text_run_loop: fg_color required in render mode");
                     let bg_color =
                         bg_color.expect("text_run_loop: bg_color required in render mode");
-                    let f = self.fonts.as_ref().unwrap().get(usedfont_idx).unwrap();
+                    let f = self
+                        .fonts
+                        .as_ref()
+                        .expect("font cache must be initialized before drawing")
+                        .get(usedfont_idx)
+                        .expect("usedfont_idx exceeds font cache length");
                     let ty = y + ((h as i32 - f.h as i32) / 2) + f.ascent();
 
                     let run_bytes = &text_bytes[utf8str_start..utf8str_start + utf8strlen];
@@ -1089,7 +1103,10 @@ impl Drw {
             let fccharset = FcCharSetCreate();
             FcCharSetAddChar(fccharset, codepoint);
 
-            let fonts_ref = self.fonts.as_ref().unwrap();
+            let fonts_ref = self
+                .fonts
+                .as_ref()
+                .expect("font cache must be initialized before fallback lookup");
             if fonts_ref[0].pattern.is_null() {
                 panic!("draw: the first font in the cache must be loaded from a font name string.");
             }
@@ -1119,8 +1136,15 @@ impl Drw {
             match self.xfont_create(None, Some(match_pattern)) {
                 Ok(Some(new_font)) => {
                     if XftCharExists(self.display, new_font.xfont, codepoint) != 0 {
-                        *usedfont_idx = self.fonts.as_ref().unwrap().len();
-                        self.fonts.as_mut().unwrap().push(new_font);
+                        *usedfont_idx = self
+                            .fonts
+                            .as_ref()
+                            .expect("font cache must be initialized before fallback lookup")
+                            .len();
+                        self.fonts
+                            .as_mut()
+                            .expect("font cache must be initialized before fallback lookup")
+                            .push(new_font);
                     } else {
                         drop(new_font);
                         if self.nomatches.len() >= NOMATCHES_LEN {

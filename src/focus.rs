@@ -533,7 +533,12 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     };
 
     if last_client.is_scratchpad() {
-        let name = last_client.scratchpad.as_ref().unwrap().name.clone();
+        let name = last_client
+            .scratchpad
+            .as_ref()
+            .expect("is_scratchpad() implies scratchpad data is present")
+            .name
+            .clone();
         let _ = crate::floating::scratchpad_show_name(ctx, &name);
         return;
     }

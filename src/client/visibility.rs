@@ -2,9 +2,8 @@
 
 use crate::backend::WindowOps;
 use crate::contexts::{WmCtx, WmCtxWayland};
-use crate::monitor::MonitorManager;
-use crate::types::{Client, ClientMode, Rect, WindowId};
-use std::collections::HashMap;
+use crate::model::WmModel;
+use crate::types::{ClientMode, Rect, WindowId};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VisibilityEntry {
@@ -16,14 +15,11 @@ pub(crate) struct VisibilityEntry {
 }
 
 /// Snapshot visibility policy without performing backend I/O.
-pub(crate) fn visibility_plan(
-    monitors: &MonitorManager,
-    clients: &HashMap<WindowId, Client>,
-) -> Vec<VisibilityEntry> {
+pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
     let mut plan = Vec::new();
-    for mon in monitors.iter_all() {
+    for mon in model.monitors_iter_all() {
         let selected_tags = mon.selected_tags();
-        for (win, client) in mon.iter_clients(clients) {
+        for (win, client) in mon.iter_clients(&model.clients) {
             plan.push(VisibilityEntry {
                 win,
                 rect: client.geo,
@@ -61,7 +57,7 @@ pub fn apply_visibility(ctx: &mut crate::contexts::WmCtx) {
 
 pub fn apply_visibility_wayland(ctx: &mut WmCtxWayland<'_>) {
     let globals = ctx.core.state();
-    for entry in visibility_plan(&globals.model.monitors, &globals.model.clients) {
+    for entry in visibility_plan(&globals.model) {
         if entry.visible {
             ctx.wayland.map_window(entry.win);
         } else {
@@ -92,7 +88,13 @@ pub fn show_window(ctx: &mut WmCtx, win: WindowId) {
 pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
     let scratchpad_name = ctx.core().model().client(win).and_then(|c| {
         if c.is_scratchpad() {
-            Some(c.scratchpad.as_ref().unwrap().name.clone())
+            Some(
+                c.scratchpad
+                    .as_ref()
+                    .expect("is_scratchpad() implies scratchpad data is present")
+                    .name
+                    .clone(),
+            )
         } else {
             None
         }
@@ -147,9 +149,8 @@ fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
 #[cfg(test)]
 mod tests {
     use super::visibility_plan;
-    use crate::monitor::MonitorManager;
+    use crate::model::WmModel;
     use crate::types::*;
-    use std::collections::HashMap;
 
     fn make_client(
         win: WindowId,
@@ -184,20 +185,15 @@ mod tests {
         mon
     }
 
-    fn make_monitor_manager(monitors: Vec<Monitor>) -> MonitorManager {
-        let mut mgr = MonitorManager::new();
+    fn make_model(monitors: Vec<Monitor>, clients: Vec<Client>) -> WmModel {
+        let mut model = WmModel::new();
         for m in monitors {
-            mgr.push(m);
+            model.monitors.push(m);
         }
-        mgr
-    }
-
-    fn make_client_map(clients: Vec<Client>) -> HashMap<WindowId, Client> {
-        let mut map = HashMap::new();
         for c in clients {
-            map.insert(c.win, c);
+            model.insert_client(c);
         }
-        map
+        model
     }
 
     #[test]
@@ -207,14 +203,14 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = make_client_map(vec![
+        let clients = vec![
             make_client(win1, tag1, MonitorId::from_raw(0), false, false),
             make_client(win2, tag2, MonitorId::from_raw(0), false, false),
-        ]);
+        ];
         let mon = make_monitor(0, tag1, vec![win1, win2]);
-        let mons = make_monitor_manager(vec![mon]);
+        let model = make_model(vec![mon], clients);
 
-        let plan = visibility_plan(&mons, &clients);
+        let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 2);
 
         // win1 is on tag1 (active) -> visible
@@ -230,17 +226,11 @@ mod tests {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = make_client_map(vec![make_client(
-            win,
-            tag,
-            MonitorId::from_raw(0),
-            true,
-            false,
-        )]);
+        let clients = vec![make_client(win, tag, MonitorId::from_raw(0), true, false)];
         let mon = make_monitor(0, tag, vec![win]);
-        let mons = make_monitor_manager(vec![mon]);
+        let model = make_model(vec![mon], clients);
 
-        let plan = visibility_plan(&mons, &clients);
+        let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].win, win);
         assert!(!plan[0].visible, "hidden client should not be visible");
@@ -252,17 +242,11 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = make_client_map(vec![make_client(
-            win,
-            tag1,
-            MonitorId::from_raw(0),
-            false,
-            true,
-        )]);
+        let clients = vec![make_client(win, tag1, MonitorId::from_raw(0), false, true)];
         let mon = make_monitor(0, tag2, vec![win]);
-        let mons = make_monitor_manager(vec![mon]);
+        let model = make_model(vec![mon], clients);
 
-        let plan = visibility_plan(&mons, &clients);
+        let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 1);
         assert!(
             plan[0].visible,
@@ -276,15 +260,15 @@ mod tests {
         let win2 = WindowId(2);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = make_client_map(vec![
+        let clients = vec![
             make_client(win1, tag, MonitorId::from_raw(0), false, false),
             make_client(win2, tag, MonitorId::from_raw(1), false, false),
-        ]);
+        ];
         let mon0 = make_monitor(0, tag, vec![win1]);
         let mon1 = make_monitor(1, tag, vec![win2]);
-        let mons = make_monitor_manager(vec![mon0, mon1]);
+        let model = make_model(vec![mon0, mon1], clients);
 
-        let plan = visibility_plan(&mons, &clients);
+        let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 2);
         assert!(plan[0].visible);
         assert!(plan[1].visible);
@@ -306,11 +290,11 @@ mod tests {
         client.border_width = 2;
         client.mode = ClientMode::Floating;
 
-        let clients = make_client_map(vec![client]);
+        let clients = vec![client];
         let mon = make_monitor(0, tag, vec![win]);
-        let mons = make_monitor_manager(vec![mon]);
+        let model = make_model(vec![mon], clients);
 
-        let plan = visibility_plan(&mons, &clients);
+        let plan = visibility_plan(&model);
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].rect, rect);
         assert_eq!(plan[0].border_width, 2);

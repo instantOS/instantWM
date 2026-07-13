@@ -51,7 +51,9 @@ impl SessionLockHandler for WaylandState {
         };
 
         // Configure the lock surface to cover the full output.
-        let mode = output.current_mode().unwrap();
+        let mode = output
+            .current_mode()
+            .expect("output must have a current mode for lock surface sizing");
         surface.with_pending_state(|states| {
             let (w, h) = mode.size.into();
             states.size = Some((w as u32, h as u32).into());

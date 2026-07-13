@@ -370,8 +370,16 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
             if !ctx.window_backend().window_exists(found) {
                 return Err(format!("scratchpad '{}' no longer exists", name));
             }
-            let mon = ctx.core().model().monitor(current_mon).unwrap();
-            let client = ctx.core().model().client(found).unwrap();
+            let mon = ctx
+                .core()
+                .model()
+                .monitor(current_mon)
+                .expect("selected monitor must exist while showing scratchpad");
+            let client = ctx
+                .core()
+                .model()
+                .client(found)
+                .expect("scratchpad client must exist after window_exists check");
             (mon.monitor_rect, mon.work_rect.w, client.geo)
         };
 

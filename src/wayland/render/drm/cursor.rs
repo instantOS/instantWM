@@ -192,7 +192,7 @@ impl CursorManager {
     pub fn get_cursor(&self, icon: CursorIcon, scale: i32) -> Rc<XCursor> {
         self.get_cursor_with_name(icon, scale).unwrap_or_else(|| {
             self.get_cursor_with_name(CursorIcon::Default, scale)
-                .unwrap()
+                .expect("default cursor must always be available")
         })
     }
 
@@ -242,7 +242,12 @@ impl CursorManager {
             }
         }
 
-        Rc::clone(self.frame_cache.borrow().get(&key).unwrap())
+        Rc::clone(
+            self.frame_cache
+                .borrow()
+                .get(&key)
+                .expect("cursor frame cache must be populated by get_cursor_with_name"),
+        )
     }
 
     fn create_fallback_frame(&self, renderer: &mut GlesRenderer) -> CursorFrame {

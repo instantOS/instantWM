@@ -63,9 +63,9 @@ pub(super) fn handle_layer_commit(
                 states
                     .data_map
                     .get::<LayerSurfaceData>()
-                    .unwrap()
+                    .expect("layer surface must have LayerSurfaceData attached")
                     .lock()
-                    .unwrap()
+                    .expect("LayerSurfaceData mutex poisoned")
                     .initial_configure_sent
             });
             if !initial_configure_sent {

@@ -212,7 +212,9 @@ pub fn update_bars(
 
     let conn = x11.conn;
     for (i, wx, bar_y, w, bar_height) in &bar_configs {
-        let win_id = conn.generate_id().unwrap();
+        let win_id = conn
+            .generate_id()
+            .expect("failed to generate X11 window ID for bar");
 
         let aux = x11rb::protocol::xproto::CreateWindowAux::new()
             .override_redirect(1)
