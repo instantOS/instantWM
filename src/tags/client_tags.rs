@@ -41,7 +41,7 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
 
     let m = ctx.core().model().selected_monitor();
     let clients_on_tag: Vec<_> = m
-        .iter_clients(ctx.core().model().clients.map())
+        .iter_clients(&ctx.core().model().clients)
         .filter(|(_, c)| c.tags.intersects(current_tag_mask))
         .map(|(win, _)| win)
         .collect();

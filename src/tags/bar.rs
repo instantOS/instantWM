@@ -82,7 +82,7 @@ pub fn get_tag_width(core: &CoreCtx) -> i32 {
         return core.config().bar.startmenu_size;
     }
 
-    let occupied = m.occupied_tags(core.model().clients.map());
+    let occupied = m.occupied_tags(&core.model().clients);
     let tags_width: i32 = visible_tags(core.state(), core.bar, m, occupied)
         .iter()
         .map(|t| t.width)

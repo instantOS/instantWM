@@ -43,33 +43,28 @@ pub(crate) struct WindowModePlan {
     pub(crate) restore_geometry: Option<Rect>,
 }
 
-pub(crate) fn update_window_mode(
-    clients: &mut crate::client::manager::ClientManager,
-    win: WindowId,
-    mode: BaseClientMode,
-) -> Option<WindowModePlan> {
-    let client = clients.get_mut(&win)?;
+pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> WindowModePlan {
     match mode {
         BaseClientMode::Floating => {
             client.mode = ClientMode::Floating;
             client.restore_border_width();
             let border_width = client.border_width;
             let restore_geometry = Some(client.effective_float_geo());
-            Some(WindowModePlan {
+            WindowModePlan {
                 change: WindowModeChange::ChangedToFloating {
                     restored_geometry: restore_geometry.is_some(),
                 },
                 border_width,
                 restore_geometry,
-            })
+            }
         }
         BaseClientMode::Tiling => {
             client.enter_tiling();
-            Some(WindowModePlan {
+            WindowModePlan {
                 change: WindowModeChange::ChangedToTiling,
                 border_width: client.border_width,
                 restore_geometry: None,
-            })
+            }
         }
     }
 }
@@ -78,9 +73,10 @@ pub(crate) fn update_window_mode(
 ///
 /// Handles border updates and geometry changes but not caller-owned animation.
 pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> WindowModeChange {
-    let Some(plan) = update_window_mode(&mut ctx.core_mut().model_mut().clients, win, mode) else {
+    let Some(client) = ctx.core_mut().model_mut().client_mut(win) else {
         return WindowModeChange::MissingClient;
     };
+    let plan = update_window_mode(client, mode);
 
     match mode {
         BaseClientMode::Floating => {
@@ -221,7 +217,6 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
 mod tests {
     use super::WindowModeChange;
     use super::update_window_mode;
-    use crate::client::manager::ClientManager;
     use crate::types::*;
 
     fn make_client(win: WindowId, tags: TagMask, mode: ClientMode) -> Client {
@@ -248,23 +243,13 @@ mod tests {
         }
     }
 
-    fn make_client_manager(clients: Vec<Client>) -> ClientManager {
-        let mut mgr = ClientManager::new();
-        for c in clients {
-            mgr.insert(c.win, c);
-        }
-        mgr
-    }
-
     #[test]
     fn mode_change_to_floating_returns_plan() {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
-        let mut clients = make_client_manager(vec![make_client(win, tag, ClientMode::Tiling)]);
+        let mut client = make_client(win, tag, ClientMode::Tiling);
 
-        let plan = update_window_mode(&mut clients, win, BaseClientMode::Floating);
-        assert!(plan.is_some());
-        let p = plan.unwrap();
+        let p = update_window_mode(&mut client, BaseClientMode::Floating);
         assert_eq!(
             p.change,
             WindowModeChange::ChangedToFloating {
@@ -283,7 +268,6 @@ mod tests {
         );
 
         // Check model state
-        let client = clients.get(&win).unwrap();
         assert_eq!(client.mode, ClientMode::Floating);
         assert_eq!(client.border_width, 4);
     }
@@ -292,15 +276,13 @@ mod tests {
     fn mode_change_to_tiling_returns_plan() {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
-        let mut clients = make_client_manager(vec![make_client(win, tag, ClientMode::Floating)]);
+        let mut client = make_client(win, tag, ClientMode::Floating);
 
-        let plan = update_window_mode(&mut clients, win, BaseClientMode::Tiling);
-        let p = plan.unwrap();
+        let p = update_window_mode(&mut client, BaseClientMode::Tiling);
         assert_eq!(p.change, WindowModeChange::ChangedToTiling);
         assert_eq!(p.border_width, 2);
 
         // Check model state
-        let client = clients.get(&win).unwrap();
         assert_eq!(client.mode, ClientMode::Tiling);
         assert_eq!(
             client.float_geo,
@@ -314,13 +296,6 @@ mod tests {
     }
 
     #[test]
-    fn mode_change_missing_client_returns_none() {
-        let mut clients = ClientManager::new();
-        let plan = update_window_mode(&mut clients, WindowId(99), BaseClientMode::Floating);
-        assert!(plan.is_none());
-    }
-
-    #[test]
     fn mode_change_to_floating_from_floating_is_idempotent() {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
@@ -331,11 +306,7 @@ mod tests {
             w: 300,
             h: 300,
         };
-        let mut clients = make_client_manager(vec![client]);
-
-        let plan = update_window_mode(&mut clients, win, BaseClientMode::Floating);
-        assert!(plan.is_some());
-        let p = plan.unwrap();
+        let p = update_window_mode(&mut client, BaseClientMode::Floating);
         assert_eq!(
             p.change,
             WindowModeChange::ChangedToFloating {
@@ -343,7 +314,6 @@ mod tests {
             }
         );
 
-        let client = clients.get(&win).unwrap();
         assert_eq!(client.mode, ClientMode::Floating);
     }
 
@@ -354,11 +324,7 @@ mod tests {
         let mut client = make_client(win, tag, ClientMode::Tiling);
         // float_geo is zero (default) — should fall back to current geo
         client.float_geo = Rect::default();
-        let mut clients = make_client_manager(vec![client]);
-
-        let plan = update_window_mode(&mut clients, win, BaseClientMode::Floating);
-        assert!(plan.is_some());
-        let p = plan.unwrap();
+        let p = update_window_mode(&mut client, BaseClientMode::Floating);
         assert_eq!(
             p.change,
             WindowModeChange::ChangedToFloating {
@@ -384,13 +350,10 @@ mod tests {
         client.snap_status = SnapPosition::None;
         client.border_width = 2;
         client.old_border_width = 2;
-        let mut clients = make_client_manager(vec![client]);
-
-        let plan = update_window_mode(&mut clients, win, BaseClientMode::Tiling);
-        assert_eq!(plan.unwrap().change, WindowModeChange::ChangedToTiling);
+        let plan = update_window_mode(&mut client, BaseClientMode::Tiling);
+        assert_eq!(plan.change, WindowModeChange::ChangedToTiling);
         // Mode transitions do not guess layout policy from the global client
         // count; the arrange plan decides this from visible tiled clients.
-        let client = clients.get(&win).unwrap();
         assert_eq!(client.border_width, 2);
     }
 }

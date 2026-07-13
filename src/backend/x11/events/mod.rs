@@ -2,9 +2,9 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::lifecycle::{is_window_iconic, manage};
-use crate::client::manager::ClientManager;
 use crate::contexts::WmCtxX11;
-use crate::types::{Rect, WindowId};
+use crate::types::{Client, Rect, WindowId};
+use std::collections::HashMap;
 use x11rb::protocol::xproto::*;
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ pub(crate) fn is_override_redirect(x11: &X11BackendRef, win: WindowId) -> bool {
 
 /// Partition `children` into `(managed, transients)`.
 fn classify_windows(
-    clients: &ClientManager,
+    clients: &HashMap<WindowId, Client>,
     x11: &X11BackendRef,
     x11_runtime: &crate::backend::x11::X11RuntimeConfig,
     children: Vec<Window>,

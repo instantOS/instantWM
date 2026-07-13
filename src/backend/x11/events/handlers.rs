@@ -53,7 +53,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         .g
         .model
         .monitors
-        .find_monitor_for(event_win, ctx.core.model().clients.map())
+        .find_monitor_for(event_win, &ctx.core.model().clients)
         && selmon_id != clicked_mon
         && (focusfollowsmouse || e.detail <= 3)
     {
@@ -175,7 +175,7 @@ pub fn client_message(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     }
 
-    if !ctx.core.model().clients.contains_key(&event_win) {
+    if ctx.core.model().client(event_win).is_none() {
         return;
     };
 
@@ -206,7 +206,7 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.model().clients.contains_key(&event_win) {
+    if ctx.core.model().client(event_win).is_some() {
         crate::backend::x11::focus::configure(ctx.core.g, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
@@ -227,7 +227,7 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.model().clients.contains_key(&event_win) {
+    if ctx.core.model().client(event_win).is_some() {
         let mut tmp = ctx.reborrow();
         unmanage(&mut tmp, event_win, true);
     } else if let Some(icon) = crate::backend::x11::systray::win_to_systray_icon(
@@ -290,7 +290,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         let has_tiling = selected_monitor.is_tiling_layout();
         is_floating || !has_tiling
     };
-    let entering_client = ctx.core.model().clients.contains_key(&event_win);
+    let entering_client = ctx.core.model().client(event_win).is_some();
 
     // 3. Handle floating focus (matches C handle_floating_focus)
     //    When the selected window is floating and we enter a different window
@@ -356,7 +356,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
         .g
         .model
         .monitors
-        .find_monitor_for(event_win, ctx.core.model().clients.map())
+        .find_monitor_for(event_win, &ctx.core.model().clients)
     {
         let is_bar_win = ctx
             .core
@@ -408,9 +408,7 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
         return;
     };
 
-    if !ctx.core.model().clients.contains_key(&event_win)
-        && !is_override_redirect(&ctx.x11, event_win)
-    {
+    if ctx.core.model().client(event_win).is_none() && !is_override_redirect(&ctx.x11, event_win) {
         let (geo, border_width) = get_win_geometry(&ctx.x11, event_win);
         let mut tmp = ctx.reborrow();
         crate::backend::x11::lifecycle::manage(&mut tmp, event_win, geo, border_width);
@@ -518,7 +516,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         return;
     };
 
-    if ctx.core.model().clients.contains_key(&event_win) {
+    if ctx.core.model().client(event_win).is_some() {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
                 if let Some(c) = ctx.core.model_mut().client_mut(event_win) {
@@ -564,7 +562,7 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.model().clients.contains_key(&event_win) {
+    if ctx.core.model().client(event_win).is_some() {
         if e.response_type & 0x80 != 0 {
             crate::backend::x11::set_client_state(
                 &ctx.x11,
@@ -651,7 +649,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     };
 
     {
-        ctx.core.model_mut().clients.insert(icon_win, client);
+        ctx.core.model_mut().insert_client(client);
         if let Some(ref mut systray) = ctx.systray {
             systray.icons.insert(0, icon_win);
         }

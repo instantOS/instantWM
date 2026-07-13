@@ -216,7 +216,7 @@ pub fn resolve_bar_position_at_root(
     }
 
     let mon = core.model().monitor(monitor_id)?;
-    if !mon.bar_contains_y(core.model().clients.map(), root.y) {
+    if !mon.bar_contains_y(&core.model().clients, root.y) {
         return None;
     }
 

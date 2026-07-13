@@ -73,10 +73,10 @@ pub fn zoom(ctx: &mut WmCtx) {
     // Find the current master (first tiled client on the monitor).
     let first_on_monitor = mon.clients.first().copied();
     let first_tiled =
-        first_on_monitor.and_then(|w| mon.next_tiled(ctx.core().model().clients.map(), Some(w)));
+        first_on_monitor.and_then(|w| mon.next_tiled(&ctx.core().model().clients, Some(w)));
 
     if first_tiled == Some(win) {
-        let next = mon.next_tiled(ctx.core().model().clients.map(), first_tiled);
+        let next = mon.next_tiled(&ctx.core().model().clients, first_tiled);
 
         // Nothing to promote if there is only one tiled window.
         if next.is_none() {

@@ -683,7 +683,7 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
 
     let selected = mon.selected_tags();
     let mut visible_clients = mon
-        .iter_clients(wm.core.model.clients.map())
+        .iter_clients(&wm.core.model.clients)
         .filter(|(_, client)| client.is_visible(selected) && !client.is_scratchpad());
 
     let Some((_, first_client)) = visible_clients.next() else {

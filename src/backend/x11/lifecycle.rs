@@ -178,7 +178,7 @@ fn insert_client_and_apply_rules(
 ) {
     c.is_hidden = crate::backend::x11::visibility::get_state(x11, x11_cfg.wmatom.state, w)
         == crate::backend::x11::constants::WM_STATE_ICONIC;
-    core.model_mut().clients.insert(w, c);
+    core.model_mut().insert_client(c);
     let props = crate::backend::x11::window_properties(x11, x11_cfg, w);
     if crate::client::apply_rules(core.state_mut(), w, &props, launch_context) {
         core.queue_layout_for_client(w);
@@ -553,7 +553,7 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     }
 
     // Remove from the global map.
-    ctx.core.model_mut().clients.remove(&win);
+    ctx.core.model_mut().remove_client(win);
 
     {
         let tmp = ctx.reborrow();
@@ -739,7 +739,7 @@ pub fn cleanup(wm: &mut Wm) {
     let _grab = ServerGrab::new(conn);
 
     for (_id, mon) in wm.core.monitors_iter() {
-        for (win, c) in mon.iter_clients(wm.core.model.clients.map()) {
+        for (win, c) in mon.iter_clients(&wm.core.model.clients) {
             let old_bw = c.old_border_width;
             let x11_win: Window = win.into();
             let _ = conn.configure_window(

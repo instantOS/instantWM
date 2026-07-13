@@ -99,4 +99,3 @@ pub fn handle_pointer_axis_raw(
         pointer.frame(state);
     }
 }
-

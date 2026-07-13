@@ -128,7 +128,7 @@ pub(crate) fn build_monitor_snapshots(
         let Some(mon) = core.model().monitor(monitor_id) else {
             continue;
         };
-        if !mon.bar_visible(core.model().clients.map()) {
+        if !mon.bar_visible(&core.model().clients) {
             continue;
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
@@ -166,7 +166,7 @@ pub(crate) fn build_monitor_snapshots(
         let selected_tags = mon.selected_tags();
         let mut titles = Vec::new();
         for (_c_win, c) in mon
-            .iter_clients(core.model().clients.map())
+            .iter_clients(&core.model().clients)
             .filter(|(_, c)| c.shows_in_bar(selected_tags))
         {
             stats.visible_clients += 1;

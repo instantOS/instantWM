@@ -4,9 +4,9 @@
 //! window manager's authoritative state.  This graph is backend-neutral
 //! and can be tested without constructing a backend.
 
-use crate::client::manager::ClientManager;
 use crate::monitor::MonitorManager;
 use crate::types::{Client, Monitor, MonitorId, TagSet, WindowId};
+use std::collections::HashMap;
 
 /// A managed client together with the monitor it is assigned to.
 ///
@@ -25,7 +25,7 @@ pub(crate) struct ClientView<'a> {
 /// kept together so their invariants have a single owner.
 pub struct WmModel {
     /// All managed clients.
-    pub(crate) clients: ClientManager,
+    pub(crate) clients: HashMap<WindowId, Client>,
     /// All monitors/screens.
     pub(crate) monitors: MonitorManager,
     /// Shared tag metadata.
@@ -35,7 +35,7 @@ pub struct WmModel {
 impl WmModel {
     pub fn new() -> Self {
         Self {
-            clients: ClientManager::new(),
+            clients: HashMap::new(),
             monitors: MonitorManager::new(),
             tags: TagSet::default(),
         }
@@ -53,6 +53,19 @@ impl WmModel {
     /// Return a managed client mutably by window ID.
     pub fn client_mut(&mut self, win: WindowId) -> Option<&mut Client> {
         self.clients.get_mut(&win)
+    }
+
+    /// Add or replace a managed client.
+    pub(crate) fn insert_client(&mut self, client: Client) -> Option<Client> {
+        self.clients.insert(client.win, client)
+    }
+
+    /// Remove a managed client from client storage.
+    ///
+    /// Monitor-list cleanup remains explicit because teardown paths need to
+    /// perform backend work between detaching and dropping client state.
+    pub(crate) fn remove_client(&mut self, win: WindowId) -> Option<Client> {
+        self.clients.remove(&win)
     }
 
     /// Resolve a managed client and its assigned monitor as one coherent view.
@@ -260,7 +273,7 @@ impl WmModel {
     ) -> bool {
         let sel_mon_id = self.selected_monitor_id();
         if let Some(mon) = self.monitors.get_mut(sel_mon_id) {
-            mon.move_client_in_stack(win, direction, self.clients.map())
+            mon.move_client_in_stack(win, direction, &self.clients)
         } else {
             false
         }
@@ -325,15 +338,12 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(42);
-        model.clients.insert(
+        model.insert_client(Client {
             win,
-            Client {
-                win,
-                monitor_id,
-                geo: Rect::new(2000, 100, 800, 600),
-                ..Client::default()
-            },
-        );
+            monitor_id,
+            geo: Rect::new(2000, 100, 800, 600),
+            ..Client::default()
+        });
 
         let view = model.client_view(win).expect("client view");
 
@@ -347,14 +357,11 @@ mod tests {
     fn client_view_requires_a_valid_client_monitor_relationship() {
         let mut model = WmModel::new();
         let win = WindowId(7);
-        model.clients.insert(
+        model.insert_client(Client {
             win,
-            Client {
-                win,
-                monitor_id: MonitorId::from_raw(999),
-                ..Client::default()
-            },
-        );
+            monitor_id: MonitorId::from_raw(999),
+            ..Client::default()
+        });
 
         assert!(model.client(win).is_some());
         assert!(model.client_view(win).is_none());
@@ -366,14 +373,11 @@ mod tests {
         let mut model = WmModel::new();
         let source = model.monitors.push(Monitor::default());
         let win = WindowId(9);
-        model.clients.insert(
+        model.insert_client(Client {
             win,
-            Client {
-                win,
-                monitor_id: source,
-                ..Client::default()
-            },
-        );
+            monitor_id: source,
+            ..Client::default()
+        });
 
         let outcome = model.move_client_to_monitor(win, MonitorId::from_raw(999));
 

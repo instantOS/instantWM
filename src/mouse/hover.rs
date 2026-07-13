@@ -141,7 +141,7 @@ fn resize_target_for_window(
 
 fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
     let mon = model.selected_monitor();
-    mon.bar_contains_y(model.clients.map(), root_y)
+    mon.bar_contains_y(&model.clients, root_y)
 }
 
 // ── Cursor helpers ───────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTar
         return None;
     }
     let mon = model.selected_monitor();
-    mon.iter_clients(model.clients.map())
+    mon.iter_clients(&model.clients)
         .find_map(|(win, _)| resize_target_for_window(model, win, root))
 }
 
@@ -197,7 +197,7 @@ fn find_tiled_win_at_point(
         return None;
     }
 
-    for (w, c) in mon.iter_clients(model.clients.map()) {
+    for (w, c) in mon.iter_clients(&model.clients) {
         if Some(w) == skip_win {
             continue;
         }
@@ -224,7 +224,7 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
     let selected = mon.selected_tags();
     has_tiling
         && mon
-            .iter_clients(model.clients.map())
+            .iter_clients(&model.clients)
             .any(|(_, c)| c.is_visible(selected) && !c.mode.is_floating())
 }
 

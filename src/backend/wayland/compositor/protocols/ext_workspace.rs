@@ -133,7 +133,7 @@ pub fn refresh(state: &mut WaylandState) {
                             }
                         }
 
-                        let occupied_mask = mon.occupied_tags(globals.model.clients.map());
+                        let occupied_mask = mon.occupied_tags(&globals.model.clients);
 
                         if Some(mon.selected_tags()) != last_tag
                             || Some(urgent_mask) != last_urgent
@@ -213,7 +213,7 @@ pub fn refresh(state: &mut WaylandState) {
                 current_urgent_tags.insert(output_name.clone(), urgent_mask);
 
                 // Occupied tags mapping
-                let occupied = mon.occupied_tags(globals.model.clients.map());
+                let occupied = mon.occupied_tags(&globals.model.clients);
                 current_occupied_tags.insert(output_name.clone(), occupied);
             }
         }

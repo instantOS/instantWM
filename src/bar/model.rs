@@ -17,7 +17,7 @@ impl ClientBarStats {
         let selected = monitor.selected_tags();
 
         // ── Pass 1: clients with title entries in the bar ─────────────────
-        for (_win, client) in monitor.iter_clients(model.clients.map()) {
+        for (_win, client) in monitor.iter_clients(&model.clients) {
             if client.shows_in_bar(selected) {
                 stats.visible_clients += 1;
             }
@@ -115,7 +115,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
-    let occupied = mon.occupied_tags(core.model().clients.map());
+    let occupied = mon.occupied_tags(&core.model().clients);
     let visible = crate::tags::bar::visible_tags(core.state(), core.bar, mon, occupied);
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
     let mut acc = mon.startmenu_size;
@@ -147,7 +147,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
     let title_clients: Vec<WindowId> = mon
-        .iter_clients(core.model().clients.map())
+        .iter_clients(&core.model().clients)
         .filter_map(|(win, c)| c.shows_in_bar(selected).then_some(win))
         .collect();
 

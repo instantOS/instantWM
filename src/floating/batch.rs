@@ -80,7 +80,7 @@ fn collect_floating_wins(model: &crate::model::WmModel, mid: MonitorId) -> Vec<W
             continue;
         }
 
-        for (c_win, c) in mon.iter_clients(model.clients.map()) {
+        for (c_win, c) in mon.iter_clients(&model.clients) {
             if c.tags.intersects(tag_mask) && c.snap_status == SnapPosition::None {
                 wins.push(c_win);
             }
@@ -159,7 +159,7 @@ fn collect_distribute_targets(
     let work_rect = mon.work_rect;
 
     let mut wins = Vec::new();
-    for (c_win, c) in mon.iter_clients(model.clients.map()) {
+    for (c_win, c) in mon.iter_clients(&model.clients) {
         if c.mode.is_floating()
             && !c.is_fixed_size
             && c.tags.intersects(tag_set)

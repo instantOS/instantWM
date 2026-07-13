@@ -313,7 +313,7 @@ mod tests {
         client.geo = rect;
         client.float_geo = rect;
         client.old_geo = rect;
-        globals.model.clients.insert(client.win, client);
+        globals.model.insert_client(client);
 
         globals
     }
@@ -387,7 +387,7 @@ mod tests {
         parent.win = WindowId::from(2_u32);
         parent.monitor_id = MonitorId::default();
         parent.geo = Rect::new(500, 300, 800, 600);
-        globals.model.clients.insert(parent.win, parent);
+        globals.model.insert_client(parent);
 
         let rect = resolve_floating_placement(
             &globals.model,

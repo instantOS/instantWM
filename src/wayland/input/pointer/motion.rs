@@ -20,7 +20,7 @@ use crate::wayland::input::pointer::drag::{active_drag_window, hover_resize_drag
 use crate::wm::Wm;
 
 fn monitor_bar_visible(wm: &Wm, mon: &crate::types::Monitor) -> bool {
-    mon.bar_visible(wm.core.model.clients.map())
+    mon.bar_visible(&wm.core.model.clients)
 }
 
 /// Unified pointer motion event that abstracts over input source.

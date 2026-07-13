@@ -442,7 +442,7 @@ fn handle_map_window(
     let mut ctx = wm.ctx();
     let g = ctx.core_mut().state_mut();
 
-    if g.model.clients.contains_key(&win) {
+    if g.model.client(win).is_some() {
         return;
     }
 
@@ -517,7 +517,7 @@ fn handle_map_window(
         client.float_geo = client.geo;
     }
 
-    g.model.clients.insert(win, client);
+    g.model.insert_client(client);
     crate::client::apply_rules(g, win, &properties, launch_context);
 
     // Determine if the window should float based on compositor policy.
@@ -593,7 +593,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     let g = ctx.core_mut().state_mut();
     g.detach(win);
     g.detach_z_order(win);
-    g.model.clients.remove(&win);
+    g.model.remove_client(win);
     crate::focus::focus(&mut ctx, None);
 }
 

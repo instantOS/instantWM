@@ -349,15 +349,12 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(11);
-        model.clients.insert(
+        model.insert_client(Client {
             win,
-            Client {
-                win,
-                monitor_id: left,
-                geo: Rect::new(100, 100, 800, 600),
-                ..Client::default()
-            },
-        );
+            monitor_id: left,
+            geo: Rect::new(100, 100, 800, 600),
+            ..Client::default()
+        });
 
         let geometry = client_geometry(&model, win).expect("client geometry");
 
@@ -373,16 +370,13 @@ mod tests {
             ..Monitor::default()
         });
         let win = WindowId(12);
-        model.clients.insert(
+        model.insert_client(Client {
             win,
-            Client {
-                win,
-                monitor_id,
-                geo: Rect::default(),
-                old_geo: Rect::new(10, 20, 640, 480),
-                ..Client::default()
-            },
-        );
+            monitor_id,
+            geo: Rect::default(),
+            old_geo: Rect::new(10, 20, 640, 480),
+            ..Client::default()
+        });
 
         let geometry = client_geometry(&model, win).expect("client geometry");
 
@@ -393,15 +387,12 @@ mod tests {
     fn client_geometry_rejects_stale_monitor_assignment() {
         let mut model = WmModel::new();
         let win = WindowId(13);
-        model.clients.insert(
+        model.insert_client(Client {
             win,
-            Client {
-                win,
-                monitor_id: crate::types::MonitorId::from_raw(1234),
-                geo: Rect::new(10, 20, 640, 480),
-                ..Client::default()
-            },
-        );
+            monitor_id: crate::types::MonitorId::from_raw(1234),
+            geo: Rect::new(10, 20, 640, 480),
+            ..Client::default()
+        });
 
         assert!(client_geometry(&model, win).is_none());
     }

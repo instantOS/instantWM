@@ -55,7 +55,7 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusT
 
         // Fallback to top of stack.
         if target.is_none() {
-            target = mon.first_visible_client(model.clients.map());
+            target = mon.first_visible_client(&model.clients);
         }
     }
 
@@ -512,7 +512,7 @@ fn get_direction_focus_candidate(
 
     get_directional_candidates(
         &mon.clients,
-        model.clients.map(),
+        &model.clients,
         selected,
         source_win,
         source_center,
@@ -587,7 +587,7 @@ fn get_stack_focus_target(
         return None;
     }
     let mon = model.selected_monitor();
-    let stack = get_visible_stack(mon, model.clients.map());
+    let stack = get_visible_stack(mon, &model.clients);
 
     if stack.is_empty() {
         return None;

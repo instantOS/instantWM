@@ -192,7 +192,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
         let m = ctx.core().model().selected_monitor();
-        for (win, c) in m.iter_clients(ctx.core().model().clients.map()) {
+        for (win, c) in m.iter_clients(&ctx.core().model().clients) {
             let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
                 result.push(win);

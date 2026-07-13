@@ -44,7 +44,7 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let bar_height = globals.config.derived.bar_height;
         let animated = globals.behavior.animated;
         let layout_cfg = globals.config.layout;
-        let clients = globals.model.clients.map();
+        let clients = &globals.model.clients;
         let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
             return;
         };
@@ -294,7 +294,7 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let clients = ctx.core().model().clients.map();
+    let clients = &ctx.core().model().clients;
     let Some(stack) = compute_monitor_z_order(monitor, clients) else {
         return;
     };
@@ -423,7 +423,7 @@ pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
         .core()
         .state()
         .selected_monitor()
-        .tiled_client_count(ctx.core().model().clients.map()) as i32;
+        .tiled_client_count(&ctx.core().model().clients) as i32;
     let m = ctx.core_mut().model_mut().selected_monitor_mut();
     if delta > 0 && m.master_count >= ccount {
         m.master_count = ccount;
@@ -465,7 +465,7 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
             .core()
             .state()
             .selected_monitor()
-            .tiled_client_count(ctx.core().model().clients.map())
+            .tiled_client_count(&ctx.core().model().clients)
             > 1;
     if animation_on {
         ctx.core_mut().behavior_mut().animated = false;

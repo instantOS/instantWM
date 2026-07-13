@@ -102,7 +102,7 @@ pub fn cursor_client_win(
     }
 
     let win = WindowId::from(reply.child);
-    if globals.model.clients.contains_key(&win) {
+    if globals.model.client(win).is_some() {
         Some(win)
     } else {
         None

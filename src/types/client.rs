@@ -673,7 +673,7 @@ mod tests {
 /// Lightweight snapshot of a tiled client for layout calculations.
 ///
 /// Layout algorithms collect these once and then work purely with
-/// geometry — no further access to `ClientManager` needed.
+/// geometry — no further access to the model's client map needed.
 #[derive(Debug, Clone, Copy)]
 pub struct TiledClientInfo {
     pub win: WindowId,

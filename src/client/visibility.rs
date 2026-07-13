@@ -1,10 +1,10 @@
 //! Client visibility: mapping/unmapping windows and WM_STATE transitions.
 
 use crate::backend::WindowOps;
-use crate::client::manager::ClientManager;
 use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::monitor::MonitorManager;
-use crate::types::{ClientMode, Rect, WindowId};
+use crate::types::{Client, ClientMode, Rect, WindowId};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct VisibilityEntry {
@@ -18,12 +18,12 @@ pub(crate) struct VisibilityEntry {
 /// Snapshot visibility policy without performing backend I/O.
 pub(crate) fn visibility_plan(
     monitors: &MonitorManager,
-    clients: &ClientManager,
+    clients: &HashMap<WindowId, Client>,
 ) -> Vec<VisibilityEntry> {
     let mut plan = Vec::new();
     for mon in monitors.iter_all() {
         let selected_tags = mon.selected_tags();
-        for (win, client) in mon.iter_clients(clients.map()) {
+        for (win, client) in mon.iter_clients(clients) {
             plan.push(VisibilityEntry {
                 win,
                 rect: client.geo,
@@ -147,9 +147,9 @@ fn hide_wayland(ctx: &mut WmCtxWayland<'_>, win: WindowId) {
 #[cfg(test)]
 mod tests {
     use super::visibility_plan;
-    use crate::client::manager::ClientManager;
     use crate::monitor::MonitorManager;
     use crate::types::*;
+    use std::collections::HashMap;
 
     fn make_client(
         win: WindowId,
@@ -192,12 +192,12 @@ mod tests {
         mgr
     }
 
-    fn make_client_manager(clients: Vec<Client>) -> ClientManager {
-        let mut mgr = ClientManager::new();
+    fn make_client_map(clients: Vec<Client>) -> HashMap<WindowId, Client> {
+        let mut map = HashMap::new();
         for c in clients {
-            mgr.insert(c.win, c);
+            map.insert(c.win, c);
         }
-        mgr
+        map
     }
 
     #[test]
@@ -207,7 +207,7 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = make_client_manager(vec![
+        let clients = make_client_map(vec![
             make_client(win1, tag1, MonitorId::from_raw(0), false, false),
             make_client(win2, tag2, MonitorId::from_raw(0), false, false),
         ]);
@@ -230,7 +230,7 @@ mod tests {
         let win = WindowId(1);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = make_client_manager(vec![make_client(
+        let clients = make_client_map(vec![make_client(
             win,
             tag,
             MonitorId::from_raw(0),
@@ -252,7 +252,7 @@ mod tests {
         let tag1 = TagMask::single(1).unwrap();
         let tag2 = TagMask::single(2).unwrap();
 
-        let clients = make_client_manager(vec![make_client(
+        let clients = make_client_map(vec![make_client(
             win,
             tag1,
             MonitorId::from_raw(0),
@@ -276,7 +276,7 @@ mod tests {
         let win2 = WindowId(2);
         let tag = TagMask::single(1).unwrap();
 
-        let clients = make_client_manager(vec![
+        let clients = make_client_map(vec![
             make_client(win1, tag, MonitorId::from_raw(0), false, false),
             make_client(win2, tag, MonitorId::from_raw(1), false, false),
         ]);
@@ -306,7 +306,7 @@ mod tests {
         client.border_width = 2;
         client.mode = ClientMode::Floating;
 
-        let clients = make_client_manager(vec![client]);
+        let clients = make_client_map(vec![client]);
         let mon = make_monitor(0, tag, vec![win]);
         let mons = make_monitor_manager(vec![mon]);
 

@@ -529,7 +529,7 @@ impl<'a> WmCtx<'a> {
 
         let on_bar = self.core().model().client_view(win).is_some_and(|view| {
             view.monitor
-                .bar_contains_y(self.core().model().clients.map(), ptr.y)
+                .bar_contains_y(&self.core().model().clients, ptr.y)
         });
 
         if in_window || on_bar {

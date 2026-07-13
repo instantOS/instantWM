@@ -161,7 +161,7 @@ mod tests {
             ..Client::default()
         };
         client.tags = model.selected_monitor().selected_tags();
-        model.clients.insert(win, client);
+        model.insert_client(client);
 
         if let Some(mon) = model.monitors.get_mut(selected_id) {
             mon.selected = Some(win);

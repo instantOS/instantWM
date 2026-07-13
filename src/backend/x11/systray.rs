@@ -52,7 +52,7 @@ pub fn remove_systray_icon(
         systray.icons.retain(|&w| w != icon_win);
     }
 
-    globals.model.clients.remove(&icon_win);
+    globals.model.remove_client(icon_win);
 }
 
 /// Update systray icon geometry using dependency injection.

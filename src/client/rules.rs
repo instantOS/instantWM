@@ -262,7 +262,7 @@ mod tests {
             tags: TagMask::single(2).unwrap(),
             ..Default::default()
         };
-        g.model.clients.insert(win, client);
+        g.model.insert_client(client);
 
         handle_property_change(
             &mut g,
@@ -287,7 +287,7 @@ mod tests {
             mode: ClientMode::Floating,
             ..Default::default()
         };
-        g.model.clients.insert(win, client);
+        g.model.insert_client(client);
 
         handle_property_change(
             &mut g,
@@ -326,7 +326,7 @@ mod tests {
             mode: ClientMode::Floating,
             ..Default::default()
         };
-        g.model.clients.insert(win, client);
+        g.model.insert_client(client);
 
         handle_property_change(
             &mut g,

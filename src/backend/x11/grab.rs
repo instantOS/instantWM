@@ -282,4 +282,3 @@ pub fn mouse_drag_loop<F>(
     pump_deferred_work(ctx);
     ungrab(&ctx.x11);
 }
-

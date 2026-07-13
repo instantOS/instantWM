@@ -113,7 +113,7 @@ mod tests {
             ..Client::default()
         };
         client.mode = mode;
-        g.clients.insert(win, client);
+        g.insert_client(client);
         g
     }
 
@@ -126,7 +126,7 @@ mod tests {
             MaximizedOutcome::Entered { base } => assert_eq!(base, BaseClientMode::Tiling),
             _ => panic!("expected Entered"),
         }
-        assert!(g.clients.get(&win).unwrap().mode.is_maximized());
+        assert!(g.client(win).unwrap().mode.is_maximized());
     }
 
     #[test]
@@ -139,7 +139,7 @@ mod tests {
             MaximizedOutcome::Exited { base } => assert_eq!(base, BaseClientMode::Tiling),
             _ => panic!("expected Exited"),
         }
-        assert!(g.clients.get(&win).unwrap().mode.is_tiling());
+        assert!(g.client(win).unwrap().mode.is_tiling());
     }
 
     #[test]
@@ -147,13 +147,13 @@ mod tests {
         let mut g = test_globals_with_client(ClientMode::Floating);
         let win = WindowId(1);
         set_maximized(&mut g, win, true);
-        assert!(g.clients.get(&win).unwrap().mode.is_maximized());
+        assert!(g.client(win).unwrap().mode.is_maximized());
         let outcome = set_maximized(&mut g, win, false).unwrap();
         match outcome {
             MaximizedOutcome::Exited { base } => assert_eq!(base, BaseClientMode::Floating),
             _ => panic!("expected Exited"),
         }
-        assert!(g.clients.get(&win).unwrap().mode.is_floating());
+        assert!(g.client(win).unwrap().mode.is_floating());
     }
 
     #[test]
@@ -165,7 +165,7 @@ mod tests {
             FullscreenOutcome::Entered { was_floating } => assert!(!was_floating),
             _ => panic!("expected Entered"),
         }
-        let c = g.clients.get(&win).unwrap();
+        let c = g.client(win).unwrap();
         assert!(c.mode.is_true_fullscreen());
         assert_eq!(c.border_width, 0);
         assert_eq!(c.old_border_width, 2);
@@ -178,7 +178,7 @@ mod tests {
         set_fullscreen(&mut g, win, true);
         let outcome = set_fullscreen(&mut g, win, false).unwrap();
         assert!(matches!(outcome, FullscreenOutcome::Exited));
-        let c = g.clients.get(&win).unwrap();
+        let c = g.client(win).unwrap();
         assert!(c.mode.is_tiling());
         assert_eq!(c.border_width, 2);
     }
