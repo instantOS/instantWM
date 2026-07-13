@@ -4,7 +4,7 @@
 //! float geometry, border width, monitor maximized slot). Backend-specific I/O
 //! (configure_window, send_configure, move_resize) is left to the caller.
 
-use crate::globals::Globals;
+use crate::model::WmModel;
 use crate::types::{BaseClientMode, WindowId};
 
 /// Outcome of a maximize state transition.
@@ -23,20 +23,16 @@ pub enum FullscreenOutcome {
 ///
 /// Handles: mode transition, float_geo save, mon.maximized update.
 /// Does NOT handle: move_resize, arrange, surface configure, raise.
-pub fn set_maximized(
-    globals: &mut Globals,
-    win: WindowId,
-    enter: bool,
-) -> Option<MaximizedOutcome> {
+pub fn set_maximized(model: &mut WmModel, win: WindowId, enter: bool) -> Option<MaximizedOutcome> {
     if enter {
-        set_maximized_enter(globals, win)
+        set_maximized_enter(model, win)
     } else {
-        set_maximized_exit(globals, win)
+        set_maximized_exit(model, win)
     }
 }
 
-fn set_maximized_enter(globals: &mut Globals, win: WindowId) -> Option<MaximizedOutcome> {
-    let client = globals.clients.get_mut(&win)?;
+fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
+    let client = model.clients.get_mut(&win)?;
     let base = client.mode.base_mode();
 
     // Save float geo if not already floating.
@@ -47,22 +43,22 @@ fn set_maximized_enter(globals: &mut Globals, win: WindowId) -> Option<Maximized
     client.mode = client.mode.as_maximized();
 
     // Update mon.maximized. Try the window's monitor first, fall back to selected.
-    if let Some(mid) = globals.clients.monitor_id(win) {
-        if let Some(mon) = globals.monitor_mut(mid) {
+    if let Some(mid) = model.clients.monitor_id(win) {
+        if let Some(mon) = model.monitor_mut(mid) {
             mon.maximized = Some(win);
         }
-    } else if let Some(mon) = globals.selected_monitor_mut_opt() {
+    } else if let Some(mon) = model.selected_monitor_mut_opt() {
         mon.maximized = Some(win);
     }
 
     Some(MaximizedOutcome::Entered { base })
 }
 
-fn set_maximized_exit(globals: &mut Globals, win: WindowId) -> Option<MaximizedOutcome> {
-    let client = globals.clients.get_mut(&win)?;
+fn set_maximized_exit(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
+    let client = model.clients.get_mut(&win)?;
     let base = client.mode.base_mode();
     client.mode = client.mode.restored();
-    globals.clear_maximized_for(win);
+    model.clear_maximized_for(win);
     Some(MaximizedOutcome::Exited { base })
 }
 
@@ -71,19 +67,19 @@ fn set_maximized_exit(globals: &mut Globals, win: WindowId) -> Option<MaximizedO
 /// Handles: mode transition, border width save/restore.
 /// Does NOT handle: move_resize, arrange, surface configure, _NET_WM_STATE.
 pub fn set_fullscreen(
-    globals: &mut Globals,
+    model: &mut WmModel,
     win: WindowId,
     enter: bool,
 ) -> Option<FullscreenOutcome> {
     if enter {
-        set_fullscreen_enter(globals, win)
+        set_fullscreen_enter(model, win)
     } else {
-        set_fullscreen_exit(globals, win)
+        set_fullscreen_exit(model, win)
     }
 }
 
-fn set_fullscreen_enter(globals: &mut Globals, win: WindowId) -> Option<FullscreenOutcome> {
-    let client = globals.clients.get_mut(&win)?;
+fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
+    let client = model.clients.get_mut(&win)?;
     let was_floating = client.mode.is_floating();
     client.mode = client.mode.as_fullscreen();
     client.save_border_width();
@@ -91,8 +87,8 @@ fn set_fullscreen_enter(globals: &mut Globals, win: WindowId) -> Option<Fullscre
     Some(FullscreenOutcome::Entered { was_floating })
 }
 
-fn set_fullscreen_exit(globals: &mut Globals, win: WindowId) -> Option<FullscreenOutcome> {
-    let client = globals.clients.get_mut(&win)?;
+fn set_fullscreen_exit(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
+    let client = model.clients.get_mut(&win)?;
     client.mode = client.mode.restored();
     client.restore_border_width();
     Some(FullscreenOutcome::Exited)
@@ -103,8 +99,8 @@ mod tests {
     use super::*;
     use crate::types::{Client, ClientMode};
 
-    fn test_globals_with_client(mode: ClientMode) -> Globals {
-        let mut g = Globals::default();
+    fn test_globals_with_client(mode: ClientMode) -> WmModel {
+        let mut g = WmModel::default();
         let win = WindowId(1);
         let mut client = Client {
             win,

@@ -5,7 +5,8 @@
 use crate::actions::{ButtonAction, KeyAction};
 use crate::types::Point;
 use crate::types::input::{BarPosition, MouseButton};
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Formatter};
+use std::mem;
 use std::sync::Arc;
 
 /// Backend-agnostic window identifier.
@@ -62,7 +63,7 @@ pub struct Key {
 }
 
 impl Debug for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Key")
             .field("mod_mask", &self.mod_mask)
             .field("keysym", &self.keysym)
@@ -111,17 +112,15 @@ impl Button {
     pub fn matches(&self, target: ButtonTarget) -> bool {
         match (self.target, target) {
             (ButtonTarget::Bar(binding), ButtonTarget::Bar(actual)) => {
-                std::mem::discriminant(&binding) == std::mem::discriminant(&actual)
+                mem::discriminant(&binding) == mem::discriminant(&actual)
             }
-            (binding, actual) => {
-                std::mem::discriminant(&binding) == std::mem::discriminant(&actual)
-            }
+            (binding, actual) => mem::discriminant(&binding) == mem::discriminant(&actual),
         }
     }
 }
 
 impl Debug for Button {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Button")
             .field("target", &self.target)
             .field("mask", &self.mask)

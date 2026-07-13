@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/instantOS/instantWM/compare/v0.1.11...v0.1.12) - 2026-07-11
+
+### Changed
+
+- break up globals thingy
+
+### Other
+
+- fix pkgbuild
+- remove unused context layer
+- move stuff
+- split into different backends
+- fix wrong derivations
+- init rearch plan
+- more methods
+- fmt
+- more type safe
+- less smelly bounds checking
+- fix leftover c smells
+- better variable names
+- move client function
+- remove workaround
+- more safe moving
+- extract logic
+- more idiomatic monitor handling
+- fix monitor regression
+- fix cursor reset
+- consolidate border handling
+- add missing dep
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- more Point usage
+- narrow more functions
+- more narrowing
+- remove dead code
+- rename functions to be more clear
+- better imports
+- premade color schemes
+- better theme ergonomics
+- do not swallow error
+- improve nerd font sizing
+- fix nerd font spacing
+- fix wrong initial firefox size
+
+## [0.1.11](https://github.com/instantOS/instantWM/compare/v0.1.10...v0.1.11) - 2026-06-15
+
+### Other
+
+- fix config bug
+- change up layout thingy
+- add missing layouts
+- Merge branch 'dev' of https://github.com/instantOS/instantWM into dev
+- run cargo fmt
+
 ## [0.1.10](https://github.com/instantOS/instantWM/compare/v0.1.9...v0.1.10) - 2026-06-07
 
 ### Other

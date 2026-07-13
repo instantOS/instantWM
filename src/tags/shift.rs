@@ -14,8 +14,8 @@ pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
 pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let (win, current_tag, tagset, tagmask, animated) = {
-        let mon = ctx.core().globals().selected_monitor();
-        let Some(win) = mon.sel else {
+        let mon = ctx.core().model().selected_monitor();
+        let Some(win) = mon.selected else {
             return;
         };
         let Some(current_tag) = mon.current_tag_number() else {
@@ -25,8 +25,8 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
             win,
             current_tag,
             mon.selected_tags(),
-            ctx.core().globals().tags.mask(),
-            ctx.core().globals().behavior.animated,
+            ctx.core().model().tags.mask(),
+            ctx.core().behavior().animated,
         )
     };
 
@@ -41,10 +41,10 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let target_tags = ctx.core().globals().selected_monitor().current_tag_number();
+    let target_tags = ctx.core().model().selected_monitor().current_tag_number();
 
     // Get mutable borrow for reset_sticky, then drop it
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         client.reset_sticky(target_tags);
     }
 
@@ -53,7 +53,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     }
 
     // Re-borrow for tag mask update
-    if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
         match dir {
             Direction::Left if current_tag > 1 => {
                 client.update_tag_mask(|tags| TagMask::from_bits(tags.bits() >> offset));
@@ -68,19 +68,19 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         }
     }
 
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     crate::focus::focus(ctx, None);
     ctx.core_mut()
-        .globals_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
 }
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
-    ctx.backend().raise_window_visual_only(win);
-    let mon_w = ctx.core().globals().selected_monitor().monitor_rect.w;
+    ctx.window_backend().raise_window_visual_only(win);
+    let mon_w = ctx.core().model().selected_monitor().monitor_rect.w;
     let geo = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| c.geo)

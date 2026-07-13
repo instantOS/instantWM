@@ -6,7 +6,7 @@ use crate::backend::x11::properties::set_client_state;
 use crate::constants::animation::DECORATIVE_SHOW_FRAME_COUNT;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{ClientMode, Rect, WindowId};
+use crate::types::{Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -19,7 +19,7 @@ use x11rb::protocol::xproto::*;
 ///
 /// Returns one of the `WM_STATE_*` constants.  Falls back to
 /// [`WM_STATE_NORMAL`] when the property is absent or unreadable.
-pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 {
+pub fn get_state(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let Ok(cookie) = conn.get_property(false, x11_win, wm_state_atom, wm_state_atom, 0, 2) else {
@@ -41,26 +41,18 @@ pub fn get_state_x11(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> 
 // Visibility apply
 // ---------------------------------------------------------------------------
 
-pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
-    let mut operations: Vec<(WindowId, Rect, bool, ClientMode)> = Vec::new();
+pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
+    let g = ctx.core.state();
+    let operations =
+        crate::client::visibility::visibility_plan(&g.model.monitors, &g.model.clients);
 
-    for mon in ctx.core.globals().monitors_iter_all() {
-        let selected_tags = mon.selected_tags();
+    let has_tiling = g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
 
-        for (win, c) in mon.iter_clients(ctx.core.globals().clients.map()) {
-            let is_visible = c.is_visible(selected_tags);
-            let geo = c.geo;
-            operations.push((win, geo, is_visible, c.mode));
-        }
-    }
-
-    let has_tiling = ctx
-        .core
-        .globals()
-        .monitors_iter()
-        .any(|(_, m)| m.is_tiling_layout());
-
-    for (win, geo, is_visible, mode) in operations {
+    for entry in operations {
+        let win = entry.win;
+        let geo = entry.rect;
+        let is_visible = entry.visible;
+        let mode = entry.mode;
         crate::animation::drop_x11_animation(ctx.x11_runtime, win);
 
         if is_visible {
@@ -90,14 +82,7 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
                 );
             }
         } else {
-            let w_val = geo.w
-                + 2 * ctx
-                    .core
-                    .globals()
-                    .clients
-                    .get(&win)
-                    .map(|c| c.border_width)
-                    .unwrap_or(0);
+            let w_val = geo.w + 2 * entry.border_width;
             let y = geo.y;
 
             let x11_win: Window = win.into();
@@ -118,8 +103,8 @@ pub fn apply_visibility_x11(ctx: &mut WmCtxX11<'_>) {
 // Show (unminimize)
 // ---------------------------------------------------------------------------
 
-pub fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    let Rect { x, y, w, h } = match ctx.core.globals().clients.get(&win) {
+pub fn show(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+    let Rect { x, y, w, h } = match ctx.core.model().clients.get(&win) {
         Some(c) => c.geo,
         None => return,
     };
@@ -147,7 +132,7 @@ pub fn show_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 // Hide (minimize)
 // ---------------------------------------------------------------------------
 
-pub fn hide_x11(ctx: &mut WmCtxX11<'_>, win: WindowId) {
+pub fn hide(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let root = ctx.x11_runtime.root;
     let x11_win: Window = win.into();
 

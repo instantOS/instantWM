@@ -6,8 +6,9 @@
 //! - Active/Urgent state is synchronized from monitor selected_tags bitmasks and client urgency flags.
 //! - Client requests to activate a workspace are queued into `WmCommand` tag switch actions.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
+use std::sync::Mutex;
 
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::ext::workspace::v1::server::{
@@ -39,9 +40,7 @@ pub struct ExtWorkspaceUserData {
 pub struct ExtWorkspaceGroupUserData {
     pub manager: ExtWorkspaceManagerV1,
     pub output_name: String,
-    pub sent_outputs: std::sync::Mutex<
-        std::collections::HashSet<smithay::reexports::wayland_server::backend::ObjectId>,
-    >,
+    pub sent_outputs: Mutex<HashSet<smithay::reexports::wayland_server::backend::ObjectId>>,
 }
 
 pub struct ExtWorkspaceManagerState {
@@ -119,22 +118,22 @@ pub fn refresh(state: &mut WaylandState) {
                         protocol_state.last_occupied_tags.get(&output_name).copied();
 
                     if let Some(mon) = globals
+                        .model
                         .monitors
-                        .monitors
-                        .iter()
+                        .iter_all()
                         .find(|m| m.name == output_name)
                     {
                         // Compute urgent_mask for this monitor
                         let mut urgent_mask = crate::types::TagMask::EMPTY;
                         for &win in &mon.clients {
-                            if let Some(c) = globals.clients.get(&win)
+                            if let Some(c) = globals.model.clients.get(&win)
                                 && c.is_urgent
                             {
                                 urgent_mask = urgent_mask | c.tags;
                             }
                         }
 
-                        let occupied_mask = mon.occupied_tags(globals.clients.map());
+                        let occupied_mask = mon.occupied_tags(globals.model.clients.map());
 
                         if Some(mon.selected_tags()) != last_tag
                             || Some(urgent_mask) != last_urgent
@@ -195,9 +194,9 @@ pub fn refresh(state: &mut WaylandState) {
     if let Some(globals) = state.globals() {
         for output_name in &active_output_names {
             if let Some(mon) = globals
+                .model
                 .monitors
-                .monitors
-                .iter()
+                .iter_all()
                 .find(|m| m.name == *output_name)
             {
                 current_tags.insert(output_name.clone(), mon.selected_tags());
@@ -205,7 +204,7 @@ pub fn refresh(state: &mut WaylandState) {
                 // Urgency mapping: A tag is urgent if any client placed on it has is_urgent == true.
                 let mut urgent_mask = crate::types::TagMask::EMPTY;
                 for &win in &mon.clients {
-                    if let Some(c) = globals.clients.get(&win)
+                    if let Some(c) = globals.model.clients.get(&win)
                         && c.is_urgent
                     {
                         urgent_mask = urgent_mask | c.tags;
@@ -214,7 +213,7 @@ pub fn refresh(state: &mut WaylandState) {
                 current_urgent_tags.insert(output_name.clone(), urgent_mask);
 
                 // Occupied tags mapping
-                let occupied = mon.occupied_tags(globals.clients.map());
+                let occupied = mon.occupied_tags(globals.model.clients.map());
                 current_occupied_tags.insert(output_name.clone(), occupied);
             }
         }
@@ -225,9 +224,9 @@ pub fn refresh(state: &mut WaylandState) {
     if let Some(globals) = state.globals() {
         for output_name in &active_output_names {
             if let Some(mon) = globals
+                .model
                 .monitors
-                .monitors
-                .iter()
+                .iter_all()
                 .find(|m| m.name == *output_name)
             {
                 let selected_tags = mon.selected_tags();
@@ -476,7 +475,7 @@ impl ExtWorkspaceGroupData {
             ExtWorkspaceGroupUserData {
                 manager: manager.clone(),
                 output_name: output.name(),
-                sent_outputs: std::sync::Mutex::new(std::collections::HashSet::new()),
+                sent_outputs: Mutex::new(HashSet::new()),
             },
         ) {
             Ok(g) => g,

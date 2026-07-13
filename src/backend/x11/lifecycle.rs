@@ -1,6 +1,6 @@
 //! Client lifecycle: adopting and releasing X11 windows.
 //!
-//! Note on title initialization: `update_title` writes into `globals.clients`,
+//! Note on title initialization: `update_title` writes into `globals.model.clients`,
 //! so we cannot use it before the client is inserted.  Instead we call the
 //! private `read_title_from_x` helper (which returns a `String`) and store the
 //! result directly on the local `Client` before insertion.
@@ -20,7 +20,7 @@
 //!
 //! A new window inherits its monitor from its transient-for parent when one
 //! exists; otherwise it goes to the currently selected monitor. After
-//! [`crate::backend::x11::apply_rules_x11`] runs, the assignment may be
+//! [`crate::client::apply_rules`] runs, the assignment may be
 //! overridden again by a matching rule.
 //!
 //! # Animation
@@ -28,11 +28,11 @@
 //! When the global `animated` flag is set, newly managed windows slide in from
 //! 70 px above their final position.  Fullscreen windows skip the animation.
 
-use crate::backend::BackendOps;
+use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::BROKEN;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::backend::x11::focus::{grab_buttons_x11, unfocus_win_x11};
+use crate::backend::x11::focus::{grab_buttons, unfocus_win};
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
     update_motif_hints, update_window_type, update_wm_hints,
@@ -42,7 +42,6 @@ use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 // focus() is used via focus_soft() in this module
 use crate::focus::focus;
-use crate::globals::Globals;
 use crate::layouts::arrange;
 use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
 use std::cmp::max;
@@ -56,11 +55,11 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u32) {
-    let trans = get_transient_for_hint_x11(&ctx.x11, w);
+    let trans = get_transient_for_hint(&ctx.x11, w);
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, w, wa_geo, wa_border_width);
-    let launch_context = read_launch_context_x11(ctx.core.globals_mut(), &ctx.x11, w);
-    assign_initial_monitor_and_tags(ctx.core.globals_mut(), &mut client, trans, launch_context);
+    let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, w);
+    assign_initial_monitor_and_tags(ctx.core.state_mut(), &mut client, trans, launch_context);
     insert_client_and_apply_rules(
         &mut ctx.core,
         &ctx.x11,
@@ -70,42 +69,45 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         launch_context,
     );
 
-    let borderpx = apply_default_border(ctx.core.globals_mut(), w);
-    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.globals(), w);
-    clamp_client_to_work_area(ctx.core.globals_mut(), w, mon_work_rect);
-    let is_monocle = is_monocle_on_client_monitor(ctx.core.globals(), w);
+    let border_px = ctx.core.config().window.border_width_px;
+    apply_default_border(ctx.core.model_mut(), border_px, w);
+    let (mon_work_rect, mon_monitor_rect) = monitor_rects_for_client(ctx.core.model(), w);
+    clamp_client_to_work_area(ctx.core.model_mut(), w, mon_work_rect);
+    let is_monocle = is_monocle_on_client_monitor(ctx.core.model(), w);
+    let bar_height = ctx.core.config().derived.bar_height;
     configure_client_border(
-        ctx.core.globals_mut(),
+        ctx.core.model_mut(),
+        bar_height,
         &ctx.x11,
         ctx.x11_runtime,
         w,
-        borderpx,
+        border_px,
         mon_monitor_rect,
         is_monocle,
     );
 
     apply_manage_hints(ctx, w);
-    snapshot_float_geo(ctx.core.globals_mut(), w, mon_monitor_rect);
+    snapshot_float_geo(ctx.core.model_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
-    grab_buttons_x11(ctx.core.globals(), &ctx.x11, ctx.x11_runtime, w, false);
+    grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, w, false);
 
-    if initialize_floating_state(ctx.core.globals_mut(), w, trans.is_some()) {
-        if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.globals(), w, trans) {
-            crate::client::sync_client_geometry(ctx.core.globals_mut(), w, rect);
+    if initialize_floating_state(ctx.core.model_mut(), w, trans.is_some()) {
+        if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.model(), w, trans) {
+            crate::client::sync_client_geometry(ctx.core.model_mut(), w, rect);
         }
         ctx.x11.raise_window_visual_only(w);
         ctx.x11.flush();
     }
 
-    ctx.core.globals_mut().attach(w);
-    ctx.core.globals_mut().attach_z_order_top(w);
+    ctx.core.model_mut().attach(w);
+    ctx.core.model_mut().attach_z_order_top(w);
 
     register_client_root(&ctx.x11, ctx.x11_runtime, w);
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
     let initially_hidden = prepare_visibility_and_unfocus(&mut WmCtx::X11(ctx.reborrow()), w);
-    crate::client::select_client(ctx.core.globals_mut(), w);
-    let animated = ctx.core.globals().behavior.animated;
+    crate::client::select_client(ctx.core.model_mut(), w);
+    let animated = ctx.core.behavior().animated;
     let c = arrange_map_focus_and_snapshot(&mut WmCtx::X11(ctx.reborrow()), w, initially_hidden);
 
     run_manage_animation(
@@ -134,14 +136,14 @@ fn build_initial_client(
 }
 
 fn assign_initial_monitor_and_tags(
-    g: &mut crate::globals::Globals,
+    g: &mut crate::core_state::CoreState,
     c: &mut Client,
     trans: Option<WindowId>,
     launch_context: Option<crate::client::LaunchContext>,
 ) {
-    let trans_client = trans.filter(|win| g.clients.contains_key(win));
+    let trans_client = trans.filter(|win| g.model.clients.contains_key(win));
     if let Some(tc_win) = trans_client
-        && let Some(tc) = g.clients.get(&tc_win)
+        && let Some(tc) = g.model.clients.get(&tc_win)
     {
         c.monitor_id = tc.monitor_id;
         c.set_tag_mask(tc.tags);
@@ -158,7 +160,10 @@ fn assign_initial_monitor_and_tags(
         return;
     }
     c.monitor_id = g.selected_monitor_id();
-    c.set_tag_mask(crate::client::initial_tags_for_monitor(g, c.monitor_id));
+    c.set_tag_mask(crate::client::initial_tags_for_monitor(
+        &g.model,
+        c.monitor_id,
+    ));
 }
 
 fn insert_client_and_apply_rules(
@@ -169,24 +174,26 @@ fn insert_client_and_apply_rules(
     mut c: Client,
     launch_context: Option<crate::client::LaunchContext>,
 ) {
-    c.is_hidden = crate::backend::x11::visibility::get_state_x11(x11, x11_cfg.wmatom.state, w)
+    c.is_hidden = crate::backend::x11::visibility::get_state(x11, x11_cfg.wmatom.state, w)
         == crate::backend::x11::constants::WM_STATE_ICONIC;
-    core.globals_mut().clients.insert(w, c);
-    let props = crate::backend::x11::window_properties_x11(x11, x11_cfg, w);
-    crate::client::apply_rules(core.globals_mut(), w, &props, launch_context);
+    core.model_mut().clients.insert(w, c);
+    let props = crate::backend::x11::window_properties(x11, x11_cfg, w);
+    if crate::client::apply_rules(core.state_mut(), w, &props, launch_context) {
+        core.queue_layout_for_client(w);
+    }
 }
 
-fn read_launch_context_x11(
-    g: &mut Globals,
+fn read_launch_context(
+    pending_launches: &mut std::collections::VecDeque<crate::client::PendingLaunch>,
     x11: &X11BackendRef<'_>,
     w: WindowId,
 ) -> Option<crate::client::LaunchContext> {
-    let startup_id = read_string_prop_x11(x11, w, "_NET_STARTUP_ID");
-    let pid = read_u32_prop_x11(x11, w, "_NET_WM_PID");
-    crate::client::take_pending_launch(g, pid, startup_id.as_deref())
+    let startup_id = read_string_prop(x11, w, "_NET_STARTUP_ID");
+    let pid = read_u32_prop(x11, w, "_NET_WM_PID");
+    crate::client::take_pending_launch(pending_launches, pid, startup_id.as_deref())
 }
 
-fn read_string_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<String> {
+fn read_string_prop(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<String> {
     let atom = x11
         .conn
         .intern_atom(false, atom_name.as_bytes())
@@ -215,7 +222,7 @@ fn read_string_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -
     Some(String::from_utf8_lossy(&reply.value[..len]).into_owned()).filter(|s| !s.is_empty())
 }
 
-fn read_u32_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<u32> {
+fn read_u32_prop(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> Option<u32> {
     let atom = x11
         .conn
         .intern_atom(false, atom_name.as_bytes())
@@ -236,25 +243,23 @@ fn read_u32_prop_x11(x11: &X11BackendRef<'_>, w: WindowId, atom_name: &str) -> O
         .next()
 }
 
-fn apply_default_border(g: &mut crate::globals::Globals, w: WindowId) -> i32 {
-    let borderpx = g.cfg.window.border_width_px;
-    if let Some(client) = g.clients.get_mut(&w) {
-        client.border_width = borderpx;
-        client.old_border_width = borderpx;
+fn apply_default_border(model: &mut crate::model::WmModel, border_px: i32, w: WindowId) {
+    if let Some(client) = model.clients.get_mut(&w) {
+        client.border_width = border_px;
+        client.old_border_width = border_px;
     }
-    borderpx
 }
 
-fn monitor_rects_for_client(g: &crate::globals::Globals, w: WindowId) -> (Rect, Rect) {
-    let monitor_id = g.clients.monitor_id(w);
+fn monitor_rects_for_client(model: &crate::model::WmModel, w: WindowId) -> (Rect, Rect) {
+    let monitor_id = model.clients.monitor_id(w);
     monitor_id
-        .and_then(|mid| g.monitor(mid))
+        .and_then(|mid| model.monitor(mid))
         .map(|m| (m.work_rect, m.monitor_rect))
         .unwrap_or((Rect::default(), Rect::default()))
 }
 
-fn clamp_client_to_work_area(g: &mut crate::globals::Globals, w: WindowId, mon_work_rect: Rect) {
-    if let Some(client) = g.clients.get_mut(&w) {
+fn clamp_client_to_work_area(model: &mut crate::model::WmModel, w: WindowId, mon_work_rect: Rect) {
+    if let Some(client) = model.clients.get_mut(&w) {
         if client.geo.x + client.total_width() > mon_work_rect.x + mon_work_rect.w {
             client.geo.x = mon_work_rect.x + mon_work_rect.w - client.total_width();
         }
@@ -266,26 +271,25 @@ fn clamp_client_to_work_area(g: &mut crate::globals::Globals, w: WindowId, mon_w
     }
 }
 
-fn is_monocle_on_client_monitor(g: &Globals, w: WindowId) -> bool {
-    let monitor_id = g.clients.monitor_id(w);
+fn is_monocle_on_client_monitor(model: &crate::model::WmModel, w: WindowId) -> bool {
+    let monitor_id = model.clients.monitor_id(w);
     monitor_id
-        .and_then(|mid| g.monitor(mid))
+        .and_then(|mid| model.monitor(mid))
         .map(|mon| mon.is_monocle_layout())
         .unwrap_or(false)
 }
 
 fn configure_client_border(
-    g: &mut Globals,
+    model: &mut crate::model::WmModel,
+    bar_height: i32,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     w: WindowId,
-    borderpx: i32,
+    border_px: i32,
     mon_monitor_rect: Rect,
     is_monocle: bool,
 ) {
-    let bar_height = g.cfg.bar.height;
-
-    let Some(client) = g.clients.get_mut(&w) else {
+    let Some(client) = model.clients.get_mut(&w) else {
         return;
     };
 
@@ -296,7 +300,7 @@ fn configure_client_border(
     {
         0
     } else {
-        borderpx
+        border_px
     };
 
     client.border_width = border_width;
@@ -311,28 +315,28 @@ fn configure_client_border(
 }
 
 fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
-    crate::backend::x11::focus::configure_x11(ctx_x11.core.globals(), &ctx_x11.x11, w);
+    crate::backend::x11::focus::configure(ctx_x11.core.state(), &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
-    crate::backend::x11::update_size_hints_x11(ctx_x11.core.globals_mut(), &ctx_x11.x11, w);
+    crate::backend::x11::update_size_hints(ctx_x11.core.model_mut(), &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(
-        ctx_x11.core.globals_mut(),
+        ctx_x11.core.model_mut(),
         &ctx_x11.x11,
         ctx_x11.x11_runtime,
         w,
     );
     read_wm_desktop_hint(
-        ctx_x11.core.globals_mut(),
+        ctx_x11.core.model_mut(),
         &ctx_x11.x11,
         ctx_x11.x11_runtime,
         w,
     );
-    set_client_tag_prop(ctx_x11.core.globals(), &ctx_x11.x11, ctx_x11.x11_runtime, w);
+    set_client_tag_prop(ctx_x11.core.state(), &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
 }
 
-fn snapshot_float_geo(g: &mut Globals, w: WindowId, mon_monitor_rect: Rect) {
-    if let Some(client) = g.clients.get_mut(&w) {
+fn snapshot_float_geo(model: &mut crate::model::WmModel, w: WindowId, mon_monitor_rect: Rect) {
+    if let Some(client) = model.clients.get_mut(&w) {
         client.float_geo.x = client.geo.x;
         client.float_geo.y = if client.geo.y >= mon_monitor_rect.y {
             client.geo.y
@@ -355,8 +359,12 @@ fn subscribe_manage_events(x11: &X11BackendRef, w: WindowId) {
         .change_window_attributes(x11_win, &ChangeWindowAttributesAux::new().event_mask(mask));
 }
 
-fn initialize_floating_state(g: &mut Globals, w: WindowId, has_transient_parent: bool) -> bool {
-    if let Some(client) = g.clients.get_mut(&w) {
+fn initialize_floating_state(
+    model: &mut crate::model::WmModel,
+    w: WindowId,
+    has_transient_parent: bool,
+) -> bool {
+    if let Some(client) = model.clients.get_mut(&w) {
         if !client.mode.is_floating() {
             client.mode = if has_transient_parent || client.is_fixed_size {
                 ClientMode::Floating
@@ -385,12 +393,13 @@ fn register_client_root(x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, w: Wind
 fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
     let (screen_width, client_x, client_y, client_width, client_height) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&w)
         .map(|client| {
             (
-                ctx.core().globals().cfg.display.width,
+                ctx.core().config().derived.display.width,
                 client.geo.x,
                 client.geo.y,
                 client.geo.w,
@@ -414,7 +423,8 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
 fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     let initially_hidden = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&w)
         .map(|c| c.is_hidden)
@@ -422,12 +432,12 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
         set_client_state(&ctx_x11.x11, ctx_x11.x11_runtime, w, WM_STATE_NORMAL);
     }
-    if let Some(selected_window) = ctx.core().globals().selected_win()
+    if let Some(selected_window) = ctx.core().model().selected_win()
         && let WmCtx::X11(ctx_x11) = ctx
     {
         ctx_x11.core.focus.last_client = selected_window;
-        unfocus_win_x11(
-            ctx_x11.core.globals(),
+        unfocus_win(
+            ctx_x11.core.state(),
             &ctx_x11.x11,
             ctx_x11.x11_runtime,
             selected_window,
@@ -440,7 +450,8 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
 fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden: bool) -> Client {
     let mut c = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&w)
         .cloned()
@@ -448,13 +459,14 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
     let monitor_id = c.monitor_id;
     arrange(ctx, Some(monitor_id));
     if !initially_hidden {
-        ctx.backend().map_window(w);
-        ctx.backend().flush();
+        ctx.window_backend().map_window(w);
+        ctx.window_backend().flush();
     }
     focus(ctx, None);
     c = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&w)
         .cloned()
@@ -489,16 +501,17 @@ fn run_manage_animation(
 
     let is_tiling = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&w)
-        .and_then(|c| c.monitor(ctx.core().globals()))
+        .and_then(|c| c.monitor(ctx.core().model()))
         .map(|mon| mon.is_tiling_layout())
         .unwrap_or(false);
 
     if !is_tiling {
-        ctx.backend().raise_window_visual_only(w);
-        ctx.backend().flush();
+        ctx.window_backend().raise_window_visual_only(w);
+        ctx.window_backend().flush();
     } else if c.geo.w > mon_monitor_rect.w - 30 || c.geo.h > mon_monitor_rect.h - 30 {
         arrange(ctx, Some(c.monitor_id));
     }
@@ -517,12 +530,12 @@ fn run_manage_animation(
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
-    let monitor_id = ctx.core.globals().clients.monitor_id(win);
+    let monitor_id = ctx.core.model().clients.monitor_id(win);
 
-    ctx.core.globals_mut().clear_maximized_for(win);
+    ctx.core.model_mut().clear_maximized_for(win);
 
     {
-        let g = &mut ctx.core.globals_mut();
+        let g = &mut ctx.core.state_mut();
         g.detach(win);
         g.detach_z_order(win);
     }
@@ -549,13 +562,13 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     }
 
     // Remove from the global map.
-    ctx.core.globals_mut().clients.remove(&win);
+    ctx.core.model_mut().clients.remove(&win);
 
     {
         let tmp = ctx.reborrow();
         focus(&mut WmCtx::X11(tmp), None);
     }
-    update_client_list(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
+    update_client_list(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
 
     if let Some(mid) = monitor_id {
         let mut tmp = WmCtx::X11(ctx.reborrow());
@@ -619,7 +632,12 @@ fn read_title_from_x(x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, win: Windo
 /// This is used to persist client state across WM restarts: when the WM starts
 /// up it re-manages all existing windows, and this call recovers the tag
 /// assignment and monitor that were set in the previous session.
-fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, w: WindowId) {
+fn read_client_info(
+    model: &mut crate::model::WmModel,
+    x11: &X11BackendRef,
+    x11_cfg: &X11RuntimeConfig,
+    w: WindowId,
+) {
     let x11_win: Window = w.into();
     let client_info_atom = x11_cfg.netatom.client_info;
 
@@ -637,12 +655,12 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
     let tags = data.next().unwrap_or(0);
     let mon_num = data.next().unwrap_or(0);
 
-    let target_mon = g
+    let target_mon = model
         .monitors_iter()
         .find(|(_i, m)| m.num as u32 == mon_num)
         .map(|(i, _)| i);
 
-    if let Some(client) = g.clients.get_mut(&w) {
+    if let Some(client) = model.clients.get_mut(&w) {
         client.set_tag_mask(crate::types::TagMask::from_bits(tags));
         if let Some(mid) = target_mon {
             client.monitor_id = mid;
@@ -653,7 +671,7 @@ fn read_client_info(g: &mut Globals, x11: &X11BackendRef, x11_cfg: &X11RuntimeCo
 /// Read the standard `_NET_WM_DESKTOP` hint from `w` and apply it to the
 /// just-managed client. This covers clients that request a desktop before map.
 fn read_wm_desktop_hint(
-    g: &mut Globals,
+    model: &mut crate::model::WmModel,
     x11: &X11BackendRef,
     x11_cfg: &X11RuntimeConfig,
     w: WindowId,
@@ -674,14 +692,14 @@ fn read_wm_desktop_hint(
     let Some(desktop) = data.next() else { return };
 
     if desktop == u32::MAX {
-        if let Some(client) = g.clients.get_mut(&w) {
+        if let Some(client) = model.clients.get_mut(&w) {
             client.is_sticky = true;
         }
         return;
     }
 
     let Some((monitor_id, tag_index)) =
-        crate::backend::x11::properties::monitor_tag_for_desktop(g, desktop)
+        crate::backend::x11::properties::monitor_tag_for_desktop(model, desktop)
     else {
         return;
     };
@@ -689,7 +707,7 @@ fn read_wm_desktop_hint(
         return;
     };
 
-    if let Some(client) = g.clients.get_mut(&w) {
+    if let Some(client) = model.clients.get_mut(&w) {
         client.monitor_id = monitor_id;
         client.is_sticky = false;
         client.clear_sticky_if_scratchpad();
@@ -697,7 +715,7 @@ fn read_wm_desktop_hint(
     }
 }
 
-fn get_transient_for_hint_x11(x11: &X11BackendRef, w: WindowId) -> Option<WindowId> {
+fn get_transient_for_hint(x11: &X11BackendRef, w: WindowId) -> Option<WindowId> {
     let x11_win: Window = w.into();
 
     x11.conn
@@ -729,8 +747,8 @@ pub fn cleanup(wm: &mut Wm) {
 
     let _grab = ServerGrab::new(conn);
 
-    for (_id, mon) in wm.g.monitors_iter() {
-        for (win, c) in mon.iter_clients(wm.g.clients.map()) {
+    for (_id, mon) in wm.core.monitors_iter() {
+        for (win, c) in mon.iter_clients(wm.core.model.clients.map()) {
             let old_bw = c.old_border_width;
             let x11_win: Window = win.into();
             let _ = conn.configure_window(

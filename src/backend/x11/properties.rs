@@ -10,11 +10,9 @@ use crate::backend::x11::constants::{
     MWM_HINTS_DECORATIONS_FIELD, MWM_HINTS_FLAGS_FIELD, WM_HINTS_URGENCY_HINT,
 };
 use crate::client::rules::WindowProperties;
-use crate::client::rules::apply_rules as apply_rules_generic;
 use crate::client::set_fullscreen;
-use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
+use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::globals::Globals;
 use crate::types::{ClientMode, MonitorId, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
@@ -42,18 +40,18 @@ pub fn set_client_state(
 }
 
 pub fn set_client_tag_prop(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = globals.model.clients.get(&win) else {
         return;
     };
 
-    let mon_num = c.monitor(globals).map(|m| m.num as u32).unwrap_or(0);
+    let mon_num = c.monitor(&globals.model).map(|m| m.num as u32).unwrap_or(0);
 
     let mut data = [0u8; 8];
     data[..4].copy_from_slice(&c.tags.bits().to_ne_bytes());
@@ -71,35 +69,36 @@ pub fn set_client_tag_prop(
     let _ = conn.flush();
 }
 
-pub fn desktop_count(globals: &crate::globals::Globals) -> u32 {
-    let monitors = globals.monitors.len().max(1);
-    let tags = globals.tags.count().max(1);
+pub fn desktop_count(globals: &crate::core_state::CoreState) -> u32 {
+    let monitors = globals.model.monitors.len().max(1);
+    let tags = globals.model.tags.count().max(1);
     monitors.saturating_mul(tags) as u32
 }
 
 pub fn desktop_for_monitor_tag(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     monitor_id: MonitorId,
     tag_index: usize,
 ) -> Option<u32> {
-    let tag_count = globals.tags.count().max(1);
-    if tag_index == 0 || tag_index > tag_count || globals.monitor(monitor_id).is_none() {
+    let tag_count = globals.model.tags.count().max(1);
+    if tag_index == 0 || tag_index > tag_count {
         return None;
     }
+    let position = globals.model.monitors.position_of(monitor_id)?;
 
-    Some((monitor_id.index() * tag_count + (tag_index - 1)) as u32)
+    Some((position * tag_count + (tag_index - 1)) as u32)
 }
 
 pub fn monitor_tag_for_desktop(
-    globals: &crate::globals::Globals,
+    model: &crate::model::WmModel,
     desktop: u32,
 ) -> Option<(MonitorId, usize)> {
-    let tag_count = globals.tags.count().max(1);
+    let tag_count = model.tags.count().max(1);
     let desktop = desktop as usize;
-    let monitor_id = MonitorId::new(desktop / tag_count);
+    let monitor_id = model.monitors.id_at_position(desktop / tag_count)?;
     let tag_index = desktop % tag_count + 1;
 
-    if tag_index == 0 || tag_index > tag_count || globals.monitor(monitor_id).is_none() {
+    if tag_index == 0 || tag_index > tag_count {
         return None;
     }
 
@@ -107,7 +106,7 @@ pub fn monitor_tag_for_desktop(
 }
 
 pub fn update_ewmh_desktop_props(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
@@ -118,8 +117,8 @@ pub fn update_ewmh_desktop_props(
     let names = desktop_names(globals);
     let viewport = vec![0u32; count as usize * 2];
     let geometry = [
-        globals.cfg.display.width.max(1) as u32,
-        globals.cfg.display.height.max(1) as u32,
+        globals.config.derived.display.width.max(1) as u32,
+        globals.config.derived.display.height.max(1) as u32,
     ];
     let workarea = desktop_workarea(globals);
     let utf8_atom = conn
@@ -172,31 +171,31 @@ pub fn update_ewmh_desktop_props(
         &workarea,
     );
 
-    for win in globals.clients.keys().copied().collect::<Vec<_>>() {
+    for win in globals.model.clients.keys().copied().collect::<Vec<_>>() {
         set_wm_desktop_prop(globals, x11, x11_runtime, win);
     }
 
     let _ = conn.flush();
 }
 
-fn current_desktop(globals: &crate::globals::Globals) -> Option<u32> {
+fn current_desktop(globals: &crate::core_state::CoreState) -> Option<u32> {
     let mon = globals.selected_monitor();
     let tag = mon.selected_tags().first_tag().unwrap_or(1);
     desktop_for_monitor_tag(globals, mon.id(), tag)
 }
 
-fn desktop_names(globals: &crate::globals::Globals) -> Vec<u8> {
+fn desktop_names(globals: &crate::core_state::CoreState) -> Vec<u8> {
     let mut names = Vec::new();
 
-    for (monitor_id, monitor) in globals.monitors_iter() {
-        for tag_index in 1..=globals.tags.count().max(1) {
+    for (pos, (_monitor_id, monitor)) in globals.monitors_iter().enumerate() {
+        for tag_index in 1..=globals.model.tags.count().max(1) {
             let tag_name = monitor
                 .tags
                 .get(tag_index - 1)
                 .map(|tag| tag.name.as_str())
                 .unwrap_or("");
-            let name = if globals.monitors.len() > 1 {
-                format!("{}:{}", monitor_id.index() + 1, tag_name)
+            let name = if globals.model.monitors.len() > 1 {
+                format!("{}:{}", pos + 1, tag_name)
             } else {
                 tag_name.to_string()
             };
@@ -208,9 +207,9 @@ fn desktop_names(globals: &crate::globals::Globals) -> Vec<u8> {
     names
 }
 
-fn desktop_workarea(globals: &crate::globals::Globals) -> Vec<u32> {
-    let tag_count = globals.tags.count().max(1);
-    let mut workarea = Vec::with_capacity(globals.monitors.len().max(1) * tag_count * 4);
+fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
+    let tag_count = globals.model.tags.count().max(1);
+    let mut workarea = Vec::with_capacity(globals.model.monitors.len().max(1) * tag_count * 4);
 
     for (_monitor_id, monitor) in globals.monitors_iter() {
         for _tag_index in 1..=tag_count {
@@ -227,8 +226,8 @@ fn desktop_workarea(globals: &crate::globals::Globals) -> Vec<u32> {
         workarea.extend_from_slice(&[
             0,
             0,
-            globals.cfg.display.width.max(1) as u32,
-            globals.cfg.display.height.max(1) as u32,
+            globals.config.derived.display.width.max(1) as u32,
+            globals.config.derived.display.height.max(1) as u32,
         ]);
     }
 
@@ -236,12 +235,12 @@ fn desktop_workarea(globals: &crate::globals::Globals) -> Vec<u32> {
 }
 
 fn set_wm_desktop_prop(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(client) = globals.clients.get(&win) else {
+    let Some(client) = globals.model.clients.get(&win) else {
         return;
     };
 
@@ -263,7 +262,7 @@ fn set_wm_desktop_prop(
 }
 
 pub fn update_client_list(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
@@ -286,19 +285,7 @@ pub fn update_client_list(
     let _ = conn.flush();
 }
 
-pub fn update_title_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    let name = window_properties_x11(x11, x11_runtime, win).title;
-    if let Some(client) = core.globals_mut().clients.get_mut(&win) {
-        client.name = name;
-    }
-}
-
-pub fn window_properties_x11(
+pub fn window_properties(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -315,16 +302,6 @@ pub fn window_properties_x11(
     }
 }
 
-pub fn apply_rules_x11(
-    core: &mut CoreCtx,
-    x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
-    win: WindowId,
-) {
-    let props = window_properties_x11(x11, x11_runtime, win);
-    apply_rules_generic(core.globals_mut(), win, &props, None);
-}
-
 pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     let conn = ctx_x11.x11.conn;
     let x11_win: Window = win.into();
@@ -339,7 +316,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     }
 
     if wtype.contains(&atom_dialog)
-        && let Some(client) = ctx_x11.core.globals_mut().clients.get_mut(&win)
+        && let Some(client) = ctx_x11.core.model_mut().clients.get_mut(&win)
     {
         client.mode = if crate::backend::x11::policy::should_float_for_x11_type(Some(
             smithay::xwayland::xwm::WmWindowType::Dialog,
@@ -360,15 +337,20 @@ pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         Err(_) => None,
     };
 
-    if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
         crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
     }
 }
 
-pub fn set_urgent_x11(globals: &mut Globals, x11: &X11BackendRef, win: WindowId, urg: bool) {
+pub fn set_urgent(
+    model: &mut crate::model::WmModel,
+    x11: &X11BackendRef,
+    win: WindowId,
+    urg: bool,
+) {
     let conn = x11.conn;
 
-    if let Some(client) = globals.clients.get_mut(&win) {
+    if let Some(client) = model.clients.get_mut(&win) {
         client.is_urgent = urg;
     }
 
@@ -414,12 +396,12 @@ pub fn set_urgent_x11(globals: &mut Globals, x11: &X11BackendRef, win: WindowId,
 }
 
 pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
-    if !ctx.core.globals().cfg.window.decorhints {
+    if !ctx.core.config().window.decor_hints {
         return;
     }
 
     let motif_atom = ctx.x11_runtime.motifatom;
-    let borderpx = ctx.core.globals().cfg.window.border_width_px;
+    let border_px = ctx.core.config().window.border_width_px;
     let conn = ctx.x11.conn;
     let x11_win: Window = win.into();
 
@@ -446,7 +428,8 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
 
     let (c_w, c_h, c_x, c_y) = ctx
         .core
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|c| (c.total_width(), c.total_height(), c.geo.x, c.geo.y))
@@ -458,12 +441,12 @@ pub fn update_motif_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         || (decorations & MWM_DECOR_BORDER) != 0
         || (decorations & MWM_DECOR_TITLE) != 0
     {
-        borderpx
+        border_px
     } else {
         0
     };
 
-    if let Some(client) = ctx.core.globals_mut().clients.get_mut(&win) {
+    if let Some(client) = ctx.core.model_mut().clients.get_mut(&win) {
         client.border_width = new_bw;
         client.old_border_width = new_bw;
     }

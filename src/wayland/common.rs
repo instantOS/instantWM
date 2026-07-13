@@ -6,16 +6,18 @@
 //! This module contains everything that is identical between the nested
 //! (winit) backend and the standalone DRM/KMS backend:
 //!
-//! - WM globals initialisation (`init_wayland_globals`)
-//! - Session environment variables (`apply_wayland_session_env`)
-//! - Wayland listening socket setup (`setup_wayland_socket`)
+//! - WM globals initialisation (`init_globals`)
+//! - Session environment variables (`apply_session_env`)
+//! - Wayland listening socket setup (`setup_socket`)
 //! - XWayland spawn + wiring (`spawn_xwayland`)
 //! - Bar render-element building (`build_bar_elements`)
 //! - Frame callback dispatch (`send_frame_callbacks`)
 //! - Render backend trait (`RenderBackend`) for abstracting buffer/cursor operations
 //! - Layer shell element counting (`count_upper_layer_render_elements`)
 
+use std::env;
 use std::process::{Command, Stdio};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -50,7 +52,7 @@ use crate::backend::wayland::compositor::{WaylandClientState, WaylandState};
 use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
-use crate::globals::Globals;
+use crate::core_state::CoreState;
 use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
 use crate::wm::Wm;
 
@@ -62,7 +64,7 @@ use crate::wm::Wm;
 ///
 /// Looks for a `size=N` fragment in each string, returning the first valid
 /// positive float found.  Falls back to `14.0` when nothing matches.
-pub fn wayland_font_size_from_config(fonts: &[String]) -> f32 {
+pub fn font_size_from_config(fonts: &[String]) -> f32 {
     fonts
         .iter()
         .find_map(|font| {
@@ -77,8 +79,30 @@ pub fn wayland_font_size_from_config(fonts: &[String]) -> f32 {
         .unwrap_or(14.0)
 }
 
+/// Extract family names from Fontconfig-style descriptors.
+///
+/// cosmic-text does not understand fragments such as `:size=12`, so those
+/// must not be passed as part of the family name. A style suffix used by the
+/// default config is also removed; cosmic-text obtains style information from
+/// the matched face itself.
+pub fn font_families_from_config(fonts: &[String]) -> Vec<String> {
+    fonts
+        .iter()
+        .filter_map(|font| {
+            let mut family = font.split(':').next()?.trim();
+            for suffix in ["-Regular", "-Medium", "-Bold", "-Light", "-Thin"] {
+                if let Some(stripped) = family.strip_suffix(suffix) {
+                    family = stripped;
+                    break;
+                }
+            }
+            (!family.is_empty()).then(|| family.to_string())
+        })
+        .collect()
+}
+
 /// Calculate a comfortable line/cell height (in pixels) from a font size.
-pub fn wayland_font_height_from_size(font_size: f32) -> i32 {
+pub fn font_height_from_size(font_size: f32) -> i32 {
     ((font_size * 1.3).ceil() as i32).max(font_size.ceil() as i32 + 2)
 }
 
@@ -221,7 +245,7 @@ mod tests {
 /// Reads `config.toml`, applies tag/key configuration, sets bar metrics, and
 /// calls `update_geom` so that monitor layout is valid before the first frame.
 ///
-/// The caller is responsible for setting `wm.g.cfg.screen_width` /
+/// The caller is responsible for setting `wm.core.config.screen_width` /
 /// `screen_height` to the actual output dimensions afterwards (e.g. from the
 /// winit window size or DRM connector mode).  The values written here
 /// Wayland-specific globals initialization.
@@ -232,17 +256,15 @@ mod tests {
 /// Apply font-derived bar metrics to the runtime config and bar painter.
 ///
 /// Computes `bar_height` and `horizontal_padding` from the font config and
-/// applies them to the given `Globals`. Also updates the bar painter's font
-/// size. Shared by both startup (`init_wayland_globals`) and reload.
-pub fn apply_bar_metrics(
-    g: &mut Globals,
-    data: &mut WaylandBackendData,
-    cfg: &crate::config::Config,
-) {
-    let font_size = wayland_font_size_from_config(&cfg.fonts);
-    let font_height = wayland_font_height_from_size(font_size);
+/// applies them to the given `CoreState`. Also updates the bar painter's font
+/// size. Shared by both startup (`init_globals`) and reload.
+pub fn apply_bar_metrics(g: &mut CoreState, data: &mut WaylandBackendData) {
+    let font_size = font_size_from_config(&g.config.fonts.fonts);
+    let font_families = font_families_from_config(&g.config.fonts.fonts);
+    let font_height = font_height_from_size(font_size);
 
     data.bar_painter.set_font_size(font_size);
+    data.bar_painter.set_font_families(&font_families);
 
     // CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL is the button's visual content;
     // the +2 adds a 1-pixel padding on each side so the button is never flush
@@ -250,23 +272,22 @@ pub fn apply_bar_metrics(
     let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
     // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
     // rounded up) when the user has not explicitly set bar_height in config.
-    g.cfg.bar.height = if cfg.bar_height > 0 {
-        cfg.bar_height.max(min_bar_height)
+    g.config.derived.bar_height = if g.config.bar.height > 0 {
+        g.config.bar.height.max(min_bar_height)
     } else {
         (font_height + 12).max(min_bar_height)
     };
-    g.cfg.bar.horizontal_padding = font_height;
+    g.config.derived.bar_horizontal_padding = font_height;
 }
 
-pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
+pub fn init_globals(g: &mut CoreState, wayland: &mut WaylandBackendData) {
     let cfg = init_config(crate::backend::BackendKind::Wayland);
-    g.cfg.display.width = 1280;
-    g.cfg.display.height = 800;
-    crate::globals::apply_config(g, &cfg);
-    crate::globals::apply_tags_config(g, &cfg);
-    g.cfg.bar.show = true;
+    g.config.derived.display.width = 1280;
+    g.config.derived.display.height = 800;
+    crate::core_state::apply_config(g, &cfg);
+    g.config.bar.show = true;
 
-    apply_bar_metrics(g, wayland, &cfg);
+    apply_bar_metrics(g, wayland);
 
     // Monitor geometry will be set up after the compositor is ready via update_geom
 }
@@ -282,23 +303,23 @@ pub fn init_wayland_globals(g: &mut Globals, wayland: &mut WaylandBackendData) {
 /// (which merely exports `WAYLAND_DISPLAY` into the nested environment) and
 /// the standalone DRM backend (which is the actual session compositor) use the
 /// same set of variables.
-pub fn apply_wayland_session_env(socket_name: &str) {
+pub fn apply_session_env(socket_name: &str) {
     unsafe {
-        std::env::set_var("WAYLAND_DISPLAY", socket_name);
-        std::env::set_var("XDG_SESSION_TYPE", "wayland");
-        std::env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
-        std::env::set_var("XDG_SESSION_DESKTOP", "instantwm");
-        std::env::set_var("DESKTOP_SESSION", "instantwm");
-        std::env::remove_var("DISPLAY");
-        std::env::set_var("GDK_BACKEND", "wayland");
-        std::env::set_var("QT_QPA_PLATFORM", "wayland");
-        std::env::set_var("SDL_VIDEODRIVER", "wayland");
-        std::env::set_var("CLUTTER_BACKEND", "wayland");
+        env::set_var("WAYLAND_DISPLAY", socket_name);
+        env::set_var("XDG_SESSION_TYPE", "wayland");
+        env::set_var("XDG_CURRENT_DESKTOP", "instantwm");
+        env::set_var("XDG_SESSION_DESKTOP", "instantwm");
+        env::set_var("DESKTOP_SESSION", "instantwm");
+        env::remove_var("DISPLAY");
+        env::set_var("GDK_BACKEND", "wayland");
+        env::set_var("QT_QPA_PLATFORM", "wayland");
+        env::set_var("SDL_VIDEODRIVER", "wayland");
+        env::set_var("CLUTTER_BACKEND", "wayland");
     }
 }
 
 pub fn ensure_dbus_session() {
-    if std::env::var("DBUS_SESSION_BUS_ADDRESS").is_ok() {
+    if env::var("DBUS_SESSION_BUS_ADDRESS").is_ok() {
         return;
     }
 
@@ -318,7 +339,7 @@ pub fn ensure_dbus_session() {
     let addr = String::from_utf8_lossy(&output.stdout);
     let addr = addr.trim();
     if !addr.is_empty() {
-        unsafe { std::env::set_var("DBUS_SESSION_BUS_ADDRESS", addr) };
+        unsafe { env::set_var("DBUS_SESSION_BUS_ADDRESS", addr) };
         log::info!("Started D-Bus session bus: {addr}");
     }
 }
@@ -328,7 +349,7 @@ pub fn ensure_dbus_session() {
 /// Portals and other D-Bus-activated services need these variables to discover
 /// the compositor socket and desktop identity. This mirrors the environment
 /// import step commonly done by compositor session wrappers.
-pub fn import_wayland_env_into_dbus_activation() {
+pub fn import_env_into_dbus_activation() {
     let mut attempted = false;
 
     if let Ok(status) = Command::new("dbus-update-activation-environment")
@@ -378,7 +399,7 @@ pub fn import_wayland_env_into_dbus_activation() {
 ///
 /// Returns the socket name (e.g. `"wayland-1"`) so callers can log it or pass
 /// it to child processes.
-pub fn setup_wayland_socket(
+pub fn setup_socket(
     loop_handle: &LoopHandle<'static, WaylandState>,
     state: &WaylandState,
 ) -> String {
@@ -388,8 +409,8 @@ pub fn setup_wayland_socket(
         .to_string_lossy()
         .into_owned();
 
-    apply_wayland_session_env(&socket_name);
-    import_wayland_env_into_dbus_activation();
+    apply_session_env(&socket_name);
+    import_env_into_dbus_activation();
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {
@@ -427,7 +448,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         |_| (),
     ) {
         Ok((xwayland, client)) => {
-            unsafe { std::env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
+            unsafe { env::set_var("DISPLAY", format!(":{}", xwayland.display_number())) };
             let handle_for_wm = loop_handle.clone();
             if let Err(err) = loop_handle.insert_source(xwayland, move |event, _, data| match event
             {
@@ -436,7 +457,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
                     display_number,
                 } => {
                     data.xdisplay = Some(display_number);
-                    unsafe { std::env::set_var("DISPLAY", format!(":{display_number}")) };
+                    unsafe { env::set_var("DISPLAY", format!(":{display_number}")) };
                     match X11Wm::start_wm(
                         handle_for_wm.clone(),
                         &data.display_handle,
@@ -465,8 +486,8 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
 /// This gives the compositor something visible to display immediately after
 /// launch during development / smoke-testing. Set
 /// `INSTANTWM_WL_AUTOSPAWN=0` to suppress it.
-pub fn spawn_wayland_smoke_window() {
-    if std::env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
+pub fn spawn_smoke_window() {
+    if env::var("INSTANTWM_WL_AUTOSTART").ok().as_deref() == Some("0") {
         return;
     }
     std::thread::spawn(|| {
@@ -484,7 +505,7 @@ pub fn spawn_wayland_smoke_window() {
 
 /// Build the `MemoryRenderBufferRenderElement` list for the status bar.
 ///
-/// Returns an empty `Vec` when `wm.g.cfg.showbar` is `false`.
+/// Returns an empty `Vec` when `wm.core.config.showbar` is `false`.
 ///
 /// The caller is responsible for adding the returned elements to its own
 /// custom-element list under the appropriate backend-specific wrapper variant
@@ -493,11 +514,17 @@ pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandState,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
-    if !wm.g.cfg.bar.show {
+    if !wm.core.config.bar.show {
         return Vec::new();
     }
 
-    let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+    let mut core = CoreCtx::new(
+        &mut wm.core,
+        &mut wm.work,
+        &mut wm.running,
+        &mut wm.bar,
+        &mut wm.focus,
+    );
 
     {
         let Backend::Wayland(data) = &mut wm.backend else {
@@ -541,18 +568,20 @@ pub fn build_bar_elements(
 }
 
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.
-pub fn poll_wayland_systray(wm: &mut Wm) {
-    let mut core = CoreCtx::new(&mut wm.g, &mut wm.running, &mut wm.bar, &mut wm.focus);
+pub fn poll_systray(wm: &mut Wm) {
+    let core = CoreCtx::new(
+        &mut wm.core,
+        &mut wm.work,
+        &mut wm.running,
+        &mut wm.bar,
+        &mut wm.focus,
+    );
     let Backend::Wayland(data) = &mut wm.backend else {
         return;
     };
 
     if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
-        let dirty = runtime.poll_events(
-            &mut core,
-            &mut data.wayland_systray,
-            &mut data.wayland_systray_menu,
-        );
+        let dirty = runtime.poll_events(&mut data.wayland_systray, &mut data.wayland_systray_menu);
         if dirty {
             core.bar.mark_dirty();
         }
@@ -568,12 +597,9 @@ pub struct FixedSceneElements {
 }
 
 /// Build the shared scene pieces that do not depend on the target output.
-pub fn build_fixed_scene_elements(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-) -> std::rc::Rc<FixedSceneElements> {
+pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
-    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.g, state);
+    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
 
     if !wm.bar.needs_redraw()
         && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
@@ -583,9 +609,13 @@ pub fn build_fixed_scene_elements(
         return elements.clone();
     }
 
-    let elements = std::rc::Rc::new(FixedSceneElements {
+    let elements = Rc::new(FixedSceneElements {
         bar_buffers: build_bar_buffers(wm, state),
-        borders: crate::wayland::render::borders::render_border_elements(&wm.g, state),
+        borders: crate::wayland::render::borders::render_border_elements(
+            &wm.core.model,
+            &wm.core.config.colors.border,
+            state,
+        ),
     });
 
     if !wm.bar.needs_redraw() {
@@ -804,24 +834,25 @@ pub fn update_primary_scanout_output(
 
 /// Clamp output dimensions to a safe minimum so that Smithay never sees a
 /// zero-sized surface.
-pub fn sanitize_wayland_size(w: i32, h: i32) -> (i32, i32) {
+pub fn sanitize_size(w: i32, h: i32) -> (i32, i32) {
     const WAYLAND_MIN_DIM: i32 = 64;
     (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
 }
 
 pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {
     let output_name = output.name();
-    let Some(monitor) =
-        wm.g.monitors
-            .monitors()
-            .iter()
-            .find(|m| m.name == output_name)
+    let Some(monitor) = wm
+        .core
+        .model
+        .monitors
+        .iter_all()
+        .find(|m| m.name == output_name)
     else {
         return false;
     };
     let selected_tags = monitor.selected_tags();
     monitor
-        .iter_clients(wm.g.clients.map())
+        .iter_clients(wm.core.model.clients.map())
         .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
 }
 

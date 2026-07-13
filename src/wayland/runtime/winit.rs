@@ -13,7 +13,7 @@ use smithay::reexports::calloop::LoopSignal;
 use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
-use crate::wayland::common::sanitize_wayland_size;
+use crate::wayland::common::sanitize_size;
 use crate::wayland::input::{apply_pending_warp, handle_keyboard};
 use crate::wayland::render::winit::render_frame;
 
@@ -23,7 +23,7 @@ pub fn run() -> ! {
     let (mut event_loop, mut state) = super::common::new_wayland_event_loop_and_state();
     let loop_handle = event_loop.handle();
     state.attach_wm(&mut wm);
-    super::common::attach_wayland_backend_state(&mut wm, &mut state);
+    super::common::attach_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
@@ -33,9 +33,9 @@ pub fn run() -> ! {
     super::common::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
 
     let output_size = backend.window_size();
-    let (initial_w, initial_h) = sanitize_wayland_size(output_size.w, output_size.h);
-    wm.g.cfg.display.width = initial_w;
-    wm.g.cfg.display.height = initial_h;
+    let (initial_w, initial_h) = sanitize_size(output_size.w, output_size.h);
+    wm.core.config.derived.display.width = initial_w;
+    wm.core.config.derived.display.height = initial_h;
     refresh_monitor_layout(&mut wm.ctx());
     state.push_command(WmCommand::SyncLayerExclusiveZones);
 
@@ -50,9 +50,9 @@ pub fn run() -> ! {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
 
-    super::common::setup_wayland_listen_socket_xwayland_systray(&loop_handle, &state, &mut wm);
+    super::common::setup_listen_socket(&loop_handle, &state, &mut wm);
 
-    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
 
     let (render_ping, render_ping_source) = calloop::ping::make_ping().expect("ping");
     loop_handle
@@ -107,7 +107,7 @@ pub fn run() -> ! {
             // Winit has no libinput devices to reconfigure, but clear the
             // pending bit so it doesn't remain queued forever (scroll_factor is
             // already applied at the compositor level in handle_pointer_axis).
-            wm.g.pending.input_config = false;
+            wm.work.input_config = false;
 
             let animation_tick = super::common::process_window_animations(state);
 

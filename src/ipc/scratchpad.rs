@@ -10,7 +10,7 @@ use crate::wm::Wm;
 pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Response {
     match cmd {
         ScratchpadCommand::List => {
-            let scratchpads = collect_scratchpad_info(&wm.g);
+            let scratchpads = collect_scratchpad_info(&wm.core.model);
             Response::ScratchpadList(scratchpads)
         }
         ScratchpadCommand::Toggle(name) => {
@@ -44,7 +44,7 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             None => Response::ok(),
         },
         ScratchpadCommand::Status(name) => {
-            let mut scratchpads = collect_scratchpad_info(&wm.g);
+            let mut scratchpads = collect_scratchpad_info(&wm.core.model);
             if let Some(ref n) = name {
                 scratchpads.retain(|sp| sp.name == *n);
             }

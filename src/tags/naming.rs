@@ -19,8 +19,8 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
         return;
     }
 
-    let mon = ctx.core().globals().selected_monitor();
-    let (numtags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
+    let mon = ctx.core().model().selected_monitor();
+    let (num_tags, tagset) = (mon.tags.len(), mon.selected_tags().bits());
 
     if tagset == 0 {
         return;
@@ -28,40 +28,36 @@ pub fn name_tag(ctx: &mut WmCtx, arg: &str) {
 
     // Apply the new (or default) name to every tag in the current tagset
     // on every monitor, so secondary monitors stay in sync.
-    for mon in ctx.core_mut().globals_mut().monitors.iter_all_mut() {
-        for i in 0..numtags.min(MAX_TAGS) {
+    for mon in ctx.core_mut().model_mut().monitors.iter_all_mut() {
+        for (i, tag) in mon.tags.iter_mut().take(num_tags.min(MAX_TAGS)).enumerate() {
             if (tagset & (1 << i)) == 0 {
                 continue;
             }
-            if let Some(tag) = mon.tags.get_mut(i) {
-                tag.name = if !arg.is_empty() {
-                    arg.to_string()
-                } else {
-                    default_tag_name(i)
-                };
-            }
+            tag.name = if !arg.is_empty() {
+                arg.to_string()
+            } else {
+                default_tag_name(i)
+            };
         }
     }
 
     let tag_width = get_tag_width(ctx.core());
-    ctx.core_mut().globals_mut().tags.width = tag_width;
+    ctx.core_mut().model_mut().tags.width = tag_width;
     ctx.update_ewmh_desktop_props();
     ctx.request_bar_update();
 }
 
 /// Reset every tag's name back to its default (`"1"` … `"9"`, etc.) on all monitors.
 pub fn reset_name_tag(ctx: &mut WmCtx) {
-    let num_tags = ctx.core().globals().tags.num_tags.min(MAX_TAGS);
-    for mon in ctx.core_mut().globals_mut().monitors.iter_all_mut() {
-        for i in 0..num_tags {
-            if let Some(tag) = mon.tags.get_mut(i) {
-                tag.name = default_tag_name(i);
-            }
+    let num_tags = ctx.core().model().tags.num_tags.min(MAX_TAGS);
+    for mon in ctx.core_mut().model_mut().monitors.iter_all_mut() {
+        for (i, tag) in mon.tags.iter_mut().take(num_tags).enumerate() {
+            tag.name = default_tag_name(i);
         }
     }
 
     let tagwidth = get_tag_width(ctx.core());
-    ctx.core_mut().globals_mut().tags.width = tagwidth;
+    ctx.core_mut().model_mut().tags.width = tagwidth;
     ctx.update_ewmh_desktop_props();
     ctx.request_bar_update();
 }

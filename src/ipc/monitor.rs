@@ -1,6 +1,6 @@
 use crate::ipc_types::{MonitorCommand, Response};
 use crate::monitor::{focus_monitor, focus_n_mon};
-use crate::types::{MonitorDirection, MonitorId};
+use crate::types::MonitorDirection;
 use crate::wm::Wm;
 use std::collections::HashMap;
 
@@ -35,7 +35,7 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
 }
 
 fn list_monitors(wm: &Wm) -> Response {
-    let selected_id = wm.g.selected_monitor_id();
+    let selected_id = wm.core.selected_monitor_id();
     let output_info: HashMap<_, _> = wm
         .backend
         .get_outputs()
@@ -43,31 +43,33 @@ fn list_monitors(wm: &Wm) -> Response {
         .map(|output| (output.name.clone(), output))
         .collect();
 
-    let monitors: Vec<crate::ipc_types::MonitorInfo> =
-        wm.g.monitors_iter()
-            .map(|(id, m)| crate::ipc_types::MonitorInfo {
-                id: id.index(),
-                index: m.num,
-                name: m.name.clone(),
-                width: m.monitor_rect.w,
-                height: m.monitor_rect.h,
-                x: m.monitor_rect.x,
-                y: m.monitor_rect.y,
-                is_primary: id == selected_id,
-                vrr_support: output_info
-                    .get(&m.name)
-                    .map(|o| o.vrr_support)
-                    .unwrap_or(crate::backend::BackendVrrSupport::Unsupported),
-                vrr_mode: output_info.get(&m.name).and_then(|o| o.vrr_mode),
-                vrr_enabled: output_info.get(&m.name).is_some_and(|o| o.vrr_enabled),
-            })
-            .collect();
+    let monitors: Vec<crate::ipc_types::MonitorInfo> = wm
+        .core
+        .monitors_iter()
+        .enumerate()
+        .map(|(pos, (id, m))| crate::ipc_types::MonitorInfo {
+            id: pos,
+            index: m.num,
+            name: m.name.clone(),
+            width: m.monitor_rect.w,
+            height: m.monitor_rect.h,
+            x: m.monitor_rect.x,
+            y: m.monitor_rect.y,
+            is_primary: id == selected_id,
+            vrr_support: output_info
+                .get(&m.name)
+                .map(|o| o.vrr_support)
+                .unwrap_or(crate::backend::BackendVrrSupport::Unsupported),
+            vrr_mode: output_info.get(&m.name).and_then(|o| o.vrr_mode),
+            vrr_enabled: output_info.get(&m.name).is_some_and(|o| o.vrr_enabled),
+        })
+        .collect();
 
     Response::MonitorList(monitors)
 }
 
 fn switch_monitor(wm: &mut Wm, index: i32) -> Response {
-    focus_n_mon(&mut wm.ctx(), MonitorId(index.max(0) as usize));
+    focus_n_mon(&mut wm.ctx(), index.max(0) as usize);
     Response::ok()
 }
 
@@ -99,7 +101,7 @@ fn set_monitor_config(
     vrr: Option<crate::config::config_toml::VrrMode>,
 ) -> Response {
     let resolved_id = if identifier == "focused" {
-        let name = wm.g.selected_monitor().name.clone();
+        let name = wm.core.selected_monitor().name.clone();
         if name.is_empty() {
             "*".to_string()
         } else {
@@ -119,8 +121,8 @@ fn set_monitor_config(
         vrr,
     };
 
-    wm.g.cfg.monitors.insert(resolved_id, config);
-    wm.g.queue_monitor_config_apply();
+    wm.core.config.monitors.insert(resolved_id, config);
+    wm.work.queue_monitor_config_apply();
     Response::ok()
 }
 
@@ -128,14 +130,15 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
     // Determine which displays to query
     let display_names: Vec<String> = match identifier.as_deref() {
         Some("focused") | None => {
-            let name = wm.g.selected_monitor().name.clone();
+            let name = wm.core.selected_monitor().name.clone();
             if name.is_empty() {
                 // List all displays
                 match &wm.backend {
                     crate::backend::Backend::Wayland(data) => data.backend.list_displays(),
                     crate::backend::Backend::X11(_) => {
                         // For X11, get names from monitor list
-                        wm.g.monitors_iter()
+                        wm.core
+                            .monitors_iter()
                             .map(|(_, m)| m.name.clone())
                             .filter(|n| !n.is_empty())
                             .collect()

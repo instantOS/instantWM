@@ -1,12 +1,11 @@
 //! Structured data and low-level logic for clients.
 
-use crate::types::{Client, ClientId, MonitorId, TagMask, WindowId};
+use crate::types::{Client, MonitorId, TagMask, WindowId};
 use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct ClientManager {
     clients: HashMap<WindowId, Client>,
-    pub client_list: Vec<ClientId>,
 }
 
 impl ClientManager {
@@ -70,10 +69,6 @@ impl ClientManager {
         self.clients.get(&win).is_some_and(|c| c.is_hidden)
     }
 
-    pub fn is_floating(&self, win: WindowId) -> bool {
-        self.clients.get(&win).is_some_and(|c| c.mode.is_floating())
-    }
-
     pub fn is_locked(&self, win: WindowId) -> bool {
         self.clients.get(&win).is_none_or(|c| c.is_locked)
     }
@@ -86,21 +81,7 @@ impl ClientManager {
         self.clients.get(&win).map(|c| c.tags)
     }
 
-    pub fn tags_bits(&self, win: WindowId) -> Option<u32> {
-        self.clients.get(&win).map(|c| c.tags.bits())
-    }
-
     pub fn effective_float_geo(&self, win: WindowId) -> Option<crate::types::Rect> {
         self.clients.get(&win).map(|c| c.effective_float_geo())
-    }
-
-    pub fn list_push(&mut self, id: ClientId) {
-        self.client_list.push(id);
-    }
-    pub fn list_retain<F>(&mut self, f: F)
-    where
-        F: FnMut(&usize) -> bool,
-    {
-        self.client_list.retain(f);
     }
 }

@@ -36,9 +36,9 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     if ctx.is_wayland() {
         return;
     }
-    let new_mon = ctx.core().globals().monitors.find_id_by_rect(rect);
+    let new_mon = ctx.core().model().monitors.find_id_by_rect(rect);
 
-    let current_mon = ctx.core().globals().selected_monitor_id();
+    let current_mon = ctx.core().model().selected_monitor_id();
 
     let Some(target) = new_mon else { return };
     if target == current_mon {
@@ -48,16 +48,16 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
     // Unfocus the window on the old monitor before moving it.
     if let Some(cur_sel) = ctx
         .core()
-        .globals()
+        .model()
         .monitor(current_mon)
-        .and_then(|m| m.sel)
+        .and_then(|m| m.selected)
     {
         unfocus_win(ctx, cur_sel, false);
     }
 
     transfer_client(ctx, c_win, target);
 
-    ctx.core_mut().globals_mut().set_selected_monitor(target);
+    ctx.core_mut().model_mut().set_selected_monitor(target);
     crate::focus::focus(ctx, None);
 }
 
@@ -75,7 +75,7 @@ pub fn handle_client_monitor_switch(ctx: &mut WmCtx, c_win: WindowId) {
     if ctx.is_wayland() {
         return;
     }
-    let Some(c) = ctx.core().globals().clients.get(&c_win) else {
+    let Some(c) = ctx.core().model().clients.get(&c_win) else {
         return;
     };
     let rect = c.geo;

@@ -92,7 +92,7 @@ pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
 /// Unlike app-initiated move, the user is already actively grabbing a
 /// resize handle, so this skips the click-vs-drag threshold and engages
 /// the resize immediately (`dragging = true`). The unified
-/// [`crate::wayland::input::pointer::drag::wayland_hover_resize_drag_motion`]
+/// [`crate::wayland::input::pointer::drag::hover_resize_drag_motion`]
 /// handler then drives the resize from subsequent pointer motion events.
 pub(super) fn begin_app_resize_drag(state: &mut WaylandState, win: WindowId, dir: ResizeDirection) {
     state.activate_and_raise_window(win);
@@ -106,7 +106,7 @@ pub(super) fn trigger_pointer_focus_update(state: &mut WaylandState) {
     ));
 }
 
-fn sync_xwayland_surface_metadata(
+fn sync_surface_metadata(
     state: &mut WaylandState,
     win: crate::types::WindowId,
     surface: &X11Surface,
@@ -117,7 +117,7 @@ fn sync_xwayland_surface_metadata(
     state.request_bar_redraw();
 }
 
-fn apply_xwayland_surface_policy(
+fn apply_surface_policy(
     state: &mut WaylandState,
     win: crate::types::WindowId,
     surface: &X11Surface,
@@ -189,8 +189,8 @@ impl XwmHandler for WaylandState {
             .and_then(|w| self.window_id_for_x11_window(w));
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            sync_xwayland_surface_metadata(self, win, &window);
-            apply_xwayland_surface_policy(self, win, &window);
+            sync_surface_metadata(self, win, &window);
+            apply_surface_policy(self, win, &window);
             self.map_window(win);
             self.activate_and_raise_window(win);
             return;
@@ -411,8 +411,8 @@ impl XwmHandler for WaylandState {
 
         match property {
             WmWindowProperty::Title | WmWindowProperty::Class => {
-                sync_xwayland_surface_metadata(self, win, &window);
-                apply_xwayland_surface_policy(self, win, &window);
+                sync_surface_metadata(self, win, &window);
+                apply_surface_policy(self, win, &window);
             }
             WmWindowProperty::Hints
             | WmWindowProperty::NormalHints
@@ -423,7 +423,7 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::Pid
             | WmWindowProperty::Protocols
             | WmWindowProperty::Opacity => {
-                apply_xwayland_surface_policy(self, win, &window);
+                apply_surface_policy(self, win, &window);
                 if matches!(
                     property,
                     WmWindowProperty::TransientFor | WmWindowProperty::WindowType

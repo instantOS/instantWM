@@ -113,7 +113,7 @@ impl WaylandState {
     pub(crate) fn ensure_client_for_window(&mut self, window: WindowId) {
         if self
             .globals()
-            .is_some_and(|g| g.clients.contains_key(&window))
+            .is_some_and(|g| g.model.clients.contains_key(&window))
         {
             return;
         }
@@ -212,8 +212,12 @@ impl WaylandState {
                 .user_data()
                 .get::<WindowIdMarker>()
                 .and_then(|marker| {
-                    self.globals()
-                        .and_then(|g| g.clients.get(&marker.id).map(|c| c.mode.is_fullscreen()))
+                    self.globals().and_then(|g| {
+                        g.model
+                            .clients
+                            .get(&marker.id)
+                            .map(|c| c.mode.is_fullscreen())
+                    })
                 })
                 .unwrap_or(false);
             toplevel.with_pending_state(|state| {

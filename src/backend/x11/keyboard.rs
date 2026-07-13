@@ -27,17 +27,17 @@ fn grab_keys_for_key<C: Connection>(
 }
 
 /// Grab all X11 keybindings for the current config.
-pub fn grab_keys_x11(
-    globals: &crate::globals::Globals,
+pub fn grab_keys(
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
 ) {
     let conn = x11.conn;
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
-    let keys = globals.cfg.bindings.keys.as_slice();
-    let desktop_keybinds = globals.cfg.bindings.desktop_keybinds.as_slice();
-    let modes = &globals.cfg.bindings.modes;
+    let keys = globals.config.bindings.keys.as_slice();
+    let desktop_keybinds = globals.config.bindings.desktop_keybinds.as_slice();
+    let modes = &globals.config.bindings.modes;
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
@@ -105,7 +105,7 @@ pub fn grab_keys_x11(
 }
 
 /// Update the cached numlock modifier mask from the X11 server.
-pub fn update_num_lock_mask_x11(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
+pub fn update_num_lock_mask(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     let new_numlockmask = {
         let conn = x11.conn;
         let Ok(cookie) = conn.get_modifier_mapping() else {
@@ -161,7 +161,7 @@ pub fn keycode_to_keysym<C: Connection>(conn: &C, keycode: u8, index: usize) -> 
 
 /// Handle an X11 `KeyPress` event: convert the keycode to a keysym and dispatch
 /// to the backend‑agnostic key handler.
-pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
+pub fn key_press(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
     let keycode = e.detail;
     let state = e.state;
     let keysym = keycode_to_keysym(ctx.x11.conn, keycode, 0);
@@ -170,4 +170,4 @@ pub fn key_press_x11(ctx: &mut WmCtxX11, e: &KeyPressEvent) {
 }
 
 /// Handle an X11 `KeyRelease` event (currently a no‑op).
-pub fn key_release_x11() {}
+pub fn key_release() {}

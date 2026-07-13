@@ -37,7 +37,7 @@ pub use crate::types::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 
 use commands::{ExternalCommands, default_commands};
-use mod_consts::BORDERPX;
+use mod_consts::BORDER_PX;
 
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -48,13 +48,13 @@ pub mod mod_consts {
     use crate::types::MAX_TAGS;
 
     /// Default border width in pixels.
-    pub const BORDERPX: i32 = 3;
+    pub const BORDER_PX: i32 = 3;
 
     /// Maximum tag name length.
     pub const MAX_TAGLEN: usize = 16;
 
     /// Bitmask covering all valid tags.
-    pub const TAGMASK: u32 = (1 << MAX_TAGS) - 1;
+    pub const TAG_MASK: u32 = (1 << MAX_TAGS) - 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +101,8 @@ use crate::types::{
     BorderColorConfig, Button, CloseButtonColorConfigs, Key, Rule, StatusColorConfig,
     TagColorConfigs, WindowColorConfigs,
 };
+use std::collections::HashMap;
+
 use generated_keybinds::build_default_keybinds;
 
 /// Mode configuration with keybinds and optional description.
@@ -116,14 +118,13 @@ pub struct ModeConfig {
 
 /// All WM configuration in one place.
 ///
-/// Built by [`init_config`] and consumed by `init_globals` in `backend::x11::startup`.
-/// Fields are public so `init_globals` can move them into `Globals` without
-/// extra getters.
+/// Built by [`init_config`] and converted atomically into runtime configuration
+/// by `core_state::apply_config`.
 #[derive(Debug, Clone)]
 pub struct Config {
     // --- Window geometry ---
     /// Border width in pixels.
-    pub borderpx: i32,
+    pub border_px: i32,
     /// Snap-to-edge distance in pixels.
     pub snap_threshold: i32,
 
@@ -131,18 +132,18 @@ pub struct Config {
     /// Start menu button width in pixels.
     pub startmenu_size: i32,
     /// Index of monitor to pin the systray to (0 = primary).
-    pub systraypinning: usize,
+    pub systray_pinning: usize,
     /// Gap in pixels between systray icons.
-    pub systrayspacing: i32,
+    pub systray_spacing: i32,
     /// If systray pinning fails, place it on the first monitor.
-    pub systraypinningfailfirst: bool,
+    pub systray_pinning_fail_first: bool,
     /// Whether to show the systray.
     pub show_systray: bool,
     /// Whether to show the bar by default.
-    pub showbar: bool,
+    pub show_bar: bool,
     /// `true` = bar at top, `false` = bar at bottom.
     /// TODO: this should probably be bar_position and have an enum with Top and Bottom variants
-    pub topbar: bool,
+    pub top_bar: bool,
     /// Override bar height (0 = derive from font metrics).
     pub bar_height: i32,
 
@@ -150,11 +151,11 @@ pub struct Config {
     /// Respect size hints for tiled clients.
     pub resize_hints: bool,
     /// Respect decoration hints.
-    pub decorhints: bool,
+    pub decor_hints: bool,
     /// Master area size factor (0.0–1.0).
-    pub mfact: f32,
+    pub master_factor: f32,
     /// Number of clients in master area.
-    pub nmaster: i32,
+    pub master_count: i32,
     /// Tiled layout gap configuration.
     pub layout: config_toml::LayoutConfig,
 
@@ -178,7 +179,7 @@ pub struct Config {
     // --- Bindings ---
     pub keys: Vec<Key>,
     pub desktop_keybinds: Vec<Key>,
-    pub modes: std::collections::HashMap<String, ModeConfig>,
+    pub modes: HashMap<String, ModeConfig>,
     pub buttons: Vec<Button>,
     pub rules: Vec<Rule>,
     pub fonts: Vec<String>,
@@ -197,9 +198,9 @@ pub struct Config {
     pub keyboard_swapescape: bool,
 
     // --- Input configuration ---
-    pub input: std::collections::HashMap<String, config_toml::InputConfig>,
+    pub input: HashMap<String, config_toml::InputConfig>,
     /// Monitor configuration.
-    pub monitors: std::collections::HashMap<String, config_toml::MonitorConfig>,
+    pub monitors: HashMap<String, config_toml::MonitorConfig>,
     pub status_command: Option<String>,
     pub cursor: config_toml::CursorConfig,
 
@@ -234,7 +235,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         keybind_config::merge_keybinds(defaults.desktop_keybinds, &theme.desktop_keybinds)
     };
 
-    let mut modes = std::collections::HashMap::new();
+    let mut modes = HashMap::new();
 
     // Helper for merging mode keybinds
     let merge_mode = |spec: Option<&config_toml::ModeSpec>,
@@ -290,24 +291,24 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
 
     Config {
         // --- Window geometry ---
-        borderpx: BORDERPX,
+        border_px: BORDER_PX,
         snap_threshold: 32,
 
         // --- Bar / systray ---
         startmenu_size: 30,
-        systraypinning: 0,
-        systrayspacing: 0,
-        systraypinningfailfirst: true,
+        systray_pinning: 0,
+        systray_spacing: 0,
+        systray_pinning_fail_first: true,
         show_systray: true,
-        showbar: true,
-        topbar: true,
+        show_bar: true,
+        top_bar: true,
         bar_height: theme.bar_height as i32,
 
         // --- Tiling ---
         resize_hints: true,
-        decorhints: true,
-        mfact: 0.55,
-        nmaster: 1,
+        decor_hints: true,
+        master_factor: 0.55,
+        master_count: 1,
         layout: theme.layout,
 
         // --- Tags ---

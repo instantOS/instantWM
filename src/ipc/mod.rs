@@ -1,8 +1,9 @@
 use crate::ipc_types::{IpcCommand, IpcRequest, Response};
 use crate::reload::reload_config;
 use crate::wm::Wm;
+use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 
@@ -29,11 +30,11 @@ struct PendingClient {
 }
 
 impl IpcServer {
-    pub fn bind() -> std::io::Result<Self> {
+    pub fn bind() -> io::Result<Self> {
         let path = get_available_socket_path();
         let listener = UnixListener::bind(&path)?;
         listener.set_nonblocking(true)?;
-        unsafe { std::env::set_var("INSTANTWM_SOCKET", &path) };
+        unsafe { env::set_var("INSTANTWM_SOCKET", &path) };
         Ok(Self {
             listener,
             path,
@@ -55,7 +56,7 @@ impl IpcServer {
                         });
                     }
                 }
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
                 Err(_) => break,
             }
         }
@@ -86,7 +87,7 @@ impl IpcServer {
                         i += 1;
                     }
                 }
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
                     i += 1;
                 }
                 Err(_) => {
@@ -167,7 +168,7 @@ fn get_available_socket_path() -> PathBuf {
     }
 }
 
-fn send_response(stream: &mut UnixStream, response: &Response) -> std::io::Result<()> {
+fn send_response(stream: &mut UnixStream, response: &Response) -> io::Result<()> {
     let data = bincode::encode_to_vec(response, bincode::config::standard()).unwrap_or_else(|_| {
         bincode::encode_to_vec(
             Response::err("serialization error"),

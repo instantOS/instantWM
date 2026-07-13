@@ -1,76 +1,69 @@
-//! Visual appearance: color palette, color schemes, and font configuration.
+//! Built-in colour themes and font configuration.
 //!
-//! Many items here are public API for user customization and are not all
-//! referenced within the crate itself — dead_code is suppressed intentionally.
-//!
-//! # Color system
-//!
-//! Each UI element has a "scheme" — a triplet of (foreground, background, detail/accent).
-//! Schemes come in two hover variants (`NoHover` / `Hover`).
-//!
-//! Colors are stored as pre-parsed RGBA values for runtime efficiency.
+//! Backends consume the resolved, typed colour tables. Theme selection and
+//! user overrides are handled while loading TOML, before runtime state exists.
 
-// ---------------------------------------------------------------------------
-// Palette
-// ---------------------------------------------------------------------------
+use crate::config::config_toml::{ColorConfig, ColorTheme};
+use crate::types::{
+    BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba,
+    StatusColorConfig, TagColorConfigs, TagColorSet, WindowColorConfigs, WindowColorSet,
+};
 
-/// Raw hex color values as RGBA [r, g, b, a].
-/// Nothing outside this module should reference these directly — use the
-/// typed scheme structs or the `get_*_colors` functions instead.
-pub(super) mod palette {
-    pub const BG: [f32; 4] = hex_rgba("#121212");
-    pub const TEXT: [f32; 4] = hex_rgba("#DFDFDF");
-    pub const BLACK: [f32; 4] = hex_rgba("#000000");
+type Rgba = [f32; 4];
 
-    pub const BG_ACCENT: [f32; 4] = hex_rgba("#384252");
-    pub const BG_ACCENT_HOVER: [f32; 4] = hex_rgba("#4C5564");
-    pub const BG_HOVER: [f32; 4] = hex_rgba("#1C1C1C");
+#[derive(Clone, Copy)]
+struct Accent {
+    fill: Rgba,
+    detail: Rgba,
+    hover_fill: Rgba,
+    hover_detail: Rgba,
+}
 
-    pub const LIGHT_BLUE: [f32; 4] = hex_rgba("#89B3F7");
-    pub const LIGHT_BLUE_HOVER: [f32; 4] = hex_rgba("#a1c2f9");
-    pub const BLUE: [f32; 4] = hex_rgba("#536DFE");
-    pub const BLUE_HOVER: [f32; 4] = hex_rgba("#758afe");
-
-    pub const LIGHT_GREEN: [f32; 4] = hex_rgba("#81c995");
-    pub const LIGHT_GREEN_HOVER: [f32; 4] = hex_rgba("#99d3aa");
-    pub const GREEN: [f32; 4] = hex_rgba("#1e8e3e");
-    pub const GREEN_HOVER: [f32; 4] = hex_rgba("#4ba465");
-
-    pub const LIGHT_YELLOW: [f32; 4] = hex_rgba("#fdd663");
-    pub const LIGHT_YELLOW_HOVER: [f32; 4] = hex_rgba("#fddd82");
-    pub const YELLOW: [f32; 4] = hex_rgba("#f9ab00");
-    pub const YELLOW_HOVER: [f32; 4] = hex_rgba("#f9bb33");
-
-    pub const LIGHT_RED: [f32; 4] = hex_rgba("#f28b82");
-    pub const LIGHT_RED_HOVER: [f32; 4] = hex_rgba("#f4a19a");
-    pub const RED: [f32; 4] = hex_rgba("#d93025");
-    pub const RED_HOVER: [f32; 4] = hex_rgba("#e05951");
-
-    /// Convert a hex color string to RGBA at compile time.
-    /// Expects format "#RRGGBB" or "#RRGGBBAA".
-    const fn hex_rgba(hex: &str) -> [f32; 4] {
-        let bytes = hex.as_bytes();
-        let mut i = 0;
-        if bytes[0] == b'#' {
-            i = 1;
+impl Accent {
+    const fn solid(fill: &str, hover_fill: &str) -> Self {
+        Self {
+            fill: hex(fill),
+            detail: hex(fill),
+            hover_fill: hex(hover_fill),
+            hover_detail: hex(hover_fill),
         }
-        let r = hex_digit(bytes[i]) * 16 + hex_digit(bytes[i + 1]);
-        let g = hex_digit(bytes[i + 2]) * 16 + hex_digit(bytes[i + 3]);
-        let b = hex_digit(bytes[i + 4]) * 16 + hex_digit(bytes[i + 5]);
-        let a = if i + 7 < bytes.len() {
-            hex_digit(bytes[i + 6]) * 16 + hex_digit(bytes[i + 7])
-        } else {
-            255
-        };
-        [
-            (r as f32) / 255.0,
-            (g as f32) / 255.0,
-            (b as f32) / 255.0,
-            (a as f32) / 255.0,
-        ]
     }
 
-    const fn hex_digit(c: u8) -> u8 {
+    const fn layered(fill: &str, detail: &str, hover_fill: &str, hover_detail: &str) -> Self {
+        Self {
+            fill: hex(fill),
+            detail: hex(detail),
+            hover_fill: hex(hover_fill),
+            hover_detail: hex(hover_detail),
+        }
+    }
+}
+
+/// Semantic colours consumed by instantWM's UI states.
+///
+/// Theme authors choose colours by purpose, rather than matching a particular
+/// theme's hue names. For example, `focused` may be green in one theme and
+/// purple in another without making the field name misleading.
+#[derive(Clone, Copy)]
+struct ThemePalette {
+    background: Rgba,
+    foreground: Rgba,
+    foreground_on_accent: Rgba,
+    background_hover: Rgba,
+    surface: Rgba,
+    surface_hover: Rgba,
+    /// Filled tags, focused title surface, and focused tiled border.
+    primary: Accent,
+    /// Active/focused tags, sticky focus, and focused floating border.
+    focused: Accent,
+    /// Sticky/unfocused-active states and snap indicators.
+    special: Accent,
+    /// Urgent states and close buttons.
+    urgent: Accent,
+}
+
+const fn hex(hex: &str) -> Rgba {
+    const fn digit(c: u8) -> u8 {
         match c {
             b'0'..=b'9' => c - b'0',
             b'a'..=b'f' => c - b'a' + 10,
@@ -78,113 +71,235 @@ pub(super) mod palette {
             _ => 0,
         }
     }
+    let b = hex.as_bytes();
+    let i = if b[0] == b'#' { 1 } else { 0 };
+    [
+        (digit(b[i]) * 16 + digit(b[i + 1])) as f32 / 255.0,
+        (digit(b[i + 2]) * 16 + digit(b[i + 3])) as f32 / 255.0,
+        (digit(b[i + 4]) * 16 + digit(b[i + 5])) as f32 / 255.0,
+        1.0,
+    ]
 }
 
-use palette::*;
-
-// ---------------------------------------------------------------------------
-// Color table builders
-// ---------------------------------------------------------------------------
-
-/// Tag bar color table: `[hover][SchemeTag]`
-pub fn get_tag_colors() -> crate::types::TagColorConfigs {
-    crate::types::TagColorConfigs {
-        no_hover: crate::types::TagColorSet {
-            inactive: crate::types::ColorSchemeRgba::new(TEXT, BG, BG),
-            filled: crate::types::ColorSchemeRgba::new(TEXT, BG_ACCENT, LIGHT_BLUE),
-            focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
-            nofocus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
-            empty: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
-            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
+fn palette(theme: ColorTheme) -> ThemePalette {
+    match theme {
+        ColorTheme::Instantos => ThemePalette {
+            background: hex("121212"),
+            foreground: hex("dfdfdf"),
+            foreground_on_accent: hex("000000"),
+            background_hover: hex("1c1c1c"),
+            surface: hex("384252"),
+            surface_hover: hex("4c5564"),
+            primary: Accent::layered("89b3f7", "536dfe", "a1c2f9", "758afe"),
+            focused: Accent::layered("81c995", "1e8e3e", "99d3aa", "4ba465"),
+            special: Accent::layered("fdd663", "f9ab00", "fddd82", "f9bb33"),
+            urgent: Accent::layered("f28b82", "d93025", "f4a19a", "e05951"),
         },
-        hover: crate::types::TagColorSet {
-            inactive: crate::types::ColorSchemeRgba::new(TEXT, BG_HOVER, BG),
-            filled: crate::types::ColorSchemeRgba::new(TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER),
-            focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER),
-            nofocus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
-            empty: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
-            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
+        ColorTheme::CatppuccinLatte => ThemePalette {
+            background: hex("eff1f5"),
+            foreground: hex("4c4f69"),
+            foreground_on_accent: hex("dce0e8"),
+            background_hover: hex("e6e9ef"),
+            surface: hex("ccd0da"),
+            surface_hover: hex("bcc0cc"),
+            primary: Accent::solid("1e66f5", "7287fd"),
+            focused: Accent::solid("40a02b", "70b433"),
+            special: Accent::solid("df8e1d", "fead3d"),
+            urgent: Accent::solid("d20f39", "e64553"),
+        },
+        ColorTheme::CatppuccinFrappe => ThemePalette {
+            background: hex("303446"),
+            foreground: hex("c6d0f5"),
+            foreground_on_accent: hex("232634"),
+            background_hover: hex("292c3c"),
+            surface: hex("414559"),
+            surface_hover: hex("51576d"),
+            primary: Accent::solid("8caaee", "babbf1"),
+            focused: Accent::solid("a6d189", "b5d49a"),
+            special: Accent::solid("e5c890", "efcf8e"),
+            urgent: Accent::solid("e78284", "ea999c"),
+        },
+        ColorTheme::CatppuccinMacchiato => ThemePalette {
+            background: hex("24273a"),
+            foreground: hex("cad3f5"),
+            foreground_on_accent: hex("181926"),
+            background_hover: hex("1e2030"),
+            surface: hex("363a4f"),
+            surface_hover: hex("494d64"),
+            primary: Accent::solid("8aadf4", "b7bdf8"),
+            focused: Accent::solid("a6da95", "b8df9f"),
+            special: Accent::solid("eed49f", "f5dcaa"),
+            urgent: Accent::solid("ed8796", "f49da6"),
+        },
+        ColorTheme::CatppuccinMocha => ThemePalette {
+            background: hex("1e1e2e"),
+            foreground: hex("cdd6f4"),
+            foreground_on_accent: hex("11111b"),
+            background_hover: hex("181825"),
+            surface: hex("313244"),
+            surface_hover: hex("45475a"),
+            primary: Accent::solid("89b4fa", "b4befe"),
+            focused: Accent::solid("a6e3a1", "b9e6b5"),
+            special: Accent::solid("f9e2af", "f5e0b5"),
+            urgent: Accent::solid("f38ba8", "f5a2b8"),
+        },
+        ColorTheme::Nord => ThemePalette {
+            background: hex("2e3440"),
+            foreground: hex("eceff4"),
+            foreground_on_accent: hex("242933"),
+            background_hover: hex("343b49"),
+            surface: hex("3b4252"),
+            surface_hover: hex("4c566a"),
+            primary: Accent::solid("81a1c1", "88c0d0"),
+            focused: Accent::solid("a3be8c", "b1c89d"),
+            special: Accent::solid("ebcb8b", "efd49f"),
+            urgent: Accent::solid("bf616a", "cf7b83"),
+        },
+        ColorTheme::Gruvbox => ThemePalette {
+            background: hex("282828"),
+            foreground: hex("ebdbb2"),
+            foreground_on_accent: hex("1d2021"),
+            background_hover: hex("32302f"),
+            surface: hex("3c3836"),
+            surface_hover: hex("504945"),
+            primary: Accent::solid("83a598", "8ec07c"),
+            focused: Accent::solid("b8bb26", "98971a"),
+            special: Accent::solid("fabd2f", "d79921"),
+            urgent: Accent::solid("fb4934", "cc241d"),
         },
     }
 }
 
-/// Window title color table: `[hover][SchemeWin]`
-pub fn get_window_colors() -> crate::types::WindowColorConfigs {
-    crate::types::WindowColorConfigs {
-        no_hover: crate::types::WindowColorSet {
-            focus: crate::types::ColorSchemeRgba::new(TEXT, BG_ACCENT, LIGHT_BLUE),
-            normal: crate::types::ColorSchemeRgba::new(TEXT, BG, BG),
-            minimized: crate::types::ColorSchemeRgba::new(BG_ACCENT, BG, BG),
-            sticky: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
-            sticky_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
-            edge_scratchpad: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW, YELLOW),
-            edge_scratchpad_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN, GREEN),
-            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED, RED),
+/// Return every resolved colour table for a built-in theme.
+pub fn colors(theme: ColorTheme) -> ColorConfig {
+    let p = palette(theme);
+    let scheme = ColorSchemeRgba::new;
+    ColorConfig {
+        tag: TagColorConfigs {
+            no_hover: TagColorSet {
+                inactive: scheme(p.foreground, p.background, p.background),
+                filled: scheme(p.foreground, p.surface, p.primary.detail),
+                focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
+                nofocus: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                empty: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+                urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+            },
+            hover: TagColorSet {
+                inactive: scheme(p.foreground, p.background_hover, p.background),
+                filled: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
+                focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.hover_fill,
+                    p.focused.hover_detail,
+                ),
+                nofocus: scheme(
+                    p.foreground_on_accent,
+                    p.special.hover_fill,
+                    p.special.hover_detail,
+                ),
+                empty: scheme(
+                    p.foreground_on_accent,
+                    p.urgent.hover_fill,
+                    p.urgent.hover_detail,
+                ),
+                urgent: scheme(
+                    p.foreground_on_accent,
+                    p.urgent.hover_fill,
+                    p.urgent.hover_detail,
+                ),
+            },
         },
-        hover: crate::types::WindowColorSet {
-            focus: crate::types::ColorSchemeRgba::new(TEXT, BG_ACCENT_HOVER, LIGHT_BLUE_HOVER),
-            normal: crate::types::ColorSchemeRgba::new(TEXT, BG_HOVER, BG_HOVER),
-            minimized: crate::types::ColorSchemeRgba::new(BG_ACCENT_HOVER, BG, BG),
-            sticky: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
-            sticky_focus: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_GREEN_HOVER, GREEN_HOVER),
-            edge_scratchpad: crate::types::ColorSchemeRgba::new(
-                BLACK,
-                LIGHT_YELLOW_HOVER,
-                YELLOW_HOVER,
-            ),
-            edge_scratchpad_focus: crate::types::ColorSchemeRgba::new(
-                BLACK,
-                LIGHT_GREEN_HOVER,
-                GREEN_HOVER,
-            ),
-            urgent: crate::types::ColorSchemeRgba::new(BLACK, LIGHT_RED_HOVER, RED_HOVER),
+        window: WindowColorConfigs {
+            no_hover: WindowColorSet {
+                focus: scheme(p.foreground, p.surface, p.primary.detail),
+                normal: scheme(p.foreground, p.background, p.background),
+                minimized: scheme(p.surface, p.background, p.background),
+                sticky: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                sticky_focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
+                edge_scratchpad: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                edge_scratchpad_focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.fill,
+                    p.focused.detail,
+                ),
+                urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+            },
+            hover: WindowColorSet {
+                focus: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
+                normal: scheme(p.foreground, p.background_hover, p.background_hover),
+                minimized: scheme(p.surface_hover, p.background, p.background),
+                sticky: scheme(
+                    p.foreground_on_accent,
+                    p.special.hover_fill,
+                    p.special.hover_detail,
+                ),
+                sticky_focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.hover_fill,
+                    p.focused.hover_detail,
+                ),
+                edge_scratchpad: scheme(
+                    p.foreground_on_accent,
+                    p.special.hover_fill,
+                    p.special.hover_detail,
+                ),
+                edge_scratchpad_focus: scheme(
+                    p.foreground_on_accent,
+                    p.focused.hover_fill,
+                    p.focused.hover_detail,
+                ),
+                urgent: scheme(
+                    p.foreground_on_accent,
+                    p.urgent.hover_fill,
+                    p.urgent.hover_detail,
+                ),
+            },
+        },
+        close_button: CloseButtonColorConfigs {
+            no_hover: CloseButtonColorSet {
+                normal: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
+                locked: scheme(p.foreground, p.special.fill, p.special.detail),
+                fullscreen: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
+            },
+            hover: CloseButtonColorSet {
+                normal: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
+                locked: scheme(p.foreground, p.special.hover_fill, p.special.hover_detail),
+                fullscreen: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
+            },
+        },
+        border: BorderColorConfig {
+            normal: p.surface,
+            tile_focus: p.primary.fill,
+            float_focus: p.focused.fill,
+            snap: p.special.fill,
+        },
+        status: StatusColorConfig {
+            fg: p.foreground,
+            bg: p.background,
+            detail: p.background,
         },
     }
 }
 
-/// Close button color table: `[hover][SchemeClose]`
-pub fn get_close_button_colors() -> crate::types::CloseButtonColorConfigs {
-    crate::types::CloseButtonColorConfigs {
-        no_hover: crate::types::CloseButtonColorSet {
-            normal: crate::types::ColorSchemeRgba::new(TEXT, LIGHT_RED, RED),
-            locked: crate::types::ColorSchemeRgba::new(TEXT, LIGHT_YELLOW, YELLOW),
-            fullscreen: crate::types::ColorSchemeRgba::new(TEXT, LIGHT_RED, RED),
-        },
-        hover: crate::types::CloseButtonColorSet {
-            normal: crate::types::ColorSchemeRgba::new(TEXT, LIGHT_RED_HOVER, RED_HOVER),
-            locked: crate::types::ColorSchemeRgba::new(TEXT, LIGHT_YELLOW_HOVER, YELLOW_HOVER),
-            fullscreen: crate::types::ColorSchemeRgba::new(TEXT, LIGHT_RED_HOVER, RED_HOVER),
-        },
-    }
+pub fn get_tag_colors() -> TagColorConfigs {
+    colors(ColorTheme::Instantos).tag
+}
+pub fn get_window_colors() -> WindowColorConfigs {
+    colors(ColorTheme::Instantos).window
+}
+pub fn get_close_button_colors() -> CloseButtonColorConfigs {
+    colors(ColorTheme::Instantos).close_button
+}
+pub fn get_border_colors() -> BorderColorConfig {
+    colors(ColorTheme::Instantos).border
+}
+pub fn get_status_bar_colors() -> StatusColorConfig {
+    colors(ColorTheme::Instantos).status
 }
 
-/// Border colors.
-pub fn get_border_colors() -> crate::types::BorderColorConfig {
-    crate::types::BorderColorConfig {
-        normal: BG_ACCENT,
-        tile_focus: LIGHT_BLUE,
-        float_focus: LIGHT_GREEN,
-        snap: LIGHT_YELLOW,
-    }
-}
-
-/// Status bar colors.
-pub fn get_status_bar_colors() -> crate::types::StatusColorConfig {
-    crate::types::StatusColorConfig {
-        fg: TEXT,
-        bg: BG,
-        detail: BG,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Font configuration
-// ---------------------------------------------------------------------------
-
-/// Fonts used for bar text rendering (in order of preference / fallback).
 pub fn get_fonts() -> Vec<String> {
     vec![
-        "Inter-Regular:size=12".to_string(),
-        "Fira Code Nerd Font:size=12".to_string(),
+        "Inter-Regular:size=12".into(),
+        "Fira Code Nerd Font:size=12".into(),
     ]
 }

@@ -9,8 +9,16 @@ pub mod wayland;
 pub use renderer::reset_bar_common;
 
 use crate::contexts::{CoreCtx, WmCtx};
-use crate::globals::Globals;
 use crate::types::*;
+use std::collections::HashMap;
+
+/// Bar-owned runtime data shared by both render backends.
+#[derive(Debug, Clone, Default)]
+pub struct BarRuntime {
+    pub status_text: String,
+    /// Cached systray width (pixels), updated before rendering.
+    pub systray_width: i32,
+}
 
 #[derive(Default)]
 pub struct BarState {
@@ -24,10 +32,11 @@ pub struct BarState {
     /// Layout symbol width
     pub layout_symbol_width: i32,
     /// Per-monitor hit-test geometry built during bar rendering.
-    hit_cache: Vec<MonitorHitCache>,
+    hit_cache: HashMap<MonitorId, MonitorHitCache>,
     status_cache_text: String,
     status_cache: status::ParsedStatus,
     status_cache_parsed: bool,
+    pub runtime: BarRuntime,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -123,35 +132,26 @@ impl BarState {
     }
 
     pub fn begin_monitor_hit_cache(&mut self, monitor_id: crate::types::MonitorId) {
-        let monitor_id = monitor_id.index();
-        if self.hit_cache.len() <= monitor_id {
-            self.hit_cache
-                .resize_with(monitor_id + 1, MonitorHitCache::default);
-        }
-        self.hit_cache[monitor_id] = MonitorHitCache::default();
+        self.hit_cache
+            .insert(monitor_id, MonitorHitCache::default());
     }
 
     pub fn monitor_hit_cache_mut(
         &mut self,
         monitor_id: crate::types::MonitorId,
     ) -> Option<&mut MonitorHitCache> {
-        self.hit_cache.get_mut(monitor_id.index())
+        self.hit_cache.get_mut(&monitor_id)
     }
 
     pub fn monitor_hit_cache(
         &self,
         monitor_id: crate::types::MonitorId,
     ) -> Option<&MonitorHitCache> {
-        self.hit_cache.get(monitor_id.index())
+        self.hit_cache.get(&monitor_id)
     }
 
     pub fn replace_hit_cache(&mut self, monitor_id: crate::types::MonitorId, hit: MonitorHitCache) {
-        let monitor_id = monitor_id.index();
-        if self.hit_cache.len() <= monitor_id {
-            self.hit_cache
-                .resize_with(monitor_id + 1, MonitorHitCache::default);
-        }
-        self.hit_cache[monitor_id] = hit;
+        self.hit_cache.insert(monitor_id, hit);
     }
 
     pub fn prepare_status_for_render(&mut self, text: &str) {
@@ -187,38 +187,19 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         core.bar.layout_symbol_width
     } else {
         // Fallback: estimate based on typical character width
-        let symbol = if crate::overview::is_active_on_monitor(core.globals(), m) {
+        let symbol = if core.model().is_overview_active_on(m) {
             "OVR"
         } else {
             m.layouts_for_mask(m.selected_tags()).symbol()
         };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };
-    width + core.globals().cfg.bar.horizontal_padding
-}
-
-/// Check whether a root-space y-coordinate falls within the bar's vertical span.
-/// Does not check bar visibility — caller must do that separately.
-pub fn y_in_bar(mon: &Monitor, root_y: i32) -> bool {
-    let h = mon.bar_height.max(1);
-    root_y >= mon.bar_y && root_y < mon.bar_y + h
-}
-
-/// Check whether a root-space y-coordinate falls in the 4-pixel guard band
-/// immediately below the bar. Does not check bar visibility.
-pub fn y_in_guard_band(mon: &Monitor, root_y: i32) -> bool {
-    let bar_bottom = mon.bar_y + mon.bar_height.max(1);
-    root_y >= bar_bottom && root_y < bar_bottom + 4
-}
-
-/// Check whether the bar is visible on `mon` and `root_y` falls within it.
-pub fn monitor_bar_contains_y(globals: &Globals, mon: &Monitor, root_y: i32) -> bool {
-    monitor_bar_visible(globals, mon) && y_in_bar(mon, root_y)
+    width + core.config().derived.bar_horizontal_padding
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
-    if ctx.core().globals().selected_monitor().gesture != Gesture::None {
-        reset_bar_common(ctx.core_mut().globals_mut());
+    if ctx.core().model().selected_monitor().gesture != Gesture::None {
+        reset_bar_common(ctx.core_mut().model_mut());
         ctx.request_bar_update();
     }
 }
@@ -229,29 +210,18 @@ pub fn resolve_bar_position_at_root(
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
     let rect = crate::mouse::pointer::point_rect(root);
-    let monitor_id = crate::types::find_monitor_by_rect(core.globals().monitors.monitors(), &rect)?;
-    if sync_selected_monitor && monitor_id != core.globals().selected_monitor_id() {
-        core.globals_mut().set_selected_monitor(monitor_id);
+    let monitor_id = crate::types::find_monitor_by_rect(core.model().monitors.iter(), &rect)?;
+    if sync_selected_monitor && monitor_id != core.model().selected_monitor_id() {
+        core.model_mut().set_selected_monitor(monitor_id);
     }
 
-    let mon = core.globals().monitor(monitor_id)?;
-    if !monitor_bar_contains_y(core.globals(), mon, root.y) {
+    let mon = core.model().monitor(monitor_id)?;
+    if !mon.bar_contains_y(core.model().clients.map(), root.y) {
         return None;
     }
 
     let local_x = root.x - mon.work_rect.x;
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
-}
-
-pub(crate) fn monitor_has_real_fullscreen(globals: &Globals, monitor: &Monitor) -> bool {
-    let selected_tags = monitor.selected_tags();
-    monitor
-        .iter_clients(globals.clients.map())
-        .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
-}
-
-pub(crate) fn monitor_bar_visible(globals: &Globals, monitor: &Monitor) -> bool {
-    monitor.shows_bar() && !monitor_has_real_fullscreen(globals, monitor)
 }
 
 #[cfg(test)]
@@ -286,18 +256,18 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        reset_bar_common(ctx.core_mut().globals_mut());
+        reset_bar_common(ctx.core_mut().model_mut());
         ctx.request_bar_update();
     }
 
-    let old_gesture = ctx.core().globals().selected_monitor().gesture;
+    let old_gesture = ctx.core().model().selected_monitor().gesture;
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
         pos.to_gesture()
     };
     if old_gesture != gesture {
-        ctx.core_mut().globals_mut().selected_monitor_mut().gesture = gesture;
+        ctx.core_mut().model_mut().selected_monitor_mut().gesture = gesture;
         ctx.request_bar_update();
     }
 
@@ -305,7 +275,7 @@ pub fn update_hover(
 }
 
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
-    if crate::overview::is_active(ctx.core().globals()) {
+    if ctx.core().model().is_overview_active() {
         ctx.reset_mode();
         ctx.request_bar_update();
         return;
@@ -318,9 +288,12 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         return;
     }
 
-    let selected_monitor = ctx.core().globals().selected_monitor().clone();
-    let local_x = root.x - selected_monitor.work_rect.x;
-    let status_text = ctx.core().globals().bar_runtime.status_text.clone();
+    let (monitor_id, work_x, bar_y) = {
+        let monitor = ctx.core().model().selected_monitor();
+        (monitor.id(), monitor.work_rect.x, monitor.bar_y)
+    };
+    let local_x = root.x - work_x;
+    let status_text = ctx.core().bar.runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
         .bar
@@ -329,16 +302,16 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     let click_targets = ctx
         .core()
         .bar
-        .monitor_hit_cache(selected_monitor.id())
+        .monitor_hit_cache(monitor_id)
         .map(|h| h.status_click_targets.as_slice())
         .unwrap_or(&[]);
     status::emit_i3bar_status_click(
         &parsed,
         click_targets,
         local_x,
-        root.y - selected_monitor.bar_y,
+        root.y - bar_y,
         button_code,
-        ctx.core().globals().cfg.bar.height,
+        ctx.core().config().derived.bar_height,
         clean_state,
     );
 }

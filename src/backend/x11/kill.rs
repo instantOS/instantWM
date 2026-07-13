@@ -1,15 +1,15 @@
 //! X11-specific client kill helpers.
 
-use crate::backend::x11::focus::send_event_x11;
+use crate::backend::x11::focus::send_event;
 use crate::contexts::WmCtxX11;
 use crate::types::WindowId;
 use x11rb::CURRENT_TIME;
 use x11rb::protocol::xproto::{ConnectionExt, Window};
 
 /// Attempt a graceful `WM_DELETE_WINDOW`, falling back to `XKillClient`.
-pub fn force_close_x11(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, wmatom_delete: u32) {
+pub fn force_close(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, wmatom_delete: u32) {
     let x11_win: Window = win.into();
-    let sent = send_event_x11(
+    let sent = send_event(
         &ctx_x11.x11,
         ctx_x11.x11_runtime,
         win,

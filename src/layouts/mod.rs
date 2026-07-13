@@ -56,8 +56,8 @@ pub struct LayoutOutput {
 #[derive(Debug, Clone)]
 pub struct MonitorUpdates {
     pub clientcount: u32,
-    pub nmaster: i32,
-    pub mfact: f32,
+    pub master_count: i32,
+    pub master_factor: f32,
     pub work_rect: Rect,
     pub bar_y: i32,
     pub bar_height: i32,
@@ -257,6 +257,6 @@ impl FromStr for LayoutKind {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 pub use manager::{
-    arrange, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, sync_monitor_z_order,
-    toggle_layout,
+    arrange, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor,
+    sync_monitor_z_order, toggle_layout,
 };

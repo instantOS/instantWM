@@ -15,17 +15,19 @@ use smithay::utils::{Clock, Monotonic};
 use smithay::wayland::presentation::Refresh;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::env;
+use std::mem;
 use std::process::exit;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, mpsc};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::send_frame_callbacks;
-use crate::wayland::common::{build_fixed_scene_elements, poll_wayland_systray};
+use crate::wayland::common::{build_fixed_scene_elements, poll_systray};
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
@@ -95,7 +97,7 @@ impl DrmLoopState {
     }
 
     fn take_render_flags(&mut self) -> HashMap<crtc::Handle, bool> {
-        let mut taken = std::mem::take(&mut self.taken_render_flags);
+        let mut taken = mem::take(&mut self.taken_render_flags);
         taken.clear();
         for (&crtc, flag) in &mut self.render_flags {
             taken.insert(crtc, *flag);
@@ -132,7 +134,7 @@ pub fn run() -> ! {
     let seat_name = session.seat();
     log::info!("Session on seat: {seat_name}");
 
-    super::common::attach_wayland_backend_state(&mut wm, &mut state);
+    super::common::attach_backend_state(&mut wm, &mut state);
 
     crate::runtime::init_keyboard_layout(&mut wm);
 
@@ -186,7 +188,7 @@ pub fn run() -> ! {
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
-    super::common::setup_wayland_listen_socket_xwayland_systray(&loop_handle, &state, &mut wm);
+    super::common::setup_listen_socket(&loop_handle, &state, &mut wm);
 
     let mut libinput_context =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());
@@ -233,7 +235,7 @@ pub fn run() -> ! {
 
     setup_drm_vblank_handler(&loop_handle, drm_notifier, runtime_event_tx.clone());
 
-    let mut ipc_server = super::common::wayland_autostart_ipc_status_ping(&loop_handle, &wm);
+    let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
 
     // Ping source for initial frame kick, explicit redraw requests and render-failure retries.
     let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
@@ -246,12 +248,12 @@ pub fn run() -> ! {
     state.runtime.render_ping = Some(retry_ping.clone());
     retry_ping.ping(); // Wake loop once to render the initial frame
 
-    let start_time = std::time::Instant::now();
+    let start_time = Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
 
     crate::runtime::spawn_status_bar(&wm);
 
-    let (led_state_tx, led_state_rx) = std::sync::mpsc::channel();
+    let (led_state_tx, led_state_rx) = mpsc::channel();
     state.runtime.led_state_tx = Some(led_state_tx);
 
     run_event_loop(
@@ -276,8 +278,8 @@ pub fn run() -> ! {
 
 /// Initialize cursor manager from environment or defaults.
 fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
-    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
-    let cursor_size = std::env::var("XCURSOR_SIZE")
+    let cursor_theme = env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
+    let cursor_size = env::var("XCURSOR_SIZE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(config.size);
@@ -396,8 +398,8 @@ fn run_event_loop(
     cursor_manager: &CursorManager,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
-    start_time: std::time::Instant,
-    led_state_rx: std::sync::mpsc::Receiver<smithay::input::keyboard::LedState>,
+    start_time: Instant,
+    led_state_rx: mpsc::Receiver<smithay::input::keyboard::LedState>,
     runtime_event_rx: mpsc::Receiver<DrmRuntimeEvent>,
     retry_ping: calloop::ping::Ping,
 ) {
@@ -435,11 +437,11 @@ fn run_event_loop(
                 loop_state.mark_all_dirty();
             }
 
-            if wm.g.pending.input_config {
-                wm.g.pending.input_config = false;
+            if wm.work.input_config {
+                wm.work.input_config = false;
                 crate::wayland::input::drm::reconfigure_all_devices(
                     &mut state.runtime.tracked_devices,
-                    &wm.g.cfg.input,
+                    &wm.core.config.input,
                 );
             }
 
@@ -564,7 +566,7 @@ fn arm_empty_frame_callback_timer(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &DrmLoopState,
     entry: &OutputSurfaceEntry,
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) {
     let crtc = entry.crtc;
     let armed = Rc::clone(&loop_state.empty_frame_callback_crtcs);
@@ -605,7 +607,7 @@ fn process_frame_callback_requests(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &DrmLoopState,
     output_surfaces: &[OutputSurfaceEntry],
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) {
     if !state.take_frame_callbacks_pending() {
         return;
@@ -706,18 +708,18 @@ fn has_pending_screencopy_for_output(state: &WaylandState, output_name: &str) ->
 }
 
 fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
-    let Some(mon) = wm.g.monitors_iter_all().find(|m| m.name == output_name) else {
+    let Some(mon) = wm.core.monitors_iter_all().find(|m| m.name == output_name) else {
         return false;
     };
-    if wm.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        && wm.g.selected_monitor_id() == mon.id()
+    if wm.core.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
+        && wm.core.selected_monitor_id() == mon.id()
     {
         return false;
     }
 
     let selected = mon.selected_tags();
     let mut visible_clients = mon
-        .iter_clients(wm.g.clients.map())
+        .iter_clients(wm.core.model.clients.map())
         .filter(|(_, client)| client.is_visible(selected) && !client.is_scratchpad());
 
     let Some((_, first_client)) = visible_clients.next() else {
@@ -807,7 +809,7 @@ fn render_outputs(
     loop_handle: &LoopHandle<'_, WaylandState>,
     loop_state: &mut DrmLoopState,
     render_failures: &mut HashMap<crtc::Handle, u32>,
-    start_time: std::time::Instant,
+    start_time: Instant,
 ) {
     let render_flags = loop_state.take_render_flags();
     let session_active = loop_state.session_active;
@@ -820,7 +822,7 @@ fn render_outputs(
             .iter()
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
         let fixed_scene = if needs_any_render && !state.is_locked() {
-            poll_wayland_systray(wm);
+            poll_systray(wm);
             Some(build_fixed_scene_elements(wm, state))
         } else {
             None

@@ -11,7 +11,7 @@ use crate::util::clean_mask;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
 
-use crate::wayland::input::bar::{handle_wayland_bar_scroll, update_wayland_bar_hit_state};
+use crate::wayland::input::bar::{handle_bar_scroll, update_bar_hit_state};
 
 /// Resolve the effective scroll factor from input configuration.
 ///
@@ -46,7 +46,7 @@ pub fn handle_pointer_axis_raw(
     time: u32,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
 
     let root = RootPoint::new(
         pointer_location.x.round() as i32,
@@ -56,10 +56,10 @@ pub fn handle_pointer_axis_raw(
     // Check if the pointer is in the bar area; if so, dispatch bar scroll.
     let scroll_delta = vertical_v120.or(vertical);
     if let Some(delta) = scroll_delta.filter(|d| *d != 0.0)
-        && let Some(pos) = update_wayland_bar_hit_state(wm, root, true)
+        && let Some(pos) = update_bar_hit_state(wm, root, true)
     {
         let clean_state = clean_mask(modifiers_to_x11_mask(&keyboard.modifier_state()), 0);
-        handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
+        handle_bar_scroll(wm, pos, delta, root, clean_state);
     }
 
     let mut frame = smithay::input::pointer::AxisFrame::new(time).source(source);
@@ -110,7 +110,7 @@ pub fn handle_pointer_axis<B: InputBackend>(
     event: impl PointerAxisEvent<B>,
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
-    let scroll_factor = resolve_scroll_factor(&wm.g.cfg.input);
+    let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
 
     let mut frame = smithay::input::pointer::AxisFrame::new(event.time_msec());
     frame = frame.source(event.source());
@@ -146,12 +146,12 @@ pub fn handle_pointer_axis<B: InputBackend>(
             pointer_location.x.round() as i32,
             pointer_location.y.round() as i32,
         );
-        if let Some(pos) = update_wayland_bar_hit_state(wm, root, true) {
+        if let Some(pos) = update_bar_hit_state(wm, root, true) {
             let clean_state = crate::util::clean_mask(
                 modifiers_to_x11_mask(&keyboard_handle.modifier_state()),
                 0,
             );
-            handle_wayland_bar_scroll(wm, pos, delta, root, clean_state);
+            handle_bar_scroll(wm, pos, delta, root, clean_state);
         }
     }
 

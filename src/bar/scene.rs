@@ -40,6 +40,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub monitor_id: MonitorId,
     pub rect: Rect,
     pub font_size: f32,
+    pub font_families: Vec<String>,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
     pub startmenu_size: i32,
@@ -84,19 +85,20 @@ pub(crate) fn build_monitor_snapshots(
     )>,
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
-    let selected_monitor_num = core.globals().selected_monitor().num;
-    let show_systray = core.globals().cfg.systray.show;
-    let systray_spacing = core.globals().cfg.systray.spacing;
-    let base_font_size =
-        crate::wayland::common::wayland_font_size_from_config(&core.globals().cfg.fonts.fonts);
-    let drag_bar_active = core.globals().drag.bar_active;
-    let current_mode = core.globals().behavior.current_mode.clone();
+    let selected_monitor_num = core.model().selected_monitor().num;
+    let show_systray = core.config().systray.show;
+    let systray_spacing = core.config().systray.spacing;
+    let base_font_size = crate::wayland::common::font_size_from_config(&core.config().fonts.fonts);
+    let font_families =
+        crate::wayland::common::font_families_from_config(&core.config().fonts.fonts);
+    let drag_bar_active = core.drag_state().bar_active;
+    let current_mode = core.behavior().current_mode.clone();
     let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {
         Some("mode: overview".to_string())
     } else if !current_mode.is_empty() && current_mode != "default" {
         let mode_display = core
-            .globals()
-            .cfg
+            .state()
+            .config
             .bindings
             .modes
             .get(&current_mode)
@@ -105,16 +107,24 @@ pub(crate) fn build_monitor_snapshots(
             .unwrap_or_else(|| current_mode.clone());
         Some(format!("mode: {}", mode_display))
     } else {
-        let status_text = core.globals().bar_runtime.status_text.clone();
+        let status_text = core.bar.runtime.status_text.clone();
         if status_text.is_empty() {
             None
         } else {
             Some(status_text)
         }
     };
-    let monitors: Vec<Monitor> = core.globals().monitors_iter_all().cloned().collect();
+    let selected_status_items = if include_status_items {
+        status_text
+            .as_deref()
+            .map(|text| core.bar.status_items_for_text(text).to_vec())
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
     let mut monitor_stats: HashMap<MonitorId, crate::bar::model::ClientBarStats> = HashMap::new();
-    for client in core.globals().clients.values() {
+    for client in core.model().clients.values() {
         let entry = monitor_stats.entry(client.monitor_id).or_default();
         entry.occupied_tags = entry.occupied_tags | client.tags;
         if client.is_urgent {
@@ -123,8 +133,11 @@ pub(crate) fn build_monitor_snapshots(
     }
 
     let mut snapshots = Vec::new();
-    for mon in monitors {
-        if !crate::bar::monitor_bar_visible(core.globals(), &mon) {
+    for monitor_id in monitor_ids {
+        let Some(mon) = core.model().monitor(monitor_id) else {
+            continue;
+        };
+        if !mon.bar_visible(core.model().clients.map()) {
             continue;
         }
         let font_size = (base_font_size * mon.ui_scale as f32).max(1.0);
@@ -134,22 +147,23 @@ pub(crate) fn build_monitor_snapshots(
 
         let is_selected_monitor = mon.num == selected_monitor_num;
         let gesture = if is_selected_monitor {
-            core.globals().selected_monitor().gesture
+            core.model().selected_monitor().gesture
         } else {
             Gesture::None
         };
         let mut tags = Vec::new();
-        for tag in crate::tags::bar::visible_tags(core, &mon, stats.occupied_tags) {
+        for tag in crate::tags::bar::visible_tags(core.state(), core.bar, mon, stats.occupied_tags)
+        {
             let is_hover = gesture == Gesture::Tag(tag.slot);
-            let mut scheme = core.globals().tag_scheme(
-                &mon,
+            let mut scheme = core.tag_scheme(
+                mon,
                 tag.tag_index as u32,
                 stats.occupied_tags,
                 stats.urgent_tags,
                 is_hover,
             );
             if is_hover && drag_bar_active {
-                scheme = core.globals().tag_hover_fill_scheme();
+                scheme = core.tag_hover_fill_scheme();
             }
             tags.push(TagCellSnapshot {
                 slot: tag.slot,
@@ -162,15 +176,15 @@ pub(crate) fn build_monitor_snapshots(
         let selected_tags = mon.selected_tags();
         let mut titles = Vec::new();
         for (_c_win, c) in mon
-            .iter_clients(core.globals().clients.map())
+            .iter_clients(core.model().clients.map())
             .filter(|(_, c)| c.shows_in_bar(selected_tags))
         {
             stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
-            let scheme = core.globals().window_scheme(c, is_hover);
-            let close_scheme = if is_selected_monitor && mon.sel == Some(c.win) {
+            let scheme = core.window_scheme(c, is_hover);
+            let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {
                 let is_fullscreen = c.mode.is_fullscreen();
-                Some(core.globals().close_button_scheme(
+                Some(core.close_button_scheme(
                     gesture == Gesture::CloseButton,
                     c.is_locked,
                     is_fullscreen,
@@ -191,11 +205,8 @@ pub(crate) fn build_monitor_snapshots(
         } else {
             None
         };
-        let status_items = if include_status_items {
-            status_text
-                .as_deref()
-                .map(|text| core.bar.status_items_for_text(text).to_vec())
-                .unwrap_or_default()
+        let status_items = if is_selected_monitor {
+            selected_status_items.clone()
         } else {
             Vec::new()
         };
@@ -205,7 +216,7 @@ pub(crate) fn build_monitor_snapshots(
                 items: items.clone(),
                 menu: menu.cloned(),
                 spacing: systray_spacing,
-                base_scheme: core.globals().status_scheme(),
+                base_scheme: core.status_scheme(),
             })
         } else {
             None
@@ -215,18 +226,19 @@ pub(crate) fn build_monitor_snapshots(
             monitor_id: mon.id(),
             rect: Rect::new(mon.work_rect.x, mon.bar_y, mon.work_rect.w, mon.bar_height),
             font_size,
+            font_families: font_families.clone(),
             is_selected_monitor,
-            status_scheme: core.globals().status_scheme(),
+            status_scheme: core.status_scheme(),
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
-            layout_symbol: if crate::overview::is_active_on_monitor(core.globals(), &mon) {
+            layout_symbol: if core.model().is_overview_active_on(mon) {
                 "OVR".to_string()
             } else {
                 mon.layouts_for_mask(selected_tags).symbol().to_string()
             },
             tags,
-            show_shutdown: mon.sel.is_none(),
+            show_shutdown: mon.selected.is_none(),
             titles,
             monitor_rect_x: mon.monitor_rect.x,
             status_text,

@@ -9,7 +9,7 @@ use crate::types::{
 };
 use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -34,6 +34,8 @@ pub struct ModeSpec {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ThemeConfig {
+    /// Built-in colour theme used as the base for `[colors]` overrides.
+    pub theme: ColorTheme,
     pub includes: Vec<IncludeConfig>,
     pub fonts: Vec<String>,
     pub colors: ColorConfig,
@@ -44,13 +46,13 @@ pub struct ThemeConfig {
     /// Keyboard layout configuration.
     pub keyboard: KeyboardConfig,
     /// Input configuration (mouse, touchpad).
-    pub input: std::collections::HashMap<String, InputConfig>,
+    pub input: HashMap<String, InputConfig>,
     /// Monitor configuration.
-    pub monitors: std::collections::HashMap<String, MonitorConfig>,
+    pub monitors: HashMap<String, MonitorConfig>,
     /// Background command to execute for reading status bar text, typically `i3status-rs`
     pub status_command: Option<String>,
     /// User-defined modes (sway-like modes).
-    pub modes: std::collections::HashMap<String, ModeSpec>,
+    pub modes: HashMap<String, ModeSpec>,
     /// Cursor configuration (Wayland only).
     pub cursor: CursorConfig,
     /// Layout geometry configuration.
@@ -72,16 +74,17 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
+            theme: ColorTheme::default(),
             includes: Vec::new(),
             fonts: get_fonts(),
             colors: ColorConfig::default(),
             keybinds: Vec::new(),
             desktop_keybinds: Vec::new(),
             keyboard: KeyboardConfig::default(),
-            input: std::collections::HashMap::new(),
-            monitors: std::collections::HashMap::new(),
+            input: HashMap::new(),
+            monitors: HashMap::new(),
             status_command: None,
-            modes: std::collections::HashMap::new(),
+            modes: HashMap::new(),
             cursor: CursorConfig::default(),
             layout: LayoutConfig::default(),
             rules: Vec::new(),
@@ -90,6 +93,20 @@ impl Default for ThemeConfig {
             exec: Vec::new(),
         }
     }
+}
+
+/// A built-in base colour theme. Names use kebab-case in TOML.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ColorTheme {
+    #[default]
+    Instantos,
+    CatppuccinLatte,
+    CatppuccinFrappe,
+    CatppuccinMacchiato,
+    CatppuccinMocha,
+    Nord,
+    Gruvbox,
 }
 
 /// Layout geometry configuration.
@@ -298,7 +315,9 @@ pub fn load_config_file() -> ThemeConfig {
 
     let mut visited = HashSet::new();
     match load_and_merge_config(&path, &mut visited) {
-        Ok(merged_value) => match merged_value.try_into::<ThemeConfig>() {
+        Ok(merged_value) => match resolve_theme_colors(merged_value)
+            .and_then(|v| v.try_into::<ThemeConfig>().map_err(|e| e.to_string()))
+        {
             Ok(file) => file,
             Err(e) => {
                 eprintln!("instantwm: config parse error, using defaults: {e}");
@@ -307,6 +326,27 @@ pub fn load_config_file() -> ThemeConfig {
         },
         Err(_) => ThemeConfig::default(),
     }
+}
+
+fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> {
+    let theme = config
+        .get("theme")
+        .cloned()
+        .map(|value| value.try_into::<ColorTheme>().map_err(|e| e.to_string()))
+        .transpose()?
+        .unwrap_or_default();
+    let mut base = toml::Value::try_from(crate::config::appearance::colors(theme))
+        .map_err(|e| e.to_string())?;
+    if let Some(overrides) = config.get_mut("colors") {
+        merge_toml_values(
+            &mut base,
+            std::mem::replace(overrides, toml::Value::Table(toml::Table::new())),
+        );
+        *overrides = base;
+    } else if let Some(table) = config.as_table_mut() {
+        table.insert("colors".into(), base);
+    }
+    Ok(config)
 }
 
 /// Generate a commented-out default config template.
@@ -433,6 +473,63 @@ fn merge_toml_values(base: &mut toml::Value, over: toml::Value) {
         }
         (base, over) => {
             *base = over;
+        }
+    }
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+    use crate::bar::color::rgba_from_hex;
+
+    fn parse(source: &str) -> ThemeConfig {
+        let value = toml::from_str(source).unwrap();
+        resolve_theme_colors(value)
+            .unwrap()
+            .try_into::<ThemeConfig>()
+            .unwrap()
+    }
+
+    #[test]
+    fn built_in_theme_is_used_as_color_base() {
+        let config = parse(r#"theme = "nord""#);
+        assert_eq!(config.theme, ColorTheme::Nord);
+        assert_eq!(config.colors.status.bg, rgba_from_hex("#2e3440").unwrap());
+        assert_eq!(
+            config.colors.border.tile_focus,
+            rgba_from_hex("#81a1c1").unwrap()
+        );
+    }
+
+    #[test]
+    fn individual_colors_override_the_selected_theme() {
+        let config = parse(
+            r##"
+            theme = "catppuccin-latte"
+            [colors.status]
+            bg = "#123456"
+            "##,
+        );
+        assert_eq!(config.colors.status.bg, rgba_from_hex("#123456").unwrap());
+        assert_eq!(config.colors.status.fg, rgba_from_hex("#4c4f69").unwrap());
+        assert_eq!(
+            config.colors.border.tile_focus,
+            rgba_from_hex("#1e66f5").unwrap()
+        );
+    }
+
+    #[test]
+    fn every_documented_theme_name_deserializes() {
+        for name in [
+            "instantos",
+            "catppuccin-latte",
+            "catppuccin-frappe",
+            "catppuccin-macchiato",
+            "catppuccin-mocha",
+            "nord",
+            "gruvbox",
+        ] {
+            parse(&format!("theme = {name:?}"));
         }
     }
 }

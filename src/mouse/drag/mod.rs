@@ -12,7 +12,7 @@
 //! | Function                            | Description                                               |
 //! |-------------------------------------|-----------------------------------------------------------|
 //! | [`begin_keyboard_move`]             | Keyboard-initiated window drag (works on X11 and Wayland) |
-//! | [`crate::backend::x11::mouse::move_mouse_x11`] | Drag the focused window to a new position (X11 only) |
+//! | [`crate::backend::x11::mouse::move_mouse`] | Drag the focused window to a new position (X11 only) |
 //! | [`sidebar_gesture_begin`]           | Vertical-swipe gesture recogniser on the sidebar edge     |
 //! | [`drag_tag`]                        | Drag across the tag bar to switch/move tags               |
 //! | [`window_title_mouse_handler`]      | Left-click/drag on a window title bar entry               |
@@ -53,7 +53,7 @@ pub mod title;
 
 /// Keyboard-initiated window move — works on both X11 and Wayland.
 ///
-/// On **X11** this is identical to calling [`crate::backend::x11::mouse::move_mouse_x11`]
+/// On **X11** this is identical to calling [`crate::backend::x11::mouse::move_mouse`]
 /// directly: the pointer is grabbed and a synchronous event loop drives the drag
 /// until the button is released.
 ///
@@ -61,7 +61,7 @@ pub mod title;
 /// equivalent in the protocol).  Instead we arm the `DragInteraction`
 /// machinery in move mode at the current pointer
 /// position.  Subsequent `MotionNotify` events delivered through calloop then
-/// drive the drag, and `wayland_hover_resize_drag_finish` (called on button
+/// drive the drag, and `hover_resize_drag_finish` (called on button
 /// release inside `handle_pointer_button`) performs the drop logic via the
 /// shared `complete_move_drop` helper.
 ///
@@ -76,15 +76,15 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
     match ctx {
         WmCtx::X11(x11) => {
             // X11: synchronous grab loop, unchanged behaviour.
-            crate::backend::x11::mouse::move_mouse_x11(x11, MouseButton::Left, None);
+            crate::backend::x11::mouse::move_mouse(x11, MouseButton::Left, None);
         }
         WmCtx::Wayland(wl) => {
             // Wayland: arm the hover-resize state in move mode so that calloop
             // motion/release events drive the drag asynchronously.
-            let Some(root) = wl.wayland.backend.pointer_location() else {
+            let Some(root) = wl.wayland.pointer_location() else {
                 return;
             };
-            let (geo, is_floating) = match wl.core.globals().clients.get(&win) {
+            let (geo, is_floating) = match wl.core.model().clients.get(&win) {
                 Some(c) => (c.geo, c.mode.is_floating()),
                 None => return,
             };
@@ -96,12 +96,12 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                     win,
                     crate::types::BaseClientMode::Floating,
                 );
-                let selmon_id = wl.core.globals().selected_monitor_id();
+                let selmon_id = wl.core.model().selected_monitor_id();
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
 
-            wl.core.globals_mut().drag.interactive =
-                crate::globals::DragInteraction::new_move(win, MouseButton::Left, root, geo);
+            wl.core.drag_state_mut().interactive =
+                crate::core_state::DragInteraction::new_move(win, MouseButton::Left, root, geo);
             crate::mouse::set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
                 crate::types::AltCursor::Move,
@@ -122,7 +122,8 @@ pub fn finish_drag_move(
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
 ) {
-    ctx.core_mut().globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction::default();
+    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
     complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
 }
@@ -132,7 +133,7 @@ pub fn finish_drag_move(
 /// Clears the active drag state, resets the cursor to the default, handles
 /// potential monitor switch, and re-raises the client so it stays on top.
 pub fn finish_drag_resize(ctx: &mut WmCtx, win: WindowId) {
-    ctx.core_mut().globals_mut().drag.interactive = crate::globals::DragInteraction::default();
+    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction::default();
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);

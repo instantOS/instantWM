@@ -22,15 +22,15 @@ pub(crate) fn draw_status_bar(
     bar_height: i32,
     painter: &mut dyn crate::bar::paint::BarPainter,
 ) -> (i32, i32, Vec<StatusClickTarget>) {
-    let mode = ctx.globals().behavior.current_mode.clone();
+    let mode = ctx.behavior().current_mode.clone();
     let stext_owned: String;
     let stext = if mode == crate::overview::OVERVIEW_MODE_NAME {
         stext_owned = "mode: overview".to_string();
         stext_owned.as_str()
     } else if !mode.is_empty() && mode != "default" {
         let mode_display = ctx
-            .globals()
-            .cfg
+            .state()
+            .config
             .bindings
             .modes
             .get(&mode)
@@ -40,7 +40,7 @@ pub(crate) fn draw_status_bar(
         stext_owned = format!("mode: {}", mode_display);
         stext_owned.as_str()
     } else {
-        stext_owned = ctx.globals().bar_runtime.status_text.clone();
+        stext_owned = ctx.bar.runtime.status_text.clone();
         stext_owned.as_str()
     };
 
@@ -54,7 +54,7 @@ pub(crate) fn draw_status_bar(
         m,
         bar_height,
         items.as_slice(),
-        ctx.globals().status_scheme(),
+        ctx.status_scheme(),
         painter,
     )
 }

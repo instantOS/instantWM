@@ -1,8 +1,5 @@
 use crate::ipc_types::{Response, ToggleCommand};
-use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_focus_follows_float_mouse, toggle_focus_follows_mouse,
-    toggle_show_tags,
-};
+use crate::toggles::{toggle_alt_tag, toggle_show_tags};
 use crate::types::ToggleAction;
 use crate::wm::Wm;
 
@@ -11,15 +8,15 @@ pub fn handle_toggle_command(wm: &mut Wm, cmd: ToggleCommand) -> Response {
     match cmd {
         ToggleCommand::Animated(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            ctx.with_behavior_mut(|behavior| toggle_animated(behavior, action));
+            ctx.with_behavior_mut(|behavior| behavior.toggle_animated(action));
         }
         ToggleCommand::FocusFollowsMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            ctx.with_behavior_mut(|behavior| toggle_focus_follows_mouse(behavior, action));
+            ctx.with_behavior_mut(|behavior| behavior.toggle_focus_follows_mouse(action));
         }
         ToggleCommand::FocusFollowsFloatMouse(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));
-            ctx.with_behavior_mut(|behavior| toggle_focus_follows_float_mouse(behavior, action));
+            ctx.with_behavior_mut(|behavior| behavior.toggle_focus_follows_float_mouse(action));
         }
         ToggleCommand::AltTag(arg) => {
             let action = ToggleAction::from_arg(arg.as_deref().unwrap_or(""));

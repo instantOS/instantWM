@@ -13,6 +13,8 @@ use smithay::backend::session::libseat::LibSeatSession;
 use smithay::reexports::drm::control::Device as ControlDevice;
 use smithay::reexports::drm::control::connector;
 use smithay::reexports::rustix::fs::OFlags;
+use std::path::PathBuf;
+
 use smithay::utils::DeviceFd;
 
 /// Initialize GPU, EGL, and renderer.
@@ -23,7 +25,7 @@ pub fn init_gpu(
     session: &mut LibSeatSession,
     seat_name: &str,
 ) -> (
-    std::path::PathBuf,
+    PathBuf,
     DrmDevice,
     DrmDeviceNotifier,
     DrmDeviceFd,
@@ -52,12 +54,7 @@ pub fn init_gpu(
 fn open_primary_gpu(
     session: &mut LibSeatSession,
     seat_name: &str,
-) -> (
-    std::path::PathBuf,
-    DrmDevice,
-    DrmDeviceNotifier,
-    DrmDeviceFd,
-) {
+) -> (PathBuf, DrmDevice, DrmDeviceNotifier, DrmDeviceFd) {
     let gpus = smithay::backend::udev::all_gpus(seat_name).unwrap_or_default();
     let mut primary_gpu_path = None;
     let mut drm_device = None;

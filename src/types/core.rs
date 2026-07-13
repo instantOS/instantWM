@@ -8,43 +8,32 @@ pub type Atom = u32;
 /// Client identifier type.
 pub type ClientId = usize;
 
-/// Monitor identifier type.
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-)]
-pub struct MonitorId(pub usize);
+/// Stable, opaque identifier for a monitor.
+///
+/// A `MonitorId` is allocated by [`crate::monitor::MonitorManager`] when a
+/// monitor is created and **never changes** for the lifetime of that monitor —
+/// not across output hotplug, reordering, or reconfiguration. This is distinct
+/// from a monitor's *spatial position* (its index in the display order), which
+/// is queried separately via [`crate::monitor::MonitorManager::position_of`].
+///
+/// Identifiers are never reused, so a stale `MonitorId` (one whose monitor has
+/// been removed) simply fails to resolve rather than silently referring to a
+/// different monitor.
+///
+/// Construction is limited to the manager's internal allocator; all other code
+/// obtains a `MonitorId` from a lookup or iteration.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MonitorId(u64);
 
 impl MonitorId {
+    /// Construct a raw id from its internal representation.
+    ///
+    /// This is the sole construction path, intended only for the
+    /// [`crate::monitor::MonitorManager`] allocator. Application code should
+    /// never call this.
     #[inline]
-    pub const fn new(index: usize) -> Self {
-        Self(index)
-    }
-
-    #[inline]
-    pub const fn index(self) -> usize {
-        self.0
-    }
-}
-
-impl From<usize> for MonitorId {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
-impl From<MonitorId> for usize {
-    fn from(value: MonitorId) -> Self {
-        value.0
+    pub(crate) const fn from_raw(raw: u64) -> Self {
+        Self(raw)
     }
 }
 

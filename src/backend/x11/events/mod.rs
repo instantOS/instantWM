@@ -2,7 +2,8 @@
 
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::lifecycle::{is_window_iconic, manage};
-use crate::contexts::{CoreCtx, WmCtxX11};
+use crate::client::manager::ClientManager;
+use crate::contexts::WmCtxX11;
 use crate::types::{Rect, WindowId};
 use x11rb::protocol::xproto::*;
 
@@ -54,7 +55,7 @@ pub(crate) fn is_override_redirect(x11: &X11BackendRef, win: WindowId) -> bool {
 
 /// Partition `children` into `(managed, transients)`.
 fn classify_windows(
-    core: &CoreCtx,
+    clients: &ClientManager,
     x11: &X11BackendRef,
     x11_runtime: &crate::backend::x11::X11RuntimeConfig,
     children: Vec<Window>,
@@ -84,7 +85,7 @@ fn classify_windows(
         }
 
         // Skip already-managed windows.
-        if core.globals().clients.contains_key(&win_id) {
+        if clients.contains_key(&win_id) {
             continue;
         }
 
@@ -127,7 +128,12 @@ pub fn scan(ctx: &mut WmCtxX11<'_>) {
         tree_reply.children
     };
 
-    let (managed, transients) = classify_windows(&ctx.core, &ctx.x11, ctx.x11_runtime, children);
+    let (managed, transients) = classify_windows(
+        &ctx.core.model().clients,
+        &ctx.x11,
+        ctx.x11_runtime,
+        children,
+    );
 
     for win in managed.into_iter().chain(transients) {
         let (geo, border_width) = get_win_geometry(&ctx.x11, win);

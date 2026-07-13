@@ -1,4 +1,4 @@
-use crate::backend::BackendOps;
+use crate::backend::WindowOps;
 use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
 use crate::monitor::transfer_client;
@@ -33,23 +33,31 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
 fn list_windows(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
     let target = parsed_id;
     let mut wins: Vec<_> = if let Some(win) = target {
-        wm.g.clients.get(&win).into_iter().collect()
+        wm.core.model.clients.get(&win).into_iter().collect()
     } else {
-        wm.g.clients.values().collect()
+        wm.core.model.clients.values().collect()
     };
     wins.sort_by_key(|c| c.win.0);
 
-    let tag_mask = wm.g.tags.mask();
+    let tag_mask = wm.core.model.tags.mask();
     let windows: Vec<WindowInfo> = wins
         .iter()
-        .map(|c| WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win)))
+        .map(|c| {
+            let mon_pos = wm
+                .core
+                .model
+                .monitors
+                .position_of(c.monitor_id)
+                .unwrap_or(0);
+            WindowInfo::from_client(c, tag_mask, wm.backend.window_protocol(c.win), mon_pos)
+        })
         .collect();
 
     Response::WindowList(windows)
 }
 
 fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| wm.g.selected_win());
+    let target = parsed_id.or_else(|| wm.core.selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
@@ -58,19 +66,26 @@ fn close_window(wm: &mut Wm, parsed_id: Option<WindowId>) -> Response {
 }
 
 fn window_info(wm: &Wm, parsed_id: Option<WindowId>) -> Response {
-    let target = parsed_id.or_else(|| wm.g.selected_win());
+    let target = parsed_id.or_else(|| wm.core.selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
-    let Some(c) = wm.g.clients.get(&win) else {
+    let Some(c) = wm.core.model.clients.get(&win) else {
         return Response::err("window not found");
     };
 
-    let tag_mask = wm.g.tags.mask();
+    let tag_mask = wm.core.model.tags.mask();
+    let mon_pos = wm
+        .core
+        .model
+        .monitors
+        .position_of(c.monitor_id)
+        .unwrap_or(0);
     Response::WindowInfo(WindowInfo::from_client(
         c,
         tag_mask,
         wm.backend.window_protocol(c.win),
+        mon_pos,
     ))
 }
 
@@ -83,12 +98,12 @@ fn resize_window(
     width: i32,
     height: i32,
 ) -> Response {
-    let target = parsed_id.or_else(|| wm.g.selected_win());
+    let target = parsed_id.or_else(|| wm.core.selected_win());
     let Some(win) = target else {
         return Response::err("no target window");
     };
 
-    let (current_monitor_id, is_floating) = match wm.g.clients.get(&win) {
+    let (current_monitor_id, is_floating) = match wm.core.model.clients.get(&win) {
         Some(c) => (c.monitor_id, c.mode.is_floating()),
         None => return Response::err("window not found"),
     };
@@ -97,7 +112,8 @@ fn resize_window(
             Ok(id) => id,
             Err(msg) => return Response::err(msg),
         };
-    let Some(target_monitor_rect) = wm.g.monitor(target_monitor_id).map(|m| m.monitor_rect) else {
+    let Some(target_monitor_rect) = wm.core.monitor(target_monitor_id).map(|m| m.monitor_rect)
+    else {
         return Response::err("monitor not found");
     };
 
@@ -108,7 +124,7 @@ fn resize_window(
         h: height,
     };
 
-    if !is_valid_window_size(&wm.g, &rect, win) {
+    if !is_valid_window_size(&wm.core.model, &rect, win) {
         return Response::err("invalid target geometry");
     }
 
@@ -136,17 +152,16 @@ fn resolve_resize_monitor(
 ) -> Result<crate::types::MonitorId, String> {
     match monitor_arg {
         None => Ok(current_monitor_id),
-        Some("focused") => Ok(wm.g.selected_monitor_id()),
+        Some("focused") => Ok(wm.core.selected_monitor_id()),
         Some(raw) => {
-            let monitor_id = crate::types::MonitorId(
-                raw.parse::<usize>()
-                    .map_err(|_| format!("invalid monitor '{}'", raw))?,
-            );
-            if wm.g.monitor(monitor_id).is_some() {
-                Ok(monitor_id)
-            } else {
-                Err(format!("monitor {} not found", monitor_id.index()))
-            }
+            let pos = raw
+                .parse::<usize>()
+                .map_err(|_| format!("invalid monitor '{}'", raw))?;
+            wm.core
+                .model
+                .monitors
+                .id_at_position(pos)
+                .ok_or_else(|| format!("monitor {pos} not found"))
         }
     }
 }
@@ -161,12 +176,9 @@ fn transfer_window_to_monitor(
         return;
     }
 
-    ctx.core_mut()
-        .globals_mut()
-        .set_selected_monitor(current_monitor);
     transfer_client(ctx, win, target_monitor);
     ctx.core_mut()
-        .globals_mut()
+        .state_mut()
         .set_selected_monitor(target_monitor);
     crate::focus::focus(ctx, Some(win));
 }

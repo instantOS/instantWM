@@ -11,8 +11,8 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
 use x11rb::rust_connection::RustConnection;
 
-use crate::backend::BackendOps;
 use crate::backend::x11::draw::{Cursor, Drw};
+use crate::backend::{OutputOps, PointerOps, WindowOps};
 use crate::types::Atom;
 use crate::types::atoms::{NetAtoms, WmAtoms, XAtoms};
 use crate::types::color::{BorderScheme, StatusScheme};
@@ -112,10 +112,10 @@ pub mod startup;
 pub mod systray;
 pub mod visibility;
 
-pub use client::update_size_hints_x11;
+pub use client::update_size_hints;
 pub use properties::{
     set_client_state, set_client_tag_prop, update_client_list, update_ewmh_desktop_props,
-    update_motif_hints, update_window_type, update_wm_hints, window_properties_x11,
+    update_motif_hints, update_window_type, update_wm_hints, window_properties,
 };
 
 pub struct X11Backend {
@@ -147,6 +147,22 @@ impl<'a> X11BackendRef<'a> {
         let _ = self.conn.configure_window(
             x11_win,
             &ConfigureWindowAux::new().border_width(width.max(0) as u32),
+        );
+    }
+
+    /// Position and resize a window without the shared geometry policy.
+    ///
+    /// This is intentionally X11-only: the Wayland compositor owns surface
+    /// geometry and must not expose a fake equivalent.
+    pub fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
+        let x11_win: Window = window.into();
+        let _ = self.conn.configure_window(
+            x11_win,
+            &ConfigureWindowAux::new()
+                .x(rect.x)
+                .y(rect.y)
+                .width(rect.w.max(1) as u32)
+                .height(rect.h.max(1) as u32),
         );
     }
 }
@@ -190,19 +206,7 @@ pub fn query_window_rect(x11: &X11BackendRef<'_>, win: WindowId) -> Option<Rect>
     })
 }
 
-impl BackendOps for X11BackendRef<'_> {
-    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
-        let x11_win: Window = window.into();
-        let _ = self.conn.configure_window(
-            x11_win,
-            &ConfigureWindowAux::new()
-                .x(rect.x)
-                .y(rect.y)
-                .width(rect.w.max(1) as u32)
-                .height(rect.h.max(1) as u32),
-        );
-    }
-
+impl WindowOps for X11BackendRef<'_> {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         let x11_win: Window = window.into();
         let width = rect.w.max(1) as u32;
@@ -275,14 +279,16 @@ impl BackendOps for X11BackendRef<'_> {
         self.conn.get_window_attributes(x11_win).is_ok()
     }
 
-    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
-        crate::backend::WindowProtocol::X11
-    }
-
     fn flush(&self) {
         let _ = self.conn.flush();
     }
 
+    fn window_protocol(&self, _window: WindowId) -> crate::backend::WindowProtocol {
+        crate::backend::WindowProtocol::X11
+    }
+}
+
+impl PointerOps for X11BackendRef<'_> {
     fn pointer_location(&self) -> Option<Point> {
         let root = self.conn.setup().roots[self.screen_num].root;
         let reply = self.conn.query_pointer(root).ok()?.reply().ok()?;
@@ -303,7 +309,9 @@ impl BackendOps for X11BackendRef<'_> {
         );
         let _ = self.conn.flush();
     }
+}
 
+impl OutputOps for X11BackendRef<'_> {
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         let root = self.conn.setup().roots[self.screen_num].root;
         randr::set_monitor_config(self.conn, root, name, config);

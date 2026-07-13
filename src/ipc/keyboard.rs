@@ -18,7 +18,7 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             Response::Message(status)
         }
         KeyboardCommand::List => {
-            let state = &ctx.core().globals().keyboard_layout;
+            let state = &ctx.core().keyboard_layout();
             let layouts: Vec<KeyboardLayoutInfo> = state
                 .layouts
                 .iter()
@@ -37,9 +37,9 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             Response::Message(list)
         }
         KeyboardCommand::Set(layouts) => {
-            let globals_layouts: Vec<crate::globals::KeyboardLayout> = layouts
+            let globals_layouts: Vec<crate::core_state::KeyboardLayout> = layouts
                 .into_iter()
-                .map(|l| crate::globals::KeyboardLayout {
+                .map(|l| crate::core_state::KeyboardLayout {
                     name: l.name,
                     variant: l.variant,
                 })
@@ -48,7 +48,7 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             Response::ok()
         }
         KeyboardCommand::Add(layout) => {
-            let globals_layout = crate::globals::KeyboardLayout {
+            let globals_layout = crate::core_state::KeyboardLayout {
                 name: layout.name,
                 variant: layout.variant,
             };

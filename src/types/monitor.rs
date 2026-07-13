@@ -11,7 +11,7 @@ use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
-use crate::types::input::Gesture;
+use crate::types::input::{Gesture, StackDirection};
 use crate::types::tag_types::MonitorDirection;
 
 /// Persistent per-monitor client z-order.
@@ -77,16 +77,13 @@ impl ClientZOrder {
 /// geometry, tag state, client lists, and UI configuration.
 #[derive(Debug, Clone)]
 pub struct Monitor {
-    /// Position of this monitor in the global monitors Vec (its `MonitorId`).
-    ///
-    /// This is set by `Globals` whenever the monitor is inserted or the vec is
-    /// compacted after a removal.  Code should read it via `Monitor::id()`
-    /// rather than accessing the field directly.
+    /// Stable identifier of this monitor, assigned by `MonitorManager` on
+    /// insertion and never changed afterwards. Read via `Monitor::id()`.
     pub(crate) monitor_id: MonitorId,
     /// Master factor for tiling layouts (0.0 to 1.0).
-    pub mfact: f32,
+    pub master_factor: f32,
     /// Number of clients in the master area for tiling layouts.
-    pub nmaster: i32,
+    pub master_count: i32,
     /// Monitor index number (0-based).
     pub num: i32,
     /// Bar Y position (vertical position of the status bar).
@@ -137,7 +134,7 @@ pub struct Monitor {
     /// Client list (focus order).
     pub clients: Vec<WindowId>,
     /// Currently selected client.
-    pub sel: Option<WindowId>,
+    pub selected: Option<WindowId>,
     /// Focus history per tag mask.
     pub tag_focus_history: HashMap<TagMask, WindowId>,
     /// Last tiled focus per tag mask.
@@ -146,8 +143,8 @@ pub struct Monitor {
     /// while monocle still needs to keep the previously focused tiled client
     /// visible below it.
     pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
-    /// Per-tag runtime state (master factor, nmaster, layouts, etc.).
-    pub per_tag: HashMap<TagMask, PertagState>,
+    /// Per-tag runtime state (master factor, master_count, layouts, etc.).
+    pub per_tag: HashMap<TagMask, PerTagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
@@ -161,9 +158,9 @@ pub struct Monitor {
 impl Default for Monitor {
     fn default() -> Self {
         Self {
-            monitor_id: MonitorId(0),
-            mfact: 0.55,
-            nmaster: 1,
+            monitor_id: MonitorId::default(),
+            master_factor: 0.55,
+            master_count: 1,
             num: 0,
             bar_y: 0,
             ui_scale: 1.0,
@@ -187,7 +184,7 @@ impl Default for Monitor {
             prev_tag: None,
             tags: Vec::new(),
             clients: Vec::new(),
-            sel: None,
+            selected: None,
             tag_focus_history: HashMap::new(),
             tag_tiled_focus_history: HashMap::new(),
             per_tag: HashMap::new(),
@@ -200,6 +197,37 @@ impl Default for Monitor {
 }
 
 impl Monitor {
+    /// Check whether a root-space y-coordinate falls within the bar's vertical span.
+    /// Does not check bar visibility — caller must do that separately.
+    pub fn y_in_bar(&self, root_y: i32) -> bool {
+        let h = self.bar_height.max(1);
+        root_y >= self.bar_y && root_y < self.bar_y + h
+    }
+
+    /// Check whether a root-space y-coordinate falls in the 4-pixel guard band
+    /// immediately below the bar. Does not check bar visibility.
+    pub fn y_in_guard_band(&self, root_y: i32) -> bool {
+        let bar_bottom = self.bar_y + self.bar_height.max(1);
+        root_y >= bar_bottom && root_y < bar_bottom + 4
+    }
+
+    /// Check whether the bar is visible on this monitor.
+    pub fn bar_visible(&self, clients: &HashMap<WindowId, Client>) -> bool {
+        self.shows_bar() && !self.has_real_fullscreen(clients)
+    }
+
+    /// Check whether the monitor has a client in true fullscreen mode.
+    pub fn has_real_fullscreen(&self, clients: &HashMap<WindowId, Client>) -> bool {
+        let selected_tags = self.selected_tags();
+        self.iter_clients(clients)
+            .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
+    }
+
+    /// Check whether the bar is visible on this monitor and `root_y` falls within it.
+    pub fn bar_contains_y(&self, clients: &HashMap<WindowId, Client>, root_y: i32) -> bool {
+        self.bar_visible(clients) && self.y_in_bar(root_y)
+    }
+
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
@@ -212,15 +240,12 @@ impl Monitor {
             clientcount: 0,
             prev_tag: Some(1),
             tags: Vec::new(),
-            monitor_id: MonitorId(0),
+            monitor_id: MonitorId::default(),
             ..Default::default()
         }
     }
 
-    /// Return the `MonitorId` (index into `Globals::monitors`) of this monitor.
-    ///
-    /// This is kept in sync by `Globals` whenever monitors are added or removed,
-    /// so it is always valid for the lifetime of the monitor.
+    /// Return the stable [`MonitorId`] of this monitor.
     #[inline]
     pub fn id(&self) -> MonitorId {
         self.monitor_id
@@ -243,17 +268,34 @@ impl Monitor {
         self.tag_set[self.sel_tags as usize] = mask;
     }
 
+    /// Set the currently selected tags for this monitor, updating history.
+    pub fn set_selected_tags_with_history(&mut self, new_mask: TagMask) -> bool {
+        if self.selected_tags() == new_mask {
+            return false;
+        }
+
+        let previous_current_tag = self.current_tag_number();
+        self.sel_tags = !self.sel_tags;
+        self.set_selected_tags(new_mask);
+        if previous_current_tag != self.current_tag_number()
+            && let Some(previous_current_tag) = previous_current_tag
+        {
+            self.prev_tag = Some(previous_current_tag);
+        }
+        true
+    }
+
     /// Get or initialize state for the current tag mask.
-    pub fn pertag_state(&mut self) -> &mut PertagState {
+    pub fn per_tag_state(&mut self) -> &mut PerTagState {
         let mask = self.selected_tags();
-        let default_showbar = self.show_bar;
+        let default_show_bar = self.show_bar;
         self.per_tag
             .entry(mask)
-            .or_insert_with(|| PertagState::new(default_showbar))
+            .or_insert_with(|| PerTagState::new(default_show_bar))
     }
 
     /// Read the current pertag state, returning `None` if no entry exists yet.
-    pub fn pertag(&self) -> Option<&PertagState> {
+    pub fn per_tag(&self) -> Option<&PerTagState> {
         self.per_tag.get(&self.selected_tags())
     }
 
@@ -355,9 +397,68 @@ impl Monitor {
             .collect()
     }
 
+    /// Move a client within this monitor's focus list (stack order).
+    ///
+    /// Returns true if the position changed, false otherwise (e.g., if the client
+    /// is floating, not found, or there are fewer than 2 tiled clients).
+    pub fn move_client_in_stack(
+        &mut self,
+        win: WindowId,
+        direction: StackDirection,
+        clients: &HashMap<WindowId, Client>,
+    ) -> bool {
+        // Check if client exists and is tiled
+        let is_floating = clients
+            .get(&win)
+            .map(|c| c.mode.is_floating())
+            .unwrap_or(false);
+        if is_floating {
+            return false;
+        }
+
+        let tiled_count = self.tiled_client_count(clients);
+        if tiled_count < 2 {
+            return false;
+        }
+
+        if let Some(pos) = self.clients.iter().position(|&w| w == win) {
+            match direction {
+                StackDirection::Previous => {
+                    if pos > 0 {
+                        self.clients.swap(pos, pos - 1);
+                        return true;
+                    } else {
+                        // Wrap to end: move first element to end
+                        if self.clients.len() > 1 {
+                            let first = self.clients.remove(0);
+                            self.clients.push(first);
+                            return true;
+                        }
+                    }
+                }
+                StackDirection::Next => {
+                    if pos + 1 < self.clients.len() {
+                        self.clients.swap(pos, pos + 1);
+                        return true;
+                    } else {
+                        // Wrap to beginning: move last element to front
+                        if self.clients.len() > 1 {
+                            let last = self.clients.pop();
+                            if let Some(last) = last {
+                                self.clients.insert(0, last);
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Get the currently selected client window, if any.
     pub fn selected_client(&self) -> Option<WindowId> {
-        self.sel
+        self.selected
     }
 
     /// Walk the persistent z-order and return the topmost visible, non-hidden
@@ -374,12 +475,12 @@ impl Monitor {
 
     /// Check if this monitor has a selected client.
     pub fn has_selection(&self) -> bool {
-        self.sel.is_some()
+        self.selected.is_some()
     }
 
     /// Set the selected client for this monitor.
     pub fn set_selected(&mut self, win: Option<WindowId>) {
-        self.sel = win;
+        self.selected = win;
     }
 
     /// Find the next tiled client on this monitor starting after `start_win`.
@@ -411,14 +512,15 @@ impl Monitor {
 
     /// Check if this monitor shows the bar.
     pub fn shows_bar(&self) -> bool {
-        self.showbar_for_mask(self.selected_tags()) && !self.has_external_bar_on_internal_bar_edge()
+        self.show_bar_for_mask(self.selected_tags())
+            && !self.has_external_bar_on_internal_bar_edge()
     }
 
     /// Returns showbar state for the given tag mask.
-    pub fn showbar_for_mask(&self, mask: TagMask) -> bool {
+    pub fn show_bar_for_mask(&self, mask: TagMask) -> bool {
         self.per_tag
             .get(&mask)
-            .map(|s| s.showbar)
+            .map(|s| s.show_bar)
             .unwrap_or(self.show_bar)
     }
 
@@ -490,7 +592,7 @@ impl Monitor {
 
     /// Toggle between primary and secondary layout slots.
     pub fn toggle_layout_slot(&mut self) {
-        self.pertag_state().layouts.toggle_slot();
+        self.per_tag_state().layouts.toggle_slot();
     }
 
     /// Update the bar position and `work_rect` from the current
@@ -640,7 +742,7 @@ impl Monitor {
     ) -> crate::types::BarPosition {
         use crate::bar::model::{build_fallback_hit_cache, hit_test};
 
-        let is_selmon = core.globals().selected_monitor().num == self.num;
+        let is_selmon = core.model().selected_monitor().num == self.num;
 
         // Prefer the pre-built hit cache populated during rendering; fall back to
         // computing a temporary one from the same utility functions.
@@ -653,80 +755,87 @@ impl Monitor {
             }
         };
 
-        hit_test(hit, self, core, is_selmon, local_x)
+        hit_test(hit, self, core.config().systray.show, is_selmon, local_x)
     }
 }
 
 /// Find a monitor in a given direction from the current one.
-pub fn find_monitor_by_direction(
-    monitors: &[Monitor],
+///
+/// `monitors` is iterated in spatial order. Direction wraps around as a ring.
+pub fn find_monitor_by_direction<'a>(
+    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
     current: MonitorId,
     direction: MonitorDirection,
 ) -> Option<MonitorId> {
-    if monitors.is_empty() {
+    let order: Vec<MonitorId> = monitors.into_iter().map(|(id, _)| id).collect();
+    if order.is_empty() {
         return None;
     }
-    if monitors.len() <= 1 {
+    if order.len() <= 1 {
         return Some(current);
     }
 
-    let current = current.index();
-
-    if direction.is_next() {
-        if current + 1 >= monitors.len() {
-            Some(MonitorId(0))
-        } else {
-            Some(MonitorId(current + 1))
-        }
-    } else if current == 0 {
-        Some(MonitorId(monitors.len() - 1))
+    let pos = order.iter().position(|&id| id == current)?;
+    let len = order.len();
+    let new_pos = if direction.is_next() {
+        (pos + 1) % len
+    } else if pos == 0 {
+        len - 1
     } else {
-        Some(MonitorId(current - 1))
-    }
+        pos - 1
+    };
+
+    Some(order[new_pos])
 }
 
 /// Find the monitor that contains the given rectangle (by maximum intersection area).
-pub fn find_monitor_by_rect(monitors: &[Monitor], rect: &Rect) -> Option<MonitorId> {
-    if monitors.is_empty() {
-        return None;
-    }
-
-    let mut best_idx = 0;
+///
+/// This intentionally uses the full output geometry, rather than the work area:
+/// callers use this for root-coordinate input hit testing, including the bar and
+/// layer-shell exclusive zones that are outside `work_rect`.
+pub fn find_monitor_by_rect<'a>(
+    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
+    rect: &Rect,
+) -> Option<MonitorId> {
+    let mut best_id = None;
     let mut max_area = 0;
 
-    for (i, m) in monitors.iter().enumerate() {
-        let area = m.intersect_area(rect);
+    for (id, m) in monitors {
+        let area = m
+            .monitor_rect
+            .intersection(rect)
+            .map_or(0, |intersection| intersection.area());
         if area > max_area {
             max_area = area;
-            best_idx = i;
+            best_id = Some(id);
         }
     }
 
-    Some(MonitorId(best_idx))
+    best_id
 }
 
 /// Runtime state restored when a tag mask is revisited.
 /// Initialized with hardcoded defaults on first visit.
 #[derive(Debug, Clone)]
-pub struct PertagState {
-    pub nmaster: i32,
-    pub mfact: f32,
-    pub showbar: bool,
+pub struct PerTagState {
+    pub master_count: i32,
+    pub master_factor: f32,
+    pub show_bar: bool,
     pub layouts: TagLayouts,
 }
 
-impl Default for PertagState {
+impl Default for PerTagState {
     fn default() -> Self {
         Self::new(true)
     }
 }
 
-impl PertagState {
-    pub fn new(showbar: bool) -> Self {
+impl PerTagState {
+    pub fn new(show_bar: bool) -> Self {
         Self {
-            nmaster: 1,
-            mfact: 0.55,
-            showbar,
+            master_count: 1,
+            master_factor: 0.55,
+            show_bar,
             layouts: TagLayouts::default(),
         }
     }
@@ -793,11 +902,52 @@ mod tests {
     }
 
     #[test]
-    fn pertag_state_defaults_match_normal_tiling_defaults() {
-        let state = PertagState::default();
+    fn per_tag_state_defaults_match_normal_tiling_defaults() {
+        let state = PerTagState::default();
 
-        assert_eq!(state.nmaster, 1);
-        assert_eq!(state.mfact, 0.55);
+        assert_eq!(state.master_count, 1);
+        assert_eq!(state.master_factor, 0.55);
+    }
+
+    #[test]
+    fn monitor_lookup_includes_bar_outside_work_area() {
+        let mut monitor = Monitor {
+            monitor_id: MonitorId::from_raw(7),
+            monitor_rect: Rect::new(100, 50, 800, 600),
+            work_rect: Rect::new(100, 80, 800, 570),
+            ..Monitor::default()
+        };
+        monitor.bar_y = 50;
+        monitor.bar_height = 30;
+
+        assert_eq!(
+            find_monitor_by_rect([(monitor.id(), &monitor)], &Rect::new(200, 60, 1, 1)),
+            Some(MonitorId::from_raw(7))
+        );
+    }
+
+    #[test]
+    fn monitor_lookup_returns_stable_id_for_each_full_output() {
+        let left = Monitor {
+            monitor_id: MonitorId::from_raw(4),
+            monitor_rect: Rect::new(0, 0, 100, 100),
+            work_rect: Rect::new(0, 20, 100, 80),
+            ..Monitor::default()
+        };
+        let right = Monitor {
+            monitor_id: MonitorId::from_raw(9),
+            monitor_rect: Rect::new(100, 0, 100, 100),
+            work_rect: Rect::new(100, 20, 100, 80),
+            ..Monitor::default()
+        };
+
+        assert_eq!(
+            find_monitor_by_rect(
+                [(left.id(), &left), (right.id(), &right)],
+                &Rect::new(150, 5, 1, 1),
+            ),
+            Some(MonitorId::from_raw(9))
+        );
     }
 
     #[test]

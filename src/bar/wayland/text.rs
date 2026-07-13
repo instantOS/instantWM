@@ -2,12 +2,16 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use cosmic_text::{
-    Attrs, Buffer, Color as CosmicColor, FontSystem, Metrics, Shaping, SwashCache, Wrap,
+    Attrs, Buffer, Color as CosmicColor, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap,
 };
 
 use super::pixels;
 
 const TEXT_CACHE_LIMIT: usize = 2048;
+// Many patched-font icons paint slightly beyond their nominal advance. Keep
+// enough tracking on those glyphs that the following normal-font run cannot
+// start inside the icon's ink bounds.
+const ICON_LETTER_SPACING_EM: f32 = 0.12;
 pub(super) const DEFAULT_FONT_SIZE: f32 = 14.0;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -40,6 +44,7 @@ pub(super) struct TextRasterizer {
     measure_cache: RefCell<HashMap<TextMeasureKey, CachedMeasuredText>>,
     render_cache: RefCell<HashMap<TextRenderKey, CachedRenderedText>>,
     font_size: f32,
+    font_families: Vec<String>,
 }
 
 impl Default for TextRasterizer {
@@ -50,11 +55,35 @@ impl Default for TextRasterizer {
             measure_cache: RefCell::new(HashMap::new()),
             render_cache: RefCell::new(HashMap::new()),
             font_size: DEFAULT_FONT_SIZE,
+            font_families: Vec::new(),
         }
     }
 }
 
 impl TextRasterizer {
+    pub(super) fn set_font_families(&mut self, configured: &[String]) {
+        let resolved = {
+            let fs = self.font_system.borrow();
+            configured
+                .iter()
+                .map(|configured_family| {
+                    let wanted = normalized_family(configured_family);
+                    fs.db()
+                        .faces()
+                        .flat_map(|face| face.families.iter().map(|(name, _)| name))
+                        .find(|name| normalized_family(name) == wanted)
+                        .cloned()
+                        .unwrap_or_else(|| configured_family.clone())
+                })
+                .collect::<Vec<_>>()
+        };
+        if self.font_families != resolved {
+            self.font_families = resolved;
+            self.measure_cache.get_mut().clear();
+            self.render_cache.get_mut().clear();
+        }
+    }
+
     pub(super) fn set_font_size(&mut self, font_size: f32) {
         if font_size.is_finite()
             && font_size > 0.0
@@ -84,7 +113,7 @@ impl TextRasterizer {
             let mut buffer = Buffer::new(&mut fs, metrics);
             buffer.set_size(None, None);
             buffer.set_wrap(Wrap::None);
-            buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
+            self.set_buffer_text(&mut buffer, text);
             buffer.shape_until_scroll(&mut fs, false);
             let width = buffer
                 .layout_runs()
@@ -141,7 +170,7 @@ impl TextRasterizer {
                 let mut buffer = Buffer::new(&mut fs, metrics);
                 buffer.set_size(Some(w as f32), Some(h as f32));
                 buffer.set_wrap(Wrap::None);
-                buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
+                self.set_buffer_text(&mut buffer, text);
                 buffer.shape_until_scroll(&mut fs, false);
                 if cache.len() > TEXT_CACHE_LIMIT {
                     cache.clear();
@@ -199,4 +228,52 @@ impl TextRasterizer {
             self.font_size
         }
     }
+
+    fn set_buffer_text(&self, buffer: &mut Buffer, text: &str) {
+        let Some(primary) = self.font_families.first() else {
+            buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
+            return;
+        };
+        let default_attrs = Attrs::new().family(Family::Name(primary));
+        let icon_family = self.font_families.get(1).unwrap_or(primary);
+        let mut spans = Vec::new();
+        let mut start = 0;
+        let mut private = text.chars().next().is_some_and(is_private_use);
+        for (index, ch) in text.char_indices().skip(1) {
+            let next_private = is_private_use(ch);
+            if next_private != private {
+                let family = if private { icon_family } else { primary };
+                let attrs = attrs_for_run(family, private);
+                spans.push((&text[start..index], attrs));
+                start = index;
+                private = next_private;
+            }
+        }
+        if start < text.len() {
+            let family = if private { icon_family } else { primary };
+            spans.push((&text[start..], attrs_for_run(family, private)));
+        }
+        buffer.set_rich_text(spans, &default_attrs, Shaping::Advanced, None);
+    }
+}
+
+fn attrs_for_run(family: &str, private: bool) -> Attrs<'_> {
+    let attrs = Attrs::new().family(Family::Name(family));
+    if private {
+        attrs.letter_spacing(ICON_LETTER_SPACING_EM)
+    } else {
+        attrs
+    }
+}
+
+fn normalized_family(family: &str) -> String {
+    family
+        .chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn is_private_use(ch: char) -> bool {
+    matches!(ch as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
 }

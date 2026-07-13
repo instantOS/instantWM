@@ -78,7 +78,7 @@ fn wm_init(wm: &mut Wm) {
             return;
         };
         crate::backend::x11::bar::update_bars(
-            ctx.core.globals_mut(),
+            ctx.core.state_mut(),
             &ctx.x11,
             ctx.x11_runtime,
             ctx.systray.as_deref(),
@@ -89,7 +89,7 @@ fn wm_init(wm: &mut Wm) {
             ctx.x11_runtime,
             ctx.systray.as_deref_mut(),
         );
-        crate::backend::x11::keyboard::grab_keys_x11(ctx.core.globals(), &ctx.x11, ctx.x11_runtime);
+        crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
         crate::focus::focus(&mut crate::contexts::WmCtx::X11(ctx.reborrow()), None);
     }
 }
@@ -101,13 +101,12 @@ fn init_globals(wm: &mut Wm, root: Window, screen: &x11rb::protocol::xproto::Scr
     if let Some(data) = wm.backend.x11_data_mut() {
         data.x11_runtime.root = root;
     }
-    wm.g.cfg.display.width = screen.width_in_pixels as i32;
-    wm.g.cfg.display.height = screen.height_in_pixels as i32;
+    wm.core.config.derived.display.width = screen.width_in_pixels as i32;
+    wm.core.config.derived.display.height = screen.height_in_pixels as i32;
 
-    crate::globals::apply_config(&mut wm.g, &cfg);
-    crate::globals::apply_tags_config(&mut wm.g, &cfg);
+    crate::core_state::apply_config(&mut wm.core, &cfg);
 
-    if !wm.g.cfg.monitors.is_empty() {
+    if !wm.core.config.monitors.is_empty() {
         let mut ctx = wm.ctx();
         crate::monitor::apply_monitor_config(&mut ctx);
     }
@@ -217,7 +216,14 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
 
-    let fonts: Vec<&str> = wm.g.cfg.fonts.fonts.iter().map(|f| f.as_str()).collect();
+    let fonts: Vec<&str> = wm
+        .core
+        .config
+        .fonts
+        .fonts
+        .iter()
+        .map(|f| f.as_str())
+        .collect();
     if drw.fontset_create(&fonts).is_err() {
         panic!("no fonts could be loaded.");
     }
@@ -228,9 +234,9 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         .and_then(|f| f.first())
         .map(|font| font.h)
         .unwrap_or(12);
-    let bar_height_cfg = wm.g.cfg.bar.height;
-    let bordercolors = wm.g.cfg.colors.border;
-    let statusbarcolors = wm.g.cfg.colors.status_bar;
+    let bar_height_cfg = wm.core.config.bar.height;
+    let bordercolors = wm.core.config.colors.border;
+    let statusbarcolors = wm.core.config.colors.status_bar;
     let bar_height = if bar_height_cfg > 0 {
         bar_height_cfg as u32
     } else {
@@ -247,8 +253,8 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
     data.x11_runtime.draw = Some(drw);
-    wm.g.cfg.bar.height = bar_height as i32;
-    wm.g.cfg.bar.horizontal_padding = font_height as i32;
+    wm.core.config.derived.bar_height = bar_height as i32;
+    wm.core.config.derived.bar_horizontal_padding = font_height as i32;
 }
 
 fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {

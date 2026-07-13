@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::mem;
+
 use std::ptr::NonNull;
 
 use smithay::reexports::wayland_protocols::ext::session_lock::v1::server::ext_session_lock_v1::ExtSessionLockV1;
@@ -57,7 +58,7 @@ use smithay::{
 use super::protocols::ext_workspace::ExtWorkspaceManagerState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
-use crate::globals::Globals;
+use crate::core_state::CoreState;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
 
@@ -97,7 +98,7 @@ impl smithay::reexports::wayland_server::backend::ClientData for WaylandClientSt
 ///
 /// This struct owns all Smithay protocol state objects and is the target
 /// of every `delegate_*!` macro.  It also bridges into instantWM's
-/// `Globals` for shared WM state (tags, clients, config, etc.).
+/// `CoreState` for shared WM state (tags, clients, config, etc.).
 pub struct WaylandState {
     // -- Wayland infrastructure --
     pub display_handle: DisplayHandle,
@@ -270,19 +271,8 @@ impl WaylandState {
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, data| {
-                    let dispatch_result = catch_unwind(AssertUnwindSafe(|| unsafe {
-                        display.get_mut().dispatch_clients(data)
-                    }));
-                    match dispatch_result {
-                        Ok(Ok(_)) => {}
-                        Ok(Err(err)) => {
-                            log::warn!("wayland dispatch_clients error: {}", err);
-                        }
-                        Err(_) => {
-                            log::error!(
-                                "wayland client dispatch panicked (invalid client request); continuing"
-                            );
-                        }
+                    if let Err(err) = unsafe { display.get_mut().dispatch_clients(data) } {
+                        log::warn!("wayland dispatch error: {}", err);
                     }
                     Ok(PostAction::Continue)
                 },
@@ -452,13 +442,13 @@ impl WaylandState {
 
     /// Attach the WM to this state.
     pub fn attach_wm(&mut self, wm: &mut Wm) {
-        self.cursor_config = wm.g.cfg.cursor.clone();
+        self.cursor_config = wm.core.config.cursor.clone();
         self.wm = Some(NonNull::from(wm));
     }
 
     #[inline]
-    pub(super) fn globals(&self) -> Option<&Globals> {
-        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().g })
+    pub(super) fn globals(&self) -> Option<&CoreState> {
+        self.wm.map(|p: NonNull<Wm>| unsafe { &p.as_ref().core })
     }
 
     /// Get a mutable pointer to the WM for calloop source callbacks.
@@ -479,7 +469,7 @@ impl WaylandState {
         self.command_queue.borrow_mut().push(command);
     }
 
-    /// Sync the Smithay space from the Globals state.
+    /// Sync the Smithay space from the CoreState state.
     pub fn sync_space_from_globals(&mut self) {
         let dead_windows: Vec<WindowId> = self
             .window_index
@@ -518,7 +508,7 @@ impl WaylandState {
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
-                let client = g.clients.get(&marker.id)?;
+                let client = g.model.clients.get(&marker.id)?;
                 Some((marker.id, client.geo))
             })
             .collect();
@@ -565,7 +555,7 @@ impl WaylandState {
 
     #[inline]
     pub fn take_space_sync_pending(&mut self) -> bool {
-        std::mem::take(&mut self.runtime.space_sync_pending)
+        mem::take(&mut self.runtime.space_sync_pending)
     }
 
     #[inline]
@@ -576,12 +566,12 @@ impl WaylandState {
 
     #[inline]
     pub fn take_render_dirty(&mut self) -> bool {
-        std::mem::take(&mut self.runtime.render_dirty)
+        mem::take(&mut self.runtime.render_dirty)
     }
 
     #[inline]
     pub fn take_frame_callbacks_pending(&mut self) -> bool {
-        std::mem::take(&mut self.runtime.frame_callbacks_pending)
+        mem::take(&mut self.runtime.frame_callbacks_pending)
     }
 
     pub fn set_output_vrr_support(

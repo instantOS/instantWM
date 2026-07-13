@@ -2,14 +2,15 @@ use crate::ipc_types::Response;
 use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
-use crate::toggles::{set_border_width, set_special_next};
+
 use crate::types::{MonitorDirection, SpecialNext};
 use crate::wm::Wm;
+use std::process::Command;
 
 pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
     if wm.ctx().is_wayland() {
-        let _ = std::process::Command::new("killall").arg("swaybg").status();
-        let status = std::process::Command::new("swaybg")
+        let _ = Command::new("killall").arg("swaybg").status();
+        let status = Command::new("swaybg")
             .arg("-i")
             .arg(&path)
             .arg("-m")
@@ -20,10 +21,7 @@ pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
             Err(e) => Response::err(format!("Failed to spawn swaybg: {}", e)),
         }
     } else {
-        let status = std::process::Command::new("feh")
-            .arg("--bg-fill")
-            .arg(&path)
-            .spawn();
+        let status = Command::new("feh").arg("--bg-fill").arg(&path).spawn();
         match status {
             Ok(_) => Response::Message(format!("Wallpaper set to {}", path)),
             Err(e) => Response::err(format!("Failed to spawn feh: {}", e)),
@@ -47,13 +45,13 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     if command.trim().is_empty() {
         return Response::err("spawn requires a command");
     }
-    let mut cmd = std::process::Command::new("sh");
+    let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(&command);
     let metadata = {
         let ctx = wm.ctx();
         let metadata = crate::util::configure_spawn_command(&ctx, &mut cmd);
         if let crate::contexts::WmCtx::Wayland(wayland) = &ctx
-            && let Some(display) = wayland.wayland.backend.xdisplay()
+            && let Some(display) = wayland.wayland.xdisplay()
         {
             cmd.env("DISPLAY", format!(":{display}"));
         }
@@ -62,7 +60,7 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     match cmd.spawn() {
         Ok(child) => {
             crate::client::record_pending_launch(
-                &mut wm.g,
+                &mut wm.core.pending_launches,
                 Some(child.id()),
                 Some(metadata.startup_id),
                 metadata.context,
@@ -94,19 +92,17 @@ pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> Response {
 }
 
 pub fn set_border(wm: &mut Wm, arg: Option<u32>) -> Response {
-    let val = arg.unwrap_or(crate::config::mod_consts::BORDERPX as u32);
-    if let Some(win) = wm.ctx().core().globals().selected_win() {
-        set_border_width(
-            &mut wm.ctx().core_mut().globals_mut().clients,
-            win,
-            val as i32,
-        );
+    let val = arg.unwrap_or(crate::config::mod_consts::BORDER_PX as u32);
+    if let Some(win) = wm.ctx().core().model().selected_win()
+        && let Some(client) = wm.ctx().core_mut().model_mut().clients.get_mut(&win)
+    {
+        client.set_border_width(val as i32);
     }
     Response::ok()
 }
 
 pub fn set_special_next_cmd(wm: &mut Wm, mode: SpecialNext) -> Response {
-    set_special_next(&mut wm.ctx().core_mut().globals_mut().behavior, mode);
+    wm.ctx().core_mut().behavior_mut().set_special_next(mode);
     Response::ok()
 }
 
@@ -127,9 +123,9 @@ pub fn get_status(wm: &Wm) -> Response {
         build_commit: env!("INSTANTWM_BUILD_COMMIT").to_string(),
         backend: backend.to_string(),
         running: wm.running,
-        monitors: wm.g.monitors.len(),
-        windows: wm.g.clients.len(),
-        tags: wm.g.tags.num_tags,
+        monitors: wm.core.model.monitors.len(),
+        windows: wm.core.model.clients.len(),
+        tags: wm.core.model.tags.num_tags,
     };
 
     Response::Status(info)

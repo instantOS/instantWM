@@ -25,7 +25,7 @@ use crate::layouts::LayoutKind;
 use crate::layouts::LayoutOutput;
 use crate::layouts::placement::LayoutPlacement;
 use crate::types::client::Client;
-use crate::types::{Monitor, Rect, WindowId};
+use crate::types::{Monitor, WindowId};
 
 pub fn monocle(
     monitor: &Monitor,
@@ -33,7 +33,7 @@ pub fn monocle(
     layout_cfg: &LayoutConfig,
     animated: bool,
 ) -> Vec<LayoutOutput> {
-    let selected_window = monitor.sel;
+    let selected_window = monitor.selected;
     let selected_tags = monitor.selected_tags();
     let tiled_client_count = monitor.tiled_client_count(clients) as u32;
     let placement =

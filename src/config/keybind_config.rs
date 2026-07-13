@@ -37,8 +37,8 @@ pub enum StructuredAction {
     None,
     SetLayout(String),
     FocusStack(String),
-    SetMfact(f64),
-    IncNmaster(i32),
+    SetMasterFactor(f64),
+    IncMasterCount(i32),
     KeyboardLayout(String),
     SetMode(String),
 }
@@ -242,12 +242,14 @@ fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
             action: NamedAction::FocusStack,
             args: vec![dir.clone()],
         }),
-        ActionSpec::Structured(StructuredAction::SetMfact(delta)) => Some(KeyAction::Named {
-            action: NamedAction::SetMfact,
-            args: vec![delta.to_string()],
-        }),
-        ActionSpec::Structured(StructuredAction::IncNmaster(n)) => Some(KeyAction::Named {
-            action: NamedAction::IncNmaster,
+        ActionSpec::Structured(StructuredAction::SetMasterFactor(delta)) => {
+            Some(KeyAction::Named {
+                action: NamedAction::SetMasterFactor,
+                args: vec![delta.to_string()],
+            })
+        }
+        ActionSpec::Structured(StructuredAction::IncMasterCount(n)) => Some(KeyAction::Named {
+            action: NamedAction::IncMasterCount,
             args: vec![n.to_string()],
         }),
         ActionSpec::Structured(StructuredAction::KeyboardLayout(name)) => Some(KeyAction::Named {

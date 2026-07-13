@@ -33,9 +33,9 @@ use crate::types::*;
 pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
     let Some(mon_id) = monitor_id else { return };
 
-    let wins_to_save = collect_floating_wins(ctx.core().globals(), mon_id);
+    let wins_to_save = collect_floating_wins(ctx.core().model(), mon_id);
     for win in wins_to_save {
-        if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+        if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
             client.save_floating_geometry();
         }
     }
@@ -48,7 +48,7 @@ pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
 pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
     let Some(mid) = monitor_id else { return };
 
-    let wins_to_restore = collect_floating_wins(ctx.core().globals(), mid);
+    let wins_to_restore = collect_floating_wins(ctx.core().model(), mid);
     for win in wins_to_restore {
         super::state::restore_floating_geometry(ctx, win);
     }
@@ -59,15 +59,15 @@ pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
 /// - not currently snapped.
 ///
 /// This is the shared selection logic for both save and restore.
-fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> Vec<WindowId> {
-    let Some(mon) = globals.monitor(mid) else {
+fn collect_floating_wins(model: &crate::model::WmModel, mid: MonitorId) -> Vec<WindowId> {
+    let Some(mon) = model.monitor(mid) else {
         return Vec::new();
     };
 
-    let numtags = mon.tags.len();
+    let num_tags = mon.tags.len();
     let mut wins = Vec::new();
 
-    for tag_idx in 0..numtags {
+    for tag_idx in 0..num_tags {
         // Skip tags that have a tiling layout — only purely-floating tags matter.
         let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
         let tag_is_floating = mon
@@ -80,7 +80,7 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> V
             continue;
         }
 
-        for (c_win, c) in mon.iter_clients(globals.clients.map()) {
+        for (c_win, c) in mon.iter_clients(model.clients.map()) {
             if c.tags.intersects(tag_mask) && c.snap_status == SnapPosition::None {
                 wins.push(c_win);
             }
@@ -101,9 +101,9 @@ fn collect_floating_wins(globals: &crate::globals::Globals, mid: MonitorId) -> V
 ///
 /// Does nothing when there are no qualifying windows.
 pub fn distribute_clients(ctx: &mut WmCtx) {
-    let sel_mon_id = ctx.core().globals().selected_monitor_id();
+    let sel_mon_id = ctx.core().model().selected_monitor_id();
 
-    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core().globals(), sel_mon_id);
+    let (floating_wins, work_rect) = collect_distribute_targets(ctx.core().model(), sel_mon_id);
 
     if floating_wins.is_empty() {
         return;
@@ -144,12 +144,12 @@ pub fn distribute_clients(ctx: &mut WmCtx) {
 /// top-bar and bottom-bar configurations, and no manual `y_offset` correction
 /// is needed in the caller.
 fn collect_distribute_targets(
-    globals: &crate::globals::Globals,
+    model: &crate::model::WmModel,
     sel_mon_id: MonitorId,
 ) -> (Vec<WindowId>, Rect) {
     let empty = (Vec::new(), Rect::default());
 
-    let Some(mon) = globals.monitor(sel_mon_id) else {
+    let Some(mon) = model.monitor(sel_mon_id) else {
         return empty;
     };
 
@@ -159,7 +159,7 @@ fn collect_distribute_targets(
     let work_rect = mon.work_rect;
 
     let mut wins = Vec::new();
-    for (c_win, c) in mon.iter_clients(globals.clients.map()) {
+    for (c_win, c) in mon.iter_clients(model.clients.map()) {
         if c.mode.is_floating()
             && !c.is_fixed_size
             && c.tags.intersects(tag_set)

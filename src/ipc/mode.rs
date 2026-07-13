@@ -3,12 +3,12 @@ use crate::ipc_types::{ModeCommand, ModeInfo, Response};
 use crate::wm::Wm;
 
 fn apply_mode_change(wm: &mut Wm, next_mode: String) {
-    let previous_mode = wm.g.behavior.current_mode.clone();
+    let previous_mode = wm.core.behavior.current_mode.clone();
     if previous_mode == next_mode {
         return;
     }
 
-    wm.g.behavior.current_mode = next_mode.clone();
+    wm.core.behavior.current_mode = next_mode.clone();
     {
         let mut ctx = wm.ctx();
         crate::overview::handle_mode_transition(&mut ctx, &previous_mode, &next_mode);
@@ -18,8 +18,8 @@ fn apply_mode_change(wm: &mut Wm, next_mode: String) {
 pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
     match cmd {
         ModeCommand::List => {
-            let modes = &wm.g.cfg.bindings.modes;
-            let current_mode = &wm.g.behavior.current_mode;
+            let modes = &wm.core.config.bindings.modes;
+            let current_mode = &wm.core.behavior.current_mode;
 
             if modes.is_empty() {
                 return Response::ModeList(Vec::new());
@@ -37,7 +37,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::ModeList(mode_list)
         }
         ModeCommand::Set(name) => {
-            if !wm.g.cfg.bindings.modes.contains_key(&name)
+            if !wm.core.config.bindings.modes.contains_key(&name)
                 && name != "default"
                 && name != crate::overview::OVERVIEW_MODE_NAME
             {
@@ -46,8 +46,8 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             apply_mode_change(wm, name.clone());
 
             if let WmCtx::X11(x11) = &mut wm.ctx() {
-                crate::backend::x11::keyboard::grab_keys_x11(
-                    x11.core.globals(),
+                crate::backend::x11::keyboard::grab_keys(
+                    x11.core.state(),
                     &x11.x11,
                     x11.x11_runtime,
                 );
@@ -57,14 +57,14 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::Message(format!("Switched to mode '{}'", name))
         }
         ModeCommand::Toggle(name) => {
-            if !wm.g.cfg.bindings.modes.contains_key(&name)
+            if !wm.core.config.bindings.modes.contains_key(&name)
                 && name != "default"
                 && name != crate::overview::OVERVIEW_MODE_NAME
             {
                 return Response::err(format!("Mode '{}' not found", name));
             }
 
-            let new_mode = if wm.g.behavior.current_mode == name {
+            let new_mode = if wm.core.behavior.current_mode == name {
                 "default".to_string()
             } else {
                 name
@@ -73,8 +73,8 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             apply_mode_change(wm, new_mode.clone());
 
             if let WmCtx::X11(x11) = &mut wm.ctx() {
-                crate::backend::x11::keyboard::grab_keys_x11(
-                    x11.core.globals(),
+                crate::backend::x11::keyboard::grab_keys(
+                    x11.core.state(),
                     &x11.x11,
                     x11.x11_runtime,
                 );

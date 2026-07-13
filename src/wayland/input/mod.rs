@@ -83,7 +83,7 @@ pub fn handle_resize(
     w: i32,
     h: i32,
 ) {
-    let (safe_w, safe_h) = crate::wayland::common::sanitize_wayland_size(w, h);
+    let (safe_w, safe_h) = crate::wayland::common::sanitize_size(w, h);
     let mode = OutputMode {
         size: (safe_w, safe_h).into(),
         refresh: 60_000,
@@ -113,12 +113,12 @@ pub fn handle_resize(
     state.space.map_output(output, output_loc);
     layer_map_for_output(output).arrange();
 
-    wm.g.cfg.display.width = safe_w;
-    wm.g.cfg.display.height = safe_h;
+    wm.core.config.derived.display.width = safe_w;
+    wm.core.config.derived.display.height = safe_h;
     refresh_monitor_layout(&mut wm.ctx());
     // `refresh_monitor_layout` resets each monitor's `available_rect` back to
     // its full output rect, so re-apply the layer-shell exclusive zones.
     let _ = crate::backend::wayland::compositor::layer_shell::apply_available_rects(wm, state);
-    wm.g.queue_layout_for_all_monitors_urgent();
+    wm.work.layout.mark_all_urgent();
     state.request_space_sync();
 }

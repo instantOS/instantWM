@@ -22,10 +22,11 @@ use crate::config::config_toml::InputConfig;
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
 use crate::wayland::input::handle_keyboard;
 use crate::wm::Wm;
+use std::collections::HashMap;
 
 fn configure_device(
     device: &mut smithay::reexports::input::Device,
-    input_config: &std::collections::HashMap<String, InputConfig>,
+    input_config: &HashMap<String, InputConfig>,
 ) {
     use smithay::reexports::input::DeviceCapability;
 
@@ -78,7 +79,7 @@ fn configure_device(
 /// Re-apply input configuration to all tracked devices.
 pub fn reconfigure_all_devices(
     devices: &mut [smithay::reexports::input::Device],
-    input_config: &std::collections::HashMap<String, InputConfig>,
+    input_config: &HashMap<String, InputConfig>,
 ) {
     for device in devices.iter_mut() {
         configure_device(device, input_config);
@@ -98,7 +99,7 @@ pub fn dispatch_libinput_event(
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
-            configure_device(&mut device, &wm.g.cfg.input);
+            configure_device(&mut device, &wm.core.config.input);
             state.runtime.tracked_devices.push(device);
             false
         }

@@ -7,7 +7,7 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::constants::WM_HINTS_URGENCY_HINT;
 use crate::contexts::CoreCtx;
-use crate::globals::Globals;
+use crate::core_state::CoreState;
 use crate::types::{ButtonTarget, WindowId};
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -20,11 +20,11 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 // ---------------------------------------------------------------------------
 
 /// Send a synthetic `ConfigureNotify` event to `win`.
-pub fn configure_x11(globals: &crate::globals::Globals, x11: &X11BackendRef, win: WindowId) {
+pub fn configure(globals: &crate::core_state::CoreState, x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = globals.model.clients.get(&win) else {
         return;
     };
 
@@ -51,7 +51,7 @@ pub fn configure_x11(globals: &crate::globals::Globals, x11: &X11BackendRef, win
 // ---------------------------------------------------------------------------
 
 /// Send a `ClientMessage` event to `win`.
-pub fn send_event_x11(
+pub fn send_event(
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -100,15 +100,15 @@ pub fn send_event_x11(
 // ---------------------------------------------------------------------------
 
 /// Update the border color of `win` based on its current focus and floating state.
-pub fn refresh_border_color_x11(
-    globals: &crate::globals::Globals,
+pub fn refresh_border_color(
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
     focused: bool,
 ) {
     let scheme = &x11_runtime.borderscheme;
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = globals.model.clients.get(&win) else {
         return;
     };
 
@@ -136,13 +136,13 @@ pub fn refresh_border_color_x11(
 // ---------------------------------------------------------------------------
 
 /// Give input focus to `win`.
-pub fn set_focus_x11(
-    globals: &crate::globals::Globals,
+pub fn set_focus(
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
 ) {
-    let Some(c) = globals.clients.get(&win) else {
+    let Some(c) = globals.model.clients.get(&win) else {
         return;
     };
 
@@ -160,11 +160,11 @@ pub fn set_focus_x11(
         );
     }
 
-    refresh_border_color_x11(globals, x11, x11_runtime, win, true);
+    refresh_border_color(globals, x11, x11_runtime, win, true);
 
-    grab_buttons_x11(globals, x11, x11_runtime, win, true);
+    grab_buttons(globals, x11, x11_runtime, win, true);
 
-    let _ = send_event_x11(
+    let _ = send_event(
         x11,
         x11_runtime,
         win,
@@ -184,8 +184,8 @@ pub fn set_focus_x11(
 ///
 /// When `redirect_to_root` is true, input focus is redirected to the root
 /// window and `_NET_ACTIVE_WINDOW` is cleared.
-pub fn unfocus_win_x11(
-    globals: &Globals,
+pub fn unfocus_win(
+    globals: &CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -195,9 +195,9 @@ pub fn unfocus_win_x11(
         return;
     }
 
-    grab_buttons_x11(globals, x11, x11_runtime, win, false);
+    grab_buttons(globals, x11, x11_runtime, win, false);
 
-    refresh_border_color_x11(globals, x11, x11_runtime, win, false);
+    refresh_border_color(globals, x11, x11_runtime, win, false);
 
     if redirect_to_root {
         let _ = x11
@@ -216,8 +216,8 @@ pub fn unfocus_win_x11(
 // ---------------------------------------------------------------------------
 
 /// Grab or ungrab mouse buttons on `win` depending on whether it is focused.
-pub fn grab_buttons_x11(
-    globals: &crate::globals::Globals,
+pub fn grab_buttons(
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     win: WindowId,
@@ -237,7 +237,7 @@ pub fn grab_buttons_x11(
         grabs.extend([(1, 0), (3, 0)]);
     }
 
-    for button in &globals.cfg.bindings.buttons {
+    for button in &globals.config.bindings.buttons {
         if !button.matches(ButtonTarget::ClientWin) {
             continue;
         }
@@ -276,7 +276,7 @@ pub fn grab_buttons_x11(
 // ---------------------------------------------------------------------------
 
 /// Clear the `XUrgencyHint` flag in the `WM_HINTS` property of `win`.
-pub fn clear_urgency_hint_x11(x11: &X11BackendRef, win: WindowId) {
+pub fn clear_urgency_hint(x11: &X11BackendRef, win: WindowId) {
     let conn = x11.conn;
     let x11_win: Window = win.into();
 
@@ -319,26 +319,28 @@ pub struct X11FocusBackend<'a> {
 }
 
 impl<'a> FocusBackendOps for X11FocusBackend<'a> {
-    fn unfocus_current(&self, globals: &Globals, current: WindowId) {
-        unfocus_win_x11(globals, self.x11, &*self.x11_runtime, current, false);
+    fn unfocus_current(&self, state: &CoreState, current: WindowId) {
+        unfocus_win(state, self.x11, &*self.x11_runtime, current, false);
     }
 
-    fn focus_window(&self, globals: &mut Globals, win: WindowId) {
-        let is_urgent = globals
+    fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId) {
+        let is_urgent = ctx
+            .state()
+            .model
             .clients
             .get(&win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
         if is_urgent {
-            if let Some(c) = globals.clients.get_mut(&win) {
+            if let Some(c) = ctx.model_mut().clients.get_mut(&win) {
                 c.clear_urgency();
             }
-            clear_urgency_hint_x11(self.x11, win);
+            clear_urgency_hint(self.x11, win);
         }
-        set_focus_x11(globals, self.x11, &*self.x11_runtime, win);
+        set_focus(ctx.state_mut(), self.x11, &*self.x11_runtime, win);
     }
 
-    fn focus_none(&self, _globals: &Globals) {
+    fn focus_none(&self) {
         let _ = self.x11.conn.set_input_focus(
             InputFocus::POINTER_ROOT,
             self.x11_runtime.root,
@@ -351,14 +353,14 @@ impl<'a> FocusBackendOps for X11FocusBackend<'a> {
         let _ = self.x11.conn.flush();
     }
 
-    fn on_desktop_binding_state_changed(&self, globals: &Globals) {
-        crate::backend::x11::keyboard::grab_keys_x11(globals, self.x11, &*self.x11_runtime);
+    fn on_desktop_binding_state_changed(&self, state: &CoreState) {
+        crate::backend::x11::keyboard::grab_keys(state, self.x11, &*self.x11_runtime);
     }
 }
 
 /// X11-only focus helper for call sites that hold disaggregated X11 types
 /// rather than a full `WmCtx`.
-pub fn focus_soft_x11(
+pub fn focus_soft(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
@@ -366,7 +368,7 @@ pub fn focus_soft_x11(
 ) {
     let mut backend = X11FocusBackend { x11, x11_runtime };
     if let Err(e) = crate::focus::focus_generic(core, win, &mut backend) {
-        log::warn!("focus_soft_x11({:?}) failed: {}", win, e);
+        log::warn!("focus_soft({:?}) failed: {}", win, e);
     }
 }
 

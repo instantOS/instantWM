@@ -7,7 +7,7 @@
 //!   toggle/set/change floating state; toggle_maximized
 //! - [`movement`] — keyboard move, resize, center window, scale client
 //! - [`batch`]   — save/restore all floating positions, distribute clients
-//! - [`helpers`] — check_floating, visible_client, has_tiling_layout, apply_size
+//! - [`helpers`] — visible_client, has_tiling_layout, apply_size
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
 //!   with optional edge-anchored positioning
 
@@ -38,6 +38,6 @@ pub use state::{set_window_mode, toggle_floating, toggle_maximized};
 // ── scratchpad ────────────────────────────────────────────────────────────────
 
 pub use scratchpad::{
-    DEFAULT_EDGE_SCRATCHPAD_NAME, edge_scratchpad_create, scratchpad_find, scratchpad_hide_name,
-    scratchpad_make, scratchpad_show_name, scratchpad_toggle, set_scratchpad_direction, unhide_one,
+    DEFAULT_EDGE_SCRATCHPAD_NAME, edge_scratchpad_create, scratchpad_hide_name, scratchpad_make,
+    scratchpad_show_name, scratchpad_toggle, set_scratchpad_direction,
 };

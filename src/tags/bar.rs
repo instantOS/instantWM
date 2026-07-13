@@ -19,7 +19,7 @@ const MAX_BAR_SLOTS: usize = 9;
 pub(crate) struct VisibleTag<'a> {
     /// Slot index (0..MAX_BAR_SLOTS-1). Used for hover/gesture matching.
     pub slot: usize,
-    /// Actual tag index into `globals.tags.tags` / bitmask space.
+    /// Actual tag index into `globals.model.tags.tags` / bitmask space.
     pub tag_index: usize,
     /// Display label (regular or alt name).
     pub label: &'a str,
@@ -28,12 +28,13 @@ pub(crate) struct VisibleTag<'a> {
 }
 
 pub(crate) fn visible_tags<'a>(
-    core: &CoreCtx,
+    globals: &crate::core_state::CoreState,
+    bar: &crate::bar::BarState,
     monitor: &'a Monitor,
     occupied: TagMask,
 ) -> Vec<VisibleTag<'a>> {
-    let horizontal_padding = core.globals().cfg.bar.horizontal_padding;
-    let show_alt = core.globals().tags.show_alternative_names;
+    let horizontal_padding = globals.config.derived.bar_horizontal_padding;
+    let show_alt = globals.model.tags.show_alternative_names;
     let slot_count = monitor.tags.len().min(MAX_BAR_SLOTS);
 
     let mut out = Vec::with_capacity(slot_count);
@@ -52,7 +53,7 @@ pub(crate) fn visible_tags<'a>(
         } else {
             tag.name.as_str()
         };
-        let cached = core.bar.get_tag_width(slot);
+        let cached = bar.get_tag_width(slot);
         let width = if cached > 0 {
             cached
         } else {
@@ -77,31 +78,31 @@ pub(crate) fn visible_tags<'a>(
 /// Return the total pixel width of the tag strip (including the start-menu
 /// button at the left edge).
 pub fn get_tag_width(core: &CoreCtx) -> i32 {
-    let m = core.globals().selected_monitor();
+    let m = core.model().selected_monitor();
     if m.tags.is_empty() {
-        return core.globals().cfg.bar.startmenu_size;
+        return core.config().bar.startmenu_size;
     }
 
-    let occupied = m.occupied_tags(core.globals().clients.map());
-    let tags_width: i32 = visible_tags(core, m, occupied)
+    let occupied = m.occupied_tags(core.model().clients.map());
+    let tags_width: i32 = visible_tags(core.state(), core.bar, m, occupied)
         .iter()
         .map(|t| t.width)
         .sum();
-    core.globals().cfg.bar.startmenu_size + tags_width
+    core.config().bar.startmenu_size + tags_width
 }
 
 /// Return the 0-based tag index at `click_x`, or `-1` if outside all tags.
 ///
 /// `click_x` is relative to the left edge of the bar window.
 pub fn get_tag_at_x(core: &CoreCtx, click_x: i32) -> i32 {
-    let m = core.globals().selected_monitor();
+    let m = core.model().selected_monitor();
     if m.tags.is_empty() {
         return -1;
     }
 
-    let occupied = m.occupied_tags(core.globals().clients.map());
-    let mut acc = core.globals().cfg.bar.startmenu_size;
-    for t in visible_tags(core, m, occupied) {
+    let occupied = m.occupied_tags(core.model().clients.map());
+    let mut acc = core.config().bar.startmenu_size;
+    for t in visible_tags(core.state(), core.bar, m, occupied) {
         acc += t.width;
         if acc > click_x {
             return t.tag_index as i32;

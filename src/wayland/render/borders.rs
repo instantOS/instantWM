@@ -8,7 +8,7 @@ use smithay::backend::renderer::element::solid::{SolidColorBuffer, SolidColorRen
 use smithay::desktop::PopupManager;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
-use crate::globals::Globals;
+use crate::model::WmModel;
 use crate::types::{BorderColorConfig, Point, Rect, WindowId};
 
 /// Information about a window needed for border rendering.
@@ -61,14 +61,14 @@ impl WindowBorderInfo {
 }
 
 /// Collects window information from the compositor state.
-fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInfo> {
+fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorderInfo> {
     let mut windows = Vec::new();
 
     for window in state.space.elements() {
         let Some(marker) = window.user_data().get::<WindowIdMarker>() else {
             continue;
         };
-        let Some(c) = g.clients.get(&marker.id) else {
+        let Some(c) = model.clients.get(&marker.id) else {
             continue;
         };
 
@@ -76,7 +76,7 @@ fn collect_window_info(g: &Globals, state: &WaylandState) -> Vec<WindowBorderInf
         let content_size = (size.w.max(1), size.h.max(1));
 
         let (is_visible, is_tiling_layout) = c
-            .monitor(g)
+            .monitor(model)
             .map(|m| (c.is_visible(m.selected_tags()), m.is_tiling_layout()))
             .unwrap_or((false, true));
 
@@ -203,15 +203,15 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
 
 /// Compute a zero-allocation u64 hash representing the current compositor state
 /// that affects borders (geometries, focus, tag masks, and popups).
-pub fn get_borders_hash(g: &Globals, state: &WaylandState) -> u64 {
+pub fn get_borders_hash(model: &WmModel, state: &WaylandState) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
     // 1. Selected window
-    g.selected_win().hash(&mut hasher);
+    model.selected_win().hash(&mut hasher);
 
     // 2. Monitor layout / selected tags
-    for mon in g.monitors.iter_all() {
+    for mon in model.monitors.iter_all() {
         mon.id().hash(&mut hasher);
         mon.monitor_rect.x.hash(&mut hasher);
         mon.monitor_rect.y.hash(&mut hasher);
@@ -225,7 +225,7 @@ pub fn get_borders_hash(g: &Globals, state: &WaylandState) -> u64 {
     for window in state.space.elements() {
         if let Some(marker) = window.user_data().get::<WindowIdMarker>() {
             marker.id.hash(&mut hasher);
-            if let Some(c) = g.clients.get(&marker.id) {
+            if let Some(c) = model.clients.get(&marker.id) {
                 c.geo.x.hash(&mut hasher);
                 c.geo.y.hash(&mut hasher);
                 c.border_width.hash(&mut hasher);
@@ -259,10 +259,13 @@ pub fn get_borders_hash(g: &Globals, state: &WaylandState) -> u64 {
 }
 
 /// Renders border elements for all visible windows.
-pub fn render_border_elements(g: &Globals, state: &WaylandState) -> Vec<SolidColorRenderElement> {
-    let windows = collect_window_info(g, state);
-    let selected_win = g.selected_win();
-    let colors = &g.cfg.colors.border;
+pub fn render_border_elements(
+    model: &WmModel,
+    colors: &BorderColorConfig,
+    state: &WaylandState,
+) -> Vec<SolidColorRenderElement> {
+    let windows = collect_window_info(model, state);
+    let selected_win = model.selected_win();
     let mut elements = Vec::new();
 
     // Build occluders list (each window can occlude borders behind it)

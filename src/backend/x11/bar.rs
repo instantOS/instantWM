@@ -13,7 +13,7 @@ pub fn update_status(
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&mut crate::types::Systray>,
 ) {
-    let selmon_idx = core.globals().selected_monitor_id();
+    let selmon_idx = core.model().selected_monitor_id();
 
     draw_bar(core, x11_runtime, None, selmon_idx);
 
@@ -26,7 +26,7 @@ pub fn draw_bar(
     systray: Option<&Systray>,
     mon_idx: MonitorId,
 ) {
-    let Some(monitor) = core.globals().monitor(mon_idx).cloned() else {
+    let Some(monitor) = core.model().monitor(mon_idx).cloned() else {
         return;
     };
     let bar_win = monitor.bar_win;
@@ -34,14 +34,14 @@ pub fn draw_bar(
         return;
     }
     let work_rect_w = monitor.work_rect.w;
-    let bar_height = core.globals().cfg.bar.height;
+    let bar_height = core.config().derived.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
     }
 
-    if core.globals().cfg.systray.show {
-        core.globals_mut().bar_runtime.systray_width =
-            crate::backend::x11::systray::get_systray_width(core.globals(), systray) as i32;
+    if core.config().systray.show {
+        core.bar.runtime.systray_width =
+            crate::backend::x11::systray::get_systray_width(core.state(), systray) as i32;
     }
 
     let drw = {
@@ -68,12 +68,12 @@ pub fn draw_bar(
     painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
 }
 
-pub fn draw_bars_x11(
+pub fn draw_bars(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
     systray: Option<&Systray>,
 ) {
-    let monitor_ids: Vec<MonitorId> = core.globals().monitors_iter().map(|(i, _)| i).collect();
+    let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
     let snapshots = crate::bar::scene::build_monitor_snapshots(core, None, true);
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots
@@ -83,7 +83,7 @@ pub fn draw_bars_x11(
 
     for i in monitor_ids {
         let bar_win = core
-            .globals()
+            .state()
             .monitor(i)
             .map(|m| m.bar_win)
             .unwrap_or_default();
@@ -91,18 +91,18 @@ pub fn draw_bars_x11(
             continue;
         }
 
-        let work_rect_w = match core.globals().monitor(i) {
+        let work_rect_w = match core.model().monitor(i) {
             Some(m) => m.work_rect.w,
             None => continue,
         };
-        let bar_height = core.globals().cfg.bar.height;
+        let bar_height = core.config().derived.bar_height;
         if work_rect_w <= 0 || bar_height <= 0 {
             continue;
         }
 
-        if core.globals().cfg.systray.show {
-            core.globals_mut().bar_runtime.systray_width =
-                crate::backend::x11::systray::get_systray_width(core.globals(), systray) as i32;
+        if core.config().systray.show {
+            core.bar.runtime.systray_width =
+                crate::backend::x11::systray::get_systray_width(core.state(), systray) as i32;
         }
 
         let drw = {
@@ -116,7 +116,7 @@ pub fn draw_bars_x11(
             drw.clone()
         };
 
-        let Some(monitor) = core.globals().monitor(i).cloned() else {
+        let Some(monitor) = core.model().monitor(i).cloned() else {
             continue;
         };
         let Some(snapshot) = snapshot_by_monitor_id.get(&monitor.id()).copied() else {
@@ -130,18 +130,18 @@ pub fn draw_bars_x11(
     core.bar.mark_drawn();
 }
 
-pub fn reset_bar_x11(
+pub fn reset_bar(
     core: &mut CoreCtx,
     _x11_runtime: &mut X11RuntimeConfig,
     _systray: Option<&Systray>,
 ) {
-    crate::bar::renderer::reset_bar_common(core.globals_mut());
+    crate::bar::renderer::reset_bar_common(core.model_mut());
     core.bar.mark_dirty();
 }
 
 /// Resize bar window with dependency injection.
 pub fn resize_bar_win(
-    globals: &crate::globals::Globals,
+    globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     _x11_runtime: &X11RuntimeConfig,
     systray: Option<&Systray>,
@@ -149,8 +149,8 @@ pub fn resize_bar_win(
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
     // The systray width calculation only needs immutable access.
-    let bar_height = globals.cfg.bar.height;
-    let showsystray = globals.cfg.systray.show;
+    let bar_height = globals.config.derived.bar_height;
+    let showsystray = globals.config.systray.show;
     let is_selmon = globals.selected_monitor().num == m.num;
 
     let mut w = m.work_rect.w as u32;
@@ -173,7 +173,7 @@ pub fn resize_bar_win(
 }
 
 pub fn update_bars(
-    globals: &mut crate::globals::Globals,
+    globals: &mut crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
     systray: Option<&Systray>,
@@ -181,16 +181,15 @@ pub fn update_bars(
     use crate::bar::color::rgba_to_u32;
 
     let (bar_configs, xlibdisplay, root, status_bg) = {
-        let bar_height = globals.cfg.bar.height;
-        let showsystray = globals.cfg.systray.show;
-        let status_bg = rgba_to_u32(globals.cfg.colors.status_bar.bg);
+        let bar_height = globals.config.derived.bar_height;
+        let showsystray = globals.config.systray.show;
+        let status_bg = rgba_to_u32(globals.config.colors.status_bar.bg);
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
         let selected_monitor_id = globals.selected_monitor_id();
 
         // Collect systray widths first to avoid borrow issues
-        let mut systray_widths: std::collections::HashMap<MonitorId, u32> =
-            std::collections::HashMap::new();
+        let mut systray_widths: HashMap<MonitorId, u32> = HashMap::new();
         if showsystray {
             systray_widths.insert(
                 selected_monitor_id,
@@ -219,7 +218,7 @@ pub fn update_bars(
 
     // Create bar windows for each monitor that needs one.
     // We collect window IDs first, then assign them to monitors to avoid
-    // borrow conflicts between the X11 connection ref and ctx.globals().
+    // borrow conflicts between the X11 connection ref and ctx.state().
     let mut created: Vec<(MonitorId, u32)> = Vec::new();
 
     let conn = x11.conn;

@@ -13,7 +13,7 @@
 //! * [`Client::total_height`](crate::types::Client::total_height) – total height including borders
 
 use crate::geometry::MoveResizeOptions;
-use crate::globals::Globals;
+use crate::model::WmModel;
 use crate::types::{Client, Monitor, Rect, WindowId};
 
 /// Record the resolved geometry of a managed client.
@@ -22,8 +22,8 @@ use crate::types::{Client, Monitor, Rect, WindowId};
 /// once the WM knows the geometry that actually applies to the window right
 /// now. Shared state lives here so backend callbacks do not each reinvent the
 /// `geo` / `old_geo` / `float_geo` update contract.
-pub fn sync_client_geometry(globals: &mut Globals, win: WindowId, rect: Rect) {
-    if let Some(client) = globals.clients.get_mut(&win) {
+pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
+    if let Some(client) = model.clients.get_mut(&win) {
         client.update_geometry(rect);
     }
 }
@@ -42,23 +42,23 @@ pub enum FloatingPlacementKind {
 /// but ensure the position is usable on the target monitor.  Parent-relative
 /// placement is preferred for new transients without a usable position.
 pub fn resolve_floating_placement(
-    globals: &Globals,
+    model: &WmModel,
     win: WindowId,
     requested: Rect,
     kind: FloatingPlacementKind,
     parent: Option<WindowId>,
 ) -> Rect {
-    let Some(client) = globals.clients.get(&win) else {
+    let Some(client) = model.clients.get(&win) else {
         return requested;
     };
     if !client.mode.is_floating() {
         return requested;
     }
 
-    let Some(work_rect) = globals.monitor(client.monitor_id).map(|m| m.work_rect) else {
+    let Some(work_rect) = model.monitor(client.monitor_id).map(|m| m.work_rect) else {
         return requested;
     };
-    let parent_rect = parent.and_then(|parent| globals.clients.get(&parent).map(|c| c.geo));
+    let parent_rect = parent.and_then(|parent| model.clients.get(&parent).map(|c| c.geo));
 
     resolve_floating_placement_for_client(client, work_rect, requested, kind, parent_rect)
 }
@@ -117,14 +117,14 @@ fn resolve_floating_placement_for_client(
 }
 
 pub fn resolve_and_sync_floating_geometry(
-    globals: &mut Globals,
+    model: &mut WmModel,
     win: WindowId,
     requested: Rect,
     kind: FloatingPlacementKind,
     parent: Option<WindowId>,
 ) -> Rect {
-    let rect = resolve_floating_placement(globals, win, requested, kind, parent);
-    sync_client_geometry(globals, win, rect);
+    let rect = resolve_floating_placement(model, win, requested, kind, parent);
+    sync_client_geometry(model, win, rect);
     rect
 }
 
@@ -135,17 +135,17 @@ pub fn resolve_and_sync_floating_geometry(
 /// mostly off-screen. The returned rect keeps the original size and only
 /// adjusts position.
 pub fn sane_floating_spawn_rect(
-    globals: &Globals,
+    model: &WmModel,
     win: WindowId,
     parent: Option<WindowId>,
 ) -> Option<Rect> {
-    let client = globals.clients.get(&win)?;
+    let client = model.clients.get(&win)?;
     if !client.mode.is_floating() {
         return None;
     }
 
     let rect =
-        resolve_floating_placement(globals, win, client.geo, FloatingPlacementKind::New, parent);
+        resolve_floating_placement(model, win, client.geo, FloatingPlacementKind::New, parent);
 
     rect.differs_from(&client.geo).then_some(rect)
 }
@@ -183,12 +183,13 @@ pub(crate) struct SizeHintsOutcome {
 }
 
 pub fn apply_size_hints(
-    globals: &mut Globals,
+    model: &WmModel,
+    config: &crate::core_state::RuntimeConfig,
     win: WindowId,
     rect: &mut Rect,
     interact: bool,
 ) -> SizeHintsOutcome {
-    let client = match globals.clients.get(&win) {
+    let client = match model.clients.get(&win) {
         Some(c) => c,
         None => {
             return SizeHintsOutcome {
@@ -201,10 +202,10 @@ pub fn apply_size_hints(
     let old_geo = client.geo;
     let border_width = client.border_width;
     let monitor_id = client.monitor_id;
-    let monitor = globals.monitors.get(monitor_id);
-    let should_apply_hints = globals.cfg.window.resizehints
+    let monitor = model.monitors.get(monitor_id);
+    let should_apply_hints = config.window.resize_hints
         || client.mode.is_floating()
-        || is_floating_layout(globals, monitor);
+        || is_floating_layout(model, monitor);
 
     // Phase 1: Ensure positive dimensions.
     rect.w = rect.w.max(1);
@@ -212,7 +213,7 @@ pub fn apply_size_hints(
 
     // Phase 2: Clamp position to keep window visible.
     clamp_position_to_bounds(
-        globals,
+        &config.derived.display,
         rect,
         monitor.map(|m| m.work_rect),
         interact,
@@ -221,7 +222,7 @@ pub fn apply_size_hints(
     );
 
     // Phase 3: Enforce minimum size (bar height).
-    let bar_height = globals.cfg.bar.height;
+    let bar_height = config.derived.bar_height;
     rect.enforce_minimum(bar_height, bar_height);
 
     SizeHintsOutcome {
@@ -231,8 +232,8 @@ pub fn apply_size_hints(
 }
 
 /// Check if the given rect differs from the client's current stored geometry.
-pub(crate) fn size_hints_changed(globals: &Globals, win: WindowId, rect: &Rect) -> bool {
-    globals
+pub(crate) fn size_hints_changed(model: &WmModel, win: WindowId, rect: &Rect) -> bool {
+    model
         .clients
         .get(&win)
         .map(|c| rect.differs_from(&c.geo))
@@ -241,7 +242,7 @@ pub(crate) fn size_hints_changed(globals: &Globals, win: WindowId, rect: &Rect) 
 
 /// Clamp window position to keep it within usable screen area.
 fn clamp_position_to_bounds(
-    globals: &Globals,
+    display: &crate::core_state::DisplayConfig,
     geo: &mut Rect,
     work_rect: Option<Rect>,
     interact: bool,
@@ -249,7 +250,7 @@ fn clamp_position_to_bounds(
     total_h: i32,
 ) {
     if interact {
-        let screen = Rect::new(0, 0, globals.cfg.display.width, globals.cfg.display.height);
+        let screen = Rect::new(0, 0, display.width, display.height);
         geo.clamp_position(&screen, total_w, total_h);
     } else if let Some(wr) = work_rect {
         geo.clamp_position(&wr, total_w, total_h);
@@ -257,12 +258,12 @@ fn clamp_position_to_bounds(
 }
 
 /// Check if the client's monitor is using a floating layout.
-fn is_floating_layout(globals: &Globals, monitor: Option<&Monitor>) -> bool {
+fn is_floating_layout(model: &WmModel, monitor: Option<&Monitor>) -> bool {
     let Some(mon) = monitor else {
         return true;
     };
 
-    if crate::overview::is_active_on_monitor(globals, mon) {
+    if model.is_overview_active_on(mon) {
         return false;
     }
 
@@ -299,28 +300,28 @@ fn calculate_scaled_geometry(
 #[cfg(test)]
 mod tests {
     use super::{FloatingPlacementKind, resolve_floating_placement, sane_floating_spawn_rect};
-    use crate::globals::Globals;
+    use crate::core_state::CoreState;
     use crate::types::{Client, Monitor, MonitorId, Rect, TagMask, WindowId};
 
-    fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> Globals {
-        let mut globals = Globals::default();
+    fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> CoreState {
+        let mut globals = CoreState::default();
 
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
         monitor.work_rect = work_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        globals.monitors.push(monitor);
+        globals.model.monitors.push(monitor);
 
         let mut client = Client::default();
         client.win = WindowId::from(1_u32);
-        client.monitor_id = MonitorId(0);
+        client.monitor_id = MonitorId::default();
         client.set_tag_mask(TagMask::single(1).unwrap());
         client.mode = crate::types::ClientMode::Floating;
         client.border_width = border_width;
         client.geo = rect;
         client.float_geo = rect;
         client.old_geo = rect;
-        globals.clients.insert(client.win, client);
+        globals.model.clients.insert(client.win, client);
 
         globals
     }
@@ -333,7 +334,7 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32), None).unwrap();
+        let rect = sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None).unwrap();
         assert_eq!(rect.y, 32);
     }
 
@@ -345,7 +346,7 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32), None).unwrap();
+        let rect = sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None).unwrap();
         assert_eq!(rect.x, 708);
         assert_eq!(rect.y, 404);
     }
@@ -358,7 +359,7 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals, WindowId::from(1_u32), None).unwrap();
+        let rect = sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None).unwrap();
         assert_eq!(rect.x, 16);
         assert_eq!(rect.y, 32);
     }
@@ -372,7 +373,7 @@ mod tests {
         );
 
         let rect = resolve_floating_placement(
-            &globals,
+            &globals.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 500, 300),
             FloatingPlacementKind::AppRequest,
@@ -392,12 +393,12 @@ mod tests {
         );
         let mut parent = Client::default();
         parent.win = WindowId::from(2_u32);
-        parent.monitor_id = MonitorId(0);
+        parent.monitor_id = MonitorId::default();
         parent.geo = Rect::new(500, 300, 800, 600);
-        globals.clients.insert(parent.win, parent);
+        globals.model.clients.insert(parent.win, parent);
 
         let rect = resolve_floating_placement(
-            &globals,
+            &globals.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 400, 200),
             FloatingPlacementKind::New,
@@ -415,12 +416,13 @@ mod tests {
 pub fn scale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId, scale: i32) {
     let target = {
         let core = ctx.core();
-        let c = match core.globals().clients.get(&win) {
+        let c = match core.model().clients.get(&win) {
             Some(c) => c,
             None => return,
         };
         calculate_scaled_geometry(c.monitor_id, c.geo, c.border_width, scale, |mid| {
-            core.globals()
+            core.state()
+                .model
                 .monitors
                 .get(mid)
                 .map(|m| m.monitor_rect)

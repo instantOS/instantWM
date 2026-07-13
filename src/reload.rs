@@ -5,26 +5,25 @@ use crate::wm::Wm;
 
 pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     let cfg = config::init_config(wm.backend.kind());
-    let previous_status_command = wm.g.cfg.status_command.clone();
+    let previous_status_command = wm.core.config.status_command.clone();
 
-    crate::globals::apply_config(&mut wm.g, &cfg);
-    crate::globals::apply_tags_config(&mut wm.g, &cfg);
-    wm.g.normalize_current_mode();
-    wm.g.queue_monitor_config_apply();
-    wm.g.queue_input_config_apply();
+    crate::core_state::apply_config(&mut wm.core, &cfg);
+    wm.core.normalize_current_mode();
+    wm.work.queue_monitor_config_apply();
+    wm.work.queue_input_config_apply();
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
     crate::bar::status::reload_status_command(
         previous_status_command.as_deref(),
-        wm.g.cfg.status_command.as_deref(),
+        wm.core.config.status_command.as_deref(),
     );
 
     if matches!(&wm.backend, Backend::X11(_)) {
         reload_x11(wm);
     }
     if let Backend::Wayland(data) = &mut wm.backend {
-        reload_wayland(&mut wm.g, data, &cfg);
+        reload_wayland(&mut wm.core, data);
     }
 
     // Re-run `exec` commands (but not `exec_once`) on reload.
@@ -34,11 +33,10 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
 }
 
 fn reload_wayland(
-    g: &mut crate::globals::Globals,
+    g: &mut crate::core_state::CoreState,
     data: &mut crate::backend::WaylandBackendData,
-    cfg: &config::Config,
 ) {
-    crate::wayland::common::apply_bar_metrics(g, data, cfg);
+    crate::wayland::common::apply_bar_metrics(g, data);
 }
 
 fn reload_x11(wm: &mut Wm) {
@@ -47,7 +45,7 @@ fn reload_x11(wm: &mut Wm) {
     let ctx = wm.ctx();
     if let WmCtx::X11(mut x11_ctx) = ctx {
         crate::backend::x11::bar::update_bars(
-            x11_ctx.core.globals_mut(),
+            x11_ctx.core.state_mut(),
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
             x11_ctx.systray.as_deref(),
@@ -61,11 +59,7 @@ fn reload_x11(wm: &mut Wm) {
         let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
         wm_ctx.update_ewmh_desktop_props();
         if let WmCtx::X11(x11) = &mut wm_ctx {
-            crate::backend::x11::keyboard::grab_keys_x11(
-                x11.core.globals(),
-                &x11.x11,
-                x11.x11_runtime,
-            );
+            crate::backend::x11::keyboard::grab_keys(x11.core.state(), &x11.x11, x11.x11_runtime);
         }
         crate::focus::focus(&mut wm_ctx, None);
     }
@@ -84,8 +78,8 @@ mod tests {
 
         reload_config(&mut wm).unwrap();
 
-        assert!(wm.g.pending.monitor_config);
-        assert!(wm.g.pending.input_config);
+        assert!(wm.work.monitor_config);
+        assert!(wm.work.input_config);
     }
 
     #[test]
@@ -95,38 +89,39 @@ mod tests {
         reload_config(&mut wm).unwrap();
 
         assert!(
-            wm.g.cfg.bar.height > 0,
+            wm.core.config.derived.bar_height > 0,
             "bar_height should be computed from font metrics, got {}",
-            wm.g.cfg.bar.height
+            wm.core.config.derived.bar_height
         );
         assert!(
-            wm.g.cfg.bar.horizontal_padding > 0,
+            wm.core.config.derived.bar_horizontal_padding > 0,
             "horizontal_padding should be set from font height, got {}",
-            wm.g.cfg.bar.horizontal_padding
+            wm.core.config.derived.bar_horizontal_padding
         );
     }
 
     #[test]
     fn normalize_current_mode_resets_missing_mode_to_default() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.g.behavior.current_mode = "resize".to_string();
+        wm.core.behavior.current_mode = "resize".to_string();
 
-        wm.g.normalize_current_mode();
+        wm.core.normalize_current_mode();
 
-        assert_eq!(wm.g.behavior.current_mode, "default");
+        assert_eq!(wm.core.behavior.current_mode, "default");
     }
 
     #[test]
     fn normalize_current_mode_preserves_existing_mode() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.g.behavior.current_mode = "resize".to_string();
-        wm.g.cfg
+        wm.core.behavior.current_mode = "resize".to_string();
+        wm.core
+            .config
             .bindings
             .modes
             .insert("resize".to_string(), ModeConfig::default());
 
-        wm.g.normalize_current_mode();
+        wm.core.normalize_current_mode();
 
-        assert_eq!(wm.g.behavior.current_mode, "resize");
+        assert_eq!(wm.core.behavior.current_mode, "resize");
     }
 }

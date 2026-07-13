@@ -1,7 +1,6 @@
 use crate::bar::paint::BarPainter;
 use crate::bar::scene::MonitorBarSnapshot;
 use crate::contexts::CoreCtx;
-use crate::globals::Globals;
 use crate::types::{Gesture, MonitorId};
 
 pub(crate) fn draw_bar_snapshot(
@@ -31,7 +30,7 @@ pub(crate) fn draw_bar_snapshot(
     core.bar
         .replace_hit_cache(snapshot.monitor_id, output.hit_cache);
 
-    if let Some(mon) = core.globals_mut().monitor_mut(mon_idx) {
+    if let Some(mon) = core.model_mut().monitor_mut(mon_idx) {
         mon.bar_clients_width = output.bar_clients_width;
         mon.activeoffset = output.activeoffset;
     }
@@ -39,10 +38,10 @@ pub(crate) fn draw_bar_snapshot(
     core.bar.recursion_exit();
 }
 
-pub fn reset_bar_common(globals: &mut Globals) {
-    if globals.selected_monitor().gesture == Gesture::None {
+pub fn reset_bar_common(model: &mut crate::model::WmModel) {
+    if model.selected_monitor().gesture == Gesture::None {
         return;
     }
 
-    globals.selected_monitor_mut().gesture = Gesture::None;
+    model.selected_monitor_mut().gesture = Gesture::None;
 }

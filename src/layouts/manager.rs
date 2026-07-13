@@ -7,7 +7,7 @@
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{ArrangePlan, LayoutKind, LayoutOutput, MonitorUpdates};
-use crate::types::{Client, ClientMode, Monitor, MonitorId, PertagState, TagMask, WindowId};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, PerTagState, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -21,8 +21,12 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     } else {
         crate::client::apply_visibility(ctx);
 
-        let mon_indices: Vec<MonitorId> = (0..ctx.core().globals().monitors.count())
-            .map(MonitorId)
+        let mon_indices: Vec<MonitorId> = ctx
+            .core()
+            .model()
+            .monitors
+            .iter()
+            .map(|(id, _)| id)
             .collect();
         for idx in mon_indices {
             arrange_monitor(ctx, idx);
@@ -31,20 +35,21 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     }
 
     ctx.request_space_sync();
-    ctx.backend().flush();
+    ctx.window_backend().flush();
 }
 
 pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-    let bar_height = ctx.core().globals().cfg.bar.height;
-    let animated = ctx.core().globals().behavior.animated;
-    let layout_cfg = &ctx.core().globals().cfg.layout;
-
-    let clients = ctx.core().globals().clients.map();
-    let Some(mut monitor) = ctx.core().globals().monitor(monitor_id).cloned() else {
-        return;
+    let plan = {
+        let globals = ctx.core_mut().state_mut();
+        let bar_height = globals.config.derived.bar_height;
+        let animated = globals.behavior.animated;
+        let layout_cfg = globals.config.layout;
+        let clients = globals.model.clients.map();
+        let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
+            return;
+        };
+        monitor.compute_arrange(clients, &layout_cfg, bar_height, animated)
     };
-
-    let plan = monitor.compute_arrange(clients, layout_cfg, bar_height, animated);
 
     plan.apply(ctx, monitor_id);
 }
@@ -53,7 +58,7 @@ impl ArrangePlan {
     fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         // 1. Save floating geometry for overview mode
         for &win in &self.save_geo {
-            if let Some(client) = ctx.core_mut().globals_mut().clients.get_mut(&win) {
+            if let Some(client) = ctx.core_mut().model_mut().clients.get_mut(&win) {
                 client.save_floating_geometry();
             }
         }
@@ -67,33 +72,33 @@ impl ArrangePlan {
         }
 
         // 3. Apply monitor updates
-        if let Some(m) = ctx.core_mut().globals_mut().monitor_mut(monitor_id) {
+        if let Some(m) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
             m.clientcount = self.monitor_updates.clientcount;
-            m.nmaster = self.monitor_updates.nmaster;
-            m.mfact = self.monitor_updates.mfact;
+            m.master_count = self.monitor_updates.master_count;
+            m.master_factor = self.monitor_updates.master_factor;
             m.work_rect = self.monitor_updates.work_rect;
             m.bar_y = self.monitor_updates.bar_y;
             m.bar_height = self.monitor_updates.bar_height;
 
-            // Sync pertag state back (copy values to avoid borrow conflict)
-            let nmaster = m.nmaster;
-            let mfact = m.mfact;
-            let pertag = m.pertag_state();
-            pertag.nmaster = nmaster;
-            pertag.mfact = mfact;
+            // Sync per-tag state back (copy values to avoid borrow conflict)
+            let master_count = m.master_count;
+            let master_factor = m.master_factor;
+            let pertag = m.per_tag_state();
+            pertag.master_count = master_count;
+            pertag.master_factor = master_factor;
         }
 
         // 4. For monocle, raise the selected window before animated moves
         //    so it doesn't briefly render beneath siblings during animation.
         if let Some(selected) = ctx
             .core()
-            .globals()
+            .state()
             .monitor(monitor_id)
             .filter(|m| m.current_layout().is_monocle())
-            .and_then(|m| m.sel)
+            .and_then(|m| m.selected)
         {
-            ctx.backend().raise_window_visual_only(selected);
-            ctx.backend().flush();
+            ctx.window_backend().raise_window_visual_only(selected);
+            ctx.window_backend().flush();
         }
 
         // 5. Apply client moves (layout placements)
@@ -107,15 +112,13 @@ impl ArrangePlan {
         }
 
         // 7. Raise selected window in overview mode
-        if self.is_overview {
-            if let Some(monitor) = ctx.core().globals().monitor(monitor_id) {
-                if let Some(selected) = monitor.sel
-                    && self.client_moves.iter().any(|o| o.win == selected)
-                {
-                    ctx.backend().raise_window_visual_only(selected);
-                    ctx.backend().flush();
-                }
-            }
+        if self.is_overview
+            && let Some(monitor) = ctx.core().model().monitor(monitor_id)
+            && let Some(selected) = monitor.selected
+            && self.client_moves.iter().any(|o| o.win == selected)
+        {
+            ctx.window_backend().raise_window_visual_only(selected);
+            ctx.window_backend().flush();
         }
     }
 }
@@ -130,15 +133,15 @@ impl Monitor {
     ) -> ArrangePlan {
         let clientcount = self.tiled_client_count(clients) as u32;
 
-        let defaults = PertagState::new(self.show_bar);
-        let (nmaster, mfact) = self
-            .pertag()
-            .map(|p| (p.nmaster, p.mfact))
-            .unwrap_or((defaults.nmaster, defaults.mfact));
+        let defaults = PerTagState::new(self.show_bar);
+        let (master_count, master_factor) = self
+            .per_tag()
+            .map(|p| (p.master_count, p.master_factor))
+            .unwrap_or((defaults.master_count, defaults.master_factor));
 
         self.clientcount = clientcount;
-        self.nmaster = nmaster;
-        self.mfact = mfact;
+        self.master_count = master_count;
+        self.master_factor = master_factor;
         self.update_bar_position(bar_height);
 
         let bar_y = self.bar_y;
@@ -147,15 +150,22 @@ impl Monitor {
         // Compute borders
         let borders = compute_borders(self, clients);
 
+        // Layout geometry and border updates are one transaction. Compute moves
+        // from the border widths this arrange pass is about to apply, rather
+        // than from the previous pass's client state. Otherwise removing a
+        // border (notably when a floating window becomes the sole tiled
+        // client) leaves a border-sized strip until the next arrange.
+        let layout_clients = clients_with_planned_borders(clients, &borders);
+
         // Compute layout moves and save_geo
         let is_overview = self.overview_state.is_some();
         let (client_moves, save_geo) = if is_overview {
-            let (moves, save_geo) = crate::overview::compute(self, clients);
+            let (moves, save_geo) = crate::overview::compute(self, &layout_clients);
             (moves, save_geo)
         } else {
             let layout = self.current_layout();
             (
-                layout.compute(self, clients, layout_cfg, animated),
+                layout.compute(self, &layout_clients, layout_cfg, animated),
                 Vec::new(),
             )
         };
@@ -166,8 +176,8 @@ impl Monitor {
         ArrangePlan {
             monitor_updates: MonitorUpdates {
                 clientcount,
-                nmaster,
-                mfact,
+                master_count,
+                master_factor,
                 work_rect,
                 bar_y,
                 bar_height: self.bar_height,
@@ -179,6 +189,19 @@ impl Monitor {
             is_overview,
         }
     }
+}
+
+fn clients_with_planned_borders(
+    clients: &HashMap<WindowId, Client>,
+    borders: &[(WindowId, i32)],
+) -> HashMap<WindowId, Client> {
+    let mut planned = clients.clone();
+    for &(win, border_width) in borders {
+        if let Some(client) = planned.get_mut(&win) {
+            client.border_width = border_width;
+        }
+    }
+    planned
 }
 
 fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {
@@ -249,15 +272,15 @@ fn border_width_for_layout_client(
 pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.request_bar_update();
 
-    let Some(monitor) = ctx.core().globals().monitor(monitor_id) else {
+    let Some(monitor) = ctx.core().model().monitor(monitor_id) else {
         return;
     };
 
-    if crate::overview::is_active_on_monitor(ctx.core().globals(), monitor) {
+    if ctx.core().model().is_overview_active_on(monitor) {
         return;
     }
 
-    let selected_window = match monitor.sel {
+    let selected_window = match monitor.selected {
         Some(win) => win,
         None => return,
     };
@@ -265,24 +288,25 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     let is_tiling = layout.is_tiling();
 
     if !is_tiling {
-        ctx.backend().raise_window_visual_only(selected_window);
-        ctx.backend().flush();
+        ctx.window_backend()
+            .raise_window_visual_only(selected_window);
+        ctx.window_backend().flush();
         return;
     }
 
-    let clients = ctx.core().globals().clients.map();
+    let clients = ctx.core().model().clients.map();
     let Some(stack) = compute_monitor_z_order(monitor, clients) else {
         return;
     };
-    ctx.backend().apply_z_order(&stack);
-    ctx.backend().flush();
+    ctx.window_backend().apply_z_order(&stack);
+    ctx.window_backend().flush();
 }
 
 pub(crate) fn compute_monitor_z_order(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
 ) -> Option<Vec<WindowId>> {
-    let selected_window = monitor.sel?;
+    let selected_window = monitor.selected?;
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
     let tiled_focus = monitor
@@ -358,24 +382,24 @@ pub(crate) fn compute_monitor_z_order(
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    m.pertag_state().layouts.set_layout(layout);
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    m.per_tag_state().layouts.set_layout(layout);
     finish_layout_change(ctx);
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    m.pertag_state().layouts.toggle_slot();
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    m.per_tag_state().layouts.toggle_slot();
     finish_layout_change(ctx);
 }
 
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx.core().globals().selected_monitor().current_layout();
+    let current_layout = ctx.core().model().selected_monitor().current_layout();
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
     let current_idx = all_layouts
@@ -394,31 +418,31 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     set_layout(ctx, final_layout);
 }
 
-pub fn inc_nmaster_by(ctx: &mut WmCtx<'_>, delta: i32) {
+pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = ctx
         .core()
-        .globals()
+        .state()
         .selected_monitor()
-        .tiled_client_count(ctx.core().globals().clients.map()) as i32;
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    if delta > 0 && m.nmaster >= ccount {
-        m.nmaster = ccount;
+        .tiled_client_count(ctx.core().model().clients.map()) as i32;
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    if delta > 0 && m.master_count >= ccount {
+        m.master_count = ccount;
     } else {
-        let new_nmaster = max(m.nmaster + delta, 0);
-        m.nmaster = new_nmaster;
+        let new_nmaster = max(m.master_count + delta, 0);
+        m.master_count = new_nmaster;
     }
-    m.pertag_state().nmaster = m.nmaster;
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    m.per_tag_state().master_count = m.master_count;
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
 }
 
-pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
-    if mfact_val == 0.0 {
+pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
+    if delta == 0.0 {
         return;
     }
     let is_tiling = ctx
         .core()
-        .globals()
+        .state()
         .selected_monitor()
         .current_layout()
         .is_tiling();
@@ -426,41 +450,41 @@ pub fn set_mfact(ctx: &mut WmCtx<'_>, mfact_val: f32) {
         return;
     }
 
-    let current_mfact = ctx.core().globals().selected_monitor().mfact;
-    let new_mfact = if mfact_val < 1.0 {
-        mfact_val + current_mfact
+    let current_factor = ctx.core().model().selected_monitor().master_factor;
+    let new_factor = if delta < 1.0 {
+        delta + current_factor
     } else {
-        mfact_val - 1.0
+        delta - 1.0
     };
-    if !(0.05..=0.95).contains(&new_mfact) {
+    if !(0.05..=0.95).contains(&new_factor) {
         return;
     }
 
-    let animation_on = ctx.core().globals().behavior.animated
+    let animation_on = ctx.core().behavior().animated
         && ctx
             .core()
-            .globals()
+            .state()
             .selected_monitor()
-            .tiled_client_count(ctx.core().globals().clients.map())
+            .tiled_client_count(ctx.core().model().clients.map())
             > 1;
     if animation_on {
-        ctx.core_mut().globals_mut().behavior.animated = false;
+        ctx.core_mut().behavior_mut().animated = false;
     }
 
-    let m = ctx.core_mut().globals_mut().selected_monitor_mut();
-    m.mfact = new_mfact;
-    m.pertag_state().mfact = new_mfact;
+    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    m.master_factor = new_factor;
+    m.per_tag_state().master_factor = new_factor;
 
-    let selected_monitor_id = ctx.core().globals().selected_monitor_id();
+    let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
     if animation_on {
-        ctx.core_mut().globals_mut().behavior.animated = true;
+        ctx.core_mut().behavior_mut().animated = true;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::compute_monitor_z_order;
+    use super::{clients_with_planned_borders, compute_monitor_z_order};
     use crate::types::{Client, Monitor, TagMask, WindowId};
     use std::collections::HashMap;
 
@@ -476,12 +500,25 @@ mod tests {
     fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
         let mut monitor = Monitor::default();
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        monitor.sel = Some(selected);
+        monitor.selected = Some(selected);
         monitor.bar_win = WindowId(99);
         for &win in order {
             monitor.z_order.attach_top(win);
         }
         monitor
+    }
+
+    #[test]
+    fn planned_border_is_used_without_waiting_for_next_arrange() {
+        let win = WindowId(1);
+        let mut client = visible_client(win);
+        client.border_width = 2;
+        let clients = HashMap::from([(win, client)]);
+
+        let planned = clients_with_planned_borders(&clients, &[(win, 0)]);
+
+        assert_eq!(planned[&win].border_width, 0);
+        assert_eq!(clients[&win].border_width, 2);
     }
 
     #[test]

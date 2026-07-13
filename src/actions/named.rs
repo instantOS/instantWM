@@ -4,28 +4,28 @@ use crate::client::{kill_client, shut_kill, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    key_resize, scratchpad_find, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
-    scratchpad_toggle, set_scratchpad_direction, toggle_floating, toggle_maximized,
+    key_resize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name, scratchpad_toggle,
+    set_scratchpad_direction, toggle_floating, toggle_maximized,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, inc_nmaster_by, set_layout, set_mfact, toggle_layout,
+    LayoutKind, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor,
+    toggle_layout,
 };
-use crate::monitor::{focus_monitor, move_to_monitor_and_follow, reorder_client};
+use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
     cancel_overview, follow_view, last_view, move_client, quit, shift_tag, shift_view,
     toggle_overview, win_view,
 };
 use crate::toggles::{
-    toggle_alt_tag, toggle_animated, toggle_bar, toggle_double_draw, toggle_mode, toggle_show_tags,
-    toggle_sticky, unhide_all,
+    toggle_alt_tag, toggle_bar, toggle_mode, toggle_show_tags, toggle_sticky, unhide_all,
 };
 use crate::types::{
-    EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, ToggleAction,
-    VerticalDirection,
+    EdgeDirection, HorizontalDirection, MonitorDirection, StackDirection, TagMask, TagSelection,
+    ToggleAction, VerticalDirection,
 };
 use crate::util::spawn;
 
@@ -71,7 +71,7 @@ macro_rules! define_named_actions {
 define_named_actions!(
     Zoom => { name: "zoom", arg_example: None, doc: "zoom client into master area", run: |ctx, _args| { zoom(ctx); } },
     None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
-    Kill => { name: "kill", arg_example: None, doc: "close focused window gracefully", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { kill_client(ctx, win); } } },
+    Kill => { name: "kill", arg_example: None, doc: "close focused window gracefully", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { kill_client(ctx, win); } } },
     ShutKill => { name: "shut_kill", arg_example: None, doc: "force kill focused window", run: |ctx, _args| { shut_kill(ctx); } },
     Quit => { name: "quit", arg_example: None, doc: "quit instantwm", run: |_ctx, _args| { quit(); } },
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
@@ -95,20 +95,20 @@ define_named_actions!(
     LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
-    IncNmaster => { name: "inc_nmaster", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_nmaster_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
-    DecNmaster => { name: "dec_nmaster", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_nmaster_by(ctx, -1); } },
-    MfactGrow => { name: "mfact_grow", arg_example: None, doc: "increase master area width", run: |ctx, _args| { set_mfact(ctx, 0.05); } },
-    MfactShrink => { name: "mfact_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_mfact(ctx, -0.05); } },
-    SetMfact => { name: "set_mfact", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_mfact(ctx, delta); } } },
-    CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { center_window(ctx, win); } } },
+    IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
+    DecMasterCount => { name: "dec_master_count", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_master_count_by(ctx, -1); } },
+    MasterFactorGrow => { name: "master_factor_grow", arg_example: None, doc: "increase master area width", run: |ctx, _args| { set_master_factor(ctx, 0.05); } },
+    MasterFactorShrink => { name: "master_factor_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_master_factor(ctx, -0.05); } },
+    SetMasterFactor => { name: "set_master_factor", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_master_factor(ctx, delta); } } },
+    CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
     ToggleMaximized => { name: "toggle_maximized", arg_example: None, doc: "toggle maximized state", run: |ctx, _args| { toggle_maximized(ctx); } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
-    KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "resize floating window up", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
-    KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "resize floating window down", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
-    KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "resize floating window left", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
-    KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "resize floating window right", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
-    PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { reorder_client(ctx, win, VerticalDirection::Up); } } },
-    PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { reorder_client(ctx, win, VerticalDirection::Down); } } },
+    KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "resize floating window up", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
+    KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "resize floating window down", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
+    KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "resize floating window left", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
+    KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "resize floating window right", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
+    PushUp => { name: "push_up", arg_example: None, doc: "push window up in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() && ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Previous) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } },
+    PushDown => { name: "push_down", arg_example: None, doc: "push window down in stack", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() && ctx.core_mut().model_mut().move_client_in_stack(win, StackDirection::Next) { crate::focus::focus(ctx, Some(win)); let monitor_id = ctx.core().model().selected_monitor_id(); ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id); } } },
     LastView => { name: "last_view", arg_example: None, doc: "view previously viewed tags", run: |ctx, _args| { last_view(ctx); } },
     FollowView => { name: "follow_view", arg_example: None, doc: "follow client to its tags", run: |ctx, _args| { follow_view(ctx); } },
     WinView => { name: "win_view", arg_example: None, doc: "view tags of focused client", run: |ctx, _args| { win_view(ctx); } },
@@ -120,8 +120,8 @@ define_named_actions!(
     ShiftTagRight => { name: "shift_tag_right", arg_example: None, doc: "shift client to tag on right", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Right.into(), 1); } },
     ShiftViewLeft => { name: "shift_view_left", arg_example: None, doc: "shift view to tag on left", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Left); } },
     ShiftViewRight => { name: "shift_view_right", arg_example: None, doc: "shift view to tag on right", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Right); } },
-    ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::view::view_tags(ctx, TagMask::ALL_BITS); } },
-    TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); } } },
+    ViewAll => { name: "view_all", arg_example: None, doc: "view all tags", run: |ctx, _args| { crate::tags::tag_ops::view_selection(ctx, TagSelection::All); } },
+    TagAll => { name: "tag_all", arg_example: None, doc: "tag client with all tags", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::tags::client_tags::set_client_tag(ctx, win, TagMask::ALL_BITS); } } },
     ToggleOverview => { name: "toggle_overview", arg_example: None, doc: "toggle overview mode", run: |ctx, _args| { toggle_overview(ctx, TagMask::ALL_BITS); } },
     CancelOverview => { name: "cancel_overview", arg_example: None, doc: "leave overview and restore previous view", run: |ctx, _args| { cancel_overview(ctx, TagMask::ALL_BITS); } },
     FocusMonPrev => { name: "focus_mon_prev", arg_example: None, doc: "focus previous monitor", run: |ctx, _args| { focus_monitor(ctx, MonitorDirection::PREV); } },
@@ -142,7 +142,7 @@ define_named_actions!(
         doc: "toggle scratchpad, creating it from current window if it doesn't exist",
         run: |ctx, _args| {
             const DEFAULT_NAME: &str = "instantwm_scratchpad";
-            if scratchpad_find(ctx.core().globals(), DEFAULT_NAME).is_some() {
+            if ctx.core().model().scratchpad_find(DEFAULT_NAME).is_some() {
                 scratchpad_toggle(ctx, Some(DEFAULT_NAME));
             } else {
                 scratchpad_make(ctx, DEFAULT_NAME, None, None, ScratchpadInitialStatus::Shown);
@@ -151,15 +151,15 @@ define_named_actions!(
     },
     ToggleBar => { name: "toggle_bar", arg_example: None, doc: "toggle status bar", run: |ctx, _args| { toggle_bar(ctx); } },
     ToggleFloating => { name: "toggle_floating", arg_example: None, doc: "toggle focused window between tiled and floating", run: |ctx, _args| { toggle_floating(ctx); } },
-    ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { toggle_sticky(ctx, win); } } },
+    ToggleSticky => { name: "toggle_sticky", arg_example: None, doc: "toggle sticky (visible on all tags)", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { toggle_sticky(ctx, win); } } },
     ToggleAltTag => { name: "toggle_alt_tag", arg_example: None, doc: "toggle alt-tag mode", run: |ctx, _args| { toggle_alt_tag(ctx, ToggleAction::Toggle); } },
-    ToggleAnimated => { name: "toggle_animated", arg_example: None, doc: "toggle window animations", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| toggle_animated(behavior, ToggleAction::Toggle)); } },
+    ToggleAnimated => { name: "toggle_animated", arg_example: None, doc: "toggle window animations", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| behavior.toggle_animated(ToggleAction::Toggle)); } },
     ToggleShowTags => { name: "toggle_show_tags", arg_example: None, doc: "show/hide tag bar", run: |ctx, _args| { toggle_show_tags(ctx, ToggleAction::Toggle); } },
-    ToggleDoubleDraw => { name: "toggle_double_draw", arg_example: None, doc: "toggle double draw mode", run: |ctx, _args| { ctx.with_behavior_mut(toggle_double_draw); } },
+    ToggleDoubleDraw => { name: "toggle_double_draw", arg_example: None, doc: "toggle double draw mode", run: |ctx, _args| { ctx.with_behavior_mut(|behavior| behavior.toggle_double_draw()); } },
     ModeToggle => { name: "mode_toggle", arg_example: Some("mode_name"), doc: "toggle a mode (enter if not active, else return to default)", run: |ctx, args| { if let Some(name) = args.first() { toggle_mode(ctx, name); } } },
     TogglePrefix => { name: "toggle_prefix", arg_example: None, doc: "toggle prefix mode (legacy alias for mode_toggle prefix)", run: |ctx, _args| { toggle_mode(ctx, "prefix"); } },
     UnhideAll => { name: "unhide_all", arg_example: None, doc: "show all hidden windows", run: |ctx, _args| { unhide_all(ctx); } },
-    Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.core().globals().selected_win() { crate::client::hide_for_user(ctx, win); } } },
+    Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::client::hide_for_user(ctx, win); } } },
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen", run: |ctx, _args| { toggle_fake_fullscreen(ctx); } },
     DrawWindow => { name: "draw_window", arg_example: None, doc: "start dragging/resizing window", run: |ctx, _args| { draw_window(ctx); } },
     BeginKeyboardMove => { name: "begin_keyboard_move", arg_example: None, doc: "move window with keyboard", run: |ctx, _args| { begin_keyboard_move(ctx); } },
@@ -173,7 +173,11 @@ define_named_actions!(
 );
 
 fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
-    if let Some(win) = scratchpad_find(ctx.core().globals(), DEFAULT_EDGE_SCRATCHPAD_NAME) {
+    if let Some(win) = ctx
+        .core()
+        .model()
+        .scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME)
+    {
         set_scratchpad_direction(ctx, win, dir);
     }
 }

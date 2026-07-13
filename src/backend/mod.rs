@@ -62,8 +62,7 @@ pub enum WindowProtocol {
 pub enum BackendEvent {
     /// Pointer motion.
     Motion {
-        root_x: f64,
-        root_y: f64,
+        root: Point,
         /// Modifier key mask (X11: `state` field, Wayland: modifier flags).
         modifiers: u32,
     },
@@ -75,8 +74,8 @@ pub enum BackendEvent {
     KeyPress { keycode: u32 },
 }
 
-/// Core backend operations required by the WM.
-pub trait BackendOps {
+/// Window lifecycle and stacking effects shared by all backends.
+pub trait WindowOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
     fn raise_window_visual_only(&self, window: WindowId);
     fn apply_z_order(&self, windows: &[WindowId]);
@@ -89,8 +88,14 @@ pub trait BackendOps {
     /// Returns `true` if the window exists, `false` otherwise.
     /// This is a query method that returns state rather than performing an action.
     fn window_exists(&self, window: WindowId) -> bool;
-    fn flush(&self);
 
+    /// Return the protocol/backend surface type for a managed window.
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol;
+    fn flush(&self);
+}
+
+/// Pointer queries and cursor movement.
+pub trait PointerOps {
     /// Get current pointer location in root coordinates.
     ///
     /// Returns `None` if the pointer position cannot be determined
@@ -99,50 +104,15 @@ pub trait BackendOps {
 
     /// Warp pointer to (x, y) in root coordinates.
     fn warp_pointer(&self, x: f64, y: f64);
+}
 
-    /// Read the window title from the backend.
-    ///
-    /// Returns `None` when the title is not available or the backend
-    /// does not track titles (e.g. X11 titles are read separately via
-    /// X properties).
-    fn window_title(&self, _window: WindowId) -> Option<String> {
-        None
-    }
+/// Output discovery and configuration.
+pub trait OutputOps {
+    /// Set monitor configuration. Every active backend owns output policy.
+    fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig);
 
-    /// Return the protocol/backend surface type for a managed window.
-    fn window_protocol(&self, _window: WindowId) -> WindowProtocol {
-        WindowProtocol::Unknown
-    }
-
-    /// Switch keyboard layout
-    fn set_keyboard_layout(
-        &self,
-        _layout: &str,
-        _variant: &str,
-        _options: Option<&str>,
-        _model: Option<&str>,
-    ) {
-    }
-
-    /// Set monitor configuration
-    fn set_monitor_config(&self, _name: &str, _config: &crate::config::config_toml::MonitorConfig) {
-    }
-
-    /// Get current outputs from the backend
-    fn get_outputs(&self) -> Vec<BackendOutputInfo> {
-        Vec::new()
-    }
-
-    /// Get list of input devices (Wayland only)
-    fn get_input_devices(&self) -> Vec<String> {
-        Vec::new()
-    }
-
-    /// Position and resize a window directly (no size-hint enforcement).
-    ///
-    /// X11-only operation. The Wayland backend leaves this as a no-op because
-    /// compositor-side geometry is authoritative there.
-    fn configure_window_geometry(&self, _win: WindowId, _rect: Rect) {}
+    /// Get current outputs from the backend.
+    fn get_outputs(&self) -> Vec<BackendOutputInfo>;
 }
 
 /// X11-specific backend data.
@@ -257,21 +227,13 @@ impl Backend {
     }
 }
 
-impl BackendOps for Backend {
+impl WindowOps for Backend {
     fn resize_window(&self, window: WindowId, rect: Rect) {
         match self {
             Backend::X11(data) => {
                 X11BackendRef::new(&data.conn, data.screen_num).resize_window(window, rect)
             }
             Backend::Wayland(data) => data.backend.resize_window(window, rect),
-        }
-    }
-
-    fn configure_window_geometry(&self, window: WindowId, rect: Rect) {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num)
-                .configure_window_geometry(window, rect),
-            Backend::Wayland(data) => data.backend.configure_window_geometry(window, rect),
         }
     }
 
@@ -327,13 +289,24 @@ impl BackendOps for Backend {
         }
     }
 
+    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
+        match self {
+            Backend::X11(data) => {
+                X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window)
+            }
+            Backend::Wayland(data) => data.backend.window_protocol(window),
+        }
+    }
+
     fn flush(&self) {
         match self {
             Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num).flush(),
             Backend::Wayland(data) => data.backend.flush(),
         }
     }
+}
 
+impl PointerOps for Backend {
     fn pointer_location(&self) -> Option<Point> {
         match self {
             Backend::X11(data) => {
@@ -351,41 +324,9 @@ impl BackendOps for Backend {
             Backend::Wayland(data) => data.backend.warp_pointer(x, y),
         }
     }
+}
 
-    fn window_title(&self, window: WindowId) -> Option<String> {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).window_title(window)
-            }
-            Backend::Wayland(data) => data.backend.window_title(window),
-        }
-    }
-
-    fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        match self {
-            Backend::X11(data) => {
-                X11BackendRef::new(&data.conn, data.screen_num).window_protocol(window)
-            }
-            Backend::Wayland(data) => data.backend.window_protocol(window),
-        }
-    }
-
-    fn set_keyboard_layout(
-        &self,
-        layout: &str,
-        variant: &str,
-        options: Option<&str>,
-        model: Option<&str>,
-    ) {
-        match self {
-            Backend::X11(data) => X11BackendRef::new(&data.conn, data.screen_num)
-                .set_keyboard_layout(layout, variant, options, model),
-            Backend::Wayland(data) => data
-                .backend
-                .set_keyboard_layout(layout, variant, options, model),
-        }
-    }
-
+impl OutputOps for Backend {
     fn set_monitor_config(&self, name: &str, config: &crate::config::config_toml::MonitorConfig) {
         match self {
             Backend::X11(data) => {

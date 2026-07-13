@@ -1,22 +1,21 @@
 use crate::actions::{ButtonAction, KeyAction};
 use crate::client::{close_win, kill_client};
-use crate::contexts::{CoreCtx, WmCtx};
+use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, scratchpad_hide_name, scratchpad_show_name, toggle_floating,
 };
-use crate::monitor::reorder_client;
+use crate::model::WmModel;
 use crate::mouse::{
     drag_tag, resize_aspect_mouse, resize_mouse_from_cursor, sidebar_gesture_begin,
     window_title_mouse_handler,
 };
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
-use crate::types::VerticalDirection;
 
 use super::named::execute_named_action;
 
 fn button_target_client(
-    core: &CoreCtx<'_>,
+    model: &WmModel,
     arg: &crate::types::ButtonArg,
 ) -> Option<crate::types::WindowId> {
     arg.window
@@ -28,7 +27,7 @@ fn button_target_client(
             }
             _ => None,
         })
-        .or_else(|| core.globals().selected_win())
+        .or_else(|| model.selected_win())
 }
 
 pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
@@ -45,21 +44,21 @@ pub fn execute_key_action(ctx: &mut WmCtx<'_>, action: &KeyAction) {
             }
         }
         KeyAction::SetClientTag { tag_idx } => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         KeyAction::FollowClientTag { tag_idx } => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
         }
         KeyAction::ToggleClientTag { tag_idx } => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = TagMask::from_index(*tag_idx)
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
@@ -110,21 +109,21 @@ pub fn execute_button_action(
             }
         }
         ButtonAction::SetSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::set_client_tag(ctx, win, mask);
             }
         }
         ButtonAction::ToggleSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
         ButtonAction::FollowSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().globals().selected_win()
+            if let Some(win) = ctx.core().model().selected_win()
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::follow_tag(ctx, win, mask);
@@ -132,51 +131,50 @@ pub fn execute_button_action(
         }
         ButtonAction::ClientMoveDrag => match ctx {
             WmCtx::X11(ctx_x11) => {
-                if let Some(win) = button_target_client(&ctx_x11.core, &arg) {
+                if let Some(win) = button_target_client(ctx_x11.core.model(), &arg) {
                     let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
                     crate::focus::focus(&mut wm_ctx, Some(win));
                 }
-                crate::backend::x11::mouse::move_mouse_x11(ctx_x11, arg.btn, None)
+                crate::backend::x11::mouse::move_mouse(ctx_x11, arg.btn, None)
             }
             WmCtx::Wayland(_) => {
-                if let Some(win) = button_target_client(ctx.core(), &arg) {
+                if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                     crate::focus::focus(ctx, Some(win));
                     crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.root, false);
                 }
             }
         },
         ButtonAction::ResizeSelectedAspect => {
-            if let Some(win) = button_target_client(ctx.core(), &arg) {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::focus::focus(ctx, Some(win));
                 resize_aspect_mouse(ctx, win, arg.btn);
             }
         }
         ButtonAction::KillSelectedClient => {
-            if let Some(win) = button_target_client(ctx.core(), &arg) {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 kill_client(ctx, win);
             }
         }
         ButtonAction::ToggleLockSelectedClient => {
-            if let Some(win) = button_target_client(ctx.core(), &arg) {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 toggle_locked(ctx, win);
             }
         }
         ButtonAction::SidebarGestureBegin => sidebar_gesture_begin(ctx, arg.btn),
-        ButtonAction::ReorderSelected { up } => {
-            if let Some(win) = ctx.core().globals().selected_win() {
-                reorder_client(
-                    ctx,
-                    win,
-                    if *up {
-                        VerticalDirection::Up
-                    } else {
-                        VerticalDirection::Down
-                    },
-                );
+        ButtonAction::ReorderSelected { direction } => {
+            if let Some(win) = ctx.core().model().selected_win()
+                && ctx
+                    .core_mut()
+                    .model_mut()
+                    .move_client_in_stack(win, *direction)
+            {
+                crate::focus::focus(ctx, Some(win));
+                let monitor_id = ctx.core().model().selected_monitor_id();
+                ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
             }
         }
         ButtonAction::ScaleSelected { percent } => {
-            if let Some(win) = button_target_client(ctx.core(), &arg) {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::client::geometry::scale_client(ctx, win, *percent);
             }
         }

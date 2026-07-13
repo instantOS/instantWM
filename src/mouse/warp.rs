@@ -30,12 +30,12 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let Some(c) = ctx.core().globals().clients.get(&win).cloned() else {
+    let Some(c) = ctx.core().model().clients.get(&win).cloned() else {
         return;
     };
 
     let (mut tx, mut ty) = ctx
-        .backend()
+        .pointer_backend()
         .pointer_location()
         .map(|p| (p.x, p.y))
         .unwrap_or((c.geo.x + c.geo.w / 2, c.geo.y + c.geo.h / 2));
@@ -51,12 +51,12 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
         ty = c.geo.y + c.geo.h - WARP_INTO_PADDING;
     }
 
-    ctx.backend().warp_pointer(tx as f64, ty as f64);
+    ctx.pointer_backend().warp_pointer(tx as f64, ty as f64);
 }
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.
 pub fn warp_to_focus(ctx: &mut WmCtx) {
-    if let Some(win) = ctx.core().globals().selected_win() {
+    if let Some(win) = ctx.core().model().selected_win() {
         ctx.warp_cursor_to_client(win);
     }
 }

@@ -56,16 +56,16 @@ pub fn floating(
             continue;
         };
 
-        if c.is_visible(selected) && c.snap_status != SnapPosition::None {
-            if let Some(rect) =
+        if c.is_visible(selected)
+            && c.snap_status != SnapPosition::None
+            && let Some(rect) =
                 crate::types::geometry::snap_rect(c.snap_status, c.border_width, &monitor.work_rect)
-            {
-                result.push(LayoutOutput {
-                    win,
-                    rect,
-                    options: MoveResizeOptions::hinted_immediate(false),
-                });
-            }
+        {
+            result.push(LayoutOutput {
+                win,
+                rect,
+                options: MoveResizeOptions::hinted_immediate(false),
+            });
         }
     }
 

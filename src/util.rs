@@ -20,7 +20,7 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
 
     // Ensure XWayland DISPLAY is present for X11 apps if running under Wayland.
     if let WmCtx::Wayland(wl) = ctx {
-        if let Some(d) = wl.wayland.backend.xdisplay() {
+        if let Some(d) = wl.wayland.xdisplay() {
             command.env("DISPLAY", format!(":{d}"));
         } else if let Ok(val) = std::env::var("DISPLAY") {
             command.env("DISPLAY", val);
@@ -42,7 +42,7 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
     match command.spawn() {
         Ok(child) => {
             record_pending_launch(
-                ctx.core_mut().globals_mut(),
+                ctx.core_mut().pending_launches_mut(),
                 Some(child.id()),
                 Some(metadata.startup_id),
                 metadata.context,
@@ -58,13 +58,13 @@ pub(crate) fn configure_spawn_command(
     ctx: &WmCtx,
     command: &mut std::process::Command,
 ) -> SpawnLaunchMetadata {
-    let context = current_launch_context(ctx.core().globals());
+    let context = current_launch_context(ctx.core().model());
     let startup_id = new_startup_id();
     command.env("DESKTOP_STARTUP_ID", &startup_id);
 
     if let WmCtx::Wayland(wl) = ctx {
-        let selected_window = ctx.core().globals().selected_win();
-        if let Some(token) = wl.wayland.backend.with_state(|state| {
+        let selected_window = ctx.core().model().selected_win();
+        if let Some(token) = wl.wayland.with_state(|state| {
             let source_surface = selected_window.and_then(|win| {
                 state
                     .find_window(win)

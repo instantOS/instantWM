@@ -3,10 +3,12 @@
 //! This module provides window focus functionality via `CoreCtx`, avoiding
 //! global state access and making dependencies explicit.
 
-use crate::backend::BackendOps;
-use crate::contexts::{CoreCtx, WaylandCtx, WmCtx};
-use crate::globals::Globals;
+use crate::backend::WindowOps;
+use crate::contexts::{CoreCtx, WmCtx};
+use crate::core_state::CoreState;
+use crate::model::WmModel;
 use crate::types::*;
+use std::collections::HashMap;
 
 /// Result of resolving a focus target, containing both the target window
 /// and information needed for state updates.
@@ -17,12 +19,12 @@ struct FocusTargetResult {
 }
 
 fn is_focusable_on_monitor(
-    globals: &Globals,
+    model: &WmModel,
     sel_mon_id: MonitorId,
     selected: TagMask,
     win: WindowId,
 ) -> bool {
-    globals
+    model
         .clients
         .get(&win)
         .is_some_and(|c| c.monitor_id == sel_mon_id && c.is_visible(selected))
@@ -30,31 +32,31 @@ fn is_focusable_on_monitor(
 
 /// Resolve the focus target based on the requested window and current state.
 /// Returns `None` if there are no monitors (early exit case).
-fn resolve_focus_target(globals: &Globals, win: Option<WindowId>) -> Option<FocusTargetResult> {
-    if globals.monitors.is_empty() {
+fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusTargetResult> {
+    if model.monitors.is_empty() {
         return None;
     }
 
-    let sel_mon_id = globals.selected_monitor_id();
-    let mon = globals.selected_monitor();
+    let sel_mon_id = model.selected_monitor_id();
+    let mon = model.selected_monitor();
     let selected = mon.selected_tags();
-    let current_sel = mon.sel;
+    let current_sel = mon.selected;
 
     // Use the requested window if it's visible, otherwise walk the stack
     // to find the first visible non-hidden client.
-    let mut target = win.filter(|&w| is_focusable_on_monitor(globals, sel_mon_id, selected, w));
+    let mut target = win.filter(|&w| is_focusable_on_monitor(model, sel_mon_id, selected, w));
 
     if target.is_none() {
         // Try focus history first.
         if let Some(&hist_win) = mon.tag_focus_history.get(&selected)
-            && is_focusable_on_monitor(globals, sel_mon_id, selected, hist_win)
+            && is_focusable_on_monitor(model, sel_mon_id, selected, hist_win)
         {
             target = Some(hist_win);
         }
 
         // Fallback to top of stack.
         if target.is_none() {
-            target = mon.first_visible_client(globals.clients.map());
+            target = mon.first_visible_client(model.clients.map());
         }
     }
 
@@ -66,17 +68,17 @@ fn resolve_focus_target(globals: &Globals, win: Option<WindowId>) -> Option<Focu
 }
 
 /// Update monitor state after focus target resolution.
-fn update_focus_state(globals: &mut Globals, result: FocusTargetResult) -> Option<WindowId> {
+fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<WindowId> {
     let FocusTargetResult {
         target, sel_mon_id, ..
     } = result;
 
     let target_is_tiled = target
-        .and_then(|win| globals.clients.get(&win))
+        .and_then(|win| model.clients.get(&win))
         .is_some_and(|client| !client.mode.is_floating());
 
-    if let Some(mon) = globals.monitor_mut(sel_mon_id) {
-        mon.sel = target;
+    if let Some(mon) = model.monitor_mut(sel_mon_id) {
+        mon.selected = target;
         if let Some(t) = target {
             mon.tag_focus_history.insert(mon.selected_tags(), t);
             if target_is_tiled {
@@ -86,7 +88,7 @@ fn update_focus_state(globals: &mut Globals, result: FocusTargetResult) -> Optio
     }
 
     if let Some(t) = target {
-        globals.raise_client_in_z_order(t);
+        model.raise_client_in_z_order(t);
     }
     target
 }
@@ -95,43 +97,44 @@ fn update_focus_state(globals: &mut Globals, result: FocusTargetResult) -> Optio
 /// This allows the common focus logic to call backend-specific operations
 /// without duplicating the surrounding logic.
 pub(crate) trait FocusBackendOps {
-    fn unfocus_current(&self, globals: &Globals, current: WindowId);
-    fn focus_window(&self, globals: &mut Globals, win: WindowId);
-    fn focus_none(&self, globals: &Globals);
-    fn on_desktop_binding_state_changed(&self, globals: &Globals);
+    fn unfocus_current(&self, state: &CoreState, current: WindowId);
+    fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId);
+    fn focus_none(&self);
+    fn on_desktop_binding_state_changed(&self, state: &CoreState);
     fn needs_focus_refresh(&self, _target: Option<WindowId>) -> bool {
         false
     }
 }
 
 struct WaylandFocusBackend<'a> {
-    wayland: &'a WaylandCtx<'a>,
+    wayland: &'a crate::backend::wayland::WaylandBackend,
 }
 
 impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
-    fn unfocus_current(&self, _globals: &Globals, _current: WindowId) {}
+    fn unfocus_current(&self, _state: &CoreState, _current: WindowId) {}
 
-    fn focus_window(&self, globals: &mut Globals, win: WindowId) {
-        let is_urgent = globals
+    fn focus_window(&self, ctx: &mut CoreCtx<'_>, win: WindowId) {
+        let is_urgent = ctx
+            .model()
             .clients
             .get(&win)
             .map(|c| c.is_urgent)
             .unwrap_or(false);
-        if is_urgent && let Some(c) = globals.clients.get_mut(&win) {
+        if is_urgent && let Some(c) = ctx.model_mut().clients.get_mut(&win) {
             c.clear_urgency();
         }
-        self.wayland.backend.set_focus(win);
+        self.wayland.set_focus(win);
     }
 
-    fn focus_none(&self, _globals: &Globals) {
-        self.wayland.backend.clear_keyboard_focus();
+    fn focus_none(&self) {
+        self.wayland.clear_keyboard_focus();
     }
 
-    fn on_desktop_binding_state_changed(&self, _globals: &Globals) {}
+    fn on_desktop_binding_state_changed(&self, _state: &CoreState) {}
 
     fn needs_focus_refresh(&self, target: Option<WindowId>) -> bool {
         match target {
-            Some(win) => !self.wayland.backend.is_keyboard_focused_on(win),
+            Some(win) => !self.wayland.is_keyboard_focused_on(win),
             None => false,
         }
     }
@@ -139,7 +142,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 
 /// Outcome of a focus operation, used to decide whether a sync_monitor_z_order is needed.
 pub(crate) struct FocusOutcome {
-    /// `true` when `mon.sel` actually changed.
+    /// `true` when `mon.selected` actually changed.
     changed: bool,
     /// The monitor that owns the new selection.
     monitor_id: MonitorId,
@@ -151,25 +154,23 @@ pub(crate) fn focus_generic(
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
 ) -> anyhow::Result<FocusOutcome> {
-    let result = match resolve_focus_target(core.globals(), win) {
+    let result = match resolve_focus_target(core.model(), win) {
         Some(r) => r,
         None => {
             return Ok(FocusOutcome {
                 changed: false,
-                monitor_id: core.globals().selected_monitor_id(),
+                monitor_id: core.model().selected_monitor_id(),
             });
         }
     };
 
     let current_sel = result.current_sel;
     let sel_mon_id = result.sel_mon_id;
-    let desktop_bindings_before = crate::keyboard::desktop_bindings_enabled(
-        current_sel,
-        &core.globals().behavior.current_mode,
-    );
-    let target = update_focus_state(core.globals_mut(), result);
+    let desktop_bindings_before =
+        crate::keyboard::desktop_bindings_enabled(current_sel, &core.behavior().current_mode);
+    let target = update_focus_state(core.model_mut(), result);
     let desktop_bindings_after =
-        crate::keyboard::desktop_bindings_enabled(target, &core.globals().behavior.current_mode);
+        crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
 
     // Track the previously focused window for focus-last-client.
     // This is done in the shared path so both backends behave identically.
@@ -177,11 +178,11 @@ pub(crate) fn focus_generic(
         && let Some(cur_win) = current_sel
     {
         core.focus.last_client = cur_win;
-        backend.unfocus_current(core.globals(), cur_win);
+        backend.unfocus_current(core.state(), cur_win);
     }
 
     if desktop_bindings_before != desktop_bindings_after {
-        backend.on_desktop_binding_state_changed(core.globals());
+        backend.on_desktop_binding_state_changed(core.state());
     }
 
     let focus_changed = current_sel != target;
@@ -190,11 +191,11 @@ pub(crate) fn focus_generic(
     if let Some(w) = target {
         if focus_changed || needs_refocus {
             core.bar.mark_dirty();
-            backend.focus_window(core.globals_mut(), w);
+            backend.focus_window(core, w);
         }
     } else if focus_changed {
         core.bar.mark_dirty();
-        backend.focus_none(core.globals());
+        backend.focus_none();
     }
 
     Ok(FocusOutcome {
@@ -205,7 +206,7 @@ pub(crate) fn focus_generic(
 
 /// Best-effort focus - the single public entry point for `WmCtx` holders.
 ///
-/// Updates `mon.sel`, backend seat focus, and — when the selection actually
+/// Updates `mon.selected`, backend seat focus, and — when the selection actually
 /// changed — syncs the affected monitor z-order so visuals stay in sync.
 /// This is critical for overlapping layouts (monocle, floating) where the
 /// focused window must be visually on top.
@@ -227,7 +228,7 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
         }
         Wayland(wayland_ctx) => {
             let mut backend = WaylandFocusBackend {
-                wayland: &wayland_ctx.wayland,
+                wayland: wayland_ctx.wayland,
             };
             match focus_generic(&mut wayland_ctx.core, win, &mut backend) {
                 Ok(o) => o,
@@ -261,8 +262,8 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
             x11_runtime,
             ..
         }) => {
-            crate::backend::x11::focus::unfocus_win_x11(
-                core.globals(),
+            crate::backend::x11::focus::unfocus_win(
+                core.state(),
                 x11,
                 x11_runtime,
                 win,
@@ -279,19 +280,19 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
 /// Backend-agnostic hover-focus entry point.
 ///
 /// Checks focus-follows-mouse guards, then delegates to `focus_soft` which
-/// handles `mon.sel`, backend seat focus, and z-order sync in one place.
+/// handles `mon.selected`, backend seat focus, and z-order sync in one place.
 pub fn hover_focus_target(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
     entering_root: bool,
     pointer_pos: Option<Point>,
 ) {
-    if !ctx.core().globals().behavior.focus_follows_mouse {
+    if !ctx.core().behavior().focus_follows_mouse {
         return;
     }
 
     if let Some(win) = hovered_win
-        && let Some(mid) = ctx.core().globals().clients.monitor_id(win)
+        && let Some(mid) = ctx.core().model().clients.monitor_id(win)
         && select_monitor(ctx, mid)
     {
         // After switching monitors, continue with the hovered window so both
@@ -303,7 +304,12 @@ pub fn hover_focus_target(
         return;
     }
 
-    if should_hover_focus(ctx.core().globals(), hovered_win, entering_root) {
+    if should_hover_focus(
+        ctx.core().model(),
+        ctx.core().behavior(),
+        hovered_win,
+        entering_root,
+    ) {
         focus(ctx, hovered_win);
     }
 }
@@ -312,32 +318,29 @@ pub fn hover_focus_target(
 ///
 /// Returns `true` when hover focus should proceed for `hovered_win`.
 fn should_hover_focus(
-    globals: &Globals,
+    model: &crate::model::WmModel,
+    behavior: &crate::core_state::WmBehavior,
     hovered_win: Option<WindowId>,
     entering_root: bool,
 ) -> bool {
     let Some(win) = hovered_win else {
         return false;
     };
-    if !globals.behavior.focus_follows_mouse {
+    if !behavior.focus_follows_mouse {
         return false;
     }
     // Already focused — nothing to do.
-    if globals.selected_win() == Some(win) {
+    if model.selected_win() == Some(win) {
         return false;
     }
     // Respect the "don't focus floating windows on hover" setting.
-    let hovered_is_floating = globals
+    let hovered_is_floating = model
         .clients
         .get(&win)
         .map(|c| c.mode.is_floating())
         .unwrap_or(false);
-    let has_tiling = globals.selected_monitor().is_tiling_layout();
-    if !globals.behavior.focus_follows_float_mouse
-        && hovered_is_floating
-        && has_tiling
-        && !entering_root
-    {
+    let has_tiling = model.selected_monitor().is_tiling_layout();
+    if !behavior.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
         return false;
     }
     true
@@ -348,23 +351,21 @@ fn should_hover_focus(
 /// Returns `true` if the selection actually changed (i.e. the monitor was not
 /// already selected), `false` otherwise.
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
-    if ctx.core().globals().monitors.is_empty() {
+    if ctx.core().model().monitors.is_empty() {
         return false;
     }
-    if monitor_id == ctx.core().globals().selected_monitor_id() {
+    if monitor_id == ctx.core().model().selected_monitor_id() {
         return false;
     }
 
-    ctx.core_mut()
-        .globals_mut()
-        .set_selected_monitor(monitor_id);
+    ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
     ctx.update_ewmh_desktop_props();
     focus(ctx, None);
     true
 }
 
 pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
-    let Some(monitor_id) = ctx.core().globals().clients.monitor_id(win) else {
+    let Some(monitor_id) = ctx.core().model().clients.monitor_id(win) else {
         return false;
     };
     select_monitor(ctx, monitor_id)
@@ -378,7 +379,8 @@ pub fn select_monitor_for_client(ctx: &mut crate::contexts::WmCtx, win: WindowId
 pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool {
     let Some((monitor_id, client_tags)) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .clients
         .get(&win)
         .map(|client| (client.monitor_id, client.tags))
@@ -386,14 +388,12 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
         return false;
     };
 
-    if monitor_id != ctx.core().globals().selected_monitor_id() {
-        ctx.core_mut()
-            .globals_mut()
-            .set_selected_monitor(monitor_id);
+    if monitor_id != ctx.core().model().selected_monitor_id() {
+        ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
     }
 
     let target_tags = client_tags.without_scratchpad();
-    let visible_tags = ctx.core().globals().selected_monitor().selected_tags();
+    let visible_tags = ctx.core().model().selected_monitor().selected_tags();
     if !target_tags.is_empty() && !target_tags.intersects(visible_tags) {
         crate::tags::view::view_tags(ctx, target_tags);
     }
@@ -405,7 +405,8 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
 pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: Point) -> bool {
     let Some(new_mon_id) = ctx
         .core()
-        .globals()
+        .state()
+        .model
         .monitors
         .find_monitor_at_pointer(pointer_pos)
     else {
@@ -416,7 +417,7 @@ pub fn select_monitor_at_pointer(ctx: &mut crate::contexts::WmCtx, pointer_pos: 
 
 fn get_directional_candidates(
     clients: &[WindowId],
-    globals_map: &std::collections::HashMap<WindowId, Client>,
+    globals_map: &HashMap<WindowId, Client>,
     selected_tags: TagMask,
     source_win: WindowId,
     source_center: crate::types::Point,
@@ -490,20 +491,23 @@ fn calculate_direction_score(
 }
 
 /// Shared logic for directional focus - finds the candidate window.
-fn get_direction_focus_candidate(globals: &Globals, direction: Direction) -> Option<WindowId> {
-    if globals.monitors.is_empty() {
+fn get_direction_focus_candidate(
+    model: &crate::model::WmModel,
+    direction: Direction,
+) -> Option<WindowId> {
+    if model.monitors.is_empty() {
         return None;
     }
-    let mon = globals.selected_monitor();
-    let source_win = mon.sel?;
-    let source_client = globals.clients.get(&source_win)?;
+    let mon = model.selected_monitor();
+    let source_win = mon.selected?;
+    let source_client = model.clients.get(&source_win)?;
     let source_center = source_client.geo.center();
 
     let selected = mon.selected_tags();
 
     get_directional_candidates(
         &mon.clients,
-        globals.clients.map(),
+        model.clients.map(),
         selected,
         source_win,
         source_center,
@@ -518,7 +522,7 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     }
     let last_win = last_client_win;
 
-    let last_client = match ctx.core().globals().clients.get(&last_win) {
+    let last_client = match ctx.core().model().clients.get(&last_win) {
         Some(c) => c.clone(),
         None => return,
     };
@@ -532,37 +536,37 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
     let tags = last_client.tags;
     let last_mon_id = last_client.monitor_id;
 
-    let sel_mon_id = ctx.core().globals().selected_monitor_id();
-    if !ctx.core().globals().monitors.is_empty()
+    let sel_mon_id = ctx.core().model().selected_monitor_id();
+    if !ctx.core().model().monitors.is_empty()
         && sel_mon_id != last_mon_id
-        && let Some(sel) = ctx.core().globals().monitor(sel_mon_id).and_then(|m| m.sel)
+        && let Some(sel) = ctx
+            .core()
+            .model()
+            .monitor(sel_mon_id)
+            .and_then(|m| m.selected)
     {
         unfocus_win(ctx, sel, false);
-        ctx.core_mut()
-            .globals_mut()
-            .set_selected_monitor(last_mon_id);
+        ctx.core_mut().model_mut().set_selected_monitor(last_mon_id);
     }
 
-    if let Some(cur) = ctx.core().globals().selected_win() {
+    if let Some(cur) = ctx.core().model().selected_win() {
         ctx.core_mut().focus.last_client = cur;
     }
 
     crate::tags::view::view_tags(ctx, tags);
     focus(ctx, Some(last_win));
 
-    let monitor_id = ctx.core().globals().selected_monitor_id();
-    ctx.core_mut()
-        .globals_mut()
-        .queue_layout_for_monitor_urgent(monitor_id);
+    let monitor_id = ctx.core().model().selected_monitor_id();
+    ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 
 /// Focus the next or previous client in the stack.
-pub fn focus_stack_direction<F>(globals: &Globals, forward: bool, focus_fn: F)
+pub fn focus_stack_direction<F>(model: &crate::model::WmModel, forward: bool, focus_fn: F)
 where
     F: FnOnce(Option<WindowId>),
 {
     let target = get_stack_focus_target(
-        globals,
+        model,
         if forward {
             StackDirection::Next
         } else {
@@ -572,10 +576,7 @@ where
     focus_fn(target);
 }
 
-fn get_visible_stack(
-    mon: &Monitor,
-    clients: &std::collections::HashMap<WindowId, Client>,
-) -> Vec<WindowId> {
+fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
     let mut stack = Vec::new();
     let selected = mon.selected_tags();
 
@@ -589,18 +590,21 @@ fn get_visible_stack(
 }
 
 /// Shared logic to compute the next stack index for focus.
-fn get_stack_focus_target(globals: &Globals, direction: StackDirection) -> Option<WindowId> {
-    if globals.monitors.is_empty() {
+fn get_stack_focus_target(
+    model: &crate::model::WmModel,
+    direction: StackDirection,
+) -> Option<WindowId> {
+    if model.monitors.is_empty() {
         return None;
     }
-    let mon = globals.selected_monitor();
-    let stack = get_visible_stack(mon, globals.clients.map());
+    let mon = model.selected_monitor();
+    let stack = get_visible_stack(mon, model.clients.map());
 
     if stack.is_empty() {
         return None;
     }
 
-    let selected_window = globals.selected_win();
+    let selected_window = model.selected_win();
     let current_idx = match selected_window {
         Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
         None => 0,
@@ -618,13 +622,13 @@ fn get_stack_focus_target(globals: &Globals, direction: StackDirection) -> Optio
 }
 
 pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
-    if let Some(target) = get_direction_focus_candidate(ctx.core().globals(), direction) {
+    if let Some(target) = get_direction_focus_candidate(ctx.core().model(), direction) {
         focus(ctx, Some(target));
     }
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    if let Some(target) = get_stack_focus_target(ctx.core().globals(), direction) {
+    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction) {
         focus(ctx, Some(target));
     }
 }

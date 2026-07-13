@@ -117,7 +117,7 @@ pub fn collect_available_rects(state: &WaylandState) -> HashMap<String, Rect> {
 pub fn apply_available_rects(wm: &mut Wm, state: &WaylandState) -> bool {
     let rects = collect_available_rects(state);
     let mut any_changed = false;
-    for mon in wm.g.monitors.iter_all_mut() {
+    for mon in wm.core.model.monitors.iter_all_mut() {
         let Some(&new_rect) = rects.get(&mon.name) else {
             // No matching output (e.g. monitor was just removed or named
             // differently). Leave it alone; the next monitor refresh will

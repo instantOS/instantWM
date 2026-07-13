@@ -233,6 +233,20 @@ impl Client {
         self.geo.total_height(self.border_width)
     }
 
+    /// Update border width and adjust geometry accordingly.
+    pub fn set_border_width(&mut self, new_bw: i32) {
+        let old_bw = self.border_width;
+        let d = old_bw - new_bw;
+        self.border_width = new_bw;
+
+        self.update_geometry(Rect {
+            x: self.geo.x,
+            y: self.geo.y,
+            w: self.geo.w + 2 * d,
+            h: self.geo.h + 2 * d,
+        });
+    }
+
     /// Check whether a proposed geometry is large enough and meaningfully
     /// different from the client's current geometry.
     pub fn accepts_distinct_rect(
@@ -347,16 +361,16 @@ impl Client {
     /// Resolve the monitor this client currently belongs to.
     pub fn monitor<'a>(
         &self,
-        globals: &'a crate::globals::Globals,
+        model: &'a crate::model::WmModel,
     ) -> Option<&'a crate::types::Monitor> {
-        globals.monitor(self.monitor_id)
+        model.monitor(self.monitor_id)
     }
 
     /// Get the monitor's size (width, height) for this client.
     ///
     /// Returns `(0, 0)` if the client is not assigned to a monitor.
-    pub fn monitor_size(&self, globals: &crate::globals::Globals) -> (i32, i32) {
-        self.monitor(globals)
+    pub fn monitor_size(&self, model: &crate::model::WmModel) -> (i32, i32) {
+        self.monitor(model)
             .map(|m| (m.monitor_rect.w, m.monitor_rect.h))
             .unwrap_or((0, 0))
     }
@@ -417,21 +431,11 @@ impl Client {
     /// Apply all client-local state changes required when a window enters tiling mode.
     ///
     /// Sets the mode to `Tiling`, saves the current geometry into `float_geo` so it
-    /// can be restored on the next float, and — when `is_sole_client` is true and the
-    /// window is not snapped — saves then zeroes the border width.
-    ///
-    /// Returns `true` when the border width was cleared (so the caller can forward the
-    /// change to the backend).
-    pub fn enter_tiling(&mut self, is_sole_client: bool) -> bool {
+    /// can be restored on the next float. Border policy belongs to the layout
+    /// manager, which knows the visible tiled client count and active layout.
+    pub fn enter_tiling(&mut self) {
         self.mode = ClientMode::Tiling;
         self.float_geo = self.geo;
-        if is_sole_client && self.snap_status == SnapPosition::None {
-            self.save_border_width();
-            self.border_width = 0;
-            true
-        } else {
-            false
-        }
     }
 
     // -------------------------------------------------------------------------
@@ -513,7 +517,7 @@ impl Client {
         x11: &crate::backend::x11::X11BackendRef,
         x11_runtime: &mut crate::backend::x11::X11RuntimeConfig,
     ) {
-        let tag_mask = core.globals().tags.mask();
+        let tag_mask = core.model().tags.mask();
         let effective_mask = mask & tag_mask;
 
         if effective_mask.is_empty() {
@@ -523,11 +527,10 @@ impl Client {
         self.clear_sticky_if_scratchpad();
         self.set_tag_mask(effective_mask);
 
-        crate::backend::x11::set_client_tag_prop(core.globals(), x11, x11_runtime, self.win);
-        crate::backend::x11::focus::focus_soft_x11(core, x11, x11_runtime, None);
-        let monitor_id = core.globals().selected_monitor_id();
-        core.globals_mut()
-            .queue_layout_for_monitor_urgent(monitor_id);
+        crate::backend::x11::set_client_tag_prop(core.state(), x11, x11_runtime, self.win);
+        crate::backend::x11::focus::focus_soft(core, x11, x11_runtime, None);
+        let monitor_id = core.model().selected_monitor_id();
+        core.queue_layout_for_monitor_urgent(monitor_id);
     }
 }
 

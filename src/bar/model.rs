@@ -1,6 +1,6 @@
 use crate::bar::{MonitorHitCache, TagHitRange, TitleHitRange};
 use crate::contexts::CoreCtx;
-use crate::globals::Globals;
+use crate::model::WmModel;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -12,12 +12,12 @@ pub(crate) struct ClientBarStats {
 
 impl ClientBarStats {
     /// Collect bar statistics for the given monitor.
-    pub(crate) fn collect(monitor: &Monitor, globals: &Globals) -> Self {
+    pub(crate) fn collect(monitor: &Monitor, model: &WmModel) -> Self {
         let mut stats = Self::default();
         let selected = monitor.selected_tags();
 
         // ── Pass 1: clients with title entries in the bar ─────────────────
-        for (_win, client) in monitor.iter_clients(globals.clients.map()) {
+        for (_win, client) in monitor.iter_clients(model.clients.map()) {
             if client.shows_in_bar(selected) {
                 stats.visible_clients += 1;
             }
@@ -26,7 +26,7 @@ impl ClientBarStats {
         // ── Pass 2: occupied / urgent tag bits from all clients on this monitor
         let monitor_id = monitor.id();
         let mut occupied = TagMask::EMPTY;
-        for client in globals.clients.values() {
+        for client in model.clients.values() {
             if client.monitor_id != monitor_id {
                 continue;
             }
@@ -47,7 +47,7 @@ impl ClientBarStats {
 pub(crate) fn hit_test(
     hit: &MonitorHitCache,
     monitor: &Monitor,
-    core: &CoreCtx,
+    systray_show: bool,
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
@@ -55,7 +55,7 @@ pub(crate) fn hit_test(
         return BarPosition::StartMenu;
     }
 
-    if core.globals().cfg.systray.show && is_selected_monitor {
+    if systray_show && is_selected_monitor {
         // Check systray menu items first (they appear to the left of tray items)
         for slot in &hit.systray_menu_slots {
             if local_x >= slot.start && local_x < slot.end {
@@ -80,7 +80,7 @@ pub(crate) fn hit_test(
         return BarPosition::LayoutSymbol;
     }
 
-    if monitor.sel.is_none() && local_x < hit.shutdown_end {
+    if monitor.selected.is_none() && local_x < hit.shutdown_end {
         return BarPosition::ShutDown;
     }
 
@@ -92,10 +92,10 @@ pub(crate) fn hit_test(
         if local_x >= r.start && local_x < r.end {
             let this_width = (r.end - r.start).max(0);
             let resize_start = r.start + this_width - RESIZE_WIDGET_WIDTH;
-            if monitor.sel == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
+            if monitor.selected == Some(r.win) && local_x < r.start + CLOSE_BUTTON_HIT_WIDTH {
                 return BarPosition::CloseButton(r.win);
             }
-            if monitor.sel == Some(r.win) && local_x >= resize_start {
+            if monitor.selected == Some(r.win) && local_x >= resize_start {
                 return BarPosition::ResizeWidget(r.win);
             }
             return BarPosition::WinTitle(r.win);
@@ -110,13 +110,13 @@ pub(crate) fn hit_test(
 pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
     use crate::bar::get_layout_symbol_width;
 
-    let is_selmon = core.globals().selected_monitor().num == mon.num;
+    let is_selmon = core.model().selected_monitor().num == mon.num;
     let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
     let bar_height = mon.bar_height;
 
     // ── Tag ranges ────────────────────────────────────────────────────────
-    let occupied = mon.occupied_tags(core.globals().clients.map());
-    let visible = crate::tags::bar::visible_tags(core, mon, occupied);
+    let occupied = mon.occupied_tags(core.model().clients.map());
+    let visible = crate::tags::bar::visible_tags(core.state(), core.bar, mon, occupied);
     let mut tag_ranges: Vec<TagHitRange> = Vec::new();
     let mut acc = mon.startmenu_size;
     for tag in &visible {
@@ -137,8 +137,8 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let shutdown_end = layout_end + bar_height;
 
     // ── Status text ───────────────────────────────────────────────────────
-    let systray_w = if core.globals().cfg.systray.show && is_selmon {
-        core.globals().bar_runtime.systray_width
+    let systray_w = if core.config().systray.show && is_selmon {
+        core.bar.runtime.systray_width
     } else {
         0
     };
@@ -147,7 +147,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
     let title_clients: Vec<WindowId> = mon
-        .iter_clients(core.globals().clients.map())
+        .iter_clients(core.model().clients.map())
         .filter_map(|(win, c)| c.shows_in_bar(selected).then_some(win))
         .collect();
 
