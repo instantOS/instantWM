@@ -154,7 +154,13 @@ pub fn run() -> ! {
                     outputs.contains(&output.name())
                 }
             };
-            let callbacks_requested = state.take_frame_callbacks_pending();
+            let callbacks_requested = match state.take_frame_callback_targets() {
+                crate::backend::wayland::compositor::PendingRenderTargets::None => false,
+                crate::backend::wayland::compositor::PendingRenderTargets::All => true,
+                crate::backend::wayland::compositor::PendingRenderTargets::Outputs(outputs) => {
+                    outputs.contains(&output.name())
+                }
+            };
             let submitted = render_requested
                 && render_frame(
                     &mut wm,

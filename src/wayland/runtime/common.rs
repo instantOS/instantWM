@@ -747,14 +747,13 @@ pub(crate) fn process_window_animations_and_request_render(state: &mut WaylandSt
     } else {
         false
     };
-    let animation_advanced = if state.has_active_window_animations() {
+    if state.has_active_window_animations() {
         state.tick_window_animations();
-        true
-    } else {
-        false
-    };
+    }
 
-    if space_synced || animation_advanced {
+    // Animation ticks enqueue output-local redraws themselves. Space sync can
+    // affect arbitrary windows, so it remains conservatively global.
+    if space_synced {
         state.request_render();
     }
 }

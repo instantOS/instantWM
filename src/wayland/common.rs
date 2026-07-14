@@ -28,7 +28,7 @@ use smithay::backend::renderer::element::memory::{
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::{
-    RenderElementStates, default_primary_scanout_output_compare,
+    Element, Id, RenderElementStates, default_primary_scanout_output_compare,
 };
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::utils::{
@@ -610,23 +610,23 @@ pub fn build_common_scene_elements(
     wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
-    output_x_offset: i32,
+    output: &Output,
 ) -> CommonSceneElements {
     let fixed = build_fixed_scene_elements(wm, state);
-    build_common_scene_elements_from_fixed(state, renderer, output_x_offset, &fixed)
+    build_common_scene_elements_from_fixed(state, renderer, output, &fixed)
 }
 
 /// Build the full scene for one output from reusable shared pieces.
 pub fn build_common_scene_elements_from_fixed(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
-    output_x_offset: i32,
+    output: &Output,
     fixed: &FixedSceneElements,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
     let mut overlays = Vec::new();
-    for (window, phys_loc) in state.overlay_windows_for_render(output_x_offset) {
+    for (window, phys_loc) in state.overlay_windows_for_render(output) {
         let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
             AsRenderElements::render_elements(
                 &window,
@@ -659,6 +659,24 @@ pub fn build_common_scene_elements_from_fixed(
         bar,
         borders: fixed.borders.clone(),
     }
+}
+
+/// Remove the Smithay-space copies of windows already emitted in the explicit
+/// above-bar overlay bucket. Surface render-element IDs are stable across both
+/// paths, so this avoids drawing the same surface tree twice.
+pub fn remove_duplicate_overlay_elements<E: Element>(
+    scene: &CommonSceneElements,
+    space_elements: &mut Vec<E>,
+) {
+    if scene.overlays.is_empty() {
+        return;
+    }
+    let overlay_ids: Vec<Id> = scene
+        .overlays
+        .iter()
+        .map(|element| element.id().clone())
+        .collect();
+    space_elements.retain(|element| !overlay_ids.iter().any(|id| id == element.id()));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

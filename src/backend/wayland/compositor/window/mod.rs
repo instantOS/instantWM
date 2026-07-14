@@ -1,4 +1,5 @@
 use smithay::desktop::Window;
+use smithay::output::Output;
 use smithay::utils::{Logical, Point};
 
 use crate::backend::wayland::compositor::WaylandState;
@@ -127,9 +128,13 @@ impl WaylandState {
     /// Returns `(window, physical_location)` pairs ready for `AsRenderElements`.
     pub fn overlay_windows_for_render(
         &self,
-        x_offset: i32,
+        output: &Output,
     ) -> Vec<(Window, Point<i32, smithay::utils::Physical>)> {
         use smithay::utils::Physical;
+
+        let Some(output_rect) = self.space.output_geometry(output) else {
+            return Vec::new();
+        };
 
         self.windows_in_z_order()
             .into_iter()
@@ -141,10 +146,18 @@ impl WaylandState {
             })
             .filter_map(|(w, _)| {
                 let loc = self.space.element_location(w)?;
+                let mut window_rect = w.bbox_with_popups();
+                window_rect.loc += loc - w.geometry().loc;
+                if !output_rect.overlaps(window_rect) {
+                    return None;
+                }
                 // Translate from global compositor coordinates to the
                 // per-output local coordinate space, then convert to physical
                 // pixels.
-                let phys = Point::<i32, Physical>::from((loc.x - x_offset, loc.y));
+                let phys = Point::<i32, Physical>::from((
+                    loc.x - output_rect.loc.x,
+                    loc.y - output_rect.loc.y,
+                ));
                 Some((w.clone(), phys))
             })
             .collect()

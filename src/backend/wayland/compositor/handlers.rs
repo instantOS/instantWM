@@ -199,7 +199,13 @@ fn service_surface_commit(
                 None => state.request_render(),
             },
         },
-        SurfaceCommitService::FrameCallbacks => state.request_frame_callbacks(),
+        SurfaceCommitService::FrameCallbacks => match window {
+            Some(window) => state.request_window_frame_callbacks(window),
+            None => match layer_output {
+                Some(output) => state.request_output_frame_callbacks(output),
+                None => state.request_frame_callbacks(),
+            },
+        },
         SurfaceCommitService::None => {}
     }
 }

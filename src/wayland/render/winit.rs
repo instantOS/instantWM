@@ -11,7 +11,8 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::wayland::common::{
     CursorPresentation, build_common_scene_elements, count_upper_layer_render_elements,
     get_render_element_counts, output_has_real_fullscreen, poll_systray,
-    resolve_cursor_presentation, send_frame_callbacks, update_primary_scanout_output,
+    remove_duplicate_overlay_elements, resolve_cursor_presentation, send_frame_callbacks,
+    update_primary_scanout_output,
 };
 use crate::wm::Wm;
 
@@ -68,12 +69,13 @@ pub fn render_frame(
     } else {
         poll_systray(wm);
         // Shared: build scene elements
-        let scene = build_common_scene_elements(wm, state, renderer, 0);
+        let scene = build_common_scene_elements(wm, state, renderer, output);
 
         // Shared: get space render elements
-        let space_render_elements =
+        let mut space_render_elements =
             smithay::desktop::space::space_render_elements(renderer, [&state.space], output, 1.0)
                 .expect("space render elements");
+        remove_duplicate_overlay_elements(&scene, &mut space_render_elements);
 
         // Shared: count upper layer elements
         let num_upper = count_upper_layer_render_elements(renderer, output);

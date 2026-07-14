@@ -62,7 +62,7 @@ impl WaylandState {
                 };
                 self.drop_window_animation(window);
                 self.space.map_element(element.clone(), loc, false);
-                self.request_window_render(&element);
+                self.request_visible_window_render(&element);
 
                 // If this window was the pending focus target (set by focus_soft
                 // before arrange/show_hide ran), re-apply keyboard focus now that
@@ -91,7 +91,7 @@ impl WaylandState {
         }
 
         // Invalidate its old outputs before removing the geometry from Space.
-        self.request_window_render(&element);
+        self.request_visible_window_render(&element);
         self.space.unmap_elem(&element);
         self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
@@ -104,12 +104,12 @@ impl WaylandState {
     /// Clears seat focus if this window holds it, but does **not** touch
     /// `mon.sel`. The caller is responsible for WM focus reconciliation.
     pub(crate) fn remove_window_tracking(&mut self, window: WindowId) {
-        if let Some(element) = self.window_index.get(&window).cloned() {
-            if self.space.elements().any(|mapped| mapped == &element) {
-                // Invalidate its old outputs before removing the geometry from Space.
-                self.request_window_render(&element);
-                self.space.unmap_elem(&element);
-            }
+        if let Some(element) = self.window_index.get(&window).cloned()
+            && self.space.elements().any(|mapped| mapped == &element)
+        {
+            // Invalidate its old outputs before removing the geometry from Space.
+            self.request_visible_window_render(&element);
+            self.space.unmap_elem(&element);
         }
         self.window_index.remove(&window);
         self.drop_window_animation(window);

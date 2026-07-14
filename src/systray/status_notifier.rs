@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, TryRecvError, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -416,27 +416,28 @@ fn run_systray_thread(
     let mut known_ids: HashSet<String> = HashSet::new();
     reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
     let _ = evt_tx.send(SystrayEvt::Ready);
-    let mut ticks = 0u32;
     let mut menu_session = None;
+    let refresh_interval = Duration::from_secs(1);
+    let mut next_refresh = Instant::now() + refresh_interval;
 
     loop {
-        loop {
-            match cmd_rx.try_recv() {
-                Ok(cmd) => {
-                    dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request)
+        let timeout = next_refresh.saturating_duration_since(Instant::now());
+        match cmd_rx.recv_timeout(timeout) {
+            Ok(cmd) => {
+                dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request);
+                while let Ok(cmd) = cmd_rx.try_recv() {
+                    dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request);
                 }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return,
             }
+            Err(RecvTimeoutError::Timeout) => {}
+            Err(RecvTimeoutError::Disconnected) => return,
         }
 
-        ticks = ticks.wrapping_add(1);
-        if ticks.is_multiple_of(33) {
+        if Instant::now() >= next_refresh {
             reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
             refresh_menu_session(&conn, &evt_tx, &mut menu_session);
+            next_refresh = Instant::now() + refresh_interval;
         }
-
-        std::thread::sleep(std::time::Duration::from_millis(30));
     }
 }
 
