@@ -4,45 +4,37 @@
 
 /// Action to perform on a boolean toggle setting.
 ///
-/// Replaces the old C pattern where `arg: u32` encoded toggle behavior:
-/// - 0 or 2: toggle the value
-/// - 1: set to false
-/// - else: set to true
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// Accepted CLI values (via clap):
+/// - `toggle` (default): flip the value
+/// - `on` | `true` | `1`: set to true
+/// - `off` | `false` | `0`: set to false
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    bincode::Decode,
+    bincode::Encode,
+    serde::Serialize,
+    serde::Deserialize,
+    clap::ValueEnum,
+)]
 pub enum ToggleAction {
     /// Toggle the current value (true → false, false → true).
     #[default]
     Toggle,
     /// Set the value to `false`.
+    #[value(name = "off", alias = "false", alias = "0")]
     SetFalse,
     /// Set the value to `true`.
+    #[value(name = "on", alias = "true", alias = "1")]
     SetTrue,
 }
 
 impl ToggleAction {
-    /// Parse from a raw u32 value (for compatibility with external commands).
-    ///
-    /// Returns Toggle for invalid values.
-    pub fn from_u32(v: u32) -> Self {
-        match v {
-            0 | 2 => Self::Toggle,
-            1 => Self::SetFalse,
-            _ => Self::SetTrue,
-        }
-    }
-
-    /// Parse from command argument string.
-    ///
-    /// Empty string defaults to Toggle, otherwise parses as u32.
-    pub fn from_arg(arg: &str) -> Self {
-        if arg.is_empty() {
-            Self::Toggle
-        } else {
-            arg.parse().ok().map(Self::from_u32).unwrap_or_default()
-        }
-    }
-
-    /// Apply this action to a boolean value.
+    /// Apply this action to a boolean value in-place.
     pub fn apply(self, value: &mut bool) {
         match self {
             Self::Toggle => *value = !*value,

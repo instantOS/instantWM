@@ -3,7 +3,7 @@ use instantwm::config::config_toml::ColorTheme;
 use instantwm::ipc_types::{
     ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind,
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
-    SpecialNext, TagCommand, ToggleCommand, Transform, VrrMode, WindowCommand,
+    SpecialNext, TagCommand, ToggleAction, ToggleCommand, Transform, VrrMode, WindowCommand,
 };
 use std::process;
 use std::str::FromStr;
@@ -176,12 +176,32 @@ pub enum WindowAction {
 }
 
 #[derive(Debug, Clone, Subcommand)]
-pub enum ToggleAction {
-    Animated { action: Option<String> },
-    FocusFollowsMouse { action: Option<String> },
-    FocusFollowsFloatMouse { action: Option<String> },
-    AltTag { action: Option<String> },
-    HideTags { action: Option<String> },
+pub enum ToggleCliAction {
+    /// Toggle window animations
+    Animated {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Toggle focus-follows-mouse
+    FocusFollowsMouse {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Toggle focus-follows-mouse for floating windows
+    FocusFollowsFloatMouse {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Toggle alt-tag mode
+    AltTag {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Show/hide tag bar
+    HideTags {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -273,7 +293,7 @@ pub enum CommandKind {
     },
     Toggle {
         #[command(subcommand)]
-        action: ToggleAction,
+        action: ToggleCliAction,
     },
     Spawn {
         command: Vec<String>,
@@ -456,15 +476,21 @@ impl From<CommandKind> for IpcCommand {
             }
             CommandKind::Toggle { action } => {
                 let cmd = match action {
-                    ToggleAction::Animated { action } => ToggleCommand::Animated(action),
-                    ToggleAction::FocusFollowsMouse { action } => {
-                        ToggleCommand::FocusFollowsMouse(action)
+                    ToggleCliAction::Animated { action } => {
+                        ToggleCommand::Animated(action.unwrap_or_default())
                     }
-                    ToggleAction::FocusFollowsFloatMouse { action } => {
-                        ToggleCommand::FocusFollowsFloatMouse(action)
+                    ToggleCliAction::FocusFollowsMouse { action } => {
+                        ToggleCommand::FocusFollowsMouse(action.unwrap_or_default())
                     }
-                    ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
-                    ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
+                    ToggleCliAction::FocusFollowsFloatMouse { action } => {
+                        ToggleCommand::FocusFollowsFloatMouse(action.unwrap_or_default())
+                    }
+                    ToggleCliAction::AltTag { action } => {
+                        ToggleCommand::AltTag(action.unwrap_or_default())
+                    }
+                    ToggleCliAction::HideTags { action } => {
+                        ToggleCommand::HideTags(action.unwrap_or_default())
+                    }
                 };
                 IpcCommand::Toggle(cmd)
             }
