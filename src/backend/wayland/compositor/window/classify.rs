@@ -26,6 +26,16 @@ pub enum WindowType {
     Dying,
 }
 
+impl WindowType {
+    /// Check if this type of window is an overlay type (Launcher, Overlay, or Unmanaged).
+    pub fn is_overlay(self) -> bool {
+        matches!(
+            self,
+            WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
+        )
+    }
+}
+
 impl WaylandState {
     /// Classify a window's type for focus and input routing decisions.
     ///
@@ -81,10 +91,7 @@ impl WaylandState {
     /// Returns true for overlay windows (dmenu, popups, menus) where
     /// keyboard input should go to the window without triggering keybindings.
     pub fn should_suppress_shortcuts_for(&self, window: &Window) -> bool {
-        match self.classify_window(window) {
-            WindowType::Overlay | WindowType::Launcher | WindowType::Unmanaged => true,
-            WindowType::Normal | WindowType::Dying => false,
-        }
+        self.classify_window(window).is_overlay()
     }
 
     /// Iterator over windows in z-order (top-to-bottom), along with their type.
@@ -100,10 +107,7 @@ impl WaylandState {
             .map(|w| (w, self.classify_window(w)))
             .collect();
 
-        windows.sort_by_key(|(_, typ)| match typ {
-            WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged => 0,
-            _ => 1,
-        });
+        windows.sort_by_key(|(_, typ)| if typ.is_overlay() { 0 } else { 1 });
         windows
     }
 }

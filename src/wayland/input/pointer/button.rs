@@ -121,6 +121,11 @@ fn handle_button_press(
         return false;
     }
 
+    if state.is_pointer_over_overlay(button.pointer_location) {
+        forward_button(state, pointer_handle, button);
+        return false;
+    }
+
     let clicked_win = state.logical_window_under_pointer(button.pointer_location);
     let pointer_region = {
         let mut ctx = wm.ctx();
@@ -244,6 +249,9 @@ fn handle_button_release(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     button: ButtonPress,
 ) -> bool {
+    // A release belongs to whichever interaction consumed its press. Finish
+    // WM drags even when the pointer has moved over an overlay; ordinary
+    // overlay releases are forwarded by the non-WM-drag path below.
     if finish_hover_resize_drag(wm, button) {
         return true;
     }

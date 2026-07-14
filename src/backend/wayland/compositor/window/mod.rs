@@ -109,12 +109,7 @@ impl WaylandState {
         let overlays: Vec<_> = self
             .windows_in_z_order()
             .into_iter()
-            .filter(|(_, typ)| {
-                matches!(
-                    typ,
-                    WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
-                )
-            })
+            .filter(|(_, typ)| typ.is_overlay())
             .map(|(w, _)| w.clone())
             .collect();
         for w in overlays {
@@ -138,12 +133,7 @@ impl WaylandState {
 
         self.windows_in_z_order()
             .into_iter()
-            .filter(|(_, typ)| {
-                matches!(
-                    typ,
-                    WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
-                )
-            })
+            .filter(|(_, typ)| typ.is_overlay())
             .filter_map(|(w, _)| {
                 let loc = self.space.element_location(w)?;
                 let mut window_rect = w.bbox_with_popups();
