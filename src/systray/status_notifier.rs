@@ -22,6 +22,10 @@ const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 const WORKER_RETRY_MIN: Duration = Duration::from_secs(1);
 const WORKER_RETRY_MAX: Duration = Duration::from_secs(60);
 
+/// Cross-thread handoff used only when an item handles `ContextMenu` by
+/// creating a native Wayland toplevel instead of exposing a DBusMenu.
+pub(crate) type NativeMenuRequestSlot = Arc<Mutex<Option<(Instant, Point)>>>;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Embedded StatusNotifierWatcher
 // ─────────────────────────────────────────────────────────────────────────────
@@ -183,12 +187,12 @@ struct StatusNotifierWorker {
 }
 
 impl StatusNotifierWorker {
-    fn spawn() -> std::io::Result<Self> {
+    fn spawn(native_menu_request: NativeMenuRequestSlot) -> std::io::Result<Self> {
         let (cmd_tx, cmd_rx) = channel::<SystrayCmd>();
         let (evt_tx, evt_rx) = channel::<SystrayEvt>();
         let thread = thread::Builder::new()
             .name("instantwm-wayland-systray".to_string())
-            .spawn(move || run_systray_thread(cmd_rx, evt_tx))?;
+            .spawn(move || run_systray_thread(cmd_rx, evt_tx, native_menu_request))?;
         Ok(Self {
             cmd_tx,
             evt_rx,
@@ -202,17 +206,19 @@ pub(crate) struct StatusNotifierRuntime {
     restart_at: Option<Instant>,
     retry_delay: Duration,
     next_menu_session_id: AtomicU64,
+    native_menu_request: NativeMenuRequestSlot,
 }
 
 impl StatusNotifierRuntime {
-    pub(crate) fn start() -> Self {
+    pub(crate) fn start(native_menu_request: NativeMenuRequestSlot) -> Self {
         let mut runtime = Self {
             worker: None,
             restart_at: None,
             retry_delay: WORKER_RETRY_MIN,
             next_menu_session_id: AtomicU64::new(1),
+            native_menu_request,
         };
-        match StatusNotifierWorker::spawn() {
+        match StatusNotifierWorker::spawn(Arc::clone(&runtime.native_menu_request)) {
             Ok(worker) => runtime.worker = Some(worker),
             Err(error) => {
                 log::warn!("status notifier: failed to spawn thread: {error}");
@@ -299,7 +305,7 @@ impl StatusNotifierRuntime {
     }
 
     fn restart_worker(&mut self) {
-        match StatusNotifierWorker::spawn() {
+        match StatusNotifierWorker::spawn(Arc::clone(&self.native_menu_request)) {
             Ok(worker) => {
                 log::info!("status notifier: restarting worker");
                 self.worker = Some(worker);
@@ -377,7 +383,11 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
         .unwrap_or("non-string panic payload")
 }
 
-fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) {
+fn run_systray_thread(
+    cmd_rx: Receiver<SystrayCmd>,
+    evt_tx: Sender<SystrayEvt>,
+    native_menu_request: NativeMenuRequestSlot,
+) {
     let conn = match Connection::session() {
         Ok(c) => c,
         Err(e) => {
@@ -412,7 +422,9 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
     loop {
         loop {
             match cmd_rx.try_recv() {
-                Ok(cmd) => dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session),
+                Ok(cmd) => {
+                    dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request)
+                }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return,
             }
@@ -598,6 +610,7 @@ fn dispatch_cmd(
     cmd: SystrayCmd,
     evt_tx: &Sender<SystrayEvt>,
     menu_session: &mut Option<DbusMenuSession>,
+    native_menu_request: &NativeMenuRequestSlot,
 ) {
     match cmd {
         SystrayCmd::Activate {
@@ -627,27 +640,40 @@ fn dispatch_cmd(
             service,
             path,
             position,
-        } => match open_dbus_menu(conn, session_id, &service, &path) {
-            Ok(Some(session)) => {
-                let view = session.last_view.clone();
-                *menu_session = Some(session);
-                send_menu_changed(evt_tx, session_id, Some(view));
+        } => {
+            if let Ok(mut request) = native_menu_request.lock() {
+                *request = None;
             }
-            Ok(None) => {
-                *menu_session = None;
-                send_menu_changed(evt_tx, session_id, None);
-                if let Err(error) = call_item_method(conn, &service, &path, "ContextMenu", position)
-                {
-                    log::warn!("status notifier: ContextMenu failed for {service}{path}: {error}");
+            match open_dbus_menu(conn, session_id, &service, &path) {
+                Ok(Some(session)) => {
+                    let view = session.last_view.clone();
+                    *menu_session = Some(session);
+                    send_menu_changed(evt_tx, session_id, Some(view));
+                }
+                Ok(None) => {
+                    *menu_session = None;
+                    send_menu_changed(evt_tx, session_id, None);
+                    record_native_menu_request(native_menu_request, position);
+                    if let Err(error) =
+                        call_item_method(conn, &service, &path, "ContextMenu", position)
+                    {
+                        clear_native_menu_request(native_menu_request);
+                        log::warn!(
+                            "status notifier: ContextMenu failed for {service}{path}: {error}"
+                        );
+                    }
+                }
+                Err(error) => {
+                    log::warn!("status notifier: failed to read menu for {service}{path}: {error}");
+                    *menu_session = None;
+                    send_menu_changed(evt_tx, session_id, None);
+                    record_native_menu_request(native_menu_request, position);
+                    if call_item_method(conn, &service, &path, "ContextMenu", position).is_err() {
+                        clear_native_menu_request(native_menu_request);
+                    }
                 }
             }
-            Err(error) => {
-                log::warn!("status notifier: failed to read menu for {service}{path}: {error}");
-                *menu_session = None;
-                send_menu_changed(evt_tx, session_id, None);
-                let _ = call_item_method(conn, &service, &path, "ContextMenu", position);
-            }
-        },
+        }
         SystrayCmd::MenuAction { session_id, action } => {
             if menu_session
                 .as_ref()
@@ -665,6 +691,18 @@ fn dispatch_cmd(
                 send_menu_changed(evt_tx, session_id, None);
             }
         }
+    }
+}
+
+fn record_native_menu_request(slot: &NativeMenuRequestSlot, position: Point) {
+    if let Ok(mut request) = slot.lock() {
+        *request = Some((Instant::now(), position));
+    }
+}
+
+fn clear_native_menu_request(slot: &NativeMenuRequestSlot) {
+    if let Ok(mut request) = slot.lock() {
+        *request = None;
     }
 }
 
@@ -1038,21 +1076,37 @@ fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
     use std::sync::mpsc::channel;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     use zbus::zvariant::{OwnedValue, Value};
 
     use super::{
         MenuAction, MenuToggle, StatusNotifierItem, StatusNotifierRuntime, StatusNotifierTray,
-        StatusNotifierWorker, WORKER_RETRY_MIN, dbus_icon_bytes_to_rgba,
-        menu_entry_from_properties, select_largest_valid_pixmap, strip_menu_mnemonics,
+        StatusNotifierWorker, WORKER_RETRY_MIN, clear_native_menu_request, dbus_icon_bytes_to_rgba,
+        menu_entry_from_properties, record_native_menu_request, select_largest_valid_pixmap,
+        strip_menu_mnemonics,
     };
 
     fn string_value(value: &str) -> OwnedValue {
         OwnedValue::try_from(Value::from(value)).expect("string is representable as an owned value")
+    }
+
+    #[test]
+    fn native_menu_request_handoff_records_and_clears_the_anchor() {
+        let slot = Arc::new(Mutex::new(None));
+        let anchor = crate::types::Point::new(1910, 16);
+
+        record_native_menu_request(&slot, anchor);
+        assert_eq!(
+            slot.lock().unwrap().as_ref().map(|(_, point)| *point),
+            Some(anchor)
+        );
+
+        clear_native_menu_request(&slot);
+        assert!(slot.lock().unwrap().is_none());
     }
 
     #[test]
@@ -1143,6 +1197,7 @@ mod tests {
             restart_at: None,
             retry_delay: WORKER_RETRY_MIN,
             next_menu_session_id: AtomicU64::new(1),
+            native_menu_request: Arc::new(Mutex::new(None)),
         };
         let mut tray = StatusNotifierTray {
             items: vec![StatusNotifierItem {

@@ -542,7 +542,7 @@ pub fn build_bar_buffers(
 }
 
 /// Poll Wayland systray events once and mark the bar dirty when icons changed.
-pub fn poll_systray(wm: &mut Wm, state: &mut WaylandState) {
+pub fn poll_systray(wm: &mut Wm) {
     let core = CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
@@ -556,9 +556,6 @@ pub fn poll_systray(wm: &mut Wm, state: &mut WaylandState) {
 
     if let Some(runtime) = data.status_notifier_runtime.as_mut() {
         let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut wm.tray_menu);
-        if wm.tray_menu.current().is_some() {
-            state.cancel_expected_systray_menu_toplevel();
-        }
         if dirty {
             core.bar.mark_dirty();
         }
