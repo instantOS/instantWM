@@ -170,18 +170,20 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(existing) = existing {
+                self.request_window_render(&existing);
                 self.space.map_element(existing.clone(), geo.loc, false);
                 self.space.raise_element(&existing, false);
                 focus_overlay_if_launcher(self, &existing);
                 trigger_pointer_focus_update(self);
+                self.request_window_render(&existing);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
                 self.space.map_element(element.clone(), geo.loc, false);
                 self.space.raise_element(&element, false);
                 focus_overlay_if_launcher(self, &element);
                 trigger_pointer_focus_update(self);
+                self.request_window_render(&element);
             }
-            self.request_render();
             return;
         }
 
@@ -251,7 +253,7 @@ impl XwmHandler for WaylandState {
         self.space.raise_element(&element, false);
         focus_overlay_if_launcher(self, &element);
         trigger_pointer_focus_update(self);
-        self.request_render();
+        self.request_window_render(&element);
     }
 
     fn unmapped_window(
@@ -280,6 +282,7 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
+                self.request_window_render(&element);
                 self.space.unmap_elem(&element);
             }
         }
@@ -291,7 +294,6 @@ impl XwmHandler for WaylandState {
         if was_focused {
             self.restore_focus_after_overlay();
         }
-        self.request_render();
     }
 
     fn destroyed_window(
@@ -321,6 +323,7 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
+                self.request_window_render(&element);
                 self.space.unmap_elem(&element);
             }
         }
@@ -329,7 +332,6 @@ impl XwmHandler for WaylandState {
         // Recover mon.sel if it was cleared by detach_z_order, then
         // re-apply seat focus.
         self.restore_focus_after_overlay();
-        self.request_render();
     }
 
     fn configure_request(
@@ -383,10 +385,13 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
+                // A configure can cross outputs: invalidate both the previous
+                // and new geometry without dirtying unrelated outputs.
+                self.request_window_render(&element);
                 self.space.map_element(element.clone(), geometry.loc, false);
                 self.space.raise_element(&element, false);
+                self.request_window_render(&element);
             }
-            self.request_render();
             return;
         };
 
@@ -406,8 +411,14 @@ impl XwmHandler for WaylandState {
             geometry.size.h,
         );
         let mode = self.default_window_move_mode();
+        let element = self.find_window(win).cloned();
+        if let Some(element) = element.as_ref() {
+            self.request_window_render(element);
+        }
         self.set_window_target_rect(win, rect, mode);
-        self.request_render();
+        if let Some(element) = element.as_ref() {
+            self.request_window_render(element);
+        }
     }
 
     fn property_notify(
