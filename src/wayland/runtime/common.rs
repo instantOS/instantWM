@@ -295,6 +295,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 );
             }
             WmCommand::BeginResize { win, dir } => handle_begin_resize(wm, state, win, dir),
+            WmCommand::CancelInteractiveDrag(reason) => cancel_interactive_drag(wm, reason),
             WmCommand::UpdateProperties { win, properties } => {
                 let mut ctx = wm.ctx();
                 crate::client::handle_property_change(ctx.core_mut().state_mut(), win, &properties);
@@ -627,11 +628,39 @@ fn handle_map_window(
 
 fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
+    let cancelled_drag = if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
+        crate::mouse::drag::lifecycle::cancel_window(
+            wl_ctx.core.drag_state_mut(),
+            wl_ctx.wayland,
+            win,
+            crate::core_state::DragCancelReason::WindowDestroyed,
+        )
+        .is_some()
+    } else {
+        false
+    };
+    if cancelled_drag {
+        crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Default);
+        crate::mouse::drag::clear_bar_hover(&mut ctx);
+    }
     let g = ctx.core_mut().state_mut();
     g.detach(win);
     g.detach_z_order(win);
     g.model.remove_client(win);
     crate::focus::focus(&mut ctx, None);
+}
+
+fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelReason) {
+    let mut ctx = wm.ctx();
+    let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx else {
+        return;
+    };
+    if crate::mouse::drag::lifecycle::cancel(wl_ctx.core.drag_state_mut(), wl_ctx.wayland, reason)
+        .is_some()
+    {
+        crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Default);
+        crate::mouse::drag::clear_bar_hover(&mut ctx);
+    }
 }
 
 fn handle_activate_window(wm: &mut Wm, win: crate::types::WindowId) {
@@ -658,12 +687,25 @@ fn handle_begin_resize(
     let mut ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
         let point = state.runtime.pointer_location;
-        crate::wayland::input::pointer::drag::hover_resize_drag_begin(
-            wl_ctx,
-            crate::types::Point::new(point.x.round() as i32, point.y.round() as i32),
-            crate::types::MouseButton::Left,
-        );
-        state.begin_interactive_resize(win);
+        let start = crate::types::Point::new(point.x.round() as i32, point.y.round() as i32);
+        let Some(geometry) = wl_ctx.core.model().client(win).map(|client| client.geo) else {
+            return;
+        };
+        if crate::mouse::drag::lifecycle::begin_resize(
+            wl_ctx.core.drag_state_mut(),
+            wl_ctx.wayland,
+            crate::mouse::drag::lifecycle::ResizeDragParams {
+                win,
+                button: crate::types::MouseButton::Left,
+                direction: dir,
+                start,
+                geometry,
+            },
+        )
+        .is_err()
+        {
+            return;
+        }
         crate::mouse::set_cursor_style(
             &mut crate::contexts::WmCtx::Wayland(wl_ctx.reborrow()),
             crate::types::AltCursor::Resize(dir),

@@ -268,73 +268,167 @@ pub enum DragType {
     Resize(ResizeDirection),
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DragInteraction {
-    pub active: bool,
-    pub win: WindowId,
-    pub button: MouseButton,
-    /// Whether the pointer has exceeded the drag threshold and we are
-    /// actively moving/resizing.  When `false`, releasing the button
-    /// triggers the click action instead (focus/hide/zoom).
-    pub dragging: bool,
-    pub drag_type: DragType,
-    pub win_start_geo: Rect,
-    pub start_point: Point,
-    pub last_root_point: Point,
+    win: WindowId,
+    button: MouseButton,
+    drag_type: DragType,
+    win_start_geo: Rect,
+    start_point: Point,
+    last_root_point: Point,
     /// Geometry to restore when the window is re-tiled (e.g. dropped on
     /// the bar).  For windows that were already floating this equals
     /// `win_start_geo`; for tiled windows promoted during the drag it
     /// preserves the saved float dimensions.
-    pub drop_restore_geo: Rect,
+    drop_restore_geo: Rect,
+    was_focused: bool,
+    was_hidden: bool,
+    suppress_click_action: bool,
+}
+
+impl DragInteraction {
+    fn immediate(
+        win: WindowId,
+        button: MouseButton,
+        drag_type: DragType,
+        start: Point,
+        geo: Rect,
+    ) -> Self {
+        Self {
+            win,
+            button,
+            drag_type,
+            start_point: start,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: start,
+            was_focused: false,
+            was_hidden: false,
+            suppress_click_action: false,
+        }
+    }
+
+    fn armed(params: ArmedDragParams) -> Self {
+        Self {
+            win: params.win,
+            button: params.button,
+            drag_type: DragType::Move,
+            start_point: params.start,
+            win_start_geo: params.geometry,
+            drop_restore_geo: params.restore_geometry,
+            last_root_point: params.start,
+            was_focused: params.was_focused,
+            was_hidden: params.was_hidden,
+            suppress_click_action: params.suppress_click_action,
+        }
+    }
+
+    pub fn win(&self) -> WindowId {
+        self.win
+    }
+    pub fn button(&self) -> MouseButton {
+        self.button
+    }
+    pub fn drag_type(&self) -> DragType {
+        self.drag_type
+    }
+    pub fn win_start_geo(&self) -> Rect {
+        self.win_start_geo
+    }
+    pub fn start_point(&self) -> Point {
+        self.start_point
+    }
+    pub fn last_root_point(&self) -> Point {
+        self.last_root_point
+    }
+    pub fn drop_restore_geo(&self) -> Rect {
+        self.drop_restore_geo
+    }
+    pub fn was_focused(&self) -> bool {
+        self.was_focused
+    }
+    pub fn was_hidden(&self) -> bool {
+        self.was_hidden
+    }
+    pub fn suppress_click_action(&self) -> bool {
+        self.suppress_click_action
+    }
+
+    fn record_motion(&mut self, point: Point) {
+        self.last_root_point = point;
+    }
+
+    fn activate_as(&mut self, drag_type: DragType, start: Point, geo: Rect) {
+        self.drag_type = drag_type;
+        self.start_point = start;
+        self.last_root_point = start;
+        self.win_start_geo = geo;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum InteractiveDrag {
+    #[default]
+    Idle,
+    Armed(DragInteraction),
+    Active(DragInteraction),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DragAlreadyActive;
+
+impl std::fmt::Display for DragAlreadyActive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("another interactive drag is already armed or active")
+    }
+}
+
+impl std::error::Error for DragAlreadyActive {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DragNotArmed;
+
+impl std::fmt::Display for DragNotArmed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("no armed drag is available to activate")
+    }
+}
+
+impl std::error::Error for DragNotArmed {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragCancelReason {
+    WindowDestroyed,
+    SessionLocked,
+    InputDeviceRemoved,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ArmedDragParams {
+    pub win: WindowId,
+    pub button: MouseButton,
+    pub start: Point,
+    pub geometry: Rect,
+    pub restore_geometry: Rect,
     pub was_focused: bool,
     pub was_hidden: bool,
     pub suppress_click_action: bool,
 }
 
-impl DragInteraction {
-    /// Create a new Move drag interaction.
-    ///
-    /// Note: This constructor is used exclusively for immediate-start drag contexts
-    /// (such as keyboard-driven moves or client/Wayland click-drags), and therefore
-    /// initializes `dragging` as `true` immediately.
-    pub fn new_move(win: WindowId, button: MouseButton, start: Point, geo: Rect) -> Self {
-        Self {
-            active: true,
-            win,
-            button,
-            dragging: true,
-            drag_type: DragType::Move,
-            start_point: start,
-            win_start_geo: geo,
-            drop_restore_geo: geo,
-            last_root_point: start,
-            ..Default::default()
+impl InteractiveDrag {
+    pub fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle)
+    }
+    pub fn armed(&self) -> Option<&DragInteraction> {
+        match self {
+            Self::Armed(drag) => Some(drag),
+            _ => None,
         }
     }
-
-    /// Create a new Resize drag interaction.
-    ///
-    /// Note: This constructor is used exclusively for immediate-start resize contexts
-    /// (such as keyboard-driven resizing or direct click-to-resize/Wayland client resize),
-    /// and therefore initializes `dragging` as `true` immediately.
-    pub fn new_resize(
-        win: WindowId,
-        button: MouseButton,
-        dir: ResizeDirection,
-        start: Point,
-        geo: Rect,
-    ) -> Self {
-        Self {
-            active: true,
-            win,
-            button,
-            dragging: true,
-            drag_type: DragType::Resize(dir),
-            start_point: start,
-            win_start_geo: geo,
-            drop_restore_geo: geo,
-            last_root_point: start,
-            ..Default::default()
+    pub fn active(&self) -> Option<&DragInteraction> {
+        match self {
+            Self::Active(drag) => Some(drag),
+            _ => None,
         }
     }
 }
@@ -409,16 +503,140 @@ impl HoverOffer {
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
     pub tag: TagDragState,
-    pub interactive: DragInteraction,
+    interactive: InteractiveDrag,
     pub gesture: GestureInteraction,
     pub bar_active: bool,
     pub hover_offer: HoverOffer,
 }
 
 impl DragState {
+    pub fn interactive(&self) -> &InteractiveDrag {
+        &self.interactive
+    }
+
+    pub fn active_interaction(&self) -> Option<&DragInteraction> {
+        self.interactive.active()
+    }
+
+    pub fn armed_interaction(&self) -> Option<&DragInteraction> {
+        self.interactive.armed()
+    }
+
+    pub fn interaction_button(&self) -> Option<MouseButton> {
+        self.active_interaction()
+            .or_else(|| self.armed_interaction())
+            .map(DragInteraction::button)
+    }
+
+    pub fn begin_move(
+        &mut self,
+        win: WindowId,
+        button: MouseButton,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragAlreadyActive> {
+        self.begin_active(DragInteraction::immediate(
+            win,
+            button,
+            DragType::Move,
+            start,
+            geo,
+        ))
+    }
+
+    pub fn begin_resize(
+        &mut self,
+        win: WindowId,
+        button: MouseButton,
+        dir: ResizeDirection,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragAlreadyActive> {
+        self.begin_active(DragInteraction::immediate(
+            win,
+            button,
+            DragType::Resize(dir),
+            start,
+            geo,
+        ))
+    }
+
+    fn begin_active(&mut self, drag: DragInteraction) -> Result<(), DragAlreadyActive> {
+        if !self.interactive.is_idle() {
+            return Err(DragAlreadyActive);
+        }
+        self.interactive = InteractiveDrag::Active(drag);
+        Ok(())
+    }
+
+    pub fn arm_title_drag(&mut self, params: ArmedDragParams) -> Result<(), DragAlreadyActive> {
+        if !self.interactive.is_idle() {
+            return Err(DragAlreadyActive);
+        }
+        self.interactive = InteractiveDrag::Armed(DragInteraction::armed(params));
+        Ok(())
+    }
+
+    pub fn activate_armed(
+        &mut self,
+        drag_type: DragType,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragNotArmed> {
+        let mut drag = match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Armed(drag) => drag,
+            other => {
+                self.interactive = other;
+                return Err(DragNotArmed);
+            }
+        };
+        drag.activate_as(drag_type, start, geo);
+        self.interactive = InteractiveDrag::Active(drag);
+        Ok(())
+    }
+
+    pub fn record_interactive_motion(&mut self, point: Point) {
+        match &mut self.interactive {
+            InteractiveDrag::Armed(drag) | InteractiveDrag::Active(drag) => {
+                drag.record_motion(point)
+            }
+            InteractiveDrag::Idle => {}
+        }
+    }
+
+    pub fn finish_active(&mut self, button: MouseButton) -> Option<DragInteraction> {
+        if !self
+            .active_interaction()
+            .is_some_and(|drag| drag.button() == button)
+        {
+            return None;
+        }
+        match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Active(drag) => Some(drag),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn finish_armed(&mut self) -> Option<DragInteraction> {
+        match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Armed(drag) => Some(drag),
+            other => {
+                self.interactive = other;
+                None
+            }
+        }
+    }
+
+    pub fn cancel_interactive(&mut self) -> Option<DragInteraction> {
+        match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Idle => None,
+            InteractiveDrag::Armed(drag) | InteractiveDrag::Active(drag) => Some(drag),
+        }
+    }
+
     #[inline]
     pub fn any_drag_active(&self) -> bool {
-        self.interactive.active || self.tag.active || self.gesture.active
+        !self.interactive.is_idle() || self.tag.active || self.gesture.active
     }
 
     #[inline]

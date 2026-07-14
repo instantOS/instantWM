@@ -98,6 +98,8 @@ pub enum WmCommand {
         win: WindowId,
         dir: crate::types::ResizeDirection,
     },
+    /// Cancel any compositor-driven move or resize interaction.
+    CancelInteractiveDrag(crate::core_state::DragCancelReason),
     /// Update a window's properties (title, class, etc.).
     UpdateProperties {
         win: WindowId,

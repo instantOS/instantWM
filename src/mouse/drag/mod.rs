@@ -47,6 +47,7 @@ use crate::types::*;
 
 // Submodules
 pub mod gesture;
+pub mod lifecycle;
 pub mod move_drop;
 pub mod tag;
 pub mod title;
@@ -100,8 +101,14 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
                 crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
             }
 
-            wl.core.drag_state_mut().interactive =
-                crate::core_state::DragInteraction::new_move(win, MouseButton::Left, root, geo);
+            if wl
+                .core
+                .drag_state_mut()
+                .begin_move(win, MouseButton::Left, root, geo)
+                .is_err()
+            {
+                return;
+            }
             crate::mouse::set_cursor_style(
                 &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
                 crate::types::AltCursor::Move,
@@ -113,8 +120,9 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
 
 /// Shared post-move-drag teardown used by both X11 and Wayland backends.
 ///
-/// Clears the active drag state, restores the bar hover highlight, and runs
-/// the shared drop-completion logic (bar drop, edge snap, monitor switch).
+/// Restores the bar hover highlight and runs the shared drop-completion logic
+/// (bar drop, edge snap, monitor switch). The caller must finish the
+/// interaction lifecycle before invoking this cleanup.
 pub fn finish_drag_move(
     ctx: &mut WmCtx,
     win: WindowId,
@@ -122,7 +130,7 @@ pub fn finish_drag_move(
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
 ) {
-    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction::default();
+    debug_assert!(ctx.core().drag_state().interactive().is_idle());
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
     complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
@@ -130,10 +138,11 @@ pub fn finish_drag_move(
 
 /// Shared post-resize-drag teardown used by both X11 and Wayland backends.
 ///
-/// Clears the active drag state, resets the cursor to the default, handles
-/// potential monitor switch, and re-raises the client so it stays on top.
+/// Resets the cursor to the default, handles a potential monitor switch, and
+/// re-raises the client. The caller must finish the interaction lifecycle
+/// before invoking this cleanup.
 pub fn finish_drag_resize(ctx: &mut WmCtx, win: WindowId) {
-    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction::default();
+    debug_assert!(ctx.core().drag_state().interactive().is_idle());
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);

@@ -105,6 +105,16 @@ pub trait PointerOps {
     fn warp_pointer(&self, x: f64, y: f64);
 }
 
+/// Backend effects associated with the lifetime of a user-driven resize.
+///
+/// X11 implements this as a no-op because its synchronous pointer grab owns
+/// the resize lifetime. Wayland projects the lifetime into xdg-toplevel's
+/// `resizing` state.
+pub trait InteractiveResizeOps {
+    fn begin_interactive_resize(&self, window: WindowId);
+    fn end_interactive_resize(&self, window: WindowId);
+}
+
 /// Output discovery and configuration.
 pub trait OutputOps {
     /// Set monitor configuration. Every active backend owns output policy.

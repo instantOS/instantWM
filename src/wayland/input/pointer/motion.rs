@@ -653,7 +653,7 @@ fn handle_wm_drag_motion(
         let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
-    if ctx.core().drag_state().interactive.active {
+    if ctx.core().drag_state().armed_interaction().is_some() {
         crate::mouse::title_drag_motion(&mut ctx, root);
     }
     if ctx.core().drag_state().gesture.active {

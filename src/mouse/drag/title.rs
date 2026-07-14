@@ -8,6 +8,7 @@ use crate::contexts::WmCtx;
 use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::cursor::set_cursor_style;
+use crate::mouse::drag::lifecycle::activate_armed_resize;
 use crate::mouse::drag::move_drop::promote_to_floating;
 use crate::mouse::resize::resize_mouse_directional;
 use crate::mouse::warp;
@@ -45,32 +46,33 @@ pub fn title_drag_begin(
         }
         None => return false,
     };
-    ctx.core_mut().drag_state_mut().interactive = crate::core_state::DragInteraction {
-        active: true,
-        win,
-        button: btn,
-        was_focused: sel == Some(win),
-        was_hidden: ctx
-            .core()
-            .model()
-            .client(win)
-            .is_some_and(|client| client.is_hidden),
-        start_point: click_root,
-        win_start_geo,
-        drop_restore_geo,
-        last_root_point: click_root,
-        dragging: false,
-        suppress_click_action,
-        drag_type: crate::core_state::DragType::Move,
-    };
-    true
+    let was_hidden = ctx
+        .core()
+        .model()
+        .client(win)
+        .is_some_and(|client| client.is_hidden);
+    ctx.core_mut()
+        .drag_state_mut()
+        .arm_title_drag(crate::core_state::ArmedDragParams {
+            win,
+            button: btn,
+            start: click_root,
+            geometry: win_start_geo,
+            restore_geometry: drop_restore_geo,
+            was_focused: sel == Some(win),
+            was_hidden,
+            suppress_click_action,
+        })
+        .is_ok()
 }
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
 fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
     let (win, btn, start_point) = {
-        let drag = &ctx.core().drag_state().interactive;
-        (drag.win, drag.button, drag.start_point)
+        let Some(drag) = ctx.core().drag_state().armed_interaction() else {
+            return false;
+        };
+        (drag.win(), drag.button(), drag.start_point())
     };
     let is_right_click = btn == MouseButton::Right;
 
@@ -95,14 +97,18 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         let warp_point = Point::new(warp_x, warp_y);
 
         if let WmCtx::Wayland(wl) = ctx {
-            wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
-            wl.core.drag_state_mut().interactive = crate::core_state::DragInteraction::new_resize(
-                win,
-                btn,
+            if activate_armed_resize(
+                wl.core.drag_state_mut(),
+                wl.wayland,
                 dir,
                 warp_point,
                 current_geo,
-            );
+            )
+            .is_err()
+            {
+                return false;
+            }
+            wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
             set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
         }
         return true;
@@ -114,9 +120,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         return false;
     };
 
-    if anchor_rebased {
-        ctx.core_mut().drag_state_mut().interactive.win_start_geo = current_geo;
-        ctx.core_mut().drag_state_mut().interactive.start_point = root;
+    let start = if anchor_rebased {
+        root
     } else {
         warp::warp_into(ctx, win);
         let ptr = ctx.pointer_backend().pointer_location().unwrap_or(root);
@@ -127,12 +132,14 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         let clamped_y = ptr
             .y
             .clamp(current_geo.y + pad, current_geo.y + current_geo.h - pad);
-        ctx.core_mut().drag_state_mut().interactive.start_point = Point::new(clamped_x, clamped_y);
-    }
+        Point::new(clamped_x, clamped_y)
+    };
 
     set_cursor_style(ctx, AltCursor::Move);
-    ctx.core_mut().drag_state_mut().interactive.dragging = true;
-    title_drag_motion(ctx, root)
+    ctx.core_mut()
+        .drag_state_mut()
+        .activate_armed(crate::core_state::DragType::Move, start, current_geo)
+        .is_ok()
 }
 
 /// Process a pointer motion event during an active title drag.
@@ -141,27 +148,22 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed.
 pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
-    if !ctx.core().drag_state().interactive.active {
+    let Some(armed) = ctx.core().drag_state().armed_interaction() else {
         return false;
-    }
-    ctx.core_mut().state_mut().drag.interactive.last_root_point = root;
+    };
 
-    if ctx.core().drag_state().interactive.dragging {
-        // Once dragging is active the unified handler
-        // (hover_resize_drag_motion) drives the interaction.
-        return false;
-    }
-
-    let td = &ctx.core_mut().drag_state_mut().interactive;
-    if root.manhattan_distance(&td.start_point) <= DRAG_THRESHOLD {
+    if root.manhattan_distance(&armed.start_point()) <= DRAG_THRESHOLD {
+        ctx.core_mut()
+            .drag_state_mut()
+            .record_interactive_motion(root);
         return false;
     }
 
     // Threshold exceeded — start the drag action.
-    let drag = &ctx.core().drag_state().interactive;
-    let win = drag.win;
-    let btn = drag.button;
-    let was_hidden = drag.was_hidden;
+    let drag = armed.clone();
+    let win = drag.win();
+    let btn = drag.button();
+    let was_hidden = drag.was_hidden();
     let is_right_click = btn == MouseButton::Right;
 
     if was_hidden {
@@ -174,9 +176,11 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         return title_drag_start_wayland(ctx, root);
     }
 
-    // X11 specific start logic
-    ctx.core_mut().drag_state_mut().interactive.dragging = true;
-    ctx.core_mut().drag_state_mut().interactive.active = false;
+    // X11 uses a nested synchronous grab loop. Consume the armed click
+    // interaction before starting the immediate move/resize interaction.
+    let Some(armed) = ctx.core_mut().drag_state_mut().finish_armed() else {
+        return false;
+    };
 
     if is_right_click {
         if let Some(c) = ctx.core().model().client(win) {
@@ -190,7 +194,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         }
     } else {
         // Pass saved floating dimensions to preserve them when dropping on the bar
-        let float_restore_geo = ctx.core_mut().state_mut().drag.interactive.drop_restore_geo;
+        let float_restore_geo = armed.drop_restore_geo();
         if let WmCtx::X11(x11) = ctx {
             let mut wmctx = WmCtx::X11(x11.reborrow());
             warp::warp_into(&mut wmctx, win);
@@ -203,23 +207,17 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 /// Finish a title drag interaction (button release without exceeding the
 /// drag threshold).  Performs the click action (focus / hide / zoom).
 ///
-/// When the drag threshold *was* exceeded (`dragging == true`), the
-/// unified `hover_resize_drag_finish` handles the drop instead.
+/// Once the drag threshold promotes the interaction to `Active`, the unified
+/// `hover_resize_drag_finish` handles the drop instead.
 pub fn title_drag_finish(ctx: &mut WmCtx) {
-    if !ctx.core_mut().drag_state_mut().interactive.active
-        || ctx.core_mut().drag_state_mut().interactive.dragging
-    {
+    let Some(drag) = ctx.core_mut().drag_state_mut().finish_armed() else {
         return;
-    }
-
-    let drag = &ctx.core().drag_state().interactive;
-    let win = drag.win;
-    let is_right_click = drag.button == MouseButton::Right;
-    let was_focused = drag.was_focused;
-    let was_hidden = drag.was_hidden;
-    let suppress_click_action = drag.suppress_click_action;
-
-    ctx.core_mut().drag_state_mut().interactive.active = false;
+    };
+    let win = drag.win();
+    let is_right_click = drag.button() == MouseButton::Right;
+    let was_focused = drag.was_focused();
+    let was_hidden = drag.was_hidden();
+    let suppress_click_action = drag.suppress_click_action();
     if suppress_click_action {
         return;
     }

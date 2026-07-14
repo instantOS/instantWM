@@ -67,19 +67,26 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         edge_snap_indicator: None,
     };
 
-    ctx.core.drag_state_mut().interactive =
-        crate::core_state::DragInteraction::new_move(win, btn, start, grab_start_rect);
+    if ctx
+        .core
+        .drag_state_mut()
+        .begin_move(win, btn, start, grab_start_rect)
+        .is_err()
+    {
+        return;
+    }
 
     crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
         if let BackendEvent::Motion { root, .. } = event {
             let root = *root;
-            ctx.core.drag_state_mut().interactive.last_root_point = root;
+            ctx.core.drag_state_mut().record_interactive_motion(root);
             let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
             on_motion(&mut wm_ctx, win, root, root, &mut state);
         }
         true
     });
 
+    let _ = crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn);
     let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     crate::mouse::drag::finish_drag_move(
         &mut wm_ctx,

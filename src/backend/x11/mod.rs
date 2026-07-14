@@ -277,6 +277,12 @@ impl WindowOps for X11BackendRef<'_> {
     }
 }
 
+impl crate::backend::InteractiveResizeOps for X11BackendRef<'_> {
+    fn begin_interactive_resize(&self, _window: WindowId) {}
+
+    fn end_interactive_resize(&self, _window: WindowId) {}
+}
+
 impl PointerOps for X11BackendRef<'_> {
     fn pointer_location(&self) -> Option<Point> {
         let root = self.conn.setup().roots[self.screen_num].root;

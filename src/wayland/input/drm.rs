@@ -112,7 +112,15 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Ignored
         }
         InputEvent::DeviceRemoved { device } => {
+            use smithay::reexports::input::DeviceCapability;
+
+            let removed_pointer = device.has_capability(DeviceCapability::Pointer);
             state.runtime.tracked_devices.retain(|d| d != &device);
+            if removed_pointer {
+                state.push_command(WmCommand::CancelInteractiveDrag(
+                    crate::core_state::DragCancelReason::InputDeviceRemoved,
+                ));
+            }
             LibinputEventOutcome::Ignored
         }
         InputEvent::Keyboard { event } => {

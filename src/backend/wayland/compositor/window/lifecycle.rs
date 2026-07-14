@@ -112,6 +112,7 @@ impl WaylandState {
             self.space.unmap_elem(&element);
         }
         self.window_index.remove(&window);
+        self.active_resizes.remove(&window);
         self.drop_window_animation(window);
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);

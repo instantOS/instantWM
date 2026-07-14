@@ -266,7 +266,8 @@ fn handle_button_release(
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
 
-    if wm.core.drag.interactive.active && button.wm_button == Some(wm.core.drag.interactive.button)
+    if wm.core.drag.armed_interaction().is_some()
+        && button.wm_button == wm.core.drag.interaction_button()
     {
         let mut ctx = wm.ctx();
         crate::mouse::title_drag_finish(&mut ctx);
@@ -295,7 +296,7 @@ fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
 }
 
 fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
-    (wm.core.drag.interactive.active && released_btn == Some(wm.core.drag.interactive.button))
+    (released_btn.is_some() && wm.core.drag.interaction_button() == released_btn)
         || (wm.core.drag.tag.active && released_btn == Some(wm.core.drag.tag.button))
         || (wm.core.drag.gesture.active && released_btn == Some(wm.core.drag.gesture.button))
 }

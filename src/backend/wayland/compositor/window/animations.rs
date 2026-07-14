@@ -41,8 +41,7 @@ impl WaylandState {
 
     pub(crate) fn interactive_motion_active(&self) -> bool {
         self.globals()
-            .map(|g| g.drag.interactive.active && g.drag.interactive.dragging)
-            .unwrap_or(false)
+            .is_some_and(|g| g.drag.active_interaction().is_some())
     }
 
     pub(crate) fn default_window_move_mode(&self) -> WindowMoveMode {
