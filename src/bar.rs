@@ -4,7 +4,6 @@ pub mod paint;
 pub(crate) mod renderer;
 pub(crate) mod scene;
 pub mod status;
-pub(crate) mod systray;
 pub mod wayland;
 
 pub use renderer::reset_bar_common;
@@ -69,7 +68,7 @@ pub struct MonitorHitCache {
     pub layout_end: i32,
     pub shutdown_end: i32,
     pub status_hit_x: i32,
-    /// Systray item hit slots for Wayland bars. Populated during rendering.
+    /// StatusNotifier item hit slots for compositor-rendered bars.
     pub systray_slots: Vec<SystrayHitSlot>,
     /// Bar-native DBusMenu item hit slots, populated during rendering.
     pub systray_menu_slots: Vec<SystrayHitSlot>,

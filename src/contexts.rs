@@ -14,7 +14,7 @@ use crate::core_state::{
 };
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
-use crate::types::{MonitorId, Rect, Systray, WaylandSystray, WindowId};
+use crate::types::{MonitorId, Rect, WindowId, XEmbedTray};
 
 pub struct CoreCtx<'a> {
     pub(crate) g: &'a mut CoreState,
@@ -324,7 +324,7 @@ pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub x11: X11BackendRef<'a>,
     pub x11_runtime: &'a mut X11RuntimeConfig,
-    pub systray: Option<&'a mut Systray>,
+    pub xembed_tray: Option<&'a mut XEmbedTray>,
 }
 
 impl<'a> WmCtxX11<'a> {
@@ -333,7 +333,7 @@ impl<'a> WmCtxX11<'a> {
             core: self.core.reborrow(),
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
             x11_runtime: self.x11_runtime,
-            systray: self.systray.as_deref_mut(),
+            xembed_tray: self.xembed_tray.as_deref_mut(),
         }
     }
 
@@ -345,7 +345,6 @@ impl<'a> WmCtxX11<'a> {
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
     pub wayland: &'a crate::backend::wayland::WaylandBackend,
-    pub wayland_systray: &'a mut WaylandSystray,
 }
 
 impl<'a> WmCtxWayland<'a> {
@@ -353,7 +352,6 @@ impl<'a> WmCtxWayland<'a> {
         WmCtxWayland {
             core: self.core.reborrow(),
             wayland: self.wayland,
-            wayland_systray: self.wayland_systray,
         }
     }
 }

@@ -6,8 +6,10 @@ use std::thread;
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::{OwnedValue, Value};
 
-use crate::bar::systray::{MenuAction, MenuEntry, MenuToggle, MenuView};
-use crate::types::{MouseButton, Point, WaylandSystray, WaylandSystrayItem};
+use crate::systray::{
+    MenuAction, MenuEntry, MenuToggle, MenuView, StatusNotifierItem, StatusNotifierTray,
+};
+use crate::types::{MouseButton, Point};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
@@ -141,7 +143,7 @@ enum SystrayCmd {
 
 #[derive(Debug)]
 enum SystrayEvt {
-    ItemUpsert(WaylandSystrayItem),
+    ItemUpsert(StatusNotifierItem),
     ItemRemoved(String, String),
     MenuChanged(Option<MenuView>),
 }
@@ -159,15 +161,13 @@ impl DbusMenuSession {
     }
 }
 
-pub struct WaylandSystrayRuntime {
+pub(crate) struct StatusNotifierRuntime {
     cmd_tx: Sender<SystrayCmd>,
     evt_rx: Receiver<SystrayEvt>,
-    /// Track if the systray thread is still running
-    thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
-impl WaylandSystrayRuntime {
-    pub fn start() -> Option<Self> {
+impl StatusNotifierRuntime {
+    pub(crate) fn start() -> Option<Self> {
         let (cmd_tx, cmd_rx) = channel::<SystrayCmd>();
         let (evt_tx, evt_rx) = channel::<SystrayEvt>();
 
@@ -176,46 +176,30 @@ impl WaylandSystrayRuntime {
             run_systray_thread(cmd_rx, evt_tx);
         });
 
-        let thread_handle = match spawn {
-            Ok(handle) => Some(handle),
-            Err(e) => {
-                log::warn!("wayland systray: failed to spawn thread: {e}");
-                return None;
-            }
-        };
+        if let Err(e) = spawn {
+            log::warn!("status notifier: failed to spawn thread: {e}");
+            return None;
+        }
 
-        Some(Self {
-            cmd_tx,
-            evt_rx,
-            thread_handle,
-        })
-    }
-
-    /// Check if the systray thread is still running
-    pub fn is_alive(&self) -> bool {
-        self.thread_handle
-            .as_ref()
-            .map(|h| !h.is_finished())
-            .unwrap_or(false)
+        Some(Self { cmd_tx, evt_rx })
     }
 
     pub(crate) fn poll_events(
         &self,
-        wayland_systray: &mut WaylandSystray,
+        tray: &mut StatusNotifierTray,
         menu: &mut Option<MenuView>,
     ) -> bool {
         let mut changed = false;
         loop {
             match self.evt_rx.try_recv() {
                 Ok(SystrayEvt::ItemUpsert(item)) => {
-                    changed |= upsert_item(wayland_systray, item);
+                    changed |= upsert_item(tray, item);
                 }
                 Ok(SystrayEvt::ItemRemoved(service, path)) => {
-                    let before = wayland_systray.items.len();
-                    wayland_systray
-                        .items
+                    let before = tray.items.len();
+                    tray.items
                         .retain(|it| !(it.service == service && it.path == path));
-                    changed |= wayland_systray.items.len() != before;
+                    changed |= tray.items.len() != before;
                 }
                 Ok(SystrayEvt::MenuChanged(next)) => {
                     if *menu != next {
@@ -273,14 +257,14 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
         Ok(c) => c,
         Err(e) => {
             log::error!(
-                "wayland systray: no session bus: {}. Check DBUS_SESSION_BUS_ADDRESS is set",
+                "status notifier: no session bus: {}. Check DBUS_SESSION_BUS_ADDRESS is set",
                 e
             );
             return;
         }
     };
 
-    log::info!("wayland systray: connected to session bus");
+    log::info!("status notifier: connected to session bus");
 
     let mode = detect_watcher_mode(&conn);
 
@@ -323,13 +307,13 @@ fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
         .is_ok();
 
     if has_external {
-        log::info!("wayland systray: using external StatusNotifierWatcher");
+        log::info!("status notifier: using external StatusNotifierWatcher");
         return WatcherMode::External;
     }
 
     // No external watcher — start our embedded one.
     log::info!(
-        "wayland systray: no external watcher found, starting embedded StatusNotifierWatcher"
+        "status notifier: no external watcher found, starting embedded StatusNotifierWatcher"
     );
 
     let state = Arc::new(Mutex::new(WatcherState::default()));
@@ -428,7 +412,7 @@ fn reconcile_items_embedded(
             && let Some((icon_rgba, icon_w, icon_h)) =
                 fetch_item_icon_on_conn(conn, &service, &path)
         {
-            let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
+            let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
                 path,
                 icon_rgba,
@@ -460,7 +444,7 @@ fn reconcile_items(
             && let Some((icon_rgba, icon_w, icon_h)) =
                 fetch_item_icon_on_conn(conn, &service, &path)
         {
-            let _ = evt_tx.send(SystrayEvt::ItemUpsert(WaylandSystrayItem {
+            let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
                 path,
                 icon_rgba,
@@ -492,7 +476,7 @@ fn dispatch_cmd(
             position,
         } => {
             if let Err(error) = call_item_method(conn, &service, &path, "Activate", position) {
-                log::warn!("wayland systray: Activate failed for {service}{path}: {error}");
+                log::warn!("status notifier: Activate failed for {service}{path}: {error}");
             }
         }
         SystrayCmd::SecondaryActivate {
@@ -504,7 +488,7 @@ fn dispatch_cmd(
                 call_item_method(conn, &service, &path, "SecondaryActivate", position)
             {
                 log::warn!(
-                    "wayland systray: SecondaryActivate failed for {service}{path}: {error}"
+                    "status notifier: SecondaryActivate failed for {service}{path}: {error}"
                 );
             }
         }
@@ -523,11 +507,11 @@ fn dispatch_cmd(
                 let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
                 if let Err(error) = call_item_method(conn, &service, &path, "ContextMenu", position)
                 {
-                    log::warn!("wayland systray: ContextMenu failed for {service}{path}: {error}");
+                    log::warn!("status notifier: ContextMenu failed for {service}{path}: {error}");
                 }
             }
             Err(error) => {
-                log::warn!("wayland systray: failed to read menu for {service}{path}: {error}");
+                log::warn!("status notifier: failed to read menu for {service}{path}: {error}");
                 *menu_session = None;
                 let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
                 let _ = call_item_method(conn, &service, &path, "ContextMenu", position);
@@ -593,7 +577,7 @@ fn handle_menu_action(
     match action {
         MenuAction::Activate(id) => {
             if let Err(error) = send_menu_click(conn, &current.service, &current.menu_path, id) {
-                log::warn!("wayland systray: menu activation failed: {error}");
+                log::warn!("status notifier: menu activation failed: {error}");
             }
             *session = None;
             let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
@@ -609,7 +593,7 @@ fn handle_menu_action(
                     let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
                 }
                 Ok(_) => {}
-                Err(error) => log::warn!("wayland systray: failed to open submenu: {error}"),
+                Err(error) => log::warn!("status notifier: failed to open submenu: {error}"),
             }
         }
         MenuAction::Back => {
@@ -627,7 +611,7 @@ fn handle_menu_action(
                     current.last_view = view.clone();
                     let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
                 }
-                Err(error) => log::warn!("wayland systray: failed to return to menu: {error}"),
+                Err(error) => log::warn!("status notifier: failed to return to menu: {error}"),
             }
         }
     }
@@ -655,7 +639,7 @@ fn refresh_menu_session(
         }
         Ok(_) => {}
         Err(error) => {
-            log::debug!("wayland systray: closing unavailable menu: {error}");
+            log::debug!("status notifier: closing unavailable menu: {error}");
             *session = None;
             let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
         }
@@ -802,11 +786,11 @@ fn send_menu_click(conn: &Connection, service: &str, menu_path: &str, id: i32) -
 fn register_watcher_host(conn: &Connection) {
     if let Ok(proxy) = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE) {
         let Some(unique_name) = conn.unique_name().map(|n| n.to_string()) else {
-            log::warn!("wayland systray: cannot register watcher host, missing unique bus name");
+            log::warn!("status notifier: cannot register watcher host, missing unique bus name");
             return;
         };
         if let Err(e) = proxy.call::<_, _, ()>("RegisterStatusNotifierHost", &(unique_name)) {
-            log::warn!("wayland systray: failed to register watcher host: {}", e);
+            log::warn!("status notifier: failed to register watcher host: {}", e);
         }
     }
 }
@@ -825,8 +809,8 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
     Some((id.to_string(), "/StatusNotifierItem".to_string()))
 }
 
-fn upsert_item(wayland_systray: &mut WaylandSystray, item: WaylandSystrayItem) -> bool {
-    if let Some(existing) = wayland_systray
+fn upsert_item(tray: &mut StatusNotifierTray, item: StatusNotifierItem) -> bool {
+    if let Some(existing) = tray
         .items
         .iter_mut()
         .find(|it| it.service == item.service && it.path == item.path)
@@ -838,7 +822,7 @@ fn upsert_item(wayland_systray: &mut WaylandSystray, item: WaylandSystrayItem) -
         return was_changed;
     }
 
-    wayland_systray.items.push(item);
+    tray.items.push(item);
     true
 }
 

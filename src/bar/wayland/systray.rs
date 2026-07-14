@@ -7,7 +7,7 @@ use super::WaylandBarPainter;
 pub(super) fn draw_snapshot(
     painter: &mut WaylandBarPainter,
     snapshot: &scene::SystraySnapshot,
-    layout: &crate::bar::systray::TrayLayout,
+    layout: &crate::systray::TrayLayout,
     bar_height: i32,
 ) {
     painter.set_scheme(snapshot.base_scheme.clone());
@@ -44,49 +44,11 @@ pub(super) fn draw_snapshot(
     let Some(menu) = snapshot.menu.as_ref() else {
         return;
     };
-    let mut scheme = snapshot.base_scheme.clone();
-    for cell in &layout.menu_cells {
-        let Some(entry) = menu.entries.get(cell.idx) else {
-            continue;
-        };
-        let width = cell.end - cell.start;
-        if entry.separator {
-            painter.rect(
-                Rect::new(cell.start + 4, bar_height / 2, (width - 8).max(1), 1),
-                true,
-                false,
-            );
-            continue;
-        }
-        if !entry.enabled {
-            scheme.fg[3] = 0.55;
-            painter.set_scheme(scheme.clone());
-        }
-        let prefix = match entry.toggle {
-            crate::bar::systray::MenuToggle::Check(true) => "✓ ",
-            crate::bar::systray::MenuToggle::Check(false) => "□ ",
-            crate::bar::systray::MenuToggle::Radio(true) => "● ",
-            crate::bar::systray::MenuToggle::Radio(false) => "○ ",
-            crate::bar::systray::MenuToggle::None => "",
-        };
-        let suffix = if matches!(
-            entry.action,
-            crate::bar::systray::MenuAction::OpenSubmenu(_)
-        ) {
-            " ›"
-        } else {
-            ""
-        };
-        painter.text(
-            Rect::new(cell.start, 0, width, bar_height),
-            6,
-            &format!("{prefix}{}{suffix}", entry.label),
-            false,
-            0,
-        );
-        if !entry.enabled {
-            scheme.fg[3] = 1.0;
-            painter.set_scheme(scheme.clone());
-        }
-    }
+    crate::systray::render::draw_menu(
+        painter,
+        menu,
+        &layout.menu_cells,
+        &snapshot.base_scheme,
+        bar_height,
+    );
 }

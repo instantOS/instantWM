@@ -1,14 +1,43 @@
-//! Geometry for StatusNotifier items rendered inside the bar.
+//! Display-independent system-tray model and bar geometry.
 //!
-//! A tray item's visual bounds and input bounds intentionally differ.  Icons
+//! StatusNotifier visual bounds and input bounds intentionally differ. Pixmaps
 //! are never enlarged beyond their source resolution, while each item owns a
-//! full-height cell.  Adjacent cells touch, so padding improves legibility
-//! without creating dead input zones between icons.
+//! full-height cell. Legacy XEmbed windows share the sizing primitives but keep
+//! their native rendering and input semantics.
 
-use crate::types::{Rect, WaylandSystray};
+use std::sync::Arc;
+
+use crate::types::Rect;
+
+pub(crate) mod render;
+pub(crate) mod status_notifier;
 
 const MIN_VISUAL_PADDING: i32 = 2;
 const MIN_MENU_CELL_WIDTH: i32 = 24;
+
+/// An icon exported through the StatusNotifier protocol.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct StatusNotifierItem {
+    pub service: String,
+    pub path: String,
+    pub icon_rgba: Arc<[u8]>,
+    pub icon_w: i32,
+    pub icon_h: i32,
+}
+
+/// Current items exported through the StatusNotifier protocol.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct StatusNotifierTray {
+    pub items: Vec<StatusNotifierItem>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IconScale {
+    /// Preserve the source resolution and only shrink oversized pixmaps.
+    DownOnly,
+    /// Ask an embedded client window to occupy the available height.
+    FitHeight,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum MenuAction {
@@ -59,7 +88,7 @@ pub(crate) struct TrayLayout {
 }
 
 pub(crate) fn layout(
-    tray: &WaylandSystray,
+    tray: &StatusNotifierTray,
     menu: Option<&MenuView>,
     monitor_width: i32,
     bar_height: i32,
@@ -75,8 +104,12 @@ pub(crate) fn layout(
         .items
         .iter()
         .map(|item| {
-            let (icon_width, icon_height) =
-                fitted_icon_size(item.icon_w, item.icon_h, max_icon_height);
+            let (icon_width, icon_height) = fit_icon_size(
+                item.icon_w,
+                item.icon_h,
+                max_icon_height,
+                IconScale::DownOnly,
+            );
             let cell_width = bar_height.max(icon_width + 2 * padding);
             (cell_width, icon_width, icon_height)
         })
@@ -193,11 +226,19 @@ fn fit_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
 /// Fit an icon inside the available height while preserving aspect ratio.
 /// Source images are never enlarged: interpolation can make an enlarged icon
 /// softer, but it cannot add the detail omitted by the StatusNotifier item.
-fn fitted_icon_size(source_width: i32, source_height: i32, max_height: i32) -> (i32, i32) {
-    if source_width <= 0 || source_height <= 0 || max_height <= 0 {
+pub(crate) fn fit_icon_size(
+    source_width: i32,
+    source_height: i32,
+    target_height: i32,
+    scale: IconScale,
+) -> (i32, i32) {
+    if source_width <= 0 || source_height <= 0 || target_height <= 0 {
         return (0, 0);
     }
-    let height = source_height.min(max_height);
+    let height = match scale {
+        IconScale::DownOnly => source_height.min(target_height),
+        IconScale::FitHeight => target_height,
+    };
     let width = if height == source_height {
         source_width
     } else {
@@ -212,20 +253,20 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::types::WaylandSystrayItem;
+    use crate::systray::StatusNotifierItem;
 
-    fn item(width: i32, height: i32) -> WaylandSystrayItem {
-        WaylandSystrayItem {
+    fn item(width: i32, height: i32) -> StatusNotifierItem {
+        StatusNotifierItem {
             icon_w: width,
             icon_h: height,
             icon_rgba: Arc::from(vec![0; (width * height * 4) as usize]),
-            ..WaylandSystrayItem::default()
+            ..StatusNotifierItem::default()
         }
     }
 
     #[test]
     fn native_size_icon_is_centered_in_a_full_height_cell() {
-        let tray = WaylandSystray {
+        let tray = StatusNotifierTray {
             items: vec![item(16, 16)],
         };
         let layout = layout(&tray, None, 1920, 30, 0);
@@ -241,7 +282,7 @@ mod tests {
 
     #[test]
     fn adjacent_cells_have_no_dead_input_space() {
-        let tray = WaylandSystray {
+        let tray = StatusNotifierTray {
             items: vec![item(16, 16), item(24, 12)],
         };
         let layout = layout(&tray, None, 100, 30, 4);
@@ -258,7 +299,7 @@ mod tests {
 
     #[test]
     fn large_icons_shrink_but_small_icons_do_not_grow() {
-        let tray = WaylandSystray {
+        let tray = StatusNotifierTray {
             items: vec![item(64, 64), item(8, 8)],
         };
         let layout = layout(&tray, None, 100, 30, 2);
@@ -268,8 +309,22 @@ mod tests {
     }
 
     #[test]
+    fn embedded_icon_windows_fill_height_without_losing_aspect_ratio() {
+        assert_eq!(fit_icon_size(16, 16, 30, IconScale::FitHeight), (30, 30));
+        assert_eq!(fit_icon_size(32, 16, 30, IconScale::FitHeight), (60, 30));
+    }
+
+    #[test]
+    fn invalid_icon_dimensions_are_rejected_for_every_backend_policy() {
+        for scale in [IconScale::DownOnly, IconScale::FitHeight] {
+            assert_eq!(fit_icon_size(16, 0, 30, scale), (0, 0));
+            assert_eq!(fit_icon_size(-1, 16, 30, scale), (0, 0));
+        }
+    }
+
+    #[test]
     fn menu_is_fitted_left_of_tray_without_losing_entries() {
-        let tray = WaylandSystray {
+        let tray = StatusNotifierTray {
             items: vec![item(16, 16)],
         };
         let menu = MenuView {

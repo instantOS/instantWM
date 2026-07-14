@@ -169,7 +169,7 @@ fn render_snapshot(
         let output = scene::render_monitor_snapshot(&mon, painter);
         let bar_height = mon.rect.h;
         let tray_layout = mon.systray.as_ref().map(|s| {
-            crate::bar::systray::layout(
+            crate::systray::layout(
                 &s.items,
                 s.menu.as_ref(),
                 mon.rect.w,

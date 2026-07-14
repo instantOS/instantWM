@@ -11,7 +11,8 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{MouseButton, Point, Rect, Systray, WaylandSystray, WindowId};
+use crate::systray::StatusNotifierTray;
+use crate::types::{MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 
 #[derive(
@@ -118,16 +119,17 @@ pub struct X11BackendData {
     pub conn: x11rb::rust_connection::RustConnection,
     pub screen_num: usize,
     pub x11_runtime: X11RuntimeConfig,
-    pub systray: Option<Systray>,
+    pub xembed_tray: Option<XEmbedTray>,
 }
 
 /// Wayland-specific backend data.
 pub struct WaylandBackendData {
     pub backend: WaylandBackend,
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
-    pub wayland_systray: WaylandSystray,
-    pub(crate) wayland_systray_menu: Option<crate::bar::systray::MenuView>,
-    pub wayland_systray_runtime: Option<crate::backend::wayland::systray::WaylandSystrayRuntime>,
+    pub(crate) status_notifier_tray: StatusNotifierTray,
+    pub(crate) systray_menu: Option<crate::systray::MenuView>,
+    pub(crate) status_notifier_runtime:
+        Option<crate::systray::status_notifier::StatusNotifierRuntime>,
 }
 
 /// Owned backend implementation.
@@ -146,7 +148,7 @@ impl Backend {
             conn,
             screen_num,
             x11_runtime: X11RuntimeConfig::default(),
-            systray: None,
+            xembed_tray: None,
         }))
     }
 
@@ -154,9 +156,9 @@ impl Backend {
         Self::Wayland(Box::new(WaylandBackendData {
             backend,
             bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
-            wayland_systray: WaylandSystray::default(),
-            wayland_systray_menu: None,
-            wayland_systray_runtime: None,
+            status_notifier_tray: StatusNotifierTray::default(),
+            systray_menu: None,
+            status_notifier_runtime: None,
         }))
     }
 

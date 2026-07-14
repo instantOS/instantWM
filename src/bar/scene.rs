@@ -28,8 +28,8 @@ pub(crate) struct TitleCellSnapshot {
 
 #[derive(Clone)]
 pub(crate) struct SystraySnapshot {
-    pub items: crate::types::WaylandSystray,
-    pub menu: Option<crate::bar::systray::MenuView>,
+    pub items: crate::systray::StatusNotifierTray,
+    pub menu: Option<crate::systray::MenuView>,
     pub visual_padding: i32,
     pub base_scheme: BarScheme,
 }
@@ -68,9 +68,9 @@ pub(crate) struct MonitorRenderOutputWithId {
 
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
-    wayland_systray: Option<(
-        &crate::types::WaylandSystray,
-        Option<&crate::bar::systray::MenuView>,
+    status_notifier_tray: Option<(
+        &crate::systray::StatusNotifierTray,
+        Option<&crate::systray::MenuView>,
     )>,
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
@@ -192,7 +192,7 @@ pub(crate) fn build_monitor_snapshots(
         };
 
         let systray = if show_systray && is_selected_monitor {
-            wayland_systray.map(|(items, menu)| SystraySnapshot {
+            status_notifier_tray.map(|(items, menu)| SystraySnapshot {
                 items: items.clone(),
                 menu: menu.cloned(),
                 visual_padding: systray_spacing,
@@ -347,7 +347,7 @@ fn render_monitor_snapshot_base(
 ) -> MonitorRenderOutput {
     let bar_height = snapshot.rect.h;
     let tray_layout = snapshot.systray.as_ref().map(|s| {
-        crate::bar::systray::layout(
+        crate::systray::layout(
             &s.items,
             s.menu.as_ref(),
             snapshot.rect.w,

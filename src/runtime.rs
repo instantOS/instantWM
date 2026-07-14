@@ -129,7 +129,7 @@ pub fn draw_x11_bars_if_dirty(wm: &mut Wm) {
         crate::backend::x11::bar::draw_bars(
             &mut x11_ctx.core,
             x11_ctx.x11_runtime,
-            x11_ctx.systray.as_deref(),
+            x11_ctx.xembed_tray.as_deref(),
         );
     }
 }

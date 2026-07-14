@@ -534,8 +534,8 @@ pub fn build_bar_buffers(
             &mut core,
             &mut data.bar_painter,
             smithay::utils::Scale::from(1.0),
-            &data.wayland_systray,
-            data.wayland_systray_menu.as_ref(),
+            &data.status_notifier_tray,
+            data.systray_menu.as_ref(),
         )
     }
 }
@@ -553,8 +553,8 @@ pub fn poll_systray(wm: &mut Wm) {
         return;
     };
 
-    if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
-        let dirty = runtime.poll_events(&mut data.wayland_systray, &mut data.wayland_systray_menu);
+    if let Some(runtime) = data.status_notifier_runtime.as_mut() {
+        let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut data.systray_menu);
         if dirty {
             core.bar.mark_dirty();
         }

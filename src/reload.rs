@@ -48,13 +48,13 @@ fn reload_x11(wm: &mut Wm) {
             x11_ctx.core.state_mut(),
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
-            x11_ctx.systray.as_deref(),
+            x11_ctx.xembed_tray.as_deref(),
         );
         crate::backend::x11::bar::update_status(
             &mut x11_ctx.core,
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
-            x11_ctx.systray.as_deref_mut(),
+            x11_ctx.xembed_tray.as_deref_mut(),
         );
         let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
         wm_ctx.update_ewmh_desktop_props();

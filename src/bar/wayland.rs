@@ -254,15 +254,15 @@ pub fn render_bar_buffers(
     core: &mut CoreCtx,
     painter: &mut WaylandBarPainter,
     scale: Scale<f64>,
-    wayland_systray: &crate::types::WaylandSystray,
-    wayland_systray_menu: Option<&crate::bar::systray::MenuView>,
+    status_notifier_tray: &crate::systray::StatusNotifierTray,
+    systray_menu: Option<&crate::systray::MenuView>,
 ) -> Vec<(MemoryRenderBuffer, i32, i32)> {
     let snapshots =
-        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)), false);
+        scene::build_monitor_snapshots(core, Some((status_notifier_tray, systray_menu)), false);
     // Cache the systray width so status bar layout can account for it.
     core.bar.runtime.systray_width = if core.config().systray.show {
-        crate::bar::systray::layout(
-            wayland_systray,
+        crate::systray::layout(
+            status_notifier_tray,
             None,
             core.model().selected_monitor().work_rect.w,
             core.model().selected_monitor().bar_height,

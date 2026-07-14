@@ -161,8 +161,8 @@ pub fn setup_listen_socket(
     let _socket_name = crate::wayland::common::setup_socket(loop_handle, state);
     crate::wayland::common::spawn_xwayland(state, loop_handle);
     if let WmBackend::Wayland(data) = &mut wm.backend {
-        data.wayland_systray_runtime =
-            crate::backend::wayland::systray::WaylandSystrayRuntime::start();
+        data.status_notifier_runtime =
+            crate::systray::status_notifier::StatusNotifierRuntime::start();
     }
 }
 

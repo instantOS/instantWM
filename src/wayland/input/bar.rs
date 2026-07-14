@@ -32,12 +32,12 @@ pub fn handle_bar_click(
         };
         if button == MouseButton::Left
             && let Some(entry) = data
-                .wayland_systray_menu
+                .systray_menu
                 .as_ref()
                 .and_then(|menu| menu.entries.get(idx))
             && entry.enabled
             && !entry.separator
-            && let Some(runtime) = data.wayland_systray_runtime.as_ref()
+            && let Some(runtime) = data.status_notifier_runtime.as_ref()
         {
             runtime.dispatch_menu_action(entry.action);
         }
@@ -54,9 +54,9 @@ pub fn handle_bar_click(
         let Backend::Wayland(data) = &mut wm.backend else {
             return;
         };
-        if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
+        if let Some(runtime) = data.status_notifier_runtime.as_ref() {
             let target = data
-                .wayland_systray
+                .status_notifier_tray
                 .items
                 .get(idx)
                 .map(|it| (it.service.clone(), it.path.clone()));
@@ -85,10 +85,10 @@ pub fn close_systray_menu(wm: &mut Wm) -> bool {
     let Backend::Wayland(data) = &mut wm.backend else {
         return false;
     };
-    if data.wayland_systray_menu.take().is_none() {
+    if data.systray_menu.take().is_none() {
         return false;
     }
-    if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
+    if let Some(runtime) = data.status_notifier_runtime.as_ref() {
         runtime.close_menu();
     }
     wm.bar.mark_dirty();

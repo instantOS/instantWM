@@ -1,7 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::CoreCtx;
-use crate::types::{Monitor, MonitorId, Systray, WindowId};
+use crate::types::{Monitor, MonitorId, WindowId, XEmbedTray};
 use std::collections::HashMap;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -11,7 +11,7 @@ pub fn update_status(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&mut crate::types::Systray>,
+    systray: Option<&mut crate::types::XEmbedTray>,
 ) {
     let selmon_idx = core.model().selected_monitor_id();
 
@@ -23,7 +23,7 @@ pub fn update_status(
 pub fn draw_bar(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&Systray>,
+    systray: Option<&XEmbedTray>,
     mon_idx: MonitorId,
 ) {
     let Some(monitor) = core.model().monitor(mon_idx).cloned() else {
@@ -71,7 +71,7 @@ pub fn draw_bar(
 pub fn draw_bars(
     core: &mut CoreCtx,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&Systray>,
+    systray: Option<&XEmbedTray>,
 ) {
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
     let snapshots = crate::bar::scene::build_monitor_snapshots(core, None, true);
@@ -133,7 +133,7 @@ pub fn resize_bar_win(
     globals: &crate::core_state::CoreState,
     x11: &X11BackendRef,
     _x11_runtime: &X11RuntimeConfig,
-    systray: Option<&Systray>,
+    systray: Option<&XEmbedTray>,
     m: &Monitor,
 ) {
     // Note: x11_runtime is not mutated here, we only read from it.
@@ -165,7 +165,7 @@ pub fn update_bars(
     globals: &mut crate::core_state::CoreState,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
-    systray: Option<&Systray>,
+    systray: Option<&XEmbedTray>,
 ) {
     use crate::bar::color::rgba_to_u32;
 
