@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::{OwnedValue, Value};
@@ -18,6 +19,8 @@ const WATCHER_IFACE: &str = "org.kde.StatusNotifierWatcher";
 
 const ITEM_IFACE: &str = "org.kde.StatusNotifierItem";
 const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
+const WORKER_RETRY_MIN: Duration = Duration::from_secs(1);
+const WORKER_RETRY_MAX: Duration = Duration::from_secs(60);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Embedded StatusNotifierWatcher
@@ -150,6 +153,7 @@ enum SystrayCmd {
 
 #[derive(Debug)]
 enum SystrayEvt {
+    Ready,
     ItemUpsert(StatusNotifierItem),
     ItemRemoved(String, String),
     MenuChanged {
@@ -172,59 +176,140 @@ impl DbusMenuSession {
     }
 }
 
-pub(crate) struct StatusNotifierRuntime {
+struct StatusNotifierWorker {
     cmd_tx: Sender<SystrayCmd>,
     evt_rx: Receiver<SystrayEvt>,
+    thread: thread::JoinHandle<()>,
+}
+
+impl StatusNotifierWorker {
+    fn spawn() -> std::io::Result<Self> {
+        let (cmd_tx, cmd_rx) = channel::<SystrayCmd>();
+        let (evt_tx, evt_rx) = channel::<SystrayEvt>();
+        let thread = thread::Builder::new()
+            .name("instantwm-wayland-systray".to_string())
+            .spawn(move || run_systray_thread(cmd_rx, evt_tx))?;
+        Ok(Self {
+            cmd_tx,
+            evt_rx,
+            thread,
+        })
+    }
+}
+
+pub(crate) struct StatusNotifierRuntime {
+    worker: Option<StatusNotifierWorker>,
+    restart_at: Option<Instant>,
+    retry_delay: Duration,
     next_menu_session_id: AtomicU64,
 }
 
 impl StatusNotifierRuntime {
-    pub(crate) fn start() -> Option<Self> {
-        let (cmd_tx, cmd_rx) = channel::<SystrayCmd>();
-        let (evt_tx, evt_rx) = channel::<SystrayEvt>();
-
-        let builder = thread::Builder::new().name("instantwm-wayland-systray".to_string());
-        let spawn = builder.spawn(move || {
-            run_systray_thread(cmd_rx, evt_tx);
-        });
-
-        if let Err(e) = spawn {
-            log::warn!("status notifier: failed to spawn thread: {e}");
-            return None;
-        }
-
-        Some(Self {
-            cmd_tx,
-            evt_rx,
+    pub(crate) fn start() -> Self {
+        let mut runtime = Self {
+            worker: None,
+            restart_at: None,
+            retry_delay: WORKER_RETRY_MIN,
             next_menu_session_id: AtomicU64::new(1),
-        })
+        };
+        match StatusNotifierWorker::spawn() {
+            Ok(worker) => runtime.worker = Some(worker),
+            Err(error) => {
+                log::warn!("status notifier: failed to spawn thread: {error}");
+                runtime.schedule_restart();
+            }
+        }
+        runtime
     }
 
     pub(crate) fn poll_events(
-        &self,
+        &mut self,
         tray: &mut StatusNotifierTray,
         menu: &mut crate::systray::TrayMenuState,
     ) -> bool {
         let mut changed = false;
-        loop {
-            match self.evt_rx.try_recv() {
-                Ok(SystrayEvt::ItemUpsert(item)) => {
-                    changed |= upsert_item(tray, item);
+        let mut worker_stopped = false;
+        if let Some(worker) = self.worker.as_ref() {
+            loop {
+                match worker.evt_rx.try_recv() {
+                    Ok(SystrayEvt::Ready) => self.retry_delay = WORKER_RETRY_MIN,
+                    Ok(SystrayEvt::ItemUpsert(item)) => {
+                        changed |= upsert_item(tray, item);
+                    }
+                    Ok(SystrayEvt::ItemRemoved(service, path)) => {
+                        let before = tray.items.len();
+                        tray.items
+                            .retain(|it| !(it.service == service && it.path == path));
+                        changed |= tray.items.len() != before;
+                    }
+                    Ok(SystrayEvt::MenuChanged { session_id, view }) => {
+                        changed |= menu.apply(session_id, view);
+                    }
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        worker_stopped = true;
+                        break;
+                    }
                 }
-                Ok(SystrayEvt::ItemRemoved(service, path)) => {
-                    let before = tray.items.len();
-                    tray.items
-                        .retain(|it| !(it.service == service && it.path == path));
-                    changed |= tray.items.len() != before;
-                }
-                Ok(SystrayEvt::MenuChanged { session_id, view }) => {
-                    changed |= menu.apply(session_id, view);
-                }
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => break,
             }
+            worker_stopped |= worker.thread.is_finished();
+        }
+
+        if worker_stopped {
+            self.handle_worker_exit();
+            changed |= !tray.items.is_empty();
+            tray.items.clear();
+            changed |= menu.close().is_some();
+        }
+
+        if self.worker.is_none()
+            && self
+                .restart_at
+                .is_some_and(|deadline| Instant::now() >= deadline)
+        {
+            self.restart_worker();
         }
         changed
+    }
+
+    fn handle_worker_exit(&mut self) {
+        let Some(worker) = self.worker.take() else {
+            return;
+        };
+        let StatusNotifierWorker {
+            cmd_tx,
+            evt_rx,
+            thread,
+        } = worker;
+        drop(cmd_tx);
+        drop(evt_rx);
+        match thread.join() {
+            Ok(()) => log::warn!("status notifier: worker stopped; scheduling restart"),
+            Err(payload) => log::error!(
+                "status notifier: worker panicked: {}; scheduling restart",
+                panic_message(payload.as_ref())
+            ),
+        }
+        self.schedule_restart();
+    }
+
+    fn schedule_restart(&mut self) {
+        self.restart_at = Some(Instant::now() + self.retry_delay);
+        self.retry_delay = (self.retry_delay * 2).min(WORKER_RETRY_MAX);
+    }
+
+    fn restart_worker(&mut self) {
+        match StatusNotifierWorker::spawn() {
+            Ok(worker) => {
+                log::info!("status notifier: restarting worker");
+                self.worker = Some(worker);
+                self.restart_at = None;
+            }
+            Err(error) => {
+                log::warn!("status notifier: failed to restart worker: {error}");
+                self.schedule_restart();
+            }
+        }
     }
 
     pub fn dispatch_click_item(
@@ -259,19 +344,37 @@ impl StatusNotifierRuntime {
             _ => return None,
         };
 
-        let _ = self.cmd_tx.send(cmd);
+        let sent = self
+            .worker
+            .as_ref()
+            .is_some_and(|worker| worker.cmd_tx.send(cmd).is_ok());
+        if !sent {
+            return None;
+        }
         menu_session_id
     }
 
     pub(crate) fn dispatch_menu_action(&self, session_id: u64, action: MenuAction) {
-        let _ = self
-            .cmd_tx
-            .send(SystrayCmd::MenuAction { session_id, action });
+        if let Some(worker) = self.worker.as_ref() {
+            let _ = worker
+                .cmd_tx
+                .send(SystrayCmd::MenuAction { session_id, action });
+        }
     }
 
     pub(crate) fn close_menu(&self, session_id: u64) {
-        let _ = self.cmd_tx.send(SystrayCmd::CloseMenu { session_id });
+        if let Some(worker) = self.worker.as_ref() {
+            let _ = worker.cmd_tx.send(SystrayCmd::CloseMenu { session_id });
+        }
     }
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> &str {
+    payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("non-string panic payload")
 }
 
 fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) {
@@ -302,12 +405,17 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
 
     let mut known_ids: HashSet<String> = HashSet::new();
     reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
+    let _ = evt_tx.send(SystrayEvt::Ready);
     let mut ticks = 0u32;
     let mut menu_session = None;
 
     loop {
-        while let Ok(cmd) = cmd_rx.try_recv() {
-            dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session);
+        loop {
+            match cmd_rx.try_recv() {
+                Ok(cmd) => dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return,
+            }
         }
 
         ticks = ticks.wrapping_add(1);
@@ -691,9 +799,10 @@ fn notify_menu_about_to_show(conn: &Connection, service: &str, menu_path: &str, 
     let Ok(proxy) = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE) else {
         return;
     };
-    if proxy.call::<_, _, bool>("AboutToShow", &(id,)).is_err() {
-        let _ = proxy.call::<_, _, ()>("AboutToShow", &(id,));
-    }
+    // Some implementations return the specified boolean while others return
+    // an empty body. Keep compatibility without invoking this stateful method
+    // twice by deliberately leaving the single reply body uninterpreted.
+    let _ = proxy.call_method("AboutToShow", &(id,));
 }
 
 fn fetch_menu_level(
@@ -929,12 +1038,17 @@ fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
 
     use zbus::zvariant::{OwnedValue, Value};
 
     use super::{
-        MenuAction, MenuToggle, dbus_icon_bytes_to_rgba, menu_entry_from_properties,
-        select_largest_valid_pixmap, strip_menu_mnemonics,
+        MenuAction, MenuToggle, StatusNotifierItem, StatusNotifierRuntime, StatusNotifierTray,
+        StatusNotifierWorker, WORKER_RETRY_MIN, dbus_icon_bytes_to_rgba,
+        menu_entry_from_properties, select_largest_valid_pixmap, strip_menu_mnemonics,
     };
 
     fn string_value(value: &str) -> OwnedValue {
@@ -1006,5 +1120,53 @@ mod tests {
     #[test]
     fn menu_mnemonics_preserve_escaped_underscores() {
         assert_eq!(strip_menu_mnemonics("_Save __As"), "Save _As");
+    }
+
+    #[test]
+    fn stopped_worker_clears_stale_state_and_schedules_bounded_restart() {
+        let (cmd_tx, cmd_rx) = channel();
+        let (evt_tx, evt_rx) = channel();
+        let thread = std::thread::spawn(move || {
+            drop(cmd_rx);
+            drop(evt_tx);
+        });
+        while !thread.is_finished() {
+            std::thread::yield_now();
+        }
+
+        let mut runtime = StatusNotifierRuntime {
+            worker: Some(StatusNotifierWorker {
+                cmd_tx,
+                evt_rx,
+                thread,
+            }),
+            restart_at: None,
+            retry_delay: WORKER_RETRY_MIN,
+            next_menu_session_id: AtomicU64::new(1),
+        };
+        let mut tray = StatusNotifierTray {
+            items: vec![StatusNotifierItem {
+                service: "org.example.Tray".to_string(),
+                path: "/StatusNotifierItem".to_string(),
+                icon_rgba: Arc::from(vec![0, 0, 0, 0]),
+                icon_w: 1,
+                icon_h: 1,
+            }],
+        };
+        let mut menu = crate::systray::TrayMenuState::default();
+        menu.begin(4);
+        menu.apply(4, Some(crate::systray::MenuView::default()));
+
+        assert!(runtime.poll_events(&mut tray, &mut menu));
+        assert!(runtime.worker.is_none());
+        assert!(runtime.restart_at.is_some());
+        assert_eq!(runtime.retry_delay, Duration::from_secs(2));
+        assert!(tray.items.is_empty());
+        assert!(menu.presentation().is_none());
+
+        for _ in 0..10 {
+            runtime.schedule_restart();
+        }
+        assert_eq!(runtime.retry_delay, Duration::from_secs(60));
     }
 }

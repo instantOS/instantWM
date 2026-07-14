@@ -226,14 +226,17 @@ fn menu_layout(
     let cells = widths
         .into_iter()
         .enumerate()
-        .map(|(idx, width)| {
+        .filter_map(|(idx, width)| {
+            if width <= 0 {
+                return None;
+            }
             let cell = crate::bar::SystrayHitSlot {
                 idx,
                 start: x,
                 end: x + width,
             };
             x += width;
-            cell
+            Some(cell)
         })
         .collect();
     (menu_start_x, menu_width, cells)
@@ -249,10 +252,19 @@ fn fit_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
         return widths;
     }
 
-    // Preserve every item even on narrow outputs.  When there is enough room,
-    // retain a useful minimum target; otherwise distribute every pixel so no
-    // entry becomes unreachable beyond the left edge.
     let count = widths.len() as i32;
+    if available < count {
+        // A one-dimensional menu cannot give more entries distinct hit targets
+        // than there are pixels. Keep the geometry on-screen and omit the
+        // unrepresentable tail rather than drawing it beyond the output.
+        for (index, width) in widths.iter_mut().enumerate() {
+            *width = i32::from(index < available as usize);
+        }
+        return widths;
+    }
+
+    // Preserve every item on narrow outputs. When there is enough room, retain
+    // a useful minimum target; otherwise distribute every available pixel.
     let floor = if available >= count * MIN_MENU_CELL_WIDTH {
         MIN_MENU_CELL_WIDTH
     } else {
@@ -425,5 +437,29 @@ mod tests {
         assert_eq!(layout.menu_width, 200);
         assert_eq!(layout.menu_cells.len(), menu.entries.len());
         assert_eq!(layout.menu_cells.last().unwrap().end, layout.start_x);
+    }
+
+    #[test]
+    fn menu_never_extends_left_when_entries_outnumber_available_pixels() {
+        let menu = MenuView {
+            entries: (0..5)
+                .map(|id| MenuEntry {
+                    label: format!("item {id}"),
+                    width: 80,
+                    enabled: true,
+                    separator: false,
+                    toggle: MenuToggle::None,
+                    action: MenuAction::Activate(id),
+                })
+                .collect(),
+        };
+
+        let layout = layout(&StatusNotifierTray::default(), Some(&menu), 3, 30, 2);
+
+        assert_eq!(layout.menu_start_x, 0);
+        assert_eq!(layout.menu_width, 3);
+        assert_eq!(layout.menu_cells.len(), 3);
+        assert!(layout.menu_cells.iter().all(|cell| cell.start >= 0));
+        assert_eq!(layout.menu_cells.last().unwrap().end, 3);
     }
 }
