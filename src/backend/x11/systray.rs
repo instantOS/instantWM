@@ -23,10 +23,10 @@ pub fn get_systray_width(globals: &crate::core_state::CoreState, systray: Option
     let mut w: u32 = 0;
     if let Some(systray) = systray {
         for &icon_win in &systray.icons {
-            if let Some(c) = globals.model.client(icon_win) {
-                if !c.tags.is_empty() {
-                    w += c.geo.w as u32 + globals.config.systray.spacing as u32;
-                }
+            if let Some(c) = globals.model.client(icon_win)
+                && !c.tags.is_empty()
+            {
+                w += c.geo.w as u32 + globals.config.systray.spacing as u32;
             }
         }
     }
@@ -133,10 +133,10 @@ pub fn update_systray_icon_state(
     }
 
     let xembed_info_atom = x11_runtime.xatom.xembed_info;
-    if let Some(ev) = ev {
-        if ev.atom != xembed_info_atom {
-            return;
-        }
+    if let Some(ev) = ev
+        && ev.atom != xembed_info_atom
+    {
+        return;
     }
 
     let x11_icon_win: Window = icon_win.into();

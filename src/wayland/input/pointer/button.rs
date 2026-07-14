@@ -102,7 +102,27 @@ fn handle_button_press(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     button: ButtonPress,
 ) -> bool {
-    let clicked_win = find_hovered_window(wm, state, button.pointer_location);
+    // Layer-shell surfaces are compositor-level UI and must win over every
+    // WM-owned pointer region.  In particular, notifications commonly use the
+    // overlay layer and may intentionally cover the built-in bar.  Classifying
+    // the bar/sidebar first would make the WM consume the press even though
+    // pointer motion had already focused the layer surface.
+    if let Some((layer_surface, location)) =
+        state.layer_surface_under_pointer(button.pointer_location)
+    {
+        focus_layer_button_target(
+            state,
+            pointer_handle,
+            keyboard_handle,
+            button,
+            layer_surface,
+            location,
+        );
+        forward_button(state, pointer_handle, button);
+        return false;
+    }
+
+    let clicked_win = state.logical_window_under_pointer(button.pointer_location);
     let pointer_region = {
         let mut ctx = wm.ctx();
         crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root, clicked_win)
@@ -140,25 +160,17 @@ fn handle_button_press(
         return true;
     }
 
-    let on_layer_surface = focus_button_target(
-        wm,
-        state,
-        pointer_handle,
-        keyboard_handle,
-        button,
-        clicked_win,
-    );
+    focus_button_target(wm, clicked_win);
 
-    let consumed = !on_layer_surface
-        && button.wm_button.is_some_and(|btn| {
-            consume_pointer_binding(
-                wm,
-                pointer_region,
-                btn,
-                button.root,
-                clean_modifier_state(keyboard_handle),
-            )
-        });
+    let consumed = button.wm_button.is_some_and(|btn| {
+        consume_pointer_binding(
+            wm,
+            pointer_region,
+            btn,
+            button.root,
+            clean_modifier_state(keyboard_handle),
+        )
+    });
 
     if !consumed {
         forward_button(state, pointer_handle, button);
@@ -180,36 +192,7 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     }
 }
 
-fn focus_button_target(
-    wm: &mut Wm,
-    state: &mut WaylandState,
-    pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
-    button: ButtonPress,
-    clicked_win: Option<crate::types::WindowId>,
-) -> bool {
-    if let Some((layer_surface, location)) =
-        state.layer_surface_under_pointer(button.pointer_location)
-    {
-        keyboard_handle.set_focus(
-            state,
-            Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
-            button.serial,
-        );
-        let focus = Some((
-            PointerFocusTarget::WlSurface(layer_surface),
-            location.to_f64(),
-        ));
-        let motion = MotionEvent {
-            location: button.pointer_location,
-            serial: button.serial,
-            time: button.time,
-        };
-        pointer_handle.motion(state, focus, &motion);
-        pointer_handle.frame(state);
-        return true;
-    }
-
+fn focus_button_target(wm: &mut Wm, clicked_win: Option<crate::types::WindowId>) {
     let mut ctx = wm.ctx();
     if let Some(win) = clicked_win {
         crate::focus::select_monitor_for_client(&mut ctx, win);
@@ -217,7 +200,36 @@ fn focus_button_target(
     } else {
         crate::focus::focus(&mut ctx, None);
     }
-    false
+}
+
+fn focus_layer_button_target(
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    button: ButtonPress,
+    layer_surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    location: Point<i32, smithay::utils::Logical>,
+) {
+    if crate::backend::wayland::compositor::layer_shell::layer_surface_accepts_keyboard_focus(
+        &layer_surface,
+    ) {
+        keyboard_handle.set_focus(
+            state,
+            Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
+            button.serial,
+        );
+    }
+    let focus = Some((
+        PointerFocusTarget::WlSurface(layer_surface),
+        location.to_f64(),
+    ));
+    let motion = MotionEvent {
+        location: button.pointer_location,
+        serial: button.serial,
+        time: button.time,
+    };
+    pointer_handle.motion(state, focus, &motion);
+    pointer_handle.frame(state);
 }
 
 fn close_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
@@ -307,44 +319,6 @@ fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
     (wm.core.drag.interactive.active && released_btn == Some(wm.core.drag.interactive.button))
         || (wm.core.drag.tag.active && released_btn == Some(wm.core.drag.tag.button))
         || (wm.core.drag.gesture.active && released_btn == Some(wm.core.drag.gesture.button))
-}
-
-/// Find the window under the pointer.
-pub fn find_hovered_window(
-    wm: &Wm,
-    state: &WaylandState,
-    pointer_location: Point<f64, smithay::utils::Logical>,
-) -> Option<crate::types::WindowId> {
-    if let Some((surface, _)) = state.layer_surface_under_pointer(pointer_location) {
-        return find_hovered_window_for_surface(wm, &surface);
-    }
-    state.logical_window_under_pointer(pointer_location)
-}
-
-/// Find hovered window for a surface.
-fn find_hovered_window_for_surface(
-    wm: &Wm,
-    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) -> Option<crate::types::WindowId> {
-    use smithay::wayland::compositor::with_states;
-
-    if let Some(win) = with_states(surface, |states| {
-        states
-            .data_map
-            .get::<crate::backend::wayland::compositor::WindowIdMarker>()
-            .map(|marker| marker.id)
-    }) {
-        return Some(win);
-    }
-
-    let backend = match &wm.backend {
-        crate::backend::Backend::Wayland(data) => &data.backend,
-        _ => return None,
-    };
-
-    backend
-        .with_state(|state| state.window_id_for_surface(surface))
-        .flatten()
 }
 
 fn consume_pointer_binding(
