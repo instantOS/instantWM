@@ -31,43 +31,15 @@ pub fn handle_bar_click(
         let Backend::Wayland(data) = &mut wm.backend else {
             return;
         };
-        if data.wayland_systray_runtime.as_ref().is_some() {
-            if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
-                let target = data
-                    .wayland_systray
-                    .items
-                    .get(idx)
-                    .map(|it| (it.service.clone(), it.path.clone()));
-                if let Some((service, path)) = target {
-                    runtime.dispatch_click_item(service, path, button, root);
-                }
+        if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
+            let target = data
+                .wayland_systray
+                .items
+                .get(idx)
+                .map(|it| (it.service.clone(), it.path.clone()));
+            if let Some((service, path)) = target {
+                runtime.dispatch_click_item(service, path, button, root);
             }
-            data.wayland_systray_menu = None;
-        }
-        return;
-    }
-
-    if matches!(pos, BarPosition::SystrayMenuItem(_)) {
-        let BarPosition::SystrayMenuItem(idx) = pos else {
-            return;
-        };
-        let Backend::Wayland(data) = &mut wm.backend else {
-            return;
-        };
-        if data.wayland_systray_runtime.as_ref().is_some() {
-            if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
-                let target = data.wayland_systray_menu.as_ref().and_then(|menu| {
-                    menu.items
-                        .get(idx)
-                        .map(|it| (menu.service.clone(), menu.path.clone(), it.id, it.enabled))
-                });
-                if let Some((service, path, id, enabled)) = target
-                    && enabled
-                {
-                    runtime.dispatch_menu_click_item(service, path, id);
-                }
-            }
-            data.wayland_systray_menu = None;
         }
         return;
     }

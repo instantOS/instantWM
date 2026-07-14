@@ -11,9 +11,7 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{
-    MouseButton, Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId,
-};
+use crate::types::{MouseButton, Point, Rect, Systray, WaylandSystray, WindowId};
 use bincode::{Decode, Encode};
 
 #[derive(
@@ -128,7 +126,6 @@ pub struct WaylandBackendData {
     pub backend: WaylandBackend,
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
     pub wayland_systray: WaylandSystray,
-    pub wayland_systray_menu: Option<WaylandSystrayMenu>,
     pub wayland_systray_runtime: Option<crate::backend::wayland::systray::WaylandSystrayRuntime>,
 }
 
@@ -157,7 +154,6 @@ impl Backend {
             backend,
             bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
             wayland_systray: WaylandSystray::default(),
-            wayland_systray_menu: None,
             wayland_systray_runtime: None,
         }))
     }

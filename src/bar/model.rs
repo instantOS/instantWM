@@ -56,13 +56,6 @@ pub(crate) fn hit_test(
     }
 
     if systray_show && is_selected_monitor {
-        // Check systray menu items first (they appear to the left of tray items)
-        for slot in &hit.systray_menu_slots {
-            if local_x >= slot.start && local_x < slot.end {
-                return BarPosition::SystrayMenuItem(slot.idx);
-            }
-        }
-        // Check systray tray items
         for slot in &hit.systray_slots {
             if local_x >= slot.start && local_x < slot.end {
                 return BarPosition::SystrayItem(slot.idx);
@@ -187,7 +180,6 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
         shutdown_end,
         status_hit_x,
         systray_slots: Vec::new(),
-        systray_menu_slots: Vec::new(),
         status_click_targets: Vec::new(),
     }
 }

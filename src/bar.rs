@@ -4,6 +4,7 @@ pub mod paint;
 pub(crate) mod renderer;
 pub(crate) mod scene;
 pub mod status;
+pub(crate) mod systray;
 pub mod wayland;
 
 pub use renderer::reset_bar_common;
@@ -70,8 +71,6 @@ pub struct MonitorHitCache {
     pub status_hit_x: i32,
     /// Systray item hit slots for Wayland bars. Populated during rendering.
     pub systray_slots: Vec<SystrayHitSlot>,
-    /// Systray menu item hit slots for Wayland bars. Populated during rendering.
-    pub systray_menu_slots: Vec<SystrayHitSlot>,
     pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
 }
 

@@ -133,7 +133,7 @@ pub struct Config {
     pub startmenu_size: i32,
     /// Index of monitor to pin the systray to (0 = primary).
     pub systray_pinning: usize,
-    /// Gap in pixels between systray icons.
+    /// Minimum visual padding around systray icons. Input cells remain contiguous.
     pub systray_spacing: i32,
     /// If systray pinning fails, place it on the first monitor.
     pub systray_pinning_fail_first: bool,

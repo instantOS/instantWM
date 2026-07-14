@@ -29,8 +29,7 @@ pub(crate) struct TitleCellSnapshot {
 #[derive(Clone)]
 pub(crate) struct SystraySnapshot {
     pub items: crate::types::WaylandSystray,
-    pub menu: Option<crate::types::WaylandSystrayMenu>,
-    pub spacing: i32,
+    pub visual_padding: i32,
     pub base_scheme: BarScheme,
 }
 
@@ -66,22 +65,9 @@ pub(crate) struct MonitorRenderOutputWithId {
     pub output: MonitorRenderOutput,
 }
 
-#[derive(Clone)]
-pub(crate) struct WorkerTrayLayout {
-    pub tray_total_w: i32,
-    pub tray_start_x: i32,
-    pub tray_slots: Vec<crate::bar::SystrayHitSlot>,
-    pub menu_total_w: i32,
-    pub menu_start_x: i32,
-    pub menu_slots: Vec<crate::bar::SystrayHitSlot>,
-}
-
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
-    wayland_systray: Option<(
-        &crate::types::WaylandSystray,
-        Option<&crate::types::WaylandSystrayMenu>,
-    )>,
+    wayland_systray: Option<&crate::types::WaylandSystray>,
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().selected_monitor().num;
@@ -202,10 +188,9 @@ pub(crate) fn build_monitor_snapshots(
         };
 
         let systray = if show_systray && is_selected_monitor {
-            wayland_systray.map(|(items, menu)| SystraySnapshot {
+            wayland_systray.map(|items| SystraySnapshot {
                 items: items.clone(),
-                menu: menu.cloned(),
-                spacing: systray_spacing,
+                visual_padding: systray_spacing,
                 base_scheme: core.status_scheme(),
             })
         } else {
@@ -351,81 +336,16 @@ fn draw_close_button_snapshot(
     );
 }
 
-pub(crate) fn worker_systray_layout(
-    snapshot: &SystraySnapshot,
-    monitor_width: i32,
-    icon_h: i32,
-) -> WorkerTrayLayout {
-    let spacing = snapshot.spacing.max(0);
-    let mut tray_total_w = 0;
-    if !snapshot.items.items.is_empty() {
-        tray_total_w = spacing;
-        for item in &snapshot.items.items {
-            tray_total_w += crate::backend::wayland::systray::scale_icon_width(
-                item.icon_w,
-                item.icon_h,
-                icon_h,
-            ) + spacing;
-        }
-    }
-    let tray_start_x = monitor_width - tray_total_w;
-
-    let mut tray_slots = Vec::new();
-    let mut x = tray_start_x + spacing;
-    for (idx, item) in snapshot.items.items.iter().enumerate() {
-        let w =
-            crate::backend::wayland::systray::scale_icon_width(item.icon_w, item.icon_h, icon_h);
-        if w > 0 && item.icon_w > 0 && item.icon_h > 0 {
-            tray_slots.push(crate::bar::SystrayHitSlot {
-                idx,
-                start: x,
-                end: x + w,
-            });
-        }
-        x += w + spacing;
-    }
-
-    let mut menu_total_w = 0;
-    let mut menu_slots = Vec::new();
-    let mut menu_start_x = 0;
-    if let Some(menu) = &snapshot.menu {
-        for item in &menu.items {
-            menu_total_w += item.width.max(24);
-        }
-        menu_start_x = (tray_start_x - menu_total_w).max(0);
-        let mut mx = menu_start_x;
-        for (idx, item) in menu.items.iter().enumerate() {
-            let w = item.width.max(24);
-            menu_slots.push(crate::bar::SystrayHitSlot {
-                idx,
-                start: mx,
-                end: mx + w,
-            });
-            mx += w;
-        }
-    }
-
-    WorkerTrayLayout {
-        tray_total_w,
-        tray_start_x,
-        tray_slots,
-        menu_total_w,
-        menu_start_x,
-        menu_slots,
-    }
-}
-
 fn render_monitor_snapshot_base(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
     let bar_height = snapshot.rect.h;
-    let tray_layout = snapshot
-        .systray
-        .as_ref()
-        .map(|s| worker_systray_layout(s, snapshot.rect.w, bar_height.max(1)));
+    let tray_layout = snapshot.systray.as_ref().map(|s| {
+        crate::bar::systray::layout(&s.items, snapshot.rect.w, bar_height, s.visual_padding)
+    });
     let systray_width = if snapshot.is_selected_monitor {
-        tray_layout.as_ref().map(|l| l.tray_total_w).unwrap_or(0)
+        tray_layout.as_ref().map(|l| l.total_width).unwrap_or(0)
     } else {
         0
     };
@@ -566,8 +486,15 @@ fn render_monitor_snapshot_base(
     }
 
     if let (Some(_systray), Some(layout)) = (&snapshot.systray, &tray_layout) {
-        hit.systray_slots = layout.tray_slots.clone();
-        hit.systray_menu_slots = layout.menu_slots.clone();
+        hit.systray_slots = layout
+            .cells
+            .iter()
+            .map(|cell| crate::bar::SystrayHitSlot {
+                idx: cell.idx,
+                start: cell.hit_start,
+                end: cell.hit_end,
+            })
+            .collect();
     }
 
     MonitorRenderOutput {

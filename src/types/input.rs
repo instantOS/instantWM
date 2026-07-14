@@ -119,8 +119,6 @@ pub enum BarPosition {
     StatusText,
     /// A Wayland StatusNotifier tray item by index in the current tray model.
     SystrayItem(usize),
-    /// A Wayland systray popup-menu item by index.
-    SystrayMenuItem(usize),
     /// An unoccupied area of the bar.
     #[default]
     Root,

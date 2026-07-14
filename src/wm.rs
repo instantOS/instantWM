@@ -46,7 +46,6 @@ impl Wm {
                 core,
                 wayland: &data.backend,
                 wayland_systray: &mut data.wayland_systray,
-                wayland_systray_menu: data.wayland_systray_menu.as_mut(),
             }),
         }
     }

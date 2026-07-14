@@ -9,12 +9,10 @@ pub(super) fn render_key(
     bar_show: bool,
     systray_show: bool,
     snapshots: &[scene::MonitorBarSnapshot],
-    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
     bar_show.hash(&mut hasher);
     systray_show.hash(&mut hasher);
-    wayland_systray_menu.is_some().hash(&mut hasher);
     for snapshot in snapshots {
         hash_monitor_snapshot(&mut hasher, snapshot);
     }
@@ -60,7 +58,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
 
     snapshot.systray.is_some().hash(hasher);
     if let Some(systray) = &snapshot.systray {
-        systray.spacing.hash(hasher);
+        systray.visual_padding.hash(hasher);
         hash_scheme(hasher, &systray.base_scheme);
         systray.items.items.len().hash(hasher);
         for item in &systray.items.items {
@@ -69,20 +67,6 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
             item.icon_w.hash(hasher);
             item.icon_h.hash(hasher);
             hash_arc_identity(hasher, &item.icon_rgba);
-        }
-        systray.menu.is_some().hash(hasher);
-        if let Some(menu) = &systray.menu {
-            menu.service.hash(hasher);
-            menu.path.hash(hasher);
-            menu.item_h.hash(hasher);
-            menu.items.len().hash(hasher);
-            for item in &menu.items {
-                item.id.hash(hasher);
-                item.label.hash(hasher);
-                item.width.hash(hasher);
-                item.enabled.hash(hasher);
-                item.separator.hash(hasher);
-            }
         }
     }
 }

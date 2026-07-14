@@ -5,7 +5,6 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
-use crate::backend::Backend;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
 use crate::mouse::pointer::PointerRegion;
 use crate::types::{MouseButton, Point as RootPoint};
@@ -174,7 +173,6 @@ fn handle_button_press(
 
     if !consumed {
         forward_button(state, pointer_handle, button);
-        close_systray_menu_if_outside(wm, state, button.root.x);
     }
 
     false
@@ -230,40 +228,6 @@ fn focus_layer_button_target(
     };
     pointer_handle.motion(state, focus, &motion);
     pointer_handle.frame(state);
-}
-
-fn close_systray_menu_if_outside(wm: &mut Wm, state: &mut WaylandState, root_x: i32) {
-    let core = crate::contexts::CoreCtx::new(
-        &mut wm.core,
-        &mut wm.work,
-        &mut wm.running,
-        &mut wm.bar,
-        &mut wm.focus,
-    );
-    let mon = core.model().selected_monitor().clone();
-    let local_x = root_x - mon.work_rect.x;
-
-    let should_close = match &mut wm.backend {
-        Backend::Wayland(data) => {
-            data.wayland_systray_menu.as_ref().is_some()
-                && crate::backend::wayland::systray::hit_test_menu_item(
-                    core.config().systray.spacing,
-                    &data.wayland_systray,
-                    data.wayland_systray_menu.as_ref(),
-                    &mon,
-                    local_x,
-                )
-                .is_none()
-        }
-        Backend::X11(_) => false,
-    };
-
-    if should_close {
-        if let Backend::Wayland(data) = &mut wm.backend {
-            data.wayland_systray_menu = None;
-        }
-        state.request_bar_redraw();
-    }
 }
 
 fn handle_button_release(

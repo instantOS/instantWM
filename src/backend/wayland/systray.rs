@@ -1,23 +1,17 @@
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use zbus::blocking::{Connection, Proxy};
-use zbus::zvariant::{OwnedValue, Value};
 
-use crate::types::{
-    Monitor, MouseButton, Point, WaylandSystray, WaylandSystrayItem, WaylandSystrayMenu,
-    WaylandSystrayMenuItem,
-};
+use crate::types::{MouseButton, Point, WaylandSystray, WaylandSystrayItem};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
 const WATCHER_IFACE: &str = "org.kde.StatusNotifierWatcher";
 
 const ITEM_IFACE: &str = "org.kde.StatusNotifierItem";
-const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Embedded StatusNotifierWatcher
@@ -138,19 +132,12 @@ enum SystrayCmd {
         path: String,
         position: Point,
     },
-    MenuClick {
-        service: String,
-        path: String,
-        id: i32,
-    },
 }
 
 #[derive(Debug)]
 enum SystrayEvt {
     ItemUpsert(WaylandSystrayItem),
     ItemRemoved(String, String),
-    MenuOpen(crate::types::WaylandSystrayMenu),
-    MenuClose,
 }
 
 pub struct WaylandSystrayRuntime {
@@ -193,11 +180,7 @@ impl WaylandSystrayRuntime {
             .unwrap_or(false)
     }
 
-    pub fn poll_events(
-        &self,
-        wayland_systray: &mut WaylandSystray,
-        wayland_systray_menu: &mut Option<WaylandSystrayMenu>,
-    ) -> bool {
+    pub fn poll_events(&self, wayland_systray: &mut WaylandSystray) -> bool {
         let mut changed = false;
         loop {
             match self.evt_rx.try_recv() {
@@ -210,15 +193,6 @@ impl WaylandSystrayRuntime {
                         .items
                         .retain(|it| !(it.service == service && it.path == path));
                     changed |= wayland_systray.items.len() != before;
-                }
-                Ok(SystrayEvt::MenuOpen(menu)) => {
-                    *wayland_systray_menu = Some(menu);
-                    changed = true;
-                }
-                Ok(SystrayEvt::MenuClose) => {
-                    if wayland_systray_menu.take().is_some() {
-                        changed = true;
-                    }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
@@ -255,61 +229,6 @@ impl WaylandSystrayRuntime {
 
         let _ = self.cmd_tx.send(cmd);
     }
-
-    pub fn dispatch_menu_click_item(&self, service: String, path: String, id: i32) {
-        let _ = self
-            .cmd_tx
-            .send(SystrayCmd::MenuClick { service, path, id });
-    }
-}
-
-pub fn systray_width(
-    systray: &crate::core_state::SystrayConfig,
-    wayland_systray: &WaylandSystray,
-    bar_height: i32,
-) -> i32 {
-    if !systray.show {
-        return 0;
-    }
-    let items = &wayland_systray.items;
-    if items.is_empty() {
-        return 0;
-    }
-    let icon_h = bar_height.max(1);
-    let spacing = systray.spacing.max(0);
-    let mut width = spacing;
-    for item in items {
-        let iw = scale_icon_width(item.icon_w, item.icon_h, icon_h);
-        width += iw + spacing;
-    }
-    width
-}
-
-pub fn hit_test_menu_item(
-    spacing: i32,
-    wayland_systray: &WaylandSystray,
-    wayland_systray_menu: Option<&WaylandSystrayMenu>,
-    mon: &Monitor,
-    local_x: i32,
-) -> Option<usize> {
-    for slot in menu_hit_slots(spacing, wayland_systray, wayland_systray_menu, mon) {
-        if local_x >= slot.start && local_x < slot.end {
-            return Some(slot.idx);
-        }
-    }
-    None
-}
-
-pub(crate) fn scale_icon_width(src_w: i32, src_h: i32, dst_h: i32) -> i32 {
-    if src_w <= 0 || src_h <= 0 || dst_h <= 0 {
-        return 0;
-    }
-    if src_h == dst_h {
-        src_w.max(1)
-    } else {
-        ((src_w as f32) * (dst_h as f32 / src_h as f32)).round() as i32
-    }
-    .max(1)
 }
 
 fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) {
@@ -344,7 +263,7 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
 
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
-            dispatch_cmd(&conn, cmd, &evt_tx);
+            dispatch_cmd(&conn, cmd);
         }
 
         ticks = ticks.wrapping_add(1);
@@ -521,33 +440,38 @@ fn reconcile_items(
     Ok(())
 }
 
-fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd, evt_tx: &Sender<SystrayEvt>) {
+fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd) {
     match cmd {
         SystrayCmd::Activate {
             service,
             path,
             position,
         } => {
-            let _ = call_item_method(conn, &service, &path, "Activate", position);
+            if let Err(error) = call_item_method(conn, &service, &path, "Activate", position) {
+                log::warn!("wayland systray: Activate failed for {service}{path}: {error}");
+            }
         }
         SystrayCmd::SecondaryActivate {
             service,
             path,
             position,
         } => {
-            let _ = call_item_method(conn, &service, &path, "SecondaryActivate", position);
+            if let Err(error) =
+                call_item_method(conn, &service, &path, "SecondaryActivate", position)
+            {
+                log::warn!(
+                    "wayland systray: SecondaryActivate failed for {service}{path}: {error}"
+                );
+            }
         }
         SystrayCmd::ContextMenu {
             service,
             path,
             position,
         } => {
-            let _ = open_menu_from_item(conn, &service, &path, position, evt_tx);
-            let _ = call_item_method(conn, &service, &path, "ContextMenu", position);
-        }
-        SystrayCmd::MenuClick { service, path, id } => {
-            let _ = call_menu_event(conn, &service, &path, id);
-            let _ = evt_tx.send(SystrayEvt::MenuClose);
+            if let Err(error) = call_item_method(conn, &service, &path, "ContextMenu", position) {
+                log::warn!("wayland systray: ContextMenu failed for {service}{path}: {error}");
+            }
         }
     }
 }
@@ -590,161 +514,6 @@ fn parse_sni_id(id: &str) -> Option<(String, String)> {
     Some((id.to_string(), "/StatusNotifierItem".to_string()))
 }
 
-fn menu_hit_slots(
-    spacing: i32,
-    wayland_systray: &WaylandSystray,
-    wayland_systray_menu: Option<&WaylandSystrayMenu>,
-    mon: &Monitor,
-) -> Vec<HitSlot> {
-    let icon_h = mon.bar_height.max(1);
-    let spacing = spacing.max(0);
-    let mut tray_total_w = 0;
-    if !wayland_systray.items.is_empty() {
-        tray_total_w = spacing;
-        for item in &wayland_systray.items {
-            tray_total_w += scale_icon_width(item.icon_w, item.icon_h, icon_h) + spacing;
-        }
-    }
-    let tray_start_x = mon.work_rect.w - tray_total_w;
-
-    let Some(menu) = wayland_systray_menu else {
-        return Vec::new();
-    };
-    let menu_total_w = menu
-        .items
-        .iter()
-        .map(|item| item.width.max(24))
-        .sum::<i32>();
-    let mut x = (tray_start_x - menu_total_w).max(0);
-    menu.items
-        .iter()
-        .enumerate()
-        .map(|(idx, item)| {
-            let width = item.width.max(24);
-            let slot = HitSlot {
-                idx,
-                start: x,
-                end: x + width,
-            };
-            x += width;
-            slot
-        })
-        .collect()
-}
-
-struct HitSlot {
-    idx: usize,
-    start: i32,
-    end: i32,
-}
-
-fn open_menu_from_item(
-    conn: &Connection,
-    service: &str,
-    path: &str,
-    _position: Point,
-    evt_tx: &Sender<SystrayEvt>,
-) -> zbus::Result<()> {
-    let menu_path: String = Proxy::new(conn, service, path, ITEM_IFACE)?
-        .get_property("Menu")
-        .unwrap_or_else(|_| "/".to_string());
-    if menu_path == "/" {
-        return Ok(());
-    }
-
-    let menu_items = fetch_menu_items(conn, service, &menu_path)?;
-    let menu = WaylandSystrayMenu {
-        service: service.to_string(),
-        path: menu_path,
-        item_h: 0,
-        items: menu_items,
-    };
-    let _ = evt_tx.send(SystrayEvt::MenuOpen(menu));
-    Ok(())
-}
-
-fn fetch_menu_items(
-    conn: &Connection,
-    service: &str,
-    menu_path: &str,
-) -> zbus::Result<Vec<WaylandSystrayMenuItem>> {
-    let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
-    let root = match proxy
-        .call::<_, _, (u32, OwnedValue)>("GetLayout", &(0i32, -1i32, Vec::<String>::new()))
-    {
-        Ok((_, layout)) => layout,
-        Err(_) => {
-            let (layout,): (OwnedValue,) =
-                proxy.call("GetLayout", &(0i32, -1i32, Vec::<String>::new()))?;
-            layout
-        }
-    };
-
-    let mut out = Vec::new();
-    parse_menu_layout_node(root, &mut out)?;
-    out.retain(|it| it.id > 0);
-    Ok(out)
-}
-
-fn parse_menu_layout_node(
-    value: OwnedValue,
-    out: &mut Vec<WaylandSystrayMenuItem>,
-) -> zbus::Result<()> {
-    let (id, props, children): (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) =
-        value.try_into().map_err(zbus::Error::Variant)?;
-
-    let visible = dbusmenu_prop_bool(&props, "visible").unwrap_or(true);
-    let enabled = dbusmenu_prop_bool(&props, "enabled").unwrap_or(true);
-    let raw_label = dbusmenu_prop_string(&props, "label").unwrap_or_default();
-    let separator = dbusmenu_prop_string(&props, "type")
-        .map(|t| t == "separator")
-        .unwrap_or(false);
-
-    if visible && (separator || !raw_label.trim().is_empty()) {
-        let label = raw_label.replace('_', "").trim().to_string();
-        let display = if label.is_empty() && separator {
-            "-".to_string()
-        } else {
-            label
-        };
-        out.push(WaylandSystrayMenuItem {
-            id,
-            label: display.clone(),
-            width: ((display.chars().count() as i32) * 8 + 20).max(24),
-            enabled,
-            separator,
-        });
-    }
-
-    for child in children {
-        let _ = parse_menu_layout_node(child, out);
-    }
-
-    Ok(())
-}
-
-fn dbusmenu_prop_string(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
-    let val = props.get(key)?;
-    if let Ok(s) = String::try_from(val.clone()) {
-        return Some(s);
-    }
-    if let Ok(s) = <&str>::try_from(val) {
-        return Some(s.to_string());
-    }
-    None
-}
-
-fn dbusmenu_prop_bool(props: &HashMap<String, OwnedValue>, key: &str) -> Option<bool> {
-    props.get(key).and_then(|v| bool::try_from(v).ok())
-}
-
-fn call_menu_event(conn: &Connection, service: &str, menu_path: &str, id: i32) -> zbus::Result<()> {
-    let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
-    let _: () = proxy.call("Event", &(id, "clicked", Value::new(""), 0u32))?;
-    let _: () = proxy.call("AboutToShow", &(id,))?;
-    Ok(())
-}
-
 fn upsert_item(wayland_systray: &mut WaylandSystray, item: WaylandSystrayItem) -> bool {
     if let Some(existing) = wayland_systray
         .items
@@ -774,20 +543,27 @@ fn fetch_item_icon_on_conn(
         return None;
     }
 
-    let mut best = None::<(i32, i32, Vec<u8>, i32)>;
-    for (w, h, bytes) in pixmaps {
-        if w <= 0 || h <= 0 {
-            continue;
-        }
-        let score = (w * h).abs();
-        match &best {
-            Some((_, _, _, current)) if *current >= score => {}
-            _ => best = Some((w, h, bytes, score)),
-        }
-    }
-    let (w, h, bytes, _) = best?;
+    let (w, h, bytes) = select_largest_valid_pixmap(pixmaps)?;
     let rgba = dbus_icon_bytes_to_rgba(&bytes, w, h)?;
     Some((Arc::from(rgba), w, h))
+}
+
+fn select_largest_valid_pixmap(pixmaps: Vec<(i32, i32, Vec<u8>)>) -> Option<(i32, i32, Vec<u8>)> {
+    pixmaps
+        .into_iter()
+        .filter_map(|(width, height, bytes)| {
+            let pixels = usize::try_from(width)
+                .ok()?
+                .checked_mul(usize::try_from(height).ok()?)?;
+            let required_bytes = pixels.checked_mul(4)?;
+            if bytes.len() < required_bytes {
+                return None;
+            }
+            let area = i64::from(width) * i64::from(height);
+            Some((area, width, height, bytes))
+        })
+        .max_by_key(|(area, _, _, _)| *area)
+        .map(|(_, width, height, bytes)| (width, height, bytes))
 }
 
 fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
@@ -816,7 +592,7 @@ fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::dbus_icon_bytes_to_rgba;
+    use super::{dbus_icon_bytes_to_rgba, select_largest_valid_pixmap};
 
     #[test]
     fn dbus_icon_bytes_are_decoded_from_argb_to_rgba() {
@@ -828,5 +604,17 @@ mod tests {
         let rgba = dbus_icon_bytes_to_rgba(&bytes, 2, 1).expect("valid icon bytes");
 
         assert_eq!(rgba, vec![0x00, 0x82, 0xc9, 0xff, 0x11, 0x22, 0x33, 0x40]);
+    }
+
+    #[test]
+    fn largest_valid_icon_pixmap_is_selected() {
+        let selected = select_largest_valid_pixmap(vec![
+            (16, 16, vec![0; 16 * 16 * 4]),
+            (32, 32, vec![0; 32 * 32 * 4]),
+            (64, 64, vec![0; 8]),
+        ])
+        .expect("a valid pixmap");
+
+        assert_eq!((selected.0, selected.1), (32, 32));
     }
 }

@@ -187,20 +187,3 @@ pub struct WaylandSystrayItem {
 pub struct WaylandSystray {
     pub items: Vec<WaylandSystrayItem>,
 }
-
-#[derive(Debug, Clone, Default)]
-pub struct WaylandSystrayMenuItem {
-    pub id: i32,
-    pub label: String,
-    pub width: i32,
-    pub enabled: bool,
-    pub separator: bool,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct WaylandSystrayMenu {
-    pub service: String,
-    pub path: String,
-    pub item_h: i32,
-    pub items: Vec<WaylandSystrayMenuItem>,
-}

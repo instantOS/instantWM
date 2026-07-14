@@ -14,7 +14,7 @@ use crate::core_state::{
 };
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
-use crate::types::{MonitorId, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{MonitorId, Rect, Systray, WaylandSystray, WindowId};
 
 pub struct CoreCtx<'a> {
     pub(crate) g: &'a mut CoreState,
@@ -346,7 +346,6 @@ pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
     pub wayland: &'a crate::backend::wayland::WaylandBackend,
     pub wayland_systray: &'a mut WaylandSystray,
-    pub wayland_systray_menu: Option<&'a mut WaylandSystrayMenu>,
 }
 
 impl<'a> WmCtxWayland<'a> {
@@ -355,7 +354,6 @@ impl<'a> WmCtxWayland<'a> {
             core: self.core.reborrow(),
             wayland: self.wayland,
             wayland_systray: self.wayland_systray,
-            wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
     }
 }
