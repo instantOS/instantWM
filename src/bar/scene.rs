@@ -351,37 +351,21 @@ fn draw_shutdown_button_snapshot(
     bar_height: i32,
 ) -> i32 {
     painter.set_scheme(scheme.clone());
-    painter.rect(Rect::new(x, 0, bar_height, bar_height), true, true);
 
-    let icon_size = bar_height * 5 / 8;
-    let icon_x = x + (bar_height - icon_size) / 2;
-    let icon_y = (bar_height - icon_size) / 2;
-    let stroke = (icon_size / 6).max(2);
-    let gap = stroke;
-    let stem_w = stroke;
-    let stem_h = icon_size / 2;
-    let stem_x = icon_x + (icon_size - stem_w) / 2;
-    let stem_y = icon_y;
-    let arc_x = icon_x;
-    let arc_y = icon_y + gap + stroke;
-    let arc_w = stroke;
-    let arc_h = icon_size - gap - stroke;
-    let bot_x = icon_x + stroke;
-    let bot_y = icon_y + icon_size - stroke;
-    let bot_w = (icon_size - stroke * 2).max(0);
-    let bot_h = stroke;
-
-    painter.rect(Rect::new(stem_x, stem_y, stem_w, stem_h), true, false);
-    painter.rect(Rect::new(arc_x, arc_y, arc_w, arc_h), true, false);
-    painter.rect(
-        Rect::new(arc_x + icon_size - stroke, arc_y, arc_w, arc_h),
+    let symbol = "\u{f011}";
+    let text_w = painter.text_width(symbol);
+    let lpad = ((bar_height - text_w) / 2).max(0);
+    painter.text(
+        Rect::new(x, 0, bar_height, bar_height),
+        lpad,
+        symbol,
         true,
-        false,
+        0,
     );
-    painter.rect(Rect::new(bot_x, bot_y, bot_w, bot_h), true, false);
 
     x + bar_height
 }
+
 
 fn draw_close_button_snapshot(
     painter: &mut dyn BarPainter,
