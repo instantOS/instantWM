@@ -47,11 +47,17 @@ impl MotionEvent {
         output_width: i32,
         output_height: i32,
     ) -> Point<f64, smithay::utils::Logical> {
+        // Output geometry is half-open: (0, 0) is valid, while
+        // (width, height) is already outside it.
+        let max_x = output_width.saturating_sub(1).max(0) as f64;
+        let max_y = output_height.saturating_sub(1).max(0) as f64;
         match self {
-            MotionEvent::Absolute { x, y, .. } => Point::from((*x, *y)),
+            MotionEvent::Absolute { x, y, .. } => {
+                Point::from((x.clamp(0.0, max_x), y.clamp(0.0, max_y)))
+            }
             MotionEvent::Relative { dx, dy, .. } => {
-                let x = (current.x + dx).clamp(0.0, output_width as f64);
-                let y = (current.y + dy).clamp(0.0, output_height as f64);
+                let x = (current.x + dx).clamp(0.0, max_x);
+                let y = (current.y + dy).clamp(0.0, max_y);
                 Point::from((x, y))
             }
         }
@@ -63,6 +69,43 @@ impl MotionEvent {
             MotionEvent::Absolute { time_msec, .. } => *time_msec,
             MotionEvent::Relative { time_msec, .. } => *time_msec,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MotionEvent;
+    use smithay::utils::Point;
+
+    #[test]
+    fn relative_motion_stays_inside_output_at_right_and_bottom_edges() {
+        let event = MotionEvent::Relative {
+            dx: 100.0,
+            dy: 100.0,
+            dx_unaccel: 100.0,
+            dy_unaccel: 100.0,
+            time_msec: 0,
+            time_usec: 0,
+        };
+
+        assert_eq!(
+            event.compute_location(Point::from((1910.0, 1070.0)), 1920, 1080),
+            Point::from((1919.0, 1079.0))
+        );
+    }
+
+    #[test]
+    fn absolute_motion_stays_inside_output_at_right_and_bottom_edges() {
+        let event = MotionEvent::Absolute {
+            x: 1920.0,
+            y: 1080.0,
+            time_msec: 0,
+        };
+
+        assert_eq!(
+            event.compute_location(Point::from((0.0, 0.0)), 1920, 1080),
+            Point::from((1919.0, 1079.0))
+        );
     }
 }
 
