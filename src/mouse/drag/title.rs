@@ -135,11 +135,16 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         Point::new(clamped_x, clamped_y)
     };
 
-    set_cursor_style(ctx, AltCursor::Move);
-    ctx.core_mut()
+    if ctx
+        .core_mut()
         .drag_state_mut()
         .activate_armed(crate::core_state::DragType::Move, start, current_geo)
-        .is_ok()
+        .is_err()
+    {
+        return false;
+    }
+    set_cursor_style(ctx, AltCursor::Move);
+    true
 }
 
 /// Process a pointer motion event during an active title drag.

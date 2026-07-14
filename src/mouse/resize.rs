@@ -311,7 +311,8 @@ pub fn resize_mouse_directional(
         },
     );
 
-    let _ = crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn);
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
     let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }
@@ -462,7 +463,8 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         },
     );
 
-    let _ = crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn);
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
     let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }

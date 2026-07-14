@@ -66,15 +66,13 @@ impl WaylandState {
                         logical_win = win_id;
                         logical_win_resolved = true;
                     }
-                } else if let Some(win_id) = win_id {
-                    if let Some(c) = globals.model.client(win_id) {
-                        if c.total_rect()
-                            .contains_point(crate::types::Point::new(root_x, root_y))
-                        {
-                            logical_win = Some(win_id);
-                            logical_win_resolved = true;
-                        }
-                    }
+                } else if let Some(win_id) = win_id
+                    && let Some(c) = globals.model.client(win_id)
+                    && c.total_rect()
+                        .contains_point(crate::types::Point::new(root_x, root_y))
+                {
+                    logical_win = Some(win_id);
+                    logical_win_resolved = true;
                 }
             }
 
@@ -205,12 +203,11 @@ impl WaylandState {
                 let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
                     continue;
                 };
-                if let Some(c) = globals.model.client(win_id) {
-                    if c.total_rect()
+                if let Some(c) = globals.model.client(win_id)
+                    && c.total_rect()
                         .contains_point(crate::types::Point::new(root_x, root_y))
-                    {
-                        return Some(win_id);
-                    }
+                {
+                    return Some(win_id);
                 }
             }
         }

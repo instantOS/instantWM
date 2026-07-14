@@ -366,7 +366,6 @@ fn draw_shutdown_button_snapshot(
     x + bar_height
 }
 
-
 fn draw_close_button_snapshot(
     painter: &mut dyn BarPainter,
     scheme: &BarScheme,

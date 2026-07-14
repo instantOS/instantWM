@@ -66,8 +66,9 @@ pub fn finish(
 ) -> Option<DragInteraction> {
     let finished = interactions.finish_active(button)?;
     if matches!(finished.drag_type(), DragType::Resize(_)) {
-        // Clear the authoritative interaction first. The final Wayland
-        // configure must describe the post-resize state.
+        // End the backend projection so Wayland emits the final configure
+        // without xdg-toplevel's `resizing` state. X11 implements this as a
+        // no-op because its pointer grab owns the resize lifetime.
         protocol.end_interactive_resize(finished.win());
     }
     Some(finished)

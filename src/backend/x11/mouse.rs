@@ -86,7 +86,8 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         true
     });
 
-    let _ = crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn);
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
     let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     crate::mouse::drag::finish_drag_move(
         &mut wm_ctx,
