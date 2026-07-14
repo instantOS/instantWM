@@ -131,6 +131,7 @@ fn handle_button_press(
         PointerRegion::Bar { pos, .. } => {
             handle_bar_click(
                 wm,
+                state,
                 pos,
                 button.button_code,
                 button.root,

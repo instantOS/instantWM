@@ -788,7 +788,7 @@ fn render_outputs(
             .iter()
             .any(|entry| render_flags.get(&entry.crtc).copied().unwrap_or(false));
         let fixed_scene = if needs_any_render && !state.is_locked() {
-            poll_systray(wm);
+            poll_systray(wm, state);
             Some(build_fixed_scene_elements(wm, state))
         } else {
             None

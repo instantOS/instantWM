@@ -256,6 +256,7 @@ pub struct WaylandRuntimeState {
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
+    pub pending_systray_menu: Option<(std::time::Instant, crate::types::Point)>,
     pub pointer_location: Point<f64, Logical>,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
@@ -284,6 +285,7 @@ impl Default for WaylandRuntimeState {
             render_ping: None,
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
+            pending_systray_menu: None,
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
@@ -298,6 +300,23 @@ impl Default for WaylandRuntimeState {
 }
 
 impl WaylandState {
+    /// Expect an application-provided StatusNotifier context menu to arrive as
+    /// an xdg_toplevel. Some toolkits cannot use xdg_popup for a D-Bus-triggered
+    /// menu because there is no Wayland input serial in that request.
+    pub(crate) fn expect_systray_menu_toplevel(&mut self, anchor: crate::types::Point) {
+        self.runtime.pending_systray_menu = Some((std::time::Instant::now(), anchor));
+    }
+
+    pub(crate) fn cancel_expected_systray_menu_toplevel(&mut self) {
+        self.runtime.pending_systray_menu = None;
+    }
+
+    pub(crate) fn take_expected_systray_menu_toplevel(&mut self) -> Option<crate::types::Point> {
+        const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(2);
+        let (created, anchor) = self.runtime.pending_systray_menu.take()?;
+        (created.elapsed() <= MAX_AGE).then_some(anchor)
+    }
+
     /// Create a new `WaylandState` and register all Wayland globals.
     pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
         let dh = display.handle();

@@ -63,6 +63,7 @@ impl CompositorHandler for WaylandState {
                 .unwrap_or(false);
             if has_buffer {
                 let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
+                let systray_menu_anchor = self.take_expected_systray_menu_toplevel();
                 let parent = toplevel
                     .parent()
                     .and_then(|parent| self.window_id_for_surface(&parent));
@@ -80,6 +81,7 @@ impl CompositorHandler for WaylandState {
                         properties,
                         initial_geo,
                         initial_position_is_explicit: false,
+                        systray_menu_anchor,
                         launch_pid: None,
                         launch_startup_id: None,
                         x11_hints: None,

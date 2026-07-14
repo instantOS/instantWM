@@ -226,6 +226,7 @@ impl XwmHandler for WaylandState {
                 properties,
                 initial_geo,
                 initial_position_is_explicit,
+                systray_menu_anchor: None,
                 launch_pid: window.pid(),
                 launch_startup_id: window.startup_id(),
                 x11_hints: window.hints(),

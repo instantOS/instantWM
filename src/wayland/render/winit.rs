@@ -66,7 +66,7 @@ pub fn render_frame(
             }
         }
     } else {
-        poll_systray(wm);
+        poll_systray(wm, state);
         // Shared: build scene elements
         let scene = build_common_scene_elements(wm, state, renderer, 0);
 

@@ -47,6 +47,9 @@ pub struct MapWindowParams {
     /// PPosition hint. Native Wayland toplevel positions are always
     /// compositor-owned.
     pub initial_position_is_explicit: bool,
+    /// Root-coordinate anchor for a native toplevel created as a fallback
+    /// StatusNotifier context menu.
+    pub systray_menu_anchor: Option<crate::types::Point>,
     pub launch_pid: Option<u32>,
     pub launch_startup_id: Option<String>,
     pub x11_hints: Option<x11rb::properties::WmHints>,

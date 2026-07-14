@@ -14,6 +14,7 @@ pub fn update_bar_hit_state(
 
 pub fn handle_bar_click(
     wm: &mut Wm,
+    state: &mut crate::backend::wayland::compositor::WaylandState,
     pos: BarPosition,
     button_code: u32,
     root: Point,
@@ -22,6 +23,7 @@ pub fn handle_bar_click(
     let Some(button) = MouseButton::from_wayland_code(button_code) else {
         return;
     };
+    state.cancel_expected_systray_menu_toplevel();
 
     if matches!(pos, BarPosition::SystrayMenuItem(_)) {
         let BarPosition::SystrayMenuItem(idx) = pos else {
@@ -68,6 +70,9 @@ pub fn handle_bar_click(
         if let Some(session_id) = menu_session_id
             && wm.tray_menu.begin(session_id)
         {
+            if button == MouseButton::Right {
+                state.expect_systray_menu_toplevel(root);
+            }
             wm.bar.mark_dirty();
         }
         return;
