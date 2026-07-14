@@ -108,7 +108,12 @@ impl WaylandState {
         let overlays: Vec<_> = self
             .windows_in_z_order()
             .into_iter()
-            .filter(|(_, typ)| matches!(typ, WindowType::Launcher | WindowType::Overlay))
+            .filter(|(_, typ)| {
+                matches!(
+                    typ,
+                    WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
+                )
+            })
             .map(|(w, _)| w.clone())
             .collect();
         for w in overlays {
@@ -128,7 +133,12 @@ impl WaylandState {
 
         self.windows_in_z_order()
             .into_iter()
-            .filter(|(_, typ)| matches!(typ, WindowType::Launcher | WindowType::Overlay))
+            .filter(|(_, typ)| {
+                matches!(
+                    typ,
+                    WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
+                )
+            })
             .filter_map(|(w, _)| {
                 let loc = self.space.element_location(w)?;
                 // Translate from global compositor coordinates to the
