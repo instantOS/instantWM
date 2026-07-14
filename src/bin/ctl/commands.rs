@@ -245,8 +245,14 @@ pub enum ConfigAction {
     Get { key: String },
     /// Set a runtime config value by key (e.g. layout.inner_gap 12)
     Set { key: String, value: String },
-    /// List all runtime config keys and their current values
-    List,
+    /// List runtime config keys and their current values.
+    ///
+    /// With no argument, lists every key. Pass a section (e.g. `layout`) or a
+    /// full key (e.g. `layout.inner_gap`) to narrow the output to matches.
+    List {
+        /// Section or key prefix to filter by (e.g. `fonts`, `fonts.fonts`).
+        prefix: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -635,7 +641,8 @@ impl From<CommandKind> for IpcCommand {
                 ConfigAction::Default => unreachable!("config default is handled locally"),
                 ConfigAction::Get { key } => ConfigCommand::Get { key },
                 ConfigAction::Set { key, value } => ConfigCommand::Set { key, value },
-                ConfigAction::List => ConfigCommand::List,
+                // The prefix is filtered client-side, so it never reaches the WM.
+                ConfigAction::List { prefix: _ } => ConfigCommand::List,
             }),
             CommandKind::Quit => IpcCommand::Quit,
         }

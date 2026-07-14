@@ -18,6 +18,46 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
+// ---------------------------------------------------------------------------
+// Section registry — the single source of truth for which top-level sections
+// this IPC surface exposes. `instantwmctl config list <prefix>` imports this
+// to validate prefixes instead of keeping a parallel list. The test
+// `runtime_config_sections_match_list_output` pins it to what `list()` emits.
+// ---------------------------------------------------------------------------
+
+/// Top-level runtime-config sections exposed via `get`/`set`/`list`, in the
+/// order `list()` emits them. `display` is excluded (see `HIDDEN_SECTIONS`).
+pub const RUNTIME_CONFIG_SECTIONS: &[&str] = &[
+    "window", "bar", "systray", "layout", "colors", "cursor", "fonts", "input", "monitors",
+];
+
+/// Sections that exist on the runtime config but are derived from the running
+/// outputs, so they are hidden from `get`/`set`/`list`.
+pub const HIDDEN_SECTIONS: &[&str] = &["display"];
+
+/// How a top-level section name is exposed by this IPC surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionStatus {
+    /// Normal section: listed and read/written (`window`, `layout`, …).
+    Exposed,
+    /// Real section, but derived from outputs — hidden from get/set/list.
+    Hidden,
+    /// Not a section this IPC surface knows about.
+    Unknown,
+}
+
+/// Classify a top-level section name. Lets the client produce helpful errors
+/// for `config list <bad-section>` without duplicating the section list.
+pub fn section_status(name: &str) -> SectionStatus {
+    if RUNTIME_CONFIG_SECTIONS.contains(&name) {
+        SectionStatus::Exposed
+    } else if HIDDEN_SECTIONS.contains(&name) {
+        SectionStatus::Hidden
+    } else {
+        SectionStatus::Unknown
+    }
+}
+
 pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
     match cmd {
         ConfigCommand::Get { key } => get(wm, &key),
@@ -459,6 +499,40 @@ mod tests {
             }
             other => panic!("expected ConfigList, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn runtime_config_sections_match_list_output() {
+        // The const is the single source of truth for listable sections, so it
+        // must agree with the sections `list()` actually emits. Populate the
+        // map sections first so input/monitors show up.
+        let mut wm = test_wm();
+        do_set(&mut wm, "input.type:touchpad.pointer_accel", "0.5");
+        do_set(&mut wm, "monitors.DP-1.scale", "2.0");
+
+        let emitted: std::collections::BTreeSet<String> = match do_list(&mut wm) {
+            Response::ConfigList(entries) => entries
+                .iter()
+                .map(|(k, _)| k.split('.').next().unwrap().to_string())
+                .collect(),
+            other => panic!("expected ConfigList, got {other:?}"),
+        };
+        let expected: std::collections::BTreeSet<String> = RUNTIME_CONFIG_SECTIONS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            emitted, expected,
+            "RUNTIME_CONFIG_SECTIONS drifted from list() output"
+        );
+    }
+
+    #[test]
+    fn section_status_classifies_each_kind() {
+        assert_eq!(section_status("layout"), SectionStatus::Exposed);
+        assert_eq!(section_status("input"), SectionStatus::Exposed);
+        assert_eq!(section_status("display"), SectionStatus::Hidden);
+        assert_eq!(section_status("nope"), SectionStatus::Unknown);
     }
 
     #[test]

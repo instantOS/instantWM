@@ -2,7 +2,7 @@ mod ctl;
 
 use clap::Parser;
 use ctl::{Cli, IpcClient, format_response, get_default_socket};
-use instantwm::ipc_types::IpcCommand;
+use instantwm::ipc_types::{IpcCommand, Response};
 use std::str::FromStr;
 
 #[cfg(test)]
@@ -193,10 +193,130 @@ mod tests {
             })
         ));
     }
+
+    #[test]
+    fn config_list_accepts_prefix_arg() {
+        let cli = Cli::parse_from(["instantwmctl", "config", "list", "fonts"]);
+        match cli.command {
+            ctl::CommandKind::Config {
+                action: crate::ctl::commands::ConfigAction::List { prefix },
+            } => assert_eq!(prefix.as_deref(), Some("fonts")),
+            other => panic!("expected Config List, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn config_list_prefix_is_optional() {
+        let cli = Cli::parse_from(["instantwmctl", "config", "list"]);
+        match cli.command {
+            ctl::CommandKind::Config {
+                action: crate::ctl::commands::ConfigAction::List { prefix },
+            } => assert!(prefix.is_none()),
+            other => panic!("expected Config List, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn config_list_maps_to_unfiltered_ipc_list() {
+        // The prefix is client-side only; the WM always receives a bare List.
+        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "config", "list", "fonts"])
+            .command
+            .into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Config(instantwm::ipc_types::ConfigCommand::List)
+        ));
+    }
+
+    #[test]
+    fn validate_list_prefix_accepts_known_sections() {
+        assert!(validate_list_prefix("fonts").is_ok());
+        assert!(validate_list_prefix("fonts.fonts").is_ok());
+        assert!(validate_list_prefix("input").is_ok());
+        // Map-section ids contain dots/colons; the section is still `input`.
+        assert!(validate_list_prefix("input.type:touchpad").is_ok());
+    }
+
+    #[test]
+    fn validate_list_prefix_rejects_unknown_section() {
+        assert!(validate_list_prefix("frobnicate").is_err());
+        assert!(validate_list_prefix("frobnicate.field").is_err());
+    }
+
+    #[test]
+    fn validate_list_prefix_explains_display_is_hidden() {
+        let err = validate_list_prefix("display.width").unwrap_err();
+        assert!(err.contains("derived"), "got: {err}");
+    }
+
+    #[test]
+    fn filter_config_list_narrows_to_section() {
+        let entries = vec![
+            ("fonts.config_font".to_string(), "x".to_string()),
+            ("fonts.fonts".to_string(), "y".to_string()),
+            ("layout.inner_gap".to_string(), "0".to_string()),
+        ];
+        match filter_config_list(Response::ConfigList(entries), "fonts") {
+            Response::ConfigList(rows) => {
+                assert_eq!(rows.len(), 2);
+                assert!(rows.iter().all(|(k, _)| k.starts_with("fonts.")));
+            }
+            other => panic!("expected ConfigList, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn filter_config_list_matches_single_leaf() {
+        let entries = vec![
+            ("fonts.config_font".to_string(), "x".to_string()),
+            ("fonts.fonts".to_string(), "y".to_string()),
+        ];
+        match filter_config_list(Response::ConfigList(entries), "fonts.fonts") {
+            Response::ConfigList(rows) => {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].0, "fonts.fonts");
+            }
+            other => panic!("expected ConfigList, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn filter_config_list_does_not_match_sibling_prefix() {
+        // `fonts` must not match a `fontsx.*` sibling (trailing-dot check).
+        let entries = vec![
+            ("fonts.fonts".to_string(), "y".to_string()),
+            ("fontsx.thing".to_string(), "z".to_string()),
+        ];
+        match filter_config_list(Response::ConfigList(entries), "fonts") {
+            Response::ConfigList(rows) => {
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].0, "fonts.fonts");
+            }
+            other => panic!("expected ConfigList, got {other:?}"),
+        }
+    }
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    // `config list <prefix>` narrows the full list client-side after the IPC
+    // round-trip, so capture the prefix here and apply it to the response.
+    let config_list_prefix = match &cli.command {
+        ctl::CommandKind::Config {
+            action: ctl::commands::ConfigAction::List { prefix },
+        } => prefix.clone(),
+        _ => None,
+    };
+
+    // Validate the prefix up front so a bad section errors before we bother the
+    // running WM.
+    if let Some(prefix) = &config_list_prefix
+        && let Err(msg) = validate_list_prefix(prefix)
+    {
+        eprintln!("instantwmctl: {msg}");
+        std::process::exit(1);
+    }
 
     let command = match &cli.command {
         ctl::CommandKind::Layout { name } if name.as_deref() == Some("list") => {
@@ -284,7 +404,53 @@ fn main() {
         }
     };
 
+    let response = match config_list_prefix {
+        Some(prefix) => filter_config_list(response, &prefix),
+        None => response,
+    };
+
     format_response(&response, cli.json);
+}
+
+/// Reject prefixes whose top-level section isn't listable, with a helpful
+/// message. Returns `Ok(())` for any prefix under a known section (including
+/// unknown sub-fields — those simply produce an empty list downstream).
+///
+/// The set of valid sections comes from the WM (`instantwm::ipc::config`) so
+/// this stays a single source of truth rather than a parallel list.
+fn validate_list_prefix(prefix: &str) -> Result<(), String> {
+    use instantwm::ipc::config::{RUNTIME_CONFIG_SECTIONS, SectionStatus, section_status};
+    let section = prefix.split('.').next().unwrap_or(prefix);
+    match section_status(section) {
+        SectionStatus::Exposed => Ok(()),
+        SectionStatus::Hidden => Err(format!(
+            "'{section}' is derived from outputs and not exposed at runtime"
+        )),
+        SectionStatus::Unknown => Err(format!(
+            "unknown section '{section}' (known: {})",
+            RUNTIME_CONFIG_SECTIONS.join(", ")
+        )),
+    }
+}
+
+/// Narrow a `ConfigList` to keys under `prefix`.
+///
+/// A key matches when it equals `prefix` (a leaf key, e.g. `fonts.fonts`) or
+/// sits beneath it (a section or `section.id`, e.g. `fonts` or
+/// `input.type:touchpad`). The trailing-dot check prevents `fonts` from
+/// matching a sibling like `fontsx`.
+fn filter_config_list(response: Response, prefix: &str) -> Response {
+    let dot = format!("{prefix}.");
+    match response {
+        Response::ConfigList(entries) => {
+            let filtered: Vec<_> = entries
+                .into_iter()
+                .filter(|(k, _)| k == prefix || k.starts_with(&dot))
+                .collect();
+            Response::ConfigList(filtered)
+        }
+        other => other,
+    }
 }
 
 fn print_layout_list(json: bool) {
