@@ -586,10 +586,30 @@ impl WaylandState {
     }
 
     /// Request redraws for the outputs Smithay currently associates with a
-    /// mapped window.  An unmapped window falls back to a global redraw so an
-    /// initial map cannot be lost between protocol commit and space sync.
+    /// mapped window.
+    ///
+    /// Do not use `Space::outputs_for_element` here.  Its output membership is
+    /// refreshed later in the event-loop tick, while surface commits (notably
+    /// short-lived Xwayland override-redirect windows) need to schedule their
+    /// redraw immediately.
     pub fn request_window_render(&mut self, window: &Window) {
-        let outputs = self.space.outputs_for_element(window);
+        let window_rect = self.space.element_location(window).map(|location| {
+            let mut rect = window.bbox_with_popups();
+            rect.loc += location - window.geometry().loc;
+            rect
+        });
+        let outputs: Vec<_> = self
+            .space
+            .outputs()
+            .filter(|output| {
+                window_rect.is_some_and(|rect| {
+                    self.space
+                        .output_geometry(output)
+                        .is_some_and(|output_rect| output_rect.overlaps(rect))
+                })
+            })
+            .cloned()
+            .collect();
         if outputs.is_empty() {
             self.request_render();
             return;

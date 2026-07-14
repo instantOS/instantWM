@@ -38,7 +38,7 @@ use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
     CursorPresentation, FixedSceneElements, build_common_scene_elements_from_fixed,
     count_upper_layer_render_elements, get_render_element_counts, resolve_cursor_presentation,
-    send_frame_callbacks, update_primary_scanout_output,
+    send_frame_callbacks, update_primary_scanout_output, window_overlaps_output,
 };
 use std::rc::Rc;
 
@@ -836,7 +836,11 @@ fn collect_presentation_feedback(
         return output_feedback;
     }
 
-    for window in state.space.elements_for_output(&entry.output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, &entry.output))
+    {
         window.take_presentation_feedback(
             &mut output_feedback,
             surface_primary_scanout_output,

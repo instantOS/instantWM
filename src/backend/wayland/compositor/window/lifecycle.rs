@@ -62,6 +62,7 @@ impl WaylandState {
                 };
                 self.drop_window_animation(window);
                 self.space.map_element(element.clone(), loc, false);
+                self.request_render();
 
                 // If this window was the pending focus target (set by focus_soft
                 // before arrange/show_hide ran), re-apply keyboard focus now that
@@ -94,6 +95,7 @@ impl WaylandState {
         self.last_configured_size.remove(&window);
         self.clear_seat_focus_if_focused(window);
         self.request_space_sync();
+        self.request_render();
     }
 
     /// Remove all tracking for a window.
@@ -110,6 +112,7 @@ impl WaylandState {
         self.clear_seat_focus_if_focused(window);
         self.close_foreign_toplevel(window);
         self.push_command(crate::backend::wayland::commands::WmCommand::RequestSpaceSync);
+        self.request_render();
     }
 
     /// Close a window.

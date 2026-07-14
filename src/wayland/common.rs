@@ -670,9 +670,10 @@ pub fn build_common_scene_elements_from_fixed(
 /// Must be called once per rendered frame, after the buffer has been submitted
 /// for scanout, so that clients know when to draw the next frame.
 ///
-/// Smithay's `Space` owns window/output overlap tracking, and `Window::send_frame`
-/// owns surface-tree and popup traversal.  Keeping those responsibilities in
-/// Smithay also keeps callback delivery aligned with output enter/leave state.
+/// `Window::send_frame` owns surface-tree and popup traversal. Window/output
+/// selection is done from current geometry rather than `Space`'s cached output
+/// membership: commits can arrive before the next `Space::refresh`, especially
+/// for short-lived Xwayland override-redirect windows.
 pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
     let throttle = output.current_mode().and_then(|mode| {
         let refresh = u64::try_from(mode.refresh).ok()?;
@@ -693,7 +694,11 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         return;
     }
 
-    for window in state.space.elements_for_output(output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, output))
+    {
         window.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
     }
 
@@ -732,7 +737,11 @@ pub fn update_primary_scanout_output(
         return;
     }
 
-    for window in state.space.elements_for_output(output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, output))
+    {
         window.with_surfaces(|surface, data| {
             let _ = update_surface_primary_scanout_output(
                 surface,
@@ -758,6 +767,24 @@ pub fn update_primary_scanout_output(
             );
         });
     }
+}
+
+/// Test current compositor geometry instead of Smithay's lazily refreshed
+/// element/output membership cache.
+pub(crate) fn window_overlaps_output(
+    state: &WaylandState,
+    window: &smithay::desktop::Window,
+    output: &Output,
+) -> bool {
+    let Some(output_rect) = state.space.output_geometry(output) else {
+        return false;
+    };
+    let Some(location) = state.space.element_location(window) else {
+        return false;
+    };
+    let mut window_rect = window.bbox_with_popups();
+    window_rect.loc += location - window.geometry().loc;
+    output_rect.overlaps(window_rect)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
