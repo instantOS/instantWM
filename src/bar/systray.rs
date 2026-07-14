@@ -8,6 +8,37 @@
 use crate::types::{Rect, WaylandSystray};
 
 const MIN_VISUAL_PADDING: i32 = 2;
+const MIN_MENU_CELL_WIDTH: i32 = 24;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum MenuAction {
+    Activate(i32),
+    OpenSubmenu(i32),
+    Back,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) enum MenuToggle {
+    #[default]
+    None,
+    Check(bool),
+    Radio(bool),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct MenuEntry {
+    pub label: String,
+    pub width: i32,
+    pub enabled: bool,
+    pub separator: bool,
+    pub toggle: MenuToggle,
+    pub action: MenuAction,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct MenuView {
+    pub entries: Vec<MenuEntry>,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TrayCell {
@@ -22,10 +53,14 @@ pub(crate) struct TrayLayout {
     pub start_x: i32,
     pub total_width: i32,
     pub cells: Vec<TrayCell>,
+    pub menu_start_x: i32,
+    pub menu_width: i32,
+    pub menu_cells: Vec<crate::bar::SystrayHitSlot>,
 }
 
 pub(crate) fn layout(
     tray: &WaylandSystray,
+    menu: Option<&MenuView>,
     monitor_width: i32,
     bar_height: i32,
     configured_padding: i32,
@@ -67,11 +102,92 @@ pub(crate) fn layout(
         })
         .collect();
 
+    let (menu_start_x, menu_width, menu_cells) = menu_layout(menu, start_x);
+
     TrayLayout {
         start_x,
         total_width,
         cells,
+        menu_start_x,
+        menu_width,
+        menu_cells,
     }
+}
+
+fn menu_layout(
+    menu: Option<&MenuView>,
+    available_width: i32,
+) -> (i32, i32, Vec<crate::bar::SystrayHitSlot>) {
+    let Some(menu) = menu.filter(|menu| !menu.entries.is_empty()) else {
+        return (available_width, 0, Vec::new());
+    };
+    let available_width = available_width.max(0);
+    let widths = fit_menu_widths(
+        menu.entries
+            .iter()
+            .map(|entry| entry.width.max(MIN_MENU_CELL_WIDTH))
+            .collect(),
+        available_width,
+    );
+    let menu_width = widths.iter().sum();
+    let menu_start_x = available_width - menu_width;
+    let mut x = menu_start_x;
+    let cells = widths
+        .into_iter()
+        .enumerate()
+        .map(|(idx, width)| {
+            let cell = crate::bar::SystrayHitSlot {
+                idx,
+                start: x,
+                end: x + width,
+            };
+            x += width;
+            cell
+        })
+        .collect();
+    (menu_start_x, menu_width, cells)
+}
+
+fn fit_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
+    let natural: i32 = widths.iter().sum();
+    if natural <= available || natural <= 0 {
+        return widths;
+    }
+    if available <= 0 {
+        widths.fill(0);
+        return widths;
+    }
+
+    // Preserve every item even on narrow outputs.  When there is enough room,
+    // retain a useful minimum target; otherwise distribute every pixel so no
+    // entry becomes unreachable beyond the left edge.
+    let count = widths.len() as i32;
+    let floor = if available >= count * MIN_MENU_CELL_WIDTH {
+        MIN_MENU_CELL_WIDTH
+    } else {
+        1
+    };
+    let distributable = (available - floor * count).max(0);
+    let natural_extra: i32 = widths.iter().map(|width| (width - floor).max(0)).sum();
+    let mut used = 0;
+    for width in &mut widths {
+        let extra = if natural_extra > 0 {
+            distributable * (*width - floor).max(0) / natural_extra
+        } else {
+            distributable / count.max(1)
+        };
+        *width = floor + extra;
+        used += *width;
+    }
+    let mut remainder = available - used;
+    for width in &mut widths {
+        if remainder <= 0 {
+            break;
+        }
+        *width += 1;
+        remainder -= 1;
+    }
+    widths
 }
 
 /// Fit an icon inside the available height while preserving aspect ratio.
@@ -112,7 +228,7 @@ mod tests {
         let tray = WaylandSystray {
             items: vec![item(16, 16)],
         };
-        let layout = layout(&tray, 1920, 30, 0);
+        let layout = layout(&tray, None, 1920, 30, 0);
 
         assert_eq!(layout.total_width, 30);
         assert_eq!(layout.start_x, 1890);
@@ -128,7 +244,7 @@ mod tests {
         let tray = WaylandSystray {
             items: vec![item(16, 16), item(24, 12)],
         };
-        let layout = layout(&tray, 100, 30, 4);
+        let layout = layout(&tray, None, 100, 30, 4);
 
         assert_eq!(layout.cells[0].hit_end, layout.cells[1].hit_start);
         assert!(layout.cells.iter().all(|cell| cell.icon.y > 0));
@@ -145,9 +261,34 @@ mod tests {
         let tray = WaylandSystray {
             items: vec![item(64, 64), item(8, 8)],
         };
-        let layout = layout(&tray, 100, 30, 2);
+        let layout = layout(&tray, None, 100, 30, 2);
 
         assert_eq!((layout.cells[0].icon.w, layout.cells[0].icon.h), (26, 26));
         assert_eq!((layout.cells[1].icon.w, layout.cells[1].icon.h), (8, 8));
+    }
+
+    #[test]
+    fn menu_is_fitted_left_of_tray_without_losing_entries() {
+        let tray = WaylandSystray {
+            items: vec![item(16, 16)],
+        };
+        let menu = MenuView {
+            entries: (0..4)
+                .map(|id| MenuEntry {
+                    label: format!("item {id}"),
+                    width: 80,
+                    enabled: true,
+                    separator: false,
+                    toggle: MenuToggle::None,
+                    action: MenuAction::Activate(id),
+                })
+                .collect(),
+        };
+        let layout = layout(&tray, Some(&menu), 230, 30, 2);
+
+        assert_eq!(layout.menu_start_x, 0);
+        assert_eq!(layout.menu_width, 200);
+        assert_eq!(layout.menu_cells.len(), menu.entries.len());
+        assert_eq!(layout.menu_cells.last().unwrap().end, layout.start_x);
     }
 }

@@ -68,6 +68,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
             item.icon_h.hash(hasher);
             hash_arc_identity(hasher, &item.icon_rgba);
         }
+        systray.menu.hash(hasher);
     }
 }
 

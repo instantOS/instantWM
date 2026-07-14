@@ -173,9 +173,16 @@ fn handle_button_press(
 
     if !consumed {
         forward_button(state, pointer_handle, button);
+        close_bar_systray_menu(wm, state);
     }
 
     false
+}
+
+fn close_bar_systray_menu(wm: &mut Wm, state: &mut WaylandState) {
+    if crate::wayland::input::bar::close_systray_menu(wm) {
+        state.request_bar_redraw();
+    }
 }
 
 fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {

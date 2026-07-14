@@ -54,7 +54,7 @@ pub struct TitleHitRange {
     pub win: WindowId,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SystrayHitSlot {
     pub idx: usize,
     pub start: i32,
@@ -71,6 +71,8 @@ pub struct MonitorHitCache {
     pub status_hit_x: i32,
     /// Systray item hit slots for Wayland bars. Populated during rendering.
     pub systray_slots: Vec<SystrayHitSlot>,
+    /// Bar-native DBusMenu item hit slots, populated during rendering.
+    pub systray_menu_slots: Vec<SystrayHitSlot>,
     pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
 }
 

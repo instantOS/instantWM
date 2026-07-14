@@ -1,10 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use zbus::blocking::{Connection, Proxy};
+use zbus::zvariant::{OwnedValue, Value};
 
+use crate::bar::systray::{MenuAction, MenuEntry, MenuToggle, MenuView};
 use crate::types::{MouseButton, Point, WaylandSystray, WaylandSystrayItem};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
@@ -12,6 +14,7 @@ const WATCHER_PATH: &str = "/StatusNotifierWatcher";
 const WATCHER_IFACE: &str = "org.kde.StatusNotifierWatcher";
 
 const ITEM_IFACE: &str = "org.kde.StatusNotifierItem";
+const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Embedded StatusNotifierWatcher
@@ -132,12 +135,28 @@ enum SystrayCmd {
         path: String,
         position: Point,
     },
+    MenuAction(MenuAction),
+    CloseMenu,
 }
 
 #[derive(Debug)]
 enum SystrayEvt {
     ItemUpsert(WaylandSystrayItem),
     ItemRemoved(String, String),
+    MenuChanged(Option<MenuView>),
+}
+
+struct DbusMenuSession {
+    service: String,
+    menu_path: String,
+    parents: Vec<i32>,
+    last_view: MenuView,
+}
+
+impl DbusMenuSession {
+    fn parent_id(&self) -> i32 {
+        self.parents.last().copied().unwrap_or(0)
+    }
 }
 
 pub struct WaylandSystrayRuntime {
@@ -180,7 +199,11 @@ impl WaylandSystrayRuntime {
             .unwrap_or(false)
     }
 
-    pub fn poll_events(&self, wayland_systray: &mut WaylandSystray) -> bool {
+    pub(crate) fn poll_events(
+        &self,
+        wayland_systray: &mut WaylandSystray,
+        menu: &mut Option<MenuView>,
+    ) -> bool {
         let mut changed = false;
         loop {
             match self.evt_rx.try_recv() {
@@ -193,6 +216,12 @@ impl WaylandSystrayRuntime {
                         .items
                         .retain(|it| !(it.service == service && it.path == path));
                     changed |= wayland_systray.items.len() != before;
+                }
+                Ok(SystrayEvt::MenuChanged(next)) => {
+                    if *menu != next {
+                        *menu = next;
+                        changed = true;
+                    }
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
@@ -229,6 +258,14 @@ impl WaylandSystrayRuntime {
 
         let _ = self.cmd_tx.send(cmd);
     }
+
+    pub(crate) fn dispatch_menu_action(&self, action: MenuAction) {
+        let _ = self.cmd_tx.send(SystrayCmd::MenuAction(action));
+    }
+
+    pub(crate) fn close_menu(&self) {
+        let _ = self.cmd_tx.send(SystrayCmd::CloseMenu);
+    }
 }
 
 fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) {
@@ -260,15 +297,17 @@ fn run_systray_thread(cmd_rx: Receiver<SystrayCmd>, evt_tx: Sender<SystrayEvt>) 
     let mut known_ids: HashSet<String> = HashSet::new();
     reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
     let mut ticks = 0u32;
+    let mut menu_session = None;
 
     loop {
         while let Ok(cmd) = cmd_rx.try_recv() {
-            dispatch_cmd(&conn, cmd);
+            dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session);
         }
 
         ticks = ticks.wrapping_add(1);
         if ticks.is_multiple_of(33) {
             reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
+            refresh_menu_session(&conn, &evt_tx, &mut menu_session);
         }
 
         std::thread::sleep(std::time::Duration::from_millis(30));
@@ -440,7 +479,12 @@ fn reconcile_items(
     Ok(())
 }
 
-fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd) {
+fn dispatch_cmd(
+    conn: &Connection,
+    cmd: SystrayCmd,
+    evt_tx: &Sender<SystrayEvt>,
+    menu_session: &mut Option<DbusMenuSession>,
+) {
     match cmd {
         SystrayCmd::Activate {
             service,
@@ -468,10 +512,33 @@ fn dispatch_cmd(conn: &Connection, cmd: SystrayCmd) {
             service,
             path,
             position,
-        } => {
-            if let Err(error) = call_item_method(conn, &service, &path, "ContextMenu", position) {
-                log::warn!("wayland systray: ContextMenu failed for {service}{path}: {error}");
+        } => match open_dbus_menu(conn, &service, &path) {
+            Ok(Some(session)) => {
+                let view = session.last_view.clone();
+                *menu_session = Some(session);
+                let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
             }
+            Ok(None) => {
+                *menu_session = None;
+                let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+                if let Err(error) = call_item_method(conn, &service, &path, "ContextMenu", position)
+                {
+                    log::warn!("wayland systray: ContextMenu failed for {service}{path}: {error}");
+                }
+            }
+            Err(error) => {
+                log::warn!("wayland systray: failed to read menu for {service}{path}: {error}");
+                *menu_session = None;
+                let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+                let _ = call_item_method(conn, &service, &path, "ContextMenu", position);
+            }
+        },
+        SystrayCmd::MenuAction(action) => {
+            handle_menu_action(conn, action, evt_tx, menu_session);
+        }
+        SystrayCmd::CloseMenu => {
+            *menu_session = None;
+            let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
         }
     }
 }
@@ -485,6 +552,250 @@ fn call_item_method(
 ) -> zbus::Result<()> {
     let proxy = Proxy::new(conn, service, path, ITEM_IFACE)?;
     let _: () = proxy.call(method, &(position.x, position.y))?;
+    Ok(())
+}
+
+fn open_dbus_menu(
+    conn: &Connection,
+    service: &str,
+    item_path: &str,
+) -> zbus::Result<Option<DbusMenuSession>> {
+    let item = Proxy::new(conn, service, item_path, ITEM_IFACE)?;
+    let menu_path: String = item
+        .get_property("Menu")
+        .unwrap_or_else(|_| "/".to_string());
+    if menu_path == "/" {
+        return Ok(None);
+    }
+
+    notify_menu_about_to_show(conn, service, &menu_path, 0);
+    let view = fetch_menu_level(conn, service, &menu_path, 0, false)?;
+    if view.entries.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(DbusMenuSession {
+        service: service.to_string(),
+        menu_path,
+        parents: Vec::new(),
+        last_view: view,
+    }))
+}
+
+fn handle_menu_action(
+    conn: &Connection,
+    action: MenuAction,
+    evt_tx: &Sender<SystrayEvt>,
+    session: &mut Option<DbusMenuSession>,
+) {
+    let Some(current) = session.as_mut() else {
+        return;
+    };
+    match action {
+        MenuAction::Activate(id) => {
+            if let Err(error) = send_menu_click(conn, &current.service, &current.menu_path, id) {
+                log::warn!("wayland systray: menu activation failed: {error}");
+            }
+            *session = None;
+            let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+        }
+        MenuAction::OpenSubmenu(id) => {
+            notify_menu_about_to_show(conn, &current.service, &current.menu_path, id);
+            match fetch_menu_level(conn, &current.service, &current.menu_path, id, true) {
+                // A submenu level always contains the synthetic Back entry.
+                // Do not navigate into a stale submenu that has no real items.
+                Ok(view) if view.entries.len() > 1 => {
+                    current.parents.push(id);
+                    current.last_view = view.clone();
+                    let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+                }
+                Ok(_) => {}
+                Err(error) => log::warn!("wayland systray: failed to open submenu: {error}"),
+            }
+        }
+        MenuAction::Back => {
+            current.parents.pop();
+            let parent_id = current.parent_id();
+            notify_menu_about_to_show(conn, &current.service, &current.menu_path, parent_id);
+            match fetch_menu_level(
+                conn,
+                &current.service,
+                &current.menu_path,
+                parent_id,
+                parent_id != 0,
+            ) {
+                Ok(view) => {
+                    current.last_view = view.clone();
+                    let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+                }
+                Err(error) => log::warn!("wayland systray: failed to return to menu: {error}"),
+            }
+        }
+    }
+}
+
+fn refresh_menu_session(
+    conn: &Connection,
+    evt_tx: &Sender<SystrayEvt>,
+    session: &mut Option<DbusMenuSession>,
+) {
+    let Some(current) = session.as_mut() else {
+        return;
+    };
+    let parent_id = current.parent_id();
+    match fetch_menu_level(
+        conn,
+        &current.service,
+        &current.menu_path,
+        parent_id,
+        parent_id != 0,
+    ) {
+        Ok(view) if view != current.last_view => {
+            current.last_view = view.clone();
+            let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+        }
+        Ok(_) => {}
+        Err(error) => {
+            log::debug!("wayland systray: closing unavailable menu: {error}");
+            *session = None;
+            let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+        }
+    }
+}
+
+fn notify_menu_about_to_show(conn: &Connection, service: &str, menu_path: &str, id: i32) {
+    let Ok(proxy) = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE) else {
+        return;
+    };
+    if proxy.call::<_, _, bool>("AboutToShow", &(id,)).is_err() {
+        let _ = proxy.call::<_, _, ()>("AboutToShow", &(id,));
+    }
+}
+
+fn fetch_menu_level(
+    conn: &Connection,
+    service: &str,
+    menu_path: &str,
+    parent_id: i32,
+    include_back: bool,
+) -> zbus::Result<MenuView> {
+    let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
+    let root = match proxy
+        .call::<_, _, (u32, OwnedValue)>("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))
+    {
+        Ok((_, layout)) => layout,
+        Err(_) => {
+            let (layout,): (OwnedValue,) =
+                proxy.call("GetLayout", &(parent_id, 1i32, Vec::<String>::new()))?;
+            layout
+        }
+    };
+
+    let (_, _, children): (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) =
+        root.try_into().map_err(zbus::Error::Variant)?;
+    let mut entries = Vec::with_capacity(children.len() + usize::from(include_back));
+    if include_back {
+        entries.push(MenuEntry {
+            label: "‹ Back".to_string(),
+            width: 72,
+            enabled: true,
+            separator: false,
+            toggle: MenuToggle::None,
+            action: MenuAction::Back,
+        });
+    }
+    for child in children {
+        if let Some(entry) = parse_menu_entry(child)? {
+            entries.push(entry);
+        }
+    }
+    Ok(MenuView { entries })
+}
+
+fn parse_menu_entry(value: OwnedValue) -> zbus::Result<Option<MenuEntry>> {
+    let (id, props, children): (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>) =
+        value.try_into().map_err(zbus::Error::Variant)?;
+    Ok(menu_entry_from_properties(id, &props, !children.is_empty()))
+}
+
+fn menu_entry_from_properties(
+    id: i32,
+    props: &HashMap<String, OwnedValue>,
+    has_layout_children: bool,
+) -> Option<MenuEntry> {
+    if !menu_prop_bool(props, "visible").unwrap_or(true) {
+        return None;
+    }
+
+    let separator = menu_prop_string(props, "type").is_some_and(|kind| kind == "separator");
+    let raw_label = menu_prop_string(props, "label").unwrap_or_default();
+    let label = strip_menu_mnemonics(&raw_label).trim().to_string();
+    if !separator && label.is_empty() {
+        return None;
+    }
+    let enabled = !separator && menu_prop_bool(props, "enabled").unwrap_or(true);
+    let has_submenu = has_layout_children
+        || menu_prop_string(props, "children-display").is_some_and(|value| value == "submenu");
+    let toggle_state = menu_prop_i32(props, "toggle-state").unwrap_or(0) == 1;
+    let toggle = match menu_prop_string(props, "toggle-type").as_deref() {
+        Some("checkmark") => MenuToggle::Check(toggle_state),
+        Some("radio") => MenuToggle::Radio(toggle_state),
+        _ => MenuToggle::None,
+    };
+    let indicator_width = if toggle == MenuToggle::None { 0 } else { 16 };
+    let submenu_width = if has_submenu { 16 } else { 0 };
+    let width = if separator {
+        24
+    } else {
+        (label.chars().count() as i32 * 8 + 20 + indicator_width + submenu_width).max(24)
+    };
+    Some(MenuEntry {
+        label,
+        width,
+        enabled,
+        separator,
+        toggle,
+        action: if has_submenu {
+            MenuAction::OpenSubmenu(id)
+        } else {
+            MenuAction::Activate(id)
+        },
+    })
+}
+
+fn strip_menu_mnemonics(label: &str) -> String {
+    let mut chars = label.chars().peekable();
+    let mut stripped = String::with_capacity(label.len());
+    while let Some(ch) = chars.next() {
+        if ch != '_' {
+            stripped.push(ch);
+            continue;
+        }
+        if chars.peek() == Some(&'_') {
+            chars.next();
+            stripped.push('_');
+        }
+    }
+    stripped
+}
+
+fn menu_prop_string(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+    let value = props.get(key)?;
+    String::try_from(value.clone())
+        .ok()
+        .or_else(|| <&str>::try_from(value).ok().map(str::to_string))
+}
+
+fn menu_prop_bool(props: &HashMap<String, OwnedValue>, key: &str) -> Option<bool> {
+    props.get(key).and_then(|value| bool::try_from(value).ok())
+}
+
+fn menu_prop_i32(props: &HashMap<String, OwnedValue>, key: &str) -> Option<i32> {
+    props.get(key).and_then(|value| i32::try_from(value).ok())
+}
+
+fn send_menu_click(conn: &Connection, service: &str, menu_path: &str, id: i32) -> zbus::Result<()> {
+    let proxy = Proxy::new(conn, service, menu_path, DBUSMENU_IFACE)?;
+    let _: () = proxy.call("Event", &(id, "clicked", Value::new(""), 0u32))?;
     Ok(())
 }
 
@@ -592,7 +903,18 @@ fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{dbus_icon_bytes_to_rgba, select_largest_valid_pixmap};
+    use std::collections::HashMap;
+
+    use zbus::zvariant::{OwnedValue, Value};
+
+    use super::{
+        MenuAction, MenuToggle, dbus_icon_bytes_to_rgba, menu_entry_from_properties,
+        select_largest_valid_pixmap, strip_menu_mnemonics,
+    };
+
+    fn string_value(value: &str) -> OwnedValue {
+        OwnedValue::try_from(Value::from(value)).expect("string is representable as an owned value")
+    }
 
     #[test]
     fn dbus_icon_bytes_are_decoded_from_argb_to_rgba() {
@@ -616,5 +938,48 @@ mod tests {
         .expect("a valid pixmap");
 
         assert_eq!((selected.0, selected.1), (32, 32));
+    }
+
+    #[test]
+    fn hidden_and_empty_menu_entries_are_omitted() {
+        let hidden = HashMap::from([
+            ("label".to_string(), string_value("Hidden")),
+            ("visible".to_string(), OwnedValue::from(false)),
+        ]);
+        let empty = HashMap::new();
+
+        assert!(menu_entry_from_properties(1, &hidden, false).is_none());
+        assert!(menu_entry_from_properties(2, &empty, false).is_none());
+    }
+
+    #[test]
+    fn separators_are_non_interactive() {
+        let properties = HashMap::from([("type".to_string(), string_value("separator"))]);
+
+        let entry = menu_entry_from_properties(3, &properties, false).expect("separator");
+
+        assert!(entry.separator);
+        assert!(!entry.enabled);
+    }
+
+    #[test]
+    fn submenu_and_toggle_properties_are_preserved() {
+        let properties = HashMap::from([
+            ("label".to_string(), string_value("_Notifications")),
+            ("children-display".to_string(), string_value("submenu")),
+            ("toggle-type".to_string(), string_value("checkmark")),
+            ("toggle-state".to_string(), OwnedValue::from(1i32)),
+        ]);
+
+        let entry = menu_entry_from_properties(7, &properties, false).expect("menu entry");
+
+        assert_eq!(entry.label, "Notifications");
+        assert_eq!(entry.toggle, MenuToggle::Check(true));
+        assert_eq!(entry.action, MenuAction::OpenSubmenu(7));
+    }
+
+    #[test]
+    fn menu_mnemonics_preserve_escaped_underscores() {
+        assert_eq!(strip_menu_mnemonics("_Save __As"), "Save _As");
     }
 }

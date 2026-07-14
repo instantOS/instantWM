@@ -23,6 +23,29 @@ pub fn handle_bar_click(
         return;
     };
 
+    if matches!(pos, BarPosition::SystrayMenuItem(_)) {
+        let BarPosition::SystrayMenuItem(idx) = pos else {
+            return;
+        };
+        let Backend::Wayland(data) = &mut wm.backend else {
+            return;
+        };
+        if button == MouseButton::Left
+            && let Some(entry) = data
+                .wayland_systray_menu
+                .as_ref()
+                .and_then(|menu| menu.entries.get(idx))
+            && entry.enabled
+            && !entry.separator
+            && let Some(runtime) = data.wayland_systray_runtime.as_ref()
+        {
+            runtime.dispatch_menu_action(entry.action);
+        }
+        return;
+    }
+
+    close_systray_menu(wm);
+
     if matches!(pos, BarPosition::SystrayItem(_)) {
         let BarPosition::SystrayItem(idx) = pos else {
             return;
@@ -55,6 +78,21 @@ pub fn handle_bar_click(
         return;
     };
     run_bar_bindings(wayland_ctx, pos, button, root, clean_state);
+}
+
+/// Close the bar-hosted DBusMenu, returning whether a menu was open.
+pub fn close_systray_menu(wm: &mut Wm) -> bool {
+    let Backend::Wayland(data) = &mut wm.backend else {
+        return false;
+    };
+    if data.wayland_systray_menu.take().is_none() {
+        return false;
+    }
+    if let Some(runtime) = data.wayland_systray_runtime.as_ref() {
+        runtime.close_menu();
+    }
+    wm.bar.mark_dirty();
+    true
 }
 
 pub fn handle_bar_scroll(wm: &mut Wm, pos: BarPosition, delta: f64, root: Point, clean_state: u32) {

@@ -29,6 +29,7 @@ pub(crate) struct TitleCellSnapshot {
 #[derive(Clone)]
 pub(crate) struct SystraySnapshot {
     pub items: crate::types::WaylandSystray,
+    pub menu: Option<crate::bar::systray::MenuView>,
     pub visual_padding: i32,
     pub base_scheme: BarScheme,
 }
@@ -67,7 +68,10 @@ pub(crate) struct MonitorRenderOutputWithId {
 
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
-    wayland_systray: Option<&crate::types::WaylandSystray>,
+    wayland_systray: Option<(
+        &crate::types::WaylandSystray,
+        Option<&crate::bar::systray::MenuView>,
+    )>,
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().selected_monitor().num;
@@ -188,8 +192,9 @@ pub(crate) fn build_monitor_snapshots(
         };
 
         let systray = if show_systray && is_selected_monitor {
-            wayland_systray.map(|items| SystraySnapshot {
+            wayland_systray.map(|(items, menu)| SystraySnapshot {
                 items: items.clone(),
+                menu: menu.cloned(),
                 visual_padding: systray_spacing,
                 base_scheme: core.status_scheme(),
             })
@@ -342,7 +347,13 @@ fn render_monitor_snapshot_base(
 ) -> MonitorRenderOutput {
     let bar_height = snapshot.rect.h;
     let tray_layout = snapshot.systray.as_ref().map(|s| {
-        crate::bar::systray::layout(&s.items, snapshot.rect.w, bar_height, s.visual_padding)
+        crate::bar::systray::layout(
+            &s.items,
+            s.menu.as_ref(),
+            snapshot.rect.w,
+            bar_height,
+            s.visual_padding,
+        )
     });
     let systray_width = if snapshot.is_selected_monitor {
         tray_layout.as_ref().map(|l| l.total_width).unwrap_or(0)
@@ -495,6 +506,7 @@ fn render_monitor_snapshot_base(
                 end: cell.hit_end,
             })
             .collect();
+        hit.systray_menu_slots = layout.menu_cells.clone();
     }
 
     MonitorRenderOutput {
