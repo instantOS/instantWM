@@ -103,17 +103,22 @@ mod tests {
     #[test]
     fn normalize_current_mode_resets_missing_mode_to_default() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.core.behavior.current_mode = "resize".to_string();
+        wm.core.behavior.current_mode =
+            crate::core_state::ActiveWmMode::Named("resize".to_string());
 
         wm.core.normalize_current_mode();
 
-        assert_eq!(wm.core.behavior.current_mode, "default");
+        assert_eq!(
+            wm.core.behavior.current_mode,
+            crate::core_state::ActiveWmMode::Default
+        );
     }
 
     #[test]
     fn normalize_current_mode_preserves_existing_mode() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.core.behavior.current_mode = "resize".to_string();
+        wm.core.behavior.current_mode =
+            crate::core_state::ActiveWmMode::Named("resize".to_string());
         wm.core
             .config
             .bindings
@@ -122,6 +127,9 @@ mod tests {
 
         wm.core.normalize_current_mode();
 
-        assert_eq!(wm.core.behavior.current_mode, "resize");
+        assert_eq!(
+            wm.core.behavior.current_mode,
+            crate::core_state::ActiveWmMode::Named("resize".to_string())
+        );
     }
 }

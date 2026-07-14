@@ -7,6 +7,7 @@ use super::WaylandBarPainter;
 pub(super) fn draw_snapshot(
     painter: &mut WaylandBarPainter,
     snapshot: &scene::SystraySnapshot,
+    menu: Option<&crate::systray::TrayMenuPresentation>,
     layout: &crate::systray::TrayLayout,
     bar_height: i32,
 ) {
@@ -41,12 +42,12 @@ pub(super) fn draw_snapshot(
         );
     }
 
-    let Some(menu) = snapshot.menu.as_ref() else {
+    let Some(menu) = menu else {
         return;
     };
     crate::systray::render::draw_menu(
         painter,
-        menu,
+        &menu.view,
         &layout.menu_cells,
         &snapshot.base_scheme,
         bar_height,

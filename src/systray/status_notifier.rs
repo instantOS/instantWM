@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -133,22 +134,32 @@ enum SystrayCmd {
         position: Point,
     },
     ContextMenu {
+        session_id: u64,
         service: String,
         path: String,
         position: Point,
     },
-    MenuAction(MenuAction),
-    CloseMenu,
+    MenuAction {
+        session_id: u64,
+        action: MenuAction,
+    },
+    CloseMenu {
+        session_id: u64,
+    },
 }
 
 #[derive(Debug)]
 enum SystrayEvt {
     ItemUpsert(StatusNotifierItem),
     ItemRemoved(String, String),
-    MenuChanged(Option<MenuView>),
+    MenuChanged {
+        session_id: u64,
+        view: Option<MenuView>,
+    },
 }
 
 struct DbusMenuSession {
+    id: u64,
     service: String,
     menu_path: String,
     parents: Vec<i32>,
@@ -164,6 +175,7 @@ impl DbusMenuSession {
 pub(crate) struct StatusNotifierRuntime {
     cmd_tx: Sender<SystrayCmd>,
     evt_rx: Receiver<SystrayEvt>,
+    next_menu_session_id: AtomicU64,
 }
 
 impl StatusNotifierRuntime {
@@ -181,13 +193,17 @@ impl StatusNotifierRuntime {
             return None;
         }
 
-        Some(Self { cmd_tx, evt_rx })
+        Some(Self {
+            cmd_tx,
+            evt_rx,
+            next_menu_session_id: AtomicU64::new(1),
+        })
     }
 
     pub(crate) fn poll_events(
         &self,
         tray: &mut StatusNotifierTray,
-        menu: &mut Option<MenuView>,
+        menu: &mut crate::systray::TrayMenuState,
     ) -> bool {
         let mut changed = false;
         loop {
@@ -201,11 +217,8 @@ impl StatusNotifierRuntime {
                         .retain(|it| !(it.service == service && it.path == path));
                     changed |= tray.items.len() != before;
                 }
-                Ok(SystrayEvt::MenuChanged(next)) => {
-                    if *menu != next {
-                        *menu = next;
-                        changed = true;
-                    }
+                Ok(SystrayEvt::MenuChanged { session_id, view }) => {
+                    changed |= menu.apply(session_id, view);
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => break,
@@ -220,7 +233,8 @@ impl StatusNotifierRuntime {
         path: String,
         button: MouseButton,
         position: Point,
-    ) {
+    ) -> Option<u64> {
+        let mut menu_session_id = None;
         let cmd = match button {
             MouseButton::Left => SystrayCmd::Activate {
                 service,
@@ -232,23 +246,31 @@ impl StatusNotifierRuntime {
                 path,
                 position,
             },
-            MouseButton::Right => SystrayCmd::ContextMenu {
-                service,
-                path,
-                position,
-            },
-            _ => return,
+            MouseButton::Right => {
+                let session_id = self.next_menu_session_id.fetch_add(1, Ordering::Relaxed);
+                menu_session_id = Some(session_id);
+                SystrayCmd::ContextMenu {
+                    session_id,
+                    service,
+                    path,
+                    position,
+                }
+            }
+            _ => return None,
         };
 
         let _ = self.cmd_tx.send(cmd);
+        menu_session_id
     }
 
-    pub(crate) fn dispatch_menu_action(&self, action: MenuAction) {
-        let _ = self.cmd_tx.send(SystrayCmd::MenuAction(action));
+    pub(crate) fn dispatch_menu_action(&self, session_id: u64, action: MenuAction) {
+        let _ = self
+            .cmd_tx
+            .send(SystrayCmd::MenuAction { session_id, action });
     }
 
-    pub(crate) fn close_menu(&self) {
-        let _ = self.cmd_tx.send(SystrayCmd::CloseMenu);
+    pub(crate) fn close_menu(&self, session_id: u64) {
+        let _ = self.cmd_tx.send(SystrayCmd::CloseMenu { session_id });
     }
 }
 
@@ -493,18 +515,19 @@ fn dispatch_cmd(
             }
         }
         SystrayCmd::ContextMenu {
+            session_id,
             service,
             path,
             position,
-        } => match open_dbus_menu(conn, &service, &path) {
+        } => match open_dbus_menu(conn, session_id, &service, &path) {
             Ok(Some(session)) => {
                 let view = session.last_view.clone();
                 *menu_session = Some(session);
-                let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+                send_menu_changed(evt_tx, session_id, Some(view));
             }
             Ok(None) => {
                 *menu_session = None;
-                let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+                send_menu_changed(evt_tx, session_id, None);
                 if let Err(error) = call_item_method(conn, &service, &path, "ContextMenu", position)
                 {
                     log::warn!("status notifier: ContextMenu failed for {service}{path}: {error}");
@@ -513,16 +536,26 @@ fn dispatch_cmd(
             Err(error) => {
                 log::warn!("status notifier: failed to read menu for {service}{path}: {error}");
                 *menu_session = None;
-                let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+                send_menu_changed(evt_tx, session_id, None);
                 let _ = call_item_method(conn, &service, &path, "ContextMenu", position);
             }
         },
-        SystrayCmd::MenuAction(action) => {
-            handle_menu_action(conn, action, evt_tx, menu_session);
+        SystrayCmd::MenuAction { session_id, action } => {
+            if menu_session
+                .as_ref()
+                .is_some_and(|session| session.id == session_id)
+            {
+                handle_menu_action(conn, action, evt_tx, menu_session);
+            }
         }
-        SystrayCmd::CloseMenu => {
-            *menu_session = None;
-            let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+        SystrayCmd::CloseMenu { session_id } => {
+            if menu_session
+                .as_ref()
+                .is_some_and(|session| session.id == session_id)
+            {
+                *menu_session = None;
+                send_menu_changed(evt_tx, session_id, None);
+            }
         }
     }
 }
@@ -541,6 +574,7 @@ fn call_item_method(
 
 fn open_dbus_menu(
     conn: &Connection,
+    session_id: u64,
     service: &str,
     item_path: &str,
 ) -> zbus::Result<Option<DbusMenuSession>> {
@@ -558,6 +592,7 @@ fn open_dbus_menu(
         return Ok(None);
     }
     Ok(Some(DbusMenuSession {
+        id: session_id,
         service: service.to_string(),
         menu_path,
         parents: Vec::new(),
@@ -576,11 +611,12 @@ fn handle_menu_action(
     };
     match action {
         MenuAction::Activate(id) => {
+            let session_id = current.id;
             if let Err(error) = send_menu_click(conn, &current.service, &current.menu_path, id) {
                 log::warn!("status notifier: menu activation failed: {error}");
             }
             *session = None;
-            let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+            send_menu_changed(evt_tx, session_id, None);
         }
         MenuAction::OpenSubmenu(id) => {
             notify_menu_about_to_show(conn, &current.service, &current.menu_path, id);
@@ -590,7 +626,7 @@ fn handle_menu_action(
                 Ok(view) if view.entries.len() > 1 => {
                     current.parents.push(id);
                     current.last_view = view.clone();
-                    let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+                    send_menu_changed(evt_tx, current.id, Some(view));
                 }
                 Ok(_) => {}
                 Err(error) => log::warn!("status notifier: failed to open submenu: {error}"),
@@ -609,7 +645,7 @@ fn handle_menu_action(
             ) {
                 Ok(view) => {
                     current.last_view = view.clone();
-                    let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+                    send_menu_changed(evt_tx, current.id, Some(view));
                 }
                 Err(error) => log::warn!("status notifier: failed to return to menu: {error}"),
             }
@@ -635,15 +671,20 @@ fn refresh_menu_session(
     ) {
         Ok(view) if view != current.last_view => {
             current.last_view = view.clone();
-            let _ = evt_tx.send(SystrayEvt::MenuChanged(Some(view)));
+            send_menu_changed(evt_tx, current.id, Some(view));
         }
         Ok(_) => {}
         Err(error) => {
+            let session_id = current.id;
             log::debug!("status notifier: closing unavailable menu: {error}");
             *session = None;
-            let _ = evt_tx.send(SystrayEvt::MenuChanged(None));
+            send_menu_changed(evt_tx, session_id, None);
         }
     }
+}
+
+fn send_menu_changed(evt_tx: &Sender<SystrayEvt>, session_id: u64, view: Option<MenuView>) {
+    let _ = evt_tx.send(SystrayEvt::MenuChanged { session_id, view });
 }
 
 fn notify_menu_about_to_show(conn: &Connection, service: &str, menu_path: &str, id: i32) {

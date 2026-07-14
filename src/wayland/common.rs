@@ -515,6 +515,7 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
+    let tray_menu = wm.tray_menu.presentation();
     let mut core = CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
@@ -535,7 +536,7 @@ pub fn build_bar_buffers(
             &mut data.bar_painter,
             smithay::utils::Scale::from(1.0),
             &data.status_notifier_tray,
-            data.systray_menu.as_ref(),
+            tray_menu.as_ref(),
         )
     }
 }
@@ -554,7 +555,7 @@ pub fn poll_systray(wm: &mut Wm) {
     };
 
     if let Some(runtime) = data.status_notifier_runtime.as_mut() {
-        let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut data.systray_menu);
+        let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut wm.tray_menu);
         if dirty {
             core.bar.mark_dirty();
         }

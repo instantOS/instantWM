@@ -35,8 +35,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.layout_symbol.hash(hasher);
     snapshot.show_shutdown.hash(hasher);
     snapshot.monitor_rect_x.hash(hasher);
-    snapshot.status_text.hash(hasher);
-    hash_status_items(hasher, &snapshot.status_items);
+    hash_presentation(hasher, &snapshot.presentation);
 
     snapshot.tags.len().hash(hasher);
     for tag in &snapshot.tags {
@@ -68,7 +67,26 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
             item.icon_h.hash(hasher);
             hash_arc_identity(hasher, &item.icon_rgba);
         }
-        systray.menu.hash(hasher);
+    }
+}
+
+fn hash_presentation(hasher: &mut DefaultHasher, presentation: &scene::BarPresentation) {
+    use scene::StatusPresentation;
+
+    std::mem::discriminant(&presentation.status).hash(hasher);
+    if let StatusPresentation::WmMode { name, .. } = &presentation.status {
+        name.hash(hasher);
+    }
+    if let Some(content) = presentation.status.content() {
+        content.text.hash(hasher);
+        hash_status_items(hasher, &content.items);
+    }
+    presentation
+        .tray_menu()
+        .map(|menu| menu.session_id)
+        .hash(hasher);
+    if let Some(menu) = presentation.tray_menu() {
+        menu.view.hash(hasher);
     }
 }
 

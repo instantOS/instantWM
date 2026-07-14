@@ -293,19 +293,15 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn normalize_current_mode(&mut self) {
-        if self.g.behavior.current_mode == "default"
-            || self.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        {
-            return;
-        }
-
-        if !self
-            .config()
-            .bindings
-            .modes
-            .contains_key(&self.g.behavior.current_mode)
-        {
-            self.g.behavior.current_mode = "default".to_string();
+        let mode_exists = match &self.g.behavior.current_mode {
+            crate::core_state::ActiveWmMode::Named(name) => {
+                self.g.config.bindings.modes.contains_key(name)
+            }
+            crate::core_state::ActiveWmMode::Default
+            | crate::core_state::ActiveWmMode::Overview => true,
+        };
+        if !mode_exists {
+            self.g.behavior.current_mode = crate::core_state::ActiveWmMode::Default;
         }
     }
 
@@ -565,18 +561,27 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn current_mode(&self) -> &str {
-        &self.core().behavior().current_mode
+        self.core().behavior().current_mode.as_str()
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<String>) {
-        let next_mode = mode.into();
+        let next_mode = crate::core_state::ActiveWmMode::from_name(mode);
+        self.transition_current_mode(next_mode, crate::overview::ExitMode::RestorePrevious);
+    }
+
+    pub(crate) fn transition_current_mode(
+        &mut self,
+        next_mode: crate::core_state::ActiveWmMode,
+        overview_exit: crate::overview::ExitMode,
+    ) {
         let previous_mode = self.core().behavior().current_mode.clone();
         if previous_mode == next_mode {
             return;
         }
 
         self.core_mut().behavior_mut().current_mode = next_mode.clone();
-        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode);
+        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode, overview_exit);
+        self.request_bar_update();
     }
 
     pub fn reset_mode(&mut self) {

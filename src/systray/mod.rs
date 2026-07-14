@@ -69,6 +69,64 @@ pub(crate) struct MenuView {
     pub entries: Vec<MenuEntry>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct TrayMenuPresentation {
+    pub session_id: u64,
+    pub view: MenuView,
+}
+
+/// Main-thread view of the active tray menu session.
+///
+/// `accepting_updates` is deliberately separate from `view`: opening a menu is
+/// asynchronous, and closing it must reject late updates for the same session.
+#[derive(Debug, Default)]
+pub(crate) struct TrayMenuState {
+    session_id: u64,
+    accepting_updates: bool,
+    view: Option<MenuView>,
+}
+
+impl TrayMenuState {
+    pub fn begin(&mut self, session_id: u64) -> bool {
+        let changed = self.view.take().is_some();
+        self.session_id = session_id;
+        self.accepting_updates = true;
+        changed
+    }
+
+    pub fn apply(&mut self, session_id: u64, view: Option<MenuView>) -> bool {
+        if !self.accepting_updates || self.session_id != session_id {
+            return false;
+        }
+        let changed = self.view != view;
+        self.view = view;
+        if self.view.is_none() {
+            self.accepting_updates = false;
+        }
+        changed
+    }
+
+    pub fn close(&mut self) -> Option<u64> {
+        if !self.accepting_updates && self.view.is_none() {
+            return None;
+        }
+        self.accepting_updates = false;
+        self.view = None;
+        Some(self.session_id)
+    }
+
+    pub fn presentation(&self) -> Option<TrayMenuPresentation> {
+        self.view.clone().map(|view| TrayMenuPresentation {
+            session_id: self.session_id,
+            view,
+        })
+    }
+
+    pub fn current(&self) -> Option<TrayMenuPresentation> {
+        self.presentation()
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct TrayCell {
     pub idx: usize,
@@ -320,6 +378,28 @@ mod tests {
             assert_eq!(fit_icon_size(16, 0, 30, scale), (0, 0));
             assert_eq!(fit_icon_size(-1, 16, 30, scale), (0, 0));
         }
+    }
+
+    #[test]
+    fn closed_menu_rejects_late_updates_from_its_session() {
+        let mut state = TrayMenuState::default();
+        state.begin(7);
+        assert!(state.apply(7, Some(MenuView::default())));
+        assert_eq!(state.close(), Some(7));
+
+        assert!(!state.apply(7, Some(MenuView::default())));
+        assert!(state.presentation().is_none());
+    }
+
+    #[test]
+    fn newer_menu_session_rejects_updates_from_an_older_session() {
+        let mut state = TrayMenuState::default();
+        state.begin(3);
+        state.begin(4);
+
+        assert!(!state.apply(3, Some(MenuView::default())));
+        assert!(state.apply(4, Some(MenuView::default())));
+        assert_eq!(state.presentation().unwrap().session_id, 4);
     }
 
     #[test]

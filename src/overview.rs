@@ -26,25 +26,24 @@ impl OverviewState {
     }
 }
 
-pub fn handle_mode_transition(ctx: &mut WmCtx<'_>, previous_mode: &str, next_mode: &str) {
-    let entering_overview = previous_mode != OVERVIEW_MODE_NAME && next_mode == OVERVIEW_MODE_NAME;
-    let leaving_overview = previous_mode == OVERVIEW_MODE_NAME && next_mode != OVERVIEW_MODE_NAME;
-
-    if entering_overview {
-        enter(ctx);
-    } else if leaving_overview {
-        exit(ctx, ExitMode::RestorePrevious);
+pub(crate) fn handle_mode_transition(
+    ctx: &mut WmCtx<'_>,
+    previous_mode: &crate::core_state::ActiveWmMode,
+    next_mode: &crate::core_state::ActiveWmMode,
+    overview_exit: ExitMode,
+) {
+    match (previous_mode, next_mode) {
+        (crate::core_state::ActiveWmMode::Overview, crate::core_state::ActiveWmMode::Overview) => {}
+        (crate::core_state::ActiveWmMode::Overview, _) => exit(ctx, overview_exit),
+        (_, crate::core_state::ActiveWmMode::Overview) => enter(ctx),
+        _ => {}
     }
 }
 
 /// Exit overview mode with a specific [`ExitMode`].
 ///
-/// Bypasses `WmCtx::set_current_mode` to avoid threading `ExitMode` through
-/// the general mode system. If `set_current_mode` ever gains side effects,
-/// this path must be updated to match.
 pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
-    ctx.core_mut().behavior_mut().current_mode = "default".to_string();
-    exit(ctx, mode);
+    ctx.transition_current_mode(crate::core_state::ActiveWmMode::Default, mode);
 }
 
 fn enter(ctx: &mut WmCtx<'_>) {
@@ -130,7 +129,6 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     if ctx.core().model().is_overview_active() {
         exit_overview(ctx, ExitMode::ToSelectedWindow);
-        ctx.request_bar_update();
         return;
     }
 
@@ -139,7 +137,6 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     }
 
     ctx.set_current_mode(OVERVIEW_MODE_NAME.to_string());
-    ctx.request_bar_update();
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
@@ -148,7 +145,6 @@ pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     }
 
     ctx.reset_mode();
-    ctx.request_bar_update();
 }
 
 /// Arrange the selected monitor in overview mode.

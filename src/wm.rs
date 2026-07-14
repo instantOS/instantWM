@@ -8,6 +8,7 @@ pub struct Wm {
     pub backend: Backend,
     pub running: bool,
     pub bar: crate::bar::BarState,
+    pub(crate) tray_menu: crate::systray::TrayMenuState,
     pub focus: crate::client::focus::FocusState,
 }
 
@@ -19,6 +20,7 @@ impl Wm {
             backend,
             running: true,
             bar: crate::bar::BarState::default(),
+            tray_menu: crate::systray::TrayMenuState::default(),
             focus: crate::client::focus::FocusState::default(),
         }
     }

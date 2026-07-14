@@ -43,7 +43,6 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let _selmon_id = ctx.core().model().selected_monitor_id();
     ctx.request_bar_update();
 }
 
@@ -95,8 +94,6 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
     if let WmCtx::X11(x11) = ctx {
         crate::backend::x11::keyboard::grab_keys(x11.core.state(), &x11.x11, x11.x11_runtime);
     }
-    let _selmon_id = ctx.core().model().selected_monitor_id();
-    ctx.request_bar_update();
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {

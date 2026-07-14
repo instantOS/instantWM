@@ -127,7 +127,6 @@ pub struct WaylandBackendData {
     pub backend: WaylandBackend,
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
     pub(crate) status_notifier_tray: StatusNotifierTray,
-    pub(crate) systray_menu: Option<crate::systray::MenuView>,
     pub(crate) status_notifier_runtime:
         Option<crate::systray::status_notifier::StatusNotifierRuntime>,
 }
@@ -157,7 +156,6 @@ impl Backend {
             backend,
             bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
             status_notifier_tray: StatusNotifierTray::default(),
-            systray_menu: None,
             status_notifier_runtime: None,
         }))
     }

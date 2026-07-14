@@ -60,6 +60,15 @@ pub struct SystrayHitSlot {
     pub end: i32,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BarOverlayHit {
+    TrayMenu {
+        start: i32,
+        end: i32,
+        slots: Vec<SystrayHitSlot>,
+    },
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct MonitorHitCache {
     pub tag_ranges: Vec<TagHitRange>,
@@ -70,8 +79,9 @@ pub struct MonitorHitCache {
     pub status_hit_x: i32,
     /// StatusNotifier item hit slots for compositor-rendered bars.
     pub systray_slots: Vec<SystrayHitSlot>,
-    /// Bar-native DBusMenu item hit slots, populated during rendering.
-    pub systray_menu_slots: Vec<SystrayHitSlot>,
+    /// Topmost transient hit layer. Coordinates covered by this layer never
+    /// fall through to normal bar controls.
+    pub overlay: Option<BarOverlayHit>,
     pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
 }
 
@@ -277,14 +287,12 @@ pub fn update_hover(
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
     if ctx.core().model().is_overview_active() {
         ctx.reset_mode();
-        ctx.request_bar_update();
         return;
     }
 
     let mode = ctx.current_mode();
     if !mode.is_empty() && mode != "default" {
         ctx.reset_mode();
-        ctx.request_bar_update();
         return;
     }
 
