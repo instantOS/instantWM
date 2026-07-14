@@ -432,6 +432,7 @@ fn handle_map_window(
         win,
         properties,
         initial_geo,
+        mut initial_position_is_explicit,
         launch_pid,
         launch_startup_id,
         x11_hints,
@@ -518,14 +519,29 @@ fn handle_map_window(
     }
 
     g.model.insert_client(client);
-    crate::client::apply_rules(g, win, &properties, launch_context);
+    let rule_outcome = crate::client::apply_initial_rules(g, win, &properties, launch_context);
+    initial_position_is_explicit = match rule_outcome.placement {
+        crate::client::InitialRulePlacement::Default => initial_position_is_explicit,
+        crate::client::InitialRulePlacement::Center => false,
+        crate::client::InitialRulePlacement::Preserve => true,
+    };
+
+    if let Some(toplevel) = element.as_ref().and_then(|e| e.toplevel())
+        && state.xdg_toplevel_has_fixed_size_constraints(toplevel)
+        && let Some(client) = g.model.client_mut(win)
+    {
+        client.is_fixed_size = true;
+    }
 
     // Determine if the window should float based on compositor policy.
     let should_float = element.as_ref().is_some_and(|e| {
         if let Some(toplevel) = e.toplevel() {
             state.xdg_toplevel_wants_floating(toplevel)
         } else if let Some(x11) = e.x11_surface() {
-            parent.is_some() || x11.is_above()
+            parent.is_some()
+                || x11.is_above()
+                || g.model.client(win).is_some_and(|c| c.is_fixed_size)
+                || crate::backend::x11::policy::should_float_for_x11_type(x11.window_type())
         } else {
             false
         }
@@ -545,20 +561,9 @@ fn handle_map_window(
         state.apply_floating_policy(&toplevel.clone());
     }
 
-    let requested_geo = g
-        .model
-        .client(win)
-        .expect("client was inserted immediately above")
-        .geo;
-    crate::client::resolve_and_sync_floating_geometry(
-        &mut g.model,
-        win,
-        requested_geo,
-        crate::client::FloatingPlacementKind::New,
-        parent,
-    );
-
-    if let Some(rect) = crate::client::sane_floating_spawn_rect(&g.model, win, parent) {
+    if let Some(rect) =
+        crate::client::sane_floating_spawn_rect(&g.model, win, parent, initial_position_is_explicit)
+    {
         crate::client::sync_client_geometry(&mut g.model, win, rect);
         if let Some(e) = element.as_ref() {
             if e.toplevel().is_some() {

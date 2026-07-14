@@ -62,7 +62,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     if !assign_initial_monitor_and_tags(ctx.core.state_mut(), &mut client, trans, launch_context) {
         return;
     }
-    insert_client_and_apply_rules(
+    let rule_placement = insert_client_and_apply_rules(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
@@ -88,13 +88,23 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
         is_monocle,
     );
 
-    apply_manage_hints(ctx, w);
+    let hinted_position_is_explicit = apply_manage_hints(ctx, w);
+    let position_is_explicit = match rule_placement {
+        crate::client::InitialRulePlacement::Default => hinted_position_is_explicit,
+        crate::client::InitialRulePlacement::Center => false,
+        crate::client::InitialRulePlacement::Preserve => true,
+    };
     snapshot_float_geo(ctx.core.model_mut(), w, mon_monitor_rect);
     subscribe_manage_events(&ctx.x11, w);
     grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, w, false);
 
     if initialize_floating_state(ctx.core.model_mut(), w, trans.is_some()) {
-        if let Some(rect) = crate::client::sane_floating_spawn_rect(ctx.core.model(), w, trans) {
+        if let Some(rect) = crate::client::sane_floating_spawn_rect(
+            ctx.core.model(),
+            w,
+            trans,
+            position_is_explicit,
+        ) {
             crate::client::sync_client_geometry(ctx.core.model_mut(), w, rect);
         }
         ctx.x11.raise_window_visual_only(w);
@@ -175,14 +185,16 @@ fn insert_client_and_apply_rules(
     w: WindowId,
     mut c: Client,
     launch_context: Option<crate::client::LaunchContext>,
-) {
+) -> crate::client::InitialRulePlacement {
     c.is_hidden = crate::backend::x11::visibility::get_state(x11, x11_cfg.wmatom.state, w)
         == crate::backend::x11::constants::WM_STATE_ICONIC;
     core.model_mut().insert_client(c);
     let props = crate::backend::x11::window_properties(x11, x11_cfg, w);
-    if crate::client::apply_rules(core.state_mut(), w, &props, launch_context) {
+    let outcome = crate::client::apply_initial_rules(core.state_mut(), w, &props, launch_context);
+    if outcome.changed {
         core.queue_layout_for_client(w);
     }
+    outcome.placement
 }
 
 fn read_launch_context(
@@ -313,10 +325,11 @@ fn configure_client_border(
     let _ = x11.conn.flush();
 }
 
-fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
+fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) -> bool {
     crate::backend::x11::focus::configure(ctx_x11.core.state(), &ctx_x11.x11, w);
     update_window_type(ctx_x11, w);
-    crate::backend::x11::update_size_hints(ctx_x11.core.model_mut(), &ctx_x11.x11, w);
+    let size_hints =
+        crate::backend::x11::update_size_hints(ctx_x11.core.model_mut(), &ctx_x11.x11, w);
     update_wm_hints(ctx_x11, w);
     read_client_info(
         ctx_x11.core.model_mut(),
@@ -332,6 +345,7 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, w: WindowId) {
     );
     set_client_tag_prop(ctx_x11.core.state(), &ctx_x11.x11, ctx_x11.x11_runtime, w);
     update_motif_hints(ctx_x11, w);
+    size_hints.is_some_and(|hints| hints.position.is_some())
 }
 
 fn snapshot_float_geo(model: &mut crate::model::WmModel, w: WindowId, mon_monitor_rect: Rect) {

@@ -395,7 +395,7 @@ impl Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{MonitorPosition, Point, Rect, RelativePosition};
+    use super::{MonitorPosition, Point, Rect, RelativePosition, constraints_prefer_floating};
 
     #[test]
     fn parses_absolute_monitor_position() {
@@ -427,6 +427,15 @@ mod tests {
     #[test]
     fn rejects_unknown_monitor_position_syntax() {
         assert_eq!(MonitorPosition::parse("diagonal-of:DP-1"), None);
+    }
+
+    #[test]
+    fn fixed_constraint_policy_matches_all_backends() {
+        assert!(constraints_prefer_floating(640, 480, 640, 480));
+        assert!(constraints_prefer_floating(640, 480, 640, 1080));
+        assert!(constraints_prefer_floating(640, 480, 1920, 480));
+        assert!(!constraints_prefer_floating(640, 480, 1920, 1080));
+        assert!(!constraints_prefer_floating(0, 0, 0, 0));
     }
 }
 
@@ -526,11 +535,21 @@ impl SizeHints {
         (w, h)
     }
 
-    /// Check if this represents a fixed-size window (max == min != 0).
+    /// Check whether these constraints make tiling unsuitable.
+    ///
+    /// As in Sway, a window with a positive minimum in both dimensions and a
+    /// fixed width or height is treated as fixed-size for placement policy.
     #[inline]
     pub fn is_fixed(&self) -> bool {
-        self.maxw != 0 && self.maxh != 0 && self.maxw == self.minw && self.maxh == self.minh
+        constraints_prefer_floating(self.minw, self.minh, self.maxw, self.maxh)
     }
+}
+
+/// Return whether min/max constraints indicate that a window should float.
+/// Shared by native X11, XWayland, and xdg-shell classification.
+#[inline]
+pub fn constraints_prefer_floating(minw: i32, minh: i32, maxw: i32, maxh: i32) -> bool {
+    minw > 0 && minh > 0 && (minw == maxw || minh == maxh)
 }
 
 /// Compute the screen rectangle for a given snap position.

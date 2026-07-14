@@ -216,12 +216,16 @@ impl XwmHandler for WaylandState {
             w: geo.size.w.max(1),
             h: geo.size.h.max(1),
         });
+        let initial_position_is_explicit = window
+            .size_hints()
+            .is_some_and(|hints| hints.position.is_some());
 
         self.push_command(super::super::commands::WmCommand::MapWindow(
             super::super::commands::MapWindowParams {
                 win,
                 properties,
                 initial_geo,
+                initial_position_is_explicit,
                 launch_pid: window.pid(),
                 launch_startup_id: window.startup_id(),
                 x11_hints: window.hints(),

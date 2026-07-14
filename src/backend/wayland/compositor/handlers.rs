@@ -63,6 +63,9 @@ impl CompositorHandler for WaylandState {
                 .unwrap_or(false);
             if has_buffer {
                 let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
+                let parent = toplevel
+                    .parent()
+                    .and_then(|parent| self.window_id_for_surface(&parent));
                 let window_id = self.setup_smithay_window(toplevel);
 
                 let properties = self.window_properties(window_id);
@@ -76,11 +79,12 @@ impl CompositorHandler for WaylandState {
                         win: window_id,
                         properties,
                         initial_geo,
+                        initial_position_is_explicit: false,
                         launch_pid: None,
                         launch_startup_id: None,
                         x11_hints: None,
                         x11_size_hints: None,
-                        parent: None,
+                        parent,
                     },
                 ));
             }

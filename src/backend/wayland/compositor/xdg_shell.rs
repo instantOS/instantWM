@@ -95,17 +95,20 @@ impl WaylandState {
     }
 
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
-        if surface.parent().is_some() {
-            return true;
-        }
+        surface.parent().is_some() || self.xdg_toplevel_has_fixed_size_constraints(surface)
+    }
 
+    pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
+        &self,
+        surface: &ToplevelSurface,
+    ) -> bool {
         compositor::with_states(surface.wl_surface(), |states| {
             let mut guard = states.cached_state.get::<SurfaceCachedState>();
             let current = *guard.current();
             let min = current.min_size;
             let max = current.max_size;
 
-            min.w > 0 && min.h > 0 && (min.w == max.w || min.h == max.h)
+            crate::types::constraints_prefer_floating(min.w, min.h, max.w, max.h)
         })
     }
 
