@@ -12,6 +12,24 @@ pub struct WindowProperties {
     pub title: String,
 }
 
+/// Positioning instruction produced by an initial window rule.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum InitialRulePlacement {
+    /// Keep the backend-derived placement policy.
+    #[default]
+    Default,
+    /// Center the new floating window even if X11 supplied a position.
+    Center,
+    /// Preserve geometry explicitly assigned by the rule.
+    Preserve,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InitialRuleOutcome {
+    pub changed: bool,
+    pub placement: InitialRulePlacement,
+}
+
 /// Apply the configured window rules to `win`.
 ///
 /// Rules are matched against the window's properties (class, instance, title).
@@ -30,7 +48,28 @@ pub fn apply_rules(
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
 ) -> bool {
+    apply_rules_impl(g, win, props, launch_context).changed
+}
+
+/// Apply rules while retaining the spawn-position instruction needed during
+/// initial window management.
+pub fn apply_initial_rules(
+    g: &mut CoreState,
+    win: WindowId,
+    props: &WindowProperties,
+    launch_context: Option<LaunchContext>,
+) -> InitialRuleOutcome {
+    apply_rules_impl(g, win, props, launch_context)
+}
+
+fn apply_rules_impl(
+    g: &mut CoreState,
+    win: WindowId,
+    props: &WindowProperties,
+    launch_context: Option<LaunchContext>,
+) -> InitialRuleOutcome {
     let before = rule_state_snapshot(g, win);
+    let mut placement = InitialRulePlacement::Default;
 
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = g.model.client_mut(win) {
@@ -43,7 +82,7 @@ pub fn apply_rules(
         // not let those rule refreshes retag an existing scratchpad back into
         // a normal window.
         if c.scratchpad.is_some() {
-            return false;
+            return InitialRuleOutcome::default();
         }
 
         c.mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
@@ -94,6 +133,11 @@ pub fn apply_rules(
             if let Some(c) = g.model.client_mut(win) {
                 if let Some(ref float_rule) = rule.isfloating {
                     apply_float_rule(c, float_rule, mon_geo, bar_height);
+                    placement = match float_rule {
+                        RuleFloat::FloatCenter => InitialRulePlacement::Center,
+                        RuleFloat::FloatFullscreen => InitialRulePlacement::Preserve,
+                        _ => InitialRulePlacement::Default,
+                    };
                 }
                 c.update_tag_mask(|tags| tags | rule.tags);
             }
@@ -106,7 +150,10 @@ pub fn apply_rules(
     // --- Clamp tags to the valid tag mask ------------------------------------
     clamp_client_tags(g, win, tag_mask, launch_context);
 
-    before != rule_state_snapshot(g, win)
+    InitialRuleOutcome {
+        changed: before != rule_state_snapshot(g, win),
+        placement,
+    }
 }
 
 /// Refresh rule-derived metadata after a backend property update.
@@ -242,7 +289,9 @@ fn clamp_client_tags(
 
 #[cfg(test)]
 mod tests {
-    use super::{WindowProperties, handle_property_change};
+    use super::{
+        InitialRulePlacement, WindowProperties, apply_initial_rules, handle_property_change,
+    };
     use crate::core_state::CoreState;
     use crate::types::{Client, ClientMode, Monitor, MonitorId, TagMask, WindowId};
 
@@ -340,5 +389,90 @@ mod tests {
 
         let client = g.model.client(win).expect("client should still exist");
         assert!(!client.mode.is_floating()); // Should be tiling now
+    }
+
+    #[test]
+    fn initial_float_center_rule_overrides_backend_position() {
+        use crate::types::{MonitorRule, Rule, RuleFloat};
+        use std::borrow::Cow;
+
+        let mut g = CoreState::default();
+        g.model.tags.num_tags = 1;
+        let mut monitor = Monitor::new_with_values(true, true);
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        g.model.monitors.push(monitor);
+        g.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("center-me")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            isfloating: Some(RuleFloat::FloatCenter),
+            monitor: MonitorRule::Any,
+        }];
+
+        let win = WindowId(43);
+        g.model.insert_client(Client {
+            win,
+            monitor_id: MonitorId::default(),
+            ..Default::default()
+        });
+
+        let outcome = apply_initial_rules(
+            &mut g,
+            win,
+            &WindowProperties {
+                class: "center-me".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert_eq!(outcome.placement, InitialRulePlacement::Center);
+        assert!(g.model.client(win).unwrap().mode.is_floating());
+    }
+
+    #[test]
+    fn initial_fullscreen_float_rule_preserves_assigned_geometry() {
+        use crate::types::{MonitorRule, Rect, Rule, RuleFloat};
+        use std::borrow::Cow;
+
+        let mut g = CoreState::default();
+        g.model.tags.num_tags = 1;
+        let mut monitor = Monitor::new_with_values(true, true);
+        monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
+        monitor.work_rect = Rect::new(1920, 32, 1920, 1048);
+        monitor.set_selected_tags(TagMask::single(1).unwrap());
+        g.model.monitors.push(monitor);
+        g.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("fill-me")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            isfloating: Some(RuleFloat::FloatFullscreen),
+            monitor: MonitorRule::Any,
+        }];
+
+        let win = WindowId(44);
+        g.model.insert_client(Client {
+            win,
+            monitor_id: MonitorId::default(),
+            ..Default::default()
+        });
+
+        let outcome = apply_initial_rules(
+            &mut g,
+            win,
+            &WindowProperties {
+                class: "fill-me".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        assert_eq!(outcome.placement, InitialRulePlacement::Preserve);
+        assert_eq!(
+            g.model.client(win).unwrap().geo,
+            Rect::new(1920, 0, 1920, 1048)
+        );
     }
 }

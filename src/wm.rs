@@ -8,6 +8,7 @@ pub struct Wm {
     pub backend: Backend,
     pub running: bool,
     pub bar: crate::bar::BarState,
+    pub(crate) tray_menu: crate::systray::TrayMenuState,
     pub focus: crate::client::focus::FocusState,
 }
 
@@ -19,6 +20,7 @@ impl Wm {
             backend,
             running: true,
             bar: crate::bar::BarState::default(),
+            tray_menu: crate::systray::TrayMenuState::default(),
             focus: crate::client::focus::FocusState::default(),
         }
     }
@@ -40,13 +42,11 @@ impl Wm {
                 core,
                 x11: crate::backend::x11::X11BackendRef::new(&data.conn, data.screen_num),
                 x11_runtime: &mut data.x11_runtime,
-                systray: data.systray.as_mut(),
+                xembed_tray: data.xembed_tray.as_mut(),
             }),
             Backend::Wayland(data) => WmCtx::Wayland(WmCtxWayland {
                 core,
                 wayland: &data.backend,
-                wayland_systray: &mut data.wayland_systray,
-                wayland_systray_menu: data.wayland_systray_menu.as_mut(),
             }),
         }
     }

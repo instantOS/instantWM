@@ -81,13 +81,13 @@ fn wm_init(wm: &mut Wm) {
             ctx.core.state_mut(),
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.systray.as_deref(),
+            ctx.xembed_tray.as_deref(),
         );
         crate::backend::x11::bar::update_status(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.systray.as_deref_mut(),
+            ctx.xembed_tray.as_deref_mut(),
         );
         crate::backend::x11::keyboard::update_num_lock_mask(&ctx.x11, ctx.x11_runtime);
         crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);

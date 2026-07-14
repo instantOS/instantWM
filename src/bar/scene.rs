@@ -28,10 +28,73 @@ pub(crate) struct TitleCellSnapshot {
 
 #[derive(Clone)]
 pub(crate) struct SystraySnapshot {
-    pub items: crate::types::WaylandSystray,
-    pub menu: Option<crate::types::WaylandSystrayMenu>,
-    pub spacing: i32,
+    pub items: crate::systray::StatusNotifierTray,
+    pub visual_padding: i32,
     pub base_scheme: BarScheme,
+}
+
+#[derive(Clone)]
+pub(crate) struct StatusContent {
+    pub text: String,
+    pub items: Vec<crate::bar::status::StatusItem>,
+}
+
+#[derive(Clone)]
+pub(crate) enum StatusPresentation {
+    Hidden,
+    Runtime(StatusContent),
+    WmMode {
+        name: String,
+        content: StatusContent,
+    },
+    Overview(StatusContent),
+}
+
+impl StatusPresentation {
+    pub fn content(&self) -> Option<&StatusContent> {
+        match self {
+            Self::Hidden => None,
+            Self::Runtime(content) | Self::WmMode { content, .. } | Self::Overview(content) => {
+                Some(content)
+            }
+        }
+    }
+
+    pub fn ensure_items_parsed(&mut self) {
+        let content = match self {
+            Self::Hidden => return,
+            Self::Runtime(content) | Self::WmMode { content, .. } | Self::Overview(content) => {
+                content
+            }
+        };
+        if content.items.is_empty() {
+            content.items = crate::bar::status::parse_status(content.text.as_bytes()).items;
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) enum BarOverlay {
+    TrayMenu(crate::systray::TrayMenuPresentation),
+}
+
+/// Immutable, derived presentation consumed by both bar renderers.
+///
+/// Runtime mode and tray-menu session state remain authoritative elsewhere;
+/// snapshots never become a second source of truth.
+#[derive(Clone)]
+pub(crate) struct BarPresentation {
+    pub status: StatusPresentation,
+    pub overlay: Option<BarOverlay>,
+}
+
+impl BarPresentation {
+    pub fn tray_menu(&self) -> Option<&crate::systray::TrayMenuPresentation> {
+        match self.overlay.as_ref() {
+            Some(BarOverlay::TrayMenu(menu)) => Some(menu),
+            None => None,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -50,8 +113,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub show_shutdown: bool,
     pub titles: Vec<TitleCellSnapshot>,
     pub monitor_rect_x: i32,
-    pub status_text: Option<String>,
-    pub status_items: Vec<crate::bar::status::StatusItem>,
+    pub presentation: BarPresentation,
     pub systray: Option<SystraySnapshot>,
 }
 
@@ -66,22 +128,10 @@ pub(crate) struct MonitorRenderOutputWithId {
     pub output: MonitorRenderOutput,
 }
 
-#[derive(Clone)]
-pub(crate) struct WorkerTrayLayout {
-    pub tray_total_w: i32,
-    pub tray_start_x: i32,
-    pub tray_slots: Vec<crate::bar::SystrayHitSlot>,
-    pub menu_total_w: i32,
-    pub menu_start_x: i32,
-    pub menu_slots: Vec<crate::bar::SystrayHitSlot>,
-}
-
 pub(crate) fn build_monitor_snapshots(
     core: &mut CoreCtx,
-    wayland_systray: Option<(
-        &crate::types::WaylandSystray,
-        Option<&crate::types::WaylandSystrayMenu>,
-    )>,
+    status_notifier_tray: Option<&crate::systray::StatusNotifierTray>,
+    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().selected_monitor().num;
@@ -91,36 +141,39 @@ pub(crate) fn build_monitor_snapshots(
     let font_families =
         crate::wayland::common::font_families_from_config(&core.config().fonts.fonts);
     let drag_bar_active = core.drag_state().bar_active;
-    let current_mode = core.behavior().current_mode.clone();
-    let status_text = if current_mode == crate::overview::OVERVIEW_MODE_NAME {
-        Some("mode: overview".to_string())
-    } else if !current_mode.is_empty() && current_mode != "default" {
-        let mode_display = core
-            .state()
-            .config
-            .bindings
-            .modes
-            .get(&current_mode)
-            .and_then(|m| m.description.as_ref())
-            .cloned()
-            .unwrap_or_else(|| current_mode.clone());
-        Some(format!("mode: {}", mode_display))
-    } else {
-        let status_text = core.bar.runtime.status_text.clone();
-        if status_text.is_empty() {
-            None
-        } else {
-            Some(status_text)
-        }
-    };
-    let selected_status_items = if include_status_items {
-        status_text
-            .as_deref()
-            .map(|text| core.bar.status_items_for_text(text).to_vec())
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let selected_status =
+        match core.behavior().current_mode.clone() {
+            crate::core_state::ActiveWmMode::Overview => StatusPresentation::Overview(
+                status_content(core, "mode: overview".to_string(), include_status_items),
+            ),
+            crate::core_state::ActiveWmMode::Named(name) => {
+                let mode_display = core
+                    .state()
+                    .config
+                    .bindings
+                    .modes
+                    .get(&name)
+                    .and_then(|mode| mode.description.as_ref())
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
+                StatusPresentation::WmMode {
+                    name,
+                    content: status_content(
+                        core,
+                        format!("mode: {mode_display}"),
+                        include_status_items,
+                    ),
+                }
+            }
+            crate::core_state::ActiveWmMode::Default => {
+                let text = core.bar.runtime.status_text.clone();
+                if text.is_empty() {
+                    StatusPresentation::Hidden
+                } else {
+                    StatusPresentation::Runtime(status_content(core, text, include_status_items))
+                }
+            }
+        };
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
 
     let mut snapshots = Vec::new();
@@ -190,22 +243,23 @@ pub(crate) fn build_monitor_snapshots(
             });
         }
 
-        let status_text = if is_selected_monitor {
-            status_text.clone()
-        } else {
-            None
-        };
-        let status_items = if is_selected_monitor {
-            selected_status_items.clone()
-        } else {
-            Vec::new()
+        let presentation = BarPresentation {
+            status: if is_selected_monitor {
+                selected_status.clone()
+            } else {
+                StatusPresentation::Hidden
+            },
+            overlay: if is_selected_monitor {
+                tray_menu.cloned().map(BarOverlay::TrayMenu)
+            } else {
+                None
+            },
         };
 
         let systray = if show_systray && is_selected_monitor {
-            wayland_systray.map(|(items, menu)| SystraySnapshot {
+            status_notifier_tray.map(|items| SystraySnapshot {
                 items: items.clone(),
-                menu: menu.cloned(),
-                spacing: systray_spacing,
+                visual_padding: systray_spacing,
                 base_scheme: core.status_scheme(),
             })
         } else {
@@ -231,13 +285,21 @@ pub(crate) fn build_monitor_snapshots(
             show_shutdown: mon.selected.is_none(),
             titles,
             monitor_rect_x: mon.monitor_rect.x,
-            status_text,
-            status_items,
+            presentation,
             systray,
         });
     }
 
     snapshots
+}
+
+fn status_content(core: &mut CoreCtx, text: String, include_items: bool) -> StatusContent {
+    let items = if include_items {
+        core.bar.status_items_for_text(&text).to_vec()
+    } else {
+        Vec::new()
+    };
+    StatusContent { text, items }
 }
 
 fn draw_startmenu_icon_snapshot(
@@ -351,81 +413,23 @@ fn draw_close_button_snapshot(
     );
 }
 
-pub(crate) fn worker_systray_layout(
-    snapshot: &SystraySnapshot,
-    monitor_width: i32,
-    icon_h: i32,
-) -> WorkerTrayLayout {
-    let spacing = snapshot.spacing.max(0);
-    let mut tray_total_w = 0;
-    if !snapshot.items.items.is_empty() {
-        tray_total_w = spacing;
-        for item in &snapshot.items.items {
-            tray_total_w += crate::backend::wayland::systray::scale_icon_width(
-                item.icon_w,
-                item.icon_h,
-                icon_h,
-            ) + spacing;
-        }
-    }
-    let tray_start_x = monitor_width - tray_total_w;
-
-    let mut tray_slots = Vec::new();
-    let mut x = tray_start_x + spacing;
-    for (idx, item) in snapshot.items.items.iter().enumerate() {
-        let w =
-            crate::backend::wayland::systray::scale_icon_width(item.icon_w, item.icon_h, icon_h);
-        if w > 0 && item.icon_w > 0 && item.icon_h > 0 {
-            tray_slots.push(crate::bar::SystrayHitSlot {
-                idx,
-                start: x,
-                end: x + w,
-            });
-        }
-        x += w + spacing;
-    }
-
-    let mut menu_total_w = 0;
-    let mut menu_slots = Vec::new();
-    let mut menu_start_x = 0;
-    if let Some(menu) = &snapshot.menu {
-        for item in &menu.items {
-            menu_total_w += item.width.max(24);
-        }
-        menu_start_x = (tray_start_x - menu_total_w).max(0);
-        let mut mx = menu_start_x;
-        for (idx, item) in menu.items.iter().enumerate() {
-            let w = item.width.max(24);
-            menu_slots.push(crate::bar::SystrayHitSlot {
-                idx,
-                start: mx,
-                end: mx + w,
-            });
-            mx += w;
-        }
-    }
-
-    WorkerTrayLayout {
-        tray_total_w,
-        tray_start_x,
-        tray_slots,
-        menu_total_w,
-        menu_start_x,
-        menu_slots,
-    }
-}
-
 fn render_monitor_snapshot_base(
     snapshot: &MonitorBarSnapshot,
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
     let bar_height = snapshot.rect.h;
-    let tray_layout = snapshot
-        .systray
-        .as_ref()
-        .map(|s| worker_systray_layout(s, snapshot.rect.w, bar_height.max(1)));
+    let tray_layout = snapshot.systray.as_ref().map(|s| {
+        let menu = snapshot.presentation.tray_menu().map(|menu| &menu.view);
+        crate::systray::layout(
+            &s.items,
+            menu,
+            snapshot.rect.w,
+            bar_height,
+            s.visual_padding,
+        )
+    });
     let systray_width = if snapshot.is_selected_monitor {
-        tray_layout.as_ref().map(|l| l.tray_total_w).unwrap_or(0)
+        tray_layout.as_ref().map(|l| l.total_width).unwrap_or(0)
     } else {
         0
     };
@@ -434,19 +438,25 @@ fn render_monitor_snapshot_base(
     let mut temp_mon = Monitor::default();
     temp_mon.work_rect.w = snapshot.rect.w;
 
-    let (status_start_x, status_width, status_click_targets) =
-        if snapshot.is_selected_monitor && !snapshot.status_items.is_empty() {
-            crate::bar::status::draw_status_items(
-                systray_width,
-                &temp_mon,
-                bar_height,
-                snapshot.status_items.as_slice(),
-                snapshot.status_scheme.clone(),
-                painter,
-            )
-        } else {
-            (0, 0, Vec::new())
-        };
+    let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor
+        && snapshot
+            .presentation
+            .status
+            .content()
+            .is_some_and(|content| !content.items.is_empty())
+    {
+        let content = snapshot.presentation.status.content().unwrap();
+        crate::bar::status::draw_status_items(
+            systray_width,
+            &temp_mon,
+            bar_height,
+            content.items.as_slice(),
+            snapshot.status_scheme.clone(),
+            painter,
+        )
+    } else {
+        (0, 0, Vec::new())
+    };
     hit.status_click_targets = status_click_targets;
 
     draw_startmenu_icon_snapshot(
@@ -566,8 +576,22 @@ fn render_monitor_snapshot_base(
     }
 
     if let (Some(_systray), Some(layout)) = (&snapshot.systray, &tray_layout) {
-        hit.systray_slots = layout.tray_slots.clone();
-        hit.systray_menu_slots = layout.menu_slots.clone();
+        hit.systray_slots = layout
+            .cells
+            .iter()
+            .map(|cell| crate::bar::SystrayHitSlot {
+                idx: cell.idx,
+                start: cell.hit_start,
+                end: cell.hit_end,
+            })
+            .collect();
+        if layout.menu_width > 0 {
+            hit.overlay = Some(crate::bar::BarOverlayHit::TrayMenu {
+                start: layout.menu_start_x,
+                end: layout.menu_start_x + layout.menu_width,
+                slots: layout.menu_cells.clone(),
+            });
+        }
     }
 
     MonitorRenderOutput {

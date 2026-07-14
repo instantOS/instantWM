@@ -252,10 +252,11 @@ pub struct WaylandRuntimeState {
     pub image_copy_sessions: Vec<ImageCopySession>,
     pub space_sync_pending: bool,
     pub render_targets: PendingRenderTargets,
-    pub frame_callbacks_pending: bool,
+    pub frame_callback_targets: PendingRenderTargets,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
+    pub pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
     pub pointer_location: Point<f64, Logical>,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
@@ -280,10 +281,11 @@ impl Default for WaylandRuntimeState {
             image_copy_sessions: Vec::new(),
             space_sync_pending: true,
             render_targets: PendingRenderTargets::None,
-            frame_callbacks_pending: false,
+            frame_callback_targets: PendingRenderTargets::None,
             render_ping: None,
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
+            pending_systray_menu: std::sync::Arc::new(std::sync::Mutex::new(None)),
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
@@ -298,6 +300,12 @@ impl Default for WaylandRuntimeState {
 }
 
 impl WaylandState {
+    pub(crate) fn take_expected_systray_menu_toplevel(&mut self) -> Option<crate::types::Point> {
+        const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(2);
+        let (created, anchor) = self.runtime.pending_systray_menu.lock().ok()?.take()?;
+        (created.elapsed() <= MAX_AGE).then_some(anchor)
+    }
+
     /// Create a new `WaylandState` and register all Wayland globals.
     pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
         let dh = display.handle();
@@ -578,17 +586,59 @@ impl WaylandState {
     }
 
     /// Request redraws for the outputs Smithay currently associates with a
-    /// mapped window.  An unmapped window falls back to a global redraw so an
-    /// initial map cannot be lost between protocol commit and space sync.
+    /// mapped window.
+    ///
+    /// Do not use `Space::outputs_for_element` here.  Its output membership is
+    /// refreshed later in the event-loop tick, while surface commits (notably
+    /// short-lived Xwayland override-redirect windows) need to schedule their
+    /// redraw immediately.
     pub fn request_window_render(&mut self, window: &Window) {
-        let outputs = self.space.outputs_for_element(window);
+        let outputs = self.outputs_for_window_geometry(window);
         if outputs.is_empty() {
             self.request_render();
             return;
         }
+        self.request_outputs_render(outputs);
+    }
+
+    /// Redraw the outputs currently intersected by a mapped window. Unlike
+    /// surface-commit scheduling, a fully offscreen lifecycle/animation update
+    /// does not need a global fallback.
+    pub(crate) fn request_visible_window_render(&mut self, window: &Window) {
+        let outputs = self.outputs_for_window_geometry(window);
+        self.request_outputs_render(outputs);
+    }
+
+    fn request_outputs_render(&mut self, outputs: Vec<smithay::output::Output>) {
         for output in outputs {
             self.request_output_render(&output);
         }
+    }
+
+    fn outputs_for_window_geometry(&self, window: &Window) -> Vec<smithay::output::Output> {
+        let window_rect = self.space.element_location(window).map(|location| {
+            let mut rect = window.bbox_with_popups();
+            rect.loc += location - window.geometry().loc;
+            rect
+        });
+        self.space
+            .outputs()
+            .filter(|output| {
+                window_rect.is_some_and(|rect| {
+                    self.space
+                        .output_geometry(output)
+                        .is_some_and(|output_rect| output_rect.overlaps(rect))
+                })
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub fn has_window_animations_on_output(&self, output: &smithay::output::Output) -> bool {
+        self.window_animations.keys().any(|window_id| {
+            self.find_window(*window_id)
+                .is_some_and(|window| self.outputs_for_window_geometry(window).contains(output))
+        })
     }
 
     #[inline]
@@ -607,12 +657,30 @@ impl WaylandState {
 
     #[inline]
     pub fn request_frame_callbacks(&mut self) {
-        if !self.runtime.frame_callbacks_pending
-            && let Some(render_ping) = &self.runtime.render_ping
-        {
-            render_ping.ping();
+        if self.runtime.frame_callback_targets.invalidate_all() {
+            self.ping_render_loop();
         }
-        self.runtime.frame_callbacks_pending = true;
+    }
+
+    pub fn request_output_frame_callbacks(&mut self, output: &smithay::output::Output) {
+        if self
+            .runtime
+            .frame_callback_targets
+            .invalidate_output(output.name())
+        {
+            self.ping_render_loop();
+        }
+    }
+
+    pub fn request_window_frame_callbacks(&mut self, window: &Window) {
+        let outputs = self.outputs_for_window_geometry(window);
+        if outputs.is_empty() {
+            self.request_frame_callbacks();
+            return;
+        }
+        for output in outputs {
+            self.request_output_frame_callbacks(&output);
+        }
     }
 
     #[inline]
@@ -640,8 +708,8 @@ impl WaylandState {
     }
 
     #[inline]
-    pub fn take_frame_callbacks_pending(&mut self) -> bool {
-        mem::take(&mut self.runtime.frame_callbacks_pending)
+    pub fn take_frame_callback_targets(&mut self) -> PendingRenderTargets {
+        mem::take(&mut self.runtime.frame_callback_targets)
     }
 
     pub fn set_output_vrr_support(

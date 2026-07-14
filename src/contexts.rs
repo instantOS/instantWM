@@ -14,7 +14,7 @@ use crate::core_state::{
 };
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
-use crate::types::{MonitorId, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{MonitorId, Rect, WindowId, XEmbedTray};
 
 pub struct CoreCtx<'a> {
     pub(crate) g: &'a mut CoreState,
@@ -293,19 +293,15 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn normalize_current_mode(&mut self) {
-        if self.g.behavior.current_mode == "default"
-            || self.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        {
-            return;
-        }
-
-        if !self
-            .config()
-            .bindings
-            .modes
-            .contains_key(&self.g.behavior.current_mode)
-        {
-            self.g.behavior.current_mode = "default".to_string();
+        let mode_exists = match &self.g.behavior.current_mode {
+            crate::core_state::ActiveWmMode::Named(name) => {
+                self.g.config.bindings.modes.contains_key(name)
+            }
+            crate::core_state::ActiveWmMode::Default
+            | crate::core_state::ActiveWmMode::Overview => true,
+        };
+        if !mode_exists {
+            self.g.behavior.current_mode = crate::core_state::ActiveWmMode::Default;
         }
     }
 
@@ -324,7 +320,7 @@ pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub x11: X11BackendRef<'a>,
     pub x11_runtime: &'a mut X11RuntimeConfig,
-    pub systray: Option<&'a mut Systray>,
+    pub xembed_tray: Option<&'a mut XEmbedTray>,
 }
 
 impl<'a> WmCtxX11<'a> {
@@ -333,7 +329,7 @@ impl<'a> WmCtxX11<'a> {
             core: self.core.reborrow(),
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
             x11_runtime: self.x11_runtime,
-            systray: self.systray.as_deref_mut(),
+            xembed_tray: self.xembed_tray.as_deref_mut(),
         }
     }
 
@@ -345,8 +341,6 @@ impl<'a> WmCtxX11<'a> {
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
     pub wayland: &'a crate::backend::wayland::WaylandBackend,
-    pub wayland_systray: &'a mut WaylandSystray,
-    pub wayland_systray_menu: Option<&'a mut WaylandSystrayMenu>,
 }
 
 impl<'a> WmCtxWayland<'a> {
@@ -354,8 +348,6 @@ impl<'a> WmCtxWayland<'a> {
         WmCtxWayland {
             core: self.core.reborrow(),
             wayland: self.wayland,
-            wayland_systray: self.wayland_systray,
-            wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
     }
 }
@@ -569,18 +561,27 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn current_mode(&self) -> &str {
-        &self.core().behavior().current_mode
+        self.core().behavior().current_mode.as_str()
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<String>) {
-        let next_mode = mode.into();
+        let next_mode = crate::core_state::ActiveWmMode::from_name(mode);
+        self.transition_current_mode(next_mode, crate::overview::ExitMode::RestorePrevious);
+    }
+
+    pub(crate) fn transition_current_mode(
+        &mut self,
+        next_mode: crate::core_state::ActiveWmMode,
+        overview_exit: crate::overview::ExitMode,
+    ) {
         let previous_mode = self.core().behavior().current_mode.clone();
         if previous_mode == next_mode {
             return;
         }
 
         self.core_mut().behavior_mut().current_mode = next_mode.clone();
-        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode);
+        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode, overview_exit);
+        self.request_bar_update();
     }
 
     pub fn reset_mode(&mut self) {

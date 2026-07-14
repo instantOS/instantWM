@@ -3,7 +3,7 @@ use std::os::unix::io::OwnedFd;
 use smithay::{
     desktop::{
         PopupKeyboardGrab, PopupKind, PopupPointerGrab, PopupUngrabStrategy,
-        find_popup_root_surface,
+        find_popup_root_surface, get_popup_toplevel_coords,
     },
     input::{
         SeatHandler,
@@ -39,6 +39,50 @@ use smithay::{
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
 
 impl WaylandState {
+    /// Apply the xdg-positioner's constraint adjustments against the outputs
+    /// occupied by the popup's toplevel.  Popup geometry is parent-relative;
+    /// the output union therefore has to be translated into that coordinate
+    /// space before Smithay evaluates flip/slide/resize constraints.
+    fn unconstrain_popup(&self, popup: &PopupSurface) {
+        let kind = PopupKind::Xdg(popup.clone());
+        let Ok(root_surface) = find_popup_root_surface(&kind) else {
+            return;
+        };
+        let Some(window) = self
+            .space
+            .elements()
+            .find(|window| window.wl_surface().as_deref() == Some(&root_surface))
+        else {
+            return;
+        };
+
+        let mut outputs = self.space.outputs_for_element(window);
+        if outputs.is_empty() {
+            return;
+        }
+        let Some(mut target) = outputs
+            .pop()
+            .and_then(|output| self.space.output_geometry(&output))
+        else {
+            return;
+        };
+        for output in outputs {
+            if let Some(geometry) = self.space.output_geometry(&output) {
+                target = target.merge(geometry);
+            }
+        }
+
+        let Some(window_geometry) = self.space.element_geometry(window) else {
+            return;
+        };
+        target.loc -= get_popup_toplevel_coords(&kind);
+        target.loc -= window_geometry.loc;
+
+        popup.with_pending_state(|state| {
+            state.geometry = state.positioner.get_unconstrained_geometry(target);
+        });
+    }
+
     fn on_surface_metadata_changed(&mut self, surface: ToplevelSurface) {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
@@ -51,17 +95,20 @@ impl WaylandState {
     }
 
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
-        if surface.parent().is_some() {
-            return true;
-        }
+        surface.parent().is_some() || self.xdg_toplevel_has_fixed_size_constraints(surface)
+    }
 
+    pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
+        &self,
+        surface: &ToplevelSurface,
+    ) -> bool {
         compositor::with_states(surface.wl_surface(), |states| {
             let mut guard = states.cached_state.get::<SurfaceCachedState>();
             let current = *guard.current();
             let min = current.min_size;
             let max = current.max_size;
 
-            min.w > 0 && min.h > 0 && (min.w == max.w || min.h == max.h)
+            crate::types::constraints_prefer_floating(min.w, min.h, max.w, max.h)
         })
     }
 
@@ -280,8 +327,11 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
+        self.unconstrain_popup(&surface);
         let kind = smithay::desktop::PopupKind::Xdg(surface);
-        let _ = self.popups.track_popup(kind);
+        if let Err(error) = self.popups.track_popup(kind) {
+            log::warn!("failed to track xdg popup: {error}");
+        }
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
@@ -369,9 +419,14 @@ impl XdgShellHandler for WaylandState {
     fn reposition_request(
         &mut self,
         surface: PopupSurface,
-        _positioner: PositionerState,
+        positioner: PositionerState,
         token: u32,
     ) {
+        surface.with_pending_state(|state| {
+            state.geometry = positioner.get_geometry();
+            state.positioner = positioner;
+        });
+        self.unconstrain_popup(&surface);
         surface.send_repositioned(token);
     }
 

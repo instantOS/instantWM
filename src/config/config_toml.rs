@@ -365,9 +365,7 @@ fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> 
         Some(value) => match value.clone().try_into::<ColorTheme>() {
             Ok(theme) => theme,
             Err(_) => {
-                eprintln!(
-                    "instantwm: unknown theme {value}, falling back to the default theme"
-                );
+                eprintln!("instantwm: unknown theme {value}, falling back to the default theme");
                 // Drop the bad key so ThemeConfig deserialisation succeeds;
                 // the struct is `#[serde(default)]`, so the field resolves to
                 // the default theme and every other setting still loads.

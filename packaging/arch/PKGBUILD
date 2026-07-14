@@ -1,6 +1,6 @@
 # Maintainer: instantOS <hello@instantos.io>
 pkgname=instantwm
-pkgver=0.1.12
+pkgver=0.1.13
 pkgrel=1
 pkgdesc="A tiling window manager for X11 and Wayland"
 arch=('x86_64')

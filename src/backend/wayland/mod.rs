@@ -52,7 +52,6 @@
 
 pub mod commands;
 pub mod compositor;
-pub mod systray;
 
 use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};

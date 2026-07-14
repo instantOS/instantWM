@@ -1,4 +1,4 @@
-use crate::bar::{MonitorHitCache, TagHitRange, TitleHitRange};
+use crate::bar::{BarOverlayHit, MonitorHitCache, TagHitRange, TitleHitRange};
 use crate::contexts::CoreCtx;
 use crate::model::WmModel;
 use crate::types::*;
@@ -51,18 +51,24 @@ pub(crate) fn hit_test(
     is_selected_monitor: bool,
     local_x: i32,
 ) -> BarPosition {
+    if is_selected_monitor
+        && let Some(BarOverlayHit::TrayMenu { start, end, slots }) = &hit.overlay
+        && local_x >= *start
+        && local_x < *end
+    {
+        for slot in slots {
+            if local_x >= slot.start && local_x < slot.end {
+                return BarPosition::SystrayMenuItem(slot.idx);
+            }
+        }
+        return BarPosition::Root;
+    }
+
     if local_x < monitor.startmenu_size {
         return BarPosition::StartMenu;
     }
 
     if systray_show && is_selected_monitor {
-        // Check systray menu items first (they appear to the left of tray items)
-        for slot in &hit.systray_menu_slots {
-            if local_x >= slot.start && local_x < slot.end {
-                return BarPosition::SystrayMenuItem(slot.idx);
-            }
-        }
-        // Check systray tray items
         for slot in &hit.systray_slots {
             if local_x >= slot.start && local_x < slot.end {
                 return BarPosition::SystrayItem(slot.idx);
@@ -187,7 +193,51 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
         shutdown_end,
         status_hit_x,
         systray_slots: Vec::new(),
-        systray_menu_slots: Vec::new(),
+        overlay: None,
         status_click_targets: Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bar::SystrayHitSlot;
+
+    #[test]
+    fn tray_menu_overlay_handles_items_and_blocks_fallthrough() {
+        let monitor = Monitor::default();
+        let hit = MonitorHitCache {
+            status_hit_x: 0,
+            systray_slots: vec![SystrayHitSlot {
+                idx: 9,
+                start: 40,
+                end: 80,
+            }],
+            overlay: Some(BarOverlayHit::TrayMenu {
+                start: 40,
+                end: 80,
+                slots: vec![SystrayHitSlot {
+                    idx: 2,
+                    start: 40,
+                    end: 50,
+                }],
+            }),
+            ..MonitorHitCache::default()
+        };
+
+        assert_eq!(
+            hit_test(&hit, &monitor, true, true, 45),
+            BarPosition::SystrayMenuItem(2)
+        );
+        assert_eq!(
+            hit_test(&hit, &monitor, true, true, 55),
+            BarPosition::Root,
+            "gaps in the overlay must not activate the tray icon or status below it"
+        );
+        assert_eq!(
+            hit_test(&hit, &monitor, false, true, 45),
+            BarPosition::SystrayMenuItem(2),
+            "an already-open overlay remains authoritative while configuration changes"
+        );
     }
 }

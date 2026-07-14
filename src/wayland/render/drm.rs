@@ -37,8 +37,9 @@ use crate::backend::wayland::compositor::image_capture::PendingImageCapture;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
     CursorPresentation, FixedSceneElements, build_common_scene_elements_from_fixed,
-    count_upper_layer_render_elements, get_render_element_counts, resolve_cursor_presentation,
-    send_frame_callbacks, update_primary_scanout_output,
+    count_upper_layer_render_elements, get_render_element_counts,
+    remove_duplicate_overlay_elements, resolve_cursor_presentation, send_frame_callbacks,
+    update_primary_scanout_output, window_overlaps_output,
 };
 use std::rc::Rc;
 
@@ -497,16 +498,17 @@ fn build_unlocked_drm_render_elements(
     let scene = build_common_scene_elements_from_fixed(
         state,
         renderer,
-        entry.x_offset,
+        &entry.output,
         &fixed_scene.expect("fixed scene elements"),
     );
-    let space_render_elements = smithay::desktop::space::space_render_elements(
+    let mut space_render_elements = smithay::desktop::space::space_render_elements(
         renderer,
         [&state.space],
         &entry.output,
         1.0,
     )
     .expect("space render elements");
+    remove_duplicate_overlay_elements(&scene, &mut space_render_elements);
     let num_upper = count_upper_layer_render_elements(renderer, &entry.output);
     let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
 
@@ -836,7 +838,11 @@ fn collect_presentation_feedback(
         return output_feedback;
     }
 
-    for window in state.space.elements_for_output(&entry.output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, &entry.output))
+    {
         window.take_presentation_feedback(
             &mut output_feedback,
             surface_primary_scanout_output,

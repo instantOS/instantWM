@@ -9,6 +9,10 @@ use crate::types::WindowId;
 
 use crate::backend::wayland::commands::WmCommand;
 
+fn grab_focus_conflicts<T: PartialEq>(grab_focus: Option<&T>, new_focus: &T) -> bool {
+    grab_focus.is_some_and(|grab_focus| grab_focus != new_focus)
+}
+
 impl WaylandState {
     /// Request the WM to activate and raise a window.
     ///
@@ -76,6 +80,22 @@ impl WaylandState {
             }
             // Set keyboard focus on the Smithay seat
             if let Some(keyboard) = self.seat.get_keyboard() {
+                let new_focus = KeyboardFocusTarget::Window(new_window.clone());
+
+                // Popup keyboard grabs intentionally reject focus changes while
+                // they are active. If the WM selects another window, leaving the
+                // grab installed would make the selected window and the actual
+                // key-event target disagree. Cancel grabs anchored to a different
+                // focus before applying the compositor-authoritative focus change.
+                // Grabs without an anchored focus (notably input-method grabs) and
+                // grabs belonging to this same window are left alone.
+                let grab_conflicts = keyboard
+                    .grab_start_data()
+                    .is_some_and(|start| grab_focus_conflicts(start.focus.as_ref(), &new_focus));
+                if grab_conflicts {
+                    log::debug!("set_focus: cancelling keyboard grab anchored to another focus");
+                    keyboard.unset_grab(self);
+                }
                 keyboard.set_focus(self, focus, serial);
             } else {
                 log::warn!(
@@ -184,5 +204,25 @@ impl WaylandState {
     /// after a window was destroyed and `mon.sel` was cleared.
     pub(crate) fn restore_focus_after_overlay(&self) {
         self.push_command(crate::backend::wayland::commands::WmCommand::RestoreFocus);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::grab_focus_conflicts;
+
+    #[test]
+    fn anchored_grab_conflicts_with_a_different_focus() {
+        assert!(grab_focus_conflicts(Some(&1), &2));
+    }
+
+    #[test]
+    fn grab_on_same_focus_does_not_conflict() {
+        assert!(!grab_focus_conflicts(Some(&1), &1));
+    }
+
+    #[test]
+    fn unanchored_grab_does_not_conflict() {
+        assert!(!grab_focus_conflicts(None::<&u8>, &1));
     }
 }

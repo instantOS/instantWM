@@ -17,7 +17,7 @@ pub fn apply_icccm_size_hints(
         .unwrap_or(false);
 
     if needs_update {
-        crate::backend::x11::client::update_size_hints(model, x11, win);
+        let _ = crate::backend::x11::client::update_size_hints(model, x11, win);
     }
 
     let client = match model.client(win) {

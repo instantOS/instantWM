@@ -226,15 +226,12 @@ impl CoreState {
     }
 
     pub fn normalize_current_mode(&mut self) {
-        if self.behavior.current_mode != "default"
-            && self.behavior.current_mode != crate::overview::OVERVIEW_MODE_NAME
-            && !self
-                .config
-                .bindings
-                .modes
-                .contains_key(&self.behavior.current_mode)
-        {
-            self.behavior.current_mode = "default".to_string();
+        let mode_exists = match &self.behavior.current_mode {
+            ActiveWmMode::Named(name) => self.config.bindings.modes.contains_key(name),
+            ActiveWmMode::Default | ActiveWmMode::Overview => true,
+        };
+        if !mode_exists {
+            self.behavior.current_mode = ActiveWmMode::Default;
         }
     }
 }
@@ -560,6 +557,48 @@ impl KeyboardLayoutState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActiveWmMode {
+    Default,
+    Overview,
+    Named(String),
+}
+
+impl ActiveWmMode {
+    pub fn from_name(name: impl Into<String>) -> Self {
+        let name = name.into();
+        match name.as_str() {
+            "" | "default" => Self::Default,
+            crate::overview::OVERVIEW_MODE_NAME => Self::Overview,
+            _ => Self::Named(name),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Default => "default",
+            Self::Overview => crate::overview::OVERVIEW_MODE_NAME,
+            Self::Named(name) => name,
+        }
+    }
+}
+
+#[cfg(test)]
+mod active_wm_mode_tests {
+    use super::ActiveWmMode;
+
+    #[test]
+    fn external_mode_names_are_normalized_into_explicit_states() {
+        assert_eq!(ActiveWmMode::from_name(""), ActiveWmMode::Default);
+        assert_eq!(ActiveWmMode::from_name("default"), ActiveWmMode::Default);
+        assert_eq!(ActiveWmMode::from_name("overview"), ActiveWmMode::Overview);
+        assert_eq!(
+            ActiveWmMode::from_name("resize"),
+            ActiveWmMode::Named("resize".to_string())
+        );
+    }
+}
+
 /// Runtime behaviour toggles and transient WM mode state.
 #[derive(Debug, Clone)]
 pub struct WmBehavior {
@@ -575,7 +614,7 @@ pub struct WmBehavior {
     pub requested_cursor: AltCursor,
     pub specialnext: SpecialNext,
     /// Current active mode (sway-like modes).
-    pub current_mode: String,
+    pub current_mode: ActiveWmMode,
 }
 
 impl Default for WmBehavior {
@@ -586,7 +625,7 @@ impl Default for WmBehavior {
             focus_follows_float_mouse: true,
             requested_cursor: AltCursor::Default,
             specialnext: SpecialNext::None,
-            current_mode: "default".to_string(),
+            current_mode: ActiveWmMode::Default,
         }
     }
 }

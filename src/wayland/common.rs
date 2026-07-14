@@ -28,7 +28,7 @@ use smithay::backend::renderer::element::memory::{
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::{
-    RenderElementStates, default_primary_scanout_output_compare,
+    Element, Id, RenderElementStates, default_primary_scanout_output_compare,
 };
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::desktop::utils::{
@@ -515,6 +515,7 @@ pub fn build_bar_buffers(
         return Vec::new();
     }
 
+    let tray_menu = wm.tray_menu.presentation();
     let mut core = CoreCtx::new(
         &mut wm.core,
         &mut wm.work,
@@ -534,8 +535,8 @@ pub fn build_bar_buffers(
             &mut core,
             &mut data.bar_painter,
             smithay::utils::Scale::from(1.0),
-            &data.wayland_systray,
-            data.wayland_systray_menu.as_ref(),
+            &data.status_notifier_tray,
+            tray_menu.as_ref(),
         )
     }
 }
@@ -553,8 +554,8 @@ pub fn poll_systray(wm: &mut Wm) {
         return;
     };
 
-    if let Some(runtime) = data.wayland_systray_runtime.as_mut() {
-        let dirty = runtime.poll_events(&mut data.wayland_systray, &mut data.wayland_systray_menu);
+    if let Some(runtime) = data.status_notifier_runtime.as_mut() {
+        let dirty = runtime.poll_events(&mut data.status_notifier_tray, &mut wm.tray_menu);
         if dirty {
             core.bar.mark_dirty();
         }
@@ -609,23 +610,23 @@ pub fn build_common_scene_elements(
     wm: &mut Wm,
     state: &mut WaylandState,
     renderer: &mut GlesRenderer,
-    output_x_offset: i32,
+    output: &Output,
 ) -> CommonSceneElements {
     let fixed = build_fixed_scene_elements(wm, state);
-    build_common_scene_elements_from_fixed(state, renderer, output_x_offset, &fixed)
+    build_common_scene_elements_from_fixed(state, renderer, output, &fixed)
 }
 
 /// Build the full scene for one output from reusable shared pieces.
 pub fn build_common_scene_elements_from_fixed(
     state: &WaylandState,
     renderer: &mut GlesRenderer,
-    output_x_offset: i32,
+    output: &Output,
     fixed: &FixedSceneElements,
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
     let mut overlays = Vec::new();
-    for (window, phys_loc) in state.overlay_windows_for_render(output_x_offset) {
+    for (window, phys_loc) in state.overlay_windows_for_render(output) {
         let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
             AsRenderElements::render_elements(
                 &window,
@@ -660,6 +661,24 @@ pub fn build_common_scene_elements_from_fixed(
     }
 }
 
+/// Remove the Smithay-space copies of windows already emitted in the explicit
+/// above-bar overlay bucket. Surface render-element IDs are stable across both
+/// paths, so this avoids drawing the same surface tree twice.
+pub fn remove_duplicate_overlay_elements<E: Element>(
+    scene: &CommonSceneElements,
+    space_elements: &mut Vec<E>,
+) {
+    if scene.overlays.is_empty() {
+        return;
+    }
+    let overlay_ids: Vec<Id> = scene
+        .overlays
+        .iter()
+        .map(|element| element.id().clone())
+        .collect();
+    space_elements.retain(|element| !overlay_ids.iter().any(|id| id == element.id()));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Frame callbacks
 // ─────────────────────────────────────────────────────────────────────────────
@@ -669,9 +688,10 @@ pub fn build_common_scene_elements_from_fixed(
 /// Must be called once per rendered frame, after the buffer has been submitted
 /// for scanout, so that clients know when to draw the next frame.
 ///
-/// Smithay's `Space` owns window/output overlap tracking, and `Window::send_frame`
-/// owns surface-tree and popup traversal.  Keeping those responsibilities in
-/// Smithay also keeps callback delivery aligned with output enter/leave state.
+/// `Window::send_frame` owns surface-tree and popup traversal. Window/output
+/// selection is done from current geometry rather than `Space`'s cached output
+/// membership: commits can arrive before the next `Space::refresh`, especially
+/// for short-lived Xwayland override-redirect windows.
 pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Duration) {
     let throttle = output.current_mode().and_then(|mode| {
         let refresh = u64::try_from(mode.refresh).ok()?;
@@ -692,7 +712,11 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
         return;
     }
 
-    for window in state.space.elements_for_output(output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, output))
+    {
         window.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
     }
 
@@ -731,7 +755,11 @@ pub fn update_primary_scanout_output(
         return;
     }
 
-    for window in state.space.elements_for_output(output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, output))
+    {
         window.with_surfaces(|surface, data| {
             let _ = update_surface_primary_scanout_output(
                 surface,
@@ -757,6 +785,24 @@ pub fn update_primary_scanout_output(
             );
         });
     }
+}
+
+/// Test current compositor geometry instead of Smithay's lazily refreshed
+/// element/output membership cache.
+pub(crate) fn window_overlaps_output(
+    state: &WaylandState,
+    window: &smithay::desktop::Window,
+    output: &Output,
+) -> bool {
+    let Some(output_rect) = state.space.output_geometry(output) else {
+        return false;
+    };
+    let Some(location) = state.space.element_location(window) else {
+        return false;
+    };
+    let mut window_rect = window.bbox_with_popups();
+    window_rect.loc += location - window.geometry().loc;
+    output_rect.overlaps(window_rect)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

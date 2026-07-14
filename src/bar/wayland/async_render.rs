@@ -12,12 +12,14 @@ use super::systray;
 
 #[derive(Clone)]
 struct AsyncBarRenderRequest {
-    key: u64,
+    generation: u64,
+    content_key: u64,
     monitors: Vec<scene::MonitorBarSnapshot>,
 }
 
 struct AsyncBarRenderResult {
-    key: u64,
+    generation: u64,
+    content_key: u64,
     buffers: Vec<RawBarBuffer>,
     monitor_updates: Vec<scene::MonitorRenderOutputWithId>,
 }
@@ -32,7 +34,9 @@ struct AsyncBarRenderShared {
 pub(super) struct AsyncBarRenderRuntime {
     shared: Arc<AsyncBarRenderShared>,
     results_rx: Receiver<AsyncBarRenderResult>,
-    pending_key: u64,
+    pending_content_key: Option<u64>,
+    pending_generation: u64,
+    next_generation: u64,
 }
 
 impl AsyncBarRenderRuntime {
@@ -75,7 +79,9 @@ impl AsyncBarRenderRuntime {
         Self {
             shared,
             results_rx,
-            pending_key: 0,
+            pending_content_key: None,
+            pending_generation: 0,
+            next_generation: 0,
         }
     }
 
@@ -97,13 +103,20 @@ pub(super) fn request_render(
     let Some(runtime) = painter.async_runtime.as_mut() else {
         return;
     };
-    if runtime.pending_key == key {
+    if runtime.pending_content_key == Some(key) {
         return;
     }
 
+    runtime.next_generation = runtime.next_generation.wrapping_add(1).max(1);
+    let generation = runtime.next_generation;
     let mut pending = runtime.shared.pending.lock().unwrap();
-    *pending = Some(AsyncBarRenderRequest { key, monitors });
-    runtime.pending_key = key;
+    *pending = Some(AsyncBarRenderRequest {
+        generation,
+        content_key: key,
+        monitors,
+    });
+    runtime.pending_content_key = Some(key);
+    runtime.pending_generation = generation;
     runtime.shared.wake.notify_one();
 }
 
@@ -116,7 +129,7 @@ pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
     loop {
         match runtime.results_rx.try_recv() {
             Ok(result) => {
-                if result.key < runtime.pending_key {
+                if !is_current_generation(result.generation, runtime.pending_generation) {
                     continue;
                 }
                 latest = Some(result);
@@ -130,7 +143,7 @@ pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
     };
 
     painter.cached_buffers = result.buffers.iter().map(|b| b.into()).collect();
-    painter.cached_key = result.key;
+    painter.cached_key = result.content_key;
 
     for update in result.monitor_updates {
         core.bar
@@ -142,6 +155,10 @@ pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
     }
 }
 
+fn is_current_generation(result: u64, pending: u64) -> bool {
+    result == pending
+}
+
 fn render_snapshot(
     painter: &mut WaylandBarPainter,
     request: AsyncBarRenderRequest,
@@ -150,11 +167,8 @@ fn render_snapshot(
     let mut monitor_updates = Vec::new();
 
     for mut mon in request.monitors {
-        if mon.is_selected_monitor
-            && mon.status_items.is_empty()
-            && let Some(text) = mon.status_text.as_deref()
-        {
-            mon.status_items = crate::bar::status::parse_status(text.as_bytes()).items;
+        if mon.is_selected_monitor {
+            mon.presentation.status.ensure_items_parsed();
         }
 
         painter.set_font_size(mon.font_size);
@@ -168,12 +182,18 @@ fn render_snapshot(
         );
         let output = scene::render_monitor_snapshot(&mon, painter);
         let bar_height = mon.rect.h;
-        let tray_layout = mon
-            .systray
-            .as_ref()
-            .map(|s| scene::worker_systray_layout(s, mon.rect.w, bar_height.max(1)));
+        let tray_layout = mon.systray.as_ref().map(|s| {
+            let menu = mon.presentation.tray_menu().map(|menu| &menu.view);
+            crate::systray::layout(&s.items, menu, mon.rect.w, bar_height, s.visual_padding)
+        });
         if let (Some(systray), Some(layout)) = (&mon.systray, &tray_layout) {
-            systray::draw_snapshot(painter, systray, layout, bar_height);
+            systray::draw_snapshot(
+                painter,
+                systray,
+                mon.presentation.tray_menu(),
+                layout,
+                bar_height,
+            );
         }
 
         if let Some(raw) = painter.finish_raw() {
@@ -186,8 +206,21 @@ fn render_snapshot(
     }
 
     AsyncBarRenderResult {
-        key: request.key,
+        generation: request.generation,
+        content_key: request.content_key,
         buffers,
         monitor_updates,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_current_generation;
+
+    #[test]
+    fn only_the_exact_pending_generation_can_replace_bar_buffers() {
+        assert!(!is_current_generation(4, 5));
+        assert!(is_current_generation(5, 5));
+        assert!(!is_current_generation(6, 5));
     }
 }

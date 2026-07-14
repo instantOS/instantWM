@@ -63,6 +63,10 @@ impl CompositorHandler for WaylandState {
                 .unwrap_or(false);
             if has_buffer {
                 let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
+                let systray_menu_anchor = self.take_expected_systray_menu_toplevel();
+                let parent = toplevel
+                    .parent()
+                    .and_then(|parent| self.window_id_for_surface(&parent));
                 let window_id = self.setup_smithay_window(toplevel);
 
                 let properties = self.window_properties(window_id);
@@ -76,11 +80,13 @@ impl CompositorHandler for WaylandState {
                         win: window_id,
                         properties,
                         initial_geo,
+                        initial_position_is_explicit: false,
+                        systray_menu_anchor,
                         launch_pid: None,
                         launch_startup_id: None,
                         x11_hints: None,
                         x11_size_hints: None,
-                        parent: None,
+                        parent,
                     },
                 ));
             }
@@ -193,7 +199,13 @@ fn service_surface_commit(
                 None => state.request_render(),
             },
         },
-        SurfaceCommitService::FrameCallbacks => state.request_frame_callbacks(),
+        SurfaceCommitService::FrameCallbacks => match window {
+            Some(window) => state.request_window_frame_callbacks(window),
+            None => match layer_output {
+                Some(output) => state.request_output_frame_callbacks(output),
+                None => state.request_frame_callbacks(),
+            },
+        },
         SurfaceCommitService::None => {}
     }
 }

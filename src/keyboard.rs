@@ -22,7 +22,6 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
         ctx.reset_mode();
-        ctx.request_bar_update();
         return true;
     }
 
@@ -48,7 +47,6 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         execute_key_action(ctx, &action);
         if transient {
             ctx.reset_mode();
-            ctx.request_bar_update();
         }
         true
     } else {

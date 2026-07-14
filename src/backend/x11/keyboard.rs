@@ -88,7 +88,7 @@ pub fn grab_keys(
             }
         }
 
-        let current_mode = &globals.behavior.current_mode;
+        let current_mode = globals.behavior.current_mode.as_str();
         let desktop_bindings_enabled =
             crate::keyboard::desktop_bindings_enabled(globals.selected_win(), current_mode);
 
