@@ -256,7 +256,8 @@ pub struct WaylandRuntimeState {
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
-    pub pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
+    pub(crate) pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
+    pub(crate) active_systray_menu: Option<crate::systray::status_notifier::ActiveNativeMenu>,
     pub pointer_location: Point<f64, Logical>,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
@@ -286,6 +287,7 @@ impl Default for WaylandRuntimeState {
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
             pending_systray_menu: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            active_systray_menu: None,
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
@@ -300,10 +302,75 @@ impl Default for WaylandRuntimeState {
 }
 
 impl WaylandState {
-    pub(crate) fn take_expected_systray_menu_toplevel(&mut self) -> Option<crate::types::Point> {
+    pub(crate) fn take_expected_systray_menu_toplevel(
+        &mut self,
+        client_pid: Option<u32>,
+    ) -> Option<crate::systray::status_notifier::NativeMenuRequest> {
         const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(2);
-        let (created, anchor) = self.runtime.pending_systray_menu.lock().ok()?.take()?;
-        (created.elapsed() <= MAX_AGE).then_some(anchor)
+        let mut pending = self.runtime.pending_systray_menu.lock().ok()?;
+        let request = pending.as_ref()?;
+        if request.created.elapsed() > MAX_AGE {
+            pending.take();
+            return None;
+        }
+        if !request.matches_client_pid(client_pid) {
+            return None;
+        }
+        pending.take()
+    }
+
+    pub(crate) fn active_systray_menu(
+        &self,
+    ) -> Option<&crate::systray::status_notifier::ActiveNativeMenu> {
+        self.runtime.active_systray_menu.as_ref()
+    }
+
+    pub(crate) fn native_systray_menu_matches(&self, service: &str, path: &str) -> bool {
+        self.runtime
+            .active_systray_menu
+            .as_ref()
+            .is_some_and(|menu| {
+                menu.service == service && menu.path == path && !menu.close_requested
+            })
+            || self
+                .runtime
+                .pending_systray_menu
+                .lock()
+                .is_ok_and(|request| {
+                    request
+                        .as_ref()
+                        .is_some_and(|menu| menu.service == service && menu.path == path)
+                })
+    }
+
+    /// Dismiss a native menu whether its toplevel is active or still pending.
+    pub(crate) fn dismiss_native_systray_menu(&mut self) -> bool {
+        let dismissed_pending = self
+            .runtime
+            .pending_systray_menu
+            .lock()
+            .is_ok_and(|mut pending| pending.take().is_some());
+        let Some(active) = self.runtime.active_systray_menu.as_mut() else {
+            return dismissed_pending;
+        };
+        let should_send_close = !active.close_requested;
+        active.close_requested = true;
+        if should_send_close {
+            let win = active.win;
+            self.close_window(win);
+        }
+        true
+    }
+
+    pub(crate) fn clear_active_systray_menu(&mut self, win: crate::types::WindowId) {
+        if self
+            .runtime
+            .active_systray_menu
+            .as_ref()
+            .is_some_and(|active| active.win == win)
+        {
+            self.runtime.active_systray_menu = None;
+        }
     }
 
     /// Create a new `WaylandState` and register all Wayland globals.
@@ -523,9 +590,14 @@ impl WaylandState {
             .collect();
 
         for win in dead_windows {
-            // Use the method from window.rs
+            let is_overlay = self
+                .find_window(win)
+                .and_then(|window| window.user_data().get::<WindowIdMarker>())
+                .is_some_and(|marker| marker.is_overlay);
             self.remove_window_tracking(win);
-            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            if !is_overlay {
+                self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            }
         }
 
         // Purge surfaces whose underlying resource is gone, so the HashSet

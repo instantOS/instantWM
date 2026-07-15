@@ -44,7 +44,7 @@ pub use rules::{
 };
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{anchored_context_menu_rect, sane_floating_spawn_rect, sync_client_geometry};
+pub use geometry::{sane_floating_spawn_rect, sync_client_geometry};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{apply_visibility, hide, hide_for_user, show_window};

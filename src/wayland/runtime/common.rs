@@ -204,8 +204,30 @@ pub(crate) fn event_loop_tick_and_request_render(
             animations_active: state.has_active_window_animations(),
         },
     );
+    dismiss_invalid_native_systray_menu(wm, state);
     if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
         state.request_render();
+    }
+}
+
+fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
+    let Some(active) = state.active_systray_menu().cloned() else {
+        return;
+    };
+    let opening_view_is_current = wm
+        .core
+        .monitor(active.monitor_id)
+        .is_some_and(|monitor| monitor.selected_tags() == active.opened_tags);
+    let item_still_exists = match &wm.backend {
+        WmBackend::Wayland(data) => data
+            .status_notifier_tray
+            .items
+            .iter()
+            .any(|item| item.service == active.service && item.path == active.path),
+        _ => false,
+    };
+    if !wm.core.config.systray.show || !opening_view_is_current || !item_still_exists {
+        state.dismiss_native_systray_menu();
     }
 }
 
@@ -437,7 +459,6 @@ fn handle_map_window(
         properties,
         initial_geo,
         mut initial_position_is_explicit,
-        systray_menu_anchor,
         launch_pid,
         launch_startup_id,
         x11_hints,
@@ -531,17 +552,6 @@ fn handle_map_window(
         crate::client::InitialRulePlacement::Preserve => true,
     };
 
-    // A tray menu belongs to the output containing the clicked icon even when
-    // the tray is pinned to a monitor other than the currently selected one.
-    if let Some(anchor) = systray_menu_anchor
-        && let Some(monitor_id) = g.model.monitors.find_monitor_at_pointer(anchor)
-        && let Some(tags) = g.monitor(monitor_id).map(|monitor| monitor.selected_tags())
-        && let Some(client) = g.model.client_mut(win)
-    {
-        client.monitor_id = monitor_id;
-        client.set_tag_mask(tags);
-    }
-
     if let Some(toplevel) = element.as_ref().and_then(|e| e.toplevel())
         && state.xdg_toplevel_has_fixed_size_constraints(toplevel)
         && let Some(client) = g.model.client_mut(win)
@@ -550,19 +560,18 @@ fn handle_map_window(
     }
 
     // Determine if the window should float based on compositor policy.
-    let should_float = systray_menu_anchor.is_some()
-        || element.as_ref().is_some_and(|e| {
-            if let Some(toplevel) = e.toplevel() {
-                state.xdg_toplevel_wants_floating(toplevel)
-            } else if let Some(x11) = e.x11_surface() {
-                parent.is_some()
-                    || x11.is_above()
-                    || g.model.client(win).is_some_and(|c| c.is_fixed_size)
-                    || crate::backend::x11::policy::should_float_for_x11_type(x11.window_type())
-            } else {
-                false
-            }
-        });
+    let should_float = element.as_ref().is_some_and(|e| {
+        if let Some(toplevel) = e.toplevel() {
+            state.xdg_toplevel_wants_floating(toplevel)
+        } else if let Some(x11) = e.x11_surface() {
+            parent.is_some()
+                || x11.is_above()
+                || g.model.client(win).is_some_and(|c| c.is_fixed_size)
+                || crate::backend::x11::policy::should_float_for_x11_type(x11.window_type())
+        } else {
+            false
+        }
+    });
 
     if should_float {
         if let Some(c) = g.model.client_mut(win)
@@ -572,22 +581,6 @@ fn handle_map_window(
             c.mode = crate::types::ClientMode::Floating;
         }
         g.raise_client_in_z_order(win);
-    }
-
-    if let Some(anchor) = systray_menu_anchor
-        && let Some(client) = g.model.client(win)
-        && let Some(work_rect) = g
-            .monitor(client.monitor_id)
-            .map(|monitor| monitor.work_rect)
-    {
-        let rect = crate::client::anchored_context_menu_rect(
-            work_rect,
-            client.geo,
-            client.border_width,
-            anchor,
-        );
-        crate::client::sync_client_geometry(&mut g.model, win, rect);
-        initial_position_is_explicit = true;
     }
 
     if let Some(toplevel) = element.as_ref().and_then(|e| e.toplevel()) {

@@ -11,7 +11,7 @@ use zbus::zvariant::{OwnedValue, Value};
 use crate::systray::{
     MenuAction, MenuEntry, MenuToggle, MenuView, StatusNotifierItem, StatusNotifierTray,
 };
-use crate::types::{MouseButton, Point};
+use crate::types::{MonitorId, MouseButton, Point, TagMask, WindowId};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
@@ -22,9 +22,38 @@ const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 const WORKER_RETRY_MIN: Duration = Duration::from_secs(1);
 const WORKER_RETRY_MAX: Duration = Duration::from_secs(60);
 
-/// Cross-thread handoff used only when an item handles `ContextMenu` by
-/// creating a native Wayland toplevel instead of exposing a DBusMenu.
-pub(crate) type NativeMenuRequestSlot = Arc<Mutex<Option<(Instant, Point)>>>;
+/// A request expected to produce a native Wayland toplevel because the item
+/// does not expose a host-renderable DBusMenu.
+#[derive(Clone, Debug)]
+pub(crate) struct NativeMenuRequest {
+    pub created: Instant,
+    pub anchor: Point,
+    pub service: String,
+    pub path: String,
+    /// PID owning the D-Bus name, used to avoid claiming an unrelated
+    /// toplevel that happens to map during the request timeout.
+    pub owner_pid: Option<u32>,
+}
+
+impl NativeMenuRequest {
+    pub(crate) fn matches_client_pid(&self, client_pid: Option<u32>) -> bool {
+        self.owner_pid
+            .is_some_and(|expected| client_pid == Some(expected))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ActiveNativeMenu {
+    pub win: WindowId,
+    pub service: String,
+    pub path: String,
+    pub monitor_id: MonitorId,
+    pub opened_tags: TagMask,
+    pub close_requested: bool,
+}
+
+/// Cross-thread handoff for a pending native menu request.
+pub(crate) type NativeMenuRequestSlot = Arc<Mutex<Option<NativeMenuRequest>>>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Embedded StatusNotifierWatcher
@@ -654,7 +683,13 @@ fn dispatch_cmd(
                 Ok(None) => {
                     *menu_session = None;
                     send_menu_changed(evt_tx, session_id, None);
-                    record_native_menu_request(native_menu_request, position);
+                    record_native_menu_request(
+                        conn,
+                        native_menu_request,
+                        position,
+                        &service,
+                        &path,
+                    );
                     if let Err(error) =
                         call_item_method(conn, &service, &path, "ContextMenu", position)
                     {
@@ -668,7 +703,13 @@ fn dispatch_cmd(
                     log::warn!("status notifier: failed to read menu for {service}{path}: {error}");
                     *menu_session = None;
                     send_menu_changed(evt_tx, session_id, None);
-                    record_native_menu_request(native_menu_request, position);
+                    record_native_menu_request(
+                        conn,
+                        native_menu_request,
+                        position,
+                        &service,
+                        &path,
+                    );
                     if call_item_method(conn, &service, &path, "ContextMenu", position).is_err() {
                         clear_native_menu_request(native_menu_request);
                     }
@@ -695,9 +736,39 @@ fn dispatch_cmd(
     }
 }
 
-fn record_native_menu_request(slot: &NativeMenuRequestSlot, position: Point) {
+fn record_native_menu_request(
+    conn: &Connection,
+    slot: &NativeMenuRequestSlot,
+    position: Point,
+    service: &str,
+    path: &str,
+) {
+    let owner_pid = Proxy::new(
+        conn,
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+    )
+    .and_then(|proxy| proxy.call("GetConnectionUnixProcessID", &(service,)))
+    .ok();
+    set_native_menu_request(slot, position, service, path, owner_pid);
+}
+
+fn set_native_menu_request(
+    slot: &NativeMenuRequestSlot,
+    position: Point,
+    service: &str,
+    path: &str,
+    owner_pid: Option<u32>,
+) {
     if let Ok(mut request) = slot.lock() {
-        *request = Some((Instant::now(), position));
+        *request = Some(NativeMenuRequest {
+            created: Instant::now(),
+            anchor: position,
+            service: service.to_string(),
+            path: path.to_string(),
+            owner_pid,
+        });
     }
 }
 
@@ -1085,10 +1156,10 @@ mod tests {
     use zbus::zvariant::{OwnedValue, Value};
 
     use super::{
-        MenuAction, MenuToggle, StatusNotifierItem, StatusNotifierRuntime, StatusNotifierTray,
-        StatusNotifierWorker, WORKER_RETRY_MIN, clear_native_menu_request, dbus_icon_bytes_to_rgba,
-        menu_entry_from_properties, record_native_menu_request, select_largest_valid_pixmap,
-        strip_menu_mnemonics,
+        MenuAction, MenuToggle, NativeMenuRequest, StatusNotifierItem, StatusNotifierRuntime,
+        StatusNotifierTray, StatusNotifierWorker, WORKER_RETRY_MIN, clear_native_menu_request,
+        dbus_icon_bytes_to_rgba, menu_entry_from_properties, select_largest_valid_pixmap,
+        set_native_menu_request, strip_menu_mnemonics,
     };
 
     fn string_value(value: &str) -> OwnedValue {
@@ -1100,14 +1171,41 @@ mod tests {
         let slot = Arc::new(Mutex::new(None));
         let anchor = crate::types::Point::new(1910, 16);
 
-        record_native_menu_request(&slot, anchor);
+        set_native_menu_request(
+            &slot,
+            anchor,
+            "org.example.Tray",
+            "/StatusNotifierItem",
+            Some(42),
+        );
         assert_eq!(
-            slot.lock().unwrap().as_ref().map(|(_, point)| *point),
+            slot.lock().unwrap().as_ref().map(|request| request.anchor),
             Some(anchor)
         );
 
         clear_native_menu_request(&slot);
         assert!(slot.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn native_menu_request_only_matches_its_dbus_owner() {
+        let request = NativeMenuRequest {
+            created: std::time::Instant::now(),
+            anchor: crate::types::Point::new(10, 20),
+            service: "org.example.Tray".to_string(),
+            path: "/StatusNotifierItem".to_string(),
+            owner_pid: Some(42),
+        };
+
+        assert!(request.matches_client_pid(Some(42)));
+        assert!(!request.matches_client_pid(Some(43)));
+        assert!(!request.matches_client_pid(None));
+
+        let unresolved = NativeMenuRequest {
+            owner_pid: None,
+            ..request
+        };
+        assert!(!unresolved.matches_client_pid(Some(42)));
     }
 
     #[test]

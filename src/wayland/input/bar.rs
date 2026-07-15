@@ -1,4 +1,5 @@
 use crate::backend::Backend;
+use crate::backend::wayland::compositor::WaylandState;
 use crate::contexts::WmCtxWayland;
 use crate::types::*;
 use crate::wm::Wm;
@@ -14,6 +15,7 @@ pub fn update_bar_hit_state(
 
 pub fn handle_bar_click(
     wm: &mut Wm,
+    state: &mut WaylandState,
     pos: BarPosition,
     button_code: u32,
     root: Point,
@@ -24,6 +26,7 @@ pub fn handle_bar_click(
     };
 
     if matches!(pos, BarPosition::SystrayMenuItem(_)) {
+        state.dismiss_native_systray_menu();
         let BarPosition::SystrayMenuItem(idx) = pos else {
             return;
         };
@@ -47,23 +50,31 @@ pub fn handle_bar_click(
         let BarPosition::SystrayItem(idx) = pos else {
             return;
         };
-        // Destructure backend to avoid multiple mutable borrows
-        let Backend::Wayland(data) = &mut wm.backend else {
-            return;
-        };
-        let menu_session_id = if let Some(runtime) = data.status_notifier_runtime.as_ref() {
-            let target = data
+        let target = match &wm.backend {
+            Backend::Wayland(data) => data
                 .status_notifier_tray
                 .items
                 .get(idx)
-                .map(|it| (it.service.clone(), it.path.clone()));
-            if let Some((service, path)) = target {
-                runtime.dispatch_click_item(service, path, button, root)
-            } else {
-                None
-            }
-        } else {
-            None
+                .map(|item| (item.service.clone(), item.path.clone())),
+            _ => None,
+        };
+        let Some((service, path)) = target else {
+            return;
+        };
+
+        let toggled_closed =
+            button == MouseButton::Right && state.native_systray_menu_matches(&service, &path);
+        state.dismiss_native_systray_menu();
+        if toggled_closed {
+            return;
+        }
+
+        let menu_session_id = match &mut wm.backend {
+            Backend::Wayland(data) => data
+                .status_notifier_runtime
+                .as_ref()
+                .and_then(|runtime| runtime.dispatch_click_item(service, path, button, root)),
+            _ => None,
         };
         if let Some(session_id) = menu_session_id
             && wm.tray_menu.begin(session_id)
@@ -72,6 +83,8 @@ pub fn handle_bar_click(
         }
         return;
     }
+
+    state.dismiss_native_systray_menu();
 
     if pos == BarPosition::StatusText {
         let mut ctx = wm.ctx();

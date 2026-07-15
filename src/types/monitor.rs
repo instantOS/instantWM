@@ -851,7 +851,6 @@ pub struct TagNames {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn first_visible_client_prefers_topmost_visible_stack_entry() {
         let mut monitor = Monitor::default();

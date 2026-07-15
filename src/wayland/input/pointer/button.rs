@@ -109,6 +109,7 @@ fn handle_button_press(
     if let Some((layer_surface, location)) =
         state.layer_surface_under_pointer(button.pointer_location)
     {
+        state.dismiss_native_systray_menu();
         focus_layer_button_target(
             state,
             pointer_handle,
@@ -121,12 +122,18 @@ fn handle_button_press(
         return false;
     }
 
+    let clicked_win = state.logical_window_under_pointer(button.pointer_location);
     if state.is_pointer_over_overlay(button.pointer_location) {
+        if !state
+            .active_systray_menu()
+            .is_some_and(|active| Some(active.win) == clicked_win)
+        {
+            state.dismiss_native_systray_menu();
+        }
         forward_button(state, pointer_handle, button);
         return false;
     }
 
-    let clicked_win = state.logical_window_under_pointer(button.pointer_location);
     let pointer_region = {
         let mut ctx = wm.ctx();
         crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root, clicked_win)
@@ -136,6 +143,7 @@ fn handle_button_press(
         PointerRegion::Bar { pos, .. } => {
             handle_bar_click(
                 wm,
+                state,
                 pos,
                 button.button_code,
                 button.root,
@@ -145,6 +153,7 @@ fn handle_button_press(
             return true;
         }
         PointerRegion::Sidebar(_) => {
+            state.dismiss_native_systray_menu();
             if let Some(btn) = button.wm_button {
                 let _ = consume_pointer_binding(
                     wm,
@@ -159,6 +168,8 @@ fn handle_button_press(
         }
         PointerRegion::Client(_) | PointerRegion::Root { .. } => {}
     }
+
+    state.dismiss_native_systray_menu();
 
     if begin_hover_resize_drag(wm, button) {
         return true;

@@ -14,7 +14,7 @@
 
 use crate::geometry::MoveResizeOptions;
 use crate::model::WmModel;
-use crate::types::{Client, Monitor, Point, Rect, WindowId};
+use crate::types::{Client, Monitor, Rect, WindowId};
 
 /// Record the resolved geometry of a managed client.
 ///
@@ -26,35 +26,6 @@ pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
     if let Some(client) = model.client_mut(win) {
         client.update_geometry(rect);
     }
-}
-
-/// Place a native context-menu toplevel next to its root-coordinate anchor.
-/// Prefer opening leftward (tray icons normally live at the right edge) and
-/// below a top bar, while keeping the complete outer window in the work area.
-pub fn anchored_context_menu_rect(
-    work_rect: Rect,
-    requested: Rect,
-    border_width: i32,
-    anchor: Point,
-) -> Rect {
-    let border = border_width.max(0);
-    let outer_w = requested.w.saturating_add(border.saturating_mul(2));
-    let outer_h = requested.h.saturating_add(border.saturating_mul(2));
-    let max_x = (work_rect.x + work_rect.w - outer_w).max(work_rect.x);
-    let max_y = (work_rect.y + work_rect.h - outer_h).max(work_rect.y);
-
-    let x = (anchor.x - outer_w).clamp(work_rect.x, max_x);
-    let y = if anchor.y < work_rect.y {
-        work_rect.y
-    } else if anchor.y >= work_rect.y + work_rect.h {
-        max_y
-    } else if anchor.y + outer_h <= work_rect.y + work_rect.h {
-        anchor.y
-    } else {
-        (anchor.y - outer_h).clamp(work_rect.y, max_y)
-    };
-
-    Rect::new(x, y, requested.w, requested.h)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -317,10 +288,7 @@ fn calculate_scaled_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        FloatingPlacementKind, anchored_context_menu_rect, resolve_floating_placement,
-        sane_floating_spawn_rect,
-    };
+    use super::{FloatingPlacementKind, resolve_floating_placement, sane_floating_spawn_rect};
     use crate::core_state::CoreState;
     use crate::types::{Client, Monitor, MonitorId, Rect, TagMask, WindowId};
 
@@ -470,30 +438,6 @@ mod tests {
         let rect =
             sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
         assert_eq!(rect, Rect::new(1920, 32, 2000, 1200));
-    }
-
-    #[test]
-    fn tray_menu_opens_left_and_below_a_top_bar() {
-        let rect = anchored_context_menu_rect(
-            Rect::new(1920, 32, 1920, 1048),
-            Rect::new(0, 0, 320, 480),
-            2,
-            crate::types::Point::new(3820, 16),
-        );
-
-        assert_eq!(rect, Rect::new(3496, 32, 320, 480));
-    }
-
-    #[test]
-    fn tray_menu_opens_above_a_bottom_bar() {
-        let rect = anchored_context_menu_rect(
-            Rect::new(0, 0, 1920, 1048),
-            Rect::new(0, 0, 240, 300),
-            0,
-            crate::types::Point::new(1900, 1064),
-        );
-
-        assert_eq!(rect, Rect::new(1660, 748, 240, 300));
     }
 }
 

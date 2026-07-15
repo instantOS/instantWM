@@ -7,13 +7,34 @@
 
 use std::sync::Arc;
 
-use crate::types::Rect;
+use crate::types::{Point, Rect};
 
 pub(crate) mod render;
 pub(crate) mod status_notifier;
 
 const MIN_VISUAL_PADDING: i32 = 2;
 const MIN_MENU_CELL_WIDTH: i32 = 24;
+
+/// Place a native context-menu toplevel next to its root-coordinate anchor.
+/// Prefer opening leftward (tray icons normally live at the right edge) and
+/// below a top bar, while keeping the complete window in the work area.
+pub(crate) fn native_menu_rect(work_rect: Rect, requested: Rect, anchor: Point) -> Rect {
+    let max_x = (work_rect.x + work_rect.w - requested.w).max(work_rect.x);
+    let max_y = (work_rect.y + work_rect.h - requested.h).max(work_rect.y);
+
+    let x = (anchor.x - requested.w).clamp(work_rect.x, max_x);
+    let y = if anchor.y < work_rect.y {
+        work_rect.y
+    } else if anchor.y >= work_rect.y + work_rect.h {
+        max_y
+    } else if anchor.y + requested.h <= work_rect.y + work_rect.h {
+        anchor.y
+    } else {
+        (anchor.y - requested.h).clamp(work_rect.y, max_y)
+    };
+
+    Rect::new(x, y, requested.w, requested.h)
+}
 
 /// An icon exported through the StatusNotifier protocol.
 #[derive(Debug, Clone, Default)]
@@ -390,6 +411,28 @@ mod tests {
             assert_eq!(fit_icon_size(16, 0, 30, scale), (0, 0));
             assert_eq!(fit_icon_size(-1, 16, 30, scale), (0, 0));
         }
+    }
+
+    #[test]
+    fn native_menu_opens_left_and_below_a_top_bar() {
+        let rect = native_menu_rect(
+            Rect::new(1920, 32, 1920, 1048),
+            Rect::new(0, 0, 320, 480),
+            Point::new(3820, 16),
+        );
+
+        assert_eq!(rect, Rect::new(3500, 32, 320, 480));
+    }
+
+    #[test]
+    fn native_menu_opens_above_a_bottom_bar() {
+        let rect = native_menu_rect(
+            Rect::new(0, 0, 1920, 1048),
+            Rect::new(0, 0, 240, 300),
+            Point::new(1900, 1064),
+        );
+
+        assert_eq!(rect, Rect::new(1660, 748, 240, 300));
     }
 
     #[test]

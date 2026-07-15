@@ -2,7 +2,7 @@ use smithay::{
     backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::PopupKind,
-    reexports::wayland_server::Client,
+    reexports::wayland_server::{Client, Resource},
     wayland::{
         buffer::BufferHandler,
         compositor::{
@@ -62,12 +62,27 @@ impl CompositorHandler for WaylandState {
                 })
                 .unwrap_or(false);
             if has_buffer {
-                let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
-                let systray_menu_anchor = self.take_expected_systray_menu_toplevel();
+                let mut toplevel = self.runtime.pending_toplevels.swap_remove(pos);
+                let client_pid = toplevel
+                    .wl_surface()
+                    .client()
+                    .and_then(|client| client.get_credentials(&self.display_handle).ok())
+                    .and_then(|credentials| u32::try_from(credentials.pid).ok());
+                let systray_menu = self.take_expected_systray_menu_toplevel(client_pid);
+                if let Some(request) = systray_menu {
+                    match self.setup_native_systray_menu(toplevel, request) {
+                        Ok(_) => {
+                            service_surface_commit(self, commit_kind, None, None);
+                            return;
+                        }
+                        Err(surface) => toplevel = surface,
+                    }
+                }
+
                 let parent = toplevel
                     .parent()
                     .and_then(|parent| self.window_id_for_surface(&parent));
-                let window_id = self.setup_smithay_window(toplevel);
+                let window_id = self.setup_managed_window(toplevel);
 
                 let properties = self.window_properties(window_id);
                 let initial_geo = self.find_window(window_id).map(|w| {
@@ -81,7 +96,6 @@ impl CompositorHandler for WaylandState {
                         properties,
                         initial_geo,
                         initial_position_is_explicit: false,
-                        systray_menu_anchor,
                         launch_pid: None,
                         launch_startup_id: None,
                         x11_hints: None,
@@ -144,6 +158,7 @@ impl CompositorHandler for WaylandState {
             if let Some(id) = window
                 .user_data()
                 .get::<super::state::WindowIdMarker>()
+                .filter(|marker| !marker.is_overlay)
                 .map(|marker| marker.id)
             {
                 self.sync_client_size_from_window(id);

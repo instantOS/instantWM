@@ -350,8 +350,14 @@ impl XdgShellHandler for WaylandState {
         let Some(win) = self.window_id_for_toplevel(&surface) else {
             return;
         };
+        let is_overlay = self
+            .find_window(win)
+            .and_then(|window| window.user_data().get::<super::state::WindowIdMarker>())
+            .is_some_and(|marker| marker.is_overlay);
         self.remove_window_tracking(win);
-        self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+        if !is_overlay {
+            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+        }
 
         // Recover mon.sel if it was cleared by detach_z_order, then re-apply seat focus.
         self.restore_focus_after_overlay();
