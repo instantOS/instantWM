@@ -22,6 +22,10 @@ if not perf_data.is_file():
 
 metadata_path = capture_dir / "metadata.json"
 metadata = json.loads(metadata_path.read_text()) if metadata_path.is_file() else {}
+gpu_summary_path = capture_dir / "gpu-summary.json"
+gpu_summary = (
+    json.loads(gpu_summary_path.read_text()) if gpu_summary_path.is_file() else None
+)
 pid = metadata.get("pid")
 pid_args = ["--pid", str(pid)] if pid else []
 
@@ -135,6 +139,26 @@ for item in hotspots[:40]:
         f"| {item['self_cpu_percent']:.2f}% | {item['samples']} | "
         f"{cell(item['symbol'])} | {cell(item['source'])} | {cell(item['object'])} |"
     )
+if gpu_summary is not None:
+    lines += ["", "## GPU usage", ""]
+    if not gpu_summary["available"]:
+        lines.append(
+            "DRM fdinfo did not expose client GPU statistics for this capture."
+        )
+    elif not gpu_summary["engines"]:
+        lines.append(
+            "DRM client statistics were available, but the driver exposed no engine-busy counters."
+        )
+    else:
+        lines += [
+            "| Engine | Average busy | Peak interval | Busy time |",
+            "|---|---:|---:|---:|",
+        ]
+        for engine, values in gpu_summary["engines"].items():
+            lines.append(
+                f"| {cell(engine)} | {values['average_busy_percent']:.2f}% | "
+                f"{values['peak_interval_percent']:.2f}% | {values['busy_seconds']:.4f}s |"
+            )
 lines += [
     "",
     "Use `hotspots.json` for structured data and `callgraph.txt` to distinguish expensive callees from their callers.",

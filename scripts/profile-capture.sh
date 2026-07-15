@@ -67,6 +67,10 @@ if [[ ! -t 0 ]]; then
 fi
 
 cleanup() {
+  if [[ -n "${gpu_pid:-}" ]] && kill -0 "$gpu_pid" 2>/dev/null; then
+    kill -INT "$gpu_pid" 2>/dev/null || true
+    wait "$gpu_pid" 2>/dev/null || true
+  fi
   if [[ -n "${perf_pid:-}" ]] && kill -0 "$perf_pid" 2>/dev/null; then
     kill -INT "$perf_pid" 2>/dev/null || true
     wait "$perf_pid" 2>/dev/null || true
@@ -114,6 +118,10 @@ printf '{\n  "schema_version": 1,\n  "started_at": "%s",\n  "duration_seconds": 
   "$STARTED_AT" "$DURATION" "$PROFILE_FREQ" "$WORKLOAD" "$wm_pid" \
   "$GIT_REVISION" "$GIT_DIRTY" >"$PROFILE_DIR/metadata.json"
 
+python3 "$ROOT_DIR/scripts/profile-gpu.py" "$wm_pid" "$PROFILE_DIR" \
+  "${GPU_SAMPLE_MS:-100}" >"$PROFILE_DIR/gpu-monitor.log" 2>&1 &
+gpu_pid=$!
+
 if [[ "$WORKLOAD" == "standard" ]]; then
   INSTANTWM_SOCKET="$SOCKET" PROFILE_DURATION="$DURATION" \
     bash "$ROOT_DIR/scripts/profile-workload.sh" >"$WORKLOAD_LOG" 2>&1 &
@@ -127,6 +135,9 @@ sleep "$DURATION" &
 sleep_pid=$!
 wait "$sleep_pid"
 echo "profile: capture duration elapsed; finalizing perf data"
+kill -INT "$gpu_pid" 2>/dev/null || true
+wait "$gpu_pid" || true
+gpu_pid=""
 kill -INT "$perf_pid" 2>/dev/null || true
 wait "$perf_pid" || true
 perf_pid=""

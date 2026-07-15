@@ -15,10 +15,12 @@ but its SVG is not the primary agent interface. Sysprof is valuable when a
 whole-desktop or kernel-wide capture matters, but its native capture is less
 convenient for automated text analysis.
 
-This workflow measures CPU consumption. It does not directly measure GPU
-execution time or explain wall-clock stalls while the compositor sleeps.
-Vendor GPU tools, DRM tracepoints, or explicit tracing should be a separate
-second-stage investigation after a CPU hotspot is identified.
+The workflow measures CPU consumption and samples standardized per-client DRM
+`fdinfo` counters for instantWM. Where the kernel driver exposes them, these
+provide GPU-engine busy time and GPU-memory use without root. They do not map a
+GPU command back to an exact Rust source line or explain wall-clock stalls while
+the compositor sleeps. Vendor performance counters, DRM tracepoints, or explicit
+render-stage instrumentation remain a second-stage investigation.
 
 ## Prerequisites and permissions
 
@@ -101,6 +103,8 @@ Each run creates `target/profiles/YYYYMMDD-HHMMSS/` and updates
 - `callgraph.txt`: caller/callee context in `perf report --stdio` form.
 - `hotspots.tsv`: the complete flat perf table.
 - `metadata.json`: backend, PID, duration, frequency, and workload.
+- `gpu-summary.json`: per-engine busy time/utilization and peak GPU memory.
+- `gpu-samples.jsonl`: timestamped raw DRM client counters.
 - `instantwm.log` and `workload.log`: runtime evidence.
 - `perf.data`: raw samples for deeper analysis.
 
