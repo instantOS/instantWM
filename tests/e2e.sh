@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUST_DIR="$ROOT_DIR"
-SOCKET_PATH="${INSTANTWM_SOCKET:-/tmp/instantwm-$(id -u).sock}"
+SOCKET_PATH="/tmp/instantwm-$(id -u).sock"
 WM_LOG="${WM_LOG:-/tmp/instantwm-e2e-wm.log}"
 SPAWN_COUNT="${SPAWN_COUNT:-3}"
 STARTUP_RETRIES="${STARTUP_RETRIES:-200}"
@@ -28,7 +28,16 @@ choose_spawn_cmd() {
 }
 
 run_ctl() {
-  "$RUST_DIR/target/debug/instantwmctl" "$@"
+  INSTANTWM_SOCKET="$SOCKET_PATH" "$RUST_DIR/target/debug/instantwmctl" "$@"
+}
+
+socket_is_live() {
+  python3 -c '
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.settimeout(0.5)
+s.connect(sys.argv[1])
+' "$1" >/dev/null 2>&1
 }
 
 cleanup() {
@@ -43,7 +52,7 @@ cd "$RUST_DIR"
 cargo build --quiet --bin instantwm --bin instantwmctl
 
 if [[ -S "$SOCKET_PATH" ]]; then
-  if run_ctl status >/dev/null 2>&1; then
+  if socket_is_live "$SOCKET_PATH"; then
     echo "instantWM is already running on $SOCKET_PATH; stop it before the e2e test" >&2
     exit 1
   fi

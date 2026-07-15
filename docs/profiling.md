@@ -25,7 +25,8 @@ second-stage investigation after a CPU hotspot is identified.
 Install `perf` from the package that matches the running kernel. `python3` and
 `just` are also required. Samply is optional.
 
-The capture profiles a child process and requests user-space samples only, so
+The capture profiles a child process with the software `cpu-clock:u` event and
+requests user-space samples only, so
 Linux's standard `kernel.perf_event_paranoid=2` is sufficient. Some
 distributions set a stricter value. Check and temporarily relax it with:
 

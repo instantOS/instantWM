@@ -25,16 +25,33 @@ metadata = json.loads(metadata_path.read_text()) if metadata_path.is_file() else
 pid = metadata.get("pid")
 pid_args = ["--pid", str(pid)] if pid else []
 
-base = ["perf", "report", "--input", str(perf_data), "--stdio", "--stdio-color", "never"]
-flat_cmd = base + pid_args + [
-    "--call-graph", "none",
-    "--no-children",
-    "--percent-limit", "0.05",
-    "--full-source-path",
-    "--sort", "comm,dso,symbol,srcline",
-    "--fields", "overhead,sample,comm,dso,symbol,srcline",
-    "--field-separator", "\t",
+base = [
+    "perf",
+    "report",
+    "--input",
+    str(perf_data),
+    "--stdio",
+    "--stdio-color",
+    "never",
 ]
+flat_cmd = (
+    base
+    + pid_args
+    + [
+        "--call-graph",
+        "none",
+        "--no-children",
+        "--percent-limit",
+        "0.05",
+        "--full-source-path",
+        "--sort",
+        "comm,dso,symbol,srcline",
+        "--fields",
+        "overhead,sample,comm,dso,symbol,srcline",
+        "--field-separator",
+        "\t",
+    ]
+)
 flat = subprocess.run(flat_cmd, check=True, text=True, capture_output=True).stdout
 (capture_dir / "hotspots.tsv").write_text(flat)
 
@@ -50,14 +67,20 @@ for line in flat.splitlines():
         samples = int(fields[1])
     except ValueError:
         continue
-    hotspots.append({
-        "self_cpu_percent": overhead,
-        "samples": samples,
-        "thread": fields[2],
-        "object": fields[3],
-        "symbol": fields[4].removeprefix("[.] ").removeprefix("[k] "),
-        "source": fields[5],
-    })
+    hotspots.append(
+        {
+            "self_cpu_percent": overhead,
+            "samples": samples,
+            "thread": fields[2],
+            "object": fields[3],
+            "symbol": fields[4].removeprefix("[.] ").removeprefix("[k] "),
+            "source": fields[5],
+        }
+    )
+
+hotspots.sort(
+    key=lambda item: (-float(item["self_cpu_percent"]), -int(item["samples"]))
+)
 
 payload = {
     "schema_version": 1,
@@ -67,13 +90,23 @@ payload = {
 }
 (capture_dir / "hotspots.json").write_text(json.dumps(payload, indent=2) + "\n")
 
-callgraph_cmd = base + pid_args + [
-    "--percent-limit", "0.5",
-    "--sort", "comm,dso,symbol",
-    "--call-graph", "graph,0.5,caller,function,percent",
-]
-callgraph = subprocess.run(callgraph_cmd, check=True, text=True, capture_output=True).stdout
+callgraph_cmd = (
+    base
+    + pid_args
+    + [
+        "--percent-limit",
+        "0.5",
+        "--sort",
+        "comm,dso,symbol",
+        "--call-graph",
+        "graph,0.5,caller,function,percent",
+    ]
+)
+callgraph = subprocess.run(
+    callgraph_cmd, check=True, text=True, capture_output=True
+).stdout
 (capture_dir / "callgraph.txt").write_text(callgraph)
+
 
 def cell(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
