@@ -31,8 +31,12 @@ use smithay::{
         },
         shell::xdg::{
             PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
+            XdgToplevelSurfaceData,
             decoration::XdgDecorationHandler,
+            dialog::{ToplevelDialogHint, XdgDialogHandler},
         },
+        tablet_manager::TabletSeatHandler,
+        xdg_foreign::{XdgForeignHandler, XdgForeignState},
     },
 };
 
@@ -95,7 +99,18 @@ impl WaylandState {
     }
 
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
-        surface.parent().is_some() || self.xdg_toplevel_has_fixed_size_constraints(surface)
+        surface.parent().is_some()
+            || self.xdg_toplevel_is_dialog(surface)
+            || self.xdg_toplevel_has_fixed_size_constraints(surface)
+    }
+
+    fn xdg_toplevel_is_dialog(&self, surface: &ToplevelSurface) -> bool {
+        compositor::with_states(surface.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .is_some_and(|data| data.lock().unwrap().dialog_hint != ToplevelDialogHint::Unknown)
+        })
     }
 
     pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
@@ -164,6 +179,20 @@ impl SeatHandler for WaylandState {
         if let Some(tx) = &self.runtime.led_state_tx {
             let _ = tx.send(led_state);
         }
+    }
+}
+
+impl TabletSeatHandler for WaylandState {}
+
+impl XdgForeignHandler for WaylandState {
+    fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
+        &mut self.xdg_foreign_state
+    }
+}
+
+impl XdgDialogHandler for WaylandState {
+    fn dialog_hint_changed(&mut self, toplevel: ToplevelSurface, _hint: ToplevelDialogHint) {
+        self.apply_floating_policy(&toplevel);
     }
 }
 

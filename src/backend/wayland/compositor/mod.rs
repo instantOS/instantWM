@@ -44,26 +44,32 @@ pub(crate) use state::PendingRenderTargets;
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};
 
 use smithay::{
-    delegate_compositor, delegate_data_control, delegate_data_device, delegate_dmabuf,
-    delegate_ext_data_control, delegate_idle_inhibit, delegate_idle_notify,
+    delegate_alpha_modifier, delegate_compositor, delegate_content_type, delegate_cursor_shape,
+    delegate_data_control, delegate_data_device, delegate_dmabuf, delegate_ext_data_control,
+    delegate_fixes, delegate_fractional_scale, delegate_idle_inhibit, delegate_idle_notify,
     delegate_image_capture_source, delegate_image_copy_capture, delegate_layer_shell,
     delegate_output, delegate_output_capture_source, delegate_pointer_constraints,
     delegate_pointer_gestures, delegate_presentation, delegate_primary_selection,
     delegate_relative_pointer, delegate_seat, delegate_session_lock, delegate_shm,
-    delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation,
-    delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_keyboard_grab,
-    delegate_xwayland_shell,
+    delegate_single_pixel_buffer, delegate_viewporter, delegate_virtual_keyboard_manager,
+    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_dialog, delegate_xdg_foreign,
+    delegate_xdg_shell, delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------
 // Delegate macros — these MUST be at module level
 // ---------------------------------------------------------------------------
 
+delegate_alpha_modifier!(WaylandState);
 delegate_compositor!(WaylandState);
+delegate_content_type!(WaylandState);
+delegate_cursor_shape!(WaylandState);
 delegate_data_control!(WaylandState);
 delegate_data_device!(WaylandState);
 delegate_dmabuf!(WaylandState);
 delegate_ext_data_control!(WaylandState);
+delegate_fixes!(WaylandState);
+delegate_fractional_scale!(WaylandState);
 delegate_idle_inhibit!(WaylandState);
 delegate_idle_notify!(WaylandState);
 delegate_image_capture_source!(WaylandState);
@@ -78,10 +84,13 @@ delegate_primary_selection!(WaylandState);
 delegate_relative_pointer!(WaylandState);
 delegate_seat!(WaylandState);
 delegate_shm!(WaylandState);
+delegate_single_pixel_buffer!(WaylandState);
 delegate_viewporter!(WaylandState);
 delegate_virtual_keyboard_manager!(WaylandState);
 delegate_xdg_activation!(WaylandState);
 delegate_xdg_decoration!(WaylandState);
+delegate_xdg_dialog!(WaylandState);
+delegate_xdg_foreign!(WaylandState);
 delegate_xdg_shell!(WaylandState);
 delegate_session_lock!(WaylandState);
 delegate_xwayland_keyboard_grab!(WaylandState);

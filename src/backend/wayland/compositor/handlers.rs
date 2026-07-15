@@ -9,6 +9,7 @@ use smithay::{
             CompositorHandler, SurfaceAttributes, TraversalAction, get_parent, is_sync_subsurface,
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
         pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
         seat::WaylandFocus,
@@ -236,6 +237,24 @@ impl BufferHandler for WaylandState {
         &mut self,
         _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
     ) {
+    }
+}
+
+impl FractionalScaleHandler for WaylandState {
+    fn new_fractional_scale(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        smithay::wayland::compositor::with_states(&surface, |states| {
+            let Some(output) =
+                smithay::desktop::utils::surface_primary_scanout_output(&surface, states)
+            else {
+                return;
+            };
+            with_fractional_scale(states, |fractional_scale| {
+                fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());
+            });
+        });
     }
 }
 

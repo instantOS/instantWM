@@ -42,6 +42,7 @@ use smithay::reexports::calloop::LoopHandle;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::with_states;
+use smithay::wayland::fractional_scale::with_fractional_scale;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
@@ -750,6 +751,7 @@ pub fn update_primary_scanout_output(
                     render_states,
                     default_primary_scanout_output_compare,
                 );
+                update_preferred_fractional_scale(surface, data);
             });
         }
         return;
@@ -769,6 +771,7 @@ pub fn update_primary_scanout_output(
                 render_states,
                 default_primary_scanout_output_compare,
             );
+            update_preferred_fractional_scale(surface, data);
         });
     }
 
@@ -783,8 +786,21 @@ pub fn update_primary_scanout_output(
                 render_states,
                 default_primary_scanout_output_compare,
             );
+            update_preferred_fractional_scale(surface, data);
         });
     }
+}
+
+fn update_preferred_fractional_scale(
+    surface: &WlSurface,
+    states: &smithay::wayland::compositor::SurfaceData,
+) {
+    let Some(output) = surface_primary_scanout_output(surface, states) else {
+        return;
+    };
+    with_fractional_scale(states, |fractional_scale| {
+        fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());
+    });
 }
 
 /// Test current compositor geometry instead of Smithay's lazily refreshed

@@ -23,9 +23,14 @@ use smithay::{
     },
     utils::{Logical, Point},
     wayland::{
+        alpha_modifier::AlphaModifierState,
         compositor::CompositorState,
+        content_type::ContentTypeState,
+        cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
+        fixes::FixesState,
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
+        fractional_scale::FractionalScaleManagerState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
@@ -44,12 +49,14 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{XdgShellState, decoration::XdgDecorationState, dialog::XdgDialogState},
         },
         shm::ShmState,
+        single_pixel_buffer::SinglePixelBufferState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
         xdg_activation::XdgActivationState,
+        xdg_foreign::XdgForeignState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
         xwayland_shell::XWaylandShellState,
     },
@@ -109,11 +116,18 @@ pub struct WaylandState {
     pub popups: PopupManager,
 
     // -- Protocol states --
+    pub alpha_modifier_state: AlphaModifierState,
     pub compositor_state: CompositorState,
+    pub content_type_state: ContentTypeState,
+    pub cursor_shape_manager_state: CursorShapeManagerState,
+    pub fixes_state: FixesState,
+    pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub shm_state: ShmState,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    pub xdg_dialog_state: XdgDialogState,
     pub xdg_activation_state: XdgActivationState,
+    pub xdg_foreign_state: XdgForeignState,
     pub seat_state: SeatState<WaylandState>,
     pub output_manager_state: OutputManagerState,
     pub presentation_state: PresentationState,
@@ -133,6 +147,7 @@ pub struct WaylandState {
     pub pointer_gestures_state: PointerGesturesState,
     pub pointer_constraints_state: PointerConstraintsState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
+    pub single_pixel_buffer_state: SinglePixelBufferState,
     pub viewporter_state: ViewporterState,
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
@@ -394,11 +409,18 @@ impl WaylandState {
             .expect("Failed to insert Wayland display source");
 
         // -- Protocol globals --
+        let alpha_modifier_state = AlphaModifierState::new::<Self>(&dh);
         let compositor_state = CompositorState::new::<Self>(&dh);
+        let content_type_state = ContentTypeState::new::<Self>(&dh);
+        let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
+        let fixes_state = FixesState::new::<Self>(&dh);
+        let fractional_scale_manager_state = FractionalScaleManagerState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let xdg_dialog_state = XdgDialogState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
+        let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let presentation_state = PresentationState::new::<Self>(&dh, libc::CLOCK_MONOTONIC as u32);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
@@ -416,6 +438,7 @@ impl WaylandState {
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
+        let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let virtual_keyboard_manager_state =
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
@@ -436,11 +459,18 @@ impl WaylandState {
             display_handle: dh,
             space: Space::default(),
             popups: PopupManager::default(),
+            alpha_modifier_state,
             compositor_state,
+            content_type_state,
+            cursor_shape_manager_state,
+            fixes_state,
+            fractional_scale_manager_state,
             shm_state,
             xdg_shell_state,
             xdg_decoration_state,
+            xdg_dialog_state,
             xdg_activation_state,
+            xdg_foreign_state,
             seat_state,
             output_manager_state,
             presentation_state,
@@ -460,6 +490,7 @@ impl WaylandState {
             pointer_gestures_state,
             pointer_constraints_state,
             relative_pointer_manager_state,
+            single_pixel_buffer_state,
             viewporter_state,
             virtual_keyboard_manager_state,
             idle_inhibit_manager_state,
