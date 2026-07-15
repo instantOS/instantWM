@@ -1,20 +1,20 @@
-python_release_script := ".github/scripts/prepare-release.py"
+python_files := "**/*.py"
 
 install:
     bash ./scripts/install.sh
 
 check:
-    uvx ty check {{python_release_script}}
-    uvx ruff check {{python_release_script}}
-    uvx ruff format --check {{python_release_script}}
+    uvx ty check {{python_files}}
+    uvx ruff check {{python_files}}
+    uvx ruff format --check {{python_files}}
 
 # Nested Wayland geometry/lifecycle smoke test; run inside a Wayland session.
 e2e:
     bash tests/e2e.sh
 
 fmt:
-    uvx ruff check --fix {{python_release_script}}
-    uvx ruff format {{python_release_script}}
+    uvx ruff check --fix {{python_files}}
+    uvx ruff format {{python_files}}
     cargo clippy --fix --allow-dirty
     cargo fmt
 
