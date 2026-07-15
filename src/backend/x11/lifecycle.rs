@@ -2,7 +2,7 @@
 //!
 //! Note on title initialization: `update_title` writes into `globals.model.clients`,
 //! so we cannot use it before the client is inserted.  Instead we call the
-//! private `read_title_from_x` helper (which returns a `String`) and store the
+//! shared property reader (which returns a `String`) and store the
 //! result directly on the local `Client` before insertion.
 //!
 //! # The two entry points
@@ -30,9 +30,8 @@
 
 use crate::backend::WindowOps;
 use crate::backend::x11::X11BackendRef;
-use crate::backend::x11::constants::BROKEN;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
-use crate::backend::x11::focus::{grab_buttons, unfocus_win};
+use crate::backend::x11::focus::grab_buttons;
 use crate::backend::x11::{
     X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
     update_motif_hints, update_window_type, update_wm_hints,
@@ -117,8 +116,7 @@ pub fn manage(ctx: &mut WmCtxX11, w: WindowId, wa_geo: Rect, wa_border_width: u3
     register_client_root(&ctx.x11, ctx.x11_runtime, w);
 
     move_client_offscreen_before_arrange(&mut WmCtx::X11(ctx.reborrow()), w);
-    let initially_hidden = prepare_visibility_and_unfocus(&mut WmCtx::X11(ctx.reborrow()), w);
-    crate::client::select_client(ctx.core.model_mut(), w);
+    let initially_hidden = prepare_visibility(&mut WmCtx::X11(ctx.reborrow()), w);
     let animated = ctx.core.behavior().animated;
     let c = arrange_map_focus_and_snapshot(&mut WmCtx::X11(ctx.reborrow()), w, initially_hidden);
 
@@ -143,7 +141,7 @@ fn build_initial_client(
     c.geo = wa_geo;
     c.old_geo = c.geo;
     c.old_border_width = wa_border_width as i32;
-    c.name = read_title_from_x(x11, x11_cfg, w);
+    c.name = crate::backend::x11::properties::read_window_title(x11, x11_cfg, w);
     c
 }
 
@@ -432,7 +430,7 @@ fn move_client_offscreen_before_arrange(ctx: &mut WmCtx, w: WindowId) {
     );
 }
 
-fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
+fn prepare_visibility(ctx: &mut WmCtx, w: WindowId) -> bool {
     let initially_hidden = ctx
         .core()
         .state()
@@ -442,18 +440,6 @@ fn prepare_visibility_and_unfocus(ctx: &mut WmCtx, w: WindowId) -> bool {
         .unwrap_or(false);
     if !initially_hidden && let WmCtx::X11(ctx_x11) = ctx {
         set_client_state(&ctx_x11.x11, ctx_x11.x11_runtime, w, WM_STATE_NORMAL);
-    }
-    if let Some(selected_window) = ctx.core().model().selected_win()
-        && let WmCtx::X11(ctx_x11) = ctx
-    {
-        ctx_x11.core.focus.last_client = selected_window;
-        unfocus_win(
-            ctx_x11.core.state(),
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
-            selected_window,
-            false,
-        );
     }
     initially_hidden
 }
@@ -472,7 +458,11 @@ fn arrange_map_focus_and_snapshot(ctx: &mut WmCtx, w: WindowId, initially_hidden
         ctx.window_backend().map_window(w);
         ctx.window_backend().flush();
     }
-    focus(ctx, None);
+    // Route initial selection through the normal focus transaction. Passing
+    // the managed window explicitly ensures backend focus, histories and
+    // persistent z-order are updated together. Hidden windows are rejected by
+    // focus target resolution and fall back to the previous visible target.
+    focus(ctx, Some(w));
     c = ctx
         .core()
         .state()
@@ -582,53 +572,6 @@ pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-/// Read the window title string directly from the X server without going
-/// through the global client map.  Used during [`manage`] before the new
-/// [`Client`] has been inserted.
-///
-/// Prefers `_NET_WM_NAME` (UTF-8) over the legacy `WM_NAME` property.
-fn read_title_from_x(x11: &X11BackendRef, x11_cfg: &X11RuntimeConfig, win: WindowId) -> String {
-    let x11_win: Window = win.into();
-    let net_wm_name = x11_cfg.netatom.wm_name;
-
-    for atom in [
-        net_wm_name,
-        x11rb::protocol::xproto::AtomEnum::WM_NAME.into(),
-    ] {
-        if atom == 0 {
-            continue;
-        }
-        let Ok(cookie) = x11.conn.get_property(
-            false,
-            x11_win,
-            atom,
-            x11rb::protocol::xproto::AtomEnum::ANY,
-            0,
-            1024,
-        ) else {
-            continue;
-        };
-        let Ok(reply) = cookie.reply() else { continue };
-
-        if reply.format != 8 || reply.value.is_empty() {
-            continue;
-        }
-
-        let len = reply
-            .value
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(reply.value.len());
-
-        let title = String::from_utf8_lossy(&reply.value[..len]).into_owned();
-        if !title.is_empty() {
-            return title;
-        }
-    }
-
-    BROKEN.to_string()
-}
 
 /// Read the `_NET_CLIENT_INFO` property from `w` and restore tags / monitor.
 ///

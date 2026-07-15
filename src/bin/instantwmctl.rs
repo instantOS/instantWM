@@ -337,6 +337,15 @@ mod tests {
 }
 
 fn main() {
+    // instantwmctl produces piped output (`--json` feeds jq/python). Rust
+    // ignores SIGPIPE by default, so a closed downstream pipe surfaces as a
+    // BrokenPipe write error that `println!` turns into a panic + backtrace.
+    // Restore the default disposition so a closed reader terminates us
+    // silently (exit 141), matching standard Unix CLI behavior.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let cli = Cli::parse();
 
     // `config list <prefix>` narrows the full list client-side after the IPC

@@ -440,7 +440,11 @@ pub fn write_net_wm_state_atoms(
     );
 }
 
-fn read_window_title(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig, win: WindowId) -> String {
+pub(crate) fn read_window_title(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    win: WindowId,
+) -> String {
     let conn = x11.conn;
     let x11_win: Window = win.into();
     let net_wm_name = x11_runtime.netatom.wm_name;

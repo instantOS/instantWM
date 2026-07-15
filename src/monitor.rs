@@ -277,23 +277,7 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         }
     };
 
-    if target == ctx.core().model().monitors.selected() {
-        return;
-    }
-
-    if let Some(win) = ctx
-        .core_mut()
-        .state_mut()
-        .model
-        .monitors
-        .selected_monitor()
-        .and_then(|m| m.selected)
-    {
-        unfocus_win(ctx, win, false);
-    }
-
-    ctx.core_mut().model_mut().monitors.set_selected(target);
-    focus(ctx, None);
+    crate::focus::select_monitor(ctx, target);
 }
 
 pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
@@ -308,19 +292,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
         }
     };
 
-    if let Some(win) = ctx
-        .core_mut()
-        .state_mut()
-        .model
-        .monitors
-        .selected_monitor()
-        .and_then(|m| m.selected)
-    {
-        unfocus_win(ctx, win, false);
-    }
-
-    ctx.core_mut().model_mut().monitors.set_selected(target);
-    focus(ctx, None);
+    crate::focus::select_monitor(ctx, target);
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {

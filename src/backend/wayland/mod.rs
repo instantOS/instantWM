@@ -269,16 +269,11 @@ impl WindowOps for WaylandBackend {
 
 impl PointerOps for WaylandBackend {
     fn pointer_location(&self) -> Option<Point> {
-        self.with_state(|state: &mut WaylandState| {
-            let loc = state.pointer.current_location();
-            Point::new(loc.x.round() as i32, loc.y.round() as i32)
-        })
+        WaylandBackend::pointer_location(self)
     }
 
     fn warp_pointer(&self, x: f64, y: f64) {
-        let _ = self.with_state(|state: &mut WaylandState| {
-            state.request_warp(x, y);
-        });
+        WaylandBackend::warp_pointer(self, x, y);
     }
 }
 

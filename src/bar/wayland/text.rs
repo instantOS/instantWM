@@ -44,6 +44,7 @@ pub(super) struct TextRasterizer {
     measure_cache: RefCell<HashMap<TextMeasureKey, CachedMeasuredText>>,
     render_cache: RefCell<HashMap<TextRenderKey, CachedRenderedText>>,
     font_size: f32,
+    configured_font_families: Vec<String>,
     font_families: Vec<String>,
 }
 
@@ -55,6 +56,7 @@ impl Default for TextRasterizer {
             measure_cache: RefCell::new(HashMap::new()),
             render_cache: RefCell::new(HashMap::new()),
             font_size: DEFAULT_FONT_SIZE,
+            configured_font_families: Vec::new(),
             font_families: Vec::new(),
         }
     }
@@ -62,6 +64,10 @@ impl Default for TextRasterizer {
 
 impl TextRasterizer {
     pub(super) fn set_font_families(&mut self, configured: &[String]) {
+        if self.configured_font_families == configured {
+            return;
+        }
+
         let resolved = {
             let fs = self.font_system.borrow();
             configured
@@ -77,6 +83,7 @@ impl TextRasterizer {
                 })
                 .collect::<Vec<_>>()
         };
+        self.configured_font_families = configured.to_vec();
         if self.font_families != resolved {
             self.font_families = resolved;
             self.measure_cache.get_mut().clear();
@@ -276,4 +283,35 @@ fn normalized_family(family: &str) -> String {
 
 fn is_private_use(ch: char) -> bool {
     matches!(ch as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TextRasterizer;
+
+    #[test]
+    fn unchanged_configured_families_skip_resolution() {
+        let configured = vec!["sans serif".to_string()];
+        let mut rasterizer = TextRasterizer::default();
+        rasterizer.set_font_families(&configured);
+
+        // A repeated input must return before touching the resolved list. This
+        // pins the hot-path guard independently of which fonts the host has.
+        rasterizer.font_families = vec!["resolution-sentinel".to_string()];
+        rasterizer.set_font_families(&configured);
+
+        assert_eq!(rasterizer.font_families, ["resolution-sentinel"]);
+    }
+
+    #[test]
+    fn changed_configured_families_are_resolved() {
+        let mut rasterizer = TextRasterizer::default();
+        rasterizer.set_font_families(&["first-family".to_string()]);
+        rasterizer.font_families = vec!["resolution-sentinel".to_string()];
+
+        rasterizer.set_font_families(&["second-family".to_string()]);
+
+        assert_eq!(rasterizer.configured_font_families, ["second-family"]);
+        assert_ne!(rasterizer.font_families, ["resolution-sentinel"]);
+    }
 }

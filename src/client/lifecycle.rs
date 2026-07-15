@@ -3,7 +3,7 @@
 //! Backend-specific manage/unmanage logic lives under backend modules.
 
 use crate::model::WmModel;
-use crate::types::{MonitorId, TagMask, WindowId};
+use crate::types::{MonitorId, TagMask};
 use std::collections::VecDeque;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -84,24 +84,4 @@ pub fn take_pending_launch(
 fn prune_pending_launches(pending_launches: &mut VecDeque<PendingLaunch>) {
     let now = Instant::now();
     pending_launches.retain(|launch| now.duration_since(launch.recorded_at) <= PENDING_LAUNCH_TTL);
-}
-
-/// Select `win` on its assigned monitor.
-///
-/// This is WM policy, not backend policy: backends may discover a new window
-/// or an activation request, but the choice to make that window the monitor's
-/// selected client lives in shared state.
-pub fn select_client(model: &mut WmModel, win: WindowId) {
-    let Some((monitor_id, is_tiled)) = model
-        .client(win)
-        .map(|client| (client.monitor_id, client.mode.is_tiling()))
-    else {
-        return;
-    };
-    if let Some(mon) = model.monitor_mut(monitor_id) {
-        mon.selected = Some(win);
-        if is_tiled {
-            mon.tag_tiled_focus_history.insert(mon.selected_tags(), win);
-        }
-    }
 }

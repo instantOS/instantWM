@@ -328,12 +328,9 @@ impl Monitor {
 
     /// Calculate the intersection area between a rectangle and this monitor's work area.
     pub fn intersect_area(&self, rect: &Rect) -> i32 {
-        let wr = self.work_rect();
-        let x1 = rect.x.max(wr.x);
-        let y1 = rect.y.max(wr.y);
-        let x2 = (rect.x + rect.w).min(wr.x + wr.w);
-        let y2 = (rect.y + rect.h).min(wr.y + wr.h);
-        (x2 - x1).max(0) * (y2 - y1).max(0)
+        self.work_rect()
+            .intersection(rect)
+            .map_or(0, |intersection| intersection.w * intersection.h)
     }
 
     /// Get the center point of this monitor's work area.
