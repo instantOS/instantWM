@@ -37,6 +37,10 @@ just profile-permissions
 
 The recipe changes the runtime sysctl to `2`; it does not create a persistent
 system configuration and it does not run instantWM or `perf` as root.
+Before taking over the seat, the capture script asks perf to open the exact
+`cpu-clock:u` event used for recording. It aborts with the perf error and points
+to `just profile-permissions` if that preflight fails; it never silently falls
+back to a less informative event or a capture without samples.
 
 ## DRM and TTY requirement
 

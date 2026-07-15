@@ -6,6 +6,7 @@ DURATION="${1:-20}"
 WORKLOAD="${2:-standard}"
 PROFILE_FREQ="${PROFILE_FREQ:-199}"
 PROFILE_DIR="${PROFILE_DIR:-$ROOT_DIR/target/profiles/$(date +%Y%m%d-%H%M%S)}"
+PERF_BIN="${PERF:-perf}"
 WM_BIN="$ROOT_DIR/target/profiling/instantwm"
 CTL_BIN="$ROOT_DIR/target/profiling/instantwmctl"
 SOCKET="/tmp/instantwm-$(id -u).sock"
@@ -26,12 +27,17 @@ s.connect(sys.argv[1])
 
 [[ "$DURATION" =~ ^[1-9][0-9]*$ ]] || die "duration must be a positive number of seconds"
 [[ "$WORKLOAD" == "standard" || "$WORKLOAD" == "manual" ]] || die "workload must be 'standard' or 'manual'"
-command -v perf >/dev/null 2>&1 || die "perf is required (install the package matching the running kernel)"
+command -v "$PERF_BIN" >/dev/null 2>&1 || die "perf is required (install the package matching the running kernel)"
 [[ -x "$WM_BIN" && -x "$CTL_BIN" ]] || die "profiling binaries are missing; run 'just profile-build'"
 
 paranoid="$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo unknown)"
 if [[ "$paranoid" =~ ^-?[0-9]+$ ]] && (( paranoid > 2 )); then
   die "kernel.perf_event_paranoid=$paranoid; run 'just profile-permissions' once, then retry"
+fi
+
+if ! perf_preflight="$("$PERF_BIN" stat --all-user --event cpu-clock:u -- true 2>&1)"; then
+  perf_preflight="${perf_preflight//$'\n'/ }"
+  die "perf cannot open the required cpu-clock:u event; run 'just profile-permissions' and retry. perf said: $perf_preflight"
 fi
 
 # A DRM compositor must own the seat, so sharing the default IPC socket is
@@ -73,7 +79,7 @@ INSTANTWM_AUTOSTART=0 \
 INSTANTWM_WL_AUTOSTART=0 \
 INSTANTWM_WL_AUTOSPAWN=0 \
 RUST_LOG="${RUST_LOG:-warn}" \
-perf record \
+"$PERF_BIN" record \
   --all-user \
   --event cpu-clock:u \
   --freq "$PROFILE_FREQ" \
