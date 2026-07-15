@@ -5,6 +5,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CTL="${PROFILE_CTL:-$ROOT_DIR/target/profiling/instantwmctl}"
 WINDOWS="${PROFILE_WINDOWS:-4}"
 STEP_SLEEP="${PROFILE_STEP_SLEEP:-0.20}"
+WORKLOAD="${PROFILE_WORKLOAD:-standard}"
+
+[[ "$WINDOWS" =~ ^[1-9][0-9]*$ ]] || {
+  echo "PROFILE_WINDOWS must be a positive integer" >&2
+  exit 1
+}
 
 run_ctl() {
   "$CTL" "$@"
@@ -33,8 +39,21 @@ app="$(choose_app)" || {
   exit 1
 }
 
-echo "app=$app windows=$WINDOWS"
-for _ in $(seq 1 "$WINDOWS"); do
+if [[ "$WORKLOAD" == "stress" ]]; then
+  stress_app="${PROFILE_STRESS_APP_CMD:-vkcube --wsi wayland --suppress_popups}"
+  command -v "${stress_app%% *}" >/dev/null 2>&1 || {
+    echo "Stress workload requires vkcube or PROFILE_STRESS_APP_CMD" >&2
+    exit 1
+  }
+  echo "stress_app=$stress_app"
+  run_ctl spawn "$stress_app"
+  static_windows=$((WINDOWS - 1))
+else
+  static_windows=$WINDOWS
+fi
+
+echo "workload=$WORKLOAD app=$app static_windows=$static_windows"
+for _ in $(seq 1 "$static_windows"); do
   run_ctl spawn "$app"
   sleep "$STEP_SLEEP"
 done

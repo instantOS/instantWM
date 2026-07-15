@@ -22,7 +22,7 @@ fmt:
 profile-build:
     RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C force-frame-pointers=yes" cargo build --profile profiling --bin instantwm --bin instantwmctl
 
-# Run from an active TTY for the DRM backend. workload is "standard" or "manual".
+# Run from an active TTY. workload is "standard", "stress", or "manual".
 profile duration="20" workload="standard": profile-build
     bash scripts/profile-capture.sh "{{duration}}" "{{workload}}"
 

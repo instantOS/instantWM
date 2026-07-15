@@ -76,6 +76,7 @@ Choose another duration or do the interactions yourself:
 
 ```sh
 just profile 45 standard
+just profile 30 stress
 just profile 30 manual
 ```
 
@@ -86,6 +87,13 @@ updating the bar. Set `PROFILE_APP_CMD` if none of `foot`, `weston-terminal`,
 ```sh
 PROFILE_APP_CMD='my-wayland-test-client' just profile 30 standard
 ```
+
+The `stress` workload replaces one static client with continuously rendering
+`vkcube --wsi wayland`. Use it when a light interactive capture produces too
+few CPU samples or when investigating sustained composition. It deliberately
+answers a different question from `standard`, which remains representative of
+ordinary mostly-idle window-manager activity. Override the renderer with
+`PROFILE_STRESS_APP_CMD` if needed.
 
 Manual input can be mixed into the standard workload. For pointer-heavy
 testing, manual interaction is currently preferable: generic Wayland clients
@@ -107,6 +115,12 @@ Each run creates `target/profiles/YYYYMMDD-HHMMSS/` and updates
 - `gpu-samples.jsonl`: timestamped raw DRM client counters.
 - `instantwm.log` and `workload.log`: runtime evidence.
 - `perf.data`: raw samples for deeper analysis.
+
+The CPU report normalizes percentages within the instantWM PID/thread group and
+records total target samples, estimated sampled CPU time, and aggregate
+single-core duty. Fewer than 200 samples produces a warning because individual
+hotspot rankings are then dominated by one- and two-sample entries; this is not
+itself a performance failure for an event-driven compositor.
 
 After recording, the command prints separate progress messages while perf data
 is finalized, source locations are resolved, and the textual call graph is

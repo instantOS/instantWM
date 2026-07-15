@@ -26,7 +26,7 @@ s.connect(sys.argv[1])
 }
 
 [[ "$DURATION" =~ ^[1-9][0-9]*$ ]] || die "duration must be a positive number of seconds"
-[[ "$WORKLOAD" == "standard" || "$WORKLOAD" == "manual" ]] || die "workload must be 'standard' or 'manual'"
+[[ "$WORKLOAD" == "standard" || "$WORKLOAD" == "stress" || "$WORKLOAD" == "manual" ]] || die "workload must be 'standard', 'stress', or 'manual'"
 command -v "$PERF_BIN" >/dev/null 2>&1 || die "perf is required (install the package matching the running kernel)"
 [[ -x "$WM_BIN" && -x "$CTL_BIN" ]] || die "profiling binaries are missing; run 'just profile-build'"
 
@@ -122,8 +122,8 @@ python3 "$ROOT_DIR/scripts/profile-gpu.py" "$wm_pid" "$PROFILE_DIR" \
   "${GPU_SAMPLE_MS:-100}" >"$PROFILE_DIR/gpu-monitor.log" 2>&1 &
 gpu_pid=$!
 
-if [[ "$WORKLOAD" == "standard" ]]; then
-  INSTANTWM_SOCKET="$SOCKET" PROFILE_DURATION="$DURATION" \
+if [[ "$WORKLOAD" == "standard" || "$WORKLOAD" == "stress" ]]; then
+  INSTANTWM_SOCKET="$SOCKET" PROFILE_DURATION="$DURATION" PROFILE_WORKLOAD="$WORKLOAD" \
     bash "$ROOT_DIR/scripts/profile-workload.sh" >"$WORKLOAD_LOG" 2>&1 &
   workload_pid=$!
   echo "profile: scripted workload started; recording for ${DURATION}s (manual input is also welcome)"

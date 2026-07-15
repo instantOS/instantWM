@@ -37,7 +37,72 @@ base = [
     "--stdio",
     "--stdio-color",
     "never",
+    "--percentage",
+    "relative",
 ]
+
+quality_cmd = (
+    base
+    + pid_args
+    + [
+        "--call-graph",
+        "none",
+        "--no-inline",
+        "--no-children",
+        "--percent-limit",
+        "0",
+        "--sort",
+        "pid",
+        "--fields",
+        "sample,pid",
+        "--field-separator",
+        "\t",
+    ]
+)
+print("profile-report: measuring target sample quality", flush=True)
+quality_report = subprocess.run(
+    quality_cmd, check=True, text=True, capture_output=True
+).stdout
+total_samples = 0
+for line in quality_report.splitlines():
+    if not line or line.startswith("#") or "\t" not in line:
+        continue
+    try:
+        total_samples += int(line.split("\t", 1)[0].strip())
+    except ValueError:
+        continue
+
+frequency = int(metadata.get("frequency_hz", 0))
+duration = float(metadata.get("duration_seconds", 0))
+sampled_cpu_seconds = total_samples / frequency if frequency > 0 else None
+aggregate_cpu_duty_percent = (
+    100 * sampled_cpu_seconds / duration
+    if sampled_cpu_seconds is not None and duration > 0
+    else None
+)
+low_sample_warning = total_samples < 200
+warning_remedy = (
+    "Use a longer capture."
+    if metadata.get("workload") == "stress"
+    else "Use a longer capture or the stress workload."
+)
+sample_quality = {
+    "target_samples": total_samples,
+    "sampled_cpu_seconds_estimate": round(sampled_cpu_seconds, 6)
+    if sampled_cpu_seconds is not None
+    else None,
+    "aggregate_single_core_duty_percent_estimate": round(aggregate_cpu_duty_percent, 3)
+    if aggregate_cpu_duty_percent is not None
+    else None,
+    "low_sample_warning": low_sample_warning,
+    "warning": (
+        "Fewer than 200 target samples; individual hotspot rankings are noisy. "
+        + warning_remedy
+        if low_sample_warning
+        else None
+    ),
+}
+
 flat_cmd = (
     base
     + pid_args
@@ -96,6 +161,7 @@ payload = {
     "schema_version": 1,
     "metric": "sampled user-space CPU self time",
     "capture": metadata,
+    "sample_quality": sample_quality,
     "hotspots": hotspots,
 }
 (capture_dir / "hotspots.json").write_text(json.dumps(payload, indent=2) + "\n")
@@ -131,6 +197,22 @@ lines = [
     "",
     "Metric: sampled user-space CPU self time. Percentages are CPU samples, not wall-clock latency.",
     "",
+    f"Target samples: **{total_samples}**"
+    + (
+        f"; estimated aggregate CPU time: **{sampled_cpu_seconds:.3f}s**"
+        if sampled_cpu_seconds is not None
+        else ""
+    )
+    + (
+        f" ({aggregate_cpu_duty_percent:.2f}% of one CPU over the capture)."
+        if aggregate_cpu_duty_percent is not None
+        else "."
+    ),
+    "",
+]
+if low_sample_warning:
+    lines += [f"**Low-sample warning:** {sample_quality['warning']}", ""]
+lines += [
     "| Self CPU | Samples | Symbol | Source | Object |",
     "|---:|---:|---|---|---|",
 ]

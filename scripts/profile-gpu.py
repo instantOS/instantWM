@@ -116,8 +116,20 @@ def totals(sample: dict[str, object], field: str) -> dict[str, int]:
     return result
 
 
+def engine_capacities(sample: dict[str, object]) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for client in sample["clients"]:  # type: ignore[union-attr]
+        prefix = f"{client['driver']}:{client['device']}:"  # type: ignore[index]
+        for name, value in client["engine_capacity"].items():  # type: ignore[index,union-attr]
+            key = prefix + name
+            result[key] = max(result.get(key, 1), int(value))
+    return result
+
+
 engine_busy_ns: dict[str, int] = {}
+engine_normalized_busy_ns: dict[str, float] = {}
 engine_peak_percent: dict[str, float] = {}
+engine_capacity: dict[str, int] = {}
 memory_peak_bytes: dict[str, int] = {}
 for sample in samples:
     for name, value in totals(sample, "memory_bytes").items():
@@ -131,10 +143,17 @@ for previous, current in zip(samples, samples[1:], strict=False):
         continue
     before = totals(previous, "engines_ns")
     after = totals(current, "engines_ns")
+    capacities = engine_capacities(current)
     for name, value in after.items():
         delta = max(0, value - before.get(name, value))
+        capacity = max(1, capacities.get(name, 1))
+        engine_capacity[name] = max(engine_capacity.get(name, 1), capacity)
+        normalized_delta = delta / capacity
         engine_busy_ns[name] = engine_busy_ns.get(name, 0) + delta
-        utilization = 100 * delta / elapsed_ns
+        engine_normalized_busy_ns[name] = (
+            engine_normalized_busy_ns.get(name, 0) + normalized_delta
+        )
+        utilization = 100 * normalized_delta / elapsed_ns
         engine_peak_percent[name] = max(engine_peak_percent.get(name, 0), utilization)
 
 span_seconds = (
@@ -152,7 +171,14 @@ summary = {
     "engines": {
         name: {
             "busy_seconds": round(busy_ns / 1e9, 6),
-            "average_busy_percent": round(100 * busy_ns / (span_seconds * 1e9), 3)
+            "capacity_normalized_busy_seconds": round(
+                engine_normalized_busy_ns.get(name, 0) / 1e9, 6
+            ),
+            "capacity": engine_capacity.get(name, 1),
+            "average_busy_percent": round(
+                100 * engine_normalized_busy_ns.get(name, 0) / (span_seconds * 1e9),
+                3,
+            )
             if span_seconds > 0
             else 0,
             "peak_interval_percent": round(engine_peak_percent.get(name, 0), 3),
