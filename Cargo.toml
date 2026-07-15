@@ -64,3 +64,12 @@ strip = true
 [profile.dev]
 opt-level = 0
 debug = true
+
+# Fast enough to represent compositor behaviour while retaining source locations.
+# This deliberately does not inherit the slow, stripped release profile.
+[profile.profiling]
+inherits = "dev"
+opt-level = 2
+debug = "full"
+strip = "none"
+debug-assertions = false
