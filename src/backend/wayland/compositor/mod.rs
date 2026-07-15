@@ -50,8 +50,9 @@ use smithay::{
     delegate_output, delegate_output_capture_source, delegate_pointer_constraints,
     delegate_pointer_gestures, delegate_presentation, delegate_primary_selection,
     delegate_relative_pointer, delegate_seat, delegate_session_lock, delegate_shm,
-    delegate_viewporter, delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_shell,
-    delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
+    delegate_viewporter, delegate_virtual_keyboard_manager, delegate_xdg_activation,
+    delegate_xdg_decoration, delegate_xdg_shell, delegate_xwayland_keyboard_grab,
+    delegate_xwayland_shell,
 };
 
 // ---------------------------------------------------------------------------
@@ -78,6 +79,7 @@ delegate_relative_pointer!(WaylandState);
 delegate_seat!(WaylandState);
 delegate_shm!(WaylandState);
 delegate_viewporter!(WaylandState);
+delegate_virtual_keyboard_manager!(WaylandState);
 delegate_xdg_activation!(WaylandState);
 delegate_xdg_decoration!(WaylandState);
 delegate_xdg_shell!(WaylandState);

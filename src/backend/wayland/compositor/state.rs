@@ -48,6 +48,7 @@ use smithay::{
         },
         shm::ShmState,
         viewporter::ViewporterState,
+        virtual_keyboard::VirtualKeyboardManagerState,
         xdg_activation::XdgActivationState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
         xwayland_shell::XWaylandShellState,
@@ -133,6 +134,7 @@ pub struct WaylandState {
     pub pointer_constraints_state: PointerConstraintsState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
     pub viewporter_state: ViewporterState,
+    pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
@@ -415,6 +417,8 @@ impl WaylandState {
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
+        let virtual_keyboard_manager_state =
+            VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
@@ -457,6 +461,7 @@ impl WaylandState {
             pointer_constraints_state,
             relative_pointer_manager_state,
             viewporter_state,
+            virtual_keyboard_manager_state,
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,
