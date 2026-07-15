@@ -6,6 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use zbus::blocking::{Connection, Proxy};
+use zbus::proxy::CacheProperties;
 use zbus::zvariant::{OwnedValue, Value};
 
 use crate::systray::{
@@ -21,6 +22,28 @@ const ITEM_IFACE: &str = "org.kde.StatusNotifierItem";
 const DBUSMENU_IFACE: &str = "com.canonical.dbusmenu";
 const WORKER_RETRY_MIN: Duration = Duration::from_secs(1);
 const WORKER_RETRY_MAX: Duration = Duration::from_secs(60);
+
+/// Build a short-lived proxy without zbus' lazy property cache.
+///
+/// The systray worker reads individual properties while reconciling items and
+/// opening menus. Enabling the cache makes the first property read fetch every
+/// property with `GetAll` and install a `PropertiesChanged` match, only for the
+/// proxy to be dropped immediately afterwards. Some Electron StatusNotifier
+/// implementations answer `GetAll` much more slowly than a targeted `Get`, so
+/// that unnecessary work can also hold up interactive commands on this worker.
+fn uncached_proxy<'a>(
+    conn: &Connection,
+    destination: &'a str,
+    path: &'a str,
+    interface: &'a str,
+) -> zbus::Result<Proxy<'a>> {
+    zbus::blocking::proxy::Builder::new(conn)
+        .destination(destination)?
+        .path(path)?
+        .interface(interface)?
+        .cache_properties(CacheProperties::No)
+        .build()
+}
 
 /// A request expected to produce a native Wayland toplevel because the item
 /// does not expose a host-renderable DBusMenu.
@@ -152,6 +175,7 @@ impl StatusNotifierWatcherService {
 }
 
 /// Watcher operating mode — external (nested) or embedded (DRM).
+#[derive(Clone)]
 enum WatcherMode {
     External,
     Embedded(Arc<Mutex<WatcherState>>),
@@ -442,16 +466,46 @@ fn run_systray_thread(
         }
     }
 
-    let mut known_ids: HashSet<String> = HashSet::new();
-    reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
-    let _ = evt_tx.send(SystrayEvt::Ready);
+    // Icon discovery is deliberately isolated from interactive commands.
+    // StatusNotifier items can take a long time to serialize IconPixmap; a
+    // slow background refresh must not delay Activate or ContextMenu.
+    let (refresh_stop_tx, refresh_stop_rx) = channel();
+    let refresh_conn = conn.clone();
+    let refresh_mode = mode.clone();
+    let refresh_evt_tx = evt_tx.clone();
+    let refresh_thread = match thread::Builder::new()
+        .name("instantwm-wayland-systray-refresh".to_string())
+        .spawn(move || {
+            run_item_refresh(
+                &refresh_conn,
+                &refresh_mode,
+                &refresh_evt_tx,
+                refresh_stop_rx,
+            );
+        }) {
+        Ok(thread) => Some(thread),
+        Err(error) => {
+            log::warn!("status notifier: failed to spawn refresh thread: {error}");
+            let _ = evt_tx.send(SystrayEvt::Ready);
+            None
+        }
+    };
+
     let mut menu_session = None;
     let refresh_interval = Duration::from_secs(1);
     let mut next_refresh = Instant::now() + refresh_interval;
 
     loop {
-        let timeout = next_refresh.saturating_duration_since(Instant::now());
-        match cmd_rx.recv_timeout(timeout) {
+        let command = if menu_session.is_some() {
+            let timeout = next_refresh.saturating_duration_since(Instant::now());
+            cmd_rx.recv_timeout(timeout)
+        } else {
+            // Native menus refresh themselves, and without a hosted DBusMenu
+            // there is no periodic work on the interactive lane. Sleep until
+            // an actual command arrives rather than adding an idle wakeup.
+            cmd_rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
+        };
+        match command {
             Ok(cmd) => {
                 dispatch_cmd(&conn, cmd, &evt_tx, &mut menu_session, &native_menu_request);
                 while let Ok(cmd) = cmd_rx.try_recv() {
@@ -459,13 +513,40 @@ fn run_systray_thread(
                 }
             }
             Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => return,
+            Err(RecvTimeoutError::Disconnected) => break,
         }
 
         if Instant::now() >= next_refresh {
-            reconcile_items_for_mode(&conn, &mode, &evt_tx, &mut known_ids);
             refresh_menu_session(&conn, &evt_tx, &mut menu_session);
             next_refresh = Instant::now() + refresh_interval;
+        }
+    }
+
+    drop(refresh_stop_tx);
+    if let Some(thread) = refresh_thread {
+        let _ = thread.join();
+    }
+}
+
+fn run_item_refresh(
+    conn: &Connection,
+    mode: &WatcherMode,
+    evt_tx: &Sender<SystrayEvt>,
+    stop_rx: Receiver<()>,
+) {
+    let mut known_ids = HashSet::new();
+    reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+    if evt_tx.send(SystrayEvt::Ready).is_err() {
+        return;
+    }
+
+    let refresh_interval = Duration::from_secs(1);
+    loop {
+        match stop_rx.recv_timeout(refresh_interval) {
+            Err(RecvTimeoutError::Timeout) => {
+                reconcile_items_for_mode(conn, mode, evt_tx, &mut known_ids);
+            }
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => return,
         }
     }
 }
@@ -474,7 +555,7 @@ fn run_systray_thread(
 /// If one exists, use it (external mode). Otherwise start our own (embedded mode).
 fn detect_watcher_mode(conn: &Connection) -> WatcherMode {
     // Try to read a property from an existing watcher.
-    let has_external = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)
+    let has_external = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)
         .and_then(|proxy| proxy.get_property::<i32>("ProtocolVersion"))
         .is_ok();
 
@@ -607,7 +688,7 @@ fn reconcile_items(
     evt_tx: &Sender<SystrayEvt>,
     known_ids: &mut HashSet<String>,
 ) -> zbus::Result<()> {
-    let proxy = Proxy::new(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
+    let proxy = uncached_proxy(conn, WATCHER_SERVICE, WATCHER_PATH, WATCHER_IFACE)?;
     let services: Vec<String> = proxy.get_property("RegisteredStatusNotifierItems")?;
     let mut seen = HashSet::new();
     for id in services {
@@ -796,7 +877,7 @@ fn open_dbus_menu(
     service: &str,
     item_path: &str,
 ) -> zbus::Result<Option<DbusMenuSession>> {
-    let item = Proxy::new(conn, service, item_path, ITEM_IFACE)?;
+    let item = uncached_proxy(conn, service, item_path, ITEM_IFACE)?;
     let menu_path: String = item
         .get_property("Menu")
         .unwrap_or_else(|_| "/".to_string());
@@ -1091,7 +1172,7 @@ fn fetch_item_icon_on_conn(
     service: &str,
     path: &str,
 ) -> Option<(Arc<[u8]>, i32, i32)> {
-    let proxy = Proxy::new(conn, service, path, ITEM_IFACE).ok()?;
+    let proxy = uncached_proxy(conn, service, path, ITEM_IFACE).ok()?;
 
     let pixmaps: Vec<(i32, i32, Vec<u8>)> = proxy.get_property("IconPixmap").ok()?;
     if pixmaps.is_empty() {
