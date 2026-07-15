@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/instantOS/instantWM/compare/v0.1.13...v0.1.14) - 2026-07-15
+
+### Fixed
+
+- xwayland regression
+- remove redundant draws/wakeups
+
+### Other
+
+- narrow xwayland redraws
+- better IPC list
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix regression: clicking on xwayland windows does nothing
+
 ## [0.1.13](https://github.com/instantOS/instantWM/compare/v0.1.12...v0.1.13) - 2026-07-14
 
 ### Other
