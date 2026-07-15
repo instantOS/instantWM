@@ -156,7 +156,7 @@ fn collect_distribute_targets(
     let tag_set = mon.selected_tags();
     // work_rect already accounts for bar height and position (top or bottom),
     // so it is the correct region to fill with the grid.
-    let work_rect = mon.work_rect;
+    let work_rect = mon.work_rect();
 
     let mut wins = Vec::new();
     for (c_win, c) in mon.iter_clients(&model.clients) {

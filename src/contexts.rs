@@ -498,8 +498,8 @@ impl<'a> WmCtx<'a> {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
             let mon = self.core().model().selected_monitor();
-            let target_x = (mon.work_rect.x + mon.work_rect.w / 2) as f64;
-            let target_y = (mon.work_rect.y + mon.work_rect.h / 2) as f64;
+            let target_x = (mon.work_rect().x + mon.work_rect().w / 2) as f64;
+            let target_y = (mon.work_rect().y + mon.work_rect().h / 2) as f64;
             self.pointer_backend().warp_pointer(target_x, target_y);
             return;
         }

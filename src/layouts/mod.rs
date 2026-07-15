@@ -55,11 +55,8 @@ pub struct LayoutOutput {
 /// Pure-data snapshot of the monitor state changes after an arrange pass.
 #[derive(Debug, Clone)]
 pub struct MonitorUpdates {
-    pub clientcount: u32,
     pub master_count: i32,
     pub master_factor: f32,
-    pub work_rect: Rect,
-    pub bar_y: i32,
     pub bar_height: i32,
 }
 

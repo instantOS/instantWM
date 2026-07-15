@@ -55,7 +55,7 @@ pub fn grid(
     animated: bool,
 ) -> Vec<LayoutOutput> {
     // Two-client landscape shortcut: tile looks nicer.
-    if monitor.clientcount <= 2 && monitor.monitor_rect.w > monitor.monitor_rect.h {
+    if monitor.tiled_client_count(clients) <= 2 && monitor.monitor_rect.w > monitor.monitor_rect.h {
         return super::tile::tile(monitor, clients, layout_cfg, animated);
     }
 

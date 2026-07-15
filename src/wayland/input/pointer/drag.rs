@@ -115,7 +115,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             if on_bar {
                 let wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
                 let mon = wm_ctx.core().model().selected_monitor();
-                new_pos.y = mon.bar_y + mon.bar_height;
+                new_pos.y = mon.bar_y() + mon.bar_height;
             }
 
             crate::mouse::drag::snap_window_to_monitor_edges(

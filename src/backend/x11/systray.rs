@@ -253,7 +253,7 @@ pub fn update_systray(
         let mask = mon.selected_tags();
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
-            mon.bar_y,
+            mon.bar_y(),
             mon.show_bar_for_mask(mask),
             mon.bar_win,
         )

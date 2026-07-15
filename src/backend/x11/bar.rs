@@ -33,7 +33,7 @@ pub fn draw_bar(
     if bar_win == WindowId::default() {
         return;
     }
-    let work_rect_w = monitor.work_rect.w;
+    let work_rect_w = monitor.work_rect().w;
     let bar_height = core.config().derived.bar_height;
     if work_rect_w <= 0 || bar_height <= 0 {
         return;
@@ -90,7 +90,7 @@ pub fn draw_bars(
         }
 
         let work_rect_w = match core.model().monitor(i) {
-            Some(m) => m.work_rect.w,
+            Some(m) => m.work_rect().w,
             None => continue,
         };
         let bar_height = core.config().derived.bar_height;
@@ -142,7 +142,7 @@ pub fn resize_bar_win(
     let showsystray = globals.config.systray.show;
     let is_selmon = globals.selected_monitor().num == m.num;
 
-    let mut w = m.work_rect.w as u32;
+    let mut w = m.work_rect().w as u32;
     if showsystray && is_selmon {
         w = w.saturating_sub(crate::backend::x11::systray::get_systray_width(
             globals, systray,
@@ -154,8 +154,8 @@ pub fn resize_bar_win(
     let _ = conn.configure_window(
         x11_bar_win,
         &x11rb::protocol::xproto::ConfigureWindowAux::new()
-            .x(m.work_rect.x)
-            .y(m.bar_y)
+            .x(m.work_rect().x)
+            .y(m.bar_y())
             .width(w)
             .height(bar_height as u32),
     );
@@ -192,11 +192,11 @@ pub fn update_bars(
                 continue;
             }
 
-            let mut w = m.work_rect.w as u32;
+            let mut w = m.work_rect().w as u32;
             if showsystray && selected_monitor_id == i {
                 w = w.saturating_sub(*systray_widths.get(&i).unwrap_or(&0));
             }
-            bar_configs.push((i, m.work_rect.x, m.bar_y, w, bar_height));
+            bar_configs.push((i, m.work_rect().x, m.bar_y(), w, bar_height));
         }
         (bar_configs, xlibdisplay, root, status_bg)
     };

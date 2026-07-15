@@ -709,9 +709,8 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         };
         m.monitor_rect = rect;
         m.available_rect = rect;
-        m.work_rect = rect;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-        m.update_bar_position(bar_height);
+        m.set_bar_height(bar_height);
     }
     ctx.core_mut().state_mut().model.monitors.set_selected(id);
     true
@@ -746,10 +745,8 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.available_rect = m.monitor_rect;
-        m.work_rect.w = sw;
-        m.work_rect.h = sh;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-        m.update_bar_position(bar_height);
+        m.set_bar_height(bar_height);
     }
     true
 }

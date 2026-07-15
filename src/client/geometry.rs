@@ -57,7 +57,7 @@ pub fn resolve_floating_placement(
         return requested;
     }
 
-    let work_rect = view.monitor.work_rect;
+    let work_rect = view.monitor.work_rect();
     let parent_rect = parent.and_then(|parent| model.client(parent).map(|client| client.geo));
 
     resolve_floating_placement_for_client(client, work_rect, requested, kind, parent_rect)
@@ -209,7 +209,7 @@ pub fn apply_size_hints(
     clamp_position_to_bounds(
         &config.derived.display,
         rect,
-        Some(view.monitor.work_rect),
+        Some(view.monitor.work_rect()),
         interact,
         old_geo.total_width(border_width),
         old_geo.total_height(border_width),
@@ -297,7 +297,7 @@ mod tests {
 
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
-        monitor.work_rect = work_rect;
+        monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         globals.model.monitors.push(monitor);
 

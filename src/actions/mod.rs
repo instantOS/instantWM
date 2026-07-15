@@ -70,3 +70,35 @@ pub enum ButtonAction {
 pub fn argv(args: &[&str]) -> Vec<String> {
     args.iter().map(|s| (*s).to_string()).collect()
 }
+
+impl KeyAction {
+    pub fn named(action: NamedAction) -> Self {
+        Self::Named {
+            action,
+            args: Vec::new(),
+        }
+    }
+
+    pub fn named_args(action: NamedAction, args: &[&str]) -> Self {
+        Self::Named {
+            action,
+            args: argv(args),
+        }
+    }
+}
+
+impl ButtonAction {
+    pub fn named(action: NamedAction) -> Self {
+        Self::Named {
+            action,
+            args: Vec::new(),
+        }
+    }
+
+    pub fn named_args(action: NamedAction, args: &[&str]) -> Self {
+        Self::Named {
+            action,
+            args: argv(args),
+        }
+    }
+}

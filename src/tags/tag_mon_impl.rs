@@ -89,8 +89,8 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     let client_y = view.client.geo.y;
     let src_monitor_x = view.monitor.monitor_rect.x;
     let src_monitor_y = view.monitor.monitor_rect.y;
-    let src_work_area_width = view.monitor.work_rect.w;
-    let src_work_area_height = view.monitor.work_rect.h;
+    let src_work_area_width = view.monitor.work_rect().w;
+    let src_work_area_height = view.monitor.work_rect().h;
 
     // Fractional position on the source monitor (clamped to avoid division by
     // zero on degenerate monitors).
@@ -111,8 +111,8 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     };
     let tgt_monitor_x = target_monitor.monitor_rect.x;
     let tgt_monitor_y = target_monitor.monitor_rect.y;
-    let tgt_work_area_width = target_monitor.work_rect.w;
-    let tgt_work_area_height = target_monitor.work_rect.h;
+    let tgt_work_area_width = target_monitor.work_rect().w;
+    let tgt_work_area_height = target_monitor.work_rect().h;
 
     // Transfer the client to the target monitor.
     {

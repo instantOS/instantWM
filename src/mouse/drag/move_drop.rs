@@ -31,16 +31,16 @@ pub fn snap_window_to_monitor_edges(g: &CoreState, win: WindowId, w: i32, h: i32
     let width = w + bw * 2;
     let height = h + bw * 2;
 
-    if (mon.work_rect.x - pos.x).abs() < snap {
-        pos.x = mon.work_rect.x;
-    } else if (mon.work_rect.x + mon.work_rect.w - (pos.x + width)).abs() < snap {
-        pos.x = mon.work_rect.x + mon.work_rect.w - width;
+    if (mon.work_rect().x - pos.x).abs() < snap {
+        pos.x = mon.work_rect().x;
+    } else if (mon.work_rect().x + mon.work_rect().w - (pos.x + width)).abs() < snap {
+        pos.x = mon.work_rect().x + mon.work_rect().w - width;
     }
 
-    if (mon.work_rect.y - pos.y).abs() < snap {
-        pos.y = mon.work_rect.y;
-    } else if (mon.work_rect.y + mon.work_rect.h - (pos.y + height)).abs() < snap {
-        pos.y = mon.work_rect.y + mon.work_rect.h - height;
+    if (mon.work_rect().y - pos.y).abs() < snap {
+        pos.y = mon.work_rect().y;
+    } else if (mon.work_rect().y + mon.work_rect().h - (pos.y + height)).abs() < snap {
+        pos.y = mon.work_rect().y + mon.work_rect().h - height;
     }
 }
 
@@ -184,13 +184,11 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
 pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> bool {
     let on_bar = point_is_on_bar(ctx.core().model(), root);
 
-    let _selmon_id = ctx.core().model().selected_monitor_id();
-
     if on_bar {
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().selected_monitor();
-            let local_x = root.x - mon.work_rect.x;
+            let local_x = root.x - mon.work_rect().x;
             mon.bar_position_at_x(core, local_x).to_gesture()
         };
 
@@ -216,14 +214,13 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     let on_bar = point_is_on_bar(ctx.core().model(), root);
-    let _selmon_id = ctx.core().model().selected_monitor_id();
     let was_on_bar = ctx.core().drag_state().bar_active;
 
     if on_bar {
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().selected_monitor();
-            let local_x = root.x - mon.work_rect.x;
+            let local_x = root.x - mon.work_rect().x;
             mon.bar_position_at_x(core, local_x).to_gesture()
         };
         let gesture_changed = ctx.core().model().selected_monitor().gesture != new_gesture;
@@ -255,7 +252,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     if state.cursor_on_bar {
         let bar_bottom = {
             let mon = ctx.core().model().selected_monitor();
-            mon.bar_y + mon.bar_height
+            mon.bar_y() + mon.bar_height
         };
         new_pos.y = bar_bottom;
     }
@@ -352,7 +349,6 @@ fn maybe_promote_tiled_drag_to_floating(
 /// Called once the drag loop exits so that hover state is always cleaned up.
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
     ctx.core_mut().drag_state_mut().bar_active = false;
-    let _selmon_id = ctx.core().model().selected_monitor_id();
     ctx.core_mut().model_mut().selected_monitor_mut().gesture = Gesture::None;
     ctx.request_bar_update();
 }
@@ -385,7 +381,7 @@ pub fn handle_bar_drop(
     let position = {
         let core = ctx.core();
         let mon = core.model().selected_monitor();
-        let local_x = root.x - mon.work_rect.x;
+        let local_x = root.x - mon.work_rect().x;
         mon.bar_position_at_x(core, local_x)
     };
 

@@ -86,8 +86,6 @@ pub struct Monitor {
     pub master_count: i32,
     /// Monitor index number (0-based).
     pub num: i32,
-    /// Bar Y position (vertical position of the status bar).
-    pub bar_y: i32,
     /// Per-monitor UI scale, currently used by the Wayland bar.
     pub ui_scale: f64,
     /// Effective bar height for this monitor.
@@ -103,10 +101,8 @@ pub struct Monitor {
     /// Portion of the monitor not consumed by exclusive layer-shell surfaces
     /// (waybar, quickshell, etc.). On X11 and when no exclusive layer surfaces
     /// are mapped this is identical to `monitor_rect`. The instantWM bar and
-    /// `work_rect` are positioned inside this rectangle.
+    /// the work area are positioned inside this rectangle.
     pub available_rect: Rect,
-    /// Work area geometry (excluding bar and exclusive layer surfaces).
-    pub work_rect: Rect,
     /// Currently selected tag set index (0 or 1).
     pub sel_tags: bool,
     /// Tag sets (two sets for switching).
@@ -115,8 +111,6 @@ pub struct Monitor {
     pub activeoffset: u32,
     /// Title offset for bar display.
     pub titleoffset: u32,
-    /// Number of clients on this monitor.
-    pub clientcount: u32,
     /// Whether to show the bar.
     pub show_bar: bool,
     /// Whether the bar is at the top.
@@ -149,8 +143,6 @@ pub struct Monitor {
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
     pub z_order: ClientZOrder,
-    /// Currently maximized client.
-    pub maximized: Option<WindowId>,
     /// Monitor name (e.g., "DP-1", "HDMI-1").
     pub name: String,
 }
@@ -162,7 +154,6 @@ impl Default for Monitor {
             master_factor: 0.55,
             master_count: 1,
             num: 0,
-            bar_y: 0,
             ui_scale: 1.0,
             bar_height: 0,
             horizontal_padding: 0,
@@ -170,12 +161,10 @@ impl Default for Monitor {
             bar_clients_width: 0,
             monitor_rect: Rect::default(),
             available_rect: Rect::default(),
-            work_rect: Rect::default(),
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
             activeoffset: 0,
             titleoffset: 0,
-            clientcount: 0,
             show_bar: true,
             top_bar: true,
             gesture: Gesture::default(),
@@ -190,7 +179,6 @@ impl Default for Monitor {
             per_tag: HashMap::new(),
             overview_state: None,
             z_order: ClientZOrder::default(),
-            maximized: None,
             name: String::new(),
         }
     }
@@ -201,13 +189,13 @@ impl Monitor {
     /// Does not check bar visibility — caller must do that separately.
     pub fn y_in_bar(&self, root_y: i32) -> bool {
         let h = self.bar_height.max(1);
-        root_y >= self.bar_y && root_y < self.bar_y + h
+        root_y >= self.bar_y() && root_y < self.bar_y() + h
     }
 
     /// Check whether a root-space y-coordinate falls in the 4-pixel guard band
     /// immediately below the bar. Does not check bar visibility.
     pub fn y_in_guard_band(&self, root_y: i32) -> bool {
-        let bar_bottom = self.bar_y + self.bar_height.max(1);
+        let bar_bottom = self.bar_y() + self.bar_height.max(1);
         root_y >= bar_bottom && root_y < bar_bottom + 4
     }
 
@@ -237,7 +225,6 @@ impl Monitor {
             top_bar,
             per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
-            clientcount: 0,
             prev_tag: Some(1),
             tags: Vec::new(),
             monitor_id: MonitorId::default(),
@@ -336,21 +323,22 @@ impl Monitor {
 
     /// Check if a point is within this monitor's work area.
     pub fn contains_point(&self, point: Point) -> bool {
-        self.work_rect.contains_point(point)
+        self.work_rect().contains_point(point)
     }
 
     /// Calculate the intersection area between a rectangle and this monitor's work area.
     pub fn intersect_area(&self, rect: &Rect) -> i32 {
-        let x1 = rect.x.max(self.work_rect.x);
-        let y1 = rect.y.max(self.work_rect.y);
-        let x2 = (rect.x + rect.w).min(self.work_rect.x + self.work_rect.w);
-        let y2 = (rect.y + rect.h).min(self.work_rect.y + self.work_rect.h);
+        let wr = self.work_rect();
+        let x1 = rect.x.max(wr.x);
+        let y1 = rect.y.max(wr.y);
+        let x2 = (rect.x + rect.w).min(wr.x + wr.w);
+        let y2 = (rect.y + rect.h).min(wr.y + wr.h);
         (x2 - x1).max(0) * (y2 - y1).max(0)
     }
 
     /// Get the center point of this monitor's work area.
     pub fn center(&self) -> crate::types::Point {
-        self.work_rect.center()
+        self.work_rect().center()
     }
 
     /// Count the number of visible clients on this monitor.
@@ -595,40 +583,71 @@ impl Monitor {
         self.per_tag_state().layouts.toggle_slot();
     }
 
-    /// Update the bar position and `work_rect` from the current
-    /// `available_rect` (which excludes exclusive layer-shell surfaces).
-    pub fn update_bar_position(&mut self, bar_height: i32) {
+    /// Set the effective bar height.
+    ///
+    /// The work area (`work_rect`) and bar Y (`bar_y`) are derived on access
+    /// from `available_rect` and `bar_height`, so storing the height is all
+    /// that is needed to keep them in sync.
+    pub fn set_bar_height(&mut self, bar_height: i32) {
         self.bar_height = bar_height.max(0);
+    }
+
+    /// Bar Y position (vertical position of the status bar).
+    ///
+    /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
+    /// so it can never fall out of sync with the monitor's real geometry.
+    pub fn bar_y(&self) -> i32 {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
-        // x/w of the work area always follows the available area.
-        self.work_rect.x = self.available_rect.x;
-        self.work_rect.w = self.available_rect.w.max(1);
         if self.shows_bar() {
-            self.work_rect.y = if self.top_bar {
+            if self.top_bar {
+                self.available_rect.y
+            } else {
+                self.available_rect.y + self.available_rect.h - safe_bh
+            }
+        } else if self.top_bar {
+            self.available_rect.y - safe_bh
+        } else {
+            self.available_rect.y + self.available_rect.h
+        }
+    }
+
+    /// Work area geometry (excluding bar and exclusive layer surfaces).
+    ///
+    /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
+    /// so it can never fall out of sync with the monitor's real geometry.
+    pub fn work_rect(&self) -> Rect {
+        let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
+        let mut rect = Rect::new(self.available_rect.x, 0, self.available_rect.w.max(1), 0);
+        if self.shows_bar() {
+            rect.y = if self.top_bar {
                 self.available_rect.y + safe_bh
             } else {
                 self.available_rect.y
             };
-            self.work_rect.h = (self.available_rect.h - safe_bh).max(1);
-            self.bar_y = if self.top_bar {
-                self.available_rect.y
-            } else {
-                self.available_rect.y + self.available_rect.h - safe_bh
-            };
+            rect.h = (self.available_rect.h - safe_bh).max(1);
         } else {
-            self.work_rect.y = self.available_rect.y;
-            self.work_rect.h = self.available_rect.h.max(1);
-            self.bar_y = if self.top_bar {
-                self.available_rect.y - safe_bh
-            } else {
-                self.available_rect.y + self.available_rect.h
-            };
+            rect.y = self.available_rect.y;
+            rect.h = self.available_rect.h.max(1);
         }
+        rect
+    }
+
+    /// The currently maximized client on this monitor, if any.
+    ///
+    /// Derived by scanning the monitor's clients for one in maximized mode, so
+    /// it can never disagree with the actual client modes.
+    pub fn maximized_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
+        self.clients.iter().find_map(|&win| {
+            clients
+                .get(&win)
+                .filter(|c| c.mode.is_maximized())
+                .map(|_| win)
+        })
     }
 
     /// Set the rectangle that is not consumed by exclusive layer-shell
-    /// surfaces. Callers should follow up with `update_bar_position` to
-    /// re-derive `work_rect` and `bar_y`.
+    /// surfaces. The work area and bar position are derived automatically from
+    /// this rectangle whenever they are accessed.
     pub fn set_available_rect(&mut self, rect: Rect) {
         self.available_rect = rect;
     }
@@ -649,12 +668,12 @@ impl Monitor {
         self.num = index as i32;
         self.monitor_rect = rect;
         // Reset the available rect to the full output. The Wayland backend
-        // re-applies layer-shell exclusive zones on top of this.
+        // re-applies layer-shell exclusive zones on top of this. The work area
+        // and bar position are derived from this rectangle on access.
         self.available_rect = rect;
-        self.work_rect = rect;
         self.name = name;
         self.set_ui_metrics(scale, bar_height, horizontal_padding, startmenu_size);
-        self.update_bar_position(bar_height);
+        self.set_bar_height(bar_height);
     }
 
     /// Set effective UI metrics for this monitor.
@@ -677,17 +696,17 @@ impl Monitor {
 
     /// Get the width of the monitor's work area.
     pub fn width(&self) -> i32 {
-        self.work_rect.w
+        self.work_rect().w
     }
 
     /// Get the height of the monitor's work area.
     pub fn height(&self) -> i32 {
-        self.work_rect.h
+        self.work_rect().h
     }
 
     /// Get the monitor's work area.
     pub fn work_area(&self) -> Rect {
-        self.work_rect
+        self.work_rect()
     }
 
     /// Get the monitor's full geometry.
@@ -913,11 +932,10 @@ mod tests {
         let mut monitor = Monitor {
             monitor_id: MonitorId::from_raw(7),
             monitor_rect: Rect::new(100, 50, 800, 600),
-            work_rect: Rect::new(100, 80, 800, 570),
+            available_rect: Rect::new(100, 50, 800, 600),
+            bar_height: 30,
             ..Monitor::default()
         };
-        monitor.bar_y = 50;
-        monitor.bar_height = 30;
 
         assert_eq!(
             find_monitor_by_rect([(monitor.id(), &monitor)], &Rect::new(200, 60, 1, 1)),
@@ -930,13 +948,15 @@ mod tests {
         let left = Monitor {
             monitor_id: MonitorId::from_raw(4),
             monitor_rect: Rect::new(0, 0, 100, 100),
-            work_rect: Rect::new(0, 20, 100, 80),
+            available_rect: Rect::new(0, 0, 100, 100),
+            bar_height: 20,
             ..Monitor::default()
         };
         let right = Monitor {
             monitor_id: MonitorId::from_raw(9),
             monitor_rect: Rect::new(100, 0, 100, 100),
-            work_rect: Rect::new(100, 20, 100, 80),
+            available_rect: Rect::new(100, 0, 100, 100),
+            bar_height: 20,
             ..Monitor::default()
         };
 

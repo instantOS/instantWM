@@ -181,7 +181,7 @@ pub fn compute(
         gridwidth += 1;
     }
 
-    let work_rect = monitor.work_rect;
+    let work_rect = monitor.work_rect();
     let cell_w = (work_rect.w / gridwidth).max(1);
     let cell_h = (work_rect.h / gridwidth).max(1);
 

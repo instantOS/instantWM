@@ -94,7 +94,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
             m.monitor_rect.x,
             m.monitor_rect.w,
             m.monitor_rect.h,
-            m.work_rect.h,
+            m.work_rect().h,
             mony,
         )
     };
@@ -247,7 +247,8 @@ fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
         None => return,
     };
 
-    let Some(rect) = crate::types::geometry::snap_rect(c.snap_status, c.border_width, &m.work_rect)
+    let Some(rect) =
+        crate::types::geometry::snap_rect(c.snap_status, c.border_width, &m.work_rect())
     else {
         return;
     };

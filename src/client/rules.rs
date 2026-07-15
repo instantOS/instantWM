@@ -127,7 +127,11 @@ fn apply_rules_impl(
                 };
                 let mon = view.monitor;
                 let mask = view.client.tags;
-                (mon.monitor_rect, mon.work_rect, mon.show_bar_for_mask(mask))
+                (
+                    mon.monitor_rect,
+                    mon.work_rect(),
+                    mon.show_bar_for_mask(mask),
+                )
             };
 
             if let Some(c) = g.model.client_mut(win) {
@@ -440,7 +444,8 @@ mod tests {
         g.model.tags.num_tags = 1;
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
-        monitor.work_rect = Rect::new(1920, 32, 1920, 1048);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.bar_height = 32;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         g.model.monitors.push(monitor);
         g.config.bindings.rules = vec![Rule {

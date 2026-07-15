@@ -21,7 +21,7 @@ const CTRL_MASK: u32 = 4;
 /// grab loop that calls those two functions synchronously.
 pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -> bool {
     let selmon_id = ctx.core().model().selected_monitor_id();
-    let mon_mx = ctx.core().model().selected_monitor().work_rect.x;
+    let mon_mx = ctx.core().model().selected_monitor().work_rect().x;
 
     let initial_tag = match bar_pos {
         BarPosition::Tag(idx) => TagMask::from_index(idx).unwrap_or(TagMask::EMPTY),
@@ -37,7 +37,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
                 .monitors
                 .get(selmon_id)
                 .and_then(|mon| {
-                    let local_x = ptr_x - mon.work_rect.x;
+                    let local_x = ptr_x - mon.work_rect().x;
                     match mon.bar_position_at_x(core, local_x) {
                         BarPosition::Tag(idx) => TagMask::from_index(idx),
                         _ => None,
@@ -92,7 +92,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 
     let bar_bottom = {
         let mon = ctx.core_mut().model_mut().selected_monitor();
-        mon.bar_y + mon.bar_height + 1
+        mon.bar_y() + mon.bar_height + 1
     };
 
     if root.y > bar_bottom {
@@ -150,7 +150,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         let position = {
             let core = ctx.core();
             let mon = core.model().selected_monitor();
-            let local_x = root.x - mon.work_rect.x;
+            let local_x = root.x - mon.work_rect().x;
             mon.bar_position_at_x(core, local_x)
         };
 

@@ -215,10 +215,10 @@ fn desktop_workarea(globals: &crate::core_state::CoreState) -> Vec<u32> {
     for (_monitor_id, monitor) in globals.monitors_iter() {
         for _tag_index in 1..=tag_count {
             workarea.extend_from_slice(&[
-                monitor.work_rect.x.max(0) as u32,
-                monitor.work_rect.y.max(0) as u32,
-                monitor.work_rect.w.max(1) as u32,
-                monitor.work_rect.h.max(1) as u32,
+                monitor.work_rect().x.max(0) as u32,
+                monitor.work_rect().y.max(0) as u32,
+                monitor.work_rect().w.max(1) as u32,
+                monitor.work_rect().h.max(1) as u32,
             ]);
         }
     }

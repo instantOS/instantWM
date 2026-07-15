@@ -148,7 +148,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     } else {
         0
     };
-    let status_hit_x = mon.work_rect.w - systray_w;
+    let status_hit_x = mon.work_rect().w - systray_w;
 
     // ── Window title ranges ───────────────────────────────────────────────
     let selected = mon.selected_tags();
@@ -163,7 +163,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
         let total_width = if mon.bar_clients_width > 0 {
             mon.bar_clients_width + 1
         } else {
-            (mon.work_rect.w - title_area_start).max(0)
+            (mon.work_rect().w - title_area_start).max(0)
         };
         let n = title_clients.len() as i32;
         let each_width = total_width / n;

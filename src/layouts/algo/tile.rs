@@ -143,13 +143,13 @@ mod tests {
     #[test]
     fn master_width_respects_mfact_when_stack_exists() {
         let mut monitor = Monitor::default();
-        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.available_rect = Rect::new(0, 0, 1000, 800);
         monitor.master_factor = 0.7;
         monitor.master_count = 1;
 
         assert_eq!(
             master_width(
-                monitor.work_rect.w,
+                monitor.work_rect().w,
                 &monitor,
                 2,
                 effective_nmaster(&monitor, 2)
@@ -161,13 +161,13 @@ mod tests {
     #[test]
     fn master_width_uses_full_width_when_everything_is_in_master() {
         let mut monitor = Monitor::default();
-        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.available_rect = Rect::new(0, 0, 1000, 800);
         monitor.master_factor = 0.2;
         monitor.master_count = 2;
 
         assert_eq!(
             master_width(
-                monitor.work_rect.w,
+                monitor.work_rect().w,
                 &monitor,
                 1,
                 effective_nmaster(&monitor, 1)
@@ -188,13 +188,13 @@ mod tests {
     #[test]
     fn negative_nmaster_behaves_like_zero_master_clients() {
         let mut monitor = Monitor::default();
-        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.available_rect = Rect::new(0, 0, 1000, 800);
         monitor.master_count = -1;
 
         let nmaster = effective_nmaster(&monitor, 3);
 
         assert_eq!(nmaster, 0);
-        assert_eq!(master_width(monitor.work_rect.w, &monitor, 3, nmaster), 0);
+        assert_eq!(master_width(monitor.work_rect().w, &monitor, 3, nmaster), 0);
     }
 
     #[test]
@@ -205,7 +205,7 @@ mod tests {
         use std::collections::HashMap;
 
         let mut monitor = Monitor::default();
-        monitor.work_rect = Rect::new(0, 0, 1000, 800);
+        monitor.available_rect = Rect::new(0, 0, 1000, 800);
         monitor.monitor_rect = Rect::new(0, 0, 1000, 800);
         monitor.master_factor = 0.5;
         monitor.master_count = 1;

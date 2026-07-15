@@ -110,7 +110,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     selected_monitor.per_tag_state().show_bar = !selected_monitor.per_tag_state().show_bar;
     selected_monitor.show_bar = selected_monitor.per_tag_state().show_bar;
 
-    selected_monitor.update_bar_position(bar_height);
+    selected_monitor.set_bar_height(bar_height);
 
     let selmon_idx = ctx.core().model().selected_monitor_id();
 

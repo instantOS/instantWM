@@ -24,7 +24,7 @@ struct EdgePositionInfo {
     /// Work area width (excluding bars/padding).
     work_width: i32,
     /// Y offset from top (accounting for bar height).
-    yoffset: i32,
+    y_offset: i32,
     /// Client rectangle. Only the size is used for initial/target positions.
     client_rect: Rect,
 }
@@ -34,7 +34,7 @@ impl EdgePositionInfo {
         match self.direction {
             EdgeDirection::Top => Rect {
                 x: self.monitor_rect.x + EDGE_MARGIN_X,
-                y: self.monitor_rect.y + self.yoffset - self.client_rect.h,
+                y: self.monitor_rect.y + self.y_offset - self.client_rect.h,
                 w: self.work_width - EDGE_INSET_X,
                 h: self.client_rect.h,
             },
@@ -63,7 +63,7 @@ impl EdgePositionInfo {
         match self.direction {
             EdgeDirection::Top => Rect {
                 x: self.monitor_rect.x + EDGE_MARGIN_X,
-                y: self.monitor_rect.y + self.yoffset,
+                y: self.monitor_rect.y + self.y_offset,
                 w: self.work_width - EDGE_INSET_X,
                 h: self.client_rect.h,
             },
@@ -275,7 +275,7 @@ pub fn scratchpad_make(
     // Read monitor dimensions before mutable borrow
     let (mon_ww, mon_wh) = {
         let mon = ctx.core().model().selected_monitor();
-        (mon.work_rect.w, mon.work_rect.h)
+        (mon.work_rect().w, mon.work_rect().h)
     };
 
     let Some(client) = ctx.core_mut().state_mut().model.client_mut(selected_window) else {
@@ -380,14 +380,14 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
                 .model()
                 .client(found)
                 .expect("scratchpad client must exist after window_exists check");
-            (mon.monitor_rect, mon.work_rect.w, client.geo)
+            (mon.monitor_rect, mon.work_rect().w, client.geo)
         };
 
         let pos_info = EdgePositionInfo {
             direction: dir,
             monitor_rect: mon_rect,
             work_width: mon_ww,
-            yoffset,
+            y_offset: yoffset,
             client_rect,
         };
 
@@ -561,7 +561,7 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
 
     let (mon_ww, mon_wh) = {
         let mon = ctx.core().model().selected_monitor();
-        (mon.work_rect.w, mon.work_rect.h)
+        (mon.work_rect().w, mon.work_rect().h)
     };
 
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
@@ -633,7 +633,7 @@ mod tests {
             direction,
             monitor_rect: Rect::new(100, 200, 1920, 1080),
             work_width: 1920,
-            yoffset: 30,
+            y_offset: 30,
             client_rect: Rect::new(300, 400, 640, 360),
         }
     }

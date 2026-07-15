@@ -151,8 +151,6 @@ pub fn apply_available_rects(wm: &mut Wm, state: &WaylandState) -> bool {
             continue;
         }
         mon.set_available_rect(new_rect);
-        let bar_height = mon.bar_height;
-        mon.update_bar_position(bar_height);
         any_changed = true;
     }
     any_changed

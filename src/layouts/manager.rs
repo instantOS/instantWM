@@ -73,11 +73,8 @@ impl ArrangePlan {
 
         // 3. Apply monitor updates
         if let Some(m) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
-            m.clientcount = self.monitor_updates.clientcount;
             m.master_count = self.monitor_updates.master_count;
             m.master_factor = self.monitor_updates.master_factor;
-            m.work_rect = self.monitor_updates.work_rect;
-            m.bar_y = self.monitor_updates.bar_y;
             m.bar_height = self.monitor_updates.bar_height;
 
             // Sync per-tag state back (copy values to avoid borrow conflict)
@@ -131,21 +128,15 @@ impl Monitor {
         bar_height: i32,
         animated: bool,
     ) -> ArrangePlan {
-        let clientcount = self.tiled_client_count(clients) as u32;
-
         let defaults = PerTagState::new(self.show_bar);
         let (master_count, master_factor) = self
             .per_tag()
             .map(|p| (p.master_count, p.master_factor))
             .unwrap_or((defaults.master_count, defaults.master_factor));
 
-        self.clientcount = clientcount;
         self.master_count = master_count;
         self.master_factor = master_factor;
-        self.update_bar_position(bar_height);
-
-        let bar_y = self.bar_y;
-        let work_rect = self.work_rect;
+        self.set_bar_height(bar_height);
 
         // Compute borders
         let borders = compute_borders(self, clients);
@@ -175,11 +166,8 @@ impl Monitor {
 
         ArrangePlan {
             monitor_updates: MonitorUpdates {
-                clientcount,
                 master_count,
                 master_factor,
-                work_rect,
-                bar_y,
                 bar_height: self.bar_height,
             },
             borders,
@@ -207,7 +195,7 @@ fn clients_with_planned_borders(
 fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {
     let is_tiling = monitor.current_layout().is_tiling();
     let is_monocle = monitor.current_layout().is_monocle();
-    let clientcount = monitor.clientcount;
+    let clientcount = monitor.tiled_client_count(clients) as u32;
     let selected_tags = monitor.selected_tags();
 
     monitor

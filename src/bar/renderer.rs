@@ -20,7 +20,7 @@ pub(crate) fn draw_bar_snapshot(
     }
 
     let bar_height = monitor.bar_height;
-    if monitor.work_rect.w <= 0 || bar_height <= 0 {
+    if monitor.work_rect().w <= 0 || bar_height <= 0 {
         core.bar.recursion_exit();
         return;
     }

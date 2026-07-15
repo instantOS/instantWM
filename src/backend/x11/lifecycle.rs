@@ -268,7 +268,7 @@ fn monitor_rects_for_client(model: &crate::model::WmModel, w: WindowId) -> (Rect
     let view = model
         .client_view(w)
         .expect("newly managed client must have an assigned monitor");
-    (view.monitor.work_rect, view.monitor.monitor_rect)
+    (view.monitor.work_rect(), view.monitor.monitor_rect)
 }
 
 fn clamp_client_to_work_area(model: &mut crate::model::WmModel, w: WindowId, mon_work_rect: Rect) {
@@ -536,8 +536,6 @@ fn run_manage_animation(
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, win: WindowId, destroyed: bool) {
     let monitor_id = ctx.core.model().client(win).map(|client| client.monitor_id);
-
-    ctx.core.model_mut().clear_maximized_for(win);
 
     {
         let g = &mut ctx.core.state_mut();

@@ -230,7 +230,7 @@ pub fn resolve_bar_position_at_root(
         return None;
     }
 
-    let local_x = root.x - mon.work_rect.x;
+    let local_x = root.x - mon.work_rect().x;
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
 }
 
@@ -298,7 +298,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
 
     let (monitor_id, work_x, bar_y) = {
         let monitor = ctx.core().model().selected_monitor();
-        (monitor.id(), monitor.work_rect.x, monitor.bar_y)
+        (monitor.id(), monitor.work_rect().x, monitor.bar_y())
     };
     let local_x = root.x - work_x;
     let status_text = ctx.core().bar.runtime.status_text.clone();

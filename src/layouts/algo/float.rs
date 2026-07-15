@@ -58,8 +58,11 @@ pub fn floating(
 
         if c.is_visible(selected)
             && c.snap_status != SnapPosition::None
-            && let Some(rect) =
-                crate::types::geometry::snap_rect(c.snap_status, c.border_width, &monitor.work_rect)
+            && let Some(rect) = crate::types::geometry::snap_rect(
+                c.snap_status,
+                c.border_width,
+                &monitor.work_rect(),
+            )
         {
             result.push(LayoutOutput {
                 win,

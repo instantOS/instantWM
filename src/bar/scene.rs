@@ -268,7 +268,12 @@ pub(crate) fn build_monitor_snapshots(
 
         snapshots.push(MonitorBarSnapshot {
             monitor_id: mon.id(),
-            rect: Rect::new(mon.work_rect.x, mon.bar_y, mon.work_rect.w, mon.bar_height),
+            rect: Rect::new(
+                mon.work_rect().x,
+                mon.bar_y(),
+                mon.work_rect().w,
+                mon.bar_height,
+            ),
             font_size,
             font_families: font_families.clone(),
             is_selected_monitor,
@@ -419,7 +424,7 @@ fn render_monitor_snapshot_base(
 
     let mut hit = crate::bar::MonitorHitCache::default();
     let mut temp_mon = Monitor::default();
-    temp_mon.work_rect.w = snapshot.rect.w;
+    temp_mon.available_rect.w = snapshot.rect.w;
 
     let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor
         && snapshot

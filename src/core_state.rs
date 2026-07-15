@@ -206,9 +206,6 @@ impl CoreState {
     pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.model.monitors_iter_all_mut()
     }
-    pub fn clear_maximized_for(&mut self, win: WindowId) {
-        self.model.clear_maximized_for(win);
-    }
     pub fn attach(&mut self, win: WindowId) {
         self.model.attach(win);
     }

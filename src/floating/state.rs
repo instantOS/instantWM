@@ -164,15 +164,19 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// removing its border or setting `_NET_WM_STATE_FULLSCREEN`.  It is distinct
 /// from both real fullscreen and fake fullscreen.
 ///
-/// `mon.maximized` tracks which window (if any) is currently maximized this
-/// way.  Toggling on saves the window's floating geometry so it can be
-/// restored on toggle-off.
+/// `maximized_client` derives which window (if any) is currently maximized
+/// this way from the clients' modes.  Toggling on saves the window's floating
+/// geometry so it can be restored on toggle-off.
 ///
 /// Works on both X11 and Wayland.  The X11-specific `apply_size` nudge is
 /// only applied on X11, since Wayland geometry is driven by the compositor
 /// render loop and needs no such hint.
 pub fn toggle_maximized(ctx: &mut WmCtx) {
-    let maximized_win = ctx.core().model().selected_monitor().maximized;
+    let maximized_win = ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .maximized_client(&ctx.core().model().clients);
     let selected_window = ctx.core().model().selected_win();
     let animated = ctx.core().behavior().animated;
 
@@ -208,7 +212,13 @@ pub fn toggle_maximized(ctx: &mut WmCtx) {
     }
 
     // Raise the newly maximized window above everything else.
-    if ctx.core().model().selected_monitor().maximized == Some(win) {
+    if ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .maximized_client(&ctx.core().model().clients)
+        == Some(win)
+    {
         ctx.window_backend().raise_window_visual_only(win);
     }
 }

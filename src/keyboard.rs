@@ -173,24 +173,17 @@ mod tests {
     use super::*;
     use crate::actions::NamedAction;
 
-    fn named(action: NamedAction) -> KeyAction {
-        KeyAction::Named {
-            action,
-            args: Vec::new(),
-        }
-    }
-
     #[test]
     fn resolve_key_action_prefers_mode_binding_and_marks_transient() {
         let mode_key = Key {
             mod_mask: 1,
             keysym: 42,
-            action: named(NamedAction::FocusNext),
+            action: KeyAction::named(NamedAction::FocusNext),
         };
         let global_key = Key {
             mod_mask: 1,
             keysym: 42,
-            action: named(NamedAction::FocusPrev),
+            action: KeyAction::named(NamedAction::FocusPrev),
         };
         let mut modes = HashMap::new();
         modes.insert(
@@ -217,7 +210,7 @@ mod tests {
         let desktop_key = Key {
             mod_mask: 0,
             keysym: 9,
-            action: named(NamedAction::ToggleLayout),
+            action: KeyAction::named(NamedAction::ToggleLayout),
         };
 
         let resolved = resolve_key_action(
@@ -242,7 +235,7 @@ mod tests {
             &[Key {
                 mod_mask: 0,
                 keysym: 9,
-                action: named(NamedAction::ToggleLayout),
+                action: KeyAction::named(NamedAction::ToggleLayout),
             }],
             &HashMap::new(),
             Some(WindowId(1)),

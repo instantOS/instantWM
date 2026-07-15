@@ -119,7 +119,7 @@ fn measure_layout(
     }
 
     let draw_width = (width + 2).max(0);
-    let draw_start_x = m.work_rect.w - draw_width - systray_width;
+    let draw_start_x = m.work_rect().w - draw_width - systray_width;
 
     StatusLayout {
         draw_start_x,

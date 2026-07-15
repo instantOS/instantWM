@@ -596,7 +596,6 @@ mod tests {
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
-        monitor.work_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
@@ -606,8 +605,8 @@ mod tests {
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert_eq!(monitor.bar_height, 32);
-        assert_eq!(monitor.bar_y, 0);
-        assert_eq!(monitor.work_rect, Rect::new(0, 32, 800, 568));
+        assert_eq!(monitor.bar_y(), 0);
+        assert_eq!(monitor.work_rect(), Rect::new(0, 32, 800, 568));
     }
 
     #[test]
@@ -616,7 +615,6 @@ mod tests {
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
-        monitor.work_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
@@ -626,7 +624,7 @@ mod tests {
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert!(!monitor.show_bar);
-        assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 600));
+        assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 600));
 
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
         assert!(matches!(do_set(&mut wm, "bar.top", "false"), Response::Ok));
@@ -636,7 +634,7 @@ mod tests {
             .unwrap();
         assert!(monitor.show_bar);
         assert!(!monitor.top_bar);
-        assert_eq!(monitor.bar_y, 568);
-        assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 568));
+        assert_eq!(monitor.bar_y(), 568);
+        assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 568));
     }
 }

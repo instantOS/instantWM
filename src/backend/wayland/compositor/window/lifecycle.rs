@@ -31,7 +31,7 @@ impl WaylandState {
                         .map(|monitor| monitor.id())
                 })?;
             let monitor = globals.monitor(monitor_id)?;
-            Some((monitor_id, monitor.selected_tags(), monitor.work_rect))
+            Some((monitor_id, monitor.selected_tags(), monitor.work_rect()))
         }) else {
             return Err(surface);
         };

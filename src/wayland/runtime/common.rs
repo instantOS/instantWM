@@ -532,7 +532,7 @@ fn handle_map_window(
         client.geo = geo;
         client.float_geo = geo;
     } else {
-        let Some(monitor_rect) = g.monitor(client.monitor_id).map(|m| m.work_rect) else {
+        let Some(monitor_rect) = g.monitor(client.monitor_id).map(|m| m.work_rect()) else {
             return;
         };
         client.geo = crate::types::Rect::new(
@@ -749,7 +749,7 @@ fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: boo
             .core
             .model()
             .client_view(win)
-            .map(|view| view.monitor.work_rect);
+            .map(|view| view.monitor.work_rect());
         let outcome =
             crate::client::mode::set_maximized(ctx_wayland.core.model_mut(), win, maximized);
         if maximized {
