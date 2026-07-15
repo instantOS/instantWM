@@ -8,6 +8,10 @@ check:
     uvx ruff check {{python_release_script}}
     uvx ruff format --check {{python_release_script}}
 
+# Nested Wayland geometry/lifecycle smoke test; run inside a Wayland session.
+e2e:
+    bash tests/e2e.sh
+
 fmt:
     uvx ruff check --fix {{python_release_script}}
     uvx ruff format {{python_release_script}}

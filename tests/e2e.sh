@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUST_DIR="$ROOT_DIR/rust"
+RUST_DIR="$ROOT_DIR"
 SOCKET_PATH="${INSTANTWM_SOCKET:-/tmp/instantwm-$(id -u).sock}"
 WM_LOG="${WM_LOG:-/tmp/instantwm-e2e-wm.log}"
 SPAWN_COUNT="${SPAWN_COUNT:-3}"
@@ -42,18 +42,26 @@ trap cleanup EXIT
 cd "$RUST_DIR"
 cargo build --quiet --bin instantwm --bin instantwmctl
 
-rm -f "$SOCKET_PATH" "$WM_LOG" /tmp/iwm-e2e-list-* /tmp/iwm-e2e-ids-* /tmp/iwm-e2e-geoms.txt
-INSTANTWM_AUTOSTART=0 INSTANTWM_WL_AUTOSPAWN=0 timeout 45s ./target/debug/instantwm --backend wayland >"$WM_LOG" 2>&1 &
+if [[ -S "$SOCKET_PATH" ]]; then
+  if run_ctl status >/dev/null 2>&1; then
+    echo "instantWM is already running on $SOCKET_PATH; stop it before the e2e test" >&2
+    exit 1
+  fi
+  rm -f "$SOCKET_PATH"
+fi
+rm -f "$WM_LOG" /tmp/iwm-e2e-list-* /tmp/iwm-e2e-ids-* /tmp/iwm-e2e-geoms.txt
+INSTANTWM_AUTOSTART=0 INSTANTWM_WL_AUTOSTART=0 INSTANTWM_WL_AUTOSPAWN=0 \
+  timeout 45s ./target/debug/instantwm --backend wayland >"$WM_LOG" 2>&1 &
 wm_pid=$!
 
 for _ in $(seq 1 "$STARTUP_RETRIES"); do
-  if run_ctl list >/tmp/iwm-e2e-list-initial.txt 2>/dev/null; then
+  if run_ctl window list >/tmp/iwm-e2e-list-initial.txt 2>/dev/null; then
     break
   fi
   sleep "$STARTUP_SLEEP"
 done
 
-run_ctl list >/tmp/iwm-e2e-list-initial.txt
+run_ctl window list >/tmp/iwm-e2e-list-initial.txt
 awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-initial.txt | sort -n >/tmp/iwm-e2e-ids-initial.txt
 
 for idx in $(seq 1 "$SPAWN_COUNT"); do
@@ -63,7 +71,7 @@ done
 
 sleep 2
 for _ in $(seq 1 50); do
-  run_ctl list >/tmp/iwm-e2e-list-after-spawn.txt
+  run_ctl window list >/tmp/iwm-e2e-list-after-spawn.txt
   awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-after-spawn.txt | sort -n >/tmp/iwm-e2e-ids-after.txt
   comm -13 /tmp/iwm-e2e-ids-initial.txt /tmp/iwm-e2e-ids-after.txt >/tmp/iwm-e2e-ids-new.txt
   new_count="$(wc -l </tmp/iwm-e2e-ids-new.txt | tr -d ' ')"
@@ -137,11 +145,11 @@ END {
 fi
 
 while read -r id; do
-  run_ctl close "$id" >/dev/null
+  run_ctl window close "$id" >/dev/null
 done </tmp/iwm-e2e-ids-new.txt
 
 sleep 1
-run_ctl list >/tmp/iwm-e2e-list-after-close.txt
+run_ctl window list >/tmp/iwm-e2e-list-after-close.txt
 awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-after-close.txt | sort -n >/tmp/iwm-e2e-ids-final.txt
 
 if ! diff -u /tmp/iwm-e2e-ids-initial.txt /tmp/iwm-e2e-ids-final.txt >/tmp/iwm-e2e-id-diff.txt; then

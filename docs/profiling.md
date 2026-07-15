@@ -46,6 +46,13 @@ the active seat through libseat/logind. A remote shell, terminal inside another
 compositor, or an agent command runner without the active seat may build and
 analyze captures but should not be expected to start the DRM session.
 
+This differs from the older end-to-end smoke test. `just e2e` starts the nested
+Wayland/winit backend and must run inside an existing Wayland graphical session;
+it does not exercise DRM/KMS. That test checks window lifecycle and tiling
+geometry, while the profiler workload generates repeatable activity for a DRM
+CPU capture. Both require that no other instantWM instance owns the default IPC
+socket.
+
 ## Capture workflows
 
 Build and run a 20-second scripted capture:
