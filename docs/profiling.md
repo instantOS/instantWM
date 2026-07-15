@@ -76,24 +76,25 @@ Choose another duration or do the interactions yourself:
 
 ```sh
 just profile 45 standard
-just profile 30 stress
+just profile 30 idle
 just profile 30 manual
 ```
 
-The standard workload opens four clients and cycles through every layout while
-updating the bar. Set `PROFILE_APP_CMD` if none of `foot`, `weston-terminal`,
-`gtk4-demo`, `gtk3-demo`, or `xmessage` is suitable:
+The standard workload models a normally active desktop: three ordinary clients
+on tag 1, an actively rendering `vkcube` on tag 2, one floating window partially
+covering tiled windows, tag switching, layout changes, animations, and bar
+updates. Set `PROFILE_APP_CMD` if none of `foot`, `weston-terminal`, `gtk4-demo`,
+`gtk3-demo`, or `xmessage` is suitable:
 
 ```sh
 PROFILE_APP_CMD='my-wayland-test-client' just profile 30 standard
 ```
 
-The `stress` workload replaces one static client with continuously rendering
-`vkcube --wsi wayland`. Use it when a light interactive capture produces too
-few CPU samples or when investigating sustained composition. It deliberately
-answers a different question from `standard`, which remains representative of
-ordinary mostly-idle window-manager activity. Override the renderer with
-`PROFILE_STRESS_APP_CMD` if needed.
+Override the active client with `PROFILE_ACTIVE_APP_CMD`, for example a video
+player. The `idle` workload preserves the earlier four-static-window scenario
+for measuring the event-driven compositor at rest. Active content is not
+classified as a stress test. A true stress scenario would require deliberately
+excessive or uncapped rendering and is not part of this workflow.
 
 Manual input can be mixed into the standard workload. For pointer-heavy
 testing, manual interaction is currently preferable: generic Wayland clients

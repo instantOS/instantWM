@@ -82,9 +82,9 @@ aggregate_cpu_duty_percent = (
 )
 low_sample_warning = total_samples < 200
 warning_remedy = (
-    "Use a longer capture."
-    if metadata.get("workload") == "stress"
-    else "Use a longer capture or the stress workload."
+    "Use a longer capture or the standard active-desktop workload."
+    if metadata.get("workload") == "idle"
+    else "Use a longer capture."
 )
 sample_quality = {
     "target_samples": total_samples,

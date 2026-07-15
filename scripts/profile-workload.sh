@@ -6,6 +6,7 @@ CTL="${PROFILE_CTL:-$ROOT_DIR/target/profiling/instantwmctl}"
 WINDOWS="${PROFILE_WINDOWS:-4}"
 STEP_SLEEP="${PROFILE_STEP_SLEEP:-0.20}"
 WORKLOAD="${PROFILE_WORKLOAD:-standard}"
+WORKLOAD_STARTED=$SECONDS
 
 [[ "$WINDOWS" =~ ^[1-9][0-9]*$ ]] || {
   echo "PROFILE_WINDOWS must be a positive integer" >&2
@@ -39,14 +40,12 @@ app="$(choose_app)" || {
   exit 1
 }
 
-if [[ "$WORKLOAD" == "stress" ]]; then
-  stress_app="${PROFILE_STRESS_APP_CMD:-vkcube --wsi wayland --suppress_popups}"
-  command -v "${stress_app%% *}" >/dev/null 2>&1 || {
-    echo "Stress workload requires vkcube or PROFILE_STRESS_APP_CMD" >&2
+if [[ "$WORKLOAD" == "standard" ]]; then
+  active_app="${PROFILE_ACTIVE_APP_CMD:-${PROFILE_STRESS_APP_CMD:-vkcube --wsi wayland --suppress_popups}}"
+  command -v "${active_app%% *}" >/dev/null 2>&1 || {
+    echo "Standard workload requires vkcube or PROFILE_ACTIVE_APP_CMD" >&2
     exit 1
   }
-  echo "stress_app=$stress_app"
-  run_ctl spawn "$stress_app"
   static_windows=$((WINDOWS - 1))
 else
   static_windows=$WINDOWS
@@ -58,15 +57,51 @@ for _ in $(seq 1 "$static_windows"); do
   sleep "$STEP_SLEEP"
 done
 
+if [[ "$WORKLOAD" == "standard" ]]; then
+  # Keep an actively rendering client on another tag, as in a normal desktop
+  # with video or animation on a neighboring workspace.
+  run_ctl tag view 2
+  echo "active_app=$active_app tag=2"
+  run_ctl spawn "$active_app"
+  sleep 1
+  run_ctl tag view 1
+fi
+
 # Wait for clients to map before repeatedly exercising layout and rendering work.
 sleep 1
 run_ctl toggle animated on
+
+if [[ "$WORKLOAD" == "standard" ]]; then
+  # Make one window floating over the tiled clients. Coordinates are relative
+  # to the focused monitor, and scale with its current resolution.
+  floating_id="$(run_ctl --json window list | python3 -c '
+import json, sys
+windows = json.load(sys.stdin)
+print(windows[0]["id"] if windows else "")
+')"
+  read -r monitor_width monitor_height < <(run_ctl --json monitor list | python3 -c '
+import json, sys
+monitor = json.load(sys.stdin)[0]
+print(monitor["width"], monitor["height"])
+')
+  if [[ -n "$floating_id" ]]; then
+    run_ctl window resize "$floating_id" \
+      --x $((monitor_width / 5)) --y $((monitor_height / 6)) \
+      --width $((monitor_width * 3 / 5)) --height $((monitor_height * 2 / 3))
+  fi
+fi
+
 layouts=(tile grid monocle deck bottom-stack horizgrid gaplessgrid bstackhoriz floating)
-deadline=$((SECONDS + ${PROFILE_DURATION:-20} - 2))
+deadline=$((WORKLOAD_STARTED + ${PROFILE_DURATION:-20} - 1))
 while (( SECONDS < deadline )); do
   for layout in "${layouts[@]}"; do
     run_ctl layout "$layout"
     run_ctl update-status "profile:$layout"
+    if [[ "$WORKLOAD" == "standard" ]]; then
+      run_ctl tag view 2
+      sleep "$STEP_SLEEP"
+      run_ctl tag view 1
+    fi
     sleep "$STEP_SLEEP"
     (( SECONDS >= deadline )) && break
   done
