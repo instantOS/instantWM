@@ -262,6 +262,29 @@ pub enum WindowCommand {
     List(Option<u32>),
 }
 
+/// Unstable commands intended for profiling and automated compositor tests.
+///
+/// The server rejects these unless `INSTANTWM_TEST=1` was present when
+/// instantWM started. Compatibility is deliberately not guaranteed.
+#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
+pub enum TestCommand {
+    PointerMove {
+        x: f64,
+        y: f64,
+        /// Interpret x/y in the range 0..=1 relative to the focused monitor.
+        normalized: bool,
+    },
+    FocusWindow(u32),
+    TagWindow {
+        window_id: u32,
+        tag: u32,
+    },
+    SetWindowFloating {
+        window_id: u32,
+        floating: bool,
+    },
+}
+
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ToggleCommand {
     Animated(ToggleAction),
@@ -328,6 +351,7 @@ pub enum IpcCommand {
     Input(InputCommand),
     Mode(ModeCommand),
     Config(ConfigCommand),
+    Test(TestCommand),
     GetTheme,
     SetTheme(crate::config::config_toml::ColorTheme),
     ListThemes,

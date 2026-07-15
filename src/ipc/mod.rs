@@ -15,6 +15,7 @@ pub mod mode;
 pub mod monitor;
 pub mod scratchpad;
 pub mod tag;
+pub mod test;
 pub mod theme;
 pub mod toggle;
 pub mod window;
@@ -207,6 +208,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Mode(cmd) => mode::handle_mode_command(wm, cmd),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
         IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
+        IpcCommand::Test(cmd) => test::handle_test_command(wm, cmd),
         IpcCommand::GetTheme => theme::get_theme(wm),
         IpcCommand::SetTheme(theme) => theme::set_theme(wm, theme),
         IpcCommand::ListThemes => theme::list_themes(),

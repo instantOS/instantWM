@@ -4,6 +4,7 @@ use clap::Parser;
 use ctl::{Cli, IpcClient, format_response, get_default_socket};
 use instantwm::ipc_types::{IpcCommand, Response};
 use std::str::FromStr;
+use std::time::{Duration, Instant};
 
 #[cfg(test)]
 mod tests {
@@ -195,6 +196,44 @@ mod tests {
     }
 
     #[test]
+    fn parses_normalized_test_pointer_move() {
+        let cmd: IpcCommand = Cli::parse_from([
+            "instantwmctl",
+            "test",
+            "pointer",
+            "move",
+            "0.5",
+            "0.01",
+            "--normalized",
+        ])
+        .command
+        .into();
+
+        assert!(matches!(
+            cmd,
+            IpcCommand::Test(instantwm::ipc_types::TestCommand::PointerMove {
+                x: 0.5,
+                y: 0.01,
+                normalized: true,
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_test_window_tag() {
+        let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "test", "window", "tag", "42", "3"])
+            .command
+            .into();
+        assert!(matches!(
+            cmd,
+            IpcCommand::Test(instantwm::ipc_types::TestCommand::TagWindow {
+                window_id: 42,
+                tag: 3,
+            })
+        ));
+    }
+
+    #[test]
     fn config_list_accepts_prefix_arg() {
         let cli = Cli::parse_from(["instantwmctl", "config", "list", "fonts"]);
         match cli.command {
@@ -318,6 +357,10 @@ fn main() {
         std::process::exit(1);
     }
 
+    if handle_local_test_command(&cli) {
+        return;
+    }
+
     let command = match &cli.command {
         ctl::CommandKind::Layout { name } if name.as_deref() == Some("list") => {
             print_layout_list(cli.json);
@@ -410,6 +453,208 @@ fn main() {
     };
 
     format_response(&response, cli.json);
+}
+
+/// Execute test operations that require multiple IPC round trips without
+/// blocking the compositor's event loop.
+fn handle_local_test_command(cli: &Cli) -> bool {
+    use ctl::commands::{TestAction, TestPointerAction, TestWaitAction};
+
+    let ctl::CommandKind::Test { action } = &cli.command else {
+        return false;
+    };
+
+    match action {
+        TestAction::Pointer {
+            action:
+                TestPointerAction::Path {
+                    points,
+                    duration_ms,
+                    hz,
+                    normalized,
+                },
+        } => {
+            if let Err(message) = run_pointer_path(
+                points,
+                *duration_ms,
+                *hz,
+                *normalized,
+                cli.ignore_version_mismatches,
+                cli.json,
+            ) {
+                exit_with_error(&message);
+            }
+            true
+        }
+        TestAction::Wait {
+            action:
+                TestWaitAction::Windows {
+                    count,
+                    timeout_ms,
+                    poll_ms,
+                    exact,
+                },
+        } => {
+            if let Err(message) = wait_for_windows(
+                *count,
+                *timeout_ms,
+                *poll_ms,
+                *exact,
+                cli.ignore_version_mismatches,
+                cli.json,
+            ) {
+                exit_with_error(&message);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+fn parse_path_point(raw: &str) -> Result<(f64, f64), String> {
+    let Some((x, y)) = raw.split_once(',') else {
+        return Err(format!("invalid point '{raw}'; expected X,Y"));
+    };
+    let x = x
+        .parse::<f64>()
+        .map_err(|_| format!("invalid x coordinate in '{raw}'"))?;
+    let y = y
+        .parse::<f64>()
+        .map_err(|_| format!("invalid y coordinate in '{raw}'"))?;
+    if !x.is_finite() || !y.is_finite() {
+        return Err(format!("coordinates in '{raw}' must be finite"));
+    }
+    Ok((x, y))
+}
+
+fn run_pointer_path(
+    raw_points: &[String],
+    duration_ms: u64,
+    hz: u32,
+    normalized: bool,
+    ignore_version: bool,
+    json: bool,
+) -> Result<(), String> {
+    if duration_ms == 0 {
+        return Err("pointer path duration must be greater than zero".to_string());
+    }
+    if !(1..=240).contains(&hz) {
+        return Err("pointer path frequency must be between 1 and 240 Hz".to_string());
+    }
+    let points = raw_points
+        .iter()
+        .map(|point| parse_path_point(point))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let intervals = ((u128::from(duration_ms) * u128::from(hz)) / 1000).max(1) as u64;
+    let started = Instant::now();
+    for sample in 0..=intervals {
+        let path_position = sample as f64 / intervals as f64 * (points.len() - 1) as f64;
+        let segment = (path_position.floor() as usize).min(points.len() - 2);
+        let fraction = (path_position - segment as f64).min(1.0);
+        let (x0, y0) = points[segment];
+        let (x1, y1) = points[segment + 1];
+        let x = x0 + (x1 - x0) * fraction;
+        let y = y0 + (y1 - y0) * fraction;
+        send_once(
+            IpcCommand::Test(instantwm::ipc_types::TestCommand::PointerMove { x, y, normalized }),
+            ignore_version,
+        )?;
+
+        if sample < intervals {
+            let target = started
+                + Duration::from_nanos(
+                    (u128::from(duration_ms) * 1_000_000 * u128::from(sample + 1)
+                        / u128::from(intervals)) as u64,
+                );
+            if let Some(remaining) = target.checked_duration_since(Instant::now()) {
+                std::thread::sleep(remaining);
+            }
+        }
+    }
+
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "operation": "pointer-path",
+                "samples": intervals + 1,
+                "duration_ms": duration_ms,
+                "frequency_hz": hz,
+                "normalized": normalized,
+            })
+        );
+    } else {
+        println!("pointer path complete: {} samples", intervals + 1);
+    }
+    Ok(())
+}
+
+fn wait_for_windows(
+    expected: usize,
+    timeout_ms: u64,
+    poll_ms: u64,
+    exact: bool,
+    ignore_version: bool,
+    json: bool,
+) -> Result<(), String> {
+    if timeout_ms == 0 || poll_ms == 0 {
+        return Err("wait timeout and polling interval must be greater than zero".to_string());
+    }
+    let started = Instant::now();
+    let timeout = Duration::from_millis(timeout_ms);
+    loop {
+        let response = send_once(
+            IpcCommand::Window(instantwm::ipc_types::WindowCommand::List(None)),
+            ignore_version,
+        )?;
+        let Response::WindowList(windows) = response else {
+            return Err("unexpected response while waiting for windows".to_string());
+        };
+        let actual = windows.len();
+        if (exact && actual == expected) || (!exact && actual >= expected) {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "condition": "window-count",
+                        "expected": expected,
+                        "actual": actual,
+                        "exact": exact,
+                        "elapsed_ms": started.elapsed().as_millis(),
+                    })
+                );
+            } else {
+                println!("window wait complete: {actual} mapped");
+            }
+            return Ok(());
+        }
+        if started.elapsed() >= timeout {
+            return Err(format!(
+                "timed out after {timeout_ms}ms waiting for {} {expected} windows (saw {actual})",
+                if exact { "exactly" } else { "at least" }
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(poll_ms));
+    }
+}
+
+fn send_once(command: IpcCommand, ignore_version: bool) -> Result<Response, String> {
+    let socket = get_default_socket();
+    let mut client = IpcClient::connect(&socket)
+        .map_err(|error| format!("connect failed ({socket}): {error}"))?;
+    match client
+        .send(command, ignore_version)
+        .map_err(|error| error.to_string())?
+    {
+        Response::Err(message) => Err(message),
+        response => Ok(response),
+    }
+}
+
+fn exit_with_error(message: &str) -> ! {
+    eprintln!("instantwmctl: {message}");
+    std::process::exit(1);
 }
 
 /// Reject prefixes whose top-level section isn't listable, with a helpful

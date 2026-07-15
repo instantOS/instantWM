@@ -59,7 +59,7 @@ if [[ -S "$SOCKET_PATH" ]]; then
   rm -f "$SOCKET_PATH"
 fi
 rm -f "$WM_LOG" /tmp/iwm-e2e-list-* /tmp/iwm-e2e-ids-* /tmp/iwm-e2e-geoms.txt
-INSTANTWM_AUTOSTART=0 INSTANTWM_WL_AUTOSTART=0 INSTANTWM_WL_AUTOSPAWN=0 \
+INSTANTWM_AUTOSTART=0 INSTANTWM_WL_AUTOSTART=0 INSTANTWM_WL_AUTOSPAWN=0 INSTANTWM_TEST=1 \
   timeout 45s ./target/debug/instantwm --backend wayland >"$WM_LOG" 2>&1 &
 wm_pid=$!
 
@@ -72,23 +72,18 @@ done
 
 run_ctl window list >/tmp/iwm-e2e-list-initial.txt
 awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-initial.txt | sort -n >/tmp/iwm-e2e-ids-initial.txt
+initial_count="$(wc -l </tmp/iwm-e2e-ids-initial.txt | tr -d ' ')"
 
 for idx in $(seq 1 "$SPAWN_COUNT"); do
   cmd="$(choose_spawn_cmd "$idx")"
   run_ctl spawn "$cmd" >/tmp/iwm-e2e-spawn-"$idx".txt
 done
 
-sleep 2
-for _ in $(seq 1 50); do
-  run_ctl window list >/tmp/iwm-e2e-list-after-spawn.txt
-  awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-after-spawn.txt | sort -n >/tmp/iwm-e2e-ids-after.txt
-  comm -13 /tmp/iwm-e2e-ids-initial.txt /tmp/iwm-e2e-ids-after.txt >/tmp/iwm-e2e-ids-new.txt
-  new_count="$(wc -l </tmp/iwm-e2e-ids-new.txt | tr -d ' ')"
-  if (( new_count >= SPAWN_COUNT )); then
-    break
-  fi
-  sleep 0.1
-done
+run_ctl test wait windows "$((initial_count + SPAWN_COUNT))" --timeout-ms 7000 >/dev/null
+run_ctl window list >/tmp/iwm-e2e-list-after-spawn.txt
+awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-after-spawn.txt | sort -n >/tmp/iwm-e2e-ids-after.txt
+comm -13 /tmp/iwm-e2e-ids-initial.txt /tmp/iwm-e2e-ids-after.txt >/tmp/iwm-e2e-ids-new.txt
+new_count="$(wc -l </tmp/iwm-e2e-ids-new.txt | tr -d ' ')"
 
 new_count="$(wc -l </tmp/iwm-e2e-ids-new.txt | tr -d ' ')"
 if (( new_count < SPAWN_COUNT )); then
@@ -153,11 +148,25 @@ END {
   exit 1
 fi
 
+first_id="$(head -n1 /tmp/iwm-e2e-ids-new.txt)"
+run_ctl test window focus "$first_id"
+run_ctl test window tag "$first_id" 2
+run_ctl --json window info "$first_id" | python3 -c '
+import json, sys
+window = json.load(sys.stdin)
+assert window["tags"] == 2, window
+'
+run_ctl test window tag "$first_id" 1
+run_ctl test window mode "$first_id" floating
+run_ctl test window mode "$first_id" tiled
+run_ctl test pointer path --normalized --duration-ms 100 --hz 20 \
+  0.1,0.01 0.9,0.01 >/dev/null
+
 while read -r id; do
   run_ctl window close "$id" >/dev/null
 done </tmp/iwm-e2e-ids-new.txt
 
-sleep 1
+run_ctl test wait windows "$initial_count" --exact --timeout-ms 5000 >/dev/null
 run_ctl window list >/tmp/iwm-e2e-list-after-close.txt
 awk 'NR>1 && $1 ~ /^[0-9]+$/ {print $1}' /tmp/iwm-e2e-list-after-close.txt | sort -n >/tmp/iwm-e2e-ids-final.txt
 

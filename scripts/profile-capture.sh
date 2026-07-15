@@ -4,7 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DURATION="${1:-20}"
 WORKLOAD="${2:-standard}"
-PROFILE_FREQ="${PROFILE_FREQ:-199}"
+# cpu-clock is a single software event, so the usual "stay under 200 Hz to avoid
+# hardware-PMU multiplexing" rule does not apply; sample densely for statistical
+# power. The kernel ceiling (perf_event_max_sample_rate) is typically 25000.
+PROFILE_FREQ="${PROFILE_FREQ:-4000}"
 PROFILE_DIR="${PROFILE_DIR:-$ROOT_DIR/target/profiles/$(date +%Y%m%d-%H%M%S)}"
 PERF_BIN="${PERF:-perf}"
 WM_BIN="$ROOT_DIR/target/profiling/instantwm"
@@ -82,6 +85,7 @@ echo "profile: recording ${DURATION}s into $PROFILE_DIR"
 INSTANTWM_AUTOSTART=0 \
 INSTANTWM_WL_AUTOSTART=0 \
 INSTANTWM_WL_AUTOSPAWN=0 \
+INSTANTWM_TEST=1 \
 RUST_LOG="${RUST_LOG:-warn}" \
 "$PERF_BIN" record \
   --all-user \

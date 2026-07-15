@@ -3,7 +3,8 @@ use instantwm::config::config_toml::ColorTheme;
 use instantwm::ipc_types::{
     ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind,
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
-    SpecialNext, TagCommand, ToggleAction, ToggleCommand, Transform, VrrMode, WindowCommand,
+    SpecialNext, TagCommand, TestCommand, ToggleAction, ToggleCommand, Transform, VrrMode,
+    WindowCommand,
 };
 use std::process;
 use std::str::FromStr;
@@ -172,6 +173,80 @@ pub enum WindowAction {
     },
     Close {
         window_id: Option<u32>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TestWindowMode {
+    Tiled,
+    Floating,
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestWindowAction {
+    /// Focus a window by its stable IPC id.
+    Focus { window_id: u32 },
+    /// Assign a window to exactly one tag.
+    Tag { window_id: u32, tag: u32 },
+    /// Set tiling/floating state without relying on the current focus.
+    Mode {
+        window_id: u32,
+        mode: TestWindowMode,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestPointerAction {
+    /// Inject one absolute pointer-motion transaction.
+    Move {
+        x: f64,
+        y: f64,
+        /// Treat coordinates as 0..1 fractions of the focused monitor.
+        #[arg(long)]
+        normalized: bool,
+    },
+    /// Interpolate a pointer path. Points use the form X,Y.
+    Path {
+        #[arg(required = true, num_args = 2..)]
+        points: Vec<String>,
+        #[arg(long, default_value = "1000")]
+        duration_ms: u64,
+        #[arg(long, default_value = "30")]
+        hz: u32,
+        /// Treat coordinates as 0..1 fractions of the focused monitor.
+        #[arg(long)]
+        normalized: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestWaitAction {
+    /// Wait until at least COUNT windows are mapped.
+    Windows {
+        count: usize,
+        #[arg(long, default_value = "5000")]
+        timeout_ms: u64,
+        #[arg(long, default_value = "25")]
+        poll_ms: u64,
+        /// Require exactly COUNT rather than at least COUNT.
+        #[arg(long)]
+        exact: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestAction {
+    Pointer {
+        #[command(subcommand)]
+        action: TestPointerAction,
+    },
+    Window {
+        #[command(subcommand)]
+        action: TestWindowAction,
+    },
+    Wait {
+        #[command(subcommand)]
+        action: TestWaitAction,
     },
 }
 
@@ -360,6 +435,11 @@ pub enum CommandKind {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+    /// Unstable profiling/test API. Requires INSTANTWM_TEST=1 on the compositor.
+    Test {
+        #[command(subcommand)]
+        action: TestAction,
     },
     Quit,
 }
@@ -669,6 +749,29 @@ impl From<CommandKind> for IpcCommand {
                 ConfigAction::Set { key, value } => ConfigCommand::Set { key, value },
                 // The prefix is filtered client-side, so it never reaches the WM.
                 ConfigAction::List { prefix: _ } => ConfigCommand::List,
+            }),
+            CommandKind::Test { action } => IpcCommand::Test(match action {
+                TestAction::Pointer { action } => match action {
+                    TestPointerAction::Move { x, y, normalized } => {
+                        TestCommand::PointerMove { x, y, normalized }
+                    }
+                    TestPointerAction::Path { .. } => {
+                        unreachable!("pointer paths are executed by instantwmctl")
+                    }
+                },
+                TestAction::Window { action } => match action {
+                    TestWindowAction::Focus { window_id } => TestCommand::FocusWindow(window_id),
+                    TestWindowAction::Tag { window_id, tag } => {
+                        TestCommand::TagWindow { window_id, tag }
+                    }
+                    TestWindowAction::Mode { window_id, mode } => TestCommand::SetWindowFloating {
+                        window_id,
+                        floating: matches!(mode, TestWindowMode::Floating),
+                    },
+                },
+                TestAction::Wait { .. } => {
+                    unreachable!("wait conditions are executed by instantwmctl")
+                }
             }),
             CommandKind::Quit => IpcCommand::Quit,
         }

@@ -80,11 +80,14 @@ just profile 30 idle
 just profile 30 manual
 ```
 
-The standard workload models a normally active desktop: three ordinary clients
-on tag 1, an actively rendering `vkcube` on tag 2, one floating window partially
-covering tiled windows, tag switching, layout changes, animations, and bar
-updates. Set `PROFILE_APP_CMD` if none of `foot`, `weston-terminal`, `gtk4-demo`,
-`gtk3-demo`, or `xmessage` is suitable:
+The standard workload models a normally active desktop: eleven ordinary clients
+distributed across four tags, an actively rendering `vkcube` on tag 2, one
+floating window partially covering tiled windows, tag switching, layout changes,
+animations, bar updates, and pointer motion across both possible bar edges and
+the client area. Window-map waits and by-id window operations use the unstable
+test API instead of timing guesses. Override the scale with `PROFILE_WINDOWS`
+and `PROFILE_TAGS`, or set `PROFILE_APP_CMD` if none of `foot`,
+`weston-terminal`, `gtk4-demo`, `gtk3-demo`, or `xmessage` is suitable:
 
 ```sh
 PROFILE_APP_CMD='my-wayland-test-client' just profile 30 standard
@@ -96,11 +99,33 @@ for measuring the event-driven compositor at rest. Active content is not
 classified as a stress test. A true stress scenario would require deliberately
 excessive or uncapped rendering and is not part of this workflow.
 
-Manual input can be mixed into the standard workload. For pointer-heavy
-testing, manual interaction is currently preferable: generic Wayland clients
-cannot inject input into a compositor by design. A future dedicated test
-protocol or a carefully isolated `uinput` harness would make pointer scripts
-deterministic without relying on screen coordinates.
+Manual input can be mixed into the standard workload. The scripted cursor uses
+compositor-internal pointer warps, which pass through the normal Wayland motion,
+bar hit-testing, focus, client enter/leave, drag, and redraw path. No `uinput`
+permissions or screen-image recognition are required. The IPC decoding used to
+deliver each synthetic event is additional work that real libinput events do
+not perform, so pointer-heavy results should keep that small observer effect in
+mind.
+
+### Unstable test control API
+
+Profiling starts instantWM with `INSTANTWM_TEST=1`. Without that environment
+variable, state-changing test commands fail explicitly. The namespace is not a
+user API and may change incompatibly. Examples:
+
+```sh
+instantwmctl test wait windows 12 --timeout-ms 10000
+instantwmctl test window focus 7
+instantwmctl test window tag 7 3
+instantwmctl test window mode 7 floating
+instantwmctl test pointer move --normalized 0.5 0.01
+instantwmctl test pointer path --normalized --duration-ms 800 --hz 40 \
+  0.02,0.005 0.98,0.005 0.50,0.60
+```
+
+Normalized coordinates are fractions of the focused monitor and make paths
+portable across resolutions. `test pointer path` interpolates the points in one
+controller process; it does not repeatedly launch `instantwmctl`.
 
 ## Output contract
 
