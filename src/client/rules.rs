@@ -131,7 +131,7 @@ fn apply_rules_impl(
             };
 
             if let Some(c) = g.model.client_mut(win) {
-                if let Some(ref float_rule) = rule.isfloating {
+                if let Some(ref float_rule) = rule.is_floating {
                     apply_float_rule(c, float_rule, mon_geo, bar_height);
                     placement = match float_rule {
                         RuleFloat::FloatCenter => InitialRulePlacement::Center,
@@ -364,7 +364,7 @@ mod tests {
             instance: None,
             title: None,
             tags: TagMask::EMPTY,
-            isfloating: Some(RuleFloat::Tiled), // Explicitly Tiled
+            is_floating: Some(RuleFloat::Tiled), // Explicitly Tiled
             monitor: MonitorRule::Any,
         }];
 
@@ -406,7 +406,7 @@ mod tests {
             instance: None,
             title: None,
             tags: TagMask::EMPTY,
-            isfloating: Some(RuleFloat::FloatCenter),
+            is_floating: Some(RuleFloat::FloatCenter),
             monitor: MonitorRule::Any,
         }];
 
@@ -448,7 +448,7 @@ mod tests {
             instance: None,
             title: None,
             tags: TagMask::EMPTY,
-            isfloating: Some(RuleFloat::FloatFullscreen),
+            is_floating: Some(RuleFloat::FloatFullscreen),
             monitor: MonitorRule::Any,
         }];
 
