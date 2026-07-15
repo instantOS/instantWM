@@ -100,6 +100,13 @@ Each run creates `target/profiles/YYYYMMDD-HHMMSS/` and updates
 - `instantwm.log` and `workload.log`: runtime evidence.
 - `perf.data`: raw samples for deeper analysis.
 
+After recording, the command prints separate progress messages while perf data
+is finalized, source locations are resolved, and the textual call graph is
+built. Inline-frame expansion is disabled in the default reports because it is
+dramatically slower with Rust debug information; function names, source lines,
+and caller/callee stacks are still retained. Samply remains available when
+interactive inline-frame exploration is worth the extra processing cost.
+
 Regenerate reports after changing the report script:
 
 ```sh

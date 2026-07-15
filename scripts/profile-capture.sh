@@ -112,14 +112,15 @@ if [[ "$WORKLOAD" == "standard" ]]; then
   INSTANTWM_SOCKET="$SOCKET" PROFILE_DURATION="$DURATION" \
     bash "$ROOT_DIR/scripts/profile-workload.sh" >"$WORKLOAD_LOG" 2>&1 &
   workload_pid=$!
-  echo "profile: scripted workload started; manual input is also welcome"
+  echo "profile: scripted workload started; recording for ${DURATION}s (manual input is also welcome)"
 else
-  echo "profile: manual capture active; open, move, and interact with windows now"
+  echo "profile: manual capture active for ${DURATION}s; open, move, and interact with windows now"
 fi
 
 sleep "$DURATION" &
 sleep_pid=$!
 wait "$sleep_pid"
+echo "profile: capture duration elapsed; finalizing perf data"
 kill -INT "$perf_pid" 2>/dev/null || true
 wait "$perf_pid" || true
 perf_pid=""
@@ -128,6 +129,7 @@ if [[ -n "${workload_pid:-}" ]]; then
 fi
 trap - EXIT INT TERM
 
+echo "profile: recording complete; generating agent reports"
 python3 "$ROOT_DIR/scripts/profile-report.py" "$PROFILE_DIR"
 ln -sfn "$(basename "$PROFILE_DIR")" "$ROOT_DIR/target/profiles/latest"
 echo "profile: complete; start with $PROFILE_DIR/summary.md"

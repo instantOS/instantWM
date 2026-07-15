@@ -40,6 +40,7 @@ flat_cmd = (
     + [
         "--call-graph",
         "none",
+        "--no-inline",
         "--no-children",
         "--percent-limit",
         "0.05",
@@ -51,6 +52,11 @@ flat_cmd = (
         "--field-separator",
         "\t",
     ]
+)
+print(
+    "profile-report: resolving source-linked hotspots "
+    "(large captures can take a while)",
+    flush=True,
 )
 flat = subprocess.run(flat_cmd, check=True, text=True, capture_output=True).stdout
 (capture_dir / "hotspots.tsv").write_text(flat)
@@ -96,12 +102,14 @@ callgraph_cmd = (
     + [
         "--percent-limit",
         "0.5",
+        "--no-inline",
         "--sort",
         "comm,dso,symbol",
         "--call-graph",
         "graph,0.5,caller,function,percent",
     ]
 )
+print("profile-report: building textual call graph", flush=True)
 callgraph = subprocess.run(
     callgraph_cmd, check=True, text=True, capture_output=True
 ).stdout
