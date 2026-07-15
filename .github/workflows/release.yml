@@ -29,7 +29,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Configure git
@@ -52,7 +52,7 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -90,7 +90,7 @@ jobs:
       - name: Collect artifacts
         run: bash scripts/ci/package-binary.sh "${{ steps.target.outputs.triple }}" "${{ steps.vars.outputs.version }}" target/release
       - name: Upload release package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-${{ steps.target.outputs.triple }}
           path: |
@@ -120,7 +120,7 @@ jobs:
       RUSTUP_HOME: /opt/rustup
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install build dependencies
@@ -168,7 +168,7 @@ jobs:
           bash scripts/ci/package-binary.sh aarch64-unknown-linux-gnu       "${{ steps.vars.outputs.version }}" target/aarch64-unknown-linux-gnu/release
           bash scripts/ci/package-binary.sh armv7-unknown-linux-gnueabihf   "${{ steps.vars.outputs.version }}" target/armv7-unknown-linux-gnueabihf/release
       - name: Upload cross-compile artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-cross-binaries
           path: |
@@ -197,12 +197,12 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed base-devel git
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: Extract version
         id: vars
         run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Download native build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-x86_64-unknown-linux-gnu
           path: dist
@@ -231,7 +231,7 @@ jobs:
           for pkg in *.pkg.tar.zst; do mv "$pkg" artifacts/; done
           for src in *.src.tar.zst; do mv "$src" artifacts/; done
       - name: Upload Arch package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-arch-bin-package
           path: artifacts/
@@ -246,7 +246,7 @@ jobs:
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
       - name: Install build dependencies
         run: |
           bash scripts/ci/install-deps-ubuntu.sh
@@ -255,7 +255,7 @@ jobs:
         id: vars
         run: bash scripts/ci/extract-version.sh "$GITHUB_REF_NAME"
       - name: Download native build artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-x86_64-unknown-linux-gnu
           path: dist
@@ -280,7 +280,7 @@ jobs:
           mv "target/deb/instantwm_${VERSION}_amd64.deb" artifacts/
           cd artifacts && sha256sum "instantwm_${VERSION}_amd64.deb" > "instantwm_${VERSION}_amd64.deb.sha256"
       - name: Upload deb package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: instantwm-${{ steps.vars.outputs.version }}-deb
           path: artifacts/
@@ -300,11 +300,11 @@ jobs:
     if: ${{ needs.metadata.outputs.should_release == 'true' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -313,7 +313,7 @@ jobs:
           VERSION: ${{ needs.metadata.outputs.version }}
         run: bash scripts/ci/extract-release-notes.sh "$VERSION" > release-notes.md
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.metadata.outputs.tag }}
           name: ${{ needs.metadata.outputs.tag }}
