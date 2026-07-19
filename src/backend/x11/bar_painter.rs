@@ -15,16 +15,16 @@ impl SchemeKey {
     fn from_scheme(s: &BarScheme) -> Self {
         Self {
             fg: [
-                s.fg[0].to_bits(),
-                s.fg[1].to_bits(),
-                s.fg[2].to_bits(),
-                s.fg[3].to_bits(),
+                s.foreground[0].to_bits(),
+                s.foreground[1].to_bits(),
+                s.foreground[2].to_bits(),
+                s.foreground[3].to_bits(),
             ],
             bg: [
-                s.bg[0].to_bits(),
-                s.bg[1].to_bits(),
-                s.bg[2].to_bits(),
-                s.bg[3].to_bits(),
+                s.background[0].to_bits(),
+                s.background[1].to_bits(),
+                s.background[2].to_bits(),
+                s.background[3].to_bits(),
             ],
             detail: [
                 s.detail[0].to_bits(),
@@ -67,8 +67,8 @@ impl BarPainter for X11BarPainter {
             existing.clone()
         } else {
             let built = ColorScheme {
-                fg: self.drw.clr_create_rgba(scheme.fg),
-                bg: self.drw.clr_create_rgba(scheme.bg),
+                fg: self.drw.clr_create_rgba(scheme.foreground),
+                bg: self.drw.clr_create_rgba(scheme.background),
                 detail: self.drw.clr_create_rgba(scheme.detail),
             };
             self.scheme_cache.insert(key, built.clone());

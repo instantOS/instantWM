@@ -26,7 +26,7 @@ pub(crate) fn draw_menu(
         }
         if !entry.enabled {
             let mut disabled_scheme = base_scheme.clone();
-            disabled_scheme.fg[3] *= 0.55;
+            disabled_scheme.foreground[3] *= 0.55;
             painter.set_scheme(disabled_scheme);
         }
         let prefix = match entry.toggle {

@@ -142,8 +142,8 @@ impl<'a> CoreCtx<'a> {
     pub fn status_scheme(&self) -> crate::bar::paint::BarScheme {
         let c = &self.g.config.colors.status_bar;
         crate::bar::paint::BarScheme {
-            fg: c.fg,
-            bg: c.bg,
+            foreground: c.fg,
+            background: c.bg,
             detail: c.detail,
         }
     }
@@ -155,8 +155,8 @@ impl<'a> CoreCtx<'a> {
             .colors
             .colors_for(SchemeHover::Hover, SchemeTag::Filled);
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
@@ -211,8 +211,8 @@ impl<'a> CoreCtx<'a> {
             tag_role,
         );
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
@@ -255,8 +255,8 @@ impl<'a> CoreCtx<'a> {
             window_role,
         );
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
@@ -286,8 +286,8 @@ impl<'a> CoreCtx<'a> {
             close_role,
         );
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }

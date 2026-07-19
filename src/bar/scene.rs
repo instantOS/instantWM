@@ -379,7 +379,7 @@ fn draw_close_button_snapshot(
     bar_height: i32,
 ) {
     let mut scheme = scheme.clone();
-    scheme.fg = scheme.detail;
+    scheme.foreground = scheme.detail;
     painter.set_scheme(scheme);
     let button_x = x + bar_height / 6;
     let detail_offset = if is_hover { CLOSE_BUTTON_DETAIL } else { 0 };

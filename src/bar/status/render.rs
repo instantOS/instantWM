@@ -237,12 +237,12 @@ fn draw_i3_block(
         .color
         .as_deref()
         .and_then(crate::bar::color::rgba_from_hex)
-        .unwrap_or(base_scheme.fg);
+        .unwrap_or(base_scheme.foreground);
     let mut bg = block
         .background
         .as_deref()
         .and_then(crate::bar::color::rgba_from_hex)
-        .unwrap_or(base_scheme.bg);
+        .unwrap_or(base_scheme.background);
     let mut detail = base_scheme.detail;
 
     if block.urgent {
@@ -250,7 +250,11 @@ fn draw_i3_block(
         detail = fg;
     }
 
-    let block_scheme = crate::bar::paint::BarScheme { fg, bg, detail };
+    let block_scheme = crate::bar::paint::BarScheme {
+        foreground: fg,
+        background: bg,
+        detail,
+    };
     painter.set_scheme(block_scheme.clone());
 
     let text = block_render_text(block);
@@ -283,8 +287,8 @@ fn draw_i3_block(
         .unwrap_or(block_scheme.detail);
 
     let border_scheme = crate::bar::paint::BarScheme {
-        fg: border_color,
-        bg: block_scheme.bg,
+        foreground: border_color,
+        background: block_scheme.background,
         detail: border_color,
     };
     painter.set_scheme(border_scheme);

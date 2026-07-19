@@ -13,8 +13,8 @@ use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::*;
 
-use super::get_win_geometry;
 use super::is_override_redirect;
+use super::query_initial_window_geometry;
 use super::setup::SYSTEM_TRAY_REQUEST_DOCK;
 
 fn send_xembed_event(
@@ -409,9 +409,16 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     };
 
     if ctx.core.model().client(event_win).is_none() && !is_override_redirect(&ctx.x11, event_win) {
-        let (geo, border_width) = get_win_geometry(&ctx.x11, event_win);
+        let Some(initial_geometry) = query_initial_window_geometry(&ctx.x11, event_win) else {
+            return;
+        };
         let mut tmp = ctx.reborrow();
-        crate::backend::x11::lifecycle::manage(&mut tmp, event_win, geo, border_width);
+        crate::backend::x11::lifecycle::manage(
+            &mut tmp,
+            event_win,
+            initial_geometry.rect,
+            initial_geometry.border_width,
+        );
     };
 }
 

@@ -6,6 +6,7 @@
 //! connection.
 
 use libc::c_void;
+use std::collections::HashMap;
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{ConfigureWindowAux, ConnectionExt, InputFocus, StackMode, Window};
@@ -47,6 +48,8 @@ pub struct X11RuntimeConfig {
     pub last_x11_cursor: Option<crate::types::AltCursor>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
+    /// Border widths to restore when X11 windows leave WM management.
+    pub original_border_widths: HashMap<WindowId, u32>,
 }
 
 impl Default for X11RuntimeConfig {
@@ -66,6 +69,7 @@ impl Default for X11RuntimeConfig {
             cursors: [const { None }; 10],
             last_x11_cursor: None,
             window_animations: crate::animation::WindowAnimations::new(),
+            original_border_widths: HashMap::new(),
         }
     }
 }
