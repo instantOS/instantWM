@@ -5,6 +5,8 @@ use cosmic_text::{
     Attrs, Buffer, Color as CosmicColor, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap,
 };
 
+use crate::types::{Point, Rect, Size};
+
 use super::pixels;
 
 const TEXT_CACHE_LIMIT: usize = 2048;
@@ -142,20 +144,16 @@ impl TextRasterizer {
     pub(super) fn rasterize(
         &self,
         pixels: &mut [u8],
-        canvas_w: i32,
-        canvas_h: i32,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
+        canvas_size: Size,
+        bounds: Rect,
         text: &str,
         color: [f32; 4],
     ) {
-        if text.is_empty() || w <= 0 || h <= 0 {
+        if text.is_empty() || !bounds.size().is_positive() {
             return;
         }
 
-        let font_size = self.effective_font_size(text, h);
+        let font_size = self.effective_font_size(text, bounds.h);
         let cosmic_color = CosmicColor::rgba(
             (color[0] * 255.0) as u8,
             (color[1] * 255.0) as u8,
@@ -164,8 +162,8 @@ impl TextRasterizer {
         );
         let key = TextRenderKey {
             text: text.to_string(),
-            width: w,
-            height: h,
+            width: bounds.w,
+            height: bounds.h,
             font_size_bits: font_size.to_bits(),
         };
 
@@ -173,9 +171,9 @@ impl TextRasterizer {
             let mut cache = self.render_cache.borrow_mut();
             if !cache.contains_key(&key) {
                 let mut fs = self.font_system.borrow_mut();
-                let metrics = Metrics::new(font_size, h as f32);
+                let metrics = Metrics::new(font_size, bounds.h as f32);
                 let mut buffer = Buffer::new(&mut fs, metrics);
-                buffer.set_size(Some(w as f32), Some(h as f32));
+                buffer.set_size(Some(bounds.w as f32), Some(bounds.h as f32));
                 buffer.set_wrap(Wrap::None);
                 self.set_buffer_text(&mut buffer, text);
                 buffer.shape_until_scroll(&mut fs, false);
@@ -196,19 +194,14 @@ impl TextRasterizer {
         cached
             .buffer
             .draw(&mut fs, &mut sc, cosmic_color, |gx, gy, _, _, color| {
-                if gx < 0 || gy < 0 || gx >= w || gy >= h {
+                if gx < 0 || gy < 0 || gx >= bounds.w || gy >= bounds.h {
                     return;
                 }
                 pixels::fill_pixel(
                     pixels,
-                    canvas_w,
-                    canvas_h,
-                    x + gx,
-                    y + gy,
-                    color.r(),
-                    color.g(),
-                    color.b(),
-                    color.a(),
+                    canvas_size,
+                    Point::new(bounds.x + gx, bounds.y + gy),
+                    [color.r(), color.g(), color.b(), color.a()],
                 );
             });
     }

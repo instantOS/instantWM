@@ -2,27 +2,24 @@ use smithay::backend::allocator::Fourcc;
 use smithay::backend::renderer::element::memory::MemoryRenderBuffer;
 use smithay::utils::Transform;
 
+use crate::types::{Point, Rect};
+
 pub struct BarBuffer {
     pub buffer: MemoryRenderBuffer,
-    pub x: i32,
-    pub y: i32,
+    pub position: Point,
 }
 
 #[derive(Clone)]
 pub(super) struct RawBarBuffer {
     pub(super) pixels: Vec<u8>,
-    pub(super) width: i32,
-    pub(super) height: i32,
-    pub(super) x: i32,
-    pub(super) y: i32,
+    pub(super) rect: Rect,
 }
 
 impl Clone for BarBuffer {
     fn clone(&self) -> Self {
         Self {
             buffer: self.buffer.clone(),
-            x: self.x,
-            y: self.y,
+            position: self.position,
         }
     }
 }
@@ -32,15 +29,14 @@ impl From<&RawBarBuffer> for BarBuffer {
         let buffer = MemoryRenderBuffer::from_slice(
             &raw.pixels,
             Fourcc::Argb8888,
-            (raw.width, raw.height),
+            (raw.rect.w, raw.rect.h),
             1,
             Transform::Normal,
             None,
         );
         BarBuffer {
             buffer,
-            x: raw.x,
-            y: raw.y,
+            position: raw.rect.position(),
         }
     }
 }

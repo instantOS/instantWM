@@ -85,15 +85,15 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         let hit_x = start_point.x - current_geo.x;
         let hit_y = start_point.y - current_geo.y;
         let dir =
-            crate::types::input::get_resize_direction(current_geo.w, current_geo.h, hit_x, hit_y);
+            crate::types::input::get_resize_direction(current_geo.size(), Point::new(hit_x, hit_y));
 
         let bw = match ctx.core().model().client(win) {
             Some(c) => c.border_width,
             None => return true,
         };
-        let (x_off, y_off) = dir.warp_offset(current_geo.w, current_geo.h, bw);
-        let warp_x = current_geo.x + x_off;
-        let warp_y = current_geo.y + y_off;
+        let offset = dir.warp_offset(current_geo.size(), bw);
+        let warp_x = current_geo.x + offset.x;
+        let warp_y = current_geo.y + offset.y;
         let warp_point = Point::new(warp_x, warp_y);
 
         if let WmCtx::Wayland(wl) = ctx {
@@ -189,10 +189,9 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 
     if is_right_click {
         if let Some(c) = ctx.core().model().client(win) {
-            let (x_off, y_off) =
-                ResizeDirection::BottomRight.warp_offset(c.geo.w, c.geo.h, c.border_width);
+            let offset = ResizeDirection::BottomRight.warp_offset(c.geo.size(), c.border_width);
             ctx.pointer_backend()
-                .warp_pointer((c.geo.x + x_off) as f64, (c.geo.y + y_off) as f64);
+                .warp_pointer((c.geo.x + offset.x) as f64, (c.geo.y + offset.y) as f64);
         }
         if let WmCtx::X11(x11) = ctx {
             resize_mouse_directional(x11, Some(ResizeDirection::BottomRight), btn);

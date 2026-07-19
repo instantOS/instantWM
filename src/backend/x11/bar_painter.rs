@@ -51,8 +51,8 @@ impl X11BarPainter {
         }
     }
 
-    pub fn map(&self, win: crate::types::WindowId, x: i16, y: i16, w: u16, h: u16) {
-        self.drw.map(win.into(), x, y, w, h);
+    pub fn map(&self, window: crate::types::WindowId, bounds: Rect) {
+        self.drw.map(window.into(), bounds);
     }
 }
 
@@ -82,14 +82,7 @@ impl BarPainter for X11BarPainter {
         if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        self.drw.rect(
-            bounds.x,
-            bounds.y,
-            bounds.w as u32,
-            bounds.h as u32,
-            filled,
-            invert,
-        );
+        self.drw.rect(bounds, filled, invert);
     }
 
     fn text(
@@ -103,15 +96,7 @@ impl BarPainter for X11BarPainter {
         if bounds.w <= 0 || bounds.h <= 0 {
             return bounds.x;
         }
-        self.drw.text(
-            bounds.x,
-            bounds.y,
-            bounds.w as u32,
-            bounds.h as u32,
-            lpad.max(0) as u32,
-            text,
-            invert,
-            detail_height,
-        )
+        self.drw
+            .text(bounds, lpad.max(0) as u32, text, invert, detail_height)
     }
 }

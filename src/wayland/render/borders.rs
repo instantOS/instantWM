@@ -9,15 +9,14 @@ use smithay::desktop::PopupManager;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::model::WmModel;
-use crate::types::{BorderColorConfig, Point, Rect, WindowId};
+use crate::types::{BorderColorConfig, Rect, Size, WindowId};
 
 /// Information about a window needed for border rendering.
 #[derive(Debug, Clone, Copy)]
 struct WindowBorderInfo {
     id: WindowId,
-    position: Point,
+    content_rect: Rect,
     border_width: i32,
-    content_size: (i32, i32),
     is_visible: bool,
     is_hidden: bool,
     is_floating: bool,
@@ -26,19 +25,17 @@ struct WindowBorderInfo {
 
 impl WindowBorderInfo {
     /// Total outer size including borders.
-    fn outer_size(&self) -> (i32, i32) {
+    fn outer_size(&self) -> Size {
         let border_width = self.border_width;
-        let (content_width, content_height) = self.content_size;
-        (
-            content_width + 2 * border_width,
-            content_height + 2 * border_width,
+        Size::new(
+            self.content_rect.w + 2 * border_width,
+            self.content_rect.h + 2 * border_width,
         )
     }
 
     /// Bounding rectangle including borders.
     fn bounding_rect(&self) -> Rect {
-        let (outer_width, outer_height) = self.outer_size();
-        Rect::new(self.position.x, self.position.y, outer_width, outer_height)
+        self.content_rect.with_size(self.outer_size())
     }
 
     /// Checks if this window should render borders.
@@ -74,19 +71,15 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
         let c = view.client;
 
         let size = window.geometry().size;
-        let content_size = (size.w.max(1), size.h.max(1));
+        let content_rect = Rect::new(c.geo.x, c.geo.y, size.w.max(1), size.h.max(1));
 
         let is_visible = c.is_visible(view.monitor.selected_tags());
         let is_tiling_layout = view.monitor.is_tiling_layout();
 
         windows.push(WindowBorderInfo {
             id: marker.id,
-            position: Point {
-                x: c.geo.x,
-                y: c.geo.y,
-            },
+            content_rect,
             border_width: c.border_width.max(0),
-            content_size,
             is_visible,
             is_hidden: c.is_hidden,
             is_floating: c.mode.is_floating(),
@@ -98,35 +91,34 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
 }
 
 /// Generates the four border rectangles for a window.
-fn generate_border_rectangles(
-    x: i32,
-    y: i32,
-    outer_width: i32,
-    outer_height: i32,
-    border_width: i32,
-) -> Vec<Rect> {
-    if border_width <= 0 || outer_width <= 2 * border_width || outer_height <= 2 * border_width {
+fn generate_border_rectangles(outer_rect: Rect, border_width: i32) -> Vec<Rect> {
+    if border_width <= 0 || outer_rect.w <= 2 * border_width || outer_rect.h <= 2 * border_width {
         return Vec::new();
     }
 
-    let inner_height = (outer_height - 2 * border_width).max(0);
+    let inner_height = (outer_rect.h - 2 * border_width).max(0);
 
     vec![
         // Top border
-        Rect::new(x, y, outer_width, border_width),
+        Rect::new(outer_rect.x, outer_rect.y, outer_rect.w, border_width),
         // Bottom border
         Rect::new(
-            x,
-            y + outer_height - border_width,
-            outer_width,
+            outer_rect.x,
+            outer_rect.y + outer_rect.h - border_width,
+            outer_rect.w,
             border_width,
         ),
         // Left border (between top and bottom)
-        Rect::new(x, y + border_width, border_width, inner_height),
+        Rect::new(
+            outer_rect.x,
+            outer_rect.y + border_width,
+            border_width,
+            inner_height,
+        ),
         // Right border (between top and bottom)
         Rect::new(
-            x + outer_width - border_width,
-            y + border_width,
+            outer_rect.x + outer_rect.w - border_width,
+            outer_rect.y + border_width,
             border_width,
             inner_height,
         ),
@@ -279,17 +271,10 @@ pub fn render_border_elements(
             continue;
         }
 
-        let (outer_width, outer_height) = window.outer_size();
         let border_width = window.border_width;
 
         // Generate the four border sides
-        let border_parts = generate_border_rectangles(
-            window.position.x,
-            window.position.y,
-            outer_width,
-            outer_height,
-            border_width,
-        );
+        let border_parts = generate_border_rectangles(window.bounding_rect(), border_width);
         if border_parts.is_empty() {
             continue;
         }
@@ -307,28 +292,21 @@ pub fn render_border_elements(
 
         // Create render elements for visible border parts
         for part in visible_parts {
-            push_solid(&mut elements, part.x, part.y, part.w, part.h, color);
+            push_solid(&mut elements, part, color);
         }
     }
 
     elements
 }
 
-fn push_solid(
-    out: &mut Vec<SolidColorRenderElement>,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
-    color: [f32; 4],
-) {
-    if width <= 0 || height <= 0 {
+fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: [f32; 4]) {
+    if !rect.size().is_positive() {
         return;
     }
-    let buffer = SolidColorBuffer::new((width, height), color);
+    let buffer = SolidColorBuffer::new((rect.w, rect.h), color);
     out.push(SolidColorRenderElement::from_buffer(
         &buffer,
-        (x, y),
+        (rect.x, rect.y),
         smithay::utils::Scale::from(1.0),
         1.0,
         Kind::Unspecified,

@@ -18,29 +18,37 @@ use crate::mouse::monitor::handle_client_monitor_switch;
 
 /// Snap `pos` to the work-area edges of `selmon` when within `globals.config.window.snap_threshold` pixels.
 pub fn snap_to_monitor_edges(ctx: &mut WmCtx, c: &Client, pos: &mut Point) {
-    snap_window_to_monitor_edges(ctx.core().state(), c.win, c.geo.w, c.geo.h, pos);
+    snap_window_to_monitor_edges(ctx.core().state(), c.win, c.geo.size(), pos);
 }
 
-pub fn snap_window_to_monitor_edges(g: &CoreState, win: WindowId, w: i32, h: i32, pos: &mut Point) {
-    let snap = g.config.window.snap_threshold;
-    let Some(view) = g.model.client_view(win) else {
+pub fn snap_window_to_monitor_edges(
+    state: &CoreState,
+    window: WindowId,
+    content_size: Size,
+    position: &mut Point,
+) {
+    let snap = state.config.window.snap_threshold;
+    let Some(view) = state.model.client_view(window) else {
         return;
     };
-    let mon = view.monitor;
-    let bw = view.client.border_width.max(0);
-    let width = w + bw * 2;
-    let height = h + bw * 2;
+    let monitor = view.monitor;
+    let border_width = view.client.border_width.max(0);
+    let outer_size = Size::new(
+        content_size.w + border_width * 2,
+        content_size.h + border_width * 2,
+    );
+    let work_rect = monitor.work_rect();
 
-    if (mon.work_rect().x - pos.x).abs() < snap {
-        pos.x = mon.work_rect().x;
-    } else if (mon.work_rect().x + mon.work_rect().w - (pos.x + width)).abs() < snap {
-        pos.x = mon.work_rect().x + mon.work_rect().w - width;
+    if (work_rect.x - position.x).abs() < snap {
+        position.x = work_rect.x;
+    } else if (work_rect.x + work_rect.w - (position.x + outer_size.w)).abs() < snap {
+        position.x = work_rect.x + work_rect.w - outer_size.w;
     }
 
-    if (mon.work_rect().y - pos.y).abs() < snap {
-        pos.y = mon.work_rect().y;
-    } else if (mon.work_rect().y + mon.work_rect().h - (pos.y + height)).abs() < snap {
-        pos.y = mon.work_rect().y + mon.work_rect().h - height;
+    if (work_rect.y - position.y).abs() < snap {
+        position.y = work_rect.y;
+    } else if (work_rect.y + work_rect.h - (position.y + outer_size.h)).abs() < snap {
+        position.y = work_rect.y + work_rect.h - outer_size.h;
     }
 }
 

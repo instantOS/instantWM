@@ -1,7 +1,7 @@
 use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::contexts::CoreCtx;
-use crate::types::{Monitor, MonitorId, WindowId, XEmbedTray};
+use crate::types::{Monitor, MonitorId, Rect, WindowId, XEmbedTray};
 use std::collections::HashMap;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -65,7 +65,7 @@ pub fn draw_bar(
     };
     crate::bar::renderer::draw_bar_snapshot(core, mon_idx, &monitor, snapshot, &mut painter);
 
-    painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
+    painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
 }
 
 pub fn draw_bars(
@@ -123,7 +123,7 @@ pub fn draw_bars(
 
         let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
         crate::bar::renderer::draw_bar_snapshot(core, i, &monitor, snapshot, &mut painter);
-        painter.map(bar_win, 0, 0, work_rect_w as u16, bar_height as u16);
+        painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
     }
     core.bar.mark_drawn();
 }

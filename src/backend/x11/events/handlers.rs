@@ -664,7 +664,10 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let _ = crate::backend::x11::update_size_hints(ctx.core.model_mut(), &ctx.x11, icon_win);
     crate::backend::x11::systray::update_systray_icon_geom(
-        ctx.core.g, &ctx.x11, icon_win, geo.w, geo.h,
+        ctx.core.g,
+        &ctx.x11,
+        icon_win,
+        geo.size(),
     );
 
     let conn = ctx.x11.conn;

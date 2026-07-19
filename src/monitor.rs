@@ -386,30 +386,26 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 }
 
-fn output_layout_extent(outputs: &[BackendOutputInfo]) -> (i32, i32) {
-    let w = outputs
+fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Size {
+    let width = outputs
         .iter()
         .map(|o| o.rect.x.saturating_add(o.rect.w))
         .max()
         .unwrap_or(1)
         .max(1);
-    let h = outputs
+    let height = outputs
         .iter()
         .map(|o| o.rect.y.saturating_add(o.rect.h))
         .max()
         .unwrap_or(1)
         .max(1);
-    (w, h)
+    Size::new(width, height)
 }
 
-fn sync_runtime_screen_size(
-    cfg: &mut RuntimeConfig,
-    layout_width: i32,
-    layout_height: i32,
-) -> bool {
-    if cfg.derived.display.width != layout_width || cfg.derived.display.height != layout_height {
-        cfg.derived.display.width = layout_width;
-        cfg.derived.display.height = layout_height;
+fn sync_runtime_screen_size(cfg: &mut RuntimeConfig, layout_size: Size) -> bool {
+    if cfg.derived.display.width != layout_size.w || cfg.derived.display.height != layout_size.h {
+        cfg.derived.display.width = layout_size.w;
+        cfg.derived.display.height = layout_size.h;
         true
     } else {
         false
@@ -521,9 +517,8 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let template = ctx.core().config().tag_template.clone();
     let (show_bar, top_bar) = (ctx.core().config().bar.show, ctx.core().config().bar.top);
 
-    let (layout_width, layout_height) = output_layout_extent(&outputs);
-    let mut changed =
-        sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_width, layout_height);
+    let layout_size = output_layout_extent(&outputs);
+    let mut changed = sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_size);
 
     // Pre-compute per-output UI metrics while we hold an immutable config borrow.
     let metrics: Vec<(i32, i32, i32)> = outputs

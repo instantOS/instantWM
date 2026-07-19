@@ -511,7 +511,7 @@ pub fn spawn_smoke_window() {
 pub fn build_bar_buffers(
     wm: &mut Wm,
     state: &mut WaylandState,
-) -> Vec<(MemoryRenderBuffer, i32, i32)> {
+) -> Vec<(MemoryRenderBuffer, crate::types::Point)> {
     if !wm.core.config.bar.show {
         return Vec::new();
     }
@@ -567,7 +567,7 @@ pub fn poll_systray(wm: &mut Wm) {
 /// multiple output renders in the same frame.
 #[derive(Clone)]
 pub struct FixedSceneElements {
-    pub bar_buffers: Vec<(MemoryRenderBuffer, i32, i32)>,
+    pub bar_buffers: Vec<(MemoryRenderBuffer, crate::types::Point)>,
     pub borders: Vec<SolidColorRenderElement>,
 }
 
@@ -640,10 +640,10 @@ pub fn build_common_scene_elements_from_fixed(
     }
 
     let mut bar = Vec::new();
-    for (buffer, x, y) in &fixed.bar_buffers {
+    for (buffer, position) in &fixed.bar_buffers {
         match MemoryRenderBufferRenderElement::from_buffer(
             renderer,
-            (*x as f64, *y as f64),
+            (position.x as f64, position.y as f64),
             buffer,
             None,
             None,
@@ -827,9 +827,9 @@ pub(crate) fn window_overlaps_output(
 
 /// Clamp output dimensions to a safe minimum so that Smithay never sees a
 /// zero-sized surface.
-pub fn sanitize_size(w: i32, h: i32) -> (i32, i32) {
+pub fn sanitize_size(size: crate::types::Size) -> crate::types::Size {
     const WAYLAND_MIN_DIM: i32 = 64;
-    (w.max(WAYLAND_MIN_DIM), h.max(WAYLAND_MIN_DIM))
+    crate::types::Size::new(size.w.max(WAYLAND_MIN_DIM), size.h.max(WAYLAND_MIN_DIM))
 }
 
 pub fn output_has_real_fullscreen(wm: &Wm, output: &Output) -> bool {

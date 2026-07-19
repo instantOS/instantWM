@@ -8,7 +8,7 @@ use smithay::utils::Transform;
 
 use crate::backend::BackendVrrSupport;
 use crate::config::config_toml::VrrMode;
-use crate::types::{MonitorPosition, Rect};
+use crate::types::{MonitorPosition, Point, Rect, Size};
 
 use super::state::WaylandState;
 
@@ -28,11 +28,10 @@ fn parse_transform(transform_str: &str) -> Option<Transform> {
 
 impl WaylandState {
     /// Create and register a default output.
-    pub fn create_output(&mut self, name: &str, width: i32, height: i32) -> Output {
-        let safe_width = width.max(Self::MIN_WL_DIM);
-        let safe_height = height.max(Self::MIN_WL_DIM);
+    pub fn create_output(&mut self, name: &str, size: Size) -> Output {
+        let safe_size = Size::new(size.w.max(Self::MIN_WL_DIM), size.h.max(Self::MIN_WL_DIM));
         let mode = OutputMode {
-            size: (safe_width, safe_height).into(),
+            size: (safe_size.w, safe_size.h).into(),
             refresh: 60_000,
         };
         let output = self.create_output_global(
@@ -45,7 +44,7 @@ impl WaylandState {
                 serial_number: "Unknown".into(),
             },
             mode,
-            (0, 0),
+            Point::default(),
         );
         self.space.map_output(&output, (0, 0));
         self.set_output_vrr_support(name, BackendVrrSupport::Unsupported);
@@ -60,14 +59,14 @@ impl WaylandState {
         name: String,
         physical_properties: PhysicalProperties,
         mode: OutputMode,
-        location: (i32, i32),
+        location: Point,
     ) -> Output {
         let output = Output::new(name, physical_properties);
         output.change_current_state(
             Some(mode),
             Some(Transform::Normal),
             Some(Scale::Integer(1)),
-            Some(location.into()),
+            Some((location.x, location.y).into()),
         );
         output.set_preferred(mode);
         let _global = output.create_global::<WaylandState>(&self.display_handle);
@@ -96,12 +95,12 @@ impl WaylandState {
     }
 
     /// Set the display mode for a display.
-    pub fn set_display_mode(&mut self, display: &str, width: i32, height: i32) {
+    pub fn set_display_mode(&mut self, display: &str, size: Size) {
         if let Some(output) = self.space.outputs().find(|o| o.name() == display).cloned()
             && let Some(mode) = output
                 .modes()
                 .into_iter()
-                .find(|m| m.size.w == width && m.size.h == height)
+                .find(|mode| mode.size.w == size.w && mode.size.h == size.h)
         {
             output.change_current_state(Some(mode), None, None, None);
         }
@@ -166,11 +165,11 @@ impl WaylandState {
             let new_transform = config.transform.as_ref().and_then(|t| parse_transform(t));
 
             if let Some(ref pos) = config.position
-                && let Some((x, y)) = MonitorPosition::parse(pos).and_then(|p| {
+                && let Some(position) = MonitorPosition::parse(pos).and_then(|p| {
                     let size = current_mode
                         .as_ref()
-                        .map(|mode| (mode.size.w, mode.size.h))
-                        .unwrap_or((current_geometry.size.w, current_geometry.size.h));
+                        .map(|mode| Size::new(mode.size.w, mode.size.h))
+                        .unwrap_or(Size::new(current_geometry.size.w, current_geometry.size.h));
                     p.resolve(
                         size,
                         known_outputs
@@ -179,7 +178,7 @@ impl WaylandState {
                     )
                 })
             {
-                current_location = (x, y).into();
+                current_location = (position.x, position.y).into();
             }
 
             output.change_current_state(

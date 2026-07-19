@@ -279,7 +279,7 @@ pub struct WaylandRuntimeState {
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
-    pub pending_winit_resize: Option<(i32, i32)>,
+    pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
     pub intercepted_key_releases: HashSet<Keycode>,

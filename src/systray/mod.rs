@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::types::{Point, Rect};
+use crate::types::{Point, Rect, Size};
 
 pub(crate) mod render;
 pub(crate) mod status_notifier;
@@ -42,8 +42,7 @@ pub(crate) struct StatusNotifierItem {
     pub service: String,
     pub path: String,
     pub icon_rgba: Arc<[u8]>,
-    pub icon_w: i32,
-    pub icon_h: i32,
+    pub icon_size: Size,
 }
 
 /// Current items exported through the StatusNotifier protocol.
@@ -179,35 +178,30 @@ pub(crate) fn layout(
         .min((bar_height - 1) / 2);
     let max_icon_height = (bar_height - 2 * padding).max(1);
 
-    let dimensions: Vec<(i32, i32, i32)> = tray
+    let dimensions: Vec<(i32, Size)> = tray
         .items
         .iter()
         .map(|item| {
-            let (icon_width, icon_height) = fit_icon_size(
-                item.icon_w,
-                item.icon_h,
-                max_icon_height,
-                IconScale::DownOnly,
-            );
-            let cell_width = bar_height.max(icon_width + 2 * padding);
-            (cell_width, icon_width, icon_height)
+            let icon_size = fit_icon_size(item.icon_size, max_icon_height, IconScale::DownOnly);
+            let cell_width = bar_height.max(icon_size.w + 2 * padding);
+            (cell_width, icon_size)
         })
         .collect();
-    let total_width = dimensions.iter().map(|(cell_width, _, _)| cell_width).sum();
+    let total_width = dimensions.iter().map(|(cell_width, _)| cell_width).sum();
     let start_x = monitor_width - total_width;
 
     let mut x = start_x;
     let cells = dimensions
         .into_iter()
         .enumerate()
-        .map(|(idx, (cell_width, icon_width, icon_height))| {
-            let icon_x = x + (cell_width - icon_width) / 2;
-            let icon_y = (bar_height - icon_height) / 2;
+        .map(|(idx, (cell_width, icon_size))| {
+            let icon_x = x + (cell_width - icon_size.w) / 2;
+            let icon_y = (bar_height - icon_size.h) / 2;
             let cell = TrayCell {
                 idx,
                 hit_start: x,
                 hit_end: x + cell_width,
-                icon: Rect::new(icon_x, icon_y, icon_width, icon_height),
+                icon: Rect::from_position_and_size(Point::new(icon_x, icon_y), icon_size),
             };
             x += cell_width;
             cell
@@ -317,26 +311,21 @@ fn fit_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
 /// Fit an icon inside the available height while preserving aspect ratio.
 /// Source images are never enlarged: interpolation can make an enlarged icon
 /// softer, but it cannot add the detail omitted by the StatusNotifier item.
-pub(crate) fn fit_icon_size(
-    source_width: i32,
-    source_height: i32,
-    target_height: i32,
-    scale: IconScale,
-) -> (i32, i32) {
-    if source_width <= 0 || source_height <= 0 || target_height <= 0 {
-        return (0, 0);
+pub(crate) fn fit_icon_size(source_size: Size, target_height: i32, scale: IconScale) -> Size {
+    if !source_size.is_positive() || target_height <= 0 {
+        return Size::default();
     }
     let height = match scale {
-        IconScale::DownOnly => source_height.min(target_height),
+        IconScale::DownOnly => source_size.h.min(target_height),
         IconScale::FitHeight => target_height,
     };
-    let width = if height == source_height {
-        source_width
+    let width = if height == source_size.h {
+        source_size.w
     } else {
-        ((source_width as i64 * height as i64 + source_height as i64 / 2) / source_height as i64)
+        ((source_size.w as i64 * height as i64 + source_size.h as i64 / 2) / source_size.h as i64)
             as i32
     };
-    (width.max(1), height.max(1))
+    Size::new(width.max(1), height.max(1))
 }
 
 #[cfg(test)]
@@ -348,8 +337,7 @@ mod tests {
 
     fn item(width: i32, height: i32) -> StatusNotifierItem {
         StatusNotifierItem {
-            icon_w: width,
-            icon_h: height,
+            icon_size: Size::new(width, height),
             icon_rgba: Arc::from(vec![0; (width * height * 4) as usize]),
             ..StatusNotifierItem::default()
         }
@@ -401,15 +389,21 @@ mod tests {
 
     #[test]
     fn embedded_icon_windows_fill_height_without_losing_aspect_ratio() {
-        assert_eq!(fit_icon_size(16, 16, 30, IconScale::FitHeight), (30, 30));
-        assert_eq!(fit_icon_size(32, 16, 30, IconScale::FitHeight), (60, 30));
+        assert_eq!(
+            fit_icon_size(Size::new(16, 16), 30, IconScale::FitHeight),
+            Size::new(30, 30)
+        );
+        assert_eq!(
+            fit_icon_size(Size::new(32, 16), 30, IconScale::FitHeight),
+            Size::new(60, 30)
+        );
     }
 
     #[test]
     fn invalid_icon_dimensions_are_rejected_for_every_backend_policy() {
         for scale in [IconScale::DownOnly, IconScale::FitHeight] {
-            assert_eq!(fit_icon_size(16, 0, 30, scale), (0, 0));
-            assert_eq!(fit_icon_size(-1, 16, 30, scale), (0, 0));
+            assert_eq!(fit_icon_size(Size::new(16, 0), 30, scale), Size::default());
+            assert_eq!(fit_icon_size(Size::new(-1, 16), 30, scale), Size::default());
         }
     }
 

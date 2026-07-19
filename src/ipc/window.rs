@@ -21,10 +21,7 @@ pub fn handle_window_command(wm: &mut Wm, cmd: WindowCommand) -> Response {
             wm,
             window_id.map(WindowId::from),
             monitor,
-            x,
-            y,
-            width,
-            height,
+            Rect::new(x, y, width, height),
         ),
         WindowCommand::Close(window_id) => close_window(wm, window_id.map(WindowId::from)),
     }
@@ -91,10 +88,7 @@ fn resize_window(
     wm: &mut Wm,
     parsed_id: Option<WindowId>,
     monitor_arg: Option<String>,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
+    requested_rect: Rect,
 ) -> Response {
     let target = parsed_id.or_else(|| wm.core.selected_win());
     let Some(win) = target else {
@@ -116,10 +110,10 @@ fn resize_window(
     };
 
     let rect = Rect {
-        x: target_monitor_rect.x + x,
-        y: target_monitor_rect.y + y,
-        w: width,
-        h: height,
+        x: target_monitor_rect.x + requested_rect.x,
+        y: target_monitor_rect.y + requested_rect.y,
+        w: requested_rect.w,
+        h: requested_rect.h,
     };
 
     if !is_valid_window_size(&wm.core.model, &rect, win) {

@@ -105,7 +105,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
         let hit_x = ptr.x - new_geo.x;
         let hit_y = ptr.y - new_geo.y;
-        let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
+        let dir = get_resize_direction(new_geo.size(), Point::new(hit_x, hit_y));
 
         match ctx {
             WmCtx::X11(x11) => {
@@ -120,7 +120,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
     let hit_x = ptr.x - geo.x;
     let hit_y = ptr.y - geo.y;
-    let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+    let dir = get_resize_direction(geo.size(), Point::new(hit_x, hit_y));
 
     match ctx {
         WmCtx::X11(x11) => {
@@ -153,9 +153,9 @@ fn begin_wayland_super_resize(
     let Some(bw) = wl.core.state().model.client(win).map(|c| c.border_width) else {
         return;
     };
-    let (x_off, y_off) = dir.warp_offset(geo.w, geo.h, bw);
-    let warp_x = geo.x + x_off;
-    let warp_y = geo.y + y_off;
+    let offset = dir.warp_offset(geo.size(), bw);
+    let warp_x = geo.x + offset.x;
+    let warp_y = geo.y + offset.y;
 
     let root = Point::new(warp_x, warp_y);
     if begin_resize(
@@ -339,7 +339,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 
     let hit_x = ptr.x - geo.x;
     let hit_y = ptr.y - geo.y;
-    let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+    let dir = get_resize_direction(geo.size(), Point::new(hit_x, hit_y));
 
     match ctx {
         WmCtx::X11(x11) => {

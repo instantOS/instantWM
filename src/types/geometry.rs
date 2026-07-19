@@ -61,21 +61,25 @@ impl MonitorPosition {
     /// Resolve the configured position against known output geometries.
     pub fn resolve<'a>(
         &self,
-        current_size: (i32, i32),
+        current_size: Size,
         outputs: impl IntoIterator<Item = (&'a str, Rect)>,
-    ) -> Option<(i32, i32)> {
+    ) -> Option<Point> {
         match self {
-            Self::Absolute(pos) => Some((pos.x, pos.y)),
+            Self::Absolute(position) => Some(*position),
             Self::Relative { relation, output } => {
                 let reference = outputs
                     .into_iter()
                     .find_map(|(name, rect)| (name == output).then_some(rect))?;
 
                 Some(match relation {
-                    RelativePosition::LeftOf => (reference.x - current_size.0, reference.y),
-                    RelativePosition::RightOf => (reference.x + reference.w, reference.y),
-                    RelativePosition::Above => (reference.x, reference.y - current_size.1),
-                    RelativePosition::Below => (reference.x, reference.y + reference.h),
+                    RelativePosition::LeftOf => {
+                        Point::new(reference.x - current_size.w, reference.y)
+                    }
+                    RelativePosition::RightOf => Point::new(reference.x + reference.w, reference.y),
+                    RelativePosition::Above => {
+                        Point::new(reference.x, reference.y - current_size.h)
+                    }
+                    RelativePosition::Below => Point::new(reference.x, reference.y + reference.h),
                 })
             }
         }
@@ -118,8 +122,29 @@ impl Point {
     }
 }
 
+/// Two-dimensional dimensions without an associated position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Size {
+    /// Width.
+    pub w: i32,
+    /// Height.
+    pub h: i32,
+}
+
+impl Size {
+    #[inline]
+    pub const fn new(w: i32, h: i32) -> Self {
+        Self { w, h }
+    }
+
+    #[inline]
+    pub const fn is_positive(self) -> bool {
+        self.w > 0 && self.h > 0
+    }
+}
+
 /// A rectangle representing window geometry or screen areas.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Rect {
     /// X coordinate (horizontal position).
     pub x: i32,
@@ -136,6 +161,21 @@ impl Rect {
     #[inline]
     pub const fn new(x: i32, y: i32, w: i32, h: i32) -> Self {
         Self { x, y, w, h }
+    }
+
+    #[inline]
+    pub const fn from_position_and_size(position: Point, size: Size) -> Self {
+        Self::new(position.x, position.y, size.w, size.h)
+    }
+
+    #[inline]
+    pub const fn position(self) -> Point {
+        Point::new(self.x, self.y)
+    }
+
+    #[inline]
+    pub const fn size(self) -> Size {
+        Size::new(self.w, self.h)
     }
 
     /// Calculate the area of this rectangle.
@@ -250,24 +290,12 @@ impl Rect {
         self.h + 2 * border_width
     }
 
-    /// Convert to a 4-tuple (x, y, w, h).
-    #[inline]
-    pub fn as_tuple(&self) -> (i32, i32, i32, i32) {
-        (self.x, self.y, self.w, self.h)
-    }
-
-    /// Create a Rect from a 4-tuple.
-    #[inline]
-    pub fn from_tuple((x, y, w, h): (i32, i32, i32, i32)) -> Self {
-        Self { x, y, w, h }
-    }
-
     /// Create a new Rect with adjusted position.
     #[inline]
-    pub fn with_pos(&self, x: i32, y: i32) -> Self {
+    pub fn with_position(&self, position: Point) -> Self {
         Self {
-            x,
-            y,
+            x: position.x,
+            y: position.y,
             w: self.w,
             h: self.h,
         }
@@ -275,12 +303,12 @@ impl Rect {
 
     /// Create a new Rect with adjusted size.
     #[inline]
-    pub fn with_size(&self, w: i32, h: i32) -> Self {
+    pub fn with_size(&self, size: Size) -> Self {
         Self {
             x: self.x,
             y: self.y,
-            w,
-            h,
+            w: size.w,
+            h: size.h,
         }
     }
 
@@ -395,7 +423,28 @@ impl Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::{MonitorPosition, Point, Rect, RelativePosition, constraints_prefer_floating};
+    use super::{
+        MonitorPosition, Point, Rect, RelativePosition, Size, constraints_prefer_floating,
+    };
+
+    #[test]
+    fn rect_exposes_typed_position_and_size() {
+        let rect = Rect::new(10, 20, 800, 600);
+
+        assert_eq!(rect.position(), Point::new(10, 20));
+        assert_eq!(rect.size(), Size::new(800, 600));
+        assert_eq!(
+            Rect::from_position_and_size(rect.position(), rect.size()),
+            rect
+        );
+    }
+
+    #[test]
+    fn size_requires_both_dimensions_to_be_positive() {
+        assert!(Size::new(1, 1).is_positive());
+        assert!(!Size::new(0, 1).is_positive());
+        assert!(!Size::new(1, -1).is_positive());
+    }
 
     #[test]
     fn parses_absolute_monitor_position() {
@@ -421,7 +470,10 @@ mod tests {
         let pos = MonitorPosition::parse("below:DP-1").unwrap();
         let outputs = [("DP-1", Rect::new(1920, 0, 2560, 1440))];
 
-        assert_eq!(pos.resolve((1920, 1080), outputs), Some((1920, 1440)));
+        assert_eq!(
+            pos.resolve(Size::new(1920, 1080), outputs),
+            Some(Point::new(1920, 1440))
+        );
     }
 
     #[test]
@@ -477,18 +529,13 @@ impl SizeHints {
 
     /// Apply size constraints to the given dimensions.
     ///
-    /// Returns the constrained (width, height) after applying:
+    /// Returns the constrained size after applying:
     /// - Base size subtraction/addition
     /// - Aspect ratio constraints
     /// - Resize increments
     /// - Min/max bounds
-    pub fn constrain_size(
-        &self,
-        mut w: i32,
-        mut h: i32,
-        min_aspect: f32,
-        max_aspect: f32,
-    ) -> (i32, i32) {
+    pub fn constrain_size(&self, size: Size, min_aspect: f32, max_aspect: f32) -> Size {
+        let Size { mut w, mut h } = size;
         let base_is_min = self.base_is_min();
 
         // Step 1: subtract base size before aspect / increment checks.
@@ -532,7 +579,7 @@ impl SizeHints {
             h = h.min(self.maxh);
         }
 
-        (w, h)
+        Size::new(w, h)
     }
 
     /// Check whether these constraints make tiling unsuitable.
@@ -556,62 +603,68 @@ pub fn constraints_prefer_floating(minw: i32, minh: i32, maxw: i32, maxh: i32) -
 ///
 /// Returns the target `Rect` (border-aware) for a window snapped to one of the
 /// nine screen regions (half/quarter/maximized), or `None` if `SnapPosition::None`.
-pub fn snap_rect(snap_status: SnapPosition, bw: i32, work_rect: &Rect) -> Option<Rect> {
+pub fn snap_rect(snap_status: SnapPosition, border_width: i32, work_rect: &Rect) -> Option<Rect> {
     let half_w = work_rect.w / 2;
     let half_h = work_rect.h / 2;
+    let horizontal_border = 2 * border_width;
 
-    let (x, y, w, h) = match snap_status {
-        SnapPosition::Top => (
+    let rect = match snap_status {
+        SnapPosition::Top => Rect::new(
             work_rect.x,
             work_rect.y,
-            work_rect.w - 2 * bw,
-            half_h - 2 * bw,
+            work_rect.w - horizontal_border,
+            half_h - horizontal_border,
         ),
-        SnapPosition::Bottom => (
-            work_rect.x,
-            work_rect.y + half_h,
-            work_rect.w - 2 * bw,
-            half_h - 2 * bw,
-        ),
-        SnapPosition::Left => (
-            work_rect.x,
-            work_rect.y,
-            half_w - 2 * bw,
-            work_rect.h - 2 * bw,
-        ),
-        SnapPosition::Right => (
-            work_rect.x + half_w,
-            work_rect.y,
-            half_w - 2 * bw,
-            work_rect.h - 2 * bw,
-        ),
-        SnapPosition::TopLeft => (work_rect.x, work_rect.y, half_w - 2 * bw, half_h - 2 * bw),
-        SnapPosition::TopRight => (
-            work_rect.x + half_w,
-            work_rect.y,
-            half_w - 2 * bw,
-            half_h - 2 * bw,
-        ),
-        SnapPosition::BottomLeft => (
+        SnapPosition::Bottom => Rect::new(
             work_rect.x,
             work_rect.y + half_h,
-            half_w - 2 * bw,
-            half_h - 2 * bw,
+            work_rect.w - horizontal_border,
+            half_h - horizontal_border,
         ),
-        SnapPosition::BottomRight => (
-            work_rect.x + half_w,
-            work_rect.y + half_h,
-            half_w - 2 * bw,
-            half_h - 2 * bw,
-        ),
-        SnapPosition::Maximized => (
+        SnapPosition::Left => Rect::new(
             work_rect.x,
             work_rect.y,
-            work_rect.w - 2 * bw,
-            work_rect.h - 2 * bw,
+            half_w - horizontal_border,
+            work_rect.h - horizontal_border,
+        ),
+        SnapPosition::Right => Rect::new(
+            work_rect.x + half_w,
+            work_rect.y,
+            half_w - horizontal_border,
+            work_rect.h - horizontal_border,
+        ),
+        SnapPosition::TopLeft => Rect::new(
+            work_rect.x,
+            work_rect.y,
+            half_w - horizontal_border,
+            half_h - horizontal_border,
+        ),
+        SnapPosition::TopRight => Rect::new(
+            work_rect.x + half_w,
+            work_rect.y,
+            half_w - horizontal_border,
+            half_h - horizontal_border,
+        ),
+        SnapPosition::BottomLeft => Rect::new(
+            work_rect.x,
+            work_rect.y + half_h,
+            half_w - horizontal_border,
+            half_h - horizontal_border,
+        ),
+        SnapPosition::BottomRight => Rect::new(
+            work_rect.x + half_w,
+            work_rect.y + half_h,
+            half_w - horizontal_border,
+            half_h - horizontal_border,
+        ),
+        SnapPosition::Maximized => Rect::new(
+            work_rect.x,
+            work_rect.y,
+            work_rect.w - horizontal_border,
+            work_rect.h - horizontal_border,
         ),
         SnapPosition::None => return None,
     };
 
-    Some(Rect { x, y, w, h })
+    Some(rect)
 }

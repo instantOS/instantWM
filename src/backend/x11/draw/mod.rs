@@ -25,10 +25,10 @@
 //! drw.set_scheme(ColorScheme::from_vec(scheme));
 //!
 //! // Draw text into the off-screen pixmap…
-//! drw.text(0, 0, 200, bar_height, horizontal_padding as u32 / 2, "Hello, world!", false, 0);
+//! drw.text(Rect::new(0, 0, 200, bar_height as i32), horizontal_padding as u32 / 2, "Hello, world!", false, 0);
 //!
 //! // …then blit it to the bar window.
-//! drw.map(bar_win, 0, 0, 200, bar_height as u16);
+//! drw.map(bar_win, Rect::new(0, 0, 200, bar_height as i32));
 //! ```
 
 // Sub-modules — ffi is pub(crate) so other modules can reach raw bindings if

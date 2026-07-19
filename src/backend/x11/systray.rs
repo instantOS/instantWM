@@ -82,52 +82,51 @@ pub fn remove_systray_icon(
 
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(
-    globals: &mut crate::core_state::CoreState,
+    state: &mut crate::core_state::CoreState,
     x11: &X11BackendRef,
-    icon_win: WindowId,
-    w: i32,
-    h: i32,
+    icon_window: WindowId,
+    requested_size: Size,
 ) {
-    let bar_height = globals.config.derived.bar_height;
+    let bar_height = state.config.derived.bar_height;
 
-    let Some((geo_x, geo_y)) = globals
+    let Some(position) = state
         .model
-        .client(icon_win)
-        .map(|client| (client.geo.x, client.geo.y))
+        .client(icon_window)
+        .map(|client| client.geo.position())
     else {
         return;
     };
 
-    let (new_geo_w, new_geo_h) =
-        crate::systray::fit_icon_size(w, h, bar_height, crate::systray::IconScale::FitHeight);
-    if new_geo_w == 0 || new_geo_h == 0 {
+    let new_size = crate::systray::fit_icon_size(
+        requested_size,
+        bar_height,
+        crate::systray::IconScale::FitHeight,
+    );
+    if !new_size.is_positive() {
         return;
     }
 
-    let mut rect = Rect::new(geo_x, geo_y, new_geo_w, new_geo_h);
+    let mut rect = Rect::from_position_and_size(position, new_size);
 
     let outcome = crate::client::geometry::apply_size_hints(
-        &globals.model,
-        &globals.config,
-        icon_win,
+        &state.model,
+        &state.config,
+        icon_window,
         &mut rect,
         false,
     );
     if outcome.should_apply_icccm {
         crate::backend::x11::geometry::apply_icccm_size_hints(
-            &mut globals.model,
+            &mut state.model,
             x11,
-            icon_win,
+            icon_window,
             &mut rect,
         );
     }
 
     // Now update the client with the computed values
-    if let Some(client) = globals.model.client_mut(icon_win) {
-        client.geo.x = rect.x;
-        client.geo.y = rect.y;
-        client.geo.w = rect.w;
-        client.geo.h = rect.h;
+    if let Some(client) = state.model.client_mut(icon_window) {
+        client.geo = rect;
 
         if client.geo.h > bar_height {
             if client.geo.w == client.geo.h {
@@ -360,7 +359,7 @@ pub fn update_systray(
     let bar_height = core.config().derived.bar_height;
     let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
 
-    let icon_layout: Vec<(WindowId, i32, i32)> = icons
+    let icon_layout: Vec<(WindowId, Size)> = icons
         .iter()
         .filter_map(|icon_win| {
             core.state()
@@ -368,20 +367,18 @@ pub fn update_systray(
                 .clients
                 .get(icon_win)
                 .filter(|client| !client.tags.is_empty() && client.geo.w > 0 && client.geo.h > 0)
-                .map(|client| (*icon_win, client.geo.w, client.geo.h))
+                .map(|client| (*icon_win, client.geo.size()))
         })
         .collect();
 
     let layout = layout_xembed_icons(
-        icon_layout.iter().map(|(_, icon_w, _)| *icon_w),
+        icon_layout.iter().map(|(_, icon_size)| icon_size.w),
         core.config().systray.spacing,
     );
 
     {
         let conn = x11.conn;
-        for ((icon_win, icon_w, icon_h), offset) in
-            icon_layout.into_iter().zip(&layout.icon_offsets)
-        {
+        for ((icon_win, icon_size), offset) in icon_layout.into_iter().zip(&layout.icon_offsets) {
             let x11_icon_win: Window = icon_win.into();
             let _ = conn.change_window_attributes(
                 x11_icon_win,
@@ -394,8 +391,8 @@ pub fn update_systray(
                 &ConfigureWindowAux::new()
                     .x(*offset as i32)
                     .y(0)
-                    .width(icon_w as u32)
-                    .height(icon_h as u32),
+                    .width(icon_size.w as u32)
+                    .height(icon_size.h as u32),
             );
         }
     }

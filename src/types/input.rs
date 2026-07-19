@@ -4,7 +4,7 @@
 
 use std::str::FromStr;
 
-use crate::types::{MonitorId, Rect, TagMask, WindowId};
+use crate::types::{MonitorId, Point, Rect, Size, TagMask, WindowId};
 
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -346,17 +346,19 @@ impl ResizeDirection {
 
     /// Get the warp offset for this resize direction.
     ///
-    /// Returns the (x, y) offset based on window dimensions.
-    pub fn warp_offset(self, w: i32, h: i32, bw: i32) -> (i32, i32) {
+    /// Returns the cursor position relative to the window geometry.
+    pub fn warp_offset(self, size: Size, border_width: i32) -> Point {
+        let Size { w, h } = size;
+        let bw = border_width;
         match self {
-            Self::TopLeft => (-bw, -bw),
-            Self::Top => ((w + bw - 1) / 2, -bw),
-            Self::TopRight => (w + bw - 1, -bw),
-            Self::Right => (w + bw - 1, (h + bw - 1) / 2),
-            Self::BottomRight => (w + bw - 1, h + bw - 1),
-            Self::Bottom => ((w + bw - 1) / 2, h + bw - 1),
-            Self::BottomLeft => (-bw, h + bw - 1),
-            Self::Left => (-bw, (h + bw - 1) / 2),
+            Self::TopLeft => Point::new(-bw, -bw),
+            Self::Top => Point::new((w + bw - 1) / 2, -bw),
+            Self::TopRight => Point::new(w + bw - 1, -bw),
+            Self::Right => Point::new(w + bw - 1, (h + bw - 1) / 2),
+            Self::BottomRight => Point::new(w + bw - 1, h + bw - 1),
+            Self::Bottom => Point::new((w + bw - 1) / 2, h + bw - 1),
+            Self::BottomLeft => Point::new(-bw, h + bw - 1),
+            Self::Left => Point::new(-bw, (h + bw - 1) / 2),
         }
     }
 
@@ -376,7 +378,9 @@ impl ResizeDirection {
 }
 
 /// Determine resize direction from hit position within a window.
-pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDirection {
+pub fn get_resize_direction(size: Size, hit: Point) -> ResizeDirection {
+    let Size { w, h } = size;
+    let Point { x: hit_x, y: hit_y } = hit;
     if hit_y > h / 2 {
         if hit_x < w / 3 {
             if hit_y < 2 * h / 3 {

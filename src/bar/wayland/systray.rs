@@ -1,6 +1,6 @@
 use crate::bar::paint::BarPainter;
 use crate::bar::scene;
-use crate::types::geometry::Rect;
+use crate::types::Rect;
 
 use super::WaylandBarPainter;
 
@@ -31,15 +31,7 @@ pub(super) fn draw_snapshot(
         let Some(item) = snapshot.items.items.get(cell.idx) else {
             continue;
         };
-        painter.blit_rgba_bgra(
-            cell.icon.x,
-            cell.icon.y,
-            cell.icon.w,
-            cell.icon.h,
-            item.icon_w,
-            item.icon_h,
-            &item.icon_rgba,
-        );
+        painter.blit_rgba_bgra(cell.icon, item.icon_size, &item.icon_rgba);
     }
 
     let Some(menu) = menu else {

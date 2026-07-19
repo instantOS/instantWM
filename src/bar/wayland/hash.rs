@@ -63,8 +63,8 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
         for item in &systray.items.items {
             item.service.hash(hasher);
             item.path.hash(hasher);
-            item.icon_w.hash(hasher);
-            item.icon_h.hash(hasher);
+            item.icon_size.w.hash(hasher);
+            item.icon_size.h.hash(hasher);
             hash_arc_identity(hasher, &item.icon_rgba);
         }
     }

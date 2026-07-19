@@ -5,7 +5,7 @@ use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
-use crate::types::{Monitor, Rect, TagMask, WindowId};
+use crate::types::{Monitor, Rect, Size, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
 
@@ -161,14 +161,18 @@ pub fn compute(
         }
     }
 
-    let client_info: Vec<(WindowId, i32, i32, bool)> = ordered_windows
+    let client_info: Vec<(WindowId, Size, bool)> = ordered_windows
         .into_iter()
         .filter_map(|win| {
             let c = clients.get(&win)?;
             if !c.is_visible(selected_tags) || c.is_edge_scratchpad() {
                 return None;
             }
-            Some((win, c.geo.w.max(1), c.geo.h.max(1), c.mode.is_floating()))
+            Some((
+                win,
+                Size::new(c.geo.w.max(1), c.geo.h.max(1)),
+                c.mode.is_floating(),
+            ))
         })
         .collect();
 
@@ -188,7 +192,7 @@ pub fn compute(
     let mut moves = Vec::new();
     let mut save_geo = Vec::new();
 
-    for (i, (win, width, height, is_floating)) in client_info.iter().copied().enumerate() {
+    for (i, (win, size, is_floating)) in client_info.iter().copied().enumerate() {
         if is_floating {
             save_geo.push(win);
         }
@@ -200,12 +204,7 @@ pub fn compute(
 
         moves.push(LayoutOutput {
             win,
-            rect: Rect {
-                x,
-                y,
-                w: width,
-                h: height,
-            },
+            rect: Rect::from_position_and_size(crate::types::Point::new(x, y), size),
             options: MoveResizeOptions::hinted_immediate(false),
         });
     }

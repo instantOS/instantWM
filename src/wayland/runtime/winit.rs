@@ -13,6 +13,7 @@ use smithay::reexports::calloop::LoopSignal;
 use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
+use crate::types::Size;
 use crate::wayland::common::sanitize_size;
 use crate::wayland::input::{apply_pending_warp, handle_keyboard};
 use crate::wayland::render::winit::render_frame;
@@ -33,16 +34,16 @@ pub fn run() -> ! {
     super::common::attach_gles_renderer_and_protocols(&mut state, backend.renderer(), None);
 
     let output_size = backend.window_size();
-    let (initial_w, initial_h) = sanitize_size(output_size.w, output_size.h);
-    wm.core.config.derived.display.width = initial_w;
-    wm.core.config.derived.display.height = initial_h;
+    let initial_size = sanitize_size(Size::new(output_size.w, output_size.h));
+    wm.core.config.derived.display.width = initial_size.w;
+    wm.core.config.derived.display.height = initial_size.h;
     refresh_monitor_layout(&mut wm.ctx());
     state.push_command(WmCommand::SyncLayerExclusiveZones);
 
     // Store initial window size for the calloop source callback.
     state.runtime.winit_window_size = output_size;
 
-    let output = state.create_output("winit", initial_w, initial_h);
+    let output = state.create_output("winit", initial_size);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
     let mut damage_tracker =
         smithay::backend::renderer::damage::OutputDamageTracker::from_output(&output);
@@ -78,7 +79,7 @@ pub fn run() -> ! {
         .insert_source(winit_loop, move |event, _, state| match event {
             WinitEvent::Resized { size, .. } => {
                 state.runtime.winit_window_size = size;
-                state.runtime.pending_winit_resize = Some((size.w, size.h));
+                state.runtime.pending_winit_resize = Some(Size::new(size.w, size.h));
             }
             WinitEvent::Input(event) => {
                 dispatch_winit_input(state, &kb, event);
@@ -103,8 +104,8 @@ pub fn run() -> ! {
     event_loop
         .run(None, &mut state, move |state| {
             // ── 1. Process buffered winit resize/close ──────────────────
-            if let Some((w, h)) = state.runtime.pending_winit_resize.take() {
-                crate::wayland::input::handle_resize(&mut wm, state, &output, w, h);
+            if let Some(size) = state.runtime.pending_winit_resize.take() {
+                crate::wayland::input::handle_resize(&mut wm, state, &output, size);
             }
             if state.runtime.winit_close_requested {
                 loop_signal.stop();

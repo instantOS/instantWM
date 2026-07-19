@@ -25,10 +25,9 @@ pub fn apply_icccm_size_hints(
         None => return,
     };
 
-    let (w, h) =
+    let constrained =
         client
             .size_hints
-            .constrain_size(geo.w, geo.h, client.min_aspect, client.max_aspect);
-    geo.w = w;
-    geo.h = h;
+            .constrain_size(geo.size(), client.min_aspect, client.max_aspect);
+    *geo = geo.with_size(constrained);
 }

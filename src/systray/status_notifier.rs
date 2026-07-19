@@ -12,7 +12,7 @@ use zbus::zvariant::{OwnedValue, Value};
 use crate::systray::{
     MenuAction, MenuEntry, MenuToggle, MenuView, StatusNotifierItem, StatusNotifierTray,
 };
-use crate::types::{MonitorId, MouseButton, Point, TagMask, WindowId};
+use crate::types::{MonitorId, MouseButton, Point, Size, TagMask, WindowId};
 
 const WATCHER_SERVICE: &str = "org.kde.StatusNotifierWatcher";
 const WATCHER_PATH: &str = "/StatusNotifierWatcher";
@@ -662,15 +662,13 @@ fn reconcile_items_embedded(
     for id in &alive {
         seen.insert(id.clone());
         if let Some((service, path)) = parse_sni_id(id)
-            && let Some((icon_rgba, icon_w, icon_h)) =
-                fetch_item_icon_on_conn(conn, &service, &path)
+            && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
         {
             let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
                 path,
                 icon_rgba,
-                icon_w,
-                icon_h,
+                icon_size,
             }));
         }
     }
@@ -694,15 +692,13 @@ fn reconcile_items(
     for id in services {
         seen.insert(id.clone());
         if let Some((service, path)) = parse_sni_id(&id)
-            && let Some((icon_rgba, icon_w, icon_h)) =
-                fetch_item_icon_on_conn(conn, &service, &path)
+            && let Some((icon_rgba, icon_size)) = fetch_item_icon_on_conn(conn, &service, &path)
         {
             let _ = evt_tx.send(SystrayEvt::ItemUpsert(StatusNotifierItem {
                 service,
                 path,
                 icon_rgba,
-                icon_w,
-                icon_h,
+                icon_size,
             }));
         }
     }
@@ -1156,9 +1152,8 @@ fn upsert_item(tray: &mut StatusNotifierTray, item: StatusNotifierItem) -> bool 
         .iter_mut()
         .find(|it| it.service == item.service && it.path == item.path)
     {
-        let was_changed = existing.icon_w != item.icon_w
-            || existing.icon_h != item.icon_h
-            || existing.icon_rgba != item.icon_rgba;
+        let was_changed =
+            existing.icon_size != item.icon_size || existing.icon_rgba != item.icon_rgba;
         *existing = item;
         return was_changed;
     }
@@ -1171,7 +1166,7 @@ fn fetch_item_icon_on_conn(
     conn: &Connection,
     service: &str,
     path: &str,
-) -> Option<(Arc<[u8]>, i32, i32)> {
+) -> Option<(Arc<[u8]>, Size)> {
     let proxy = uncached_proxy(conn, service, path, ITEM_IFACE).ok()?;
 
     let pixmaps: Vec<(i32, i32, Vec<u8>)> = proxy.get_property("IconPixmap").ok()?;
@@ -1179,12 +1174,12 @@ fn fetch_item_icon_on_conn(
         return None;
     }
 
-    let (w, h, bytes) = select_largest_valid_pixmap(pixmaps)?;
-    let rgba = dbus_icon_bytes_to_rgba(&bytes, w, h)?;
-    Some((Arc::from(rgba), w, h))
+    let (size, bytes) = select_largest_valid_pixmap(pixmaps)?;
+    let rgba = dbus_icon_bytes_to_rgba(&bytes, size)?;
+    Some((Arc::from(rgba), size))
 }
 
-fn select_largest_valid_pixmap(pixmaps: Vec<(i32, i32, Vec<u8>)>) -> Option<(i32, i32, Vec<u8>)> {
+fn select_largest_valid_pixmap(pixmaps: Vec<(i32, i32, Vec<u8>)>) -> Option<(Size, Vec<u8>)> {
     pixmaps
         .into_iter()
         .filter_map(|(width, height, bytes)| {
@@ -1199,11 +1194,14 @@ fn select_largest_valid_pixmap(pixmaps: Vec<(i32, i32, Vec<u8>)>) -> Option<(i32
             Some((area, width, height, bytes))
         })
         .max_by_key(|(area, _, _, _)| *area)
-        .map(|(_, width, height, bytes)| (width, height, bytes))
+        .map(|(_, width, height, bytes)| (Size::new(width, height), bytes))
 }
 
-fn dbus_icon_bytes_to_rgba(bytes: &[u8], w: i32, h: i32) -> Option<Vec<u8>> {
-    let px_count = (w as usize).checked_mul(h as usize)?;
+fn dbus_icon_bytes_to_rgba(bytes: &[u8], size: Size) -> Option<Vec<u8>> {
+    if !size.is_positive() {
+        return None;
+    }
+    let px_count = (size.w as usize).checked_mul(size.h as usize)?;
     let need = px_count.checked_mul(4)?;
     if bytes.len() < need {
         return None;
@@ -1235,6 +1233,8 @@ mod tests {
     use std::time::Duration;
 
     use zbus::zvariant::{OwnedValue, Value};
+
+    use crate::types::Size;
 
     use super::{
         MenuAction, MenuToggle, NativeMenuRequest, StatusNotifierItem, StatusNotifierRuntime,
@@ -1296,7 +1296,7 @@ mod tests {
             0x40, 0x11, 0x22, 0x33, // translucent pixel
         ];
 
-        let rgba = dbus_icon_bytes_to_rgba(&bytes, 2, 1).expect("valid icon bytes");
+        let rgba = dbus_icon_bytes_to_rgba(&bytes, Size::new(2, 1)).expect("valid icon bytes");
 
         assert_eq!(rgba, vec![0x00, 0x82, 0xc9, 0xff, 0x11, 0x22, 0x33, 0x40]);
     }
@@ -1310,7 +1310,7 @@ mod tests {
         ])
         .expect("a valid pixmap");
 
-        assert_eq!((selected.0, selected.1), (32, 32));
+        assert_eq!(selected.0, Size::new(32, 32));
     }
 
     #[test]
@@ -1384,8 +1384,7 @@ mod tests {
                 service: "org.example.Tray".to_string(),
                 path: "/StatusNotifierItem".to_string(),
                 icon_rgba: Arc::from(vec![0, 0, 0, 0]),
-                icon_w: 1,
-                icon_h: 1,
+                icon_size: Size::new(1, 1),
             }],
         };
         let mut menu = crate::systray::TrayMenuState::default();

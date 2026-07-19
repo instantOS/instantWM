@@ -121,8 +121,10 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             crate::mouse::drag::snap_window_to_monitor_edges(
                 ctx.core.state(),
                 drag.win(),
-                drag.win_start_geo().w.max(1),
-                drag.win_start_geo().h.max(1),
+                crate::types::Size::new(
+                    drag.win_start_geo().w.max(1),
+                    drag.win_start_geo().h.max(1),
+                ),
                 &mut new_pos,
             );
             crate::contexts::WmCtx::Wayland(ctx.reborrow()).move_resize(

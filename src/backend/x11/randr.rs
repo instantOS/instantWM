@@ -331,20 +331,22 @@ fn apply_output_config(
     };
 
     // Parse position
-    let (x, y) = if let Some(ref position) = config.position {
+    let position = if let Some(ref position) = config.position {
         MonitorPosition::parse(position)
             .and_then(|p| {
                 p.resolve(
-                    (mode_info.width as i32, mode_info.height as i32),
+                    crate::types::Size::new(mode_info.width as i32, mode_info.height as i32),
                     known_outputs
                         .iter()
                         .map(|(name, rect)| (name.as_str(), *rect)),
                 )
             })
-            .unwrap_or((0, 0))
+            .unwrap_or_default()
     } else {
-        (0, 0)
+        crate::types::Point::default()
     };
+    let x = position.x;
+    let y = position.y;
 
     // Find a CRTC to use
     let crtc = if output_info.crtc != 0 {
@@ -415,20 +417,22 @@ fn apply_output_config_fallback(
     };
 
     // Parse position
-    let (x, y) = if let Some(ref position) = config.position {
+    let position = if let Some(ref position) = config.position {
         MonitorPosition::parse(position)
             .and_then(|p| {
                 p.resolve(
-                    (mode_info.width as i32, mode_info.height as i32),
+                    crate::types::Size::new(mode_info.width as i32, mode_info.height as i32),
                     known_outputs
                         .iter()
                         .map(|(name, rect)| (name.as_str(), *rect)),
                 )
             })
-            .unwrap_or((0, 0))
+            .unwrap_or_default()
     } else {
-        (0, 0)
+        crate::types::Point::default()
     };
+    let x = position.x;
+    let y = position.y;
 
     // Find a CRTC to use
     let crtc = if output_info.crtc != 0 {

@@ -35,8 +35,7 @@ use crate::wm::Wm;
 
 #[derive(Debug)]
 struct DrmLayoutState {
-    total_width: i32,
-    total_height: i32,
+    total_size: crate::types::Size,
     output_hit_regions: Vec<OutputHitRegion>,
 }
 
@@ -165,10 +164,12 @@ pub fn run() -> ! {
         build_output_surfaces(&mut manager, &mut renderer, &mut state)
     };
     for entry in &output_surfaces {
-        state.space.map_output(&entry.output, (entry.x_offset, 0));
+        state
+            .space
+            .map_output(&entry.output, (entry.rect.x, entry.rect.y));
     }
 
-    let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
+    let total_size = compute_total_dimensions(&output_surfaces);
 
     {
         use crate::monitor::refresh_monitor_layout;
@@ -177,11 +178,7 @@ pub fn run() -> ! {
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 
-    let layout_state = Arc::new(init_layout_state(
-        &output_surfaces,
-        total_width,
-        total_height,
-    ));
+    let layout_state = Arc::new(init_layout_state(&output_surfaces, total_size));
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
@@ -198,8 +195,8 @@ pub fn run() -> ! {
     let runtime_event_tx_input = runtime_event_tx.clone();
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let total_w = shared_layout.total_width;
-            let total_h = shared_layout.total_height;
+            let total_w = shared_layout.total_size.w;
+            let total_h = shared_layout.total_size.h;
 
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
@@ -306,34 +303,32 @@ fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
 }
 
 /// Compute total screen dimensions from output surfaces.
-fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> (i32, i32) {
+fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::types::Size {
     let total_width = output_surfaces
         .iter()
-        .map(|s| s.x_offset + s.width)
+        .map(|surface| surface.rect.x + surface.rect.w)
         .max()
         .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_WIDTH);
     let total_height = output_surfaces
         .iter()
-        .map(|s| s.height)
+        .map(|surface| surface.rect.h)
         .max()
         .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_HEIGHT);
-    (total_width, total_height)
+    crate::types::Size::new(total_width, total_height)
 }
 
 fn init_layout_state(
     output_surfaces: &[OutputSurfaceEntry],
-    total_width: i32,
-    total_height: i32,
+    total_size: crate::types::Size,
 ) -> DrmLayoutState {
     DrmLayoutState {
-        total_width,
-        total_height,
+        total_size,
         output_hit_regions: output_surfaces
             .iter()
             .map(|entry| OutputHitRegion {
                 crtc: entry.crtc,
-                x_offset: entry.x_offset,
-                width: entry.width,
+                x_offset: entry.rect.x,
+                width: entry.rect.w,
             })
             .collect(),
     }

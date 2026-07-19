@@ -173,13 +173,7 @@ fn render_snapshot(
 
         painter.set_font_size(mon.font_size);
         painter.set_font_families(&mon.font_families);
-        painter.begin(
-            Scale::from(1.0),
-            mon.rect.x,
-            mon.rect.y,
-            mon.rect.w,
-            mon.rect.h,
-        );
+        painter.begin(Scale::from(1.0), mon.rect);
         let output = scene::render_monitor_snapshot(&mon, painter);
         let bar_height = mon.rect.h;
         let tray_layout = mon.systray.as_ref().map(|s| {
