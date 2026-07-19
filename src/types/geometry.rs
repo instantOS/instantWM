@@ -131,6 +131,37 @@ pub struct Size {
     pub h: i32,
 }
 
+/// Widths inset from the four edges of a rectangle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Insets {
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+    pub left: i32,
+}
+
+impl Insets {
+    #[inline]
+    pub const fn new(top: i32, right: i32, bottom: i32, left: i32) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
+
+    #[inline]
+    pub const fn horizontal(self) -> i32 {
+        self.left + self.right
+    }
+
+    #[inline]
+    pub const fn vertical(self) -> i32 {
+        self.top + self.bottom
+    }
+}
+
 impl Size {
     #[inline]
     pub const fn new(w: i32, h: i32) -> Self {

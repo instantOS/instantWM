@@ -128,10 +128,10 @@ fn hash_status_items(hasher: &mut DefaultHasher, items: &[crate::bar::status::St
                 block.color.hash(hasher);
                 block.background.hash(hasher);
                 block.border.hash(hasher);
-                block.border_top.hash(hasher);
-                block.border_right.hash(hasher);
-                block.border_bottom.hash(hasher);
-                block.border_left.hash(hasher);
+                block.border_widths.top.hash(hasher);
+                block.border_widths.right.hash(hasher);
+                block.border_widths.bottom.hash(hasher);
+                block.border_widths.left.hash(hasher);
                 match &block.min_width {
                     Some(crate::bar::status::I3MinWidth::Text(text)) => {
                         1u8.hash(hasher);

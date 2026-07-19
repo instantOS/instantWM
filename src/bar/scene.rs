@@ -1,8 +1,8 @@
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::contexts::CoreCtx;
 use crate::types::{
-    CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, Monitor, MonitorId,
-    Rect, WindowId,
+    CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, MonitorId, Rect,
+    WindowId,
 };
 
 const STARTMENU_ICON_SIZE: i32 = 14;
@@ -423,29 +423,6 @@ fn render_monitor_snapshot_base(
     };
 
     let mut hit = crate::bar::MonitorHitCache::default();
-    let mut temp_mon = Monitor::default();
-    temp_mon.available_rect.w = snapshot.rect.w;
-
-    let (status_start_x, status_width, status_click_targets) = if snapshot.is_selected_monitor
-        && snapshot
-            .presentation
-            .status
-            .content()
-            .is_some_and(|content| !content.items.is_empty())
-    {
-        let content = snapshot.presentation.status.content().unwrap();
-        crate::bar::status::draw_status_items(
-            systray_width,
-            &temp_mon,
-            bar_height,
-            content.items.as_slice(),
-            snapshot.status_scheme.clone(),
-            painter,
-        )
-    } else {
-        (0, 0, Vec::new())
-    };
-    hit.status_click_targets = status_click_targets;
 
     draw_startmenu_icon_snapshot(
         painter,
@@ -500,14 +477,34 @@ fn render_monitor_snapshot_base(
     }
     hit.shutdown_end = x;
 
-    let title_end_x = if snapshot.is_selected_monitor && status_width > 0 {
-        status_start_x
+    let status_output = if snapshot.is_selected_monitor
+        && snapshot
+            .presentation
+            .status
+            .content()
+            .is_some_and(|content| !content.items.is_empty())
+    {
+        let content = snapshot.presentation.status.content().unwrap();
+        let status_right = snapshot.rect.w - systray_width;
+        crate::bar::status::draw_status_items(
+            Rect::new(x, 0, (status_right - x).max(0), bar_height),
+            content.items.as_slice(),
+            snapshot.status_scheme.clone(),
+            painter,
+        )
+    } else {
+        crate::bar::status::StatusRenderOutput::default()
+    };
+    hit.status_click_targets = status_output.click_targets;
+
+    let title_end_x = if status_output.bounds.w > 0 {
+        status_output.bounds.x
     } else {
         snapshot.rect.w - systray_width
     };
     let title_width = (title_end_x - x).max(0);
-    hit.status_hit_x = if snapshot.is_selected_monitor && status_width > 0 {
-        status_start_x
+    hit.status_hit_x = if status_output.bounds.w > 0 {
+        status_output.bounds.x
     } else {
         snapshot.rect.w - systray_width
     };

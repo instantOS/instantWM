@@ -2,36 +2,77 @@ use super::TEXT_PADDING;
 use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
-use crate::types::{Monitor, Rect};
+use crate::bar::paint::{BarPainter, BarScheme};
+use crate::types::{Point, Rect};
+
+#[derive(Debug, Default)]
+pub(crate) struct StatusRenderOutput {
+    /// Visible status area in bar-local coordinates.
+    pub bounds: Rect,
+    pub click_targets: Vec<StatusClickTarget>,
+}
+
+/// The same pointer location expressed in the coordinate spaces required by
+/// the i3bar click protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StatusClickGeometry {
+    pub root_position: Point,
+    pub output_position: Point,
+    pub bar_position: Point,
+}
 
 #[derive(Debug, Clone, Copy)]
+struct BlockMetrics {
+    width: i32,
+    text_width: i32,
+    padding: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum LaidOutItem {
+    Text {
+        item_index: usize,
+        bounds: Rect,
+    },
+    I3Block {
+        item_index: usize,
+        block_index: usize,
+        bounds: Rect,
+        text_bounds: Rect,
+        text_lpad: i32,
+        separator_bounds: Option<Rect>,
+        use_short: bool,
+    },
+}
+
+#[derive(Debug, Default)]
 struct StatusLayout {
-    draw_start_x: i32,
-    total_width: i32,
+    clip_bounds: Rect,
+    items: Vec<LaidOutItem>,
 }
 
 pub(crate) fn hit_test_i3_click_target(
     click_targets: &[StatusClickTarget],
-    local_x: i32,
+    bar_position: Point,
 ) -> Option<usize> {
     click_targets
         .iter()
-        .find(|target| local_x >= target.start_x && local_x < target.end_x)
-        .map(|target| target.index)
+        .find(|target| target.bounds.contains_point(bar_position))
+        .map(|target| target.block_index)
 }
 
 pub(crate) fn resolve_i3_click<'a>(
     parsed: &'a ParsedStatus,
     click_targets: &[StatusClickTarget],
-    local_x: i32,
+    bar_position: Point,
 ) -> Option<(&'a I3Block, StatusClickTarget)> {
     let line = parsed.i3bar.as_ref()?;
-    let block_idx = hit_test_i3_click_target(click_targets, local_x)?;
-    let block = line.blocks.get(block_idx)?;
+    let block_index = hit_test_i3_click_target(click_targets, bar_position)?;
+    let block = line.blocks.get(block_index)?;
     let target = click_targets
         .iter()
         .copied()
-        .find(|target| target.index == block_idx)?;
+        .find(|target| target.block_index == block_index)?;
 
     Some((block, target))
 }
@@ -48,8 +89,17 @@ pub(crate) fn modifiers_from_mask(mask: u32) -> Vec<String> {
     if mask & crate::config::keybindings::MOD1 != 0 {
         modifiers.push("Mod1".to_string());
     }
+    if mask & u32::from(x11rb::protocol::xproto::ModMask::M2) != 0 {
+        modifiers.push("Mod2".to_string());
+    }
+    if mask & u32::from(x11rb::protocol::xproto::ModMask::M3) != 0 {
+        modifiers.push("Mod3".to_string());
+    }
     if mask & crate::config::keybindings::MODKEY != 0 {
         modifiers.push("Mod4".to_string());
+    }
+    if mask & u32::from(x11rb::protocol::xproto::ModMask::M5) != 0 {
+        modifiers.push("Mod5".to_string());
     }
 
     modifiers
@@ -59,21 +109,26 @@ pub(crate) fn make_i3_click_event(
     block: &I3Block,
     target: StatusClickTarget,
     button: u8,
-    x: i32,
-    y: i32,
-    bar_height: i32,
+    geometry: StatusClickGeometry,
     clean_state: u32,
 ) -> I3ClickEvent {
+    let relative_position = Point::new(
+        geometry.bar_position.x - target.bounds.x,
+        geometry.bar_position.y - target.bounds.y,
+    );
+
     I3ClickEvent {
         name: block.name.clone(),
         instance: block.instance.clone(),
         button,
-        x,
-        y,
-        relative_x: x - target.start_x,
-        relative_y: y.max(0),
-        width: (target.end_x - target.start_x).max(0),
-        height: bar_height.max(0),
+        x: geometry.root_position.x,
+        y: geometry.root_position.y,
+        relative_x: relative_position.x,
+        relative_y: relative_position.y,
+        output_x: geometry.output_position.x,
+        output_y: geometry.output_position.y,
+        width: target.bounds.w.max(0),
+        height: target.bounds.h.max(0),
         modifiers: modifiers_from_mask(clean_state),
     }
 }
@@ -81,13 +136,12 @@ pub(crate) fn make_i3_click_event(
 pub(crate) fn emit_i3bar_status_click(
     parsed: &ParsedStatus,
     click_targets: &[StatusClickTarget],
-    local_x: i32,
-    y: i32,
+    geometry: StatusClickGeometry,
     button: u8,
-    bar_height: i32,
     clean_state: u32,
 ) -> bool {
-    let Some((block, target)) = resolve_i3_click(parsed, click_targets, local_x) else {
+    let Some((block, target)) = resolve_i3_click(parsed, click_targets, geometry.bar_position)
+    else {
         return false;
     };
 
@@ -95,150 +149,337 @@ pub(crate) fn emit_i3bar_status_click(
         block,
         target,
         button,
-        local_x,
-        y,
-        bar_height,
+        geometry,
         clean_state,
     ));
     true
 }
 
-fn measure_layout(
-    systray_width: i32,
-    m: &Monitor,
-    items: &[StatusItem],
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) -> StatusLayout {
-    let mut width = 0i32;
-
-    for item in items {
-        match item {
-            StatusItem::Text(text) => width += painter.text_width(text),
-            StatusItem::I3Block(block) => width += measure_i3_block_width(block, painter),
-        }
-    }
-
-    let draw_width = (width + 2).max(0);
-    let draw_start_x = m.work_rect().w - draw_width - systray_width;
-
-    StatusLayout {
-        draw_start_x,
-        total_width: width.max(0),
+fn block_text(block: &I3Block, use_short: bool) -> &str {
+    if use_short {
+        block
+            .short_text
+            .as_deref()
+            .unwrap_or(block.full_text.as_str())
+    } else {
+        block.full_text.as_str()
     }
 }
 
-fn measure_i3_block_width(block: &I3Block, painter: &mut dyn crate::bar::paint::BarPainter) -> i32 {
-    let text = block_render_text(block);
-    let text_width = painter.text_width(text);
+fn measure_i3_block(
+    block: &I3Block,
+    use_short: bool,
+    painter: &mut dyn BarPainter,
+) -> Option<BlockMetrics> {
+    let text = block_text(block, use_short);
+    if text.is_empty() {
+        return None;
+    }
 
+    let text_width = painter.text_width(text).max(0);
     let min_width = match &block.min_width {
-        Some(I3MinWidth::Text(s)) => painter.text_width(s),
-        Some(I3MinWidth::Pixels(px)) => *px,
+        Some(I3MinWidth::Text(text)) => painter.text_width(text).max(0),
+        Some(I3MinWidth::Pixels(pixels)) => (*pixels).max(0),
         None => 0,
     };
-
     let padding = if !block.separator && block.separator_block_width == 0 {
         0
     } else {
         TEXT_PADDING
     };
+    let natural_width = text_width
+        .saturating_add(block.border_widths.horizontal())
+        .saturating_add(padding.saturating_mul(2));
 
-    let content_width = text_width.max(min_width).max(0);
-    let border_width = block.border_left + block.border_right;
-    let block_width = border_width + padding * 2 + content_width;
-
-    let separator_width = if block.separator {
-        block.separator_block_width
-    } else {
-        0
-    };
-
-    (block_width + separator_width).max(0)
+    Some(BlockMetrics {
+        width: natural_width.max(min_width),
+        text_width,
+        padding,
+    })
 }
 
-pub(crate) fn draw_status_items(
-    systray_width: i32,
-    m: &Monitor,
-    bar_height: i32,
+fn has_later_rendered_item(
     items: &[StatusItem],
-    base_scheme: crate::bar::paint::BarScheme,
-    painter: &mut dyn crate::bar::paint::BarPainter,
-) -> (i32, i32, Vec<StatusClickTarget>) {
-    let layout = measure_layout(systray_width, m, items, painter);
-    let mut click_targets = Vec::new();
-    draw_items(
-        painter,
-        bar_height,
-        items,
-        layout,
-        &base_scheme,
-        &mut click_targets,
-    );
-    (layout.draw_start_x, layout.total_width, click_targets)
+    choices: &[bool],
+    item_index: usize,
+    painter: &mut dyn BarPainter,
+) -> bool {
+    items
+        .iter()
+        .enumerate()
+        .skip(item_index + 1)
+        .any(|(index, item)| match item {
+            StatusItem::Text(text) => !text.is_empty() && painter.text_width(text) > 0,
+            StatusItem::I3Block(block) => {
+                measure_i3_block(block, choices[index], painter).is_some()
+            }
+        })
 }
 
-fn draw_items(
-    painter: &mut dyn crate::bar::paint::BarPainter,
-    bar_height: i32,
-    items: &[StatusItem],
-    layout: StatusLayout,
-    base_scheme: &crate::bar::paint::BarScheme,
-    click_targets: &mut Vec<StatusClickTarget>,
-) {
-    painter.set_scheme(base_scheme.clone());
-
-    let draw_width = (layout.total_width + 2).max(0);
-    if draw_width > 0 {
-        painter.rect(
-            Rect::new(layout.draw_start_x, 0, draw_width, bar_height),
-            true,
-            true,
-        );
-    }
-
-    click_targets.clear();
-
-    let mut x = layout.draw_start_x + 1;
-    let mut click_idx = 0usize;
-
-    for item in items {
+fn measured_width(items: &[StatusItem], choices: &[bool], painter: &mut dyn BarPainter) -> i32 {
+    let mut width = 0i32;
+    for (item_index, item) in items.iter().enumerate() {
         match item {
-            StatusItem::Text(text) => {
-                let seg_w = painter.text_width(text);
-                if seg_w > 0 {
-                    painter.text(Rect::new(x, 0, seg_w, bar_height), 0, text, false, 0);
-                }
-                x += seg_w;
+            StatusItem::Text(text) if !text.is_empty() => {
+                width = width.saturating_add(painter.text_width(text).max(0));
             }
             StatusItem::I3Block(block) => {
-                let total_w = draw_i3_block(painter, x, bar_height, block, base_scheme);
-                if total_w > 0 {
-                    click_targets.push(StatusClickTarget {
-                        start_x: x,
-                        end_x: x + total_w,
-                        index: click_idx,
-                    });
+                let Some(metrics) = measure_i3_block(block, choices[item_index], painter) else {
+                    continue;
+                };
+                width = width.saturating_add(metrics.width);
+                if has_later_rendered_item(items, choices, item_index, painter) {
+                    width = width.saturating_add(block.separator_block_width.max(0));
                 }
-                x += total_w;
-                click_idx += 1;
+            }
+            StatusItem::Text(_) => {}
+        }
+    }
+    width
+}
+
+fn choose_short_texts(
+    items: &[StatusItem],
+    max_content_width: i32,
+    painter: &mut dyn BarPainter,
+) -> Vec<bool> {
+    let mut choices = vec![false; items.len()];
+    let mut width = measured_width(items, &choices, painter);
+
+    for item_index in 0..items.len() {
+        if width <= max_content_width {
+            break;
+        }
+        let StatusItem::I3Block(block) = &items[item_index] else {
+            continue;
+        };
+        if block.short_text.is_none() {
+            continue;
+        }
+
+        let previous_choices = choices.clone();
+        choices[item_index] = true;
+        if let Some(name) = block.name.as_deref() {
+            for (other_index, other) in items.iter().enumerate() {
+                let StatusItem::I3Block(other) = other else {
+                    continue;
+                };
+                if other.name.as_deref() == Some(name) && other.short_text.is_some() {
+                    choices[other_index] = true;
+                }
+            }
+        }
+        let shortened_width = measured_width(items, &choices, painter);
+        if shortened_width < width {
+            width = shortened_width;
+        } else {
+            choices = previous_choices;
+        }
+    }
+
+    choices
+}
+
+fn measure_layout(
+    available_bounds: Rect,
+    items: &[StatusItem],
+    painter: &mut dyn BarPainter,
+) -> StatusLayout {
+    let available_bounds = Rect::new(
+        available_bounds.x,
+        available_bounds.y,
+        available_bounds.w.max(0),
+        available_bounds.h.max(0),
+    );
+    let choices = choose_short_texts(items, (available_bounds.w - 2).max(0), painter);
+    let total_width = measured_width(items, &choices, painter);
+    if total_width <= 0 || available_bounds.w <= 0 || available_bounds.h <= 0 {
+        return StatusLayout::default();
+    }
+
+    let background_width = total_width.saturating_add(2);
+    let right = available_bounds.x.saturating_add(available_bounds.w);
+    let background_bounds = Rect::new(
+        right.saturating_sub(background_width),
+        available_bounds.y,
+        background_width,
+        available_bounds.h,
+    );
+    let clip_bounds = background_bounds
+        .intersection(&available_bounds)
+        .unwrap_or_default();
+    let mut laid_out = Vec::with_capacity(items.len());
+    let mut x = background_bounds.x.saturating_add(1);
+    let mut block_index = 0usize;
+
+    for (item_index, item) in items.iter().enumerate() {
+        match item {
+            StatusItem::Text(text) => {
+                let width = if text.is_empty() {
+                    0
+                } else {
+                    painter.text_width(text).max(0)
+                };
+                if width > 0 {
+                    laid_out.push(LaidOutItem::Text {
+                        item_index,
+                        bounds: Rect::new(x, available_bounds.y, width, available_bounds.h),
+                    });
+                    x = x.saturating_add(width);
+                }
+            }
+            StatusItem::I3Block(block) => {
+                let use_short = choices[item_index];
+                let Some(metrics) = measure_i3_block(block, use_short, painter) else {
+                    block_index += 1;
+                    continue;
+                };
+                let bounds = Rect::new(x, available_bounds.y, metrics.width, available_bounds.h);
+                let text_area_x = x
+                    .saturating_add(block.border_widths.left)
+                    .saturating_add(metrics.padding);
+                let text_area_width = metrics
+                    .width
+                    .saturating_sub(block.border_widths.horizontal())
+                    .saturating_sub(metrics.padding.saturating_mul(2))
+                    .max(0);
+                let text_lpad = match block.align {
+                    I3Align::Left => 0,
+                    I3Align::Center => ((text_area_width - metrics.text_width) / 2).max(0),
+                    I3Align::Right => (text_area_width - metrics.text_width).max(0),
+                };
+                x = x.saturating_add(metrics.width);
+
+                let separator_bounds =
+                    if has_later_rendered_item(items, &choices, item_index, painter)
+                        && block.separator_block_width > 0
+                    {
+                        let bounds = Rect::new(
+                            x,
+                            available_bounds.y,
+                            block.separator_block_width,
+                            available_bounds.h,
+                        );
+                        x = x.saturating_add(block.separator_block_width);
+                        Some(bounds)
+                    } else {
+                        None
+                    };
+
+                laid_out.push(LaidOutItem::I3Block {
+                    item_index,
+                    block_index,
+                    bounds,
+                    text_bounds: Rect::new(
+                        text_area_x,
+                        available_bounds.y,
+                        text_area_width,
+                        available_bounds.h,
+                    ),
+                    text_lpad,
+                    separator_bounds,
+                    use_short,
+                });
+                block_index += 1;
             }
         }
     }
+
+    StatusLayout {
+        clip_bounds,
+        items: laid_out,
+    }
+}
+
+pub(crate) fn draw_status_items(
+    available_bounds: Rect,
+    items: &[StatusItem],
+    base_scheme: BarScheme,
+    painter: &mut dyn BarPainter,
+) -> StatusRenderOutput {
+    let layout = measure_layout(available_bounds, items, painter);
+    if layout.clip_bounds.w <= 0 || layout.clip_bounds.h <= 0 {
+        return StatusRenderOutput::default();
+    }
+
+    painter.set_scheme(base_scheme.clone());
+    painter.rect(layout.clip_bounds, true, true);
+
+    let mut click_targets = Vec::new();
+    for item in layout.items {
+        match item {
+            LaidOutItem::Text { item_index, bounds } => {
+                let Some(bounds) = bounds.intersection(&layout.clip_bounds) else {
+                    continue;
+                };
+                let StatusItem::Text(text) = &items[item_index] else {
+                    continue;
+                };
+                painter.set_scheme(base_scheme.clone());
+                painter.text(bounds, 0, text, false, 0);
+            }
+            LaidOutItem::I3Block {
+                item_index,
+                block_index,
+                bounds,
+                text_bounds,
+                text_lpad,
+                separator_bounds,
+                use_short,
+            } => {
+                let Some(bounds) = fully_visible(bounds, layout.clip_bounds) else {
+                    continue;
+                };
+                let StatusItem::I3Block(block) = &items[item_index] else {
+                    continue;
+                };
+                draw_i3_block(
+                    painter,
+                    bounds,
+                    text_bounds,
+                    text_lpad,
+                    block_text(block, use_short),
+                    block,
+                    &base_scheme,
+                );
+                click_targets.push(StatusClickTarget {
+                    bounds,
+                    block_index,
+                });
+
+                if let Some(separator_bounds) = separator_bounds {
+                    draw_separator(painter, separator_bounds, block.separator, &base_scheme);
+                }
+            }
+        }
+    }
+
+    StatusRenderOutput {
+        bounds: layout.clip_bounds,
+        click_targets,
+    }
+}
+
+fn fully_visible(bounds: Rect, clip_bounds: Rect) -> Option<Rect> {
+    let visible = bounds.intersection(&clip_bounds)?;
+    (visible == bounds).then_some(bounds)
 }
 
 fn draw_i3_block(
-    painter: &mut dyn crate::bar::paint::BarPainter,
-    x: i32,
-    bar_height: i32,
+    painter: &mut dyn BarPainter,
+    bounds: Rect,
+    text_bounds: Rect,
+    text_lpad: i32,
+    text: &str,
     block: &I3Block,
-    base_scheme: &crate::bar::paint::BarScheme,
-) -> i32 {
-    let mut fg = block
+    base_scheme: &BarScheme,
+) {
+    let mut foreground = block
         .color
         .as_deref()
         .and_then(crate::bar::color::rgba_from_hex)
         .unwrap_or(base_scheme.foreground);
-    let mut bg = block
+    let mut background = block
         .background
         .as_deref()
         .and_then(crate::bar::color::rgba_from_hex)
@@ -246,127 +487,251 @@ fn draw_i3_block(
     let mut detail = base_scheme.detail;
 
     if block.urgent {
-        std::mem::swap(&mut fg, &mut bg);
-        detail = fg;
+        std::mem::swap(&mut foreground, &mut background);
+        detail = foreground;
     }
 
-    let block_scheme = crate::bar::paint::BarScheme {
-        foreground: fg,
-        background: bg,
+    let block_scheme = BarScheme {
+        foreground,
+        background,
         detail,
     };
     painter.set_scheme(block_scheme.clone());
-
-    let text = block_render_text(block);
-    let text_width = painter.text_width(text);
-    let min_width = match &block.min_width {
-        Some(I3MinWidth::Text(s)) => painter.text_width(s),
-        Some(I3MinWidth::Pixels(px)) => *px,
-        None => 0,
-    };
-
-    let padding = if !block.separator && block.separator_block_width == 0 {
-        0
-    } else {
-        TEXT_PADDING
-    };
-
-    let content_width = text_width.max(min_width).max(0);
-    let block_inner_width = (padding * 2 + content_width).max(0);
-    let block_width = (block.border_left + block.border_right + block_inner_width).max(0);
-    if block_width <= 0 {
-        return 0;
-    }
-
-    painter.rect(Rect::new(x, 0, block_width, bar_height), true, true);
+    painter.rect(bounds, true, true);
 
     let border_color = block
         .border
         .as_deref()
         .and_then(crate::bar::color::rgba_from_hex)
         .unwrap_or(block_scheme.detail);
-
-    let border_scheme = crate::bar::paint::BarScheme {
+    painter.set_scheme(BarScheme {
         foreground: border_color,
         background: block_scheme.background,
         detail: border_color,
-    };
-    painter.set_scheme(border_scheme);
+    });
 
-    if block.border_top > 0 {
+    let border = block.border_widths;
+    if border.top > 0 {
         painter.rect(
-            Rect::new(x, 0, block_width, block.border_top.min(bar_height)),
+            Rect::new(bounds.x, bounds.y, bounds.w, border.top.min(bounds.h)),
             true,
             false,
         );
     }
-    if block.border_bottom > 0 {
-        let h = block.border_bottom.min(bar_height);
-        painter.rect(Rect::new(x, bar_height - h, block_width, h), true, false);
-    }
-    if block.border_left > 0 {
+    if border.bottom > 0 {
+        let height = border.bottom.min(bounds.h);
         painter.rect(
-            Rect::new(x, 0, block.border_left.min(block_width), bar_height),
+            Rect::new(bounds.x, bounds.y + bounds.h - height, bounds.w, height),
             true,
             false,
         );
     }
-    if block.border_right > 0 {
-        let w = block.border_right.min(block_width);
+    if border.left > 0 {
         painter.rect(
-            Rect::new(x + block_width - w, 0, w, bar_height),
+            Rect::new(bounds.x, bounds.y, border.left.min(bounds.w), bounds.h),
+            true,
+            false,
+        );
+    }
+    if border.right > 0 {
+        let width = border.right.min(bounds.w);
+        painter.rect(
+            Rect::new(bounds.x + bounds.w - width, bounds.y, width, bounds.h),
             true,
             false,
         );
     }
 
-    painter.set_scheme(block_scheme);
-
-    let text_area_x = x + block.border_left + padding;
-    let text_area_width =
-        (block_width - block.border_left - block.border_right - padding * 2).max(0);
-
-    if text_area_width > 0 {
-        let lpad = match block.align {
-            I3Align::Left => 0,
-            I3Align::Center => ((text_area_width - text_width) / 2).max(0),
-            I3Align::Right => (text_area_width - text_width).max(0),
-        };
-        painter.text(
-            Rect::new(text_area_x, 0, text_area_width, bar_height),
-            lpad,
-            text,
-            false,
-            0,
-        );
+    if text_bounds.w > 0 {
+        painter.set_scheme(block_scheme);
+        painter.text(text_bounds, text_lpad, text, false, 0);
     }
-
-    let separator_width = if block.separator {
-        block.separator_block_width
-    } else {
-        0
-    };
-
-    if separator_width > 0 {
-        painter.set_scheme(base_scheme.clone());
-        painter.rect(
-            Rect::new(x + block_width, 0, separator_width, bar_height),
-            true,
-            true,
-        );
-
-        let line_h = (bar_height - 8).max(4);
-        let line_y = (bar_height - line_h) / 2;
-        let line_x = x + block_width + separator_width / 2;
-        painter.rect(Rect::new(line_x, line_y, 1, line_h), true, false);
-    }
-
-    block_width + separator_width
 }
 
-fn block_render_text(block: &I3Block) -> &str {
-    block
-        .short_text
-        .as_deref()
-        .unwrap_or(block.full_text.as_str())
+fn draw_separator(
+    painter: &mut dyn BarPainter,
+    bounds: Rect,
+    draw_line: bool,
+    base_scheme: &BarScheme,
+) {
+    painter.set_scheme(base_scheme.clone());
+    painter.rect(bounds, true, true);
+    if !draw_line || bounds.w <= 0 || bounds.h <= 0 {
+        return;
+    }
+
+    let line_height = (bounds.h - 8).max(1).min(bounds.h);
+    let line_y = bounds.y + (bounds.h - line_height) / 2;
+    let line_x = bounds.x + bounds.w / 2;
+    painter.rect(Rect::new(line_x, line_y, 1, line_height), true, false);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::Insets;
+
+    #[derive(Default)]
+    struct RecordingPainter {
+        texts: Vec<String>,
+    }
+
+    impl BarPainter for RecordingPainter {
+        fn text_width(&mut self, text: &str) -> i32 {
+            text.chars().count() as i32 * 10
+        }
+
+        fn set_scheme(&mut self, _scheme: BarScheme) {}
+
+        fn rect(&mut self, _bounds: Rect, _filled: bool, _invert: bool) {}
+
+        fn text(
+            &mut self,
+            bounds: Rect,
+            _lpad: i32,
+            text: &str,
+            _invert: bool,
+            _detail_height: i32,
+        ) -> i32 {
+            self.texts.push(text.to_string());
+            bounds.x + bounds.w
+        }
+    }
+
+    fn scheme() -> BarScheme {
+        BarScheme {
+            foreground: [1.0; 4],
+            background: [0.0, 0.0, 0.0, 1.0],
+            detail: [0.5; 4],
+        }
+    }
+
+    fn block(full_text: &str) -> I3Block {
+        I3Block {
+            full_text: full_text.to_string(),
+            short_text: None,
+            color: None,
+            background: None,
+            border: None,
+            border_widths: Insets::default(),
+            min_width: None,
+            align: I3Align::Left,
+            urgent: false,
+            separator: true,
+            separator_block_width: 9,
+            name: None,
+            instance: None,
+            markup: None,
+        }
+    }
+
+    #[test]
+    fn uses_full_text_when_it_fits_and_short_text_when_needed() {
+        let mut item = block("processor");
+        item.short_text = Some("cpu".to_string());
+        let items = vec![StatusItem::I3Block(item)];
+
+        let mut wide = RecordingPainter::default();
+        draw_status_items(Rect::new(0, 0, 200, 20), &items, scheme(), &mut wide);
+        assert_eq!(wide.texts, ["processor"]);
+
+        let mut narrow = RecordingPainter::default();
+        draw_status_items(Rect::new(0, 0, 50, 20), &items, scheme(), &mut narrow);
+        assert_eq!(narrow.texts, ["cpu"]);
+    }
+
+    #[test]
+    fn separator_gap_is_not_part_of_click_target() {
+        let mut first = block("a");
+        first.separator = false;
+        let items = vec![StatusItem::I3Block(first), StatusItem::I3Block(block("b"))];
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+        assert_eq!(output.click_targets.len(), 2);
+        let first = output.click_targets[0].bounds;
+        let second = output.click_targets[1].bounds;
+        assert_eq!(second.x - (first.x + first.w), 9);
+        assert_eq!(
+            hit_test_i3_click_target(
+                &output.click_targets,
+                Point::new(first.x + first.w, first.y + 1),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn click_event_preserves_each_coordinate_space() {
+        let block = block("cpu");
+        let target = StatusClickTarget {
+            bounds: Rect::new(80, 0, 40, 24),
+            block_index: 0,
+        };
+
+        let event = make_i3_click_event(
+            &block,
+            target,
+            1,
+            StatusClickGeometry {
+                root_position: Point::new(2000, 30),
+                output_position: Point::new(80, 30),
+                bar_position: Point::new(95, 10),
+            },
+            0,
+        );
+
+        assert_eq!((event.x, event.y), (2000, 30));
+        assert_eq!((event.output_x, event.output_y), (80, 30));
+        assert_eq!((event.relative_x, event.relative_y), (15, 10));
+        assert_eq!((event.width, event.height), (40, 24));
+    }
+
+    #[test]
+    fn empty_blocks_have_no_layout_or_click_target() {
+        let items = vec![StatusItem::I3Block(block(""))];
+        let mut painter = RecordingPainter::default();
+        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+
+        assert_eq!(output.bounds, Rect::default());
+        assert!(output.click_targets.is_empty());
+        assert!(painter.texts.is_empty());
+    }
+
+    #[test]
+    fn min_width_is_the_complete_block_width() {
+        let mut item = block("x");
+        item.min_width = Some(I3MinWidth::Pixels(50));
+        let items = vec![StatusItem::I3Block(item)];
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+
+        assert_eq!(output.click_targets[0].bounds.w, 50);
+        assert_eq!(output.bounds.w, 52);
+    }
+
+    #[test]
+    fn final_block_has_no_trailing_separator_gap() {
+        let items = vec![StatusItem::I3Block(block("x"))];
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+        let block_width = output.click_targets[0].bounds.w;
+
+        assert_eq!(output.bounds.w, block_width + 2);
+    }
+
+    #[test]
+    fn empty_blocks_keep_protocol_block_indices() {
+        let items = vec![
+            StatusItem::I3Block(block("")),
+            StatusItem::I3Block(block("visible")),
+        ];
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(Rect::new(0, 0, 120, 20), &items, scheme(), &mut painter);
+
+        assert_eq!(output.click_targets[0].block_index, 1);
+    }
 }

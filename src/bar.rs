@@ -296,11 +296,21 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         return;
     }
 
-    let (monitor_id, work_x, bar_y) = {
+    let (monitor_id, bar_rect, output_origin) = {
         let monitor = ctx.core().model().selected_monitor();
-        (monitor.id(), monitor.work_rect().x, monitor.bar_y())
+        (
+            monitor.id(),
+            Rect::new(
+                monitor.work_rect().x,
+                monitor.bar_y(),
+                monitor.work_rect().w,
+                monitor.bar_height,
+            ),
+            monitor.monitor_rect.position(),
+        )
     };
-    let local_x = root.x - work_x;
+    let bar_position = Point::new(root.x - bar_rect.x, root.y - bar_rect.y);
+    let output_position = Point::new(root.x - output_origin.x, root.y - output_origin.y);
     let status_text = ctx.core().bar.runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
@@ -316,10 +326,12 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     status::emit_i3bar_status_click(
         &parsed,
         click_targets,
-        local_x,
-        root.y - bar_y,
+        status::StatusClickGeometry {
+            root_position: root,
+            output_position,
+            bar_position,
+        },
         button_code,
-        ctx.core().config().derived.bar_height,
         clean_state,
     );
 }
