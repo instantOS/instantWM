@@ -137,9 +137,8 @@ pub(crate) fn build_monitor_snapshots(
     let selected_monitor_num = core.model().selected_monitor().num;
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
-    let base_font_size = crate::wayland::common::font_size_from_config(&core.config().fonts.fonts);
-    let font_families =
-        crate::wayland::common::font_families_from_config(&core.config().fonts.fonts);
+    let base_font_size = core.config().fonts.size();
+    let font_families = core.config().fonts.families();
     let bar_hover = core.bar.hover;
     let selected_status =
         match core.behavior().current_mode.clone() {

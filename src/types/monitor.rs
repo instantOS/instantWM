@@ -12,7 +12,6 @@ use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
 use crate::types::input::StackDirection;
-use crate::types::tag_types::MonitorDirection;
 
 /// Persistent per-monitor client z-order.
 ///
@@ -786,61 +785,6 @@ impl Monitor {
     }
 }
 
-/// Find a monitor in a given direction from the current one.
-///
-/// `monitors` is iterated in spatial order. Direction wraps around as a ring.
-pub fn find_monitor_by_direction<'a>(
-    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
-    current: MonitorId,
-    direction: MonitorDirection,
-) -> Option<MonitorId> {
-    let order: Vec<MonitorId> = monitors.into_iter().map(|(id, _)| id).collect();
-    if order.is_empty() {
-        return None;
-    }
-    if order.len() <= 1 {
-        return Some(current);
-    }
-
-    let pos = order.iter().position(|&id| id == current)?;
-    let len = order.len();
-    let new_pos = if direction.is_next() {
-        (pos + 1) % len
-    } else if pos == 0 {
-        len - 1
-    } else {
-        pos - 1
-    };
-
-    Some(order[new_pos])
-}
-
-/// Find the monitor that contains the given rectangle (by maximum intersection area).
-///
-/// This intentionally uses the full output geometry, rather than the work area:
-/// callers use this for root-coordinate input hit testing, including the bar and
-/// layer-shell exclusive zones that are outside `work_rect`.
-pub fn find_monitor_by_rect<'a>(
-    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
-    rect: &Rect,
-) -> Option<MonitorId> {
-    let mut best_id = None;
-    let mut max_area = 0;
-
-    for (id, m) in monitors {
-        let area = m
-            .monitor_rect
-            .intersection(rect)
-            .map_or(0, |intersection| intersection.area());
-        if area > max_area {
-            max_area = area;
-            best_id = Some(id);
-        }
-    }
-
-    best_id
-}
-
 /// Runtime state restored when a tag mask is revisited.
 /// Initialized with hardcoded defaults on first visit.
 #[derive(Debug, Clone)]
@@ -937,43 +881,42 @@ mod tests {
 
     #[test]
     fn monitor_lookup_includes_bar_outside_work_area() {
-        let mut monitor = Monitor {
-            monitor_id: MonitorId::from_raw(7),
+        let monitor = Monitor {
             monitor_rect: Rect::new(100, 50, 800, 600),
             available_rect: Rect::new(100, 50, 800, 600),
             bar_height: 30,
             ..Monitor::default()
         };
 
+        let mut monitors = crate::monitor::MonitorManager::new();
+        let id = monitors.push(monitor);
         assert_eq!(
-            find_monitor_by_rect([(monitor.id(), &monitor)], &Rect::new(200, 60, 1, 1)),
-            Some(MonitorId::from_raw(7))
+            monitors.id_intersecting_rect(Rect::new(200, 60, 1, 1)),
+            Some(id)
         );
     }
 
     #[test]
     fn monitor_lookup_returns_stable_id_for_each_full_output() {
         let left = Monitor {
-            monitor_id: MonitorId::from_raw(4),
             monitor_rect: Rect::new(0, 0, 100, 100),
             available_rect: Rect::new(0, 0, 100, 100),
             bar_height: 20,
             ..Monitor::default()
         };
         let right = Monitor {
-            monitor_id: MonitorId::from_raw(9),
             monitor_rect: Rect::new(100, 0, 100, 100),
             available_rect: Rect::new(100, 0, 100, 100),
             bar_height: 20,
             ..Monitor::default()
         };
 
+        let mut monitors = crate::monitor::MonitorManager::new();
+        monitors.push(left);
+        let right_id = monitors.push(right);
         assert_eq!(
-            find_monitor_by_rect(
-                [(left.id(), &left), (right.id(), &right)],
-                &Rect::new(150, 5, 1, 1),
-            ),
-            Some(MonitorId::from_raw(9))
+            monitors.id_intersecting_rect(Rect::new(150, 5, 1, 1)),
+            Some(right_id)
         );
     }
 

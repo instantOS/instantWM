@@ -37,11 +37,9 @@ fn plan_send_to_monitor(
         return None;
     }
 
-    let target_id = crate::types::monitor::find_monitor_by_direction(
-        model.monitors.iter(),
-        model.selected_monitor_id(),
-        direction,
-    )?;
+    let target_id = model
+        .monitors
+        .id_in_direction(model.selected_monitor_id(), direction)?;
 
     let strategy = if model
         .client(win)
@@ -190,12 +188,10 @@ mod tests {
     fn planner_uses_floating_strategy_for_floating_clients() {
         let model = model_with_selected_client(ClientMode::Floating, 2);
         let selected_id = model.selected_monitor_id();
-        let target_id = crate::types::monitor::find_monitor_by_direction(
-            model.monitors.iter(),
-            selected_id,
-            MonitorDirection::NEXT,
-        )
-        .unwrap();
+        let target_id = model
+            .monitors
+            .id_in_direction(selected_id, MonitorDirection::NEXT)
+            .unwrap();
 
         assert_eq!(
             plan_send_to_monitor(&model, MonitorDirection::NEXT),
@@ -211,12 +207,10 @@ mod tests {
     fn planner_uses_direct_transfer_for_tiled_clients() {
         let model = model_with_selected_client(ClientMode::Tiling, 2);
         let selected_id = model.selected_monitor_id();
-        let target_id = crate::types::monitor::find_monitor_by_direction(
-            model.monitors.iter(),
-            selected_id,
-            MonitorDirection::NEXT,
-        )
-        .unwrap();
+        let target_id = model
+            .monitors
+            .id_in_direction(selected_id, MonitorDirection::NEXT)
+            .unwrap();
 
         assert_eq!(
             plan_send_to_monitor(&model, MonitorDirection::NEXT),

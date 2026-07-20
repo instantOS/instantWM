@@ -630,72 +630,73 @@ pub fn constraints_prefer_floating(minw: i32, minh: i32, maxw: i32, maxh: i32) -
     minw > 0 && minh > 0 && (minw == maxw || minh == maxh)
 }
 
-/// Compute the screen rectangle for a given snap position.
-///
-/// Returns the target `Rect` (border-aware) for a window snapped to one of the
-/// nine screen regions (half/quarter/maximized), or `None` if `SnapPosition::None`.
-pub fn snap_rect(snap_status: SnapPosition, border_width: i32, work_rect: &Rect) -> Option<Rect> {
-    let half_w = work_rect.w / 2;
-    let half_h = work_rect.h / 2;
-    let horizontal_border = 2 * border_width;
+impl SnapPosition {
+    /// Compute the border-aware target rectangle for this snap position.
+    ///
+    /// Returns `None` for [`SnapPosition::None`].
+    pub fn target_rect(self, border_width: i32, work_rect: Rect) -> Option<Rect> {
+        let half_w = work_rect.w / 2;
+        let half_h = work_rect.h / 2;
+        let horizontal_border = 2 * border_width;
 
-    let rect = match snap_status {
-        SnapPosition::Top => Rect::new(
-            work_rect.x,
-            work_rect.y,
-            work_rect.w - horizontal_border,
-            half_h - horizontal_border,
-        ),
-        SnapPosition::Bottom => Rect::new(
-            work_rect.x,
-            work_rect.y + half_h,
-            work_rect.w - horizontal_border,
-            half_h - horizontal_border,
-        ),
-        SnapPosition::Left => Rect::new(
-            work_rect.x,
-            work_rect.y,
-            half_w - horizontal_border,
-            work_rect.h - horizontal_border,
-        ),
-        SnapPosition::Right => Rect::new(
-            work_rect.x + half_w,
-            work_rect.y,
-            half_w - horizontal_border,
-            work_rect.h - horizontal_border,
-        ),
-        SnapPosition::TopLeft => Rect::new(
-            work_rect.x,
-            work_rect.y,
-            half_w - horizontal_border,
-            half_h - horizontal_border,
-        ),
-        SnapPosition::TopRight => Rect::new(
-            work_rect.x + half_w,
-            work_rect.y,
-            half_w - horizontal_border,
-            half_h - horizontal_border,
-        ),
-        SnapPosition::BottomLeft => Rect::new(
-            work_rect.x,
-            work_rect.y + half_h,
-            half_w - horizontal_border,
-            half_h - horizontal_border,
-        ),
-        SnapPosition::BottomRight => Rect::new(
-            work_rect.x + half_w,
-            work_rect.y + half_h,
-            half_w - horizontal_border,
-            half_h - horizontal_border,
-        ),
-        SnapPosition::Maximized => Rect::new(
-            work_rect.x,
-            work_rect.y,
-            work_rect.w - horizontal_border,
-            work_rect.h - horizontal_border,
-        ),
-        SnapPosition::None => return None,
-    };
+        let rect = match self {
+            SnapPosition::Top => Rect::new(
+                work_rect.x,
+                work_rect.y,
+                work_rect.w - horizontal_border,
+                half_h - horizontal_border,
+            ),
+            SnapPosition::Bottom => Rect::new(
+                work_rect.x,
+                work_rect.y + half_h,
+                work_rect.w - horizontal_border,
+                half_h - horizontal_border,
+            ),
+            SnapPosition::Left => Rect::new(
+                work_rect.x,
+                work_rect.y,
+                half_w - horizontal_border,
+                work_rect.h - horizontal_border,
+            ),
+            SnapPosition::Right => Rect::new(
+                work_rect.x + half_w,
+                work_rect.y,
+                half_w - horizontal_border,
+                work_rect.h - horizontal_border,
+            ),
+            SnapPosition::TopLeft => Rect::new(
+                work_rect.x,
+                work_rect.y,
+                half_w - horizontal_border,
+                half_h - horizontal_border,
+            ),
+            SnapPosition::TopRight => Rect::new(
+                work_rect.x + half_w,
+                work_rect.y,
+                half_w - horizontal_border,
+                half_h - horizontal_border,
+            ),
+            SnapPosition::BottomLeft => Rect::new(
+                work_rect.x,
+                work_rect.y + half_h,
+                half_w - horizontal_border,
+                half_h - horizontal_border,
+            ),
+            SnapPosition::BottomRight => Rect::new(
+                work_rect.x + half_w,
+                work_rect.y + half_h,
+                half_w - horizontal_border,
+                half_h - horizontal_border,
+            ),
+            SnapPosition::Maximized => Rect::new(
+                work_rect.x,
+                work_rect.y,
+                work_rect.w - horizontal_border,
+                work_rect.h - horizontal_border,
+            ),
+            SnapPosition::None => return None,
+        };
 
-    Some(rect)
+        Some(rect)
+    }
 }

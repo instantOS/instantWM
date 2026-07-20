@@ -20,9 +20,7 @@ use crate::backend::BackendEvent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::core_state::HoverOffer;
 use crate::model::WmModel;
-use crate::types::{
-    AltCursor, MouseButton, Point, Rect, ResizeDirection, Size, WindowId, get_resize_direction,
-};
+use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, Size, WindowId};
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::set_cursor_style;
@@ -134,7 +132,7 @@ fn resize_target_for_window(
     let hit_y = root.y - c.geo.y;
     Some(HoverResizeTarget {
         win,
-        dir: get_resize_direction(c.geo.size(), Point::new(hit_x, hit_y)),
+        dir: ResizeDirection::from_hit(c.geo.size(), Point::new(hit_x, hit_y)),
         geo: c.geo,
     })
 }
@@ -441,8 +439,10 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                                 super::warp::warp_into(&mut wmctx, win);
                                 crate::backend::x11::mouse::move_mouse(&mut wm_ctx_x11, btn, None);
                             } else {
-                                let dir =
-                                    get_resize_direction(Size::new(w, h), Point::new(win_x, win_y));
+                                let dir = ResizeDirection::from_hit(
+                                    Size::new(w, h),
+                                    Point::new(win_x, win_y),
+                                );
                                 warp_pointer_resize(&mut wm_ctx, win, dir);
                                 resize_mouse_directional(ctx, Some(dir), btn);
                             }

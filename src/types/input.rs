@@ -373,42 +373,42 @@ impl ResizeDirection {
             Self::Left => smithay::input::pointer::CursorIcon::WResize,
         }
     }
-}
 
-/// Determine resize direction from hit position within a window.
-pub fn get_resize_direction(size: Size, hit: Point) -> ResizeDirection {
-    let Size { w, h } = size;
-    let Point { x: hit_x, y: hit_y } = hit;
-    if hit_y > h / 2 {
-        if hit_x < w / 3 {
-            if hit_y < 2 * h / 3 {
-                ResizeDirection::Left
+    /// Determine the resize direction for a hit position within a window.
+    pub fn from_hit(size: Size, hit: Point) -> Self {
+        let Size { w, h } = size;
+        let Point { x: hit_x, y: hit_y } = hit;
+        if hit_y > h / 2 {
+            if hit_x < w / 3 {
+                if hit_y < 2 * h / 3 {
+                    Self::Left
+                } else {
+                    Self::BottomLeft
+                }
+            } else if hit_x > 2 * w / 3 {
+                if hit_y < 2 * h / 3 {
+                    Self::Right
+                } else {
+                    Self::BottomRight
+                }
             } else {
-                ResizeDirection::BottomLeft
+                Self::Bottom
+            }
+        } else if hit_x < w / 3 {
+            if hit_y > h / 3 {
+                Self::Left
+            } else {
+                Self::TopLeft
             }
         } else if hit_x > 2 * w / 3 {
-            if hit_y < 2 * h / 3 {
-                ResizeDirection::Right
+            if hit_y > h / 3 {
+                Self::Right
             } else {
-                ResizeDirection::BottomRight
+                Self::TopRight
             }
         } else {
-            ResizeDirection::Bottom
+            Self::Top
         }
-    } else if hit_x < w / 3 {
-        if hit_y > h / 3 {
-            ResizeDirection::Left
-        } else {
-            ResizeDirection::TopLeft
-        }
-    } else if hit_x > 2 * w / 3 {
-        if hit_y > h / 3 {
-            ResizeDirection::Right
-        } else {
-            ResizeDirection::TopRight
-        }
-    } else {
-        ResizeDirection::Top
     }
 }
 

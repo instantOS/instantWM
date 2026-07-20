@@ -109,6 +109,47 @@ pub struct FontConfig {
     pub config_font: String,
 }
 
+impl FontConfig {
+    /// Extract the first positive `size=N` value, falling back to 14 pixels.
+    pub fn size(&self) -> f32 {
+        self.fonts
+            .iter()
+            .find_map(|font| {
+                let idx = font.find("size=")?;
+                let tail = &font[idx + 5..];
+                let number: String = tail
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                number.parse::<f32>().ok().filter(|size| *size > 0.0)
+            })
+            .unwrap_or(14.0)
+    }
+
+    /// Return family names stripped of Fontconfig size and style fragments.
+    pub fn families(&self) -> Vec<String> {
+        self.fonts
+            .iter()
+            .filter_map(|font| {
+                let mut family = font.split(':').next()?.trim();
+                for suffix in ["-Regular", "-Medium", "-Bold", "-Light", "-Thin"] {
+                    if let Some(stripped) = family.strip_suffix(suffix) {
+                        family = stripped;
+                        break;
+                    }
+                }
+                (!family.is_empty()).then(|| family.to_string())
+            })
+            .collect()
+    }
+
+    /// Calculate a comfortable line/cell height for the configured font size.
+    pub fn line_height(&self) -> i32 {
+        let size = self.size();
+        ((size * 1.3).ceil() as i32).max(size.ceil() as i32 + 2)
+    }
+}
+
 /// Runtime configuration - composed from sub-structs.
 pub struct RuntimeConfig {
     pub derived: BackendDerived,
@@ -941,6 +982,27 @@ impl KeyboardLayoutState {
             .get(self.current)
             .and_then(|l| l.variant.as_deref())
             .unwrap_or("")
+    }
+
+    /// Format the currently active layout for status and IPC output.
+    pub fn status(&self) -> String {
+        if self.is_empty() {
+            return "no layouts configured".to_string();
+        }
+        let current_name = self.current_layout().unwrap_or("unknown");
+        let variant = self.current_variant();
+        let variant = if variant.is_empty() {
+            String::new()
+        } else {
+            format!(" ({variant})")
+        };
+        format!(
+            "{}/{}: {}{}",
+            self.current + 1,
+            self.len(),
+            current_name,
+            variant
+        )
     }
 }
 

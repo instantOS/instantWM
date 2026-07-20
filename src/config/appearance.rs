@@ -177,131 +177,121 @@ fn palette(theme: ColorTheme) -> ThemePalette {
     }
 }
 
-/// Return every resolved colour table for a built-in theme.
-pub fn colors(theme: ColorTheme) -> ColorConfig {
-    let p = palette(theme);
-    let scheme = ColorSchemeRgba::new;
-    ColorConfig {
-        tag: TagColorConfigs {
-            no_hover: TagColorSet {
-                inactive: scheme(p.foreground, p.background, p.background),
-                filled: scheme(p.foreground, p.surface, p.primary.detail),
-                focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
-                nofocus: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
-                empty: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
-                urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+impl From<ColorTheme> for ColorConfig {
+    /// Resolve every colour table for a built-in theme.
+    fn from(theme: ColorTheme) -> Self {
+        let p = palette(theme);
+        let scheme = ColorSchemeRgba::new;
+        Self {
+            tag: TagColorConfigs {
+                no_hover: TagColorSet {
+                    inactive: scheme(p.foreground, p.background, p.background),
+                    filled: scheme(p.foreground, p.surface, p.primary.detail),
+                    focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
+                    nofocus: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                    empty: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+                    urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+                },
+                hover: TagColorSet {
+                    inactive: scheme(p.foreground, p.background_hover, p.background),
+                    filled: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
+                    focus: scheme(
+                        p.foreground_on_accent,
+                        p.focused.hover_fill,
+                        p.focused.hover_detail,
+                    ),
+                    nofocus: scheme(
+                        p.foreground_on_accent,
+                        p.special.hover_fill,
+                        p.special.hover_detail,
+                    ),
+                    empty: scheme(
+                        p.foreground_on_accent,
+                        p.urgent.hover_fill,
+                        p.urgent.hover_detail,
+                    ),
+                    urgent: scheme(
+                        p.foreground_on_accent,
+                        p.urgent.hover_fill,
+                        p.urgent.hover_detail,
+                    ),
+                },
             },
-            hover: TagColorSet {
-                inactive: scheme(p.foreground, p.background_hover, p.background),
-                filled: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
-                focus: scheme(
-                    p.foreground_on_accent,
-                    p.focused.hover_fill,
-                    p.focused.hover_detail,
-                ),
-                nofocus: scheme(
-                    p.foreground_on_accent,
-                    p.special.hover_fill,
-                    p.special.hover_detail,
-                ),
-                empty: scheme(
-                    p.foreground_on_accent,
-                    p.urgent.hover_fill,
-                    p.urgent.hover_detail,
-                ),
-                urgent: scheme(
-                    p.foreground_on_accent,
-                    p.urgent.hover_fill,
-                    p.urgent.hover_detail,
-                ),
+            window: WindowColorConfigs {
+                no_hover: WindowColorSet {
+                    focus: scheme(p.foreground, p.surface, p.primary.detail),
+                    normal: scheme(p.foreground, p.background, p.background),
+                    minimized: scheme(p.surface, p.background, p.background),
+                    sticky: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
+                    sticky_focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
+                    edge_scratchpad: scheme(
+                        p.foreground_on_accent,
+                        p.special.fill,
+                        p.special.detail,
+                    ),
+                    edge_scratchpad_focus: scheme(
+                        p.foreground_on_accent,
+                        p.focused.fill,
+                        p.focused.detail,
+                    ),
+                    urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+                },
+                hover: WindowColorSet {
+                    focus: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
+                    normal: scheme(p.foreground, p.background_hover, p.background_hover),
+                    minimized: scheme(p.surface_hover, p.background, p.background),
+                    sticky: scheme(
+                        p.foreground_on_accent,
+                        p.special.hover_fill,
+                        p.special.hover_detail,
+                    ),
+                    sticky_focus: scheme(
+                        p.foreground_on_accent,
+                        p.focused.hover_fill,
+                        p.focused.hover_detail,
+                    ),
+                    edge_scratchpad: scheme(
+                        p.foreground_on_accent,
+                        p.special.hover_fill,
+                        p.special.hover_detail,
+                    ),
+                    edge_scratchpad_focus: scheme(
+                        p.foreground_on_accent,
+                        p.focused.hover_fill,
+                        p.focused.hover_detail,
+                    ),
+                    urgent: scheme(
+                        p.foreground_on_accent,
+                        p.urgent.hover_fill,
+                        p.urgent.hover_detail,
+                    ),
+                },
             },
-        },
-        window: WindowColorConfigs {
-            no_hover: WindowColorSet {
-                focus: scheme(p.foreground, p.surface, p.primary.detail),
-                normal: scheme(p.foreground, p.background, p.background),
-                minimized: scheme(p.surface, p.background, p.background),
-                sticky: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
-                sticky_focus: scheme(p.foreground_on_accent, p.focused.fill, p.focused.detail),
-                edge_scratchpad: scheme(p.foreground_on_accent, p.special.fill, p.special.detail),
-                edge_scratchpad_focus: scheme(
-                    p.foreground_on_accent,
-                    p.focused.fill,
-                    p.focused.detail,
-                ),
-                urgent: scheme(p.foreground_on_accent, p.urgent.fill, p.urgent.detail),
+            close_button: CloseButtonColorConfigs {
+                no_hover: CloseButtonColorSet {
+                    normal: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
+                    locked: scheme(p.foreground, p.special.fill, p.special.detail),
+                    fullscreen: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
+                },
+                hover: CloseButtonColorSet {
+                    normal: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
+                    locked: scheme(p.foreground, p.special.hover_fill, p.special.hover_detail),
+                    fullscreen: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
+                },
             },
-            hover: WindowColorSet {
-                focus: scheme(p.foreground, p.surface_hover, p.primary.hover_detail),
-                normal: scheme(p.foreground, p.background_hover, p.background_hover),
-                minimized: scheme(p.surface_hover, p.background, p.background),
-                sticky: scheme(
-                    p.foreground_on_accent,
-                    p.special.hover_fill,
-                    p.special.hover_detail,
-                ),
-                sticky_focus: scheme(
-                    p.foreground_on_accent,
-                    p.focused.hover_fill,
-                    p.focused.hover_detail,
-                ),
-                edge_scratchpad: scheme(
-                    p.foreground_on_accent,
-                    p.special.hover_fill,
-                    p.special.hover_detail,
-                ),
-                edge_scratchpad_focus: scheme(
-                    p.foreground_on_accent,
-                    p.focused.hover_fill,
-                    p.focused.hover_detail,
-                ),
-                urgent: scheme(
-                    p.foreground_on_accent,
-                    p.urgent.hover_fill,
-                    p.urgent.hover_detail,
-                ),
+            border: BorderColorConfig {
+                normal: p.surface,
+                tile_focus: p.primary.fill,
+                float_focus: p.focused.fill,
+                snap: p.special.fill,
             },
-        },
-        close_button: CloseButtonColorConfigs {
-            no_hover: CloseButtonColorSet {
-                normal: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
-                locked: scheme(p.foreground, p.special.fill, p.special.detail),
-                fullscreen: scheme(p.foreground, p.urgent.fill, p.urgent.detail),
+            status: StatusColorConfig {
+                fg: p.foreground,
+                bg: p.background,
+                detail: p.background,
             },
-            hover: CloseButtonColorSet {
-                normal: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
-                locked: scheme(p.foreground, p.special.hover_fill, p.special.hover_detail),
-                fullscreen: scheme(p.foreground, p.urgent.hover_fill, p.urgent.hover_detail),
-            },
-        },
-        border: BorderColorConfig {
-            normal: p.surface,
-            tile_focus: p.primary.fill,
-            float_focus: p.focused.fill,
-            snap: p.special.fill,
-        },
-        status: StatusColorConfig {
-            fg: p.foreground,
-            bg: p.background,
-            detail: p.background,
-        },
+        }
     }
-}
-
-pub fn get_tag_colors() -> TagColorConfigs {
-    colors(ColorTheme::Instantos).tag
-}
-pub fn get_window_colors() -> WindowColorConfigs {
-    colors(ColorTheme::Instantos).window
-}
-pub fn get_close_button_colors() -> CloseButtonColorConfigs {
-    colors(ColorTheme::Instantos).close_button
-}
-pub fn get_border_colors() -> BorderColorConfig {
-    colors(ColorTheme::Instantos).border
-}
-pub fn get_status_bar_colors() -> StatusColorConfig {
-    colors(ColorTheme::Instantos).status
 }
 
 pub fn get_fonts() -> Vec<String> {
@@ -318,14 +308,13 @@ mod tests {
     #[test]
     fn every_builtin_close_button_has_visible_detail() {
         for theme in ColorTheme::ALL {
-            let close = colors(*theme).close_button;
+            let close = ColorConfig::from(*theme).close_button;
             for set in [&close.no_hover, &close.hover] {
                 for scheme in [&set.normal, &set.locked, &set.fullscreen] {
                     assert_ne!(
-                        scheme.bg,
-                        scheme.detail,
+                        scheme.bg, scheme.detail,
                         "{} close-button detail must contrast with its fill",
-                        theme.name()
+                        theme
                     );
                 }
             }

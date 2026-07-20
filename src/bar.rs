@@ -242,7 +242,7 @@ pub fn resolve_bar_position_at_root(
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
     let rect = crate::mouse::pointer::point_rect(root);
-    let monitor_id = crate::types::find_monitor_by_rect(core.model().monitors.iter(), &rect)?;
+    let monitor_id = core.model().monitors.id_intersecting_rect(rect)?;
     if sync_selected_monitor && monitor_id != core.model().selected_monitor_id() {
         core.model_mut().set_selected_monitor(monitor_id);
     }

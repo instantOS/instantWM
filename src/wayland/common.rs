@@ -55,56 +55,6 @@ use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
 use crate::wm::Wm;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Font / text helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-/// Extract font size from a list of font descriptor strings.
-///
-/// Looks for a `size=N` fragment in each string, returning the first valid
-/// positive float found.  Falls back to `14.0` when nothing matches.
-pub fn font_size_from_config(fonts: &[String]) -> f32 {
-    fonts
-        .iter()
-        .find_map(|font| {
-            let idx = font.find("size=")?;
-            let tail = &font[idx + 5..];
-            let num: String = tail
-                .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '.')
-                .collect();
-            num.parse::<f32>().ok().filter(|s| *s > 0.0)
-        })
-        .unwrap_or(14.0)
-}
-
-/// Extract family names from Fontconfig-style descriptors.
-///
-/// cosmic-text does not understand fragments such as `:size=12`, so those
-/// must not be passed as part of the family name. A style suffix used by the
-/// default config is also removed; cosmic-text obtains style information from
-/// the matched face itself.
-pub fn font_families_from_config(fonts: &[String]) -> Vec<String> {
-    fonts
-        .iter()
-        .filter_map(|font| {
-            let mut family = font.split(':').next()?.trim();
-            for suffix in ["-Regular", "-Medium", "-Bold", "-Light", "-Thin"] {
-                if let Some(stripped) = family.strip_suffix(suffix) {
-                    family = stripped;
-                    break;
-                }
-            }
-            (!family.is_empty()).then(|| family.to_string())
-        })
-        .collect()
-}
-
-/// Calculate a comfortable line/cell height (in pixels) from a font size.
-pub fn font_height_from_size(font_size: f32) -> i32 {
-    ((font_size * 1.3).ceil() as i32).max(font_size.ceil() as i32 + 2)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Input helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -257,9 +207,9 @@ mod tests {
 /// applies them to the given `CoreState`. Also updates the bar painter's font
 /// size. Shared by both startup (`init_globals`) and reload.
 pub fn apply_bar_metrics(g: &mut CoreState, data: &mut WaylandBackendData) {
-    let font_size = font_size_from_config(&g.config.fonts.fonts);
-    let font_families = font_families_from_config(&g.config.fonts.fonts);
-    let font_height = font_height_from_size(font_size);
+    let font_size = g.config.fonts.size();
+    let font_families = g.config.fonts.families();
+    let font_height = g.config.fonts.line_height();
 
     data.bar_painter.set_font_size(font_size);
     data.bar_painter.set_font_families(&font_families);

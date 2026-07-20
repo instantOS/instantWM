@@ -456,24 +456,24 @@ pub fn dispatch_pointer_motion(
 
 /// Compute whether the pointer is in the bar area or guard band below it.
 fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
-    crate::types::find_monitor_by_rect(
-        wm.core.model.monitors.iter(),
-        &Rect {
+    wm.core
+        .model
+        .monitors
+        .id_intersecting_rect(Rect {
             x: root.x,
             y: root.y,
             w: 1,
             h: 1,
-        },
-    )
-    .and_then(|mid| wm.core.monitor(mid))
-    .map(|mon| {
-        let bar_visible = monitor_bar_visible(wm, mon);
-        let in_bar = bar_visible && mon.y_in_bar(root.y);
-        let in_guard =
-            bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
-        (in_bar, in_guard)
-    })
-    .unwrap_or((false, false))
+        })
+        .and_then(|mid| wm.core.monitor(mid))
+        .map(|mon| {
+            let bar_visible = monitor_bar_visible(wm, mon);
+            let in_bar = bar_visible && mon.y_in_bar(root.y);
+            let in_guard =
+                bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
+            (in_bar, in_guard)
+        })
+        .unwrap_or((false, false))
 }
 
 /// Resolve pointer focus and hovered window based on bar hit state.

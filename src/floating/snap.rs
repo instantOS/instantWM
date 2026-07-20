@@ -97,7 +97,7 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
         client.border_width
     };
     let work_rect = ctx.core.model().monitor(monitor_id)?.work_rect();
-    crate::types::geometry::snap_rect(snap_status, border_width, &work_rect)
+    snap_status.target_rect(border_width, work_rect)
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the
@@ -170,9 +170,7 @@ fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
         None => return,
     };
 
-    let Some(rect) =
-        crate::types::geometry::snap_rect(c.snap_status, c.border_width, &m.work_rect())
-    else {
+    let Some(rect) = c.snap_status.target_rect(c.border_width, m.work_rect()) else {
         return;
     };
 

@@ -1,5 +1,4 @@
 use clap::{ArgAction, Parser, Subcommand};
-use instantwm::config::config_toml::ColorTheme;
 use instantwm::ipc_types::{
     ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind,
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
@@ -594,9 +593,9 @@ impl From<CommandKind> for IpcCommand {
                 if list {
                     IpcCommand::ListThemes
                 } else if let Some(name) = name {
-                    match ColorTheme::from_name(&name) {
-                        Some(theme) => IpcCommand::SetTheme(theme),
-                        None => {
+                    match name.parse() {
+                        Ok(theme) => IpcCommand::SetTheme(theme),
+                        Err(_) => {
                             eprintln!(
                                 "invalid theme name '{name}' \
                                  (use 'instantwmctl theme --list' to see themes)"

@@ -5,7 +5,6 @@
 //! changes, this is non-persistent: `reload` reverts to whatever `config.toml`
 //! contains.
 
-use crate::config::appearance;
 use crate::config::config_toml::ColorTheme;
 use crate::ipc::config;
 use crate::ipc_types::Response;
@@ -13,12 +12,12 @@ use crate::wm::Wm;
 
 /// Return the name of the active theme.
 pub fn get_theme(wm: &Wm) -> Response {
-    Response::Theme(wm.core.config.theme.name())
+    Response::Theme(wm.core.config.theme.to_string())
 }
 
 /// List every built-in theme name.
 pub fn list_themes() -> Response {
-    Response::ThemeList(ColorTheme::ALL.iter().map(|t| t.name()).collect())
+    Response::ThemeList(ColorTheme::ALL.iter().map(ToString::to_string).collect())
 }
 
 /// Switch to a built-in theme, recolouring the running WM.
@@ -26,7 +25,7 @@ pub fn set_theme(wm: &mut Wm, theme: ColorTheme) -> Response {
     // Recompute every colour table from the theme palette, then drop it onto
     // the runtime colour state. Tag colours live separately from the rest, so
     // both stores are updated.
-    let colors = appearance::colors(theme);
+    let colors = crate::config::config_toml::ColorConfig::from(theme);
     wm.core.config.colors.window = colors.window;
     wm.core.config.colors.close_button = colors.close_button;
     wm.core.config.colors.border = colors.border;
@@ -53,7 +52,7 @@ mod tests {
 
         assert_eq!(wm.core.config.theme, ColorTheme::Nord);
         // Tag colours live in `model.tags.colors`…
-        let nord = appearance::colors(ColorTheme::Nord);
+        let nord = crate::config::config_toml::ColorConfig::from(ColorTheme::Nord);
         assert_eq!(
             wm.core.model.tags.colors.no_hover.focus.bg,
             nord.tag.no_hover.focus.bg

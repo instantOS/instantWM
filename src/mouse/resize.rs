@@ -25,7 +25,6 @@ use crate::types::*;
 
 use super::cursor::set_cursor_style;
 use super::drag::lifecycle::{ResizeDragParams, begin_resize};
-use crate::types::input::get_resize_direction;
 
 fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
     let mut ctx = WmCtx::X11(ctx_x11.reborrow());
@@ -105,7 +104,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
         let hit_x = ptr.x - new_geo.x;
         let hit_y = ptr.y - new_geo.y;
-        let dir = get_resize_direction(new_geo.size(), Point::new(hit_x, hit_y));
+        let dir = ResizeDirection::from_hit(new_geo.size(), Point::new(hit_x, hit_y));
 
         match ctx {
             WmCtx::X11(x11) => {
@@ -120,7 +119,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
     let hit_x = ptr.x - geo.x;
     let hit_y = ptr.y - geo.y;
-    let dir = get_resize_direction(geo.size(), Point::new(hit_x, hit_y));
+    let dir = ResizeDirection::from_hit(geo.size(), Point::new(hit_x, hit_y));
 
     match ctx {
         WmCtx::X11(x11) => {
@@ -339,7 +338,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 
     let hit_x = ptr.x - geo.x;
     let hit_y = ptr.y - geo.y;
-    let dir = get_resize_direction(geo.size(), Point::new(hit_x, hit_y));
+    let dir = ResizeDirection::from_hit(geo.size(), Point::new(hit_x, hit_y));
 
     match ctx {
         WmCtx::X11(x11) => {

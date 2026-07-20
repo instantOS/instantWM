@@ -13,7 +13,7 @@
 //! A snap position is stored on each client as a [`SnapPosition`] enum
 //! variant. When a floating client is dragged to a screen edge the WM sets
 //! `client.snap_status`; [`floating`] reads it and computes the target
-//! geometry via [`snap_rect`](crate::types::geometry::snap_rect).
+//! geometry via [`SnapPosition::target_rect`](crate::types::SnapPosition::target_rect).
 //!
 //! ```text
 //! ┌──────────────────────────────────┐
@@ -58,11 +58,9 @@ pub fn floating(
 
         if c.is_visible(selected)
             && c.snap_status != SnapPosition::None
-            && let Some(rect) = crate::types::geometry::snap_rect(
-                c.snap_status,
-                c.border_width,
-                &monitor.work_rect(),
-            )
+            && let Some(rect) = c
+                .snap_status
+                .target_rect(c.border_width, monitor.work_rect())
         {
             result.push(LayoutOutput {
                 win,

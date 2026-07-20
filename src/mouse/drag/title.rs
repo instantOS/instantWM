@@ -84,8 +84,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
 
         let hit_x = start_point.x - current_geo.x;
         let hit_y = start_point.y - current_geo.y;
-        let dir =
-            crate::types::input::get_resize_direction(current_geo.size(), Point::new(hit_x, hit_y));
+        let dir = ResizeDirection::from_hit(current_geo.size(), Point::new(hit_x, hit_y));
 
         let bw = match ctx.core().model().client(win) {
             Some(c) => c.border_width,

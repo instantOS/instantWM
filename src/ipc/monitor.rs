@@ -157,10 +157,7 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
         let modes = match &wm.backend {
             crate::backend::Backend::Wayland(data) => {
                 let mode_strings = data.backend.list_display_modes(display_name);
-                mode_strings
-                    .iter()
-                    .filter_map(|s| crate::ipc_types::MonitorMode::from_str(s))
-                    .collect()
+                mode_strings.iter().filter_map(|s| s.parse().ok()).collect()
             }
             crate::backend::Backend::X11(_) => {
                 // On X11, use xrandr to get modes

@@ -121,9 +121,9 @@ pub enum Transform {
     Flipped270,
 }
 
-impl Transform {
-    pub fn to_smithay(self) -> smithay::utils::Transform {
-        match self {
+impl From<Transform> for smithay::utils::Transform {
+    fn from(transform: Transform) -> Self {
+        match transform {
             Transform::Normal => smithay::utils::Transform::Normal,
             Transform::_90 => smithay::utils::Transform::_90,
             Transform::_180 => smithay::utils::Transform::_180,
@@ -134,17 +134,19 @@ impl Transform {
             Transform::Flipped270 => smithay::utils::Transform::Flipped270,
         }
     }
+}
 
-    pub fn to_string(&self) -> String {
+impl std::fmt::Display for Transform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Transform::Normal => "normal".to_string(),
-            Transform::_90 => "90".to_string(),
-            Transform::_180 => "180".to_string(),
-            Transform::_270 => "270".to_string(),
-            Transform::Flipped => "flipped".to_string(),
-            Transform::Flipped90 => "flipped-90".to_string(),
-            Transform::Flipped180 => "flipped-180".to_string(),
-            Transform::Flipped270 => "flipped-270".to_string(),
+            Transform::Normal => f.write_str("normal"),
+            Transform::_90 => f.write_str("90"),
+            Transform::_180 => f.write_str("180"),
+            Transform::_270 => f.write_str("270"),
+            Transform::Flipped => f.write_str("flipped"),
+            Transform::Flipped90 => f.write_str("flipped-90"),
+            Transform::Flipped180 => f.write_str("flipped-180"),
+            Transform::Flipped270 => f.write_str("flipped-270"),
         }
     }
 }
@@ -512,16 +514,19 @@ pub struct MonitorMode {
     pub refresh_mhz: u32,
 }
 
-impl MonitorMode {
+impl std::str::FromStr for MonitorMode {
+    type Err = String;
+
     /// Parse a mode string like "1920x1080@60.000" into a MonitorMode.
-    pub fn from_str(s: &str) -> Option<Self> {
-        let (res, rate_str) = s.split_once('@')?;
-        let (w, h) = res.split_once('x')?;
-        let width: u32 = w.parse().ok()?;
-        let height: u32 = h.parse().ok()?;
-        let rate_hz: f64 = rate_str.parse().ok()?;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let invalid = || format!("invalid monitor mode: {s}");
+        let (res, rate_str) = s.split_once('@').ok_or_else(invalid)?;
+        let (w, h) = res.split_once('x').ok_or_else(invalid)?;
+        let width: u32 = w.parse().map_err(|_| invalid())?;
+        let height: u32 = h.parse().map_err(|_| invalid())?;
+        let rate_hz: f64 = rate_str.parse().map_err(|_| invalid())?;
         let refresh_mhz = (rate_hz * 1000.0) as u32;
-        Some(Self {
+        Ok(Self {
             width,
             height,
             refresh_mhz,

@@ -201,8 +201,42 @@ impl MonitorManager {
         None
     }
 
+    /// Find the monitor with the largest intersection with `rect`.
+    pub fn id_intersecting_rect(&self, rect: Rect) -> Option<MonitorId> {
+        let mut best = None;
+        let mut max_area = 0;
+        for (id, monitor) in self.iter() {
+            let area = monitor
+                .monitor_rect
+                .intersection(&rect)
+                .map_or(0, |intersection| intersection.area());
+            if area > max_area {
+                max_area = area;
+                best = Some(id);
+            }
+        }
+        best
+    }
+
+    /// Find the adjacent monitor in spatial order, wrapping at either end.
+    pub fn id_in_direction(
+        &self,
+        current: MonitorId,
+        direction: MonitorDirection,
+    ) -> Option<MonitorId> {
+        let current_position = self.position_of(current)?;
+        let target_position = if direction.is_next() {
+            (current_position + 1) % self.len()
+        } else if current_position == 0 {
+            self.len().checked_sub(1)?
+        } else {
+            current_position - 1
+        };
+        self.id_at_position(target_position)
+    }
+
     pub fn find_id_by_rect(&self, rect: &Rect) -> Option<MonitorId> {
-        crate::types::find_monitor_by_rect(self.iter(), rect)
+        self.id_intersecting_rect(*rect)
             .or_else(|| self.selected_monitor().map(Monitor::id))
     }
 
@@ -271,7 +305,7 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         if mgr.len() <= 1 {
             return;
         }
-        match find_monitor_by_direction(mgr.iter(), mgr.selected(), direction) {
+        match mgr.id_in_direction(mgr.selected(), direction) {
             Some(id) => id,
             None => return,
         }

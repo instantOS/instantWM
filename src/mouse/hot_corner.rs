@@ -36,8 +36,7 @@ fn top_right_zones(monitor: Rect) -> HotCornerZones {
 
 fn corner_at(ctx: &WmCtx<'_>, root: Point) -> Option<(MonitorId, HotCornerZones)> {
     let point = Rect::new(root.x, root.y, 1, 1);
-    let monitor_id =
-        crate::types::find_monitor_by_rect(ctx.core().model().monitors.iter(), &point)?;
+    let monitor_id = ctx.core().model().monitors.id_intersecting_rect(point)?;
     let monitor = ctx.core().model().monitor(monitor_id)?;
     Some((monitor_id, top_right_zones(monitor.monitor_rect)))
 }
