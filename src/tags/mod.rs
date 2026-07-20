@@ -25,7 +25,7 @@ pub use crate::overview::{cancel_overview, toggle_overview};
 
 // Re-export TagMask for convenience
 
-pub use shift::{move_client, shift_tag};
+pub use shift::{move_client_follow_view, shift_tag};
 
 pub use tag_mon_impl::send_to_monitor;
 

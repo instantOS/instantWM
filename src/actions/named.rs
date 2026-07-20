@@ -17,7 +17,7 @@ use crate::layouts::{
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
 use crate::tags::{
-    cancel_overview, follow_view, last_view, move_client, quit, shift_tag, shift_view,
+    cancel_overview, follow_view, last_view, move_client_follow_view, quit, shift_tag, shift_view,
     toggle_overview, win_view,
 };
 use crate::toggles::{
@@ -118,8 +118,8 @@ define_named_actions!(
     WinView => { name: "win_view", arg_example: None, doc: "view tags of focused client", run: |ctx, _args| { win_view(ctx); } },
     ScrollLeft => { name: "scroll_left", arg_example: None, doc: "scroll tags left", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Left); } },
     ScrollRight => { name: "scroll_right", arg_example: None, doc: "scroll tags right", run: |ctx, _args| { crate::animation::scroll_view_with_slide(ctx, HorizontalDirection::Right); } },
-    MoveClientLeft => { name: "move_client_left", arg_example: None, doc: "move client to tag on left", run: |ctx, _args| { move_client(ctx, HorizontalDirection::Left); } },
-    MoveClientRight => { name: "move_client_right", arg_example: None, doc: "move client to tag on right", run: |ctx, _args| { move_client(ctx, HorizontalDirection::Right); } },
+    MoveClientLeft => { name: "move_client_left", arg_example: None, doc: "move client to tag on left", run: |ctx, _args| { move_client_follow_view(ctx, HorizontalDirection::Left); } },
+    MoveClientRight => { name: "move_client_right", arg_example: None, doc: "move client to tag on right", run: |ctx, _args| { move_client_follow_view(ctx, HorizontalDirection::Right); } },
     ShiftTagLeft => { name: "shift_tag_left", arg_example: None, doc: "shift client to tag on left", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Left.into(), 1); } },
     ShiftTagRight => { name: "shift_tag_right", arg_example: None, doc: "shift client to tag on right", run: |ctx, _args| { shift_tag(ctx, HorizontalDirection::Right.into(), 1); } },
     ShiftViewLeft => { name: "shift_view_left", arg_example: None, doc: "shift view to tag on left", run: |ctx, _args| { shift_view(ctx, HorizontalDirection::Left); } },

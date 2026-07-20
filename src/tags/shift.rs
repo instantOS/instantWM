@@ -7,7 +7,7 @@ use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};
 
-pub fn move_client(ctx: &mut WmCtx, dir: HorizontalDirection) {
+pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
     shift_tag(ctx, dir.into(), 1);
     crate::tags::view::scroll_view(ctx, dir);
 }

@@ -40,7 +40,7 @@ pub fn set_theme(wm: &mut Wm, theme: ColorTheme) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::{wayland::WaylandBackend, Backend};
+    use crate::backend::{Backend, wayland::WaylandBackend};
 
     fn test_wm() -> Wm {
         Wm::new(Backend::new_wayland(WaylandBackend::new()))
@@ -54,9 +54,15 @@ mod tests {
         assert_eq!(wm.core.config.theme, ColorTheme::Nord);
         // Tag colours live in `model.tags.colors`…
         let nord = appearance::colors(ColorTheme::Nord);
-        assert_eq!(wm.core.model.tags.colors.no_hover.focus.bg, nord.tag.no_hover.focus.bg);
+        assert_eq!(
+            wm.core.model.tags.colors.no_hover.focus.bg,
+            nord.tag.no_hover.focus.bg
+        );
         // …the rest in `config.colors`.
-        assert_eq!(wm.core.config.colors.border.tile_focus, nord.border.tile_focus);
+        assert_eq!(
+            wm.core.config.colors.border.tile_focus,
+            nord.border.tile_focus
+        );
         assert_eq!(wm.core.config.colors.status_bar.fg, nord.status.fg);
     }
 

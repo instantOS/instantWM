@@ -9,7 +9,7 @@ use crate::core_state::CoreState;
 use crate::floating::{change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
-use crate::tags::{move_client, shift_tag};
+use crate::tags::{move_client_follow_view, shift_tag};
 use crate::types::*;
 
 use crate::mouse::constants::{MAX_UNMAXIMIZE_OFFSET, OVERLAY_ZONE_WIDTH};
@@ -485,9 +485,9 @@ pub fn apply_edge_drop(
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
         if root.y < mon_my + (2 * mon_mh) / 3 {
             if at_left {
-                move_client(ctx, HorizontalDirection::Left);
+                move_client_follow_view(ctx, HorizontalDirection::Left);
             } else {
-                move_client(ctx, HorizontalDirection::Right);
+                move_client_follow_view(ctx, HorizontalDirection::Right);
             }
         } else if at_left {
             shift_tag(ctx, HorizontalDirection::Left.into(), 1);
