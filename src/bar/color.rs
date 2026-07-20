@@ -59,7 +59,7 @@ impl Rgba {
 }
 
 impl std::fmt::Display for Rgba {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let [r, g, b, a] = self.to_rgba8();
         if a == 255 {
             write!(f, "#{:02X}{:02X}{:02X}", r, g, b)
