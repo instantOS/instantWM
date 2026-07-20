@@ -22,7 +22,6 @@ pub struct BarRuntime {
 
 #[derive(Default)]
 pub struct BarState {
-    draw_bar_recursion: usize,
     bar_update_seq: u64,
     last_drawn_seq: u64,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
@@ -86,23 +85,6 @@ pub struct MonitorHitCache {
 }
 
 impl BarState {
-    pub(crate) fn try_recursion_enter(&mut self) -> bool {
-        if self.draw_bar_recursion > 0 {
-            self.mark_dirty();
-            return false;
-        }
-        self.draw_bar_recursion = 1;
-        true
-    }
-
-    pub(crate) fn recursion_exit(&mut self) {
-        self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
-    }
-
-    pub fn is_drawing(&self) -> bool {
-        self.draw_bar_recursion > 0
-    }
-
     /// Bump the backend-agnostic bar invalidation sequence.
     pub fn mark_dirty(&mut self) {
         self.bar_update_seq = self.bar_update_seq.wrapping_add(1);

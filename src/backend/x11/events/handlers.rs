@@ -366,12 +366,7 @@ pub fn expose(ctx: &mut WmCtxX11<'_>, e: &ExposeEvent) {
             .get(monitor_id)
             .is_some_and(|m| event_win == m.bar_win);
         if is_bar_win {
-            crate::backend::x11::bar::draw_bar(
-                &mut ctx.core,
-                ctx.x11_runtime,
-                ctx.xembed_tray.as_deref(),
-                monitor_id,
-            );
+            ctx.core.bar.mark_dirty();
         }
     };
 }

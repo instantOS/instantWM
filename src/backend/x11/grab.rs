@@ -174,6 +174,14 @@ fn call_on_event<F>(
 where
     F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
 {
+    // The modal grab loop consumes X11 events before the normal calloop
+    // dispatcher can see them. Preserve bar damage notifications here; the
+    // following deferred-work pump will coalesce and render them.
+    if let x11rb::protocol::Event::Expose(expose) = event {
+        crate::backend::x11::events::handlers::expose(ctx, expose);
+        return true;
+    }
+
     if let Some(be) = event_to_backend(event) {
         on_event(ctx, &be)
     } else {

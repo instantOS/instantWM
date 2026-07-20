@@ -63,7 +63,7 @@ pub fn draw_bar(
     else {
         return;
     };
-    crate::bar::renderer::draw_bar_snapshot(core, mon_idx, &monitor, snapshot, &mut painter);
+    crate::bar::renderer::draw_bar_snapshot(core, mon_idx, snapshot, &mut painter);
 
     painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
 }
@@ -114,15 +114,12 @@ pub fn draw_bars(
             drw.clone()
         };
 
-        let Some(monitor) = core.model().monitor(i).cloned() else {
-            continue;
-        };
-        let Some(snapshot) = snapshot_by_monitor_id.get(&monitor.id()).copied() else {
+        let Some(snapshot) = snapshot_by_monitor_id.get(&i).copied() else {
             continue;
         };
 
         let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
-        crate::bar::renderer::draw_bar_snapshot(core, i, &monitor, snapshot, &mut painter);
+        crate::bar::renderer::draw_bar_snapshot(core, i, snapshot, &mut painter);
         painter.map(bar_win, Rect::new(0, 0, work_rect_w, bar_height));
     }
     core.bar.mark_drawn();
