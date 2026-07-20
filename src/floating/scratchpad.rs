@@ -184,8 +184,15 @@ fn attach_client_to_monitor_top(model: &mut WmModel, win: WindowId, monitor_id: 
     model.attach_z_order_top(win);
 }
 
-fn selected_monitor_yoffset(model: &WmModel, bar_height: i32, tags: crate::types::TagMask) -> i32 {
-    let mon = model.selected_monitor();
+fn monitor_yoffset(
+    model: &WmModel,
+    monitor_id: MonitorId,
+    bar_height: i32,
+    tags: crate::types::TagMask,
+) -> i32 {
+    let Some(mon) = model.monitor(monitor_id) else {
+        return 0;
+    };
     let show_bar = mon.show_bar_for_mask(tags);
     let mut offset = if show_bar { bar_height } else { 0 };
     for (_win, c) in mon.iter_clients(&model.clients) {
@@ -205,7 +212,12 @@ fn prepare_scratchpad_for_show(
 ) -> crate::types::TagMask {
     attach_client_to_monitor_top(ctx.core_mut().model_mut(), win, monitor_id);
 
-    let tags = ctx.core().model().selected_monitor().selected_tags();
+    let tags = ctx
+        .core()
+        .model()
+        .monitor(monitor_id)
+        .map(|monitor| monitor.selected_tags())
+        .unwrap_or(TagMask::EMPTY);
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.show_as_scratchpad(tags, direction);
     }
@@ -338,7 +350,33 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ScratchpadShowOptions {
+    pub monitor_id: MonitorId,
+    pub focus: bool,
+    pub warp_pointer: bool,
+}
+
 pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, String> {
+    let options = ScratchpadShowOptions {
+        monitor_id: ctx.core().model().selected_monitor_id(),
+        focus: true,
+        warp_pointer: ctx.core().behavior().focus_follows_mouse,
+    };
+    scratchpad_show_name_with_options(ctx, name, options)
+}
+
+pub(crate) fn scratchpad_show_name_with_options(
+    ctx: &mut WmCtx,
+    name: &str,
+    options: ScratchpadShowOptions,
+) -> Result<String, String> {
+    if ctx.core().model().monitor(options.monitor_id).is_none() {
+        return Err(format!(
+            "target monitor {:?} does not exist",
+            options.monitor_id
+        ));
+    }
     let Some(found) = ctx.core().model().scratchpad_find(name) else {
         return Err(format!("scratchpad '{}' not found", name));
     };
@@ -356,13 +394,13 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         return Ok(format!("scratchpad '{}' is already visible", name));
     }
 
-    let current_mon = ctx.core().model().selected_monitor_id();
-    let focusfollowsmouse = ctx.core().behavior().focus_follows_mouse;
-    let tags = prepare_scratchpad_for_show(ctx, found, current_mon, direction);
+    let target_monitor = options.monitor_id;
+    let tags = prepare_scratchpad_for_show(ctx, found, target_monitor, direction);
 
     if let Some(dir) = direction {
-        let yoffset = selected_monitor_yoffset(
+        let yoffset = monitor_yoffset(
             ctx.core().model(),
+            target_monitor,
             ctx.core().config().derived.bar_height,
             tags,
         );
@@ -373,8 +411,8 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
             let mon = ctx
                 .core()
                 .model()
-                .monitor(current_mon)
-                .expect("selected monitor must exist while showing scratchpad");
+                .monitor(target_monitor)
+                .expect("validated target monitor must exist while showing scratchpad");
             let client = ctx
                 .core()
                 .model()
@@ -406,10 +444,12 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         arrange_visible_scratchpad(ctx, found, was_hidden);
     }
 
-    crate::focus::focus(ctx, Some(found));
+    if options.focus {
+        crate::focus::focus(ctx, Some(found));
+    }
     ctx.window_backend().raise_window_visual_only(found);
 
-    if focusfollowsmouse {
+    if options.warp_pointer {
         ctx.warp_cursor_to_client(found);
     }
 
@@ -479,13 +519,15 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         .and_then(|c| c.scratchpad.as_ref().and_then(|sp| sp.direction));
 
     let (geo, mon_rect) = {
-        let mon = ctx.core().model().selected_monitor();
         let Some(client) = ctx.core().model().client(found) else {
             return;
         };
         if !client.is_sticky {
             return;
         }
+        let Some(mon) = ctx.core().model().monitor(client.monitor_id) else {
+            return;
+        };
         (client.geo, mon.monitor_rect)
     };
 
@@ -537,6 +579,48 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         scratchpad_hide_name(ctx, name);
     } else {
         let _ = scratchpad_show_name(ctx, name);
+    }
+}
+
+/// Toggle a scratchpad on a specific monitor without moving the pointer.
+///
+/// This is used by pointer-edge triggers: warping from inside a hot corner
+/// would leave its hysteresis zone and make the interaction unstable.
+pub(crate) fn scratchpad_toggle_from_hot_corner(
+    ctx: &mut WmCtx,
+    name: &str,
+    monitor_id: MonitorId,
+) {
+    if ctx.core().model().is_overview_active() {
+        return;
+    }
+    let Some(found) = ctx.core().model().scratchpad_find(name) else {
+        return;
+    };
+    let Some(is_visible) = ctx
+        .core()
+        .model()
+        .client(found)
+        .map(|client| client.is_sticky)
+    else {
+        return;
+    };
+
+    if is_visible {
+        scratchpad_hide_name(ctx, name);
+    } else {
+        // Focusing is monitor-relative in the WM model. Make the corner's
+        // monitor current before attaching and focusing the scratchpad there.
+        crate::focus::select_monitor(ctx, monitor_id);
+        let _ = scratchpad_show_name_with_options(
+            ctx,
+            name,
+            ScratchpadShowOptions {
+                monitor_id,
+                focus: true,
+                warp_pointer: false,
+            },
+        );
     }
 }
 

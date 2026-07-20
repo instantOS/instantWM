@@ -162,8 +162,6 @@ pub enum Gesture {
     WinTitle(WindowId),
     /// Cursor is over a tag button (0-based tag index).
     Tag(usize),
-    /// Cursor is over the overlay activation zone.
-    Overlay,
     /// Cursor is over the close button.
     CloseButton,
     /// Cursor is over the start-menu icon.

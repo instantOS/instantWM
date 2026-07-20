@@ -295,12 +295,12 @@ pub fn handle_pointer_motion(
     }
 
     let final_location = potential_location;
-    let final_hit = state.contents_under_pointer(final_location);
+    let candidate_hit = state.contents_under_pointer(final_location);
 
     if constraint.confined
         && let Some((surface, surface_loc)) = &constraint.surface
     {
-        if final_hit
+        if candidate_hit
             .surface
             .as_ref()
             .is_none_or(|(final_surface, _)| final_surface != surface)
@@ -317,6 +317,21 @@ pub fn handle_pointer_motion(
     }
 
     state.runtime.pointer_location = final_location;
+
+    // Hot corners are compositor-owned pointer interactions. Evaluate them
+    // before the final hit test so this motion is dispatched against the
+    // newly shown or hidden overlay. Session-locked input must never trigger
+    // WM UI.
+    if !state.is_locked() {
+        let root = RootPoint::new(
+            final_location.x.round() as i32,
+            final_location.y.round() as i32,
+        );
+        let mut ctx = wm.ctx();
+        crate::mouse::update_overlay_hot_corner(&mut ctx, root);
+    }
+
+    let final_hit = state.contents_under_pointer(final_location);
 
     // Activate any pending constraints BEFORE dispatch so they're active for this event
     activate_pointer_constraint_under(pointer_handle, final_hit.surface.as_ref(), final_location);
@@ -656,7 +671,7 @@ fn handle_wm_drag_motion(
     if ctx.core().drag_state().armed_interaction().is_some() {
         crate::mouse::title_drag_motion(&mut ctx, root);
     }
-    if ctx.core().drag_state().gesture.active {
+    if ctx.core().drag_state().sidebar_volume_active() {
         crate::mouse::update_sidebar_gesture(&mut ctx, root.y);
     }
 }

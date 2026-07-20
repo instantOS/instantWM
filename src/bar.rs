@@ -6,8 +6,6 @@ pub(crate) mod scene;
 pub mod status;
 pub mod wayland;
 
-pub use renderer::reset_bar_common;
-
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
 use std::collections::HashMap;
@@ -36,6 +34,49 @@ pub struct BarState {
     status_cache: status::ParsedStatus,
     status_cache_parsed: bool,
     pub runtime: BarRuntime,
+    pub hover: BarHoverState,
+}
+
+/// Pointer hover presentation for the built-in bar.
+///
+/// There is one pointer, so this state is global, but retaining the monitor ID
+/// prevents a selection change from painting the gesture on another output.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BarHoverState {
+    pub monitor_id: Option<MonitorId>,
+    pub gesture: Gesture,
+    pub drag_active: bool,
+}
+
+impl BarHoverState {
+    pub fn set(&mut self, monitor_id: MonitorId, gesture: Gesture, drag_active: bool) -> bool {
+        let next = Self {
+            monitor_id: Some(monitor_id),
+            gesture,
+            drag_active,
+        };
+        if *self == next {
+            return false;
+        }
+        *self = next;
+        true
+    }
+
+    pub fn clear(&mut self) -> bool {
+        if *self == Self::default() {
+            return false;
+        }
+        *self = Self::default();
+        true
+    }
+
+    pub fn gesture_on(self, monitor_id: MonitorId) -> Gesture {
+        if self.monitor_id == Some(monitor_id) {
+            self.gesture
+        } else {
+            Gesture::None
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -190,8 +231,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
-    if ctx.core().model().selected_monitor().gesture != Gesture::None {
-        reset_bar_common(ctx.core_mut().model_mut());
+    if ctx.core_mut().bar.hover.clear() {
         ctx.request_bar_update();
     }
 }
@@ -218,8 +258,9 @@ pub fn resolve_bar_position_at_root(
 
 #[cfg(test)]
 mod tests {
-    use super::BarState;
+    use super::{BarHoverState, BarState};
     use crate::bar::status::StatusItem;
+    use crate::types::{Gesture, MonitorId};
 
     #[test]
     fn prepared_status_is_parsed_on_first_cache_read() {
@@ -232,6 +273,22 @@ mod tests {
         assert!(parsed.i3bar.is_some());
         assert!(matches!(parsed.items.first(), Some(StatusItem::I3Block(_))));
     }
+
+    #[test]
+    fn hover_is_only_visible_on_its_own_monitor() {
+        let first = MonitorId::from_raw(1);
+        let second = MonitorId::from_raw(2);
+        let mut hover = BarHoverState::default();
+
+        assert!(hover.set(first, Gesture::Tag(3), true));
+        assert_eq!(hover.gesture_on(first), Gesture::Tag(3));
+        assert_eq!(hover.gesture_on(second), Gesture::None);
+        assert!(hover.drag_active);
+
+        assert!(hover.clear());
+        assert_eq!(hover, BarHoverState::default());
+        assert!(!hover.clear());
+    }
 }
 
 pub fn update_hover(
@@ -240,7 +297,7 @@ pub fn update_hover(
     reset_start_menu: bool,
     sync_selected_monitor: bool,
 ) -> Option<BarPosition> {
-    let Some((_monitor_id, pos)) =
+    let Some((monitor_id, pos)) =
         resolve_bar_position_at_root(ctx.core_mut(), root, sync_selected_monitor)
     else {
         clear_hover(ctx);
@@ -248,18 +305,17 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        reset_bar_common(ctx.core_mut().model_mut());
+        ctx.core_mut().bar.hover.clear();
         ctx.request_bar_update();
     }
 
-    let old_gesture = ctx.core().model().selected_monitor().gesture;
+    let old_gesture = ctx.core().bar.hover.gesture_on(monitor_id);
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
         pos.to_gesture()
     };
-    if old_gesture != gesture {
-        ctx.core_mut().model_mut().selected_monitor_mut().gesture = gesture;
+    if ctx.core_mut().bar.hover.set(monitor_id, gesture, false) {
         ctx.request_bar_update();
     }
 

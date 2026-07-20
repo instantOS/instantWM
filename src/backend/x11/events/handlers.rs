@@ -423,10 +423,11 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root_win = WindowId::from(ctx.x11_runtime.root);
     if event_win != root_win {
         let root_y = e.root_y as i32;
-        let (mon, gesture) = {
+        let mon = {
             let selected_monitor = ctx.core.model().selected_monitor();
-            (selected_monitor.monitor_id, selected_monitor.gesture)
+            selected_monitor.monitor_id
         };
+        let gesture = ctx.core.bar.hover.gesture_on(mon);
         let show_bar = {
             let selected_monitor = ctx.core.model_mut().selected_monitor_mut();
             selected_monitor.per_tag_state().show_bar
@@ -452,15 +453,20 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
         return;
     }
 
+    if crate::mouse::update_overlay_hot_corner(&mut WmCtx::X11(ctx.reborrow()), root) {
+        return;
+    }
+
     // Early-out: cursor is below the bar area.
-    let (monitor_y, bar_height, current_gesture) = {
+    let (monitor_id, monitor_y, bar_height) = {
         let mon = ctx.core.model().selected_monitor();
         (
+            mon.monitor_id,
             mon.monitor_rect.y,
             ctx.core.config().derived.bar_height,
-            mon.gesture,
         )
     };
+    let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 
     if root.y >= monitor_y + bar_height {
         if crate::mouse::update_floating_resize_offer_at(

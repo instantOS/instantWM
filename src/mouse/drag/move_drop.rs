@@ -200,16 +200,15 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
             mon.bar_position_at_x(core, local_x).to_gesture()
         };
 
-        let gesture_changed = ctx.core().model().selected_monitor().gesture != new_gesture;
+        let monitor_id = ctx.core().model().selected_monitor_id();
+        let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
 
         if !state.cursor_on_bar || gesture_changed {
-            ctx.core_mut().drag_state_mut().bar_active = true;
-            ctx.core_mut().model_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true);
             ctx.request_bar_update();
         }
     } else if state.cursor_on_bar {
-        ctx.core_mut().drag_state_mut().bar_active = false;
-        ctx.core_mut().model_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.core_mut().bar.hover.clear();
         ctx.request_bar_update();
     }
 
@@ -218,11 +217,11 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
 
 /// Simplified bar hover update for Wayland drag paths that don't use [`MoveState`].
 ///
-/// Sets `bar_active` and the gesture highlight when the cursor enters the bar,
+/// Sets the drag hover and gesture highlight when the cursor enters the bar,
 /// and clears them when it leaves.  Returns `true` while on the bar.
 pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     let on_bar = point_is_on_bar(ctx.core().model(), root);
-    let was_on_bar = ctx.core().drag_state().bar_active;
+    let was_on_bar = ctx.core().bar.hover.drag_active;
 
     if on_bar {
         let new_gesture = {
@@ -231,15 +230,14 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
             let local_x = root.x - mon.work_rect().x;
             mon.bar_position_at_x(core, local_x).to_gesture()
         };
-        let gesture_changed = ctx.core().model().selected_monitor().gesture != new_gesture;
+        let monitor_id = ctx.core().model().selected_monitor_id();
+        let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
         if !was_on_bar || gesture_changed {
-            ctx.core_mut().drag_state_mut().bar_active = true;
-            ctx.core_mut().model_mut().selected_monitor_mut().gesture = new_gesture;
+            ctx.core_mut().bar.hover.set(monitor_id, new_gesture, true);
             ctx.request_bar_update();
         }
     } else if was_on_bar {
-        ctx.core_mut().drag_state_mut().bar_active = false;
-        ctx.core_mut().model_mut().selected_monitor_mut().gesture = Gesture::None;
+        ctx.core_mut().bar.hover.clear();
         ctx.request_bar_update();
     }
 
@@ -356,8 +354,7 @@ fn maybe_promote_tiled_drag_to_floating(
 ///
 /// Called once the drag loop exits so that hover state is always cleaned up.
 pub fn clear_bar_hover(ctx: &mut WmCtx) {
-    ctx.core_mut().drag_state_mut().bar_active = false;
-    ctx.core_mut().model_mut().selected_monitor_mut().gesture = Gesture::None;
+    ctx.core_mut().bar.hover.clear();
     ctx.request_bar_update();
 }
 

@@ -284,7 +284,7 @@ fn handle_button_release(
         crate::mouse::title_drag_finish(&mut ctx);
     }
 
-    if wm.core.drag.gesture.active
+    if wm.core.drag.sidebar_volume_active()
         && let Some(btn) = button.wm_button
     {
         let mut ctx = wm.ctx();
@@ -309,7 +309,7 @@ fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
 fn is_wm_drag_release(wm: &Wm, released_btn: Option<MouseButton>) -> bool {
     (released_btn.is_some() && wm.core.drag.interaction_button() == released_btn)
         || (wm.core.drag.tag.active && released_btn == Some(wm.core.drag.tag.button))
-        || (wm.core.drag.gesture.active && released_btn == Some(wm.core.drag.gesture.button))
+        || (released_btn.is_some() && wm.core.drag.sidebar_volume_button() == released_btn)
 }
 
 fn consume_pointer_binding(

@@ -73,7 +73,7 @@ pub fn drag_tag_begin(ctx: &mut WmCtx, bar_pos: BarPosition, btn: MouseButton) -
         button: btn,
     };
     set_cursor_style(ctx, AltCursor::Move);
-    ctx.core_mut().drag_state_mut().bar_active = true;
+    ctx.core_mut().bar.hover.set(selmon_id, Gesture::None, true);
     ctx.request_bar_update();
     true
 }
@@ -121,9 +121,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
 
     if ctx.core_mut().drag_state_mut().tag.last_tag != gesture_key {
         ctx.core_mut().drag_state_mut().tag.last_tag = gesture_key;
-        if let Some(mon) = ctx.core_mut().model_mut().monitors.get_mut(selmon_id) {
-            mon.gesture = new_gesture;
-        }
+        ctx.core_mut().bar.hover.set(selmon_id, new_gesture, true);
         ctx.request_bar_update();
     }
     true
@@ -178,10 +176,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifier_state: u32) {
         }
     }
 
-    ctx.core_mut().drag_state_mut().bar_active = false;
-    if let Some(mon) = ctx.core_mut().model_mut().monitor_mut(selmon_id) {
-        mon.gesture = Gesture::None;
-    }
+    ctx.core_mut().bar.hover.clear();
     set_cursor_style(ctx, AltCursor::Default);
     ctx.request_bar_update();
 }

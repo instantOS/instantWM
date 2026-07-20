@@ -168,6 +168,7 @@ pub struct CoreState {
     pub config: RuntimeConfig,
     pub behavior: WmBehavior,
     pub drag: DragState,
+    pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
     pub pending_launches: VecDeque<PendingLaunch>,
 }
@@ -452,12 +453,145 @@ pub struct TagDragState {
     pub button: MouseButton,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct GestureInteraction {
-    pub active: bool,
-    pub button: MouseButton,
-    pub monitor_id: MonitorId,
-    pub last_y: i32,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SidebarVolumeDrag {
+    button: MouseButton,
+    monitor_id: MonitorId,
+    anchor_y: i32,
+    threshold: i32,
+}
+
+impl SidebarVolumeDrag {
+    pub fn new(button: MouseButton, monitor_id: MonitorId, anchor_y: i32, threshold: i32) -> Self {
+        Self {
+            button,
+            monitor_id,
+            anchor_y,
+            threshold: threshold.max(1),
+        }
+    }
+
+    pub fn button(self) -> MouseButton {
+        self.button
+    }
+
+    pub fn monitor_id(self) -> MonitorId {
+        self.monitor_id
+    }
+
+    /// Consume pointer distance and return signed volume steps.
+    ///
+    /// Positive values mean volume-up. Advancing the anchor only by complete
+    /// thresholds preserves sub-threshold movement across input events and
+    /// makes the result independent of backend motion-event compression.
+    pub fn update(&mut self, root_y: i32) -> i32 {
+        let delta = self.anchor_y - root_y;
+        let steps = delta / self.threshold;
+        self.anchor_y -= steps * self.threshold;
+        steps
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HotCornerState {
+    #[default]
+    Ready,
+    Latched {
+        monitor_id: MonitorId,
+    },
+}
+
+impl HotCornerState {
+    /// Update the hot-corner latch. Returns the monitor whose corner was
+    /// entered when the caller should toggle the edge scratchpad.
+    pub fn update(
+        &mut self,
+        monitor_id: Option<MonitorId>,
+        inside_activation_zone: bool,
+        inside_keep_zone: bool,
+    ) -> Option<MonitorId> {
+        match *self {
+            Self::Ready => {
+                let monitor_id = monitor_id.filter(|_| inside_activation_zone)?;
+                *self = Self::Latched { monitor_id };
+                Some(monitor_id)
+            }
+            Self::Latched {
+                monitor_id: latched_monitor,
+            } if monitor_id == Some(latched_monitor) && inside_keep_zone => None,
+            Self::Latched { .. } => {
+                // Rearm only. Requiring a subsequent sample before activation
+                // prevents a single jump between monitor corners from firing
+                // two actions at once.
+                *self = Self::Ready;
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod pointer_interaction_tests {
+    use super::{DragState, HotCornerState, SidebarVolumeDrag};
+    use crate::types::{MonitorId, MouseButton};
+
+    #[test]
+    fn hot_corner_fires_once_until_pointer_leaves_keep_zone() {
+        let monitor = MonitorId::from_raw(7);
+        let mut state = HotCornerState::default();
+
+        assert_eq!(state.update(Some(monitor), true, true), Some(monitor));
+        assert_eq!(state.update(Some(monitor), true, true), None);
+        assert_eq!(state.update(Some(monitor), false, true), None);
+        assert_eq!(state.update(Some(monitor), false, false), None);
+        assert_eq!(state.update(Some(monitor), true, true), Some(monitor));
+    }
+
+    #[test]
+    fn hot_corner_rearms_without_firing_when_pointer_jumps_between_monitors() {
+        let first = MonitorId::from_raw(1);
+        let second = MonitorId::from_raw(2);
+        let mut state = HotCornerState::default();
+
+        assert_eq!(state.update(Some(first), true, true), Some(first));
+        assert_eq!(state.update(Some(second), true, true), None);
+        assert_eq!(state.update(Some(second), true, true), Some(second));
+    }
+
+    #[test]
+    fn volume_drag_preserves_distance_across_compressed_motion() {
+        let mut drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+
+        assert_eq!(drag.update(395), 3);
+        assert_eq!(drag.update(381), 0);
+        assert_eq!(drag.update(379), 1);
+    }
+
+    #[test]
+    fn volume_drag_handles_direction_reversal_with_residual_distance() {
+        let mut drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+
+        assert_eq!(drag.update(475), 0);
+        assert_eq!(drag.update(510), 0);
+        assert_eq!(drag.update(531), -1);
+        assert_eq!(drag.update(469), 2);
+    }
+
+    #[test]
+    fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
+        let drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+        let mut interactions = DragState::default();
+        interactions.tag.active = true;
+        assert!(interactions.begin_sidebar_volume(drag).is_err());
+        assert!(!interactions.sidebar_volume_active());
+
+        interactions.tag.active = false;
+        interactions.begin_sidebar_volume(drag).unwrap();
+        assert!(!interactions.finish_sidebar_volume(MouseButton::Right));
+        assert!(interactions.sidebar_volume_active());
+        assert!(interactions.finish_sidebar_volume(MouseButton::Left));
+        assert!(!interactions.sidebar_volume_active());
+    }
 }
 
 /// The pointer-owned interaction currently being offered before a click commits it.
@@ -501,8 +635,7 @@ impl HoverOffer {
 pub struct DragState {
     pub tag: TagDragState,
     interactive: InteractiveDrag,
-    pub gesture: GestureInteraction,
-    pub bar_active: bool,
+    sidebar_volume: Option<SidebarVolumeDrag>,
     pub hover_offer: HoverOffer,
 }
 
@@ -523,6 +656,45 @@ impl DragState {
         self.active_interaction()
             .or_else(|| self.armed_interaction())
             .map(DragInteraction::button)
+    }
+
+    pub fn sidebar_volume_active(&self) -> bool {
+        self.sidebar_volume.is_some()
+    }
+
+    pub fn sidebar_volume_button(&self) -> Option<MouseButton> {
+        self.sidebar_volume.map(SidebarVolumeDrag::button)
+    }
+
+    pub fn sidebar_volume_monitor(&self) -> Option<MonitorId> {
+        self.sidebar_volume.map(SidebarVolumeDrag::monitor_id)
+    }
+
+    pub fn begin_sidebar_volume(
+        &mut self,
+        drag: SidebarVolumeDrag,
+    ) -> Result<(), DragAlreadyActive> {
+        if self.any_drag_active() {
+            return Err(DragAlreadyActive);
+        }
+        self.sidebar_volume = Some(drag);
+        Ok(())
+    }
+
+    pub fn update_sidebar_volume(&mut self, root_y: i32) -> Option<i32> {
+        self.sidebar_volume.as_mut().map(|drag| drag.update(root_y))
+    }
+
+    pub fn finish_sidebar_volume(&mut self, button: MouseButton) -> bool {
+        if self.sidebar_volume_button() != Some(button) {
+            return false;
+        }
+        self.sidebar_volume = None;
+        true
+    }
+
+    pub fn cancel_sidebar_volume(&mut self) -> bool {
+        self.sidebar_volume.take().is_some()
     }
 
     pub fn begin_move(
@@ -633,7 +805,7 @@ impl DragState {
 
     #[inline]
     pub fn any_drag_active(&self) -> bool {
-        !self.interactive.is_idle() || self.tag.active || self.gesture.active
+        !self.interactive.is_idle() || self.tag.active || self.sidebar_volume.is_some()
     }
 
     #[inline]

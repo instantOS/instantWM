@@ -107,7 +107,6 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
         crate::types::Gesture::WinTitle(win) => win.hash(hasher),
         crate::types::Gesture::Tag(tag) => tag.hash(hasher),
         crate::types::Gesture::None
-        | crate::types::Gesture::Overlay
         | crate::types::Gesture::CloseButton
         | crate::types::Gesture::StartMenu => {}
     }

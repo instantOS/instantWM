@@ -11,7 +11,7 @@ use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
-use crate::types::input::{Gesture, StackDirection};
+use crate::types::input::StackDirection;
 use crate::types::tag_types::MonitorDirection;
 
 /// Persistent per-monitor client z-order.
@@ -115,8 +115,6 @@ pub struct Monitor {
     pub show_bar: bool,
     /// Whether the bar is at the top.
     pub top_bar: bool,
-    /// Current gesture state.
-    pub gesture: Gesture,
     /// Bar window handle.
     pub bar_win: WindowId,
     /// Whether to hide empty inactive tags from the bar.
@@ -167,7 +165,6 @@ impl Default for Monitor {
             titleoffset: 0,
             show_bar: true,
             top_bar: true,
-            gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: false,
             prev_tag: None,

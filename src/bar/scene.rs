@@ -140,7 +140,7 @@ pub(crate) fn build_monitor_snapshots(
     let base_font_size = crate::wayland::common::font_size_from_config(&core.config().fonts.fonts);
     let font_families =
         crate::wayland::common::font_families_from_config(&core.config().fonts.fonts);
-    let drag_bar_active = core.drag_state().bar_active;
+    let bar_hover = core.bar.hover;
     let selected_status =
         match core.behavior().current_mode.clone() {
             crate::core_state::ActiveWmMode::Overview => StatusPresentation::Overview(
@@ -189,11 +189,7 @@ pub(crate) fn build_monitor_snapshots(
         let mut stats = crate::bar::model::ClientBarStats::collect(mon, core.model());
 
         let is_selected_monitor = mon.num == selected_monitor_num;
-        let gesture = if is_selected_monitor {
-            core.model().selected_monitor().gesture
-        } else {
-            Gesture::None
-        };
+        let gesture = bar_hover.gesture_on(monitor_id);
         let mut tags = Vec::new();
         for tag in crate::tags::bar::visible_tags(core.state(), core.bar, mon, stats.occupied_tags)
         {
@@ -205,7 +201,7 @@ pub(crate) fn build_monitor_snapshots(
                 stats.urgent_tags,
                 is_hover,
             );
-            if is_hover && drag_bar_active {
+            if is_hover && bar_hover.drag_active {
                 scheme = core.tag_hover_fill_scheme();
             }
             tags.push(TagCellSnapshot {
