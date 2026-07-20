@@ -29,6 +29,50 @@ struct BlockMetrics {
 }
 
 #[derive(Debug, Clone, Copy)]
+enum MeasuredItem {
+    Text {
+        width: i32,
+    },
+    I3Block {
+        full: Option<BlockMetrics>,
+        short: Option<BlockMetrics>,
+        has_short: bool,
+        separator_width: i32,
+    },
+}
+
+impl MeasuredItem {
+    fn metrics(self, use_short: bool) -> Option<BlockMetrics> {
+        match self {
+            Self::Text { .. } => None,
+            Self::I3Block {
+                full,
+                short,
+                has_short,
+                ..
+            } => {
+                if use_short && has_short {
+                    short
+                } else {
+                    full
+                }
+            }
+        }
+    }
+
+    fn width(self, use_short: bool) -> i32 {
+        match self {
+            Self::Text { width } => width,
+            Self::I3Block { .. } => self.metrics(use_short).map_or(0, |metrics| metrics.width),
+        }
+    }
+
+    fn is_visible(self, use_short: bool) -> bool {
+        self.width(use_short) > 0
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 enum LaidOutItem {
     Text {
         item_index: usize,
@@ -166,22 +210,17 @@ fn block_text(block: &I3Block, use_short: bool) -> &str {
     }
 }
 
-fn measure_i3_block(
+fn measure_i3_block_variant(
     block: &I3Block,
-    use_short: bool,
+    text: &str,
+    min_width: i32,
     painter: &mut dyn BarPainter,
 ) -> Option<BlockMetrics> {
-    let text = block_text(block, use_short);
     if text.is_empty() {
         return None;
     }
 
     let text_width = painter.text_width(text).max(0);
-    let min_width = match &block.min_width {
-        Some(I3MinWidth::Text(text)) => painter.text_width(text).max(0),
-        Some(I3MinWidth::Pixels(pixels)) => (*pixels).max(0),
-        None => 0,
-    };
     let padding = if !block.separator && block.separator_block_width == 0 {
         0
     } else {
@@ -198,53 +237,72 @@ fn measure_i3_block(
     })
 }
 
-fn has_later_rendered_item(
-    items: &[StatusItem],
-    choices: &[bool],
-    item_index: usize,
-    painter: &mut dyn BarPainter,
-) -> bool {
+fn measure_items(items: &[StatusItem], painter: &mut dyn BarPainter) -> Vec<MeasuredItem> {
     items
         .iter()
-        .enumerate()
-        .skip(item_index + 1)
-        .any(|(index, item)| match item {
-            StatusItem::Text(text) => !text.is_empty() && painter.text_width(text) > 0,
+        .map(|item| match item {
+            StatusItem::Text(text) => MeasuredItem::Text {
+                width: if text.is_empty() {
+                    0
+                } else {
+                    painter.text_width(text).max(0)
+                },
+            },
             StatusItem::I3Block(block) => {
-                measure_i3_block(block, choices[index], painter).is_some()
-            }
-        })
-}
-
-fn measured_width(items: &[StatusItem], choices: &[bool], painter: &mut dyn BarPainter) -> i32 {
-    let mut width = 0i32;
-    for (item_index, item) in items.iter().enumerate() {
-        match item {
-            StatusItem::Text(text) if !text.is_empty() => {
-                width = width.saturating_add(painter.text_width(text).max(0));
-            }
-            StatusItem::I3Block(block) => {
-                let Some(metrics) = measure_i3_block(block, choices[item_index], painter) else {
-                    continue;
+                let min_width = match &block.min_width {
+                    Some(I3MinWidth::Text(text)) => painter.text_width(text).max(0),
+                    Some(I3MinWidth::Pixels(pixels)) => (*pixels).max(0),
+                    None => 0,
                 };
-                width = width.saturating_add(metrics.width);
-                if has_later_rendered_item(items, choices, item_index, painter) {
-                    width = width.saturating_add(block.separator_block_width.max(0));
+                MeasuredItem::I3Block {
+                    full: measure_i3_block_variant(
+                        block,
+                        block.full_text.as_str(),
+                        min_width,
+                        painter,
+                    ),
+                    short: block
+                        .short_text
+                        .as_deref()
+                        .and_then(|text| measure_i3_block_variant(block, text, min_width, painter)),
+                    has_short: block.short_text.is_some(),
+                    separator_width: block.separator_block_width.max(0),
                 }
             }
-            StatusItem::Text(_) => {}
+        })
+        .collect()
+}
+
+fn measured_width(items: &[MeasuredItem], choices: &[bool]) -> i32 {
+    let mut width = 0i32;
+    let mut has_later_visible_item = false;
+
+    for (item_index, item) in items.iter().copied().enumerate().rev() {
+        let item_width = item.width(choices[item_index]);
+        if item_width <= 0 {
+            continue;
         }
+        if has_later_visible_item
+            && let MeasuredItem::I3Block {
+                separator_width, ..
+            } = item
+        {
+            width = width.saturating_add(separator_width);
+        }
+        width = width.saturating_add(item_width);
+        has_later_visible_item = true;
     }
+
     width
 }
 
 fn choose_short_texts(
     items: &[StatusItem],
+    measured: &[MeasuredItem],
     max_content_width: i32,
-    painter: &mut dyn BarPainter,
 ) -> Vec<bool> {
     let mut choices = vec![false; items.len()];
-    let mut width = measured_width(items, &choices, painter);
+    let mut width = measured_width(measured, &choices);
 
     for item_index in 0..items.len() {
         if width <= max_content_width {
@@ -269,7 +327,7 @@ fn choose_short_texts(
                 }
             }
         }
-        let shortened_width = measured_width(items, &choices, painter);
+        let shortened_width = measured_width(measured, &choices);
         if shortened_width < width {
             width = shortened_width;
         } else {
@@ -291,8 +349,9 @@ fn measure_layout(
         available_bounds.w.max(0),
         available_bounds.h.max(0),
     );
-    let choices = choose_short_texts(items, (available_bounds.w - 2).max(0), painter);
-    let total_width = measured_width(items, &choices, painter);
+    let measured = measure_items(items, painter);
+    let choices = choose_short_texts(items, &measured, (available_bounds.w - 2).max(0));
+    let total_width = measured_width(&measured, &choices);
     if total_width <= 0 || available_bounds.w <= 0 || available_bounds.h <= 0 {
         return StatusLayout::default();
     }
@@ -311,15 +370,16 @@ fn measure_layout(
     let mut laid_out = Vec::with_capacity(items.len());
     let mut x = background_bounds.x.saturating_add(1);
     let mut block_index = 0usize;
+    let last_visible_item = measured
+        .iter()
+        .copied()
+        .enumerate()
+        .rfind(|(index, item)| item.is_visible(choices[*index]))
+        .map(|(index, _)| index);
 
-    for (item_index, item) in items.iter().enumerate() {
-        match item {
-            StatusItem::Text(text) => {
-                let width = if text.is_empty() {
-                    0
-                } else {
-                    painter.text_width(text).max(0)
-                };
+    for (item_index, (item, measured_item)) in items.iter().zip(&measured).enumerate() {
+        match (item, *measured_item) {
+            (StatusItem::Text(_), MeasuredItem::Text { width }) => {
                 if width > 0 {
                     laid_out.push(LaidOutItem::Text {
                         item_index,
@@ -328,9 +388,9 @@ fn measure_layout(
                     x = x.saturating_add(width);
                 }
             }
-            StatusItem::I3Block(block) => {
+            (StatusItem::I3Block(block), MeasuredItem::I3Block { .. }) => {
                 let use_short = choices[item_index];
-                let Some(metrics) = measure_i3_block(block, use_short, painter) else {
+                let Some(metrics) = measured_item.metrics(use_short) else {
                     block_index += 1;
                     continue;
                 };
@@ -351,9 +411,7 @@ fn measure_layout(
                 x = x.saturating_add(metrics.width);
 
                 let separator_bounds =
-                    if has_later_rendered_item(items, &choices, item_index, painter)
-                        && block.separator_block_width > 0
-                    {
+                    if Some(item_index) != last_visible_item && block.separator_block_width > 0 {
                         let bounds = Rect::new(
                             x,
                             available_bounds.y,
@@ -382,6 +440,7 @@ fn measure_layout(
                 });
                 block_index += 1;
             }
+            _ => unreachable!("status item and its measurements must have matching variants"),
         }
     }
 
@@ -574,10 +633,12 @@ mod tests {
     #[derive(Default)]
     struct RecordingPainter {
         texts: Vec<String>,
+        measurement_calls: usize,
     }
 
     impl BarPainter for RecordingPainter {
         fn text_width(&mut self, text: &str) -> i32 {
+            self.measurement_calls += 1;
             text.chars().count() as i32 * 10
         }
 
@@ -733,5 +794,39 @@ mod tests {
         let output = draw_status_items(Rect::new(0, 0, 120, 20), &items, scheme(), &mut painter);
 
         assert_eq!(output.click_targets[0].block_index, 1);
+    }
+
+    #[test]
+    fn measures_each_block_variant_only_once_per_layout() {
+        let items = (0..4)
+            .map(|index| {
+                let mut item = block(&format!("processor-{index}"));
+                item.short_text = Some(format!("p{index}"));
+                item.min_width = Some(I3MinWidth::Text("processor-100".to_string()));
+                StatusItem::I3Block(item)
+            })
+            .collect::<Vec<_>>();
+        let mut painter = RecordingPainter::default();
+
+        // Force every short-text candidate to be considered. Width selection
+        // after measurement must remain arithmetic-only.
+        draw_status_items(Rect::new(0, 0, 20, 20), &items, scheme(), &mut painter);
+
+        // One measurement each for full_text, short_text, and textual min_width.
+        assert_eq!(painter.measurement_calls, items.len() * 3);
+    }
+
+    #[test]
+    fn empty_short_text_can_hide_a_block_when_space_is_constrained() {
+        let mut item = block("processor");
+        item.short_text = Some(String::new());
+        let items = vec![StatusItem::I3Block(item)];
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(Rect::new(0, 0, 20, 20), &items, scheme(), &mut painter);
+
+        assert_eq!(output.bounds, Rect::default());
+        assert!(output.click_targets.is_empty());
+        assert!(painter.texts.is_empty());
     }
 }
