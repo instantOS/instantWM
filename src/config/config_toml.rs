@@ -121,6 +121,9 @@ impl ColorTheme {
 
 impl std::fmt::Display for ColorTheme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Keep these spellings aligned with the enum's serde names. `FromStr`
+        // delegates to serde, and `display_names_match_serde_names_for_every_variant`
+        // exhaustively checks the mapping whenever a variant is added or renamed.
         let name = match self {
             Self::Instantos => "instantos",
             Self::CatppuccinLatte => "catppuccin-latte",
@@ -565,7 +568,7 @@ mod theme_tests {
     }
 
     #[test]
-    fn theme_name_helpers_round_trip_every_variant() {
+    fn display_names_match_serde_names_for_every_variant() {
         for theme in ColorTheme::ALL {
             assert_eq!(theme.to_string().parse(), Ok(*theme));
         }
