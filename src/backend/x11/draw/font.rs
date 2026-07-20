@@ -6,7 +6,7 @@
 //!
 //! # Ownership model
 //!
-//! Only the original `Fnt` created by [`Drw::fontset_create`] carries
+//! Only the original `Fnt` created by [`DrawContext::fontset_create`] carries
 //! `owns_resources = true`.  Clones produced by [`Clone`] always set
 //! `owns_resources = false` so that resources are freed exactly once when the
 //! original is dropped.
@@ -18,12 +18,12 @@ use super::ffi::{FcPattern, FcPatternDestroy, XftFont, XftFontClose};
 /// A single font in a fontset linked list.
 ///
 /// Fields are `pub` where callers (e.g. the text-drawing loop) need direct
-/// read access; mutating internals should go through [`Drw`] methods.
+/// read access; mutating internals should go through [`DrawContext`] methods.
 ///
-/// [`Drw`]: super::Drw
+/// [`DrawContext`]: super::DrawContext
 pub struct Fnt {
     /// The Xlib display this font was loaded against.
-    /// Stored here so `Drop` can call `XftFontClose` without needing a `Drw`.
+    /// Stored here so `Drop` can call `XftFontClose` without needing a `DrawContext`.
     pub(super) display: *mut libc::c_void,
 
     /// Combined ascent + descent in pixels — the effective line height.
@@ -33,7 +33,7 @@ pub struct Fnt {
     pub xfont: *mut XftFont,
 
     /// Fontconfig pattern used to load this font.
-    /// Required when performing fallback font matching (see `Drw::text`).
+    /// Required when performing fallback font matching (see `DrawContext::text`).
     pub pattern: *mut FcPattern,
 
     /// Whether this font node owns `pattern` and should destroy it on drop.
@@ -89,7 +89,7 @@ impl Fnt {
 impl Drop for Fnt {
     fn drop(&mut self) {
         // SAFETY: pointers are valid as long as the display is still open,
-        // which is guaranteed by the `Drw` owning both.
+        // which is guaranteed by the `DrawContext` owning both.
         unsafe {
             if self.owns_resources {
                 if self.owns_pattern && !self.pattern.is_null() {

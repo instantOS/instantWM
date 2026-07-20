@@ -316,7 +316,7 @@ fn sync_bar_config_to_monitors(wm: &mut Wm) {
 /// Push colour/font changes to the screen after `wm.core.config.colors` (or the
 /// tag colours) have been mutated.
 ///
-/// X11 bakes schemes/fonts into the Drw at startup, so they must be rebuilt for
+/// X11 bakes schemes/fonts into the DrawContext at startup, so they must be rebuilt for
 /// the new values to show without a full reload. On Wayland the bar painter
 /// reads colours/fonts on every redraw, so marking the bar dirty is enough.
 pub(crate) fn recolor(wm: &mut Wm) {

@@ -95,7 +95,6 @@ impl WaylandState {
         self.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
         self.apply_floating_policy(&surface);
         self.update_foreign_toplevel(win);
-        self.request_bar_redraw();
     }
 
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {

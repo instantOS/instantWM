@@ -40,7 +40,7 @@ pub mod visibility;
 
 // -- Rules ------------------------------------------------------------------
 pub use rules::{
-    InitialRulePlacement, WindowProperties, apply_initial_rules, handle_property_change,
+    InitialRulePlacement, WindowProperties, apply_initial_rules, update_window_properties,
 };
 
 // -- Geometry ----------------------------------------------------------------

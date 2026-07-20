@@ -109,6 +109,10 @@ impl<'a> CoreCtx<'a> {
         self.work.layout.mark_all_urgent();
     }
 
+    pub fn queue_layout_for_monitor(&mut self, monitor_id: MonitorId) {
+        self.work.layout.mark_monitor(monitor_id);
+    }
+
     pub fn queue_layout_for_monitor_urgent(&mut self, monitor_id: MonitorId) {
         self.work.layout.mark_monitor_urgent(monitor_id);
     }

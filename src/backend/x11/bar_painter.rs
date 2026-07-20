@@ -1,4 +1,4 @@
-use crate::backend::x11::draw::Drw;
+use crate::backend::x11::draw::DrawContext;
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::types::ColorScheme;
 use crate::types::Rect;
@@ -6,21 +6,21 @@ use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct SchemeKey {
-    fg: [u32; 4],
-    bg: [u32; 4],
+    foreground: [u32; 4],
+    background: [u32; 4],
     detail: [u32; 4],
 }
 
 impl SchemeKey {
     fn from_scheme(s: &BarScheme) -> Self {
         Self {
-            fg: [
+            foreground: [
                 s.foreground[0].to_bits(),
                 s.foreground[1].to_bits(),
                 s.foreground[2].to_bits(),
                 s.foreground[3].to_bits(),
             ],
-            bg: [
+            background: [
                 s.background[0].to_bits(),
                 s.background[1].to_bits(),
                 s.background[2].to_bits(),
@@ -37,13 +37,13 @@ impl SchemeKey {
 }
 
 pub struct X11BarPainter {
-    drw: Drw,
+    drw: DrawContext,
     scheme: Option<BarScheme>,
     scheme_cache: HashMap<SchemeKey, ColorScheme>,
 }
 
 impl X11BarPainter {
-    pub fn new(drw: Drw) -> Self {
+    pub fn new(drw: DrawContext) -> Self {
         Self {
             drw,
             scheme: None,

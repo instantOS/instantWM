@@ -8,7 +8,7 @@ use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::Drw;
+use crate::backend::x11::draw::DrawContext;
 use crate::config::init_config;
 use crate::types::*;
 use crate::wm::Wm;
@@ -212,7 +212,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     let Some(data) = wm.backend.x11_data_mut() else {
         return;
     };
-    let mut drw = match Drw::new(None) {
+    let mut drw = match DrawContext::new(None) {
         Ok(d) => d,
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
@@ -258,7 +258,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     wm.core.config.derived.bar_horizontal_padding = font_height as i32;
 }
 
-fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {
+fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut DrawContext) {
     let cursors = [
         drw.cur_create(XC_LEFT_PTR),
         drw.cur_create(XC_CROSSHAIR),
@@ -281,7 +281,7 @@ fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {
 
 fn init_schemes(
     x11_runtime: &mut X11RuntimeConfig,
-    drw: &mut Drw,
+    drw: &mut DrawContext,
     bordercolors: &crate::types::BorderColorConfig,
     statusbarcolors: &crate::types::StatusColorConfig,
 ) {

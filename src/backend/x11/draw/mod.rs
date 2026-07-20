@@ -9,13 +9,13 @@
 //! | [`color`]  | [`Color`] (color) and [`Cursor`] (cursor)              |
 //! | [`font`]   | [`Fnt`] font / fontset linked-list                     |
 //! |            |                                                       |
-//! | [`draw`]   | [`Drw`] drawing context — the main public type         |
+//! | [`draw`]   | [`DrawContext`] drawing context — the main public type         |
 //!
 //! # Typical usage
 //!
 //! ```ignore
 //! // Create a drawing context (opens the X display).
-//! let mut drw = Drw::new(None)?;
+//! let mut drw = DrawContext::new(None)?;
 //!
 //! // Load fonts.
 //! drw.fontset_create(&["monospace:size=10", "Noto Color Emoji:size=10"])?;
@@ -49,7 +49,7 @@ mod font;
 pub use color::{Color, Cursor};
 
 // The main drawing context.
-pub use draw::Drw;
+pub use draw::DrawContext;
 
 // Raw FFI symbols used externally.
 pub use ffi::XFlush;

@@ -1,13 +1,13 @@
 #![allow(clippy::too_many_arguments)]
-//! The [`Drw`] drawing context.
+//! The [`DrawContext`] drawing context.
 //!
-//! `Drw` owns an X11 display connection, a pixmap, a GC, and a fontset.
+//! `DrawContext` owns an X11 display connection, a pixmap, a GC, and a fontset.
 //! All bar rendering goes through this type.
 //!
 //! # Lifecycle
 //!
 //! ```text
-//! Drw::new()          – open display, create pixmap + GC
+//! DrawContext::new()          – open display, create pixmap + GC
 //!   └─ fontset_create – load fonts into the fontset vector
 //!   └─ set_scheme     – choose the active color scheme
 //!   └─ text / rect / circ / arrow  – render into the pixmap
@@ -45,14 +45,14 @@ use crate::types::{ColorScheme, Rect as WmRect};
 /// find a fallback font for the same unrenderable character.
 const NOMATCHES_LEN: usize = 64;
 
-// ── Drw ──────────────────────────────────────────────────────────────────────
+// ── DrawContext ──────────────────────────────────────────────────────────────────────
 
 /// The main drawing context.
 ///
 /// Wraps an Xlib display, a server-side pixmap used as an off-screen buffer,
 /// a graphics context (GC), the active color scheme, and the fontset.
-// Note: the name `Drw` matches dwm's drawing context naming.
-pub struct Drw {
+// Note: the name `DrawContext` matches dwm's drawing context naming.
+pub struct DrawContext {
     /// Pixmap / drawable width.
     pub w: u32,
     /// Pixmap / drawable height.
@@ -62,7 +62,7 @@ pub struct Drw {
     pub(super) screen: i32,
     pub(super) root: Window,
 
-    /// Off-screen pixmap — all drawing happens here, then [`Drw::map`] blits
+    /// Off-screen pixmap — all drawing happens here, then [`DrawContext::map`] blits
     /// it to the real window.
     pub(super) drawable: Drawable,
     pub(super) gc: XlibGc,
@@ -83,15 +83,15 @@ pub struct Drw {
     /// Cached pixel width of `"..."` for the current fontset.
     ellipsis_width: u32,
 
-    /// `true` only for the *original* `Drw` — clones do **not** own resources.
+    /// `true` only for the *original* `DrawContext` — clones do **not** own resources.
     owns_resources: bool,
 }
 
 // SAFETY: instantWM is single-threaded; no concurrent mutation.
-unsafe impl Send for Drw {}
-unsafe impl Sync for Drw {}
+unsafe impl Send for DrawContext {}
+unsafe impl Sync for DrawContext {}
 
-impl Clone for Drw {
+impl Clone for DrawContext {
     /// Produces a shallow clone that shares raw pointers but does **not** free
     /// them on drop.  Useful for short-lived drawing in helper functions.
     fn clone(&self) -> Self {
@@ -115,7 +115,7 @@ impl Clone for Drw {
     }
 }
 
-impl Drop for Drw {
+impl Drop for DrawContext {
     fn drop(&mut self) {
         // Drop fonts while the X display is still valid. `Fnt::drop()`
         // calls `XftFontClose`, which requires a live display.
@@ -134,7 +134,7 @@ impl Drop for Drw {
 
 // ── Construction & display accessors ─────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Open an X display and initialise the drawing context.
     ///
     /// `display_name` overrides `$DISPLAY` when `Some`.
@@ -261,7 +261,7 @@ impl Drw {
 
 // ── Pixmap / target management ───────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Resize the off-screen pixmap to `w × h` pixels.
     pub fn resize(&mut self, w: u32, h: u32) {
         if self.display.is_null() {
@@ -313,7 +313,7 @@ impl Drw {
 
 // ── Color scheme ─────────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Replace the active color scheme.
     pub fn set_scheme(&mut self, scheme: ColorScheme) {
         self.scheme = Some(scheme);
@@ -414,7 +414,7 @@ impl Drw {
 
 // ── Cursor management ─────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Create a cursor from one of the standard X11 cursor shapes.
     pub fn cur_create(&self, shape: u32) -> Cursor {
         if self.display.is_null() {
@@ -435,7 +435,7 @@ impl Drw {
 
 // ── Font / fontset management ─────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Replace the active fontset.
     pub fn set_fontset(&mut self, font: Option<Vec<Fnt>>) {
         self.fonts = font;
@@ -524,7 +524,7 @@ impl Drw {
 
 // ── Text metrics ─────────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Return the pixel width of `text` rendered with the current fontset.
     ///
     /// Returns `0` if no fontset is loaded or `text` is empty.
@@ -589,7 +589,7 @@ impl Drw {
 
 // ── Primitive drawing ─────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Fill or stroke a rectangle.
     ///
     /// * `filled` — fill if `true`, stroke outline if `false`.
@@ -743,7 +743,7 @@ impl Drw {
 
 // ── Text rendering ────────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     #[allow(clippy::too_many_arguments)]
     fn prepare_text_surface(
         &mut self,

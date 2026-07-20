@@ -114,7 +114,6 @@ fn sync_surface_metadata(
     let properties = crate::backend::x11::policy::window_properties_from_x11_surface(surface);
     state.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
     state.update_foreign_toplevel(win);
-    state.request_bar_redraw();
 }
 
 fn apply_surface_policy(

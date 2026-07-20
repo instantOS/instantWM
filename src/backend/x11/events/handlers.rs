@@ -544,9 +544,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         {
             let props =
                 crate::backend::x11::window_properties(&ctx.x11, ctx.x11_runtime, event_win);
-            if crate::client::handle_property_change(ctx.core.g, event_win, &props) {
-                ctx.core.queue_layout_for_client(event_win);
-            }
+            crate::client::update_window_properties(&mut ctx.core, event_win, &props);
         }
     };
 }
