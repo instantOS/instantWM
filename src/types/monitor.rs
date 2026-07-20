@@ -610,9 +610,23 @@ impl Monitor {
     /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
     /// so it can never fall out of sync with the monitor's real geometry.
     pub fn work_rect(&self) -> Rect {
+        self.rect_excluding_internal_bar(self.shows_bar())
+    }
+
+    /// Area not occupied by exclusive layer surfaces or the currently visible
+    /// built-in bar.
+    ///
+    /// Unlike [`Self::work_rect`], this accounts for a true-fullscreen client
+    /// temporarily hiding the built-in bar. It is intended for WM-owned UI
+    /// such as edge scratchpads that must avoid every visible bar.
+    pub fn visible_content_rect(&self, clients: &HashMap<WindowId, Client>) -> Rect {
+        self.rect_excluding_internal_bar(self.bar_visible(clients))
+    }
+
+    fn rect_excluding_internal_bar(&self, bar_visible: bool) -> Rect {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
         let mut rect = Rect::new(self.available_rect.x, 0, self.available_rect.w.max(1), 0);
-        if self.shows_bar() {
+        if bar_visible {
             rect.y = if self.top_bar {
                 self.available_rect.y + safe_bh
             } else {
@@ -960,6 +974,63 @@ mod tests {
                 &Rect::new(150, 5, 1, 1),
             ),
             Some(MonitorId::from_raw(9))
+        );
+    }
+
+    #[test]
+    fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
+        let tags = TagMask::single(1).unwrap();
+        let mut monitor = Monitor {
+            monitor_rect: Rect::new(100, 50, 800, 600),
+            available_rect: Rect::new(100, 50, 800, 600),
+            bar_height: 30,
+            show_bar: true,
+            top_bar: true,
+            ..Monitor::default()
+        };
+        monitor.set_selected_tags(tags);
+        let mut clients = HashMap::new();
+
+        assert_eq!(
+            monitor.visible_content_rect(&clients),
+            Rect::new(100, 80, 800, 570)
+        );
+
+        monitor.top_bar = false;
+        assert_eq!(
+            monitor.visible_content_rect(&clients),
+            Rect::new(100, 50, 800, 570)
+        );
+
+        let mut fullscreen = Client {
+            win: WindowId(1),
+            mode: crate::types::ClientMode::Tiling.as_fullscreen(),
+            ..Client::default()
+        };
+        fullscreen.set_tag_mask(tags);
+        monitor.clients.push(fullscreen.win);
+        clients.insert(fullscreen.win, fullscreen);
+
+        assert_eq!(
+            monitor.visible_content_rect(&clients),
+            monitor.available_rect
+        );
+    }
+
+    #[test]
+    fn visible_content_rect_preserves_external_exclusive_area() {
+        let monitor = Monitor {
+            monitor_rect: Rect::new(100, 50, 800, 600),
+            available_rect: Rect::new(100, 90, 800, 560),
+            bar_height: 30,
+            show_bar: true,
+            top_bar: true,
+            ..Monitor::default()
+        };
+
+        assert_eq!(
+            monitor.visible_content_rect(&HashMap::new()),
+            monitor.available_rect
         );
     }
 

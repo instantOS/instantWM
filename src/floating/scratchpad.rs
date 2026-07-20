@@ -5,128 +5,70 @@ use crate::ipc_types::ScratchpadInitialStatus;
 use crate::layouts::arrange;
 use crate::model::WmModel;
 use crate::types::input::EdgeDirection;
-use crate::types::{MonitorId, Rect, TagMask, WindowId};
+use crate::types::{MonitorId, Rect, Size, TagMask, WindowId};
 use bincode::{Decode, Encode};
 
 const EDGE_MARGIN_X: i32 = 20;
 const EDGE_MARGIN_Y: i32 = 40;
-const EDGE_INSET_X: i32 = 40;
-const EDGE_INSET_Y: i32 = 80;
 
 pub const DEFAULT_EDGE_SCRATCHPAD_NAME: &str = "instantwm_edge_scratchpad";
 
-/// Positioning info for the edge slide-in animation.
-#[derive(Debug, Clone, Copy)]
-struct EdgePositionInfo {
-    direction: EdgeDirection,
-    /// Monitor rectangle (position and total size).
-    monitor_rect: Rect,
-    /// Work area width (excluding bars/padding).
-    work_width: i32,
-    /// Y offset from top (accounting for bar height).
-    y_offset: i32,
-    /// Client rectangle. Only the size is used for initial/target positions.
-    client_rect: Rect,
+/// Complete geometry for one edge-scratchpad transition.
+///
+/// `shown` is always contained by the monitor's visible content rectangle;
+/// `hidden` is immediately outside the same edge. Keeping the pair together
+/// prevents show and hide paths from drifting into different policies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EdgeSlideRects {
+    hidden: Rect,
+    shown: Rect,
 }
 
-impl EdgePositionInfo {
-    fn initial_rect(self) -> Rect {
-        match self.direction {
-            EdgeDirection::Top => Rect {
-                x: self.monitor_rect.x + EDGE_MARGIN_X,
-                y: self.monitor_rect.y + self.y_offset - self.client_rect.h,
-                w: self.work_width - EDGE_INSET_X,
-                h: self.client_rect.h,
-            },
-            EdgeDirection::Right => Rect {
-                x: self.monitor_rect.x + self.monitor_rect.w,
-                y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: self.client_rect.w,
-                h: self.monitor_rect.h - EDGE_INSET_Y,
-            },
-            EdgeDirection::Bottom => Rect {
-                x: self.monitor_rect.x + EDGE_MARGIN_X,
-                y: self.monitor_rect.y + self.monitor_rect.h,
-                w: self.work_width - EDGE_INSET_X,
-                h: self.client_rect.h,
-            },
-            EdgeDirection::Left => Rect {
-                x: self.monitor_rect.x - self.client_rect.w,
-                y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: self.client_rect.w,
-                h: self.monitor_rect.h - EDGE_INSET_Y,
-            },
-        }
-    }
+impl EdgeSlideRects {
+    fn new(content: Rect, direction: EdgeDirection, requested_size: Size) -> Self {
+        let content = Rect::new(content.x, content.y, content.w.max(1), content.h.max(1));
+        let horizontal_margin = EDGE_MARGIN_X.min((content.w - 1) / 2);
+        let vertical_margin = EDGE_MARGIN_Y.min((content.h - 1) / 2);
+        let horizontal_span = (content.w - 2 * horizontal_margin).max(1);
+        let vertical_span = (content.h - 2 * vertical_margin).max(1);
+        let requested_width = requested_size.w.max(1).min(content.w);
+        let requested_height = requested_size.h.max(1).min(content.h);
 
-    fn target_rect(self) -> Rect {
-        match self.direction {
-            EdgeDirection::Top => Rect {
-                x: self.monitor_rect.x + EDGE_MARGIN_X,
-                y: self.monitor_rect.y + self.y_offset,
-                w: self.work_width - EDGE_INSET_X,
-                h: self.client_rect.h,
-            },
-            EdgeDirection::Right => Rect {
-                x: self.monitor_rect.x + self.monitor_rect.w - self.client_rect.w,
-                y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: self.client_rect.w,
-                h: self.monitor_rect.h - EDGE_INSET_Y,
-            },
-            EdgeDirection::Bottom => Rect {
-                x: self.monitor_rect.x + EDGE_MARGIN_X,
-                y: self.monitor_rect.y + self.monitor_rect.h - self.client_rect.h,
-                w: self.work_width - EDGE_INSET_X,
-                h: self.client_rect.h,
-            },
-            EdgeDirection::Left => Rect {
-                x: self.monitor_rect.x,
-                y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: self.client_rect.w,
-                h: self.monitor_rect.h - EDGE_INSET_Y,
-            },
-        }
-    }
-}
+        let shown = match direction {
+            EdgeDirection::Top => Rect::new(
+                content.x + horizontal_margin,
+                content.y,
+                horizontal_span,
+                requested_height,
+            ),
+            EdgeDirection::Right => Rect::new(
+                content.x + content.w - requested_width,
+                content.y + vertical_margin,
+                requested_width,
+                vertical_span,
+            ),
+            EdgeDirection::Bottom => Rect::new(
+                content.x + horizontal_margin,
+                content.y + content.h - requested_height,
+                horizontal_span,
+                requested_height,
+            ),
+            EdgeDirection::Left => Rect::new(
+                content.x,
+                content.y + vertical_margin,
+                requested_width,
+                vertical_span,
+            ),
+        };
 
-/// Positioning info for the edge slide-out (hide) animation.
-#[derive(Debug, Clone, Copy)]
-struct HideAnimationInfo {
-    direction: EdgeDirection,
-    /// Monitor rectangle (position and total size).
-    monitor_rect: Rect,
-    /// Current client rectangle.
-    client_rect: Rect,
-}
+        let hidden = match direction {
+            EdgeDirection::Top => Rect::new(shown.x, content.y - shown.h, shown.w, shown.h),
+            EdgeDirection::Right => Rect::new(content.x + content.w, shown.y, shown.w, shown.h),
+            EdgeDirection::Bottom => Rect::new(shown.x, content.y + content.h, shown.w, shown.h),
+            EdgeDirection::Left => Rect::new(content.x - shown.w, shown.y, shown.w, shown.h),
+        };
 
-impl HideAnimationInfo {
-    fn rect(self) -> Rect {
-        match self.direction {
-            EdgeDirection::Top => Rect {
-                x: self.client_rect.x,
-                y: self.monitor_rect.y - self.client_rect.h,
-                w: self.client_rect.w,
-                h: self.client_rect.h,
-            },
-            EdgeDirection::Right => Rect {
-                x: self.monitor_rect.x + self.monitor_rect.w,
-                y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: self.client_rect.w,
-                h: self.monitor_rect.h - EDGE_INSET_Y,
-            },
-            EdgeDirection::Bottom => Rect {
-                x: self.client_rect.x,
-                y: self.monitor_rect.y + self.monitor_rect.h,
-                w: self.client_rect.w,
-                h: self.client_rect.h,
-            },
-            EdgeDirection::Left => Rect {
-                x: self.monitor_rect.x - self.client_rect.w,
-                y: self.monitor_rect.y + EDGE_MARGIN_Y,
-                w: self.client_rect.w,
-                h: self.monitor_rect.h - EDGE_INSET_Y,
-            },
-        }
+        Self { hidden, shown }
     }
 }
 
@@ -184,32 +126,12 @@ fn attach_client_to_monitor_top(model: &mut WmModel, win: WindowId, monitor_id: 
     model.attach_z_order_top(win);
 }
 
-fn monitor_yoffset(
-    model: &WmModel,
-    monitor_id: MonitorId,
-    bar_height: i32,
-    tags: crate::types::TagMask,
-) -> i32 {
-    let Some(mon) = model.monitor(monitor_id) else {
-        return 0;
-    };
-    let show_bar = mon.show_bar_for_mask(tags);
-    let mut offset = if show_bar { bar_height } else { 0 };
-    for (_win, c) in mon.iter_clients(&model.clients) {
-        if c.tags.intersects(tags) && c.mode.is_true_fullscreen() {
-            offset = 0;
-            break;
-        }
-    }
-    offset
-}
-
 fn prepare_scratchpad_for_show(
     ctx: &mut WmCtx<'_>,
     win: WindowId,
     monitor_id: MonitorId,
     direction: Option<EdgeDirection>,
-) -> crate::types::TagMask {
+) {
     attach_client_to_monitor_top(ctx.core_mut().model_mut(), win, monitor_id);
 
     let tags = ctx
@@ -221,7 +143,6 @@ fn prepare_scratchpad_for_show(
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.show_as_scratchpad(tags, direction);
     }
-    tags
 }
 
 fn reveal_scratchpad_window(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
@@ -395,16 +316,10 @@ pub(crate) fn scratchpad_show_name_with_options(
     }
 
     let target_monitor = options.monitor_id;
-    let tags = prepare_scratchpad_for_show(ctx, found, target_monitor, direction);
+    prepare_scratchpad_for_show(ctx, found, target_monitor, direction);
 
     if let Some(dir) = direction {
-        let yoffset = monitor_yoffset(
-            ctx.core().model(),
-            target_monitor,
-            ctx.core().config().derived.bar_height,
-            tags,
-        );
-        let (mon_rect, mon_ww, client_rect) = {
+        let (content_rect, client_size) = {
             if !ctx.window_backend().window_exists(found) {
                 return Err(format!("scratchpad '{}' no longer exists", name));
             }
@@ -418,25 +333,20 @@ pub(crate) fn scratchpad_show_name_with_options(
                 .model()
                 .client(found)
                 .expect("scratchpad client must exist after window_exists check");
-            (mon.monitor_rect, mon.work_rect().w, client.geo)
+            (
+                mon.visible_content_rect(&ctx.core().model().clients),
+                client.geo.size(),
+            )
         };
 
-        let pos_info = EdgePositionInfo {
-            direction: dir,
-            monitor_rect: mon_rect,
-            work_width: mon_ww,
-            y_offset: yoffset,
-            client_rect,
-        };
+        let slide = EdgeSlideRects::new(content_rect, dir, client_size);
 
-        let initial_rect = pos_info.initial_rect();
-        ctx.move_resize(found, initial_rect, MoveResizeOptions::immediate());
+        ctx.move_resize(found, slide.hidden, MoveResizeOptions::immediate());
 
         reveal_scratchpad_window(ctx, found);
-        let target_rect = pos_info.target_rect();
         ctx.move_resize(
             found,
-            target_rect,
+            slide.shown,
             MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
         );
     } else {
@@ -518,7 +428,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         .client(found)
         .and_then(|c| c.scratchpad.as_ref().and_then(|sp| sp.direction));
 
-    let (geo, mon_rect) = {
+    let slide = {
         let Some(client) = ctx.core().model().client(found) else {
             return;
         };
@@ -528,24 +438,23 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         let Some(mon) = ctx.core().model().monitor(client.monitor_id) else {
             return;
         };
-        (client.geo, mon.monitor_rect)
+        direction.map(|direction| {
+            EdgeSlideRects::new(
+                mon.visible_content_rect(&ctx.core().model().clients),
+                direction,
+                client.geo.size(),
+            )
+        })
     };
 
     if let Some(client) = ctx.core_mut().model_mut().client_mut(found) {
         client.hide_as_scratchpad();
     }
 
-    if let Some(dir) = direction {
-        let hide_info = HideAnimationInfo {
-            direction: dir,
-            monitor_rect: mon_rect,
-            client_rect: geo,
-        };
-
-        let hide_rect = hide_info.rect();
+    if let Some(slide) = slide {
         ctx.move_resize(
             found,
-            hide_rect,
+            slide.hidden,
             MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
         );
     }
@@ -708,53 +617,50 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 
 #[cfg(test)]
 mod tests {
-    use super::{EDGE_INSET_Y, EDGE_MARGIN_Y, EdgePositionInfo, HideAnimationInfo};
-    use crate::types::Rect;
+    use super::EdgeSlideRects;
     use crate::types::input::EdgeDirection;
+    use crate::types::{Rect, Size};
 
-    fn edge_info(direction: EdgeDirection) -> EdgePositionInfo {
-        EdgePositionInfo {
-            direction,
-            monitor_rect: Rect::new(100, 200, 1920, 1080),
-            work_width: 1920,
-            y_offset: 30,
-            client_rect: Rect::new(300, 400, 640, 360),
+    fn contains(outer: Rect, inner: Rect) -> bool {
+        inner.x >= outer.x
+            && inner.y >= outer.y
+            && inner.x + inner.w <= outer.x + outer.w
+            && inner.y + inner.h <= outer.y + outer.h
+    }
+
+    #[test]
+    fn shown_rects_stay_inside_content_and_hidden_rects_stay_outside() {
+        let content = Rect::new(100, 230, 1920, 1050);
+
+        for direction in [
+            EdgeDirection::Top,
+            EdgeDirection::Right,
+            EdgeDirection::Bottom,
+            EdgeDirection::Left,
+        ] {
+            let slide = EdgeSlideRects::new(content, direction, Size::new(640, 360));
+
+            assert!(contains(content, slide.shown), "{direction:?}");
+            assert!(!content.intersects_other(&slide.hidden), "{direction:?}");
+            assert_eq!(slide.hidden.size(), slide.shown.size());
         }
     }
 
     #[test]
-    fn edge_initial_rects_start_fully_offscreen_for_side_edges() {
-        let right = edge_info(EdgeDirection::Right).initial_rect();
-        assert_eq!(right.x, 2020);
-        assert_eq!(right.w, 640);
+    fn oversized_edge_scratchpads_are_clamped_to_content() {
+        let content = Rect::new(10, 20, 8, 3);
 
-        let left = edge_info(EdgeDirection::Left).initial_rect();
-        assert_eq!(left.x + left.w, 100);
-        assert_eq!(left.w, 640);
-    }
+        for direction in [
+            EdgeDirection::Top,
+            EdgeDirection::Right,
+            EdgeDirection::Bottom,
+            EdgeDirection::Left,
+        ] {
+            let slide = EdgeSlideRects::new(content, direction, Size::new(500, 500));
 
-    #[test]
-    fn edge_hide_rects_keep_valid_size() {
-        let client_rect = Rect::new(300, 400, 640, 360);
-        let monitor_rect = Rect::new(100, 200, 1920, 1080);
-
-        let top = HideAnimationInfo {
-            direction: EdgeDirection::Top,
-            monitor_rect,
-            client_rect,
+            assert!(contains(content, slide.shown), "{direction:?}");
+            assert!(slide.shown.w > 0);
+            assert!(slide.shown.h > 0);
         }
-        .rect();
-        assert_eq!(top, Rect::new(300, -160, 640, 360));
-
-        let left = HideAnimationInfo {
-            direction: EdgeDirection::Left,
-            monitor_rect,
-            client_rect,
-        }
-        .rect();
-        assert_eq!(
-            left,
-            Rect::new(100 - 640, 200 + EDGE_MARGIN_Y, 640, 1080 - EDGE_INSET_Y)
-        );
     }
 }
