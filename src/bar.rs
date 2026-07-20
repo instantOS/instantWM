@@ -6,8 +6,6 @@ pub(crate) mod scene;
 pub mod status;
 pub mod wayland;
 
-pub use renderer::reset_bar_common;
-
 use crate::contexts::{CoreCtx, WmCtx};
 use crate::types::*;
 use std::collections::HashMap;
@@ -22,7 +20,6 @@ pub struct BarRuntime {
 
 #[derive(Default)]
 pub struct BarState {
-    draw_bar_recursion: usize,
     bar_update_seq: u64,
     last_drawn_seq: u64,
     /// Cached tag widths for hit-testing. Computed during render, used during hit-testing.
@@ -37,6 +34,49 @@ pub struct BarState {
     status_cache: status::ParsedStatus,
     status_cache_parsed: bool,
     pub runtime: BarRuntime,
+    pub hover: BarHoverState,
+}
+
+/// Pointer hover presentation for the built-in bar.
+///
+/// There is one pointer, so this state is global, but retaining the monitor ID
+/// prevents a selection change from painting the gesture on another output.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BarHoverState {
+    pub monitor_id: Option<MonitorId>,
+    pub gesture: Gesture,
+    pub drag_active: bool,
+}
+
+impl BarHoverState {
+    pub fn set(&mut self, monitor_id: MonitorId, gesture: Gesture, drag_active: bool) -> bool {
+        let next = Self {
+            monitor_id: Some(monitor_id),
+            gesture,
+            drag_active,
+        };
+        if *self == next {
+            return false;
+        }
+        *self = next;
+        true
+    }
+
+    pub fn clear(&mut self) -> bool {
+        if *self == Self::default() {
+            return false;
+        }
+        *self = Self::default();
+        true
+    }
+
+    pub fn gesture_on(self, monitor_id: MonitorId) -> Gesture {
+        if self.monitor_id == Some(monitor_id) {
+            self.gesture
+        } else {
+            Gesture::None
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -53,11 +93,20 @@ pub struct TitleHitRange {
     pub win: WindowId,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SystrayHitSlot {
     pub idx: usize,
     pub start: i32,
     pub end: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BarOverlayHit {
+    TrayMenu {
+        start: i32,
+        end: i32,
+        slots: Vec<SystrayHitSlot>,
+    },
 }
 
 #[derive(Clone, Debug, Default)]
@@ -68,31 +117,15 @@ pub struct MonitorHitCache {
     pub layout_end: i32,
     pub shutdown_end: i32,
     pub status_hit_x: i32,
-    /// Systray item hit slots for Wayland bars. Populated during rendering.
+    /// StatusNotifier item hit slots for compositor-rendered bars.
     pub systray_slots: Vec<SystrayHitSlot>,
-    /// Systray menu item hit slots for Wayland bars. Populated during rendering.
-    pub systray_menu_slots: Vec<SystrayHitSlot>,
+    /// Topmost transient hit layer. Coordinates covered by this layer never
+    /// fall through to normal bar controls.
+    pub overlay: Option<BarOverlayHit>,
     pub(crate) status_click_targets: Vec<status::StatusClickTarget>,
 }
 
 impl BarState {
-    pub(crate) fn try_recursion_enter(&mut self) -> bool {
-        if self.draw_bar_recursion > 0 {
-            self.mark_dirty();
-            return false;
-        }
-        self.draw_bar_recursion = 1;
-        true
-    }
-
-    pub(crate) fn recursion_exit(&mut self) {
-        self.draw_bar_recursion = self.draw_bar_recursion.saturating_sub(1);
-    }
-
-    pub fn is_drawing(&self) -> bool {
-        self.draw_bar_recursion > 0
-    }
-
     /// Bump the backend-agnostic bar invalidation sequence.
     pub fn mark_dirty(&mut self) {
         self.bar_update_seq = self.bar_update_seq.wrapping_add(1);
@@ -198,8 +231,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
 }
 
 pub fn clear_hover(ctx: &mut WmCtx) {
-    if ctx.core().model().selected_monitor().gesture != Gesture::None {
-        reset_bar_common(ctx.core_mut().model_mut());
+    if ctx.core_mut().bar.hover.clear() {
         ctx.request_bar_update();
     }
 }
@@ -210,7 +242,7 @@ pub fn resolve_bar_position_at_root(
     sync_selected_monitor: bool,
 ) -> Option<(MonitorId, BarPosition)> {
     let rect = crate::mouse::pointer::point_rect(root);
-    let monitor_id = crate::types::find_monitor_by_rect(core.model().monitors.iter(), &rect)?;
+    let monitor_id = core.model().monitors.id_intersecting_rect(rect)?;
     if sync_selected_monitor && monitor_id != core.model().selected_monitor_id() {
         core.model_mut().set_selected_monitor(monitor_id);
     }
@@ -220,14 +252,15 @@ pub fn resolve_bar_position_at_root(
         return None;
     }
 
-    let local_x = root.x - mon.work_rect.x;
+    let local_x = root.x - mon.work_rect().x;
     Some((monitor_id, mon.bar_position_at_x(core, local_x)))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::BarState;
+    use super::{BarHoverState, BarState};
     use crate::bar::status::StatusItem;
+    use crate::types::{Gesture, MonitorId};
 
     #[test]
     fn prepared_status_is_parsed_on_first_cache_read() {
@@ -240,6 +273,22 @@ mod tests {
         assert!(parsed.i3bar.is_some());
         assert!(matches!(parsed.items.first(), Some(StatusItem::I3Block(_))));
     }
+
+    #[test]
+    fn hover_is_only_visible_on_its_own_monitor() {
+        let first = MonitorId::from_raw(1);
+        let second = MonitorId::from_raw(2);
+        let mut hover = BarHoverState::default();
+
+        assert!(hover.set(first, Gesture::Tag(3), true));
+        assert_eq!(hover.gesture_on(first), Gesture::Tag(3));
+        assert_eq!(hover.gesture_on(second), Gesture::None);
+        assert!(hover.drag_active);
+
+        assert!(hover.clear());
+        assert_eq!(hover, BarHoverState::default());
+        assert!(!hover.clear());
+    }
 }
 
 pub fn update_hover(
@@ -248,7 +297,7 @@ pub fn update_hover(
     reset_start_menu: bool,
     sync_selected_monitor: bool,
 ) -> Option<BarPosition> {
-    let Some((_monitor_id, pos)) =
+    let Some((monitor_id, pos)) =
         resolve_bar_position_at_root(ctx.core_mut(), root, sync_selected_monitor)
     else {
         clear_hover(ctx);
@@ -256,18 +305,17 @@ pub fn update_hover(
     };
 
     if reset_start_menu && pos == BarPosition::StartMenu {
-        reset_bar_common(ctx.core_mut().model_mut());
+        ctx.core_mut().bar.hover.clear();
         ctx.request_bar_update();
     }
 
-    let old_gesture = ctx.core().model().selected_monitor().gesture;
+    let old_gesture = ctx.core().bar.hover.gesture_on(monitor_id);
     let gesture = if pos == BarPosition::StatusText {
         old_gesture
     } else {
         pos.to_gesture()
     };
-    if old_gesture != gesture {
-        ctx.core_mut().model_mut().selected_monitor_mut().gesture = gesture;
+    if ctx.core_mut().bar.hover.set(monitor_id, gesture, false) {
         ctx.request_bar_update();
     }
 
@@ -277,22 +325,30 @@ pub fn update_hover(
 pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, clean_state: u32) {
     if ctx.core().model().is_overview_active() {
         ctx.reset_mode();
-        ctx.request_bar_update();
         return;
     }
 
     let mode = ctx.current_mode();
     if !mode.is_empty() && mode != "default" {
         ctx.reset_mode();
-        ctx.request_bar_update();
         return;
     }
 
-    let (monitor_id, work_x, bar_y) = {
+    let (monitor_id, bar_rect, output_origin) = {
         let monitor = ctx.core().model().selected_monitor();
-        (monitor.id(), monitor.work_rect.x, monitor.bar_y)
+        (
+            monitor.id(),
+            Rect::new(
+                monitor.work_rect().x,
+                monitor.bar_y(),
+                monitor.work_rect().w,
+                monitor.bar_height,
+            ),
+            monitor.monitor_rect.position(),
+        )
     };
-    let local_x = root.x - work_x;
+    let bar_position = Point::new(root.x - bar_rect.x, root.y - bar_rect.y);
+    let output_position = Point::new(root.x - output_origin.x, root.y - output_origin.y);
     let status_text = ctx.core().bar.runtime.status_text.clone();
     let parsed = ctx
         .core_mut()
@@ -308,10 +364,12 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     status::emit_i3bar_status_click(
         &parsed,
         click_targets,
-        local_x,
-        root.y - bar_y,
+        status::StatusClickGeometry {
+            root_position: root,
+            output_position,
+            bar_position,
+        },
         button_code,
-        ctx.core().config().derived.bar_height,
         clean_state,
     );
 }

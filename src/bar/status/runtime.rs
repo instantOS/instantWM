@@ -113,7 +113,7 @@ pub(crate) fn write_i3bar_click_event<W: io::Write>(
     first_event: &mut bool,
 ) -> io::Result<()> {
     if *first_event {
-        writer.write_all(b"{\"version\":1,\"click_events\":true}\n[\n")?;
+        writer.write_all(b"[\n")?;
         *first_event = false;
     } else {
         writer.write_all(b",\n")?;
@@ -131,4 +131,50 @@ pub(crate) fn flush_i3bar_click_events<W: io::Write>(
         write_i3bar_click_event(&mut *writer, &event, first_event)?;
     }
     writer.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn click_event() -> I3ClickEvent {
+        I3ClickEvent {
+            name: Some("cpu".to_string()),
+            instance: None,
+            button: 1,
+            x: 100,
+            y: 20,
+            relative_x: 4,
+            relative_y: 5,
+            output_x: 100,
+            output_y: 20,
+            width: 30,
+            height: 24,
+            modifiers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn click_stream_starts_with_an_array_not_a_status_header() {
+        let mut output = Vec::new();
+        let mut first = true;
+
+        write_i3bar_click_event(&mut output, &click_event(), &mut first).unwrap();
+
+        let output = String::from_utf8(output).unwrap();
+        assert!(output.starts_with("[\n{"));
+        assert!(!output.contains("\"version\""));
+        assert!(output.contains("\"output_x\":100"));
+    }
+
+    #[test]
+    fn later_clicks_are_comma_separated() {
+        let mut output = Vec::new();
+        let mut first = true;
+
+        write_i3bar_click_event(&mut output, &click_event(), &mut first).unwrap();
+        write_i3bar_click_event(&mut output, &click_event(), &mut first).unwrap();
+
+        assert!(String::from_utf8(output).unwrap().contains("\n,\n{"));
+    }
 }

@@ -17,6 +17,7 @@ pub mod pointer;
 pub use keyboard::handle_keyboard;
 
 use crate::monitor::refresh_monitor_layout;
+use crate::types::Size;
 use crate::wm::Wm;
 use smithay::desktop::layer_map_for_output;
 use smithay::output::{Mode as OutputMode, Output};
@@ -80,12 +81,11 @@ pub fn handle_resize(
     wm: &mut Wm,
     state: &mut crate::backend::wayland::compositor::WaylandState,
     output: &Output,
-    w: i32,
-    h: i32,
+    size: Size,
 ) {
-    let (safe_w, safe_h) = crate::wayland::common::sanitize_size(w, h);
+    let safe_size = crate::wayland::common::sanitize_size(size);
     let mode = OutputMode {
-        size: (safe_w, safe_h).into(),
+        size: (safe_size.w, safe_size.h).into(),
         refresh: 60_000,
     };
     // Transform::Flipped180 is REQUIRED for the winit (nested) backend.
@@ -113,8 +113,8 @@ pub fn handle_resize(
     state.space.map_output(output, output_loc);
     layer_map_for_output(output).arrange();
 
-    wm.core.config.derived.display.width = safe_w;
-    wm.core.config.derived.display.height = safe_h;
+    wm.core.config.derived.display.width = safe_size.w;
+    wm.core.config.derived.display.height = safe_size.h;
     refresh_monitor_layout(&mut wm.ctx());
     // `refresh_monitor_layout` resets each monitor's `available_rect` back to
     // its full output rect, so re-apply the layer-shell exclusive zones.

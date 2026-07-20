@@ -4,7 +4,7 @@
 
 use std::str::FromStr;
 
-use crate::types::{MonitorId, Rect, TagMask, WindowId};
+use crate::types::{MonitorId, Point, Rect, Size, TagMask, WindowId};
 
 /// Mouse buttons recognized by the window manager.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -117,9 +117,9 @@ pub enum BarPosition {
     ResizeWidget(WindowId),
     /// The status-text / command strip on the right side of the bar.
     StatusText,
-    /// A Wayland StatusNotifier tray item by index in the current tray model.
+    /// A StatusNotifier tray item by index in the current tray model.
     SystrayItem(usize),
-    /// A Wayland systray popup-menu item by index.
+    /// An entry in the currently visible bar-native tray menu level.
     SystrayMenuItem(usize),
     /// An unoccupied area of the bar.
     #[default]
@@ -162,8 +162,6 @@ pub enum Gesture {
     WinTitle(WindowId),
     /// Cursor is over a tag button (0-based tag index).
     Tag(usize),
-    /// Cursor is over the overlay activation zone.
-    Overlay,
     /// Cursor is over the close button.
     CloseButton,
     /// Cursor is over the start-menu icon.
@@ -346,17 +344,19 @@ impl ResizeDirection {
 
     /// Get the warp offset for this resize direction.
     ///
-    /// Returns the (x, y) offset based on window dimensions.
-    pub fn warp_offset(self, w: i32, h: i32, bw: i32) -> (i32, i32) {
+    /// Returns the cursor position relative to the window geometry.
+    pub fn warp_offset(self, size: Size, border_width: i32) -> Point {
+        let Size { w, h } = size;
+        let bw = border_width;
         match self {
-            Self::TopLeft => (-bw, -bw),
-            Self::Top => ((w + bw - 1) / 2, -bw),
-            Self::TopRight => (w + bw - 1, -bw),
-            Self::Right => (w + bw - 1, (h + bw - 1) / 2),
-            Self::BottomRight => (w + bw - 1, h + bw - 1),
-            Self::Bottom => ((w + bw - 1) / 2, h + bw - 1),
-            Self::BottomLeft => (-bw, h + bw - 1),
-            Self::Left => (-bw, (h + bw - 1) / 2),
+            Self::TopLeft => Point::new(-bw, -bw),
+            Self::Top => Point::new((w + bw - 1) / 2, -bw),
+            Self::TopRight => Point::new(w + bw - 1, -bw),
+            Self::Right => Point::new(w + bw - 1, (h + bw - 1) / 2),
+            Self::BottomRight => Point::new(w + bw - 1, h + bw - 1),
+            Self::Bottom => Point::new((w + bw - 1) / 2, h + bw - 1),
+            Self::BottomLeft => Point::new(-bw, h + bw - 1),
+            Self::Left => Point::new(-bw, (h + bw - 1) / 2),
         }
     }
 
@@ -373,40 +373,42 @@ impl ResizeDirection {
             Self::Left => smithay::input::pointer::CursorIcon::WResize,
         }
     }
-}
 
-/// Determine resize direction from hit position within a window.
-pub fn get_resize_direction(w: i32, h: i32, hit_x: i32, hit_y: i32) -> ResizeDirection {
-    if hit_y > h / 2 {
-        if hit_x < w / 3 {
-            if hit_y < 2 * h / 3 {
-                ResizeDirection::Left
+    /// Determine the resize direction for a hit position within a window.
+    pub fn from_hit(size: Size, hit: Point) -> Self {
+        let Size { w, h } = size;
+        let Point { x: hit_x, y: hit_y } = hit;
+        if hit_y > h / 2 {
+            if hit_x < w / 3 {
+                if hit_y < 2 * h / 3 {
+                    Self::Left
+                } else {
+                    Self::BottomLeft
+                }
+            } else if hit_x > 2 * w / 3 {
+                if hit_y < 2 * h / 3 {
+                    Self::Right
+                } else {
+                    Self::BottomRight
+                }
             } else {
-                ResizeDirection::BottomLeft
+                Self::Bottom
+            }
+        } else if hit_x < w / 3 {
+            if hit_y > h / 3 {
+                Self::Left
+            } else {
+                Self::TopLeft
             }
         } else if hit_x > 2 * w / 3 {
-            if hit_y < 2 * h / 3 {
-                ResizeDirection::Right
+            if hit_y > h / 3 {
+                Self::Right
             } else {
-                ResizeDirection::BottomRight
+                Self::TopRight
             }
         } else {
-            ResizeDirection::Bottom
+            Self::Top
         }
-    } else if hit_x < w / 3 {
-        if hit_y > h / 3 {
-            ResizeDirection::Left
-        } else {
-            ResizeDirection::TopLeft
-        }
-    } else if hit_x > 2 * w / 3 {
-        if hit_y > h / 3 {
-            ResizeDirection::Right
-        } else {
-            ResizeDirection::TopRight
-        }
-    } else {
-        ResizeDirection::Top
     }
 }
 

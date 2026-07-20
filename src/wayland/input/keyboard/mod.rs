@@ -66,6 +66,18 @@ pub fn handle_keyboard<B: InputBackend>(
                 }
                 return FilterResult::Forward;
             }
+            let raw_keysym = keysym.raw_syms().first().map_or(0, |ks| ks.raw());
+            if raw_keysym == crate::config::keysyms::XK_ESCAPE {
+                let closed_native = data.dismiss_native_systray_menu();
+                let closed_hosted = crate::wayland::input::bar::close_systray_menu(wm);
+                if closed_hosted {
+                    data.request_bar_redraw();
+                }
+                if closed_native || closed_hosted {
+                    data.runtime.intercepted_key_releases.insert(key_code);
+                    return FilterResult::Intercept(());
+                }
+            }
             if wm_shortcuts_allowed {
                 let mod_mask = modifiers_to_x11_mask(modifiers);
                 let ctx = wm.ctx();
@@ -73,11 +85,7 @@ pub fn handle_keyboard<B: InputBackend>(
                     return FilterResult::Forward;
                 };
                 let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
-                if crate::keyboard::handle_keysym(
-                    &mut wm_ctx,
-                    keysym.raw_syms().first().map_or(0, |ks| ks.raw()),
-                    mod_mask,
-                ) {
+                if crate::keyboard::handle_keysym(&mut wm_ctx, raw_keysym, mod_mask) {
                     data.runtime.intercepted_key_releases.insert(key_code);
                     return FilterResult::Intercept(());
                 }

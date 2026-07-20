@@ -17,21 +17,26 @@ use crate::types::Rect;
 use crate::wm::Wm;
 use std::collections::HashMap;
 
-/// Focus a layer surface if it requests keyboard focus.
-fn focus_layer_if_requested(
-    state: &mut WaylandState,
+/// Whether a layer surface is allowed to receive keyboard focus.
+pub(crate) fn layer_surface_accepts_keyboard_focus(
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) {
+) -> bool {
     use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, LayerSurfaceCachedState};
-    let interactivity = with_states(surface, |states| {
+    with_states(surface, |states| {
         states
             .cached_state
             .get::<LayerSurfaceCachedState>()
             .current()
             .keyboard_interactivity
-    });
+    }) != KeyboardInteractivity::None
+}
 
-    if interactivity == KeyboardInteractivity::None {
+/// Focus a layer surface if it requests keyboard focus.
+fn focus_layer_if_requested(
+    state: &mut WaylandState,
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) {
+    if !layer_surface_accepts_keyboard_focus(surface) {
         return;
     }
 
@@ -146,8 +151,6 @@ pub fn apply_available_rects(wm: &mut Wm, state: &WaylandState) -> bool {
             continue;
         }
         mon.set_available_rect(new_rect);
-        let bar_height = mon.bar_height;
-        mon.update_bar_position(bar_height);
         any_changed = true;
     }
     any_changed

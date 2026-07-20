@@ -24,55 +24,68 @@ pub fn begin_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) {
     let Some(target) = crate::mouse::pointer::sidebar_target_at(ctx.core().model(), ptr) else {
         return;
     };
-    ctx.core_mut().drag_state_mut().gesture = crate::core_state::GestureInteraction {
-        active: true,
-        button: btn,
-        monitor_id: target.monitor_id,
-        last_y: ptr.y,
-    };
+    let threshold = ctx
+        .core()
+        .model()
+        .monitor(target.monitor_id)
+        .map(|monitor| (monitor.monitor_rect.h / 30).max(1))
+        .unwrap_or(1);
+    if ctx
+        .core_mut()
+        .drag_state_mut()
+        .begin_sidebar_volume(crate::core_state::SidebarVolumeDrag::new(
+            btn,
+            target.monitor_id,
+            ptr.y,
+            threshold,
+        ))
+        .is_err()
+    {
+        return;
+    }
     crate::mouse::set_cursor_style(ctx, AltCursor::Move);
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
-    let (monitor_id, last_y) = {
-        let gesture = &ctx.core().drag_state().gesture;
-        if !gesture.active {
-            return;
-        }
-        (gesture.monitor_id, gesture.last_y)
-    };
-    let Some(threshold) = ctx
-        .core()
-        .model()
-        .monitor(monitor_id)
-        .map(|mon| (mon.monitor_rect.h / 30).max(1))
-    else {
-        ctx.core_mut().drag_state_mut().gesture.active = false;
+    let Some(monitor_id) = ctx.core().drag_state().sidebar_volume_monitor() else {
         return;
     };
-
-    if (last_y - root_y).abs() <= threshold {
+    if ctx.core().model().monitor(monitor_id).is_none() {
+        ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
+        crate::mouse::set_cursor_style(ctx, AltCursor::Default);
         return;
     }
 
-    let cmd = if root_y < last_y {
-        &["ins", "assist", "volume", "+"][..]
+    let steps = ctx
+        .core_mut()
+        .drag_state_mut()
+        .update_sidebar_volume(root_y)
+        .unwrap_or(0);
+    if steps == 0 {
+        return;
+    }
+
+    let command = if steps > 0 {
+        ctx.core()
+            .config()
+            .external_commands
+            .get(crate::config::commands::Cmd::UpVol)
     } else {
-        &["ins", "assist", "volume", "-"][..]
+        ctx.core()
+            .config()
+            .external_commands
+            .get(crate::config::commands::Cmd::DownVol)
     };
-    crate::util::spawn(ctx, cmd);
-    ctx.core_mut().drag_state_mut().gesture.last_y = root_y;
+    for _ in 0..steps.unsigned_abs() {
+        crate::util::spawn(ctx, command);
+    }
 }
 
 pub fn finish_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) -> bool {
-    let active = {
-        let gesture = &ctx.core().drag_state().gesture;
-        gesture.active && gesture.button == btn
-    };
-    if !active {
+    if ctx.core().drag_state().sidebar_volume_button() != Some(btn) {
         return false;
     }
-    ctx.core_mut().drag_state_mut().gesture = crate::core_state::GestureInteraction::default();
+    ctx.core_mut().drag_state_mut().finish_sidebar_volume(btn);
     crate::mouse::set_cursor_style(ctx, AltCursor::Default);
     true
 }
@@ -81,7 +94,7 @@ pub fn sidebar_gesture_x11(ctx: &mut WmCtxX11, btn: MouseButton) {
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
         begin_sidebar_gesture(&mut wm_ctx, btn);
-        if !wm_ctx.core().drag_state().gesture.active {
+        if !wm_ctx.core().drag_state().sidebar_volume_active() {
             return;
         }
     }

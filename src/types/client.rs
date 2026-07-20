@@ -233,6 +233,16 @@ impl Client {
         self.geo.total_height(self.border_width)
     }
 
+    /// Return the outer bounding box of the client, including borders.
+    pub fn total_rect(&self) -> Rect {
+        Rect::new(
+            self.geo.x,
+            self.geo.y,
+            self.total_width(),
+            self.total_height(),
+        )
+    }
+
     /// Update border width and adjust geometry accordingly.
     pub fn set_border_width(&mut self, new_bw: i32) {
         let old_bw = self.border_width;

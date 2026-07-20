@@ -43,6 +43,10 @@ pub struct MapWindowParams {
     pub win: WindowId,
     pub properties: crate::client::WindowProperties,
     pub initial_geo: Option<crate::types::Rect>,
+    /// Whether the initial x/y came from an explicit X11 USPosition or
+    /// PPosition hint. Native Wayland toplevel positions are always
+    /// compositor-owned.
+    pub initial_position_is_explicit: bool,
     pub launch_pid: Option<u32>,
     pub launch_startup_id: Option<String>,
     pub x11_hints: Option<x11rb::properties::WmHints>,
@@ -91,6 +95,8 @@ pub enum WmCommand {
         win: WindowId,
         dir: crate::types::ResizeDirection,
     },
+    /// Cancel any compositor-driven move or resize interaction.
+    CancelInteractiveDrag(crate::core_state::DragCancelReason),
     /// Update a window's properties (title, class, etc.).
     UpdateProperties {
         win: WindowId,

@@ -3,16 +3,16 @@ use crate::types::Rect;
 
 #[derive(Clone, Debug)]
 pub struct BarScheme {
-    pub fg: Rgba,
-    pub bg: Rgba,
+    pub foreground: Rgba,
+    pub background: Rgba,
     pub detail: Rgba,
 }
 
 impl BarScheme {
     pub fn swap_fg_bg(&self) -> Self {
         Self {
-            fg: self.bg,
-            bg: self.fg,
+            foreground: self.background,
+            background: self.foreground,
             detail: self.detail,
         }
     }
@@ -20,14 +20,26 @@ impl BarScheme {
     /// Rectangle fill color parity with X11 drw semantics:
     /// invert=true => background, invert=false => foreground.
     pub fn rect_color(&self, invert: bool) -> Rgba {
-        if invert { self.bg } else { self.fg }
+        if invert {
+            self.background
+        } else {
+            self.foreground
+        }
     }
 
     /// Text colors parity with X11 drw semantics.
     /// Returns (background, foreground).
     pub fn text_colors(&self, invert: bool) -> (Rgba, Rgba) {
-        let bg = if invert { self.fg } else { self.bg };
-        let fg = if invert { self.bg } else { self.fg };
+        let bg = if invert {
+            self.foreground
+        } else {
+            self.background
+        };
+        let fg = if invert {
+            self.background
+        } else {
+            self.foreground
+        };
         (bg, fg)
     }
 }

@@ -47,11 +47,17 @@ impl MotionEvent {
         output_width: i32,
         output_height: i32,
     ) -> Point<f64, smithay::utils::Logical> {
+        // Output geometry is half-open: (0, 0) is valid, while
+        // (width, height) is already outside it.
+        let max_x = output_width.saturating_sub(1).max(0) as f64;
+        let max_y = output_height.saturating_sub(1).max(0) as f64;
         match self {
-            MotionEvent::Absolute { x, y, .. } => Point::from((*x, *y)),
+            MotionEvent::Absolute { x, y, .. } => {
+                Point::from((x.clamp(0.0, max_x), y.clamp(0.0, max_y)))
+            }
             MotionEvent::Relative { dx, dy, .. } => {
-                let x = (current.x + dx).clamp(0.0, output_width as f64);
-                let y = (current.y + dy).clamp(0.0, output_height as f64);
+                let x = (current.x + dx).clamp(0.0, max_x);
+                let y = (current.y + dy).clamp(0.0, max_y);
                 Point::from((x, y))
             }
         }
@@ -63,6 +69,43 @@ impl MotionEvent {
             MotionEvent::Absolute { time_msec, .. } => *time_msec,
             MotionEvent::Relative { time_msec, .. } => *time_msec,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MotionEvent;
+    use smithay::utils::Point;
+
+    #[test]
+    fn relative_motion_stays_inside_output_at_right_and_bottom_edges() {
+        let event = MotionEvent::Relative {
+            dx: 100.0,
+            dy: 100.0,
+            dx_unaccel: 100.0,
+            dy_unaccel: 100.0,
+            time_msec: 0,
+            time_usec: 0,
+        };
+
+        assert_eq!(
+            event.compute_location(Point::from((1910.0, 1070.0)), 1920, 1080),
+            Point::from((1919.0, 1079.0))
+        );
+    }
+
+    #[test]
+    fn absolute_motion_stays_inside_output_at_right_and_bottom_edges() {
+        let event = MotionEvent::Absolute {
+            x: 1920.0,
+            y: 1080.0,
+            time_msec: 0,
+        };
+
+        assert_eq!(
+            event.compute_location(Point::from((0.0, 0.0)), 1920, 1080),
+            Point::from((1919.0, 1079.0))
+        );
     }
 }
 
@@ -252,12 +295,12 @@ pub fn handle_pointer_motion(
     }
 
     let final_location = potential_location;
-    let final_hit = state.contents_under_pointer(final_location);
+    let candidate_hit = state.contents_under_pointer(final_location);
 
     if constraint.confined
         && let Some((surface, surface_loc)) = &constraint.surface
     {
-        if final_hit
+        if candidate_hit
             .surface
             .as_ref()
             .is_none_or(|(final_surface, _)| final_surface != surface)
@@ -274,6 +317,21 @@ pub fn handle_pointer_motion(
     }
 
     state.runtime.pointer_location = final_location;
+
+    // Hot corners are compositor-owned pointer interactions. Evaluate them
+    // before the final hit test so this motion is dispatched against the
+    // newly shown or hidden overlay. Session-locked input must never trigger
+    // WM UI.
+    if !state.is_locked() {
+        let root = RootPoint::new(
+            final_location.x.round() as i32,
+            final_location.y.round() as i32,
+        );
+        let mut ctx = wm.ctx();
+        crate::mouse::update_overlay_hot_corner(&mut ctx, root);
+    }
+
+    let final_hit = state.contents_under_pointer(final_location);
 
     // Activate any pending constraints BEFORE dispatch so they're active for this event
     activate_pointer_constraint_under(pointer_handle, final_hit.surface.as_ref(), final_location);
@@ -398,24 +456,24 @@ pub fn dispatch_pointer_motion(
 
 /// Compute whether the pointer is in the bar area or guard band below it.
 fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
-    crate::types::find_monitor_by_rect(
-        wm.core.model.monitors.iter(),
-        &Rect {
+    wm.core
+        .model
+        .monitors
+        .id_intersecting_rect(Rect {
             x: root.x,
             y: root.y,
             w: 1,
             h: 1,
-        },
-    )
-    .and_then(|mid| wm.core.monitor(mid))
-    .map(|mon| {
-        let bar_visible = monitor_bar_visible(wm, mon);
-        let in_bar = bar_visible && mon.y_in_bar(root.y);
-        let in_guard =
-            bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
-        (in_bar, in_guard)
-    })
-    .unwrap_or((false, false))
+        })
+        .and_then(|mid| wm.core.monitor(mid))
+        .map(|mon| {
+            let bar_visible = monitor_bar_visible(wm, mon);
+            let in_bar = bar_visible && mon.y_in_bar(root.y);
+            let in_guard =
+                bar_visible && !wm.core.drag.any_drag_active() && mon.y_in_guard_band(root.y);
+            (in_bar, in_guard)
+        })
+        .unwrap_or((false, false))
 }
 
 /// Resolve pointer focus and hovered window based on bar hit state.
@@ -610,10 +668,10 @@ fn handle_wm_drag_motion(
         let mod_state = modifiers_to_x11_mask(&keyboard_handle.modifier_state());
         crate::mouse::drag_tag_finish(&mut ctx, mod_state);
     }
-    if ctx.core().drag_state().interactive.active {
+    if ctx.core().drag_state().armed_interaction().is_some() {
         crate::mouse::title_drag_motion(&mut ctx, root);
     }
-    if ctx.core().drag_state().gesture.active {
+    if ctx.core().drag_state().sidebar_volume_active() {
         crate::mouse::update_sidebar_gesture(&mut ctx, root.y);
     }
 }

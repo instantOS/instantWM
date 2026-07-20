@@ -43,6 +43,7 @@ pub mod bindings;
 pub mod constants;
 pub(crate) mod cursor;
 pub mod drag;
+pub mod hot_corner;
 pub mod hover;
 pub mod monitor;
 pub mod pointer;
@@ -66,6 +67,7 @@ pub use drag::{
 
 // ── hover ─────────────────────────────────────────────────────────────────────
 
+pub use hot_corner::update_overlay_hot_corner;
 pub use hover::{
     clear_hover_offer, commit_x11_hover_offer, handle_x11_floating_to_tiled_hover_offer,
     run_x11_hover_resize_offer_loop, update_floating_resize_offer_at,

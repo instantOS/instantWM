@@ -1,7 +1,4 @@
-use crate::config::appearance::{
-    get_border_colors, get_close_button_colors, get_fonts, get_status_bar_colors, get_tag_colors,
-    get_window_colors,
-};
+use crate::config::appearance::get_fonts;
 use crate::config::keybind_config::KeybindSpec;
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, Rule, StatusColorConfig, TagColorConfigs,
@@ -120,23 +117,30 @@ impl ColorTheme {
         ColorTheme::Nord,
         ColorTheme::Gruvbox,
     ];
+}
 
-    /// The kebab-case name used in TOML and on the CLI, e.g. `catppuccin-mocha`.
-    ///
-    /// Derived from the enum's serde representation so the name can never drift
-    /// from what the config parser accepts.
-    pub fn name(self) -> String {
-        toml::Value::try_from(self)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_owned))
-            .expect("ColorTheme always serialises to a TOML string")
+impl std::fmt::Display for ColorTheme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::Instantos => "instantos",
+            Self::CatppuccinLatte => "catppuccin-latte",
+            Self::CatppuccinFrappe => "catppuccin-frappe",
+            Self::CatppuccinMacchiato => "catppuccin-macchiato",
+            Self::CatppuccinMocha => "catppuccin-mocha",
+            Self::Nord => "nord",
+            Self::Gruvbox => "gruvbox",
+        };
+        f.write_str(name)
     }
+}
 
-    /// Parse a kebab-case name, or `None` if it isn't a known theme.
-    pub fn from_name(name: &str) -> Option<ColorTheme> {
+impl std::str::FromStr for ColorTheme {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
         toml::Value::String(name.to_string())
-            .try_into::<ColorTheme>()
-            .ok()
+            .try_into()
+            .map_err(|_| format!("unknown color theme: {name}"))
     }
 }
 
@@ -324,13 +328,7 @@ pub struct ColorConfig {
 
 impl Default for ColorConfig {
     fn default() -> Self {
-        Self {
-            tag: get_tag_colors(),
-            window: get_window_colors(),
-            close_button: get_close_button_colors(),
-            border: get_border_colors(),
-            status: get_status_bar_colors(),
-        }
+        ColorTheme::default().into()
     }
 }
 
@@ -376,8 +374,7 @@ fn resolve_theme_colors(mut config: toml::Value) -> Result<toml::Value, String> 
             }
         },
     };
-    let mut base = toml::Value::try_from(crate::config::appearance::colors(theme))
-        .map_err(|e| e.to_string())?;
+    let mut base = toml::Value::try_from(ColorConfig::from(theme)).map_err(|e| e.to_string())?;
     if let Some(overrides) = config.get_mut("colors") {
         merge_toml_values(
             &mut base,
@@ -521,7 +518,6 @@ fn merge_toml_values(base: &mut toml::Value, over: toml::Value) {
 #[cfg(test)]
 mod theme_tests {
     use super::*;
-    use crate::bar::color::rgba_from_hex;
 
     fn parse(source: &str) -> ThemeConfig {
         let value = toml::from_str(source).unwrap();
@@ -535,11 +531,8 @@ mod theme_tests {
     fn built_in_theme_is_used_as_color_base() {
         let config = parse(r#"theme = "nord""#);
         assert_eq!(config.theme, ColorTheme::Nord);
-        assert_eq!(config.colors.status.bg, rgba_from_hex("#2e3440").unwrap());
-        assert_eq!(
-            config.colors.border.tile_focus,
-            rgba_from_hex("#81a1c1").unwrap()
-        );
+        assert_eq!(config.colors.status.bg, "#2e3440".parse().unwrap());
+        assert_eq!(config.colors.border.tile_focus, "#81a1c1".parse().unwrap());
     }
 
     #[test]
@@ -551,12 +544,9 @@ mod theme_tests {
             bg = "#123456"
             "##,
         );
-        assert_eq!(config.colors.status.bg, rgba_from_hex("#123456").unwrap());
-        assert_eq!(config.colors.status.fg, rgba_from_hex("#4c4f69").unwrap());
-        assert_eq!(
-            config.colors.border.tile_focus,
-            rgba_from_hex("#1e66f5").unwrap()
-        );
+        assert_eq!(config.colors.status.bg, "#123456".parse().unwrap());
+        assert_eq!(config.colors.status.fg, "#4c4f69".parse().unwrap());
+        assert_eq!(config.colors.border.tile_focus, "#1e66f5".parse().unwrap());
     }
 
     #[test]
@@ -577,9 +567,9 @@ mod theme_tests {
     #[test]
     fn theme_name_helpers_round_trip_every_variant() {
         for theme in ColorTheme::ALL {
-            assert_eq!(ColorTheme::from_name(&theme.name()), Some(*theme));
+            assert_eq!(theme.to_string().parse(), Ok(*theme));
         }
-        assert_eq!(ColorTheme::from_name("not-a-theme"), None);
+        assert!("not-a-theme".parse::<ColorTheme>().is_err());
     }
 
     #[test]

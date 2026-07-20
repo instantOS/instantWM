@@ -39,7 +39,7 @@ impl LayoutPlacement {
 
         Self {
             work_rect: inset_rect_saturating(
-                monitor.work_rect,
+                monitor.work_rect(),
                 outer_gap,
                 outer_gap,
                 outer_gap,
@@ -71,13 +71,21 @@ impl LayoutPlacement {
 
         let half = self.inner_gap / 2;
         let other_half = self.inner_gap - half;
-        let work_right = self.work_rect.x + self.work_rect.w;
-        let work_bottom = self.work_rect.y + self.work_rect.h;
+        let work_right = self.work_rect().x + self.work_rect().w;
+        let work_bottom = self.work_rect().y + self.work_rect().h;
         let slot_right = slot.x + slot.w;
         let slot_bottom = slot.y + slot.h;
 
-        let left = if slot.x <= self.work_rect.x { 0 } else { half };
-        let top = if slot.y <= self.work_rect.y { 0 } else { half };
+        let left = if slot.x <= self.work_rect().x {
+            0
+        } else {
+            half
+        };
+        let top = if slot.y <= self.work_rect().y {
+            0
+        } else {
+            half
+        };
         let right = if slot_right >= work_right {
             0
         } else {
@@ -133,7 +141,7 @@ mod tests {
 
     fn monitor_with_work_rect(work_rect: Rect) -> Monitor {
         Monitor {
-            work_rect,
+            available_rect: work_rect,
             ..Monitor::default()
         }
     }

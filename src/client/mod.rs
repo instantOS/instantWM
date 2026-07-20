@@ -39,13 +39,12 @@ pub mod visibility;
 // ---------------------------------------------------------------------------
 
 // -- Rules ------------------------------------------------------------------
-pub use rules::{WindowProperties, apply_rules, handle_property_change};
+pub use rules::{
+    InitialRulePlacement, WindowProperties, apply_initial_rules, update_window_properties,
+};
 
 // -- Geometry ----------------------------------------------------------------
-pub use geometry::{
-    FloatingPlacementKind, resolve_and_sync_floating_geometry, sane_floating_spawn_rect,
-    sync_client_geometry,
-};
+pub use geometry::{sane_floating_spawn_rect, sync_client_geometry};
 
 // -- Visibility --------------------------------------------------------------
 pub use visibility::{apply_visibility, hide, hide_for_user, show_window};
@@ -63,7 +62,7 @@ pub use kill::{close_win, kill_client, shut_kill};
 // -- Lifecycle ---------------------------------------------------------------
 pub use lifecycle::{
     LaunchContext, PendingLaunch, current_launch_context, new_startup_id, record_pending_launch,
-    select_client, take_pending_launch,
+    take_pending_launch,
 };
 
 // -- Layout operations -------------------------------------------------------

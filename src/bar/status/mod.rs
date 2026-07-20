@@ -12,7 +12,9 @@ pub(crate) use model::{
     StatusClickTarget, StatusItem, TEXT_PADDING,
 };
 pub(crate) use parse::{parse_i3bar_header, parse_status, parse_status_fallback};
-pub(crate) use render::{draw_status_items, emit_i3bar_status_click};
+pub(crate) use render::{
+    StatusClickGeometry, StatusRenderOutput, draw_status_items, emit_i3bar_status_click,
+};
 pub(crate) use runtime::{
     apply_status_update, drain_internal_status_updates, flush_i3bar_click_events,
     set_internal_status_ping,
@@ -68,5 +70,21 @@ mod tests {
         assert_eq!(header.version, Some(1));
         assert!(header.click_events);
         assert_eq!(header.stop_signal, Some(19));
+    }
+
+    #[test]
+    fn groups_normalized_border_widths() {
+        let parsed = parse_i3bar_json(
+            br##"[{"full_text":"cpu","border":"#ffffff","border_top":2,"border_left":3}]"##,
+        )
+        .unwrap();
+        let Some(StatusItem::I3Block(block)) = parsed.items.first() else {
+            panic!("expected i3 block");
+        };
+
+        assert_eq!(block.border_widths.top, 2);
+        assert_eq!(block.border_widths.right, 1);
+        assert_eq!(block.border_widths.bottom, 1);
+        assert_eq!(block.border_widths.left, 3);
     }
 }

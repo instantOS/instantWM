@@ -18,7 +18,7 @@ use smithay::utils::{Scale, Transform};
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::bar::scene;
 use crate::contexts::CoreCtx;
-use crate::types::geometry::Rect;
+use crate::types::{Point, Rect, Size};
 
 use self::buffer::{BarBuffer, RawBarBuffer};
 use self::text::TextRasterizer;
@@ -27,10 +27,7 @@ pub struct WaylandBarPainter {
     text: TextRasterizer,
     scheme: Option<BarScheme>,
     pixels: Vec<u8>,
-    canvas_w: i32,
-    canvas_h: i32,
-    origin_x: i32,
-    origin_y: i32,
+    surface_rect: Rect,
     buffers: Vec<BarBuffer>,
     cached_buffers: Vec<BarBuffer>,
     cached_key: u64,
@@ -43,10 +40,7 @@ impl Default for WaylandBarPainter {
             text: TextRasterizer::default(),
             scheme: None,
             pixels: Vec::new(),
-            canvas_w: 0,
-            canvas_h: 0,
-            origin_x: 0,
-            origin_y: 0,
+            surface_rect: Rect::default(),
             buffers: Vec::new(),
             cached_buffers: Vec::new(),
             cached_key: 0,
@@ -61,10 +55,7 @@ impl WaylandBarPainter {
             text: TextRasterizer::default(),
             scheme: None,
             pixels: Vec::new(),
-            canvas_w: 0,
-            canvas_h: 0,
-            origin_x: 0,
-            origin_y: 0,
+            surface_rect: Rect::default(),
             buffers: Vec::new(),
             cached_buffers: Vec::new(),
             cached_key: 0,
@@ -95,81 +86,63 @@ impl WaylandBarPainter {
         self.text.width(text, 0)
     }
 
-    pub fn begin(
-        &mut self,
-        _scale: Scale<f64>,
-        origin_x: i32,
-        origin_y: i32,
-        width: i32,
-        height: i32,
-    ) {
+    pub fn begin(&mut self, _scale: Scale<f64>, surface_rect: Rect) {
         self.scheme = None;
-        self.origin_x = origin_x;
-        self.origin_y = origin_y;
-        self.canvas_w = width;
-        self.canvas_h = height;
-        let size = (width as usize) * (height as usize) * 4;
+        self.surface_rect = surface_rect;
+        let byte_len = if surface_rect.size().is_positive() {
+            (surface_rect.w as usize)
+                .checked_mul(surface_rect.h as usize)
+                .and_then(|pixels| pixels.checked_mul(4))
+                .unwrap_or(0)
+        } else {
+            0
+        };
         self.pixels.clear();
-        self.pixels.resize(size, 0);
+        self.pixels.resize(byte_len, 0);
     }
 
     pub fn finish(&mut self) {
-        if self.canvas_w <= 0 || self.canvas_h <= 0 {
+        if !self.surface_rect.size().is_positive() {
             return;
         }
         let buffer = MemoryRenderBuffer::from_slice(
             &self.pixels,
             Fourcc::Argb8888,
-            (self.canvas_w, self.canvas_h),
+            (self.surface_rect.w, self.surface_rect.h),
             1,
             Transform::Normal,
             None,
         );
         self.buffers.push(BarBuffer {
             buffer,
-            x: self.origin_x,
-            y: self.origin_y,
+            position: self.surface_rect.position(),
         });
     }
 
     fn finish_raw(&mut self) -> Option<RawBarBuffer> {
-        if self.canvas_w <= 0 || self.canvas_h <= 0 {
+        if !self.surface_rect.size().is_positive() {
             return None;
         }
 
         Some(RawBarBuffer {
             pixels: std::mem::take(&mut self.pixels),
-            width: self.canvas_w,
-            height: self.canvas_h,
-            x: self.origin_x,
-            y: self.origin_y,
+            rect: self.surface_rect,
         })
     }
 
-    pub fn take_buffers(&mut self) -> Vec<(MemoryRenderBuffer, i32, i32)> {
+    pub fn take_buffers(&mut self) -> Vec<(MemoryRenderBuffer, Point)> {
         self.buffers
             .drain(..)
-            .map(|b| (b.buffer, b.x, b.y))
+            .map(|buffer| (buffer.buffer, buffer.position))
             .collect()
     }
 
-    pub fn blit_rgba_bgra(
-        &mut self,
-        dst_x: i32,
-        dst_y: i32,
-        dst_w: i32,
-        dst_h: i32,
-        src_w: i32,
-        src_h: i32,
-        src_rgba: &[u8],
-    ) {
+    pub fn blit_rgba_bgra(&mut self, destination: Rect, source_size: Size, src_rgba: &[u8]) {
         pixels::blit_rgba_scaled(
             &mut self.pixels,
-            self.canvas_w,
-            self.canvas_h,
-            Rect::new(dst_x, dst_y, dst_w, dst_h),
-            src_w,
-            src_h,
+            self.surface_rect.size(),
+            destination,
+            source_size,
             src_rgba,
         );
     }
@@ -177,7 +150,7 @@ impl WaylandBarPainter {
 
 impl BarPainter for WaylandBarPainter {
     fn text_width(&mut self, text: &str) -> i32 {
-        self.text.width(text, self.canvas_h)
+        self.text.width(text, self.surface_rect.h)
     }
 
     fn set_scheme(&mut self, scheme: BarScheme) {
@@ -193,8 +166,7 @@ impl BarPainter for WaylandBarPainter {
         };
         pixels::fill_rect(
             &mut self.pixels,
-            self.canvas_w,
-            self.canvas_h,
+            self.surface_rect.size(),
             bounds,
             scheme.rect_color(invert),
         );
@@ -212,12 +184,11 @@ impl BarPainter for WaylandBarPainter {
             return bounds.x;
         };
         let (bg, fg) = scheme.text_colors(invert);
-        pixels::fill_rect(&mut self.pixels, self.canvas_w, self.canvas_h, bounds, bg);
+        pixels::fill_rect(&mut self.pixels, self.surface_rect.size(), bounds, bg);
         if detail_height > 0 {
             pixels::fill_rect(
                 &mut self.pixels,
-                self.canvas_w,
-                self.canvas_h,
+                self.surface_rect.size(),
                 Rect::new(
                     bounds.x,
                     bounds.y + bounds.h - detail_height,
@@ -235,12 +206,8 @@ impl BarPainter for WaylandBarPainter {
             if text_w > 0 {
                 self.text.rasterize(
                     &mut self.pixels,
-                    self.canvas_w,
-                    self.canvas_h,
-                    text_x,
-                    bounds.y,
-                    text_w,
-                    bounds.h,
+                    self.surface_rect.size(),
+                    Rect::new(text_x, bounds.y, text_w, bounds.h),
                     text,
                     fg,
                 );
@@ -254,24 +221,30 @@ pub fn render_bar_buffers(
     core: &mut CoreCtx,
     painter: &mut WaylandBarPainter,
     scale: Scale<f64>,
-    wayland_systray: &crate::types::WaylandSystray,
-    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
-) -> Vec<(MemoryRenderBuffer, i32, i32)> {
+    status_notifier_tray: &crate::systray::StatusNotifierTray,
+    tray_menu: Option<&crate::systray::TrayMenuPresentation>,
+) -> Vec<(MemoryRenderBuffer, Point)> {
     let snapshots =
-        scene::build_monitor_snapshots(core, Some((wayland_systray, wayland_systray_menu)), false);
+        scene::build_monitor_snapshots(core, Some(status_notifier_tray), tray_menu, false);
     // Cache the systray width so status bar layout can account for it.
-    core.bar.runtime.systray_width = crate::backend::wayland::systray::systray_width(
-        &core.config().systray,
-        wayland_systray,
-        core.model().selected_monitor().bar_height,
-    );
+    core.bar.runtime.systray_width = if core.config().systray.show {
+        crate::systray::layout(
+            status_notifier_tray,
+            None,
+            core.model().selected_monitor().work_rect().w,
+            core.model().selected_monitor().bar_height,
+            core.config().systray.spacing,
+        )
+        .total_width
+    } else {
+        0
+    };
     let _ = scale;
 
     let key = hash::render_key(
         core.config().bar.show,
         core.config().systray.show,
         &snapshots,
-        wayland_systray_menu,
     );
     async_render::poll_result(core, painter);
 
@@ -286,6 +259,6 @@ pub fn render_bar_buffers(
     painter
         .cached_buffers
         .iter()
-        .map(|b| (b.buffer.clone(), b.x, b.y))
+        .map(|buffer| (buffer.buffer.clone(), buffer.position))
         .collect()
 }

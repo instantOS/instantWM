@@ -52,9 +52,8 @@
 
 pub mod commands;
 pub mod compositor;
-pub mod systray;
 
-use crate::backend::{OutputOps, PointerOps, WindowOps, WindowProtocol};
+use crate::backend::{InteractiveResizeOps, OutputOps, PointerOps, WindowOps, WindowProtocol};
 use crate::types::{Point, Rect, WindowId};
 
 /// Wayland backend placeholder/state wrapper.
@@ -270,16 +269,23 @@ impl WindowOps for WaylandBackend {
 
 impl PointerOps for WaylandBackend {
     fn pointer_location(&self) -> Option<Point> {
-        self.with_state(|state: &mut WaylandState| {
-            let loc = state.pointer.current_location();
-            Point::new(loc.x.round() as i32, loc.y.round() as i32)
-        })
+        WaylandBackend::pointer_location(self)
     }
 
     fn warp_pointer(&self, x: f64, y: f64) {
-        let _ = self.with_state(|state: &mut WaylandState| {
-            state.request_warp(x, y);
-        });
+        WaylandBackend::warp_pointer(self, x, y);
+    }
+}
+
+impl InteractiveResizeOps for WaylandBackend {
+    fn begin_interactive_resize(&self, window: WindowId) {
+        self.with_state(|state| state.begin_interactive_resize(window))
+            .expect("Wayland compositor state must be attached while handling a resize");
+    }
+
+    fn end_interactive_resize(&self, window: WindowId) {
+        self.with_state(|state| state.end_interactive_resize(window))
+            .expect("Wayland compositor state must be attached while handling a resize");
     }
 }
 

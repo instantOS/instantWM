@@ -33,11 +33,8 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
 
     match command.spawn() {
         Ok(child) => {

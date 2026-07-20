@@ -3,23 +3,15 @@ use crate::ipc_types::{ModeCommand, ModeInfo, Response};
 use crate::wm::Wm;
 
 fn apply_mode_change(wm: &mut Wm, next_mode: String) {
-    let previous_mode = wm.core.behavior.current_mode.clone();
-    if previous_mode == next_mode {
-        return;
-    }
-
-    wm.core.behavior.current_mode = next_mode.clone();
-    {
-        let mut ctx = wm.ctx();
-        crate::overview::handle_mode_transition(&mut ctx, &previous_mode, &next_mode);
-    }
+    let mut ctx = wm.ctx();
+    ctx.set_current_mode(next_mode);
 }
 
 pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
     match cmd {
         ModeCommand::List => {
             let modes = &wm.core.config.bindings.modes;
-            let current_mode = &wm.core.behavior.current_mode;
+            let current_mode = wm.core.behavior.current_mode.as_str();
 
             if modes.is_empty() {
                 return Response::ModeList(Vec::new());
@@ -53,7 +45,6 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
                 );
             }
 
-            wm.bar.mark_dirty();
             Response::Message(format!("Switched to mode '{}'", name))
         }
         ModeCommand::Toggle(name) => {
@@ -64,7 +55,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
                 return Response::err(format!("Mode '{}' not found", name));
             }
 
-            let new_mode = if wm.core.behavior.current_mode == name {
+            let new_mode = if wm.core.behavior.current_mode.as_str() == name {
                 "default".to_string()
             } else {
                 name
@@ -80,7 +71,6 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
                 );
             }
 
-            wm.bar.mark_dirty();
             Response::Message(format!("Toggled mode, now in '{}'", new_mode))
         }
     }

@@ -24,6 +24,14 @@ use crate::wayland::input::handle_keyboard;
 use crate::wm::Wm;
 use std::collections::HashMap;
 
+/// Compositor-side work caused directly by a libinput event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LibinputEventOutcome {
+    Ignored,
+    Activity,
+    PointerMoved,
+}
+
 fn configure_device(
     device: &mut smithay::reexports::input::Device,
     input_config: &HashMap<String, InputConfig>,
@@ -92,7 +100,7 @@ pub fn dispatch_libinput_event(
     wm: &mut Wm,
     total_w: i32,
     total_h: i32,
-) -> bool {
+) -> LibinputEventOutcome {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
     use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
@@ -101,16 +109,24 @@ pub fn dispatch_libinput_event(
         InputEvent::DeviceAdded { mut device } => {
             configure_device(&mut device, &wm.core.config.input);
             state.runtime.tracked_devices.push(device);
-            false
+            LibinputEventOutcome::Ignored
         }
         InputEvent::DeviceRemoved { device } => {
+            use smithay::reexports::input::DeviceCapability;
+
+            let removed_pointer = device.has_capability(DeviceCapability::Pointer);
             state.runtime.tracked_devices.retain(|d| d != &device);
-            false
+            if removed_pointer {
+                state.push_command(WmCommand::CancelInteractiveDrag(
+                    crate::core_state::DragCancelReason::InputDeviceRemoved,
+                ));
+            }
+            LibinputEventOutcome::Ignored
         }
         InputEvent::Keyboard { event } => {
             // Keep keyboard synchronous for now
             handle_keyboard::<LibinputInputBackend>(wm, state, &keyboard_handle, event);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::PointerMotion { event } => {
             state.push_command(WmCommand::PointerMotion(PointerMotionCommand::Relative {
@@ -121,7 +137,7 @@ pub fn dispatch_libinput_event(
                 time_msec: event.time_msec(),
                 time_usec: event.time(),
             }));
-            true
+            LibinputEventOutcome::PointerMoved
         }
         InputEvent::PointerMotionAbsolute { event } => {
             let x = event.x_transformed(total_w);
@@ -131,7 +147,7 @@ pub fn dispatch_libinput_event(
                 y,
                 time_msec: event.time_msec(),
             }));
-            true
+            LibinputEventOutcome::PointerMoved
         }
         InputEvent::PointerButton { event } => {
             state.push_command(WmCommand::PointerButton {
@@ -139,7 +155,7 @@ pub fn dispatch_libinput_event(
                 state: event.state(),
                 time_msec: event.time_msec(),
             });
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::PointerAxis { event } => {
             state.push_command(WmCommand::PointerAxis {
@@ -152,7 +168,7 @@ pub fn dispatch_libinput_event(
                 vertical_relative_direction: event.relative_direction(Axis::Vertical),
                 time_msec: event.time_msec(),
             });
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GesturePinchBegin { event } => {
             let smithay_event = GesturePinchBeginEvent {
@@ -162,7 +178,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_pinch_begin(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GesturePinchUpdate { event } => {
             let smithay_event = GesturePinchUpdateEvent {
@@ -173,7 +189,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_pinch_update(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GesturePinchEnd { event } => {
             let smithay_event = GesturePinchEndEvent {
@@ -183,7 +199,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_pinch_end(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GestureSwipeBegin { event } => {
             let smithay_event = GestureSwipeBeginEvent {
@@ -193,7 +209,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_swipe_begin(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GestureSwipeUpdate { event } => {
             let smithay_event = GestureSwipeUpdateEvent {
@@ -202,7 +218,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_swipe_update(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GestureSwipeEnd { event } => {
             let smithay_event = GestureSwipeEndEvent {
@@ -212,7 +228,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_swipe_end(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GestureHoldBegin { event } => {
             let smithay_event = GestureHoldBeginEvent {
@@ -222,7 +238,7 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_hold_begin(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
         InputEvent::GestureHoldEnd { event } => {
             let smithay_event = GestureHoldEndEvent {
@@ -232,8 +248,8 @@ pub fn dispatch_libinput_event(
             };
             pointer_handle.gesture_hold_end(state, &smithay_event);
             pointer_handle.frame(state);
-            true
+            LibinputEventOutcome::Activity
         }
-        _ => false,
+        _ => LibinputEventOutcome::Ignored,
     }
 }

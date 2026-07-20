@@ -9,13 +9,13 @@
 //! | [`color`]  | [`Color`] (color) and [`Cursor`] (cursor)              |
 //! | [`font`]   | [`Fnt`] font / fontset linked-list                     |
 //! |            |                                                       |
-//! | [`draw`]   | [`Drw`] drawing context — the main public type         |
+//! | [`draw`]   | [`DrawContext`] drawing context — the main public type         |
 //!
 //! # Typical usage
 //!
 //! ```ignore
 //! // Create a drawing context (opens the X display).
-//! let mut drw = Drw::new(None)?;
+//! let mut drw = DrawContext::new(None)?;
 //!
 //! // Load fonts.
 //! drw.fontset_create(&["monospace:size=10", "Noto Color Emoji:size=10"])?;
@@ -25,10 +25,10 @@
 //! drw.set_scheme(ColorScheme::from_vec(scheme));
 //!
 //! // Draw text into the off-screen pixmap…
-//! drw.text(0, 0, 200, bar_height, horizontal_padding as u32 / 2, "Hello, world!", false, 0);
+//! drw.text(Rect::new(0, 0, 200, bar_height as i32), horizontal_padding as u32 / 2, "Hello, world!", false, 0);
 //!
 //! // …then blit it to the bar window.
-//! drw.map(bar_win, 0, 0, 200, bar_height as u16);
+//! drw.map(bar_win, Rect::new(0, 0, 200, bar_height as i32));
 //! ```
 
 // Sub-modules — ffi is pub(crate) so other modules can reach raw bindings if
@@ -49,7 +49,7 @@ mod font;
 pub use color::{Color, Cursor};
 
 // The main drawing context.
-pub use draw::Drw;
+pub use draw::DrawContext;
 
 // Raw FFI symbols used externally.
 pub use ffi::XFlush;

@@ -201,8 +201,42 @@ impl MonitorManager {
         None
     }
 
+    /// Find the monitor with the largest intersection with `rect`.
+    pub fn id_intersecting_rect(&self, rect: Rect) -> Option<MonitorId> {
+        let mut best = None;
+        let mut max_area = 0;
+        for (id, monitor) in self.iter() {
+            let area = monitor
+                .monitor_rect
+                .intersection(&rect)
+                .map_or(0, |intersection| intersection.area());
+            if area > max_area {
+                max_area = area;
+                best = Some(id);
+            }
+        }
+        best
+    }
+
+    /// Find the adjacent monitor in spatial order, wrapping at either end.
+    pub fn id_in_direction(
+        &self,
+        current: MonitorId,
+        direction: MonitorDirection,
+    ) -> Option<MonitorId> {
+        let current_position = self.position_of(current)?;
+        let target_position = if direction.is_next() {
+            (current_position + 1) % self.len()
+        } else if current_position == 0 {
+            self.len().checked_sub(1)?
+        } else {
+            current_position - 1
+        };
+        self.id_at_position(target_position)
+    }
+
     pub fn find_id_by_rect(&self, rect: &Rect) -> Option<MonitorId> {
-        crate::types::find_monitor_by_rect(self.iter(), rect)
+        self.id_intersecting_rect(*rect)
             .or_else(|| self.selected_monitor().map(Monitor::id))
     }
 
@@ -271,29 +305,13 @@ pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
         if mgr.len() <= 1 {
             return;
         }
-        match find_monitor_by_direction(mgr.iter(), mgr.selected(), direction) {
+        match mgr.id_in_direction(mgr.selected(), direction) {
             Some(id) => id,
             None => return,
         }
     };
 
-    if target == ctx.core().model().monitors.selected() {
-        return;
-    }
-
-    if let Some(win) = ctx
-        .core_mut()
-        .state_mut()
-        .model
-        .monitors
-        .selected_monitor()
-        .and_then(|m| m.selected)
-    {
-        unfocus_win(ctx, win, false);
-    }
-
-    ctx.core_mut().model_mut().monitors.set_selected(target);
-    focus(ctx, None);
+    crate::focus::select_monitor(ctx, target);
 }
 
 pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
@@ -308,19 +326,7 @@ pub fn focus_n_mon(ctx: &mut WmCtx, position: usize) {
         }
     };
 
-    if let Some(win) = ctx
-        .core_mut()
-        .state_mut()
-        .model
-        .monitors
-        .selected_monitor()
-        .and_then(|m| m.selected)
-    {
-        unfocus_win(ctx, win, false);
-    }
-
-    ctx.core_mut().model_mut().monitors.set_selected(target);
-    focus(ctx, None);
+    crate::focus::select_monitor(ctx, target);
 }
 
 pub fn move_to_monitor_and_follow(ctx: &mut WmCtx, direction: MonitorDirection) {
@@ -414,30 +420,26 @@ pub fn refresh_monitor_layout(ctx: &mut WmCtx) -> bool {
     }
 }
 
-fn output_layout_extent(outputs: &[BackendOutputInfo]) -> (i32, i32) {
-    let w = outputs
+fn output_layout_extent(outputs: &[BackendOutputInfo]) -> Size {
+    let width = outputs
         .iter()
         .map(|o| o.rect.x.saturating_add(o.rect.w))
         .max()
         .unwrap_or(1)
         .max(1);
-    let h = outputs
+    let height = outputs
         .iter()
         .map(|o| o.rect.y.saturating_add(o.rect.h))
         .max()
         .unwrap_or(1)
         .max(1);
-    (w, h)
+    Size::new(width, height)
 }
 
-fn sync_runtime_screen_size(
-    cfg: &mut RuntimeConfig,
-    layout_width: i32,
-    layout_height: i32,
-) -> bool {
-    if cfg.derived.display.width != layout_width || cfg.derived.display.height != layout_height {
-        cfg.derived.display.width = layout_width;
-        cfg.derived.display.height = layout_height;
+fn sync_runtime_screen_size(cfg: &mut RuntimeConfig, layout_size: Size) -> bool {
+    if cfg.derived.display.width != layout_size.w || cfg.derived.display.height != layout_size.h {
+        cfg.derived.display.width = layout_size.w;
+        cfg.derived.display.height = layout_size.h;
         true
     } else {
         false
@@ -549,9 +551,8 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     let template = ctx.core().config().tag_template.clone();
     let (show_bar, top_bar) = (ctx.core().config().bar.show, ctx.core().config().bar.top);
 
-    let (layout_width, layout_height) = output_layout_extent(&outputs);
-    let mut changed =
-        sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_width, layout_height);
+    let layout_size = output_layout_extent(&outputs);
+    let mut changed = sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_size);
 
     // Pre-compute per-output UI metrics while we hold an immutable config borrow.
     let metrics: Vec<(i32, i32, i32)> = outputs
@@ -709,9 +710,8 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
         };
         m.monitor_rect = rect;
         m.available_rect = rect;
-        m.work_rect = rect;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-        m.update_bar_position(bar_height);
+        m.set_bar_height(bar_height);
     }
     ctx.core_mut().state_mut().model.monitors.set_selected(id);
     true
@@ -746,10 +746,8 @@ fn update_single_monitor(ctx: &mut WmCtx, sw: i32, sh: i32) -> bool {
         m.monitor_rect.w = sw;
         m.monitor_rect.h = sh;
         m.available_rect = m.monitor_rect;
-        m.work_rect.w = sw;
-        m.work_rect.h = sh;
         m.set_ui_metrics(1.0, bar_height, horizontal_padding, startmenu_size);
-        m.update_bar_position(bar_height);
+        m.set_bar_height(bar_height);
     }
     true
 }

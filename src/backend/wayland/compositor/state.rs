@@ -23,9 +23,14 @@ use smithay::{
     },
     utils::{Logical, Point},
     wayland::{
+        alpha_modifier::AlphaModifierState,
         compositor::CompositorState,
+        content_type::ContentTypeState,
+        cursor_shape::CursorShapeManagerState,
         dmabuf::{DmabufFeedbackBuilder, DmabufGlobal, DmabufState},
+        fixes::FixesState,
         foreign_toplevel_list::{ForeignToplevelHandle, ForeignToplevelListState},
+        fractional_scale::FractionalScaleManagerState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
@@ -44,11 +49,14 @@ use smithay::{
         session_lock::{LockSurface, SessionLockManagerState},
         shell::{
             wlr_layer::WlrLayerShellState,
-            xdg::{XdgShellState, decoration::XdgDecorationState},
+            xdg::{XdgShellState, decoration::XdgDecorationState, dialog::XdgDialogState},
         },
         shm::ShmState,
+        single_pixel_buffer::SinglePixelBufferState,
         viewporter::ViewporterState,
+        virtual_keyboard::VirtualKeyboardManagerState,
         xdg_activation::XdgActivationState,
+        xdg_foreign::XdgForeignState,
         xwayland_keyboard_grab::XWaylandKeyboardGrabState,
         xwayland_shell::XWaylandShellState,
     },
@@ -108,11 +116,18 @@ pub struct WaylandState {
     pub popups: PopupManager,
 
     // -- Protocol states --
+    pub alpha_modifier_state: AlphaModifierState,
     pub compositor_state: CompositorState,
+    pub content_type_state: ContentTypeState,
+    pub cursor_shape_manager_state: CursorShapeManagerState,
+    pub fixes_state: FixesState,
+    pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub shm_state: ShmState,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    pub xdg_dialog_state: XdgDialogState,
     pub xdg_activation_state: XdgActivationState,
+    pub xdg_foreign_state: XdgForeignState,
     pub seat_state: SeatState<WaylandState>,
     pub output_manager_state: OutputManagerState,
     pub presentation_state: PresentationState,
@@ -132,7 +147,9 @@ pub struct WaylandState {
     pub pointer_gestures_state: PointerGesturesState,
     pub pointer_constraints_state: PointerConstraintsState,
     pub relative_pointer_manager_state: RelativePointerManagerState,
+    pub single_pixel_buffer_state: SinglePixelBufferState,
     pub viewporter_state: ViewporterState,
+    pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
@@ -252,15 +269,17 @@ pub struct WaylandRuntimeState {
     pub image_copy_sessions: Vec<ImageCopySession>,
     pub space_sync_pending: bool,
     pub render_targets: PendingRenderTargets,
-    pub frame_callbacks_pending: bool,
+    pub frame_callback_targets: PendingRenderTargets,
     pub render_ping: Option<smithay::reexports::calloop::ping::Ping>,
     pub output_metadata: HashMap<String, WaylandOutputMetadata>,
     pub pending_toplevels: Vec<smithay::wayland::shell::xdg::ToplevelSurface>,
+    pub(crate) pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
+    pub(crate) active_systray_menu: Option<crate::systray::status_notifier::ActiveNativeMenu>,
     pub pointer_location: Point<f64, Logical>,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
-    pub pending_winit_resize: Option<(i32, i32)>,
+    pub pending_winit_resize: Option<crate::types::Size>,
     pub winit_close_requested: bool,
     pub output_enabled: HashMap<String, bool>,
     pub intercepted_key_releases: HashSet<Keycode>,
@@ -280,10 +299,12 @@ impl Default for WaylandRuntimeState {
             image_copy_sessions: Vec::new(),
             space_sync_pending: true,
             render_targets: PendingRenderTargets::None,
-            frame_callbacks_pending: false,
+            frame_callback_targets: PendingRenderTargets::None,
             render_ping: None,
             output_metadata: HashMap::new(),
             pending_toplevels: Vec::new(),
+            pending_systray_menu: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            active_systray_menu: None,
             pointer_location: Point::from((0.0, 0.0)),
             led_state_tx: None,
             dnd_icon: None,
@@ -298,6 +319,77 @@ impl Default for WaylandRuntimeState {
 }
 
 impl WaylandState {
+    pub(crate) fn take_expected_systray_menu_toplevel(
+        &mut self,
+        client_pid: Option<u32>,
+    ) -> Option<crate::systray::status_notifier::NativeMenuRequest> {
+        const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(2);
+        let mut pending = self.runtime.pending_systray_menu.lock().ok()?;
+        let request = pending.as_ref()?;
+        if request.created.elapsed() > MAX_AGE {
+            pending.take();
+            return None;
+        }
+        if !request.matches_client_pid(client_pid) {
+            return None;
+        }
+        pending.take()
+    }
+
+    pub(crate) fn active_systray_menu(
+        &self,
+    ) -> Option<&crate::systray::status_notifier::ActiveNativeMenu> {
+        self.runtime.active_systray_menu.as_ref()
+    }
+
+    pub(crate) fn native_systray_menu_matches(&self, service: &str, path: &str) -> bool {
+        self.runtime
+            .active_systray_menu
+            .as_ref()
+            .is_some_and(|menu| {
+                menu.service == service && menu.path == path && !menu.close_requested
+            })
+            || self
+                .runtime
+                .pending_systray_menu
+                .lock()
+                .is_ok_and(|request| {
+                    request
+                        .as_ref()
+                        .is_some_and(|menu| menu.service == service && menu.path == path)
+                })
+    }
+
+    /// Dismiss a native menu whether its toplevel is active or still pending.
+    pub(crate) fn dismiss_native_systray_menu(&mut self) -> bool {
+        let dismissed_pending = self
+            .runtime
+            .pending_systray_menu
+            .lock()
+            .is_ok_and(|mut pending| pending.take().is_some());
+        let Some(active) = self.runtime.active_systray_menu.as_mut() else {
+            return dismissed_pending;
+        };
+        let should_send_close = !active.close_requested;
+        active.close_requested = true;
+        if should_send_close {
+            let win = active.win;
+            self.close_window(win);
+        }
+        true
+    }
+
+    pub(crate) fn clear_active_systray_menu(&mut self, win: crate::types::WindowId) {
+        if self
+            .runtime
+            .active_systray_menu
+            .as_ref()
+            .is_some_and(|active| active.win == win)
+        {
+            self.runtime.active_systray_menu = None;
+        }
+    }
+
     /// Create a new `WaylandState` and register all Wayland globals.
     pub fn new(display: Display<WaylandState>, handle: &LoopHandle<'static, WaylandState>) -> Self {
         let dh = display.handle();
@@ -317,11 +409,18 @@ impl WaylandState {
             .expect("Failed to insert Wayland display source");
 
         // -- Protocol globals --
+        let alpha_modifier_state = AlphaModifierState::new::<Self>(&dh);
         let compositor_state = CompositorState::new::<Self>(&dh);
+        let content_type_state = ContentTypeState::new::<Self>(&dh);
+        let cursor_shape_manager_state = CursorShapeManagerState::new::<Self>(&dh);
+        let fixes_state = FixesState::new::<Self>(&dh);
+        let fractional_scale_manager_state = FractionalScaleManagerState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let xdg_dialog_state = XdgDialogState::new::<Self>(&dh);
         let xdg_activation_state = XdgActivationState::new::<Self>(&dh);
+        let xdg_foreign_state = XdgForeignState::new::<Self>(&dh);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let presentation_state = PresentationState::new::<Self>(&dh, libc::CLOCK_MONOTONIC as u32);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
@@ -339,7 +438,10 @@ impl WaylandState {
         let pointer_gestures_state = PointerGesturesState::new::<Self>(&dh);
         let pointer_constraints_state = PointerConstraintsState::new::<Self>(&dh);
         let relative_pointer_manager_state = RelativePointerManagerState::new::<Self>(&dh);
+        let single_pixel_buffer_state = SinglePixelBufferState::new::<Self>(&dh);
         let viewporter_state = ViewporterState::new::<Self>(&dh);
+        let virtual_keyboard_manager_state =
+            VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
@@ -357,11 +459,18 @@ impl WaylandState {
             display_handle: dh,
             space: Space::default(),
             popups: PopupManager::default(),
+            alpha_modifier_state,
             compositor_state,
+            content_type_state,
+            cursor_shape_manager_state,
+            fixes_state,
+            fractional_scale_manager_state,
             shm_state,
             xdg_shell_state,
             xdg_decoration_state,
+            xdg_dialog_state,
             xdg_activation_state,
+            xdg_foreign_state,
             seat_state,
             output_manager_state,
             presentation_state,
@@ -381,7 +490,9 @@ impl WaylandState {
             pointer_gestures_state,
             pointer_constraints_state,
             relative_pointer_manager_state,
+            single_pixel_buffer_state,
             viewporter_state,
+            virtual_keyboard_manager_state,
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,
@@ -515,9 +626,14 @@ impl WaylandState {
             .collect();
 
         for win in dead_windows {
-            // Use the method from window.rs
+            let is_overlay = self
+                .find_window(win)
+                .and_then(|window| window.user_data().get::<WindowIdMarker>())
+                .is_some_and(|marker| marker.is_overlay);
             self.remove_window_tracking(win);
-            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            if !is_overlay {
+                self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
+            }
         }
 
         // Purge surfaces whose underlying resource is gone, so the HashSet
@@ -578,17 +694,59 @@ impl WaylandState {
     }
 
     /// Request redraws for the outputs Smithay currently associates with a
-    /// mapped window.  An unmapped window falls back to a global redraw so an
-    /// initial map cannot be lost between protocol commit and space sync.
+    /// mapped window.
+    ///
+    /// Do not use `Space::outputs_for_element` here.  Its output membership is
+    /// refreshed later in the event-loop tick, while surface commits (notably
+    /// short-lived Xwayland override-redirect windows) need to schedule their
+    /// redraw immediately.
     pub fn request_window_render(&mut self, window: &Window) {
-        let outputs = self.space.outputs_for_element(window);
+        let outputs = self.outputs_for_window_geometry(window);
         if outputs.is_empty() {
             self.request_render();
             return;
         }
+        self.request_outputs_render(outputs);
+    }
+
+    /// Redraw the outputs currently intersected by a mapped window. Unlike
+    /// surface-commit scheduling, a fully offscreen lifecycle/animation update
+    /// does not need a global fallback.
+    pub(crate) fn request_visible_window_render(&mut self, window: &Window) {
+        let outputs = self.outputs_for_window_geometry(window);
+        self.request_outputs_render(outputs);
+    }
+
+    fn request_outputs_render(&mut self, outputs: Vec<smithay::output::Output>) {
         for output in outputs {
             self.request_output_render(&output);
         }
+    }
+
+    fn outputs_for_window_geometry(&self, window: &Window) -> Vec<smithay::output::Output> {
+        let window_rect = self.space.element_location(window).map(|location| {
+            let mut rect = window.bbox_with_popups();
+            rect.loc += location - window.geometry().loc;
+            rect
+        });
+        self.space
+            .outputs()
+            .filter(|output| {
+                window_rect.is_some_and(|rect| {
+                    self.space
+                        .output_geometry(output)
+                        .is_some_and(|output_rect| output_rect.overlaps(rect))
+                })
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub fn has_window_animations_on_output(&self, output: &smithay::output::Output) -> bool {
+        self.window_animations.keys().any(|window_id| {
+            self.find_window(*window_id)
+                .is_some_and(|window| self.outputs_for_window_geometry(window).contains(output))
+        })
     }
 
     #[inline]
@@ -607,12 +765,30 @@ impl WaylandState {
 
     #[inline]
     pub fn request_frame_callbacks(&mut self) {
-        if !self.runtime.frame_callbacks_pending
-            && let Some(render_ping) = &self.runtime.render_ping
-        {
-            render_ping.ping();
+        if self.runtime.frame_callback_targets.invalidate_all() {
+            self.ping_render_loop();
         }
-        self.runtime.frame_callbacks_pending = true;
+    }
+
+    pub fn request_output_frame_callbacks(&mut self, output: &smithay::output::Output) {
+        if self
+            .runtime
+            .frame_callback_targets
+            .invalidate_output(output.name())
+        {
+            self.ping_render_loop();
+        }
+    }
+
+    pub fn request_window_frame_callbacks(&mut self, window: &Window) {
+        let outputs = self.outputs_for_window_geometry(window);
+        if outputs.is_empty() {
+            self.request_frame_callbacks();
+            return;
+        }
+        for output in outputs {
+            self.request_output_frame_callbacks(&output);
+        }
     }
 
     #[inline]
@@ -640,8 +816,8 @@ impl WaylandState {
     }
 
     #[inline]
-    pub fn take_frame_callbacks_pending(&mut self) -> bool {
-        mem::take(&mut self.runtime.frame_callbacks_pending)
+    pub fn take_frame_callback_targets(&mut self) -> PendingRenderTargets {
+        mem::take(&mut self.runtime.frame_callback_targets)
     }
 
     pub fn set_output_vrr_support(

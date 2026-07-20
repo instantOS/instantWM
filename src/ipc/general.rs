@@ -5,7 +5,7 @@ use crate::tags::send_to_monitor;
 
 use crate::types::{MonitorDirection, SpecialNext};
 use crate::wm::Wm;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub fn set_wallpaper(wm: &mut Wm, path: String) -> Response {
     if wm.ctx().is_wayland() {
@@ -47,6 +47,13 @@ pub fn spawn_command(wm: &mut Wm, command: String) -> Response {
     }
     let mut cmd = Command::new("sh");
     cmd.arg("-c").arg(&command);
+    // IPC launches should behave like keybinding launches: clients must not
+    // inherit the compositor's terminal or redirected log streams.
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    use std::os::unix::process::CommandExt;
+    cmd.process_group(0);
     let metadata = {
         let ctx = wm.ctx();
         let metadata = crate::util::configure_spawn_command(&ctx, &mut cmd);

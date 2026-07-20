@@ -75,106 +75,29 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 /// - [`SnapPosition::Maximized`] zeroes the border width and fills the monitor.
 /// - All other positions split the monitor into halves or quarters.
 fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
-    let (snap_status, saved_geo, border_width) = {
+    let (snap_status, saved_geo) = {
         let c = ctx.core.model().client(win)?;
-        (c.snap_status, c.float_geo, c.border_width)
+        (c.snap_status, c.float_geo)
     };
 
-    // Geometry of the target monitor.
-    let (m_mx, m_mw, m_mh, m_wh, mony) = {
-        let m = ctx.core.model().monitor(monitor_id)?;
-        let show_bar = m.show_bar_for_mask(m.selected_tags());
-        let mony = m.monitor_rect.y
-            + if show_bar {
-                ctx.core.config().derived.bar_height
-            } else {
-                0
-            };
-        (
-            m.monitor_rect.x,
-            m.monitor_rect.w,
-            m.monitor_rect.h,
-            m.work_rect.h,
-            mony,
-        )
-    };
-
-    // Restore border width for all positions except Maximized (which needs bw=0).
-    if snap_status != SnapPosition::Maximized
-        && let Some(client) = ctx.core.model_mut().client_mut(win)
-    {
-        client.restore_border_width();
+    if snap_status == SnapPosition::None {
+        return Some(saved_geo);
     }
 
-    // Compute target rect based on snap position.
-    Some(match snap_status {
-        SnapPosition::None => Rect {
-            x: saved_geo.x,
-            y: saved_geo.y,
-            w: saved_geo.w,
-            h: saved_geo.h,
-        },
-        SnapPosition::Top => Rect {
-            x: m_mx,
-            y: mony,
-            w: m_mw,
-            h: m_mh / 2,
-        },
-        SnapPosition::TopRight => Rect {
-            x: m_mx + m_mw / 2,
-            y: mony,
-            w: m_mw / 2,
-            h: m_mh / 2,
-        },
-        SnapPosition::Right => Rect {
-            x: m_mx + m_mw / 2,
-            y: mony,
-            w: m_mw / 2 - border_width * 2,
-            h: m_wh - border_width * 2,
-        },
-        SnapPosition::BottomRight => Rect {
-            x: m_mx + m_mw / 2,
-            y: mony + m_mh / 2,
-            w: m_mw / 2,
-            h: m_wh / 2,
-        },
-        SnapPosition::Bottom => Rect {
-            x: m_mx,
-            y: mony + m_mh / 2,
-            w: m_mw,
-            h: m_mh / 2,
-        },
-        SnapPosition::BottomLeft => Rect {
-            x: m_mx,
-            y: mony + m_mh / 2,
-            w: m_mw / 2,
-            h: m_wh / 2,
-        },
-        SnapPosition::Left => Rect {
-            x: m_mx,
-            y: mony,
-            w: m_mw / 2,
-            h: m_wh,
-        },
-        SnapPosition::TopLeft => Rect {
-            x: m_mx,
-            y: mony,
-            w: m_mw / 2,
-            h: m_mh / 2,
-        },
-        SnapPosition::Maximized => {
-            if let Some(client) = ctx.core.model_mut().client_mut(win) {
+    let border_width = {
+        let client = ctx.core.model_mut().client_mut(win)?;
+        if snap_status == SnapPosition::Maximized {
+            if client.border_width != 0 {
                 client.save_border_width();
                 client.border_width = 0;
             }
-            Rect {
-                x: m_mx,
-                y: mony,
-                w: m_mw - border_width * 2,
-                h: m_mh + border_width * 2,
-            }
+        } else {
+            client.restore_border_width();
         }
-    })
+        client.border_width
+    };
+    let work_rect = ctx.core.model().monitor(monitor_id)?.work_rect();
+    snap_status.target_rect(border_width, work_rect)
 }
 
 /// Apply the window's current [`SnapPosition`] by animating it into the
@@ -247,8 +170,7 @@ fn apply_snap_for_window(ctx: &mut WmCtx<'_>, win: WindowId, m: &Monitor) {
         None => return,
     };
 
-    let Some(rect) = crate::types::geometry::snap_rect(c.snap_status, c.border_width, &m.work_rect)
-    else {
+    let Some(rect) = c.snap_status.target_rect(c.border_width, m.work_rect()) else {
         return;
     };
 

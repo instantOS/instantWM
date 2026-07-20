@@ -30,8 +30,10 @@ pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FloatingPlacementKind {
-    New,
-    Other,
+    /// A newly mapped window for which the compositor owns the position.
+    NewAutomatic,
+    /// A newly mapped window with an explicit client-provided position.
+    NewExplicit,
 }
 
 /// Resolve a floating window rectangle before it becomes authoritative WM state.
@@ -55,7 +57,7 @@ pub fn resolve_floating_placement(
         return requested;
     }
 
-    let work_rect = view.monitor.work_rect;
+    let work_rect = view.monitor.work_rect();
     let parent_rect = parent.and_then(|parent| model.client(parent).map(|client| client.geo));
 
     resolve_floating_placement_for_client(client, work_rect, requested, kind, parent_rect)
@@ -81,17 +83,19 @@ fn resolve_floating_placement_for_client(
     let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.x + work_rect.w;
     let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
 
-    // Center on parent when: (a) the window is off-screen, or (b) the
-    // position is the (0,0) placeholder used for newly managed Wayland
-    // surfaces that have no app-provided position.
-    let needs_parent_placement =
-        fully_outside_x || fully_outside_y || (requested.x == 0 && requested.y == 0);
-    let used_parent_position = if matches!(kind, FloatingPlacementKind::New)
-        && needs_parent_placement
-        && let Some(parent_rect) = parent_rect
-    {
-        rect.x = parent_rect.x + (parent_rect.w - rect.w) / 2;
-        rect.y = parent_rect.y + (parent_rect.h - rect.h) / 2;
+    // Wayland toplevels cannot provide an absolute position, and X11 clients
+    // without USPosition/PPosition have likewise delegated placement to the
+    // WM. Center those new windows over their parent or, for standalone
+    // windows, in the monitor work area. Explicit X11 positions are preserved
+    // unless they need clamping to remain usable.
+    let used_automatic_position = if matches!(kind, FloatingPlacementKind::NewAutomatic) {
+        if let Some(parent_rect) = parent_rect {
+            rect.x = parent_rect.x + (parent_rect.w - total_w) / 2;
+            rect.y = parent_rect.y + (parent_rect.h - total_h) / 2;
+        } else {
+            rect.x = work_rect.x + (work_rect.w - total_w) / 2;
+            rect.y = work_rect.y + (work_rect.h - total_h) / 2;
+        }
         true
     } else {
         false
@@ -102,48 +106,41 @@ fn resolve_floating_placement_for_client(
         total_w,
         work_rect.x,
         work_rect.w,
-        fully_outside_x && !used_parent_position,
+        fully_outside_x && !used_automatic_position,
     );
     rect.y = normalize_spawn_axis(
         rect.y,
         total_h,
         work_rect.y,
         work_rect.h,
-        fully_outside_y && !used_parent_position,
+        fully_outside_y && !used_automatic_position,
     );
-    rect
-}
-
-pub fn resolve_and_sync_floating_geometry(
-    model: &mut WmModel,
-    win: WindowId,
-    requested: Rect,
-    kind: FloatingPlacementKind,
-    parent: Option<WindowId>,
-) -> Rect {
-    let rect = resolve_floating_placement(model, win, requested, kind, parent);
-    sync_client_geometry(model, win, rect);
     rect
 }
 
 /// Compute a saner initial position for a newly managed floating client.
 ///
-/// The goal is to preserve application-provided placement when it is already
-/// reasonable, while preventing new floats from spawning under the bar or
-/// mostly off-screen. The returned rect keeps the original size and only
-/// adjusts position.
+/// Automatically placed windows are centered over a transient parent or in
+/// their monitor's work area. Explicitly positioned X11 windows retain their
+/// requested position, subject to work-area clamping. The returned rect keeps
+/// the original size and only adjusts position.
 pub fn sane_floating_spawn_rect(
     model: &WmModel,
     win: WindowId,
     parent: Option<WindowId>,
+    position_is_explicit: bool,
 ) -> Option<Rect> {
     let client = model.client(win)?;
     if !client.mode.is_floating() {
         return None;
     }
 
-    let rect =
-        resolve_floating_placement(model, win, client.geo, FloatingPlacementKind::New, parent);
+    let kind = if position_is_explicit {
+        FloatingPlacementKind::NewExplicit
+    } else {
+        FloatingPlacementKind::NewAutomatic
+    };
+    let rect = resolve_floating_placement(model, win, client.geo, kind, parent);
 
     rect.differs_from(&client.geo).then_some(rect)
 }
@@ -212,7 +209,7 @@ pub fn apply_size_hints(
     clamp_position_to_bounds(
         &config.derived.display,
         rect,
-        Some(view.monitor.work_rect),
+        Some(view.monitor.work_rect()),
         interact,
         old_geo.total_width(border_width),
         old_geo.total_height(border_width),
@@ -300,7 +297,7 @@ mod tests {
 
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
-        monitor.work_rect = work_rect;
+        monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
         globals.model.monitors.push(monitor);
 
@@ -326,7 +323,8 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None).unwrap();
+        let rect =
+            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true).unwrap();
         assert_eq!(rect.y, 32);
     }
 
@@ -338,7 +336,8 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None).unwrap();
+        let rect =
+            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true).unwrap();
         assert_eq!(rect.x, 708);
         assert_eq!(rect.y, 404);
     }
@@ -351,7 +350,8 @@ mod tests {
             Rect::new(0, 32, 1920, 1048),
         );
 
-        let rect = sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None).unwrap();
+        let rect =
+            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true).unwrap();
         assert_eq!(rect.x, 16);
         assert_eq!(rect.y, 32);
     }
@@ -368,7 +368,7 @@ mod tests {
             &globals.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 500, 300),
-            FloatingPlacementKind::Other,
+            FloatingPlacementKind::NewExplicit,
             None,
         );
 
@@ -393,12 +393,51 @@ mod tests {
             &globals.model,
             WindowId::from(1_u32),
             Rect::new(-4000, -3000, 400, 200),
-            FloatingPlacementKind::New,
+            FloatingPlacementKind::NewAutomatic,
             Some(WindowId::from(2_u32)),
         );
 
-        assert_eq!(rect.x, 700);
-        assert_eq!(rect.y, 500);
+        assert_eq!(rect.x, 698);
+        assert_eq!(rect.y, 498);
+    }
+
+    #[test]
+    fn new_automatic_float_centers_in_work_area() {
+        let globals = globals_with_floating_client(
+            Rect::new(0, 0, 500, 300),
+            2,
+            Rect::new(1920, 32, 1920, 1048),
+        );
+
+        let rect =
+            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
+        assert_eq!(rect, Rect::new(2628, 404, 500, 300));
+    }
+
+    #[test]
+    fn new_explicit_float_preserves_usable_position() {
+        let globals = globals_with_floating_client(
+            Rect::new(2100, 180, 500, 300),
+            2,
+            Rect::new(1920, 32, 1920, 1048),
+        );
+
+        assert!(
+            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, true,).is_none()
+        );
+    }
+
+    #[test]
+    fn automatic_oversized_float_anchors_to_work_area() {
+        let globals = globals_with_floating_client(
+            Rect::new(0, 0, 2000, 1200),
+            2,
+            Rect::new(1920, 32, 1920, 1048),
+        );
+
+        let rect =
+            sane_floating_spawn_rect(&globals.model, WindowId::from(1_u32), None, false).unwrap();
+        assert_eq!(rect, Rect::new(1920, 32, 2000, 1200));
     }
 }
 

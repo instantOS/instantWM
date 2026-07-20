@@ -17,7 +17,7 @@ pub fn apply_icccm_size_hints(
         .unwrap_or(false);
 
     if needs_update {
-        crate::backend::x11::client::update_size_hints(model, x11, win);
+        let _ = crate::backend::x11::client::update_size_hints(model, x11, win);
     }
 
     let client = match model.client(win) {
@@ -25,10 +25,9 @@ pub fn apply_icccm_size_hints(
         None => return,
     };
 
-    let (w, h) =
+    let constrained =
         client
             .size_hints
-            .constrain_size(geo.w, geo.h, client.min_aspect, client.max_aspect);
-    geo.w = w;
-    geo.h = h;
+            .constrain_size(geo.size(), client.min_aspect, client.max_aspect);
+    *geo = geo.with_size(constrained);
 }

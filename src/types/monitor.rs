@@ -11,8 +11,7 @@ use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
-use crate::types::input::{Gesture, StackDirection};
-use crate::types::tag_types::MonitorDirection;
+use crate::types::input::StackDirection;
 
 /// Persistent per-monitor client z-order.
 ///
@@ -86,8 +85,6 @@ pub struct Monitor {
     pub master_count: i32,
     /// Monitor index number (0-based).
     pub num: i32,
-    /// Bar Y position (vertical position of the status bar).
-    pub bar_y: i32,
     /// Per-monitor UI scale, currently used by the Wayland bar.
     pub ui_scale: f64,
     /// Effective bar height for this monitor.
@@ -103,10 +100,8 @@ pub struct Monitor {
     /// Portion of the monitor not consumed by exclusive layer-shell surfaces
     /// (waybar, quickshell, etc.). On X11 and when no exclusive layer surfaces
     /// are mapped this is identical to `monitor_rect`. The instantWM bar and
-    /// `work_rect` are positioned inside this rectangle.
+    /// the work area are positioned inside this rectangle.
     pub available_rect: Rect,
-    /// Work area geometry (excluding bar and exclusive layer surfaces).
-    pub work_rect: Rect,
     /// Currently selected tag set index (0 or 1).
     pub sel_tags: bool,
     /// Tag sets (two sets for switching).
@@ -115,14 +110,10 @@ pub struct Monitor {
     pub activeoffset: u32,
     /// Title offset for bar display.
     pub titleoffset: u32,
-    /// Number of clients on this monitor.
-    pub clientcount: u32,
     /// Whether to show the bar.
     pub show_bar: bool,
     /// Whether the bar is at the top.
     pub top_bar: bool,
-    /// Current gesture state.
-    pub gesture: Gesture,
     /// Bar window handle.
     pub bar_win: WindowId,
     /// Whether to hide empty inactive tags from the bar.
@@ -149,8 +140,6 @@ pub struct Monitor {
     pub overview_state: Option<crate::overview::OverviewState>,
     /// Persistent client z-order.
     pub z_order: ClientZOrder,
-    /// Currently maximized client.
-    pub maximized: Option<WindowId>,
     /// Monitor name (e.g., "DP-1", "HDMI-1").
     pub name: String,
 }
@@ -162,7 +151,6 @@ impl Default for Monitor {
             master_factor: 0.55,
             master_count: 1,
             num: 0,
-            bar_y: 0,
             ui_scale: 1.0,
             bar_height: 0,
             horizontal_padding: 0,
@@ -170,15 +158,12 @@ impl Default for Monitor {
             bar_clients_width: 0,
             monitor_rect: Rect::default(),
             available_rect: Rect::default(),
-            work_rect: Rect::default(),
             sel_tags: false,
             tag_set: [TagMask::EMPTY; 2],
             activeoffset: 0,
             titleoffset: 0,
-            clientcount: 0,
             show_bar: true,
             top_bar: true,
-            gesture: Gesture::default(),
             bar_win: WindowId::default(),
             showtags: false,
             prev_tag: None,
@@ -190,7 +175,6 @@ impl Default for Monitor {
             per_tag: HashMap::new(),
             overview_state: None,
             z_order: ClientZOrder::default(),
-            maximized: None,
             name: String::new(),
         }
     }
@@ -201,13 +185,13 @@ impl Monitor {
     /// Does not check bar visibility — caller must do that separately.
     pub fn y_in_bar(&self, root_y: i32) -> bool {
         let h = self.bar_height.max(1);
-        root_y >= self.bar_y && root_y < self.bar_y + h
+        root_y >= self.bar_y() && root_y < self.bar_y() + h
     }
 
     /// Check whether a root-space y-coordinate falls in the 4-pixel guard band
     /// immediately below the bar. Does not check bar visibility.
     pub fn y_in_guard_band(&self, root_y: i32) -> bool {
-        let bar_bottom = self.bar_y + self.bar_height.max(1);
+        let bar_bottom = self.bar_y() + self.bar_height.max(1);
         root_y >= bar_bottom && root_y < bar_bottom + 4
     }
 
@@ -237,7 +221,6 @@ impl Monitor {
             top_bar,
             per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
-            clientcount: 0,
             prev_tag: Some(1),
             tags: Vec::new(),
             monitor_id: MonitorId::default(),
@@ -336,21 +319,19 @@ impl Monitor {
 
     /// Check if a point is within this monitor's work area.
     pub fn contains_point(&self, point: Point) -> bool {
-        self.work_rect.contains_point(point)
+        self.work_rect().contains_point(point)
     }
 
     /// Calculate the intersection area between a rectangle and this monitor's work area.
     pub fn intersect_area(&self, rect: &Rect) -> i32 {
-        let x1 = rect.x.max(self.work_rect.x);
-        let y1 = rect.y.max(self.work_rect.y);
-        let x2 = (rect.x + rect.w).min(self.work_rect.x + self.work_rect.w);
-        let y2 = (rect.y + rect.h).min(self.work_rect.y + self.work_rect.h);
-        (x2 - x1).max(0) * (y2 - y1).max(0)
+        self.work_rect()
+            .intersection(rect)
+            .map_or(0, |intersection| intersection.w * intersection.h)
     }
 
     /// Get the center point of this monitor's work area.
     pub fn center(&self) -> crate::types::Point {
-        self.work_rect.center()
+        self.work_rect().center()
     }
 
     /// Count the number of visible clients on this monitor.
@@ -595,40 +576,85 @@ impl Monitor {
         self.per_tag_state().layouts.toggle_slot();
     }
 
-    /// Update the bar position and `work_rect` from the current
-    /// `available_rect` (which excludes exclusive layer-shell surfaces).
-    pub fn update_bar_position(&mut self, bar_height: i32) {
+    /// Set the effective bar height.
+    ///
+    /// The work area (`work_rect`) and bar Y (`bar_y`) are derived on access
+    /// from `available_rect` and `bar_height`, so storing the height is all
+    /// that is needed to keep them in sync.
+    pub fn set_bar_height(&mut self, bar_height: i32) {
         self.bar_height = bar_height.max(0);
+    }
+
+    /// Bar Y position (vertical position of the status bar).
+    ///
+    /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
+    /// so it can never fall out of sync with the monitor's real geometry.
+    pub fn bar_y(&self) -> i32 {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
-        // x/w of the work area always follows the available area.
-        self.work_rect.x = self.available_rect.x;
-        self.work_rect.w = self.available_rect.w.max(1);
         if self.shows_bar() {
-            self.work_rect.y = if self.top_bar {
+            if self.top_bar {
+                self.available_rect.y
+            } else {
+                self.available_rect.y + self.available_rect.h - safe_bh
+            }
+        } else if self.top_bar {
+            self.available_rect.y - safe_bh
+        } else {
+            self.available_rect.y + self.available_rect.h
+        }
+    }
+
+    /// Work area geometry (excluding bar and exclusive layer surfaces).
+    ///
+    /// Derived from `available_rect`, `bar_height`, `top_bar` and `shows_bar()`
+    /// so it can never fall out of sync with the monitor's real geometry.
+    pub fn work_rect(&self) -> Rect {
+        self.rect_excluding_internal_bar(self.shows_bar())
+    }
+
+    /// Area not occupied by exclusive layer surfaces or the currently visible
+    /// built-in bar.
+    ///
+    /// Unlike [`Self::work_rect`], this accounts for a true-fullscreen client
+    /// temporarily hiding the built-in bar. It is intended for WM-owned UI
+    /// such as edge scratchpads that must avoid every visible bar.
+    pub fn visible_content_rect(&self, clients: &HashMap<WindowId, Client>) -> Rect {
+        self.rect_excluding_internal_bar(self.bar_visible(clients))
+    }
+
+    fn rect_excluding_internal_bar(&self, bar_visible: bool) -> Rect {
+        let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
+        let mut rect = Rect::new(self.available_rect.x, 0, self.available_rect.w.max(1), 0);
+        if bar_visible {
+            rect.y = if self.top_bar {
                 self.available_rect.y + safe_bh
             } else {
                 self.available_rect.y
             };
-            self.work_rect.h = (self.available_rect.h - safe_bh).max(1);
-            self.bar_y = if self.top_bar {
-                self.available_rect.y
-            } else {
-                self.available_rect.y + self.available_rect.h - safe_bh
-            };
+            rect.h = (self.available_rect.h - safe_bh).max(1);
         } else {
-            self.work_rect.y = self.available_rect.y;
-            self.work_rect.h = self.available_rect.h.max(1);
-            self.bar_y = if self.top_bar {
-                self.available_rect.y - safe_bh
-            } else {
-                self.available_rect.y + self.available_rect.h
-            };
+            rect.y = self.available_rect.y;
+            rect.h = self.available_rect.h.max(1);
         }
+        rect
+    }
+
+    /// The currently maximized client on this monitor, if any.
+    ///
+    /// Derived by scanning the monitor's clients for one in maximized mode, so
+    /// it can never disagree with the actual client modes.
+    pub fn maximized_client(&self, clients: &HashMap<WindowId, Client>) -> Option<WindowId> {
+        self.clients.iter().find_map(|&win| {
+            clients
+                .get(&win)
+                .filter(|c| c.mode.is_maximized())
+                .map(|_| win)
+        })
     }
 
     /// Set the rectangle that is not consumed by exclusive layer-shell
-    /// surfaces. Callers should follow up with `update_bar_position` to
-    /// re-derive `work_rect` and `bar_y`.
+    /// surfaces. The work area and bar position are derived automatically from
+    /// this rectangle whenever they are accessed.
     pub fn set_available_rect(&mut self, rect: Rect) {
         self.available_rect = rect;
     }
@@ -649,12 +675,12 @@ impl Monitor {
         self.num = index as i32;
         self.monitor_rect = rect;
         // Reset the available rect to the full output. The Wayland backend
-        // re-applies layer-shell exclusive zones on top of this.
+        // re-applies layer-shell exclusive zones on top of this. The work area
+        // and bar position are derived from this rectangle on access.
         self.available_rect = rect;
-        self.work_rect = rect;
         self.name = name;
         self.set_ui_metrics(scale, bar_height, horizontal_padding, startmenu_size);
-        self.update_bar_position(bar_height);
+        self.set_bar_height(bar_height);
     }
 
     /// Set effective UI metrics for this monitor.
@@ -677,17 +703,17 @@ impl Monitor {
 
     /// Get the width of the monitor's work area.
     pub fn width(&self) -> i32 {
-        self.work_rect.w
+        self.work_rect().w
     }
 
     /// Get the height of the monitor's work area.
     pub fn height(&self) -> i32 {
-        self.work_rect.h
+        self.work_rect().h
     }
 
     /// Get the monitor's work area.
     pub fn work_area(&self) -> Rect {
-        self.work_rect
+        self.work_rect()
     }
 
     /// Get the monitor's full geometry.
@@ -759,61 +785,6 @@ impl Monitor {
     }
 }
 
-/// Find a monitor in a given direction from the current one.
-///
-/// `monitors` is iterated in spatial order. Direction wraps around as a ring.
-pub fn find_monitor_by_direction<'a>(
-    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
-    current: MonitorId,
-    direction: MonitorDirection,
-) -> Option<MonitorId> {
-    let order: Vec<MonitorId> = monitors.into_iter().map(|(id, _)| id).collect();
-    if order.is_empty() {
-        return None;
-    }
-    if order.len() <= 1 {
-        return Some(current);
-    }
-
-    let pos = order.iter().position(|&id| id == current)?;
-    let len = order.len();
-    let new_pos = if direction.is_next() {
-        (pos + 1) % len
-    } else if pos == 0 {
-        len - 1
-    } else {
-        pos - 1
-    };
-
-    Some(order[new_pos])
-}
-
-/// Find the monitor that contains the given rectangle (by maximum intersection area).
-///
-/// This intentionally uses the full output geometry, rather than the work area:
-/// callers use this for root-coordinate input hit testing, including the bar and
-/// layer-shell exclusive zones that are outside `work_rect`.
-pub fn find_monitor_by_rect<'a>(
-    monitors: impl IntoIterator<Item = (MonitorId, &'a Monitor)>,
-    rect: &Rect,
-) -> Option<MonitorId> {
-    let mut best_id = None;
-    let mut max_area = 0;
-
-    for (id, m) in monitors {
-        let area = m
-            .monitor_rect
-            .intersection(rect)
-            .map_or(0, |intersection| intersection.area());
-        if area > max_area {
-            max_area = area;
-            best_id = Some(id);
-        }
-    }
-
-    best_id
-}
-
 /// Runtime state restored when a tag mask is revisited.
 /// Initialized with hardcoded defaults on first visit.
 #[derive(Debug, Clone)]
@@ -851,7 +822,6 @@ pub struct TagNames {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn first_visible_client_prefers_topmost_visible_stack_entry() {
         let mut monitor = Monitor::default();
@@ -911,42 +881,99 @@ mod tests {
 
     #[test]
     fn monitor_lookup_includes_bar_outside_work_area() {
-        let mut monitor = Monitor {
-            monitor_id: MonitorId::from_raw(7),
+        let monitor = Monitor {
             monitor_rect: Rect::new(100, 50, 800, 600),
-            work_rect: Rect::new(100, 80, 800, 570),
+            available_rect: Rect::new(100, 50, 800, 600),
+            bar_height: 30,
             ..Monitor::default()
         };
-        monitor.bar_y = 50;
-        monitor.bar_height = 30;
 
+        let mut monitors = crate::monitor::MonitorManager::new();
+        let id = monitors.push(monitor);
         assert_eq!(
-            find_monitor_by_rect([(monitor.id(), &monitor)], &Rect::new(200, 60, 1, 1)),
-            Some(MonitorId::from_raw(7))
+            monitors.id_intersecting_rect(Rect::new(200, 60, 1, 1)),
+            Some(id)
         );
     }
 
     #[test]
     fn monitor_lookup_returns_stable_id_for_each_full_output() {
         let left = Monitor {
-            monitor_id: MonitorId::from_raw(4),
             monitor_rect: Rect::new(0, 0, 100, 100),
-            work_rect: Rect::new(0, 20, 100, 80),
+            available_rect: Rect::new(0, 0, 100, 100),
+            bar_height: 20,
             ..Monitor::default()
         };
         let right = Monitor {
-            monitor_id: MonitorId::from_raw(9),
             monitor_rect: Rect::new(100, 0, 100, 100),
-            work_rect: Rect::new(100, 20, 100, 80),
+            available_rect: Rect::new(100, 0, 100, 100),
+            bar_height: 20,
+            ..Monitor::default()
+        };
+
+        let mut monitors = crate::monitor::MonitorManager::new();
+        monitors.push(left);
+        let right_id = monitors.push(right);
+        assert_eq!(
+            monitors.id_intersecting_rect(Rect::new(150, 5, 1, 1)),
+            Some(right_id)
+        );
+    }
+
+    #[test]
+    fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
+        let tags = TagMask::single(1).unwrap();
+        let mut monitor = Monitor {
+            monitor_rect: Rect::new(100, 50, 800, 600),
+            available_rect: Rect::new(100, 50, 800, 600),
+            bar_height: 30,
+            show_bar: true,
+            top_bar: true,
+            ..Monitor::default()
+        };
+        monitor.set_selected_tags(tags);
+        let mut clients = HashMap::new();
+
+        assert_eq!(
+            monitor.visible_content_rect(&clients),
+            Rect::new(100, 80, 800, 570)
+        );
+
+        monitor.top_bar = false;
+        assert_eq!(
+            monitor.visible_content_rect(&clients),
+            Rect::new(100, 50, 800, 570)
+        );
+
+        let mut fullscreen = Client {
+            win: WindowId(1),
+            mode: crate::types::ClientMode::Tiling.as_fullscreen(),
+            ..Client::default()
+        };
+        fullscreen.set_tag_mask(tags);
+        monitor.clients.push(fullscreen.win);
+        clients.insert(fullscreen.win, fullscreen);
+
+        assert_eq!(
+            monitor.visible_content_rect(&clients),
+            monitor.available_rect
+        );
+    }
+
+    #[test]
+    fn visible_content_rect_preserves_external_exclusive_area() {
+        let monitor = Monitor {
+            monitor_rect: Rect::new(100, 50, 800, 600),
+            available_rect: Rect::new(100, 90, 800, 560),
+            bar_height: 30,
+            show_bar: true,
+            top_bar: true,
             ..Monitor::default()
         };
 
         assert_eq!(
-            find_monitor_by_rect(
-                [(left.id(), &left), (right.id(), &right)],
-                &Rect::new(150, 5, 1, 1),
-            ),
-            Some(MonitorId::from_raw(9))
+            monitor.visible_content_rect(&HashMap::new()),
+            monitor.available_rect
         );
     }
 

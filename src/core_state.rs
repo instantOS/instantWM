@@ -109,6 +109,47 @@ pub struct FontConfig {
     pub config_font: String,
 }
 
+impl FontConfig {
+    /// Extract the first positive `size=N` value, falling back to 14 pixels.
+    pub fn size(&self) -> f32 {
+        self.fonts
+            .iter()
+            .find_map(|font| {
+                let idx = font.find("size=")?;
+                let tail = &font[idx + 5..];
+                let number: String = tail
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.')
+                    .collect();
+                number.parse::<f32>().ok().filter(|size| *size > 0.0)
+            })
+            .unwrap_or(14.0)
+    }
+
+    /// Return family names stripped of Fontconfig size and style fragments.
+    pub fn families(&self) -> Vec<String> {
+        self.fonts
+            .iter()
+            .filter_map(|font| {
+                let mut family = font.split(':').next()?.trim();
+                for suffix in ["-Regular", "-Medium", "-Bold", "-Light", "-Thin"] {
+                    if let Some(stripped) = family.strip_suffix(suffix) {
+                        family = stripped;
+                        break;
+                    }
+                }
+                (!family.is_empty()).then(|| family.to_string())
+            })
+            .collect()
+    }
+
+    /// Calculate a comfortable line/cell height for the configured font size.
+    pub fn line_height(&self) -> i32 {
+        let size = self.size();
+        ((size * 1.3).ceil() as i32).max(size.ceil() as i32 + 2)
+    }
+}
+
 /// Runtime configuration - composed from sub-structs.
 pub struct RuntimeConfig {
     pub derived: BackendDerived,
@@ -168,6 +209,7 @@ pub struct CoreState {
     pub config: RuntimeConfig,
     pub behavior: WmBehavior,
     pub drag: DragState,
+    pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
     pub pending_launches: VecDeque<PendingLaunch>,
 }
@@ -206,9 +248,6 @@ impl CoreState {
     pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.model.monitors_iter_all_mut()
     }
-    pub fn clear_maximized_for(&mut self, win: WindowId) {
-        self.model.clear_maximized_for(win);
-    }
     pub fn attach(&mut self, win: WindowId) {
         self.model.attach(win);
     }
@@ -226,15 +265,12 @@ impl CoreState {
     }
 
     pub fn normalize_current_mode(&mut self) {
-        if self.behavior.current_mode != "default"
-            && self.behavior.current_mode != crate::overview::OVERVIEW_MODE_NAME
-            && !self
-                .config
-                .bindings
-                .modes
-                .contains_key(&self.behavior.current_mode)
-        {
-            self.behavior.current_mode = "default".to_string();
+        let mode_exists = match &self.behavior.current_mode {
+            ActiveWmMode::Named(name) => self.config.bindings.modes.contains_key(name),
+            ActiveWmMode::Default | ActiveWmMode::Overview => true,
+        };
+        if !mode_exists {
+            self.behavior.current_mode = ActiveWmMode::Default;
         }
     }
 }
@@ -271,73 +307,167 @@ pub enum DragType {
     Resize(ResizeDirection),
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct DragInteraction {
-    pub active: bool,
-    pub win: WindowId,
-    pub button: MouseButton,
-    /// Whether the pointer has exceeded the drag threshold and we are
-    /// actively moving/resizing.  When `false`, releasing the button
-    /// triggers the click action instead (focus/hide/zoom).
-    pub dragging: bool,
-    pub drag_type: DragType,
-    pub win_start_geo: Rect,
-    pub start_point: Point,
-    pub last_root_point: Point,
+    win: WindowId,
+    button: MouseButton,
+    drag_type: DragType,
+    win_start_geo: Rect,
+    start_point: Point,
+    last_root_point: Point,
     /// Geometry to restore when the window is re-tiled (e.g. dropped on
     /// the bar).  For windows that were already floating this equals
     /// `win_start_geo`; for tiled windows promoted during the drag it
     /// preserves the saved float dimensions.
-    pub drop_restore_geo: Rect,
+    drop_restore_geo: Rect,
+    was_focused: bool,
+    was_hidden: bool,
+    suppress_click_action: bool,
+}
+
+impl DragInteraction {
+    fn immediate(
+        win: WindowId,
+        button: MouseButton,
+        drag_type: DragType,
+        start: Point,
+        geo: Rect,
+    ) -> Self {
+        Self {
+            win,
+            button,
+            drag_type,
+            start_point: start,
+            win_start_geo: geo,
+            drop_restore_geo: geo,
+            last_root_point: start,
+            was_focused: false,
+            was_hidden: false,
+            suppress_click_action: false,
+        }
+    }
+
+    fn armed(params: ArmedDragParams) -> Self {
+        Self {
+            win: params.win,
+            button: params.button,
+            drag_type: DragType::Move,
+            start_point: params.start,
+            win_start_geo: params.geometry,
+            drop_restore_geo: params.restore_geometry,
+            last_root_point: params.start,
+            was_focused: params.was_focused,
+            was_hidden: params.was_hidden,
+            suppress_click_action: params.suppress_click_action,
+        }
+    }
+
+    pub fn win(&self) -> WindowId {
+        self.win
+    }
+    pub fn button(&self) -> MouseButton {
+        self.button
+    }
+    pub fn drag_type(&self) -> DragType {
+        self.drag_type
+    }
+    pub fn win_start_geo(&self) -> Rect {
+        self.win_start_geo
+    }
+    pub fn start_point(&self) -> Point {
+        self.start_point
+    }
+    pub fn last_root_point(&self) -> Point {
+        self.last_root_point
+    }
+    pub fn drop_restore_geo(&self) -> Rect {
+        self.drop_restore_geo
+    }
+    pub fn was_focused(&self) -> bool {
+        self.was_focused
+    }
+    pub fn was_hidden(&self) -> bool {
+        self.was_hidden
+    }
+    pub fn suppress_click_action(&self) -> bool {
+        self.suppress_click_action
+    }
+
+    fn record_motion(&mut self, point: Point) {
+        self.last_root_point = point;
+    }
+
+    fn activate_as(&mut self, drag_type: DragType, start: Point, geo: Rect) {
+        self.drag_type = drag_type;
+        self.start_point = start;
+        self.last_root_point = start;
+        self.win_start_geo = geo;
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum InteractiveDrag {
+    #[default]
+    Idle,
+    Armed(DragInteraction),
+    Active(DragInteraction),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DragAlreadyActive;
+
+impl std::fmt::Display for DragAlreadyActive {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("another interactive drag is already armed or active")
+    }
+}
+
+impl std::error::Error for DragAlreadyActive {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DragNotArmed;
+
+impl std::fmt::Display for DragNotArmed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("no armed drag is available to activate")
+    }
+}
+
+impl std::error::Error for DragNotArmed {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragCancelReason {
+    WindowDestroyed,
+    SessionLocked,
+    InputDeviceRemoved,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ArmedDragParams {
+    pub win: WindowId,
+    pub button: MouseButton,
+    pub start: Point,
+    pub geometry: Rect,
+    pub restore_geometry: Rect,
     pub was_focused: bool,
     pub was_hidden: bool,
     pub suppress_click_action: bool,
 }
 
-impl DragInteraction {
-    /// Create a new Move drag interaction.
-    ///
-    /// Note: This constructor is used exclusively for immediate-start drag contexts
-    /// (such as keyboard-driven moves or client/Wayland click-drags), and therefore
-    /// initializes `dragging` as `true` immediately.
-    pub fn new_move(win: WindowId, button: MouseButton, start: Point, geo: Rect) -> Self {
-        Self {
-            active: true,
-            win,
-            button,
-            dragging: true,
-            drag_type: DragType::Move,
-            start_point: start,
-            win_start_geo: geo,
-            drop_restore_geo: geo,
-            last_root_point: start,
-            ..Default::default()
+impl InteractiveDrag {
+    pub fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle)
+    }
+    pub fn armed(&self) -> Option<&DragInteraction> {
+        match self {
+            Self::Armed(drag) => Some(drag),
+            _ => None,
         }
     }
-
-    /// Create a new Resize drag interaction.
-    ///
-    /// Note: This constructor is used exclusively for immediate-start resize contexts
-    /// (such as keyboard-driven resizing or direct click-to-resize/Wayland client resize),
-    /// and therefore initializes `dragging` as `true` immediately.
-    pub fn new_resize(
-        win: WindowId,
-        button: MouseButton,
-        dir: ResizeDirection,
-        start: Point,
-        geo: Rect,
-    ) -> Self {
-        Self {
-            active: true,
-            win,
-            button,
-            dragging: true,
-            drag_type: DragType::Resize(dir),
-            start_point: start,
-            win_start_geo: geo,
-            drop_restore_geo: geo,
-            last_root_point: start,
-            ..Default::default()
+    pub fn active(&self) -> Option<&DragInteraction> {
+        match self {
+            Self::Active(drag) => Some(drag),
+            _ => None,
         }
     }
 }
@@ -364,12 +494,145 @@ pub struct TagDragState {
     pub button: MouseButton,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct GestureInteraction {
-    pub active: bool,
-    pub button: MouseButton,
-    pub monitor_id: MonitorId,
-    pub last_y: i32,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SidebarVolumeDrag {
+    button: MouseButton,
+    monitor_id: MonitorId,
+    anchor_y: i32,
+    threshold: i32,
+}
+
+impl SidebarVolumeDrag {
+    pub fn new(button: MouseButton, monitor_id: MonitorId, anchor_y: i32, threshold: i32) -> Self {
+        Self {
+            button,
+            monitor_id,
+            anchor_y,
+            threshold: threshold.max(1),
+        }
+    }
+
+    pub fn button(self) -> MouseButton {
+        self.button
+    }
+
+    pub fn monitor_id(self) -> MonitorId {
+        self.monitor_id
+    }
+
+    /// Consume pointer distance and return signed volume steps.
+    ///
+    /// Positive values mean volume-up. Advancing the anchor only by complete
+    /// thresholds preserves sub-threshold movement across input events and
+    /// makes the result independent of backend motion-event compression.
+    pub fn update(&mut self, root_y: i32) -> i32 {
+        let delta = self.anchor_y - root_y;
+        let steps = delta / self.threshold;
+        self.anchor_y -= steps * self.threshold;
+        steps
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HotCornerState {
+    #[default]
+    Ready,
+    Latched {
+        monitor_id: MonitorId,
+    },
+}
+
+impl HotCornerState {
+    /// Update the hot-corner latch. Returns the monitor whose corner was
+    /// entered when the caller should toggle the edge scratchpad.
+    pub fn update(
+        &mut self,
+        monitor_id: Option<MonitorId>,
+        inside_activation_zone: bool,
+        inside_keep_zone: bool,
+    ) -> Option<MonitorId> {
+        match *self {
+            Self::Ready => {
+                let monitor_id = monitor_id.filter(|_| inside_activation_zone)?;
+                *self = Self::Latched { monitor_id };
+                Some(monitor_id)
+            }
+            Self::Latched {
+                monitor_id: latched_monitor,
+            } if monitor_id == Some(latched_monitor) && inside_keep_zone => None,
+            Self::Latched { .. } => {
+                // Rearm only. Requiring a subsequent sample before activation
+                // prevents a single jump between monitor corners from firing
+                // two actions at once.
+                *self = Self::Ready;
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod pointer_interaction_tests {
+    use super::{DragState, HotCornerState, SidebarVolumeDrag};
+    use crate::types::{MonitorId, MouseButton};
+
+    #[test]
+    fn hot_corner_fires_once_until_pointer_leaves_keep_zone() {
+        let monitor = MonitorId::from_raw(7);
+        let mut state = HotCornerState::default();
+
+        assert_eq!(state.update(Some(monitor), true, true), Some(monitor));
+        assert_eq!(state.update(Some(monitor), true, true), None);
+        assert_eq!(state.update(Some(monitor), false, true), None);
+        assert_eq!(state.update(Some(monitor), false, false), None);
+        assert_eq!(state.update(Some(monitor), true, true), Some(monitor));
+    }
+
+    #[test]
+    fn hot_corner_rearms_without_firing_when_pointer_jumps_between_monitors() {
+        let first = MonitorId::from_raw(1);
+        let second = MonitorId::from_raw(2);
+        let mut state = HotCornerState::default();
+
+        assert_eq!(state.update(Some(first), true, true), Some(first));
+        assert_eq!(state.update(Some(second), true, true), None);
+        assert_eq!(state.update(Some(second), true, true), Some(second));
+    }
+
+    #[test]
+    fn volume_drag_preserves_distance_across_compressed_motion() {
+        let mut drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+
+        assert_eq!(drag.update(395), 3);
+        assert_eq!(drag.update(381), 0);
+        assert_eq!(drag.update(379), 1);
+    }
+
+    #[test]
+    fn volume_drag_handles_direction_reversal_with_residual_distance() {
+        let mut drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+
+        assert_eq!(drag.update(475), 0);
+        assert_eq!(drag.update(510), 0);
+        assert_eq!(drag.update(531), -1);
+        assert_eq!(drag.update(469), 2);
+    }
+
+    #[test]
+    fn sidebar_volume_lifecycle_rejects_overlap_and_wrong_button_release() {
+        let drag = SidebarVolumeDrag::new(MouseButton::Left, MonitorId::from_raw(3), 500, 30);
+        let mut interactions = DragState::default();
+        interactions.tag.active = true;
+        assert!(interactions.begin_sidebar_volume(drag).is_err());
+        assert!(!interactions.sidebar_volume_active());
+
+        interactions.tag.active = false;
+        interactions.begin_sidebar_volume(drag).unwrap();
+        assert!(!interactions.finish_sidebar_volume(MouseButton::Right));
+        assert!(interactions.sidebar_volume_active());
+        assert!(interactions.finish_sidebar_volume(MouseButton::Left));
+        assert!(!interactions.sidebar_volume_active());
+    }
 }
 
 /// The pointer-owned interaction currently being offered before a click commits it.
@@ -412,16 +675,178 @@ impl HoverOffer {
 #[derive(Debug, Clone, Default)]
 pub struct DragState {
     pub tag: TagDragState,
-    pub interactive: DragInteraction,
-    pub gesture: GestureInteraction,
-    pub bar_active: bool,
+    interactive: InteractiveDrag,
+    sidebar_volume: Option<SidebarVolumeDrag>,
     pub hover_offer: HoverOffer,
 }
 
 impl DragState {
+    pub fn interactive(&self) -> &InteractiveDrag {
+        &self.interactive
+    }
+
+    pub fn active_interaction(&self) -> Option<&DragInteraction> {
+        self.interactive.active()
+    }
+
+    pub fn armed_interaction(&self) -> Option<&DragInteraction> {
+        self.interactive.armed()
+    }
+
+    pub fn interaction_button(&self) -> Option<MouseButton> {
+        self.active_interaction()
+            .or_else(|| self.armed_interaction())
+            .map(DragInteraction::button)
+    }
+
+    pub fn sidebar_volume_active(&self) -> bool {
+        self.sidebar_volume.is_some()
+    }
+
+    pub fn sidebar_volume_button(&self) -> Option<MouseButton> {
+        self.sidebar_volume.map(SidebarVolumeDrag::button)
+    }
+
+    pub fn sidebar_volume_monitor(&self) -> Option<MonitorId> {
+        self.sidebar_volume.map(SidebarVolumeDrag::monitor_id)
+    }
+
+    pub fn begin_sidebar_volume(
+        &mut self,
+        drag: SidebarVolumeDrag,
+    ) -> Result<(), DragAlreadyActive> {
+        if self.any_drag_active() {
+            return Err(DragAlreadyActive);
+        }
+        self.sidebar_volume = Some(drag);
+        Ok(())
+    }
+
+    pub fn update_sidebar_volume(&mut self, root_y: i32) -> Option<i32> {
+        self.sidebar_volume.as_mut().map(|drag| drag.update(root_y))
+    }
+
+    pub fn finish_sidebar_volume(&mut self, button: MouseButton) -> bool {
+        if self.sidebar_volume_button() != Some(button) {
+            return false;
+        }
+        self.sidebar_volume = None;
+        true
+    }
+
+    pub fn cancel_sidebar_volume(&mut self) -> bool {
+        self.sidebar_volume.take().is_some()
+    }
+
+    pub fn begin_move(
+        &mut self,
+        win: WindowId,
+        button: MouseButton,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragAlreadyActive> {
+        self.begin_active(DragInteraction::immediate(
+            win,
+            button,
+            DragType::Move,
+            start,
+            geo,
+        ))
+    }
+
+    pub fn begin_resize(
+        &mut self,
+        win: WindowId,
+        button: MouseButton,
+        dir: ResizeDirection,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragAlreadyActive> {
+        self.begin_active(DragInteraction::immediate(
+            win,
+            button,
+            DragType::Resize(dir),
+            start,
+            geo,
+        ))
+    }
+
+    fn begin_active(&mut self, drag: DragInteraction) -> Result<(), DragAlreadyActive> {
+        if !self.interactive.is_idle() {
+            return Err(DragAlreadyActive);
+        }
+        self.interactive = InteractiveDrag::Active(drag);
+        Ok(())
+    }
+
+    pub fn arm_title_drag(&mut self, params: ArmedDragParams) -> Result<(), DragAlreadyActive> {
+        if !self.interactive.is_idle() {
+            return Err(DragAlreadyActive);
+        }
+        self.interactive = InteractiveDrag::Armed(DragInteraction::armed(params));
+        Ok(())
+    }
+
+    pub fn activate_armed(
+        &mut self,
+        drag_type: DragType,
+        start: Point,
+        geo: Rect,
+    ) -> Result<(), DragNotArmed> {
+        let mut drag = match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Armed(drag) => drag,
+            other => {
+                self.interactive = other;
+                return Err(DragNotArmed);
+            }
+        };
+        drag.activate_as(drag_type, start, geo);
+        self.interactive = InteractiveDrag::Active(drag);
+        Ok(())
+    }
+
+    pub fn record_interactive_motion(&mut self, point: Point) {
+        match &mut self.interactive {
+            InteractiveDrag::Armed(drag) | InteractiveDrag::Active(drag) => {
+                drag.record_motion(point)
+            }
+            InteractiveDrag::Idle => {}
+        }
+    }
+
+    pub fn finish_active(&mut self, button: MouseButton) -> Option<DragInteraction> {
+        if !self
+            .active_interaction()
+            .is_some_and(|drag| drag.button() == button)
+        {
+            return None;
+        }
+        match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Active(drag) => Some(drag),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn finish_armed(&mut self) -> Option<DragInteraction> {
+        match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Armed(drag) => Some(drag),
+            other => {
+                self.interactive = other;
+                None
+            }
+        }
+    }
+
+    pub fn cancel_interactive(&mut self) -> Option<DragInteraction> {
+        match std::mem::take(&mut self.interactive) {
+            InteractiveDrag::Idle => None,
+            InteractiveDrag::Armed(drag) | InteractiveDrag::Active(drag) => Some(drag),
+        }
+    }
+
     #[inline]
     pub fn any_drag_active(&self) -> bool {
-        self.interactive.active || self.tag.active || self.gesture.active
+        !self.interactive.is_idle() || self.tag.active || self.sidebar_volume.is_some()
     }
 
     #[inline]
@@ -558,6 +983,69 @@ impl KeyboardLayoutState {
             .and_then(|l| l.variant.as_deref())
             .unwrap_or("")
     }
+
+    /// Format the currently active layout for status and IPC output.
+    pub fn status(&self) -> String {
+        if self.is_empty() {
+            return "no layouts configured".to_string();
+        }
+        let current_name = self.current_layout().unwrap_or("unknown");
+        let variant = self.current_variant();
+        let variant = if variant.is_empty() {
+            String::new()
+        } else {
+            format!(" ({variant})")
+        };
+        format!(
+            "{}/{}: {}{}",
+            self.current + 1,
+            self.len(),
+            current_name,
+            variant
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActiveWmMode {
+    Default,
+    Overview,
+    Named(String),
+}
+
+impl ActiveWmMode {
+    pub fn from_name(name: impl Into<String>) -> Self {
+        let name = name.into();
+        match name.as_str() {
+            "" | "default" => Self::Default,
+            crate::overview::OVERVIEW_MODE_NAME => Self::Overview,
+            _ => Self::Named(name),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Default => "default",
+            Self::Overview => crate::overview::OVERVIEW_MODE_NAME,
+            Self::Named(name) => name,
+        }
+    }
+}
+
+#[cfg(test)]
+mod active_wm_mode_tests {
+    use super::ActiveWmMode;
+
+    #[test]
+    fn external_mode_names_are_normalized_into_explicit_states() {
+        assert_eq!(ActiveWmMode::from_name(""), ActiveWmMode::Default);
+        assert_eq!(ActiveWmMode::from_name("default"), ActiveWmMode::Default);
+        assert_eq!(ActiveWmMode::from_name("overview"), ActiveWmMode::Overview);
+        assert_eq!(
+            ActiveWmMode::from_name("resize"),
+            ActiveWmMode::Named("resize".to_string())
+        );
+    }
 }
 
 /// Runtime behaviour toggles and transient WM mode state.
@@ -575,7 +1063,7 @@ pub struct WmBehavior {
     pub requested_cursor: AltCursor,
     pub specialnext: SpecialNext,
     /// Current active mode (sway-like modes).
-    pub current_mode: String,
+    pub current_mode: ActiveWmMode,
 }
 
 impl Default for WmBehavior {
@@ -586,7 +1074,7 @@ impl Default for WmBehavior {
             focus_follows_float_mouse: true,
             requested_cursor: AltCursor::Default,
             specialnext: SpecialNext::None,
-            current_mode: "default".to_string(),
+            current_mode: ActiveWmMode::Default,
         }
     }
 }

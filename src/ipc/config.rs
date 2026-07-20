@@ -18,6 +18,46 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
+// ---------------------------------------------------------------------------
+// Section registry — the single source of truth for which top-level sections
+// this IPC surface exposes. `instantwmctl config list <prefix>` imports this
+// to validate prefixes instead of keeping a parallel list. The test
+// `runtime_config_sections_match_list_output` pins it to what `list()` emits.
+// ---------------------------------------------------------------------------
+
+/// Top-level runtime-config sections exposed via `get`/`set`/`list`, in the
+/// order `list()` emits them. `display` is excluded (see `HIDDEN_SECTIONS`).
+pub const RUNTIME_CONFIG_SECTIONS: &[&str] = &[
+    "window", "bar", "systray", "layout", "colors", "cursor", "fonts", "input", "monitors",
+];
+
+/// Sections that exist on the runtime config but are derived from the running
+/// outputs, so they are hidden from `get`/`set`/`list`.
+pub const HIDDEN_SECTIONS: &[&str] = &["display"];
+
+/// How a top-level section name is exposed by this IPC surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionStatus {
+    /// Normal section: listed and read/written (`window`, `layout`, …).
+    Exposed,
+    /// Real section, but derived from outputs — hidden from get/set/list.
+    Hidden,
+    /// Not a section this IPC surface knows about.
+    Unknown,
+}
+
+/// Classify a top-level section name. Lets the client produce helpful errors
+/// for `config list <bad-section>` without duplicating the section list.
+pub fn section_status(name: &str) -> SectionStatus {
+    if RUNTIME_CONFIG_SECTIONS.contains(&name) {
+        SectionStatus::Exposed
+    } else if HIDDEN_SECTIONS.contains(&name) {
+        SectionStatus::Hidden
+    } else {
+        SectionStatus::Unknown
+    }
+}
+
 pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
     match cmd {
         ConfigCommand::Get { key } => get(wm, &key),
@@ -276,7 +316,7 @@ fn sync_bar_config_to_monitors(wm: &mut Wm) {
 /// Push colour/font changes to the screen after `wm.core.config.colors` (or the
 /// tag colours) have been mutated.
 ///
-/// X11 bakes schemes/fonts into the Drw at startup, so they must be rebuilt for
+/// X11 bakes schemes/fonts into the DrawContext at startup, so they must be rebuilt for
 /// the new values to show without a full reload. On Wayland the bar painter
 /// reads colours/fonts on every redraw, so marking the bar dirty is enough.
 pub(crate) fn recolor(wm: &mut Wm) {
@@ -462,6 +502,40 @@ mod tests {
     }
 
     #[test]
+    fn runtime_config_sections_match_list_output() {
+        // The const is the single source of truth for listable sections, so it
+        // must agree with the sections `list()` actually emits. Populate the
+        // map sections first so input/monitors show up.
+        let mut wm = test_wm();
+        do_set(&mut wm, "input.type:touchpad.pointer_accel", "0.5");
+        do_set(&mut wm, "monitors.DP-1.scale", "2.0");
+
+        let emitted: std::collections::BTreeSet<String> = match do_list(&mut wm) {
+            Response::ConfigList(entries) => entries
+                .iter()
+                .map(|(k, _)| k.split('.').next().unwrap().to_string())
+                .collect(),
+            other => panic!("expected ConfigList, got {other:?}"),
+        };
+        let expected: std::collections::BTreeSet<String> = RUNTIME_CONFIG_SECTIONS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            emitted, expected,
+            "RUNTIME_CONFIG_SECTIONS drifted from list() output"
+        );
+    }
+
+    #[test]
+    fn section_status_classifies_each_kind() {
+        assert_eq!(section_status("layout"), SectionStatus::Exposed);
+        assert_eq!(section_status("input"), SectionStatus::Exposed);
+        assert_eq!(section_status("display"), SectionStatus::Hidden);
+        assert_eq!(section_status("nope"), SectionStatus::Unknown);
+    }
+
+    #[test]
     fn input_set_creates_entry_and_queues_apply() {
         let mut wm = test_wm();
         assert!(matches!(
@@ -522,7 +596,6 @@ mod tests {
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
-        monitor.work_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
@@ -532,8 +605,8 @@ mod tests {
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert_eq!(monitor.bar_height, 32);
-        assert_eq!(monitor.bar_y, 0);
-        assert_eq!(monitor.work_rect, Rect::new(0, 32, 800, 568));
+        assert_eq!(monitor.bar_y(), 0);
+        assert_eq!(monitor.work_rect(), Rect::new(0, 32, 800, 568));
     }
 
     #[test]
@@ -542,7 +615,6 @@ mod tests {
         let mut monitor = Monitor::new_with_values(true, true);
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
-        monitor.work_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
 
         assert!(matches!(do_set(&mut wm, "bar.height", "32"), Response::Ok));
@@ -552,7 +624,7 @@ mod tests {
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert!(!monitor.show_bar);
-        assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 600));
+        assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 600));
 
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
         assert!(matches!(do_set(&mut wm, "bar.top", "false"), Response::Ok));
@@ -562,7 +634,7 @@ mod tests {
             .unwrap();
         assert!(monitor.show_bar);
         assert!(!monitor.top_bar);
-        assert_eq!(monitor.bar_y, 568);
-        assert_eq!(monitor.work_rect, Rect::new(0, 0, 800, 568));
+        assert_eq!(monitor.bar_y(), 568);
+        assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 568));
     }
 }

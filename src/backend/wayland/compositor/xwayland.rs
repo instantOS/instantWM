@@ -114,7 +114,6 @@ fn sync_surface_metadata(
     let properties = crate::backend::x11::policy::window_properties_from_x11_surface(surface);
     state.push_command(super::super::commands::WmCommand::UpdateProperties { win, properties });
     state.update_foreign_toplevel(win);
-    state.request_bar_redraw();
 }
 
 fn apply_surface_policy(
@@ -170,16 +169,19 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(existing) = existing {
+                self.request_visible_window_render(&existing);
                 self.space.map_element(existing.clone(), geo.loc, false);
                 self.space.raise_element(&existing, false);
                 focus_overlay_if_launcher(self, &existing);
                 trigger_pointer_focus_update(self);
+                self.request_visible_window_render(&existing);
             } else {
                 let element = smithay::desktop::Window::new_x11_window(window);
                 self.space.map_element(element.clone(), geo.loc, false);
                 self.space.raise_element(&element, false);
                 focus_overlay_if_launcher(self, &element);
                 trigger_pointer_focus_update(self);
+                self.request_visible_window_render(&element);
             }
             return;
         }
@@ -216,12 +218,16 @@ impl XwmHandler for WaylandState {
             w: geo.size.w.max(1),
             h: geo.size.h.max(1),
         });
+        let initial_position_is_explicit = window
+            .size_hints()
+            .is_some_and(|hints| hints.position.is_some());
 
         self.push_command(super::super::commands::WmCommand::MapWindow(
             super::super::commands::MapWindowParams {
                 win,
                 properties,
                 initial_geo,
+                initial_position_is_explicit,
                 launch_pid: window.pid(),
                 launch_startup_id: window.startup_id(),
                 x11_hints: window.hints(),
@@ -245,6 +251,7 @@ impl XwmHandler for WaylandState {
         self.space.raise_element(&element, false);
         focus_overlay_if_launcher(self, &element);
         trigger_pointer_focus_update(self);
+        self.request_visible_window_render(&element);
     }
 
     fn unmapped_window(
@@ -273,6 +280,7 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
+                self.request_visible_window_render(&element);
                 self.space.unmap_elem(&element);
             }
         }
@@ -313,6 +321,7 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
+                self.request_visible_window_render(&element);
                 self.space.unmap_elem(&element);
             }
         }
@@ -374,8 +383,12 @@ impl XwmHandler for WaylandState {
                 })
                 .cloned();
             if let Some(element) = element {
+                // A configure can cross outputs: invalidate both the previous
+                // and new geometry without dirtying unrelated outputs.
+                self.request_visible_window_render(&element);
                 self.space.map_element(element.clone(), geometry.loc, false);
                 self.space.raise_element(&element, false);
+                self.request_visible_window_render(&element);
             }
             return;
         };
@@ -396,7 +409,14 @@ impl XwmHandler for WaylandState {
             geometry.size.h,
         );
         let mode = self.default_window_move_mode();
+        let element = self.find_window(win).cloned();
+        if let Some(element) = element.as_ref() {
+            self.request_visible_window_render(element);
+        }
         self.set_window_target_rect(win, rect, mode);
+        if let Some(element) = element.as_ref() {
+            self.request_visible_window_render(element);
+        }
     }
 
     fn property_notify(

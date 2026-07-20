@@ -43,7 +43,6 @@ pub fn toggle_locked(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
 
-    let _selmon_id = ctx.core().model().selected_monitor_id();
     ctx.request_bar_update();
 }
 
@@ -95,8 +94,6 @@ pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
     if let WmCtx::X11(x11) = ctx {
         crate::backend::x11::keyboard::grab_keys(x11.core.state(), &x11.x11, x11.x11_runtime);
     }
-    let _selmon_id = ctx.core().model().selected_monitor_id();
-    ctx.request_bar_update();
 }
 
 pub fn toggle_bar(ctx: &mut WmCtx) {
@@ -113,7 +110,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     selected_monitor.per_tag_state().show_bar = !selected_monitor.per_tag_state().show_bar;
     selected_monitor.show_bar = selected_monitor.per_tag_state().show_bar;
 
-    selected_monitor.update_bar_position(bar_height);
+    selected_monitor.set_bar_height(bar_height);
 
     let selmon_idx = ctx.core().model().selected_monitor_id();
 
@@ -124,7 +121,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
                     x11.core.state(),
                     &x11.x11,
                     &*x11.x11_runtime,
-                    x11.systray.as_deref(),
+                    x11.xembed_tray.as_deref(),
                     &m,
                 );
             }

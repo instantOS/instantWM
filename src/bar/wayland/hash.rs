@@ -9,12 +9,10 @@ pub(super) fn render_key(
     bar_show: bool,
     systray_show: bool,
     snapshots: &[scene::MonitorBarSnapshot],
-    wayland_systray_menu: Option<&crate::types::WaylandSystrayMenu>,
 ) -> u64 {
     let mut hasher = DefaultHasher::new();
     bar_show.hash(&mut hasher);
     systray_show.hash(&mut hasher);
-    wayland_systray_menu.is_some().hash(&mut hasher);
     for snapshot in snapshots {
         hash_monitor_snapshot(&mut hasher, snapshot);
     }
@@ -37,8 +35,7 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.layout_symbol.hash(hasher);
     snapshot.show_shutdown.hash(hasher);
     snapshot.monitor_rect_x.hash(hasher);
-    snapshot.status_text.hash(hasher);
-    hash_status_items(hasher, &snapshot.status_items);
+    hash_presentation(hasher, &snapshot.presentation);
 
     snapshot.tags.len().hash(hasher);
     for tag in &snapshot.tags {
@@ -60,39 +57,46 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
 
     snapshot.systray.is_some().hash(hasher);
     if let Some(systray) = &snapshot.systray {
-        systray.spacing.hash(hasher);
+        systray.visual_padding.hash(hasher);
         hash_scheme(hasher, &systray.base_scheme);
         systray.items.items.len().hash(hasher);
         for item in &systray.items.items {
             item.service.hash(hasher);
             item.path.hash(hasher);
-            item.icon_w.hash(hasher);
-            item.icon_h.hash(hasher);
+            item.icon_size.w.hash(hasher);
+            item.icon_size.h.hash(hasher);
             hash_arc_identity(hasher, &item.icon_rgba);
         }
-        systray.menu.is_some().hash(hasher);
-        if let Some(menu) = &systray.menu {
-            menu.service.hash(hasher);
-            menu.path.hash(hasher);
-            menu.item_h.hash(hasher);
-            menu.items.len().hash(hasher);
-            for item in &menu.items {
-                item.id.hash(hasher);
-                item.label.hash(hasher);
-                item.width.hash(hasher);
-                item.enabled.hash(hasher);
-                item.separator.hash(hasher);
-            }
-        }
+    }
+}
+
+fn hash_presentation(hasher: &mut DefaultHasher, presentation: &scene::BarPresentation) {
+    use scene::StatusPresentation;
+
+    std::mem::discriminant(&presentation.status).hash(hasher);
+    if let StatusPresentation::WmMode { name, .. } = &presentation.status {
+        name.hash(hasher);
+    }
+    if let Some(content) = presentation.status.content() {
+        content.text.hash(hasher);
+        hash_status_items(hasher, &content.items);
+    }
+    presentation
+        .tray_menu()
+        .map(|menu| menu.session_id)
+        .hash(hasher);
+    if let Some(menu) = presentation.tray_menu() {
+        menu.view.hash(hasher);
     }
 }
 
 fn hash_scheme(hasher: &mut DefaultHasher, scheme: &BarScheme) {
     for value in scheme
-        .fg
-        .iter()
-        .chain(scheme.bg.iter())
-        .chain(scheme.detail.iter())
+        .foreground
+        .into_array()
+        .into_iter()
+        .chain(scheme.background.into_array())
+        .chain(scheme.detail.into_array())
     {
         value.to_bits().hash(hasher);
     }
@@ -104,7 +108,6 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
         crate::types::Gesture::WinTitle(win) => win.hash(hasher),
         crate::types::Gesture::Tag(tag) => tag.hash(hasher),
         crate::types::Gesture::None
-        | crate::types::Gesture::Overlay
         | crate::types::Gesture::CloseButton
         | crate::types::Gesture::StartMenu => {}
     }
@@ -125,10 +128,10 @@ fn hash_status_items(hasher: &mut DefaultHasher, items: &[crate::bar::status::St
                 block.color.hash(hasher);
                 block.background.hash(hasher);
                 block.border.hash(hasher);
-                block.border_top.hash(hasher);
-                block.border_right.hash(hasher);
-                block.border_bottom.hash(hasher);
-                block.border_left.hash(hasher);
+                block.border_widths.top.hash(hasher);
+                block.border_widths.right.hash(hasher);
+                block.border_widths.bottom.hash(hasher);
+                block.border_widths.left.hash(hasher);
                 match &block.min_width {
                     Some(crate::bar::status::I3MinWidth::Text(text)) => {
                         1u8.hash(hasher);

@@ -11,9 +11,8 @@ pub mod x11;
 use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
-use crate::types::{
-    MouseButton, Point, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId,
-};
+use crate::systray::StatusNotifierTray;
+use crate::types::{MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 
 #[derive(
@@ -106,6 +105,16 @@ pub trait PointerOps {
     fn warp_pointer(&self, x: f64, y: f64);
 }
 
+/// Backend effects associated with the lifetime of a user-driven resize.
+///
+/// X11 implements this as a no-op because its synchronous pointer grab owns
+/// the resize lifetime. Wayland projects the lifetime into xdg-toplevel's
+/// `resizing` state.
+pub trait InteractiveResizeOps {
+    fn begin_interactive_resize(&self, window: WindowId);
+    fn end_interactive_resize(&self, window: WindowId);
+}
+
 /// Output discovery and configuration.
 pub trait OutputOps {
     /// Set monitor configuration. Every active backend owns output policy.
@@ -120,16 +129,16 @@ pub struct X11BackendData {
     pub conn: x11rb::rust_connection::RustConnection,
     pub screen_num: usize,
     pub x11_runtime: X11RuntimeConfig,
-    pub systray: Option<Systray>,
+    pub xembed_tray: Option<XEmbedTray>,
 }
 
 /// Wayland-specific backend data.
 pub struct WaylandBackendData {
     pub backend: WaylandBackend,
     pub bar_painter: crate::bar::wayland::WaylandBarPainter,
-    pub wayland_systray: WaylandSystray,
-    pub wayland_systray_menu: Option<WaylandSystrayMenu>,
-    pub wayland_systray_runtime: Option<crate::backend::wayland::systray::WaylandSystrayRuntime>,
+    pub(crate) status_notifier_tray: StatusNotifierTray,
+    pub(crate) status_notifier_runtime:
+        Option<crate::systray::status_notifier::StatusNotifierRuntime>,
 }
 
 /// Owned backend implementation.
@@ -148,7 +157,7 @@ impl Backend {
             conn,
             screen_num,
             x11_runtime: X11RuntimeConfig::default(),
-            systray: None,
+            xembed_tray: None,
         }))
     }
 
@@ -156,9 +165,8 @@ impl Backend {
         Self::Wayland(Box::new(WaylandBackendData {
             backend,
             bar_painter: crate::bar::wayland::WaylandBarPainter::default(),
-            wayland_systray: WaylandSystray::default(),
-            wayland_systray_menu: None,
-            wayland_systray_runtime: None,
+            status_notifier_tray: StatusNotifierTray::default(),
+            status_notifier_runtime: None,
         }))
     }
 

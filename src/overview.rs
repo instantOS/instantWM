@@ -5,7 +5,7 @@ use crate::floating::{restore_all_floating, save_all_floating};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::LayoutOutput;
 use crate::types::client::Client;
-use crate::types::{Monitor, Rect, TagMask, WindowId};
+use crate::types::{Monitor, Rect, Size, TagMask, WindowId};
 
 pub const OVERVIEW_MODE_NAME: &str = "overview";
 
@@ -26,25 +26,24 @@ impl OverviewState {
     }
 }
 
-pub fn handle_mode_transition(ctx: &mut WmCtx<'_>, previous_mode: &str, next_mode: &str) {
-    let entering_overview = previous_mode != OVERVIEW_MODE_NAME && next_mode == OVERVIEW_MODE_NAME;
-    let leaving_overview = previous_mode == OVERVIEW_MODE_NAME && next_mode != OVERVIEW_MODE_NAME;
-
-    if entering_overview {
-        enter(ctx);
-    } else if leaving_overview {
-        exit(ctx, ExitMode::RestorePrevious);
+pub(crate) fn handle_mode_transition(
+    ctx: &mut WmCtx<'_>,
+    previous_mode: &crate::core_state::ActiveWmMode,
+    next_mode: &crate::core_state::ActiveWmMode,
+    overview_exit: ExitMode,
+) {
+    match (previous_mode, next_mode) {
+        (crate::core_state::ActiveWmMode::Overview, crate::core_state::ActiveWmMode::Overview) => {}
+        (crate::core_state::ActiveWmMode::Overview, _) => exit(ctx, overview_exit),
+        (_, crate::core_state::ActiveWmMode::Overview) => enter(ctx),
+        _ => {}
     }
 }
 
 /// Exit overview mode with a specific [`ExitMode`].
 ///
-/// Bypasses `WmCtx::set_current_mode` to avoid threading `ExitMode` through
-/// the general mode system. If `set_current_mode` ever gains side effects,
-/// this path must be updated to match.
 pub fn exit_overview(ctx: &mut WmCtx<'_>, mode: ExitMode) {
-    ctx.core_mut().behavior_mut().current_mode = "default".to_string();
-    exit(ctx, mode);
+    ctx.transition_current_mode(crate::core_state::ActiveWmMode::Default, mode);
 }
 
 fn enter(ctx: &mut WmCtx<'_>) {
@@ -130,7 +129,6 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     if ctx.core().model().is_overview_active() {
         exit_overview(ctx, ExitMode::ToSelectedWindow);
-        ctx.request_bar_update();
         return;
     }
 
@@ -139,7 +137,6 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     }
 
     ctx.set_current_mode(OVERVIEW_MODE_NAME.to_string());
-    ctx.request_bar_update();
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
@@ -148,7 +145,6 @@ pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
     }
 
     ctx.reset_mode();
-    ctx.request_bar_update();
 }
 
 /// Arrange the selected monitor in overview mode.
@@ -165,14 +161,18 @@ pub fn compute(
         }
     }
 
-    let client_info: Vec<(WindowId, i32, i32, bool)> = ordered_windows
+    let client_info: Vec<(WindowId, Size, bool)> = ordered_windows
         .into_iter()
         .filter_map(|win| {
             let c = clients.get(&win)?;
             if !c.is_visible(selected_tags) || c.is_edge_scratchpad() {
                 return None;
             }
-            Some((win, c.geo.w.max(1), c.geo.h.max(1), c.mode.is_floating()))
+            Some((
+                win,
+                Size::new(c.geo.w.max(1), c.geo.h.max(1)),
+                c.mode.is_floating(),
+            ))
         })
         .collect();
 
@@ -185,14 +185,14 @@ pub fn compute(
         gridwidth += 1;
     }
 
-    let work_rect = monitor.work_rect;
+    let work_rect = monitor.work_rect();
     let cell_w = (work_rect.w / gridwidth).max(1);
     let cell_h = (work_rect.h / gridwidth).max(1);
 
     let mut moves = Vec::new();
     let mut save_geo = Vec::new();
 
-    for (i, (win, width, height, is_floating)) in client_info.iter().copied().enumerate() {
+    for (i, (win, size, is_floating)) in client_info.iter().copied().enumerate() {
         if is_floating {
             save_geo.push(win);
         }
@@ -204,12 +204,7 @@ pub fn compute(
 
         moves.push(LayoutOutput {
             win,
-            rect: Rect {
-                x,
-                y,
-                w: width,
-                h: height,
-            },
+            rect: Rect::from_position_and_size(crate::types::Point::new(x, y), size),
             options: MoveResizeOptions::hinted_immediate(false),
         });
     }

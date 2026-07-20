@@ -41,8 +41,7 @@ impl WaylandState {
 
     pub(crate) fn interactive_motion_active(&self) -> bool {
         self.globals()
-            .map(|g| g.drag.interactive.active && g.drag.interactive.dragging)
-            .unwrap_or(false)
+            .is_some_and(|g| g.drag.active_interaction().is_some())
     }
 
     pub(crate) fn default_window_move_mode(&self) -> WindowMoveMode {
@@ -240,7 +239,12 @@ impl WaylandState {
         let mut finished: Vec<WindowId> = Vec::new();
         for (win, loc, done) in updates {
             if let Some(element) = self.find_window(win).cloned() {
-                self.remap_element_preserving_z_order(&element, loc, false);
+                if self.space.element_location(&element) != Some(loc) {
+                    // Preserve damage on both sides of a cross-output move.
+                    self.request_visible_window_render(&element);
+                    self.remap_element_preserving_z_order(&element, loc, false);
+                    self.request_visible_window_render(&element);
+                }
             } else {
                 finished.push(win);
                 continue;

@@ -11,7 +11,7 @@
 //!   └─► handle_client_monitor_switch(win)
 //!             └─► reads client.geo
 //!                   └─► handle_monitor_switch(win, &rect)
-//!                             ├─► find_monitor_by_rect → target monitor index
+//!                             ├─► MonitorManager lookup → target monitor id
 //!                             ├─► transfer_client   → reassigns client
 //!                             └─► focus(None)       → re-focus on new monitor
 //! ```

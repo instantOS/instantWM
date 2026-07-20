@@ -22,7 +22,6 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
     {
         ctx.reset_mode();
-        ctx.request_bar_update();
         return true;
     }
 
@@ -48,7 +47,6 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         execute_key_action(ctx, &action);
         if transient {
             ctx.reset_mode();
-            ctx.request_bar_update();
         }
         true
     } else {
@@ -175,24 +173,17 @@ mod tests {
     use super::*;
     use crate::actions::NamedAction;
 
-    fn named(action: NamedAction) -> KeyAction {
-        KeyAction::Named {
-            action,
-            args: Vec::new(),
-        }
-    }
-
     #[test]
     fn resolve_key_action_prefers_mode_binding_and_marks_transient() {
         let mode_key = Key {
             mod_mask: 1,
             keysym: 42,
-            action: named(NamedAction::FocusNext),
+            action: KeyAction::named(NamedAction::FocusNext),
         };
         let global_key = Key {
             mod_mask: 1,
             keysym: 42,
-            action: named(NamedAction::FocusPrev),
+            action: KeyAction::named(NamedAction::FocusPrev),
         };
         let mut modes = HashMap::new();
         modes.insert(
@@ -219,7 +210,7 @@ mod tests {
         let desktop_key = Key {
             mod_mask: 0,
             keysym: 9,
-            action: named(NamedAction::ToggleLayout),
+            action: KeyAction::named(NamedAction::ToggleLayout),
         };
 
         let resolved = resolve_key_action(
@@ -244,7 +235,7 @@ mod tests {
             &[Key {
                 mod_mask: 0,
                 keysym: 9,
-                action: named(NamedAction::ToggleLayout),
+                action: KeyAction::named(NamedAction::ToggleLayout),
             }],
             &HashMap::new(),
             Some(WindowId(1)),

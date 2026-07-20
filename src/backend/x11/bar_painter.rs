@@ -1,4 +1,4 @@
-use crate::backend::x11::draw::Drw;
+use crate::backend::x11::draw::DrawContext;
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::types::ColorScheme;
 use crate::types::Rect;
@@ -6,44 +6,29 @@ use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct SchemeKey {
-    fg: [u32; 4],
-    bg: [u32; 4],
+    foreground: [u32; 4],
+    background: [u32; 4],
     detail: [u32; 4],
 }
 
 impl SchemeKey {
     fn from_scheme(s: &BarScheme) -> Self {
         Self {
-            fg: [
-                s.fg[0].to_bits(),
-                s.fg[1].to_bits(),
-                s.fg[2].to_bits(),
-                s.fg[3].to_bits(),
-            ],
-            bg: [
-                s.bg[0].to_bits(),
-                s.bg[1].to_bits(),
-                s.bg[2].to_bits(),
-                s.bg[3].to_bits(),
-            ],
-            detail: [
-                s.detail[0].to_bits(),
-                s.detail[1].to_bits(),
-                s.detail[2].to_bits(),
-                s.detail[3].to_bits(),
-            ],
+            foreground: s.foreground.into_array().map(f32::to_bits),
+            background: s.background.into_array().map(f32::to_bits),
+            detail: s.detail.into_array().map(f32::to_bits),
         }
     }
 }
 
 pub struct X11BarPainter {
-    drw: Drw,
+    drw: DrawContext,
     scheme: Option<BarScheme>,
     scheme_cache: HashMap<SchemeKey, ColorScheme>,
 }
 
 impl X11BarPainter {
-    pub fn new(drw: Drw) -> Self {
+    pub fn new(drw: DrawContext) -> Self {
         Self {
             drw,
             scheme: None,
@@ -51,8 +36,8 @@ impl X11BarPainter {
         }
     }
 
-    pub fn map(&self, win: crate::types::WindowId, x: i16, y: i16, w: u16, h: u16) {
-        self.drw.map(win.into(), x, y, w, h);
+    pub fn map(&self, window: crate::types::WindowId, bounds: Rect) {
+        self.drw.map(window.into(), bounds);
     }
 }
 
@@ -67,8 +52,8 @@ impl BarPainter for X11BarPainter {
             existing.clone()
         } else {
             let built = ColorScheme {
-                fg: self.drw.clr_create_rgba(scheme.fg),
-                bg: self.drw.clr_create_rgba(scheme.bg),
+                fg: self.drw.clr_create_rgba(scheme.foreground),
+                bg: self.drw.clr_create_rgba(scheme.background),
                 detail: self.drw.clr_create_rgba(scheme.detail),
             };
             self.scheme_cache.insert(key, built.clone());
@@ -82,14 +67,7 @@ impl BarPainter for X11BarPainter {
         if bounds.w <= 0 || bounds.h <= 0 {
             return;
         }
-        self.drw.rect(
-            bounds.x,
-            bounds.y,
-            bounds.w as u32,
-            bounds.h as u32,
-            filled,
-            invert,
-        );
+        self.drw.rect(bounds, filled, invert);
     }
 
     fn text(
@@ -103,15 +81,7 @@ impl BarPainter for X11BarPainter {
         if bounds.w <= 0 || bounds.h <= 0 {
             return bounds.x;
         }
-        self.drw.text(
-            bounds.x,
-            bounds.y,
-            bounds.w as u32,
-            bounds.h as u32,
-            lpad.max(0) as u32,
-            text,
-            invert,
-            detail_height,
-        )
+        self.drw
+            .text(bounds, lpad.max(0) as u32, text, invert, detail_height)
     }
 }

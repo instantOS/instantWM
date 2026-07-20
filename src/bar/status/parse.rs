@@ -1,5 +1,6 @@
 use super::model::{DEFAULT_SEPARATOR_BLOCK_WIDTH, RawI3Block};
 use super::{I3Align, I3BarHeader, I3Block, I3MinWidth, I3StatusLine, ParsedStatus, StatusItem};
+use crate::types::Insets;
 use serde_json::Value;
 
 pub(crate) fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
@@ -39,22 +40,20 @@ pub(crate) fn parse_i3bar_json(bytes: &[u8]) -> Option<ParsedStatus> {
             color: raw.color.filter(|c| c.starts_with('#')),
             background: raw.background.filter(|c| c.starts_with('#')),
             border,
-            border_top: raw
-                .border_top
-                .unwrap_or(if has_border { 1 } else { 0 })
-                .max(0),
-            border_right: raw
-                .border_right
-                .unwrap_or(if has_border { 1 } else { 0 })
-                .max(0),
-            border_bottom: raw
-                .border_bottom
-                .unwrap_or(if has_border { 1 } else { 0 })
-                .max(0),
-            border_left: raw
-                .border_left
-                .unwrap_or(if has_border { 1 } else { 0 })
-                .max(0),
+            border_widths: Insets::new(
+                raw.border_top
+                    .unwrap_or(if has_border { 1 } else { 0 })
+                    .max(0),
+                raw.border_right
+                    .unwrap_or(if has_border { 1 } else { 0 })
+                    .max(0),
+                raw.border_bottom
+                    .unwrap_or(if has_border { 1 } else { 0 })
+                    .max(0),
+                raw.border_left
+                    .unwrap_or(if has_border { 1 } else { 0 })
+                    .max(0),
+            ),
             min_width,
             align,
             urgent: raw.urgent,

@@ -35,8 +35,7 @@ use crate::wm::Wm;
 
 #[derive(Debug)]
 struct DrmLayoutState {
-    total_width: i32,
-    total_height: i32,
+    total_size: crate::types::Size,
     output_hit_regions: Vec<OutputHitRegion>,
 }
 
@@ -115,7 +114,7 @@ enum DrmRuntimeEvent {
     SessionPaused,
     SessionActivated,
     VBlank(crtc::Handle),
-    PointerActivity(i32),
+    PointerMoved { old_x: i32 },
 }
 
 // WARNING: This function is extremely fragile, do not refactor or mess with it without
@@ -165,10 +164,12 @@ pub fn run() -> ! {
         build_output_surfaces(&mut manager, &mut renderer, &mut state)
     };
     for entry in &output_surfaces {
-        state.space.map_output(&entry.output, (entry.x_offset, 0));
+        state
+            .space
+            .map_output(&entry.output, (entry.rect.x, entry.rect.y));
     }
 
-    let (total_width, total_height) = compute_total_dimensions(&output_surfaces);
+    let total_size = compute_total_dimensions(&output_surfaces);
 
     {
         use crate::monitor::refresh_monitor_layout;
@@ -177,11 +178,7 @@ pub fn run() -> ! {
     state.push_command(crate::backend::wayland::commands::WmCommand::SyncLayerExclusiveZones);
     crate::monitor::apply_monitor_config(&mut wm.ctx());
 
-    let layout_state = Arc::new(init_layout_state(
-        &output_surfaces,
-        total_width,
-        total_height,
-    ));
+    let layout_state = Arc::new(init_layout_state(&output_surfaces, total_size));
     let mut loop_state = DrmLoopState::new(&output_surfaces);
     let (runtime_event_tx, runtime_event_rx) = mpsc::channel();
 
@@ -198,26 +195,32 @@ pub fn run() -> ! {
     let runtime_event_tx_input = runtime_event_tx.clone();
     loop_handle
         .insert_source(libinput_backend, move |event, _, state| {
-            let total_w = shared_layout.total_width;
-            let total_h = shared_layout.total_height;
+            let total_w = shared_layout.total_size.w;
+            let total_h = shared_layout.total_size.h;
 
             // SAFETY: calloop source callback runs synchronously within
             // event_loop.dispatch(); the &mut Wm borrow in the main body
             // has not yet resumed.
-            let any_input = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
+            let old_pointer_x = state.runtime.pointer_location.x as i32;
+            let outcome = if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
                 let wm = unsafe { &mut *wm_ptr };
                 crate::wayland::input::drm::dispatch_libinput_event(
                     event, state, wm, total_w, total_h,
                 )
             } else {
-                false
+                crate::wayland::input::drm::LibinputEventOutcome::Ignored
             };
 
-            if any_input {
-                state.notify_activity();
-                let _ = runtime_event_tx_input.send(DrmRuntimeEvent::PointerActivity(
-                    state.runtime.pointer_location.x as i32,
-                ));
+            use crate::wayland::input::drm::LibinputEventOutcome;
+            match outcome {
+                LibinputEventOutcome::Ignored => {}
+                LibinputEventOutcome::Activity => state.notify_activity(),
+                LibinputEventOutcome::PointerMoved => {
+                    state.notify_activity();
+                    let _ = runtime_event_tx_input.send(DrmRuntimeEvent::PointerMoved {
+                        old_x: old_pointer_x,
+                    });
+                }
             }
         })
         .expect("failed to insert libinput source");
@@ -234,12 +237,13 @@ pub fn run() -> ! {
 
     let mut ipc_server = super::common::autostart_ipc_status_ping(&loop_handle, &wm);
 
-    // Retry pings only wake the loop; the DRM loop state already remembers
-    // which CRTC needs another attempt.
-    let (retry_ping, retry_ping_source) = calloop::ping::make_ping().expect("ping");
+    // One-shot wakeup for the initial frame. Later render failures use a
+    // bounded timer instead of an immediate self-ping loop.
+    let (initial_render_ping, initial_render_ping_source) =
+        calloop::ping::make_ping().expect("ping");
     event_loop
         .handle()
-        .insert_source(retry_ping_source, |_, _, _| {})
+        .insert_source(initial_render_ping_source, |_, _, _| {})
         .expect("ping source");
 
     // Compositor redraw pings preserve a target set installed by
@@ -259,7 +263,7 @@ pub fn run() -> ! {
         })
         .expect("render ping source");
     state.runtime.render_ping = Some(render_ping);
-    retry_ping.ping(); // Wake loop once to render the initial frame
+    initial_render_ping.ping();
 
     let start_time = Instant::now();
     let mut render_failures: HashMap<crtc::Handle, u32> = HashMap::new();
@@ -283,7 +287,6 @@ pub fn run() -> ! {
         start_time,
         led_state_rx,
         runtime_event_rx,
-        retry_ping,
     );
 
     exit(0);
@@ -300,34 +303,32 @@ fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
 }
 
 /// Compute total screen dimensions from output surfaces.
-fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> (i32, i32) {
+fn compute_total_dimensions(output_surfaces: &[OutputSurfaceEntry]) -> crate::types::Size {
     let total_width = output_surfaces
         .iter()
-        .map(|s| s.x_offset + s.width)
+        .map(|surface| surface.rect.x + surface.rect.w)
         .max()
         .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_WIDTH);
     let total_height = output_surfaces
         .iter()
-        .map(|s| s.height)
+        .map(|surface| surface.rect.h)
         .max()
         .unwrap_or(crate::wayland::render::drm::DEFAULT_SCREEN_HEIGHT);
-    (total_width, total_height)
+    crate::types::Size::new(total_width, total_height)
 }
 
 fn init_layout_state(
     output_surfaces: &[OutputSurfaceEntry],
-    total_width: i32,
-    total_height: i32,
+    total_size: crate::types::Size,
 ) -> DrmLayoutState {
     DrmLayoutState {
-        total_width,
-        total_height,
+        total_size,
         output_hit_regions: output_surfaces
             .iter()
             .map(|entry| OutputHitRegion {
                 crtc: entry.crtc,
-                x_offset: entry.x_offset,
-                width: entry.width,
+                x_offset: entry.rect.x,
+                width: entry.rect.w,
             })
             .collect(),
     }
@@ -414,18 +415,18 @@ fn run_event_loop(
     start_time: Instant,
     led_state_rx: mpsc::Receiver<smithay::input::keyboard::LedState>,
     runtime_event_rx: mpsc::Receiver<DrmRuntimeEvent>,
-    retry_ping: calloop::ping::Ping,
 ) {
     let loop_signal: LoopSignal = event_loop.get_signal();
     let loop_handle = event_loop.handle();
     let pointer_handle = state.pointer.clone();
     let anim_guard = crate::runtime::AnimationTimerGuard::new();
+    let render_retry_guard = crate::runtime::AnimationTimerGuard::new();
     let shared_layout = Arc::clone(layout_state);
     let monotonic_clock = Clock::<Monotonic>::new();
 
     event_loop
         .run(None, state, move |state| {
-            process_runtime_events(
+            let pointer_moved = process_runtime_events(
                 &runtime_event_rx,
                 loop_state,
                 &shared_layout,
@@ -440,6 +441,12 @@ fn run_event_loop(
                 start_time,
             );
             super::common::event_loop_tick_and_request_render(wm, state, ipc_server);
+            if pointer_moved {
+                loop_state.mark_pointer_output_dirty(
+                    state.runtime.pointer_location.x as i32,
+                    &shared_layout,
+                );
+            }
             super::common::process_window_animations_and_request_render(state);
             process_commit_redraws(state, loop_state, output_surfaces);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
@@ -492,12 +499,13 @@ fn run_event_loop(
                 start_time,
             );
 
-            // If an output can be rendered immediately after a failure, ping
-            // the loop to retry. Dirty outputs with a page flip in flight are
-            // woken by the DRM vblank source instead; self-pinging there spins.
-            if loop_state.has_renderable_dirty_outputs() {
-                retry_ping.ping();
-            }
+            // Retry persistent render failures at a bounded cadence. Dirty
+            // outputs with a page flip in flight are woken by DRM vblank.
+            render_retry_guard.ensure_armed(
+                loop_state.has_renderable_dirty_outputs(),
+                &loop_handle,
+                |_| false,
+            );
 
             if state.display_handle.flush_clients().is_err() {
                 loop_signal.stop();
@@ -512,7 +520,8 @@ fn process_runtime_events(
     layout_state: &DrmLayoutState,
     output_surfaces: &mut [OutputSurfaceEntry],
     monotonic_clock: &Clock<Monotonic>,
-) {
+) -> bool {
+    let mut pointer_moved = false;
     while let Ok(event) = runtime_event_rx.try_recv() {
         match event {
             DrmRuntimeEvent::SessionPaused => {
@@ -543,11 +552,13 @@ fn process_runtime_events(
                 }
                 loop_state.pending_crtcs.remove(&crtc);
             }
-            DrmRuntimeEvent::PointerActivity(px) => {
-                loop_state.mark_pointer_output_dirty(px, layout_state);
+            DrmRuntimeEvent::PointerMoved { old_x } => {
+                loop_state.mark_pointer_output_dirty(old_x, layout_state);
+                pointer_moved = true;
             }
         }
     }
+    pointer_moved
 }
 
 fn output_refresh(entry: &OutputSurfaceEntry) -> Refresh {
@@ -592,14 +603,23 @@ fn process_frame_callback_requests(
     output_surfaces: &[OutputSurfaceEntry],
     start_time: Instant,
 ) {
-    if !state.take_frame_callbacks_pending() {
-        return;
-    }
+    use crate::backend::wayland::compositor::PendingRenderTargets;
 
+    let targets = state.take_frame_callback_targets();
     for entry in output_surfaces.iter().filter(|entry| entry.enabled) {
-        loop_state
-            .frame_callback_timers
-            .arm(entry.crtc, loop_handle, &entry.output, start_time);
+        let targeted = match &targets {
+            PendingRenderTargets::None => false,
+            PendingRenderTargets::All => true,
+            PendingRenderTargets::Outputs(outputs) => outputs.contains(&entry.output.name()),
+        };
+        if targeted {
+            loop_state.frame_callback_timers.arm(
+                entry.crtc,
+                loop_handle,
+                &entry.output,
+                start_time,
+            );
+        }
     }
 }
 
@@ -675,8 +695,10 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
     let Some(mon) = wm.core.monitors_iter_all().find(|m| m.name == output_name) else {
         return false;
     };
-    if wm.core.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        && wm.core.selected_monitor_id() == mon.id()
+    if matches!(
+        wm.core.behavior.current_mode,
+        crate::core_state::ActiveWmMode::Overview
+    ) && wm.core.selected_monitor_id() == mon.id()
     {
         return false;
     }
@@ -705,9 +727,9 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
         BackendVrrSupport::RequiresModeset => matches!(entry.configured_vrr_mode, VrrMode::On),
         BackendVrrSupport::Supported => {
             let hard_blocked = state.is_locked()
-                || state.has_active_window_animations()
+                || state.has_window_animations_on_output(&entry.output)
                 || has_pending_screencopy_for_output(state, &output_name)
-                || !state.overlay_windows_for_render(entry.x_offset).is_empty()
+                || !state.overlay_windows_for_render(&entry.output).is_empty()
                 || !matches!(
                     state.cursor_image_status,
                     smithay::input::pointer::CursorImageStatus::Named(_)

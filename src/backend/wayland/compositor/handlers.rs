@@ -2,13 +2,14 @@ use smithay::{
     backend::renderer::ImportDma,
     backend::renderer::utils::on_commit_buffer_handler,
     desktop::PopupKind,
-    reexports::wayland_server::Client,
+    reexports::wayland_server::{Client, Resource},
     wayland::{
         buffer::BufferHandler,
         compositor::{
             CompositorHandler, SurfaceAttributes, TraversalAction, get_parent, is_sync_subsurface,
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
+        fractional_scale::{FractionalScaleHandler, with_fractional_scale},
         output::OutputHandler,
         pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
         seat::WaylandFocus,
@@ -62,8 +63,27 @@ impl CompositorHandler for WaylandState {
                 })
                 .unwrap_or(false);
             if has_buffer {
-                let toplevel = self.runtime.pending_toplevels.swap_remove(pos);
-                let window_id = self.setup_smithay_window(toplevel);
+                let mut toplevel = self.runtime.pending_toplevels.swap_remove(pos);
+                let client_pid = toplevel
+                    .wl_surface()
+                    .client()
+                    .and_then(|client| client.get_credentials(&self.display_handle).ok())
+                    .and_then(|credentials| u32::try_from(credentials.pid).ok());
+                let systray_menu = self.take_expected_systray_menu_toplevel(client_pid);
+                if let Some(request) = systray_menu {
+                    match self.setup_native_systray_menu(toplevel, request) {
+                        Ok(_) => {
+                            service_surface_commit(self, commit_kind, None, None);
+                            return;
+                        }
+                        Err(surface) => toplevel = surface,
+                    }
+                }
+
+                let parent = toplevel
+                    .parent()
+                    .and_then(|parent| self.window_id_for_surface(&parent));
+                let window_id = self.setup_managed_window(toplevel);
 
                 let properties = self.window_properties(window_id);
                 let initial_geo = self.find_window(window_id).map(|w| {
@@ -76,11 +96,12 @@ impl CompositorHandler for WaylandState {
                         win: window_id,
                         properties,
                         initial_geo,
+                        initial_position_is_explicit: false,
                         launch_pid: None,
                         launch_startup_id: None,
                         x11_hints: None,
                         x11_size_hints: None,
-                        parent: None,
+                        parent,
                     },
                 ));
             }
@@ -138,6 +159,7 @@ impl CompositorHandler for WaylandState {
             if let Some(id) = window
                 .user_data()
                 .get::<super::state::WindowIdMarker>()
+                .filter(|marker| !marker.is_overlay)
                 .map(|marker| marker.id)
             {
                 self.sync_client_size_from_window(id);
@@ -193,7 +215,13 @@ fn service_surface_commit(
                 None => state.request_render(),
             },
         },
-        SurfaceCommitService::FrameCallbacks => state.request_frame_callbacks(),
+        SurfaceCommitService::FrameCallbacks => match window {
+            Some(window) => state.request_window_frame_callbacks(window),
+            None => match layer_output {
+                Some(output) => state.request_output_frame_callbacks(output),
+                None => state.request_frame_callbacks(),
+            },
+        },
         SurfaceCommitService::None => {}
     }
 }
@@ -209,6 +237,24 @@ impl BufferHandler for WaylandState {
         &mut self,
         _buffer: &smithay::reexports::wayland_server::protocol::wl_buffer::WlBuffer,
     ) {
+    }
+}
+
+impl FractionalScaleHandler for WaylandState {
+    fn new_fractional_scale(
+        &mut self,
+        surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) {
+        smithay::wayland::compositor::with_states(&surface, |states| {
+            let Some(output) =
+                smithay::desktop::utils::surface_primary_scanout_output(&surface, states)
+            else {
+                return;
+            };
+            with_fractional_scale(states, |fractional_scale| {
+                fractional_scale.set_preferred_scale(output.current_scale().fractional_scale());
+            });
+        });
     }
 }
 

@@ -7,7 +7,6 @@ use crate::types::Point;
 use crate::types::input::{BarPosition, MouseButton};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
-use std::sync::Arc;
 
 /// Backend-agnostic window identifier.
 #[repr(transparent)]
@@ -163,44 +162,11 @@ mod tests {
     }
 }
 
-/// System tray state.
+/// Legacy X11 XEmbed tray state.
 #[derive(Debug, Clone)]
-pub struct Systray {
+pub struct XEmbedTray {
     /// Tray window handle.
     pub win: WindowId,
     /// List of tray icon windows.
     pub icons: Vec<WindowId>,
-}
-
-/// Wayland StatusNotifier tray icon model.
-#[derive(Debug, Clone, Default)]
-pub struct WaylandSystrayItem {
-    pub service: String,
-    pub path: String,
-    pub icon_rgba: Arc<[u8]>,
-    pub icon_w: i32,
-    pub icon_h: i32,
-}
-
-/// Wayland StatusNotifier tray state.
-#[derive(Debug, Clone, Default)]
-pub struct WaylandSystray {
-    pub items: Vec<WaylandSystrayItem>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct WaylandSystrayMenuItem {
-    pub id: i32,
-    pub label: String,
-    pub width: i32,
-    pub enabled: bool,
-    pub separator: bool,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct WaylandSystrayMenu {
-    pub service: String,
-    pub path: String,
-    pub item_h: i32,
-    pub items: Vec<WaylandSystrayMenuItem>,
 }

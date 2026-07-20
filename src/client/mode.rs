@@ -26,7 +26,7 @@ pub enum FullscreenOutcome {
 
 /// Transition a window into or out of maximized mode.
 ///
-/// Handles: mode transition, float_geo save, mon.maximized update.
+/// Handles: mode transition, float_geo save.
 /// Does NOT handle: move_resize, arrange, surface configure, raise.
 pub fn set_maximized(model: &mut WmModel, win: WindowId, enter: bool) -> Option<MaximizedOutcome> {
     if enter {
@@ -39,7 +39,6 @@ pub fn set_maximized(model: &mut WmModel, win: WindowId, enter: bool) -> Option<
 fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
     let client = model.client_mut(win)?;
     let base = client.mode.base_mode();
-    let monitor_id = client.monitor_id;
 
     // Save float geo if not already floating.
     if !client.mode.is_floating() {
@@ -48,13 +47,6 @@ fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOu
 
     client.mode = client.mode.as_maximized();
 
-    // Update mon.maximized. Try the window's monitor first, fall back to selected.
-    if let Some(mon) = model.monitor_mut(monitor_id) {
-        mon.maximized = Some(win);
-    } else if let Some(mon) = model.selected_monitor_mut_opt() {
-        mon.maximized = Some(win);
-    }
-
     Some(MaximizedOutcome::Entered { base })
 }
 
@@ -62,7 +54,6 @@ fn set_maximized_exit(model: &mut WmModel, win: WindowId) -> Option<MaximizedOut
     let client = model.client_mut(win)?;
     let base = client.mode.base_mode();
     client.mode = client.mode.restored();
-    model.clear_maximized_for(win);
     Some(MaximizedOutcome::Exited { base })
 }
 

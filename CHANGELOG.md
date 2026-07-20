@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/instantOS/instantWM/compare/v0.1.13...v0.1.14) - 2026-07-15
+
+### Fixed
+
+- xwayland regression
+- remove redundant draws/wakeups
+
+### Other
+
+- narrow xwayland redraws
+- better IPC list
+- Merge branch 'dev' of github.com:instantOS/instantWM into dev
+- fix regression: clicking on xwayland windows does nothing
+
+## [0.1.13](https://github.com/instantOS/instantWM/compare/v0.1.12...v0.1.13) - 2026-07-14
+
+### Other
+
+- stackdirection
+- narrow function signature
+- reinvent less parts of smithay
+- remove legacy compat code
+- float movement hotkeys
+- xembed compliance
+- remove unused code
+- remove more unused code
+- less deferred option handling
+- better option handling
+- eliminate client manager
+- more expect instead of unwrap
+- Merge branch 'main' of github.com:instantOS/instantWM
+- fix instantwm build
+- Merge branch 'main' of https://github.com/instantOS/instantWM
+- Merge branch 'main' into dev
+- IPC theme setting
+- fix focus conflicts
+- add shade colors
+- fix clicking on mako notifs
+- fix screen edges registering as root
+- rework systray
+- better systray compat
+- make systray more backend agnostic
+- more explicit bar state transitions
+- better status notifier lifecycle management
+
 ## [0.1.12](https://github.com/instantOS/instantWM/compare/v0.1.11...v0.1.12) - 2026-07-11
 
 ### Changed

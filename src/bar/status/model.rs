@@ -1,3 +1,4 @@
+use crate::types::{Insets, Rect};
 use serde::{Deserialize, Serialize};
 
 pub(crate) const TEXT_PADDING: i32 = 6;
@@ -16,10 +17,7 @@ pub(crate) struct I3Block {
     pub color: Option<String>,
     pub background: Option<String>,
     pub border: Option<String>,
-    pub border_top: i32,
-    pub border_right: i32,
-    pub border_bottom: i32,
-    pub border_left: i32,
+    pub border_widths: Insets,
     pub min_width: Option<I3MinWidth>,
     pub align: I3Align,
     pub urgent: bool,
@@ -59,9 +57,8 @@ pub(crate) struct I3BarHeader {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct StatusClickTarget {
-    pub start_x: i32,
-    pub end_x: i32,
-    pub index: usize,
+    pub bounds: Rect,
+    pub block_index: usize,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -81,6 +78,8 @@ pub(crate) struct I3ClickEvent {
     pub y: i32,
     pub relative_x: i32,
     pub relative_y: i32,
+    pub output_x: i32,
+    pub output_y: i32,
     pub width: i32,
     pub height: i32,
     #[serde(skip_serializing_if = "Vec::is_empty", default)]

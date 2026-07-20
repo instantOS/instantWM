@@ -1,20 +1,12 @@
-use crate::types::geometry::Rect;
+use crate::bar::color::Rgba;
+use crate::types::{Point, Rect, Size};
 
-pub(super) fn fill_pixel(
-    pixels: &mut [u8],
-    canvas_w: i32,
-    canvas_h: i32,
-    x: i32,
-    y: i32,
-    r: u8,
-    g: u8,
-    b: u8,
-    a: u8,
-) {
-    if x < 0 || y < 0 || x >= canvas_w || y >= canvas_h {
+pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, color: [u8; 4]) {
+    let [r, g, b, a] = color;
+    if point.x < 0 || point.y < 0 || point.x >= canvas_size.w || point.y >= canvas_size.h {
         return;
     }
-    let idx = ((y * canvas_w + x) * 4) as usize;
+    let idx = ((point.y * canvas_size.w + point.x) * 4) as usize;
     if idx + 3 >= pixels.len() {
         return;
     }
@@ -34,25 +26,16 @@ pub(super) fn fill_pixel(
     }
 }
 
-pub(super) fn fill_rect(
-    pixels: &mut [u8],
-    canvas_w: i32,
-    canvas_h: i32,
-    rect: Rect,
-    color: [f32; 4],
-) {
-    let r = (color[0] * 255.0) as u8;
-    let g = (color[1] * 255.0) as u8;
-    let b = (color[2] * 255.0) as u8;
-    let a = (color[3] * 255.0) as u8;
-    let x_end = (rect.x + rect.w).min(canvas_w);
-    let y_end = (rect.y + rect.h).min(canvas_h);
+pub(super) fn fill_rect(pixels: &mut [u8], canvas_size: Size, rect: Rect, color: Rgba) {
+    let [r, g, b, a] = color.to_rgba8();
+    let x_end = (rect.x + rect.w).min(canvas_size.w);
+    let y_end = (rect.y + rect.h).min(canvas_size.h);
     let x_start = rect.x.max(0);
     let y_start = rect.y.max(0);
 
     if a == 255 {
         for py in y_start..y_end {
-            let row_start = ((py * canvas_w + x_start) * 4) as usize;
+            let row_start = ((py * canvas_size.w + x_start) * 4) as usize;
             for px in 0..(x_end - x_start) {
                 let idx = row_start + (px * 4) as usize;
                 if idx + 3 < pixels.len() {
@@ -66,7 +49,7 @@ pub(super) fn fill_rect(
     } else {
         for py in y_start..y_end {
             for px in x_start..x_end {
-                fill_pixel(pixels, canvas_w, canvas_h, px, py, r, g, b, a);
+                fill_pixel(pixels, canvas_size, Point::new(px, py), [r, g, b, a]);
             }
         }
     }
@@ -74,18 +57,16 @@ pub(super) fn fill_rect(
 
 pub(super) fn blit_rgba_scaled(
     pixels: &mut [u8],
-    canvas_w: i32,
-    canvas_h: i32,
+    canvas_size: Size,
     dst: Rect,
-    src_w: i32,
-    src_h: i32,
+    source_size: Size,
     src_rgba: &[u8],
 ) {
-    if dst.w <= 0 || dst.h <= 0 || src_w <= 0 || src_h <= 0 {
+    if !dst.size().is_positive() || !source_size.is_positive() {
         return;
     }
-    let needed = (src_w as usize)
-        .checked_mul(src_h as usize)
+    let needed = (source_size.w as usize)
+        .checked_mul(source_size.h as usize)
         .and_then(|v| v.checked_mul(4))
         .unwrap_or(0);
     if src_rgba.len() < needed {
@@ -93,23 +74,23 @@ pub(super) fn blit_rgba_scaled(
     }
 
     for y in 0..dst.h {
-        let sy = (y as i64 * src_h as i64 / dst.h as i64) as i32;
+        let sy = (y as i64 * source_size.h as i64 / dst.h as i64) as i32;
         for x in 0..dst.w {
-            let sx = (x as i64 * src_w as i64 / dst.w as i64) as i32;
-            let si = ((sy * src_w + sx) * 4) as usize;
+            let sx = (x as i64 * source_size.w as i64 / dst.w as i64) as i32;
+            let si = ((sy * source_size.w + sx) * 4) as usize;
             if si + 3 >= src_rgba.len() {
                 continue;
             }
             fill_pixel(
                 pixels,
-                canvas_w,
-                canvas_h,
-                dst.x + x,
-                dst.y + y,
-                src_rgba[si],
-                src_rgba[si + 1],
-                src_rgba[si + 2],
-                src_rgba[si + 3],
+                canvas_size,
+                Point::new(dst.x + x, dst.y + y),
+                [
+                    src_rgba[si],
+                    src_rgba[si + 1],
+                    src_rgba[si + 2],
+                    src_rgba[si + 3],
+                ],
             );
         }
     }

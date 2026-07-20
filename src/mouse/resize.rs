@@ -24,7 +24,7 @@ use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
 use super::cursor::set_cursor_style;
-use crate::types::input::get_resize_direction;
+use super::drag::lifecycle::{ResizeDragParams, begin_resize};
 
 fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
     let mut ctx = WmCtx::X11(ctx_x11.reborrow());
@@ -104,7 +104,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
         let hit_x = ptr.x - new_geo.x;
         let hit_y = ptr.y - new_geo.y;
-        let dir = get_resize_direction(new_geo.w, new_geo.h, hit_x, hit_y);
+        let dir = ResizeDirection::from_hit(new_geo.size(), Point::new(hit_x, hit_y));
 
         match ctx {
             WmCtx::X11(x11) => {
@@ -119,7 +119,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
 
     let hit_x = ptr.x - geo.x;
     let hit_y = ptr.y - geo.y;
-    let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+    let dir = ResizeDirection::from_hit(geo.size(), Point::new(hit_x, hit_y));
 
     match ctx {
         WmCtx::X11(x11) => {
@@ -152,14 +152,27 @@ fn begin_wayland_super_resize(
     let Some(bw) = wl.core.state().model.client(win).map(|c| c.border_width) else {
         return;
     };
-    let (x_off, y_off) = dir.warp_offset(geo.w, geo.h, bw);
-    let warp_x = geo.x + x_off;
-    let warp_y = geo.y + y_off;
-    wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
+    let offset = dir.warp_offset(geo.size(), bw);
+    let warp_x = geo.x + offset.x;
+    let warp_y = geo.y + offset.y;
 
     let root = Point::new(warp_x, warp_y);
-    wl.core.drag_state_mut().interactive =
-        crate::core_state::DragInteraction::new_resize(win, btn, dir, root, geo);
+    if begin_resize(
+        wl.core.drag_state_mut(),
+        wl.wayland,
+        ResizeDragParams {
+            win,
+            button: btn,
+            direction: dir,
+            start: root,
+            geometry: geo,
+        },
+    )
+    .is_err()
+    {
+        return;
+    }
+    wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
     crate::focus::focus(&mut WmCtx::Wayland(wl.reborrow()), Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());
@@ -211,8 +224,21 @@ pub fn resize_mouse_directional(
     let Some(geo) = ctx.core.model().client(win).map(|client| client.geo) else {
         return;
     };
-    ctx.core.drag_state_mut().interactive =
-        crate::core_state::DragInteraction::new_resize(win, btn, dir, start, geo);
+    if begin_resize(
+        ctx.core.drag_state_mut(),
+        &ctx.x11,
+        ResizeDragParams {
+            win,
+            button: btn,
+            direction: dir,
+            start,
+            geometry: geo,
+        },
+    )
+    .is_err()
+    {
+        return;
+    }
 
     crate::backend::x11::grab::mouse_drag_loop(
         ctx,
@@ -284,6 +310,8 @@ pub fn resize_mouse_directional(
         },
     );
 
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
     let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }
@@ -310,7 +338,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 
     let hit_x = ptr.x - geo.x;
     let hit_y = ptr.y - geo.y;
-    let dir = get_resize_direction(geo.w, geo.h, hit_x, hit_y);
+    let dir = ResizeDirection::from_hit(geo.size(), Point::new(hit_x, hit_y));
 
     match ctx {
         WmCtx::X11(x11) => {
@@ -343,13 +371,21 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
     let Some(geo) = ctx.core.model().client(win).map(|client| client.geo) else {
         return;
     };
-    ctx.core.drag_state_mut().interactive = crate::core_state::DragInteraction::new_resize(
-        win,
-        btn,
-        ResizeDirection::BottomRight,
-        start,
-        geo,
-    );
+    if begin_resize(
+        ctx.core.drag_state_mut(),
+        &ctx.x11,
+        ResizeDragParams {
+            win,
+            button: btn,
+            direction: ResizeDirection::BottomRight,
+            start,
+            geometry: geo,
+        },
+    )
+    .is_err()
+    {
+        return;
+    }
 
     crate::backend::x11::grab::mouse_drag_loop(
         ctx,
@@ -426,6 +462,8 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         },
     );
 
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 drag loop must finish the interaction using its grab button");
     let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
     crate::mouse::drag::finish_drag_resize(&mut wm_ctx, win);
 }

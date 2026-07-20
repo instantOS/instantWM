@@ -48,13 +48,13 @@ fn reload_x11(wm: &mut Wm) {
             x11_ctx.core.state_mut(),
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
-            x11_ctx.systray.as_deref(),
+            x11_ctx.xembed_tray.as_deref(),
         );
         crate::backend::x11::bar::update_status(
             &mut x11_ctx.core,
             &x11_ctx.x11,
             x11_ctx.x11_runtime,
-            x11_ctx.systray.as_deref_mut(),
+            x11_ctx.xembed_tray.as_deref_mut(),
         );
         let mut wm_ctx = WmCtx::X11(x11_ctx.reborrow());
         wm_ctx.update_ewmh_desktop_props();
@@ -103,17 +103,22 @@ mod tests {
     #[test]
     fn normalize_current_mode_resets_missing_mode_to_default() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.core.behavior.current_mode = "resize".to_string();
+        wm.core.behavior.current_mode =
+            crate::core_state::ActiveWmMode::Named("resize".to_string());
 
         wm.core.normalize_current_mode();
 
-        assert_eq!(wm.core.behavior.current_mode, "default");
+        assert_eq!(
+            wm.core.behavior.current_mode,
+            crate::core_state::ActiveWmMode::Default
+        );
     }
 
     #[test]
     fn normalize_current_mode_preserves_existing_mode() {
         let mut wm = Wm::new(WmBackend::new_wayland(WaylandBackend::new()));
-        wm.core.behavior.current_mode = "resize".to_string();
+        wm.core.behavior.current_mode =
+            crate::core_state::ActiveWmMode::Named("resize".to_string());
         wm.core
             .config
             .bindings
@@ -122,6 +127,9 @@ mod tests {
 
         wm.core.normalize_current_mode();
 
-        assert_eq!(wm.core.behavior.current_mode, "resize");
+        assert_eq!(
+            wm.core.behavior.current_mode,
+            crate::core_state::ActiveWmMode::Named("resize".to_string())
+        );
     }
 }

@@ -30,6 +30,11 @@ impl SessionLockHandler for WaylandState {
         let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();
         self.lock_state = SessionLockState::Locked(lock);
+        self.push_command(
+            crate::backend::wayland::commands::WmCommand::CancelInteractiveDrag(
+                crate::core_state::DragCancelReason::SessionLocked,
+            ),
+        );
         log::info!("session locked");
     }
 

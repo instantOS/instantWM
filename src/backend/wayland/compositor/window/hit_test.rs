@@ -1,10 +1,9 @@
+use smithay::desktop::Window;
 use smithay::utils::{Logical, Point};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
-
-use super::classify::WindowType;
 
 /// Result of a single-pass pointer hit test, resolving both the Wayland
 /// surface focus and the WM logical window in one traversal.
@@ -50,6 +49,7 @@ impl WaylandState {
         };
 
         let mut logical_win: Option<WindowId> = None;
+        let mut logical_win_resolved = false;
         let mut surface_hit: Option<(
             smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
             Point<i32, Logical>,
@@ -60,34 +60,19 @@ impl WaylandState {
             let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
 
             // Logical hit test (WM geometry including borders).
-            if logical_win.is_none()
-                && let Some(win_id) = win_id
-            {
-                let is_logical_hit = if matches!(
-                    typ,
-                    WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
-                ) {
-                    if let Some(loc) = self.space.element_location(window) {
-                        let geo = window.geometry();
-                        let rel = loc + geo.loc;
-                        root_x >= rel.x
-                            && root_x < rel.x + geo.size.w
-                            && root_y >= rel.y
-                            && root_y < rel.y + geo.size.h
-                    } else {
-                        false
+            if !logical_win_resolved {
+                if typ.is_overlay() {
+                    if self.overlay_rect_contains(window, root_x, root_y) {
+                        logical_win = win_id;
+                        logical_win_resolved = true;
                     }
-                } else if let Some(c) = globals.model.client(win_id) {
-                    let bw = c.border_width;
-                    root_x >= c.geo.x
-                        && root_x < c.geo.x + c.geo.w + 2 * bw
-                        && root_y >= c.geo.y
-                        && root_y < c.geo.y + c.geo.h + 2 * bw
-                } else {
-                    false
-                };
-                if is_logical_hit {
+                } else if let Some(win_id) = win_id
+                    && let Some(c) = globals.model.client(win_id)
+                    && c.total_rect()
+                        .contains_point(crate::types::Point::new(root_x, root_y))
+                {
                     logical_win = Some(win_id);
+                    logical_win_resolved = true;
                 }
             }
 
@@ -110,7 +95,7 @@ impl WaylandState {
             }
 
             // Both found — no need to continue.
-            if logical_win.is_some() && surface_hit.is_some() {
+            if logical_win_resolved && surface_hit.is_some() {
                 break;
             }
         }
@@ -188,6 +173,18 @@ impl WaylandState {
         None
     }
 
+    /// Check if the pointer is currently over an overlay, launcher, or unmanaged window.
+    pub fn is_pointer_over_overlay(&self, point: Point<f64, Logical>) -> bool {
+        let root_x = point.x.round() as i32;
+        let root_y = point.y.round() as i32;
+        for (window, typ) in self.windows_in_z_order() {
+            if typ.is_overlay() && self.overlay_rect_contains(window, root_x, root_y) {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Find the topmost window containing the given logical point within its core geometry.
     /// Used for WM hit-testing to prevent small surfaces from creating focus holes.
     pub fn logical_window_under_pointer(&self, point: Point<f64, Logical>) -> Option<WindowId> {
@@ -196,43 +193,37 @@ impl WaylandState {
         let globals = self.globals()?;
 
         for (window, typ) in self.windows_in_z_order() {
-            let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
-                continue;
-            };
-
-            if matches!(
-                typ,
-                WindowType::Launcher | WindowType::Overlay | WindowType::Unmanaged
-            ) {
-                let Some(loc) = self.space.element_location(window) else {
-                    continue;
-                };
-                let geo = window.geometry();
-                let relative_loc = loc + geo.loc;
-
-                if root_x >= relative_loc.x
-                    && root_x < relative_loc.x + geo.size.w
-                    && root_y >= relative_loc.y
-                    && root_y < relative_loc.y + geo.size.h
-                {
-                    return Some(win_id);
+            if typ.is_overlay() {
+                if self.overlay_rect_contains(window, root_x, root_y) {
+                    // We hit an overlay window. Return its WindowId if it has a marker,
+                    // otherwise return None to prevent falling through to windows behind.
+                    return window.user_data().get::<WindowIdMarker>().map(|m| m.id);
                 }
             } else {
-                // Fall back to managed windows with borders
-                if let Some(c) = globals.model.client(win_id) {
-                    let bw = c.border_width;
-                    // c.geo x/y are outer coordinates, so the total width spans c.geo.w + 2*bw
-                    if root_x >= c.geo.x
-                        && root_x < c.geo.x + c.geo.w + 2 * bw
-                        && root_y >= c.geo.y
-                        && root_y < c.geo.y + c.geo.h + 2 * bw
-                    {
-                        return Some(win_id);
-                    }
+                let Some(win_id) = window.user_data().get::<WindowIdMarker>().map(|m| m.id) else {
+                    continue;
+                };
+                if let Some(c) = globals.model.client(win_id)
+                    && c.total_rect()
+                        .contains_point(crate::types::Point::new(root_x, root_y))
+                {
+                    return Some(win_id);
                 }
             }
         }
         None
+    }
+
+    fn overlay_rect_contains(&self, window: &Window, root_x: i32, root_y: i32) -> bool {
+        let Some(loc) = self.space.element_location(window) else {
+            return false;
+        };
+        let geo = window.geometry();
+        let rel = loc + geo.loc;
+        root_x >= rel.x
+            && root_x < rel.x + geo.size.w
+            && root_y >= rel.y
+            && root_y < rel.y + geo.size.h
     }
 
     /// Get the lock surface under a given point (used when session is locked).

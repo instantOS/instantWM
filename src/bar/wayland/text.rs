@@ -5,6 +5,8 @@ use cosmic_text::{
     Attrs, Buffer, Color as CosmicColor, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap,
 };
 
+use crate::types::{Point, Rect, Size};
+
 use super::pixels;
 
 const TEXT_CACHE_LIMIT: usize = 2048;
@@ -44,6 +46,7 @@ pub(super) struct TextRasterizer {
     measure_cache: RefCell<HashMap<TextMeasureKey, CachedMeasuredText>>,
     render_cache: RefCell<HashMap<TextRenderKey, CachedRenderedText>>,
     font_size: f32,
+    configured_font_families: Vec<String>,
     font_families: Vec<String>,
 }
 
@@ -55,6 +58,7 @@ impl Default for TextRasterizer {
             measure_cache: RefCell::new(HashMap::new()),
             render_cache: RefCell::new(HashMap::new()),
             font_size: DEFAULT_FONT_SIZE,
+            configured_font_families: Vec::new(),
             font_families: Vec::new(),
         }
     }
@@ -62,6 +66,10 @@ impl Default for TextRasterizer {
 
 impl TextRasterizer {
     pub(super) fn set_font_families(&mut self, configured: &[String]) {
+        if self.configured_font_families == configured {
+            return;
+        }
+
         let resolved = {
             let fs = self.font_system.borrow();
             configured
@@ -77,6 +85,7 @@ impl TextRasterizer {
                 })
                 .collect::<Vec<_>>()
         };
+        self.configured_font_families = configured.to_vec();
         if self.font_families != resolved {
             self.font_families = resolved;
             self.measure_cache.get_mut().clear();
@@ -135,30 +144,22 @@ impl TextRasterizer {
     pub(super) fn rasterize(
         &self,
         pixels: &mut [u8],
-        canvas_w: i32,
-        canvas_h: i32,
-        x: i32,
-        y: i32,
-        w: i32,
-        h: i32,
+        canvas_size: Size,
+        bounds: Rect,
         text: &str,
-        color: [f32; 4],
+        color: crate::bar::color::Rgba,
     ) {
-        if text.is_empty() || w <= 0 || h <= 0 {
+        if text.is_empty() || !bounds.size().is_positive() {
             return;
         }
 
-        let font_size = self.effective_font_size(text, h);
-        let cosmic_color = CosmicColor::rgba(
-            (color[0] * 255.0) as u8,
-            (color[1] * 255.0) as u8,
-            (color[2] * 255.0) as u8,
-            (color[3] * 255.0) as u8,
-        );
+        let font_size = self.effective_font_size(text, bounds.h);
+        let [r, g, b, a] = color.to_rgba8();
+        let cosmic_color = CosmicColor::rgba(r, g, b, a);
         let key = TextRenderKey {
             text: text.to_string(),
-            width: w,
-            height: h,
+            width: bounds.w,
+            height: bounds.h,
             font_size_bits: font_size.to_bits(),
         };
 
@@ -166,9 +167,9 @@ impl TextRasterizer {
             let mut cache = self.render_cache.borrow_mut();
             if !cache.contains_key(&key) {
                 let mut fs = self.font_system.borrow_mut();
-                let metrics = Metrics::new(font_size, h as f32);
+                let metrics = Metrics::new(font_size, bounds.h as f32);
                 let mut buffer = Buffer::new(&mut fs, metrics);
-                buffer.set_size(Some(w as f32), Some(h as f32));
+                buffer.set_size(Some(bounds.w as f32), Some(bounds.h as f32));
                 buffer.set_wrap(Wrap::None);
                 self.set_buffer_text(&mut buffer, text);
                 buffer.shape_until_scroll(&mut fs, false);
@@ -189,19 +190,14 @@ impl TextRasterizer {
         cached
             .buffer
             .draw(&mut fs, &mut sc, cosmic_color, |gx, gy, _, _, color| {
-                if gx < 0 || gy < 0 || gx >= w || gy >= h {
+                if gx < 0 || gy < 0 || gx >= bounds.w || gy >= bounds.h {
                     return;
                 }
                 pixels::fill_pixel(
                     pixels,
-                    canvas_w,
-                    canvas_h,
-                    x + gx,
-                    y + gy,
-                    color.r(),
-                    color.g(),
-                    color.b(),
-                    color.a(),
+                    canvas_size,
+                    Point::new(bounds.x + gx, bounds.y + gy),
+                    [color.r(), color.g(), color.b(), color.a()],
                 );
             });
     }
@@ -276,4 +272,35 @@ fn normalized_family(family: &str) -> String {
 
 fn is_private_use(ch: char) -> bool {
     matches!(ch as u32, 0xE000..=0xF8FF | 0xF0000..=0xFFFFD | 0x100000..=0x10FFFD)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TextRasterizer;
+
+    #[test]
+    fn unchanged_configured_families_skip_resolution() {
+        let configured = vec!["sans serif".to_string()];
+        let mut rasterizer = TextRasterizer::default();
+        rasterizer.set_font_families(&configured);
+
+        // A repeated input must return before touching the resolved list. This
+        // pins the hot-path guard independently of which fonts the host has.
+        rasterizer.font_families = vec!["resolution-sentinel".to_string()];
+        rasterizer.set_font_families(&configured);
+
+        assert_eq!(rasterizer.font_families, ["resolution-sentinel"]);
+    }
+
+    #[test]
+    fn changed_configured_families_are_resolved() {
+        let mut rasterizer = TextRasterizer::default();
+        rasterizer.set_font_families(&["first-family".to_string()]);
+        rasterizer.font_families = vec!["resolution-sentinel".to_string()];
+
+        rasterizer.set_font_families(&["second-family".to_string()]);
+
+        assert_eq!(rasterizer.configured_font_families, ["second-family"]);
+        assert_ne!(rasterizer.font_families, ["resolution-sentinel"]);
+    }
 }

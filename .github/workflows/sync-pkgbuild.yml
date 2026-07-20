@@ -28,7 +28,7 @@ jobs:
           echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
           chmod 440 /etc/sudoers.d/builder
       - name: Checkout release PR branch
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}

@@ -9,7 +9,7 @@ pub fn apply_floating_borderscheme(
     win: WindowId,
     x11_runtime: &X11RuntimeConfig,
 ) {
-    let pixel = x11_runtime.borderscheme.float_focus.bg.color.pixel;
+    let pixel = x11_runtime.border_scheme.float_focus.bg.color.pixel;
     let _ = x11rb::protocol::xproto::change_window_attributes(
         x11.conn,
         win.into(),

@@ -15,6 +15,7 @@ pub mod mode;
 pub mod monitor;
 pub mod scratchpad;
 pub mod tag;
+pub mod test;
 pub mod theme;
 pub mod toggle;
 pub mod window;
@@ -33,6 +34,9 @@ struct PendingClient {
 impl IpcServer {
     pub fn bind() -> io::Result<Self> {
         let path = get_available_socket_path();
+        // The bind override is a launch-time input, not session state that
+        // should leak into clients spawned by this compositor.
+        unsafe { env::remove_var("INSTANTWM_SOCKET_BIND") };
         let listener = UnixListener::bind(&path)?;
         listener.set_nonblocking(true)?;
         unsafe { env::set_var("INSTANTWM_SOCKET", &path) };
@@ -148,6 +152,17 @@ impl std::os::unix::io::AsRawFd for IpcServer {
 }
 
 fn get_available_socket_path() -> PathBuf {
+    // Tests and nested sessions need an exact socket so their controller
+    // cannot accidentally connect to another compositor while this process
+    // silently falls back to a suffixed path.
+    if let Some(path) = env::var_os("INSTANTWM_SOCKET_BIND").filter(|path| !path.is_empty()) {
+        let path = PathBuf::from(path);
+        if path.exists() && UnixStream::connect(&path).is_err() {
+            let _ = fs::remove_file(&path);
+        }
+        return path;
+    }
+
     let uid = unsafe { libc::geteuid() };
     let mut i = 0;
     loop {
@@ -207,6 +222,7 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
         IpcCommand::Mode(cmd) => mode::handle_mode_command(wm, cmd),
         IpcCommand::Wallpaper(path) => general::set_wallpaper(wm, path),
         IpcCommand::Config(cmd) => config::handle_config_command(wm, cmd),
+        IpcCommand::Test(cmd) => test::handle_test_command(wm, cmd),
         IpcCommand::GetTheme => theme::get_theme(wm),
         IpcCommand::SetTheme(theme) => theme::set_theme(wm, theme),
         IpcCommand::ListThemes => theme::list_themes(),

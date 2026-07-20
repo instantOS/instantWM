@@ -161,14 +161,6 @@ impl WmModel {
         self.monitors.iter_all_mut()
     }
 
-    /// Clear the maximized reference on any monitor that holds `win`.
-    pub fn clear_maximized_for(&mut self, win: WindowId) {
-        for mon in self.monitors.iter_all_mut() {
-            if mon.maximized == Some(win) {
-                mon.maximized = None;
-            }
-        }
-    }
     /// Find a scratchpad by name.
     pub fn scratchpad_find(&self, name: &str) -> Option<WindowId> {
         if name.is_empty() {

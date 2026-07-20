@@ -107,7 +107,7 @@ pub fn refresh_border_color(
     win: WindowId,
     focused: bool,
 ) {
-    let scheme = &x11_runtime.borderscheme;
+    let scheme = &x11_runtime.border_scheme;
     let Some(c) = globals.model.client(win) else {
         return;
     };
@@ -366,7 +366,7 @@ pub fn focus_soft(
     win: Option<WindowId>,
 ) {
     let mut backend = X11FocusBackend { x11, x11_runtime };
-    if let Err(e) = crate::focus::focus_generic(core, win, &mut backend) {
+    if let Err(e) = crate::focus::focus_generic(core, win, &mut backend, false) {
         log::warn!("focus_soft({:?}) failed: {}", win, e);
     }
 }

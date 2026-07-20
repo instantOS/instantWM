@@ -14,7 +14,7 @@ use crate::core_state::{
 };
 use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::model::WmModel;
-use crate::types::{MonitorId, Rect, Systray, WaylandSystray, WaylandSystrayMenu, WindowId};
+use crate::types::{MonitorId, Rect, WindowId, XEmbedTray};
 
 pub struct CoreCtx<'a> {
     pub(crate) g: &'a mut CoreState,
@@ -109,6 +109,10 @@ impl<'a> CoreCtx<'a> {
         self.work.layout.mark_all_urgent();
     }
 
+    pub fn queue_layout_for_monitor(&mut self, monitor_id: MonitorId) {
+        self.work.layout.mark_monitor(monitor_id);
+    }
+
     pub fn queue_layout_for_monitor_urgent(&mut self, monitor_id: MonitorId) {
         self.work.layout.mark_monitor_urgent(monitor_id);
     }
@@ -142,8 +146,8 @@ impl<'a> CoreCtx<'a> {
     pub fn status_scheme(&self) -> crate::bar::paint::BarScheme {
         let c = &self.g.config.colors.status_bar;
         crate::bar::paint::BarScheme {
-            fg: c.fg,
-            bg: c.bg,
+            foreground: c.fg,
+            background: c.bg,
             detail: c.detail,
         }
     }
@@ -155,8 +159,8 @@ impl<'a> CoreCtx<'a> {
             .colors
             .colors_for(SchemeHover::Hover, SchemeTag::Filled);
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
@@ -211,8 +215,8 @@ impl<'a> CoreCtx<'a> {
             tag_role,
         );
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
@@ -255,8 +259,8 @@ impl<'a> CoreCtx<'a> {
             window_role,
         );
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
@@ -286,26 +290,22 @@ impl<'a> CoreCtx<'a> {
             close_role,
         );
         crate::bar::paint::BarScheme {
-            fg: colors.fg,
-            bg: colors.bg,
+            foreground: colors.fg,
+            background: colors.bg,
             detail: colors.detail,
         }
     }
 
     pub fn normalize_current_mode(&mut self) {
-        if self.g.behavior.current_mode == "default"
-            || self.g.behavior.current_mode == crate::overview::OVERVIEW_MODE_NAME
-        {
-            return;
-        }
-
-        if !self
-            .config()
-            .bindings
-            .modes
-            .contains_key(&self.g.behavior.current_mode)
-        {
-            self.g.behavior.current_mode = "default".to_string();
+        let mode_exists = match &self.g.behavior.current_mode {
+            crate::core_state::ActiveWmMode::Named(name) => {
+                self.g.config.bindings.modes.contains_key(name)
+            }
+            crate::core_state::ActiveWmMode::Default
+            | crate::core_state::ActiveWmMode::Overview => true,
+        };
+        if !mode_exists {
+            self.g.behavior.current_mode = crate::core_state::ActiveWmMode::Default;
         }
     }
 
@@ -324,7 +324,7 @@ pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub x11: X11BackendRef<'a>,
     pub x11_runtime: &'a mut X11RuntimeConfig,
-    pub systray: Option<&'a mut Systray>,
+    pub xembed_tray: Option<&'a mut XEmbedTray>,
 }
 
 impl<'a> WmCtxX11<'a> {
@@ -333,7 +333,7 @@ impl<'a> WmCtxX11<'a> {
             core: self.core.reborrow(),
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
             x11_runtime: self.x11_runtime,
-            systray: self.systray.as_deref_mut(),
+            xembed_tray: self.xembed_tray.as_deref_mut(),
         }
     }
 
@@ -345,8 +345,6 @@ impl<'a> WmCtxX11<'a> {
 pub struct WmCtxWayland<'a> {
     pub core: CoreCtx<'a>,
     pub wayland: &'a crate::backend::wayland::WaylandBackend,
-    pub wayland_systray: &'a mut WaylandSystray,
-    pub wayland_systray_menu: Option<&'a mut WaylandSystrayMenu>,
 }
 
 impl<'a> WmCtxWayland<'a> {
@@ -354,8 +352,6 @@ impl<'a> WmCtxWayland<'a> {
         WmCtxWayland {
             core: self.core.reborrow(),
             wayland: self.wayland,
-            wayland_systray: self.wayland_systray,
-            wayland_systray_menu: self.wayland_systray_menu.as_deref_mut(),
         }
     }
 }
@@ -506,8 +502,8 @@ impl<'a> WmCtx<'a> {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
             let mon = self.core().model().selected_monitor();
-            let target_x = (mon.work_rect.x + mon.work_rect.w / 2) as f64;
-            let target_y = (mon.work_rect.y + mon.work_rect.h / 2) as f64;
+            let target_x = (mon.work_rect().x + mon.work_rect().w / 2) as f64;
+            let target_y = (mon.work_rect().y + mon.work_rect().h / 2) as f64;
             self.pointer_backend().warp_pointer(target_x, target_y);
             return;
         }
@@ -569,18 +565,27 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn current_mode(&self) -> &str {
-        &self.core().behavior().current_mode
+        self.core().behavior().current_mode.as_str()
     }
 
     pub fn set_current_mode(&mut self, mode: impl Into<String>) {
-        let next_mode = mode.into();
+        let next_mode = crate::core_state::ActiveWmMode::from_name(mode);
+        self.transition_current_mode(next_mode, crate::overview::ExitMode::RestorePrevious);
+    }
+
+    pub(crate) fn transition_current_mode(
+        &mut self,
+        next_mode: crate::core_state::ActiveWmMode,
+        overview_exit: crate::overview::ExitMode,
+    ) {
         let previous_mode = self.core().behavior().current_mode.clone();
         if previous_mode == next_mode {
             return;
         }
 
         self.core_mut().behavior_mut().current_mode = next_mode.clone();
-        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode);
+        crate::overview::handle_mode_transition(self, &previous_mode, &next_mode, overview_exit);
+        self.request_bar_update();
     }
 
     pub fn reset_mode(&mut self) {

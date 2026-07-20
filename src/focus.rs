@@ -140,7 +140,7 @@ impl<'a> FocusBackendOps for WaylandFocusBackend<'a> {
 
 /// Outcome of a focus operation, used to decide whether a sync_monitor_z_order is needed.
 pub(crate) struct FocusOutcome {
-    /// `true` when `mon.selected` actually changed.
+    /// `true` when visual z-order should be synchronized.
     changed: bool,
     /// The monitor that owns the new selection.
     monitor_id: MonitorId,
@@ -151,6 +151,7 @@ pub(crate) fn focus_generic(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
+    force_backend_refresh: bool,
 ) -> anyhow::Result<FocusOutcome> {
     let result = match resolve_focus_target(core.model(), win) {
         Some(r) => r,
@@ -164,11 +165,13 @@ pub(crate) fn focus_generic(
 
     let current_sel = result.current_sel;
     let sel_mon_id = result.sel_mon_id;
-    let desktop_bindings_before =
-        crate::keyboard::desktop_bindings_enabled(current_sel, &core.behavior().current_mode);
+    let desktop_bindings_before = crate::keyboard::desktop_bindings_enabled(
+        current_sel,
+        core.behavior().current_mode.as_str(),
+    );
     let target = update_focus_state(core.model_mut(), result);
     let desktop_bindings_after =
-        crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
+        crate::keyboard::desktop_bindings_enabled(target, core.behavior().current_mode.as_str());
 
     // Track the previously focused window for focus-last-client.
     // This is done in the shared path so both backends behave identically.
@@ -187,17 +190,17 @@ pub(crate) fn focus_generic(
     let needs_refocus = backend.needs_focus_refresh(target);
 
     if let Some(w) = target {
-        if focus_changed || needs_refocus {
+        if focus_changed || needs_refocus || force_backend_refresh {
             core.bar.mark_dirty();
             backend.focus_window(core, w);
         }
-    } else if focus_changed {
+    } else if focus_changed || force_backend_refresh {
         core.bar.mark_dirty();
         backend.focus_none();
     }
 
     Ok(FocusOutcome {
-        changed: focus_changed,
+        changed: focus_changed || force_backend_refresh,
         monitor_id: sel_mon_id,
     })
 }
@@ -209,6 +212,14 @@ pub(crate) fn focus_generic(
 /// This is critical for overlapping layouts (monocle, floating) where the
 /// focused window must be visually on top.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
+    focus_impl(ctx, win, false);
+}
+
+fn focus_impl(
+    ctx: &mut crate::contexts::WmCtx,
+    win: Option<WindowId>,
+    force_backend_refresh: bool,
+) {
     use crate::contexts::WmCtx::*;
     let outcome = match ctx {
         X11(x11_ctx) => {
@@ -216,7 +227,7 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
                 x11: &x11_ctx.x11,
                 x11_runtime: x11_ctx.x11_runtime,
             };
-            match focus_generic(&mut x11_ctx.core, win, &mut backend) {
+            match focus_generic(&mut x11_ctx.core, win, &mut backend, force_backend_refresh) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("focus X11({:?}) failed: {}", win, e);
@@ -228,7 +239,12 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
             let mut backend = WaylandFocusBackend {
                 wayland: wayland_ctx.wayland,
             };
-            match focus_generic(&mut wayland_ctx.core, win, &mut backend) {
+            match focus_generic(
+                &mut wayland_ctx.core,
+                win,
+                &mut backend,
+                force_backend_refresh,
+            ) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("focus Wayland({:?}) failed: {}", win, e);
@@ -352,16 +368,21 @@ fn should_hover_focus(
 /// Returns `true` if the selection actually changed (i.e. the monitor was not
 /// already selected), `false` otherwise.
 pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -> bool {
-    if ctx.core().model().monitors.is_empty() {
+    if ctx.core().model().monitor(monitor_id).is_none() {
         return false;
     }
     if monitor_id == ctx.core().model().selected_monitor_id() {
         return false;
     }
 
+    if let Some(win) = ctx.core().model().selected_win() {
+        unfocus_win(ctx, win, false);
+    }
     ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
     ctx.update_ewmh_desktop_props();
-    focus(ctx, None);
+    // Destination monitors remember their selected client. Force the backend
+    // transaction even when that model selection itself does not change.
+    focus_impl(ctx, None, true);
     true
 }
 
@@ -393,9 +414,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
         return false;
     };
 
-    if monitor_id != ctx.core().model().selected_monitor_id() {
-        ctx.core_mut().model_mut().set_selected_monitor(monitor_id);
-    }
+    select_monitor(ctx, monitor_id);
 
     let target_tags = client_tags.without_scratchpad();
     let visible_tags = ctx.core().model().selected_monitor().selected_tags();
@@ -624,5 +643,67 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
     if let Some(target) = get_stack_focus_target(ctx.core().model(), direction) {
         focus(ctx, Some(target));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FocusBackendOps, focus_generic};
+    use crate::bar::BarState;
+    use crate::client::focus::FocusState;
+    use crate::contexts::CoreCtx;
+    use crate::core_state::{CoreState, PendingWork};
+    use crate::types::{Client, Monitor, TagMask, WindowId};
+    use std::cell::Cell;
+
+    #[derive(Default)]
+    struct RecordingBackend {
+        focused: Cell<usize>,
+    }
+
+    impl FocusBackendOps for RecordingBackend {
+        fn unfocus_current(&self, _: &CoreState, _: WindowId) {}
+        fn focus_window(&self, _: &mut CoreCtx<'_>, _: WindowId) {
+            self.focused.set(self.focused.get() + 1);
+        }
+        fn focus_none(&self) {}
+        fn on_desktop_binding_state_changed(&self, _: &CoreState) {}
+    }
+
+    fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, FocusState) {
+        let mut state = CoreState::default();
+        let monitor_id = state.model.monitors.push(Monitor::default());
+        let win = WindowId(1);
+        let tag = TagMask::single(1).unwrap();
+        state.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags: tag,
+            ..Client::default()
+        });
+        let monitor = state.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tag);
+        monitor.z_order.attach_top(win);
+        monitor.selected = Some(win);
+        (
+            state,
+            PendingWork::default(),
+            true,
+            BarState::default(),
+            FocusState::default(),
+        )
+    }
+
+    #[test]
+    fn forced_refresh_reapplies_unchanged_backend_focus() {
+        let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+        let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let mut backend = RecordingBackend::default();
+
+        focus_generic(&mut core, None, &mut backend, false).unwrap();
+        assert_eq!(backend.focused.get(), 0);
+
+        focus_generic(&mut core, None, &mut backend, true).unwrap();
+        assert_eq!(backend.focused.get(), 1);
     }
 }

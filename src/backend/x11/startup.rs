@@ -8,7 +8,7 @@ use crate::backend::Backend as WmBackend;
 use crate::backend::BackendKind;
 use crate::backend::x11::X11RuntimeConfig;
 use crate::backend::x11::XlibDisplay;
-use crate::backend::x11::draw::Drw;
+use crate::backend::x11::draw::DrawContext;
 use crate::config::init_config;
 use crate::types::*;
 use crate::wm::Wm;
@@ -81,13 +81,13 @@ fn wm_init(wm: &mut Wm) {
             ctx.core.state_mut(),
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.systray.as_deref(),
+            ctx.xembed_tray.as_deref(),
         );
         crate::backend::x11::bar::update_status(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.systray.as_deref_mut(),
+            ctx.xembed_tray.as_deref_mut(),
         );
         crate::backend::x11::keyboard::update_num_lock_mask(&ctx.x11, ctx.x11_runtime);
         crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
@@ -212,7 +212,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     let Some(data) = wm.backend.x11_data_mut() else {
         return;
     };
-    let mut drw = match Drw::new(None) {
+    let mut drw = match DrawContext::new(None) {
         Ok(d) => d,
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
@@ -258,7 +258,7 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
     wm.core.config.derived.bar_horizontal_padding = font_height as i32;
 }
 
-fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {
+fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut DrawContext) {
     let cursors = [
         drw.cur_create(XC_LEFT_PTR),
         drw.cur_create(XC_CROSSHAIR),
@@ -281,23 +281,21 @@ fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut Drw) {
 
 fn init_schemes(
     x11_runtime: &mut X11RuntimeConfig,
-    drw: &mut Drw,
+    drw: &mut DrawContext,
     bordercolors: &crate::types::BorderColorConfig,
     statusbarcolors: &crate::types::StatusColorConfig,
 ) {
-    use crate::bar::color::rgba_to_hex;
-
     let normal = drw
-        .clr_create(&rgba_to_hex(bordercolors.normal))
+        .clr_create(&bordercolors.normal.to_string())
         .expect("Failed to create normal border color");
     let tile = drw
-        .clr_create(&rgba_to_hex(bordercolors.tile_focus))
+        .clr_create(&bordercolors.tile_focus.to_string())
         .expect("Failed to create tile focus border color");
     let float = drw
-        .clr_create(&rgba_to_hex(bordercolors.float_focus))
+        .clr_create(&bordercolors.float_focus.to_string())
         .expect("Failed to create float focus border color");
     let snap = drw
-        .clr_create(&rgba_to_hex(bordercolors.snap))
+        .clr_create(&bordercolors.snap.to_string())
         .expect("Failed to create snap border color");
 
     let borderscheme = BorderScheme {
@@ -309,12 +307,12 @@ fn init_schemes(
 
     let status = drw
         .scm_create(&[
-            &rgba_to_hex(statusbarcolors.fg),
-            &rgba_to_hex(statusbarcolors.bg),
-            &rgba_to_hex(statusbarcolors.detail),
+            &statusbarcolors.fg.to_string(),
+            &statusbarcolors.bg.to_string(),
+            &statusbarcolors.detail.to_string(),
         ])
         .expect("Failed to create status bar colors");
 
-    x11_runtime.borderscheme = borderscheme;
-    x11_runtime.statusscheme = StatusScheme::new(status.fg, status.bg, status.detail);
+    x11_runtime.border_scheme = borderscheme;
+    x11_runtime.status_scheme = StatusScheme::new(status.fg, status.bg, status.detail);
 }

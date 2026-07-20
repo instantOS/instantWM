@@ -1,9 +1,9 @@
 use clap::{ArgAction, Parser, Subcommand};
-use instantwm::config::config_toml::ColorTheme;
 use instantwm::ipc_types::{
     ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind,
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
-    SpecialNext, TagCommand, ToggleCommand, Transform, VrrMode, WindowCommand,
+    SpecialNext, TagCommand, TestCommand, ToggleAction, ToggleCommand, Transform, VrrMode,
+    WindowCommand,
 };
 use std::process;
 use std::str::FromStr;
@@ -175,13 +175,107 @@ pub enum WindowAction {
     },
 }
 
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TestWindowMode {
+    Tiled,
+    Floating,
+}
+
 #[derive(Debug, Clone, Subcommand)]
-pub enum ToggleAction {
-    Animated { action: Option<String> },
-    FocusFollowsMouse { action: Option<String> },
-    FocusFollowsFloatMouse { action: Option<String> },
-    AltTag { action: Option<String> },
-    HideTags { action: Option<String> },
+pub enum TestWindowAction {
+    /// Focus a window by its stable IPC id.
+    Focus { window_id: u32 },
+    /// Assign a window to exactly one tag.
+    Tag { window_id: u32, tag: u32 },
+    /// Set tiling/floating state without relying on the current focus.
+    Mode {
+        window_id: u32,
+        mode: TestWindowMode,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestPointerAction {
+    /// Inject one absolute pointer-motion transaction.
+    Move {
+        x: f64,
+        y: f64,
+        /// Treat coordinates as 0..1 fractions of the focused monitor.
+        #[arg(long)]
+        normalized: bool,
+    },
+    /// Interpolate a pointer path. Points use the form X,Y.
+    Path {
+        #[arg(required = true, num_args = 2..)]
+        points: Vec<String>,
+        #[arg(long, default_value = "1000")]
+        duration_ms: u64,
+        #[arg(long, default_value = "30")]
+        hz: u32,
+        /// Treat coordinates as 0..1 fractions of the focused monitor.
+        #[arg(long)]
+        normalized: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestWaitAction {
+    /// Wait until at least COUNT windows are mapped.
+    Windows {
+        count: usize,
+        #[arg(long, default_value = "5000")]
+        timeout_ms: u64,
+        #[arg(long, default_value = "25")]
+        poll_ms: u64,
+        /// Require exactly COUNT rather than at least COUNT.
+        #[arg(long)]
+        exact: bool,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum TestAction {
+    Pointer {
+        #[command(subcommand)]
+        action: TestPointerAction,
+    },
+    Window {
+        #[command(subcommand)]
+        action: TestWindowAction,
+    },
+    Wait {
+        #[command(subcommand)]
+        action: TestWaitAction,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub enum ToggleCliAction {
+    /// Toggle window animations
+    Animated {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Toggle focus-follows-mouse
+    FocusFollowsMouse {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Toggle focus-follows-mouse for floating windows
+    FocusFollowsFloatMouse {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Toggle alt-tag mode
+    AltTag {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
+    /// Show/hide tag bar
+    HideTags {
+        /// What to do (default: toggle)
+        action: Option<ToggleAction>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -245,8 +339,14 @@ pub enum ConfigAction {
     Get { key: String },
     /// Set a runtime config value by key (e.g. layout.inner_gap 12)
     Set { key: String, value: String },
-    /// List all runtime config keys and their current values
-    List,
+    /// List runtime config keys and their current values.
+    ///
+    /// With no argument, lists every key. Pass a section (e.g. `layout`) or a
+    /// full key (e.g. `layout.inner_gap`) to narrow the output to matches.
+    List {
+        /// Section or key prefix to filter by (e.g. `fonts`, `fonts.fonts`).
+        prefix: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Subcommand)]
@@ -273,7 +373,7 @@ pub enum CommandKind {
     },
     Toggle {
         #[command(subcommand)]
-        action: ToggleAction,
+        action: ToggleCliAction,
     },
     Spawn {
         command: Vec<String>,
@@ -334,6 +434,11 @@ pub enum CommandKind {
     Config {
         #[command(subcommand)]
         action: ConfigAction,
+    },
+    /// Unstable profiling/test API. Requires INSTANTWM_TEST=1 on the compositor.
+    Test {
+        #[command(subcommand)]
+        action: TestAction,
     },
     Quit,
 }
@@ -456,15 +561,21 @@ impl From<CommandKind> for IpcCommand {
             }
             CommandKind::Toggle { action } => {
                 let cmd = match action {
-                    ToggleAction::Animated { action } => ToggleCommand::Animated(action),
-                    ToggleAction::FocusFollowsMouse { action } => {
-                        ToggleCommand::FocusFollowsMouse(action)
+                    ToggleCliAction::Animated { action } => {
+                        ToggleCommand::Animated(action.unwrap_or_default())
                     }
-                    ToggleAction::FocusFollowsFloatMouse { action } => {
-                        ToggleCommand::FocusFollowsFloatMouse(action)
+                    ToggleCliAction::FocusFollowsMouse { action } => {
+                        ToggleCommand::FocusFollowsMouse(action.unwrap_or_default())
                     }
-                    ToggleAction::AltTag { action } => ToggleCommand::AltTag(action),
-                    ToggleAction::HideTags { action } => ToggleCommand::HideTags(action),
+                    ToggleCliAction::FocusFollowsFloatMouse { action } => {
+                        ToggleCommand::FocusFollowsFloatMouse(action.unwrap_or_default())
+                    }
+                    ToggleCliAction::AltTag { action } => {
+                        ToggleCommand::AltTag(action.unwrap_or_default())
+                    }
+                    ToggleCliAction::HideTags { action } => {
+                        ToggleCommand::HideTags(action.unwrap_or_default())
+                    }
                 };
                 IpcCommand::Toggle(cmd)
             }
@@ -482,9 +593,9 @@ impl From<CommandKind> for IpcCommand {
                 if list {
                     IpcCommand::ListThemes
                 } else if let Some(name) = name {
-                    match ColorTheme::from_name(&name) {
-                        Some(theme) => IpcCommand::SetTheme(theme),
-                        None => {
+                    match name.parse() {
+                        Ok(theme) => IpcCommand::SetTheme(theme),
+                        Err(_) => {
                             eprintln!(
                                 "invalid theme name '{name}' \
                                  (use 'instantwmctl theme --list' to see themes)"
@@ -635,7 +746,31 @@ impl From<CommandKind> for IpcCommand {
                 ConfigAction::Default => unreachable!("config default is handled locally"),
                 ConfigAction::Get { key } => ConfigCommand::Get { key },
                 ConfigAction::Set { key, value } => ConfigCommand::Set { key, value },
-                ConfigAction::List => ConfigCommand::List,
+                // The prefix is filtered client-side, so it never reaches the WM.
+                ConfigAction::List { prefix: _ } => ConfigCommand::List,
+            }),
+            CommandKind::Test { action } => IpcCommand::Test(match action {
+                TestAction::Pointer { action } => match action {
+                    TestPointerAction::Move { x, y, normalized } => {
+                        TestCommand::PointerMove { x, y, normalized }
+                    }
+                    TestPointerAction::Path { .. } => {
+                        unreachable!("pointer paths are executed by instantwmctl")
+                    }
+                },
+                TestAction::Window { action } => match action {
+                    TestWindowAction::Focus { window_id } => TestCommand::FocusWindow(window_id),
+                    TestWindowAction::Tag { window_id, tag } => {
+                        TestCommand::TagWindow { window_id, tag }
+                    }
+                    TestWindowAction::Mode { window_id, mode } => TestCommand::SetWindowFloating {
+                        window_id,
+                        floating: matches!(mode, TestWindowMode::Floating),
+                    },
+                },
+                TestAction::Wait { .. } => {
+                    unreachable!("wait conditions are executed by instantwmctl")
+                }
             }),
             CommandKind::Quit => IpcCommand::Quit,
         }

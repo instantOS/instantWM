@@ -87,7 +87,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
     }
     let geo = view.client.geo;
     let is_floating = view.client.mode.is_floating();
-    let work_rect = view.monitor.work_rect;
+    let work_rect = view.monitor.work_rect();
     let mon_rect = view.monitor.monitor_rect;
     let bar_height = view.monitor.bar_height;
     let show_bar = view.monitor.show_bar_for_mask(view.client.tags);

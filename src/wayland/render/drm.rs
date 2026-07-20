@@ -37,8 +37,9 @@ use crate::backend::wayland::compositor::image_capture::PendingImageCapture;
 use crate::config::config_toml::VrrMode;
 use crate::wayland::common::{
     CursorPresentation, FixedSceneElements, build_common_scene_elements_from_fixed,
-    count_upper_layer_render_elements, get_render_element_counts, resolve_cursor_presentation,
-    send_frame_callbacks, update_primary_scanout_output,
+    count_upper_layer_render_elements, get_render_element_counts,
+    remove_duplicate_overlay_elements, resolve_cursor_presentation, send_frame_callbacks,
+    update_primary_scanout_output, window_overlaps_output,
 };
 use std::rc::Rc;
 
@@ -103,7 +104,7 @@ pub fn build_output_surfaces(
             spec,
             output_x_offset,
         );
-        output_x_offset += entry.width;
+        output_x_offset += entry.rect.w;
         output_surfaces.push(entry);
     }
 
@@ -114,9 +115,8 @@ struct DrmOutputSpec {
     connector: connector::Handle,
     crtc: crtc::Handle,
     mode: control::Mode,
-    width: i32,
-    height: i32,
-    physical_size: (i32, i32),
+    pixel_size: crate::types::Size,
+    physical_size: crate::types::Size,
     name: String,
 }
 
@@ -143,9 +143,8 @@ fn drm_output_spec(
         connector,
         crtc,
         mode,
-        width: width as i32,
-        height: height as i32,
-        physical_size: (physical_size.0 as i32, physical_size.1 as i32),
+        pixel_size: crate::types::Size::new(width as i32, height as i32),
+        physical_size: crate::types::Size::new(physical_size.0 as i32, physical_size.1 as i32),
         name: format!(
             "{}-{}",
             connector_type_name(conn_info.interface()),
@@ -196,8 +195,8 @@ fn initialize_drm_output_surface(
     log::info!(
         "Output {}: {}x{}@{}Hz on CRTC {:?}",
         spec.name,
-        spec.width,
-        spec.height,
+        spec.pixel_size.w,
+        spec.pixel_size.h,
         spec.mode.vrefresh(),
         spec.crtc
     );
@@ -223,9 +222,10 @@ fn initialize_drm_output_surface(
         connector: spec.connector,
         surface,
         output: output.clone(),
-        x_offset,
-        width: spec.width,
-        height: spec.height,
+        rect: crate::types::Rect::from_position_and_size(
+            crate::types::Point::new(x_offset, 0),
+            spec.pixel_size,
+        ),
         vrr_support,
         configured_vrr_mode,
         vrr_enabled: false,
@@ -235,20 +235,20 @@ fn initialize_drm_output_surface(
 
 fn create_drm_wayland_output(state: &WaylandState, spec: &DrmOutputSpec, x_offset: i32) -> Output {
     let out_mode = OutputMode {
-        size: (spec.width, spec.height).into(),
+        size: (spec.pixel_size.w, spec.pixel_size.h).into(),
         refresh: (spec.mode.vrefresh() as i32) * 1000,
     };
     state.create_output_global(
         spec.name.clone(),
         PhysicalProperties {
-            size: spec.physical_size.into(),
+            size: (spec.physical_size.w, spec.physical_size.h).into(),
             subpixel: Subpixel::Unknown,
             make: "instantOS".into(),
             model: "instantWM".into(),
             serial_number: "Unknown".into(),
         },
         out_mode,
-        (x_offset, 0),
+        crate::types::Point::new(x_offset, 0),
     )
 }
 
@@ -416,10 +416,7 @@ fn build_drm_cursor_elements(
     pointer_location: Point<f64, smithay::utils::Logical>,
     start_time: Instant,
 ) -> Vec<DrmExtras> {
-    let local_pointer = Point::from((
-        pointer_location.x - entry.x_offset as f64,
-        pointer_location.y,
-    ));
+    let local_pointer = Point::from((pointer_location.x - entry.rect.x as f64, pointer_location.y));
     let cursor_presentation = resolve_cursor_presentation(
         &state.cursor_image_status,
         state.cursor_icon_override,
@@ -497,16 +494,17 @@ fn build_unlocked_drm_render_elements(
     let scene = build_common_scene_elements_from_fixed(
         state,
         renderer,
-        entry.x_offset,
+        &entry.output,
         &fixed_scene.expect("fixed scene elements"),
     );
-    let space_render_elements = smithay::desktop::space::space_render_elements(
+    let mut space_render_elements = smithay::desktop::space::space_render_elements(
         renderer,
         [&state.space],
         &entry.output,
         1.0,
     )
     .expect("space render elements");
+    remove_duplicate_overlay_elements(&scene, &mut space_render_elements);
     let num_upper = count_upper_layer_render_elements(renderer, &entry.output);
     let counts = get_render_element_counts(&scene, space_render_elements.len(), num_upper);
 
@@ -650,7 +648,7 @@ impl DrmCaptureTarget {
             .output
             .current_mode()
             .map(|mode| mode.size)
-            .unwrap_or_else(|| (entry.width, entry.height).into());
+            .unwrap_or_else(|| (entry.rect.w, entry.rect.h).into());
         let size = transform.transform_size(mode_size);
         let buffer_size = (size.w, size.h).into();
 
@@ -836,7 +834,11 @@ fn collect_presentation_feedback(
         return output_feedback;
     }
 
-    for window in state.space.elements_for_output(&entry.output) {
+    for window in state
+        .space
+        .elements()
+        .filter(|window| window_overlaps_output(state, window, &entry.output))
+    {
         window.take_presentation_feedback(
             &mut output_feedback,
             surface_primary_scanout_output,

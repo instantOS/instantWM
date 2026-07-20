@@ -1,13 +1,13 @@
 #![allow(clippy::too_many_arguments)]
-//! The [`Drw`] drawing context.
+//! The [`DrawContext`] drawing context.
 //!
-//! `Drw` owns an X11 display connection, a pixmap, a GC, and a fontset.
+//! `DrawContext` owns an X11 display connection, a pixmap, a GC, and a fontset.
 //! All bar rendering goes through this type.
 //!
 //! # Lifecycle
 //!
 //! ```text
-//! Drw::new()          – open display, create pixmap + GC
+//! DrawContext::new()          – open display, create pixmap + GC
 //!   └─ fontset_create – load fonts into the fontset vector
 //!   └─ set_scheme     – choose the active color scheme
 //!   └─ text / rect / circ / arrow  – render into the pixmap
@@ -39,20 +39,20 @@ use super::ffi::{
 };
 use super::font::Fnt;
 
-use crate::types::ColorScheme;
+use crate::types::{ColorScheme, Rect as WmRect};
 
 /// How many "no-match" codepoints we remember to avoid repeatedly trying to
 /// find a fallback font for the same unrenderable character.
 const NOMATCHES_LEN: usize = 64;
 
-// ── Drw ──────────────────────────────────────────────────────────────────────
+// ── DrawContext ──────────────────────────────────────────────────────────────────────
 
 /// The main drawing context.
 ///
 /// Wraps an Xlib display, a server-side pixmap used as an off-screen buffer,
 /// a graphics context (GC), the active color scheme, and the fontset.
-// Note: the name `Drw` matches dwm's drawing context naming.
-pub struct Drw {
+// Note: the name `DrawContext` matches dwm's drawing context naming.
+pub struct DrawContext {
     /// Pixmap / drawable width.
     pub w: u32,
     /// Pixmap / drawable height.
@@ -62,7 +62,7 @@ pub struct Drw {
     pub(super) screen: i32,
     pub(super) root: Window,
 
-    /// Off-screen pixmap — all drawing happens here, then [`Drw::map`] blits
+    /// Off-screen pixmap — all drawing happens here, then [`DrawContext::map`] blits
     /// it to the real window.
     pub(super) drawable: Drawable,
     pub(super) gc: XlibGc,
@@ -83,15 +83,15 @@ pub struct Drw {
     /// Cached pixel width of `"..."` for the current fontset.
     ellipsis_width: u32,
 
-    /// `true` only for the *original* `Drw` — clones do **not** own resources.
+    /// `true` only for the *original* `DrawContext` — clones do **not** own resources.
     owns_resources: bool,
 }
 
 // SAFETY: instantWM is single-threaded; no concurrent mutation.
-unsafe impl Send for Drw {}
-unsafe impl Sync for Drw {}
+unsafe impl Send for DrawContext {}
+unsafe impl Sync for DrawContext {}
 
-impl Clone for Drw {
+impl Clone for DrawContext {
     /// Produces a shallow clone that shares raw pointers but does **not** free
     /// them on drop.  Useful for short-lived drawing in helper functions.
     fn clone(&self) -> Self {
@@ -115,7 +115,7 @@ impl Clone for Drw {
     }
 }
 
-impl Drop for Drw {
+impl Drop for DrawContext {
     fn drop(&mut self) {
         // Drop fonts while the X display is still valid. `Fnt::drop()`
         // calls `XftFontClose`, which requires a live display.
@@ -134,7 +134,7 @@ impl Drop for Drw {
 
 // ── Construction & display accessors ─────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Open an X display and initialise the drawing context.
     ///
     /// `display_name` overrides `$DISPLAY` when `Some`.
@@ -261,7 +261,7 @@ impl Drw {
 
 // ── Pixmap / target management ───────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Resize the off-screen pixmap to `w × h` pixels.
     pub fn resize(&mut self, w: u32, h: u32) {
         if self.display.is_null() {
@@ -284,23 +284,27 @@ impl Drw {
         self.h = h;
     }
 
-    /// Blit the off-screen pixmap to `win` at position `(x, y)` with size `w × h`.
-    pub fn map(&self, win: Window, x: i16, y: i16, w: u16, h: u16) {
-        if self.display.is_null() || win == 0 || self.drawable == 0 || w == 0 || h == 0 {
+    /// Blit a region of the off-screen pixmap to `window`.
+    pub fn map(&self, window: Window, bounds: WmRect) {
+        if self.display.is_null()
+            || window == 0
+            || self.drawable == 0
+            || !bounds.size().is_positive()
+        {
             return;
         }
         unsafe {
             XCopyArea(
                 self.display,
                 self.drawable,
-                win,
+                window,
                 self.gc,
-                x as c_int,
-                y as c_int,
-                w as u32,
-                h as u32,
-                x as c_int,
-                y as c_int,
+                bounds.x,
+                bounds.y,
+                bounds.w as u32,
+                bounds.h as u32,
+                bounds.x,
+                bounds.y,
             );
             XSync(self.display, 0);
         }
@@ -309,7 +313,7 @@ impl Drw {
 
 // ── Color scheme ─────────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Replace the active color scheme.
     pub fn set_scheme(&mut self, scheme: ColorScheme) {
         self.scheme = Some(scheme);
@@ -355,7 +359,7 @@ impl Drw {
         Ok(Color { color })
     }
 
-    pub fn clr_create_rgba(&self, rgba: [f32; 4]) -> Color {
+    pub fn clr_create_rgba(&self, rgba: crate::bar::color::Rgba) -> Color {
         let clamp = |v: f32| -> u16 {
             let v = v.clamp(0.0, 1.0);
             (v * 65535.0).round() as u16
@@ -363,10 +367,10 @@ impl Drw {
         let mut color = XftColor {
             pixel: 0,
             color: XRenderColor {
-                red: clamp(rgba[0]),
-                green: clamp(rgba[1]),
-                blue: clamp(rgba[2]),
-                alpha: clamp(rgba[3]),
+                red: clamp(rgba.r()),
+                green: clamp(rgba.g()),
+                blue: clamp(rgba.b()),
+                alpha: clamp(rgba.a()),
             },
         };
 
@@ -410,7 +414,7 @@ impl Drw {
 
 // ── Cursor management ─────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Create a cursor from one of the standard X11 cursor shapes.
     pub fn cur_create(&self, shape: u32) -> Cursor {
         if self.display.is_null() {
@@ -431,7 +435,7 @@ impl Drw {
 
 // ── Font / fontset management ─────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Replace the active fontset.
     pub fn set_fontset(&mut self, font: Option<Vec<Fnt>>) {
         self.fonts = font;
@@ -520,7 +524,7 @@ impl Drw {
 
 // ── Text metrics ─────────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Return the pixel width of `text` rendered with the current fontset.
     ///
     /// Returns `0` if no fontset is loaded or `text` is empty.
@@ -529,7 +533,7 @@ impl Drw {
             return 0;
         }
         // `text(x=0, y=0, w=0, h=0, …)` measures without rendering.
-        self.text(0, 0, 0, 0, 0, text, false, 0) as u32
+        self.text(WmRect::default(), 0, text, false, 0) as u32
     }
 
     /// Like [`fontset_getwidth`] but clamped to at most `n` pixels.
@@ -585,13 +589,13 @@ impl Drw {
 
 // ── Primitive drawing ─────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     /// Fill or stroke a rectangle.
     ///
     /// * `filled` — fill if `true`, stroke outline if `false`.
     /// * `invert` — swap fg/bg colors.
-    pub fn rect(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
-        if self.display.is_null() {
+    pub fn rect(&self, bounds: WmRect, filled: bool, invert: bool) {
+        if self.display.is_null() || !bounds.size().is_positive() {
             return;
         }
         let Some(ref scheme) = self.scheme else {
@@ -603,11 +607,14 @@ impl Drw {
         } else {
             scheme.fg.pixel()
         };
+        let WmRect { x, y, w, h } = bounds;
+        let width = w as u32;
+        let height = h as u32;
 
         unsafe {
             XSetForeground(self.display, self.gc, pixel as c_ulong);
             if filled {
-                XFillRectangle(self.display, self.drawable, self.gc, x, y, w, h);
+                XFillRectangle(self.display, self.drawable, self.gc, x, y, width, height);
             } else {
                 XDrawRectangle(
                     self.display,
@@ -615,8 +622,8 @@ impl Drw {
                     self.gc,
                     x,
                     y,
-                    w.saturating_sub(1),
-                    h.saturating_sub(1),
+                    width.saturating_sub(1),
+                    height.saturating_sub(1),
                 );
             }
         }
@@ -626,8 +633,8 @@ impl Drw {
     ///
     /// * `filled` — fill if `true`, stroke if `false`.
     /// * `invert` — swap fg/bg colors.
-    pub fn circ(&self, x: i32, y: i32, w: u32, h: u32, filled: bool, invert: bool) {
-        if self.display.is_null() {
+    pub fn circ(&self, bounds: WmRect, filled: bool, invert: bool) {
+        if self.display.is_null() || !bounds.size().is_positive() {
             return;
         }
         let Some(ref scheme) = self.scheme else {
@@ -639,11 +646,14 @@ impl Drw {
         } else {
             scheme.fg.pixel()
         };
+        let WmRect { x, y, w, h } = bounds;
+        let width = w as u32;
+        let height = h as u32;
 
         let (aw, ah) = if filled {
-            (w, h)
+            (width, height)
         } else {
-            (w.saturating_sub(1), h.saturating_sub(1))
+            (width.saturating_sub(1), height.saturating_sub(1))
         };
 
         unsafe {
@@ -681,20 +691,28 @@ impl Drw {
     /// * `direction` — `true` = left-to-right, `false` = right-to-left.
     /// * `slash`     — if `true` the trailing edge is a vertical slash rather
     ///   than a horizontal midpoint.
-    pub fn arrow(&self, x: i16, y: i16, w: u16, h: u16, direction: bool, slash: bool) {
-        if self.display.is_null() {
+    pub fn arrow(&self, bounds: WmRect, direction: bool, slash: bool) {
+        if self.display.is_null() || !bounds.size().is_positive() {
             return;
         }
         let Some(ref scheme) = self.scheme else {
             return;
         };
 
-        let origin_x = if direction { x } else { x + w as i16 };
-        let delta_x = if direction { w as i16 } else { -(w as i16) };
+        let (Ok(x), Ok(y), Ok(width), Ok(height)) = (
+            i16::try_from(bounds.x),
+            i16::try_from(bounds.y),
+            i16::try_from(bounds.w),
+            i16::try_from(bounds.h),
+        ) else {
+            return;
+        };
+        let origin_x = if direction { x } else { x + width };
+        let delta_x = if direction { width } else { -width };
         let tip_y = if slash {
-            if direction { 0 } else { h as i16 }
+            if direction { 0 } else { height }
         } else {
-            h as i16 / 2
+            height / 2
         };
 
         unsafe {
@@ -707,7 +725,7 @@ impl Drw {
                 },
                 Point {
                     x: origin_x,
-                    y: y + h as i16,
+                    y: y + height,
                 },
             ];
             XFillPolygon(
@@ -725,14 +743,11 @@ impl Drw {
 
 // ── Text rendering ────────────────────────────────────────────────────────────
 
-impl Drw {
+impl DrawContext {
     #[allow(clippy::too_many_arguments)]
     fn prepare_text_surface(
         &mut self,
-        mut x: i32,
-        y: i32,
-        mut w: u32,
-        h: u32,
+        bounds: WmRect,
         lpad: u32,
         invert: bool,
         detail_height: i32,
@@ -740,6 +755,10 @@ impl Drw {
         bg_pixel: u32,
         detail_pixel: u32,
     ) -> (bool, i32, u32, *mut XftDraw) {
+        let mut x = bounds.x;
+        let y = bounds.y;
+        let mut w = bounds.w.max(0) as u32;
+        let h = bounds.h.max(0) as u32;
         if self.display.is_null() {
             return (false, x, w, ptr::null_mut());
         }
@@ -795,9 +814,9 @@ impl Drw {
         (true, x, w, d)
     }
 
-    /// Render `text` into the rectangle `(x, y, w, h)`.
+    /// Render `text` into `bounds`.
     ///
-    /// When `x == 0 && y == 0 && w == 0 && h == 0` the function only measures
+    /// When `bounds` is empty at the origin, the function only measures
     /// the text and returns the advance width without drawing anything.
     ///
     /// # Parameters
@@ -816,10 +835,7 @@ impl Drw {
     /// * In **measure** mode (`w == 0`): total advance width of the text.
     pub fn text(
         &mut self,
-        x: i32,
-        y: i32,
-        w: u32,
-        h: u32,
+        bounds: WmRect,
         lpad: u32,
         text: &str,
         invert: bool,
@@ -829,8 +845,10 @@ impl Drw {
             return 0;
         }
 
-        let mut x = x;
-        let mut w = w;
+        let mut x = bounds.x;
+        let y = bounds.y;
+        let mut w = bounds.w.max(0) as u32;
+        let h = bounds.h.max(0) as u32;
 
         // ── Measure-only mode ────────────────────────────────────────────────
         // Measuring text width requires only the fontset, not a color scheme.
@@ -859,10 +877,7 @@ impl Drw {
         let mut d: *mut XftDraw = ptr::null_mut();
         if render {
             let (r, nx, nw, nd) = self.prepare_text_surface(
-                x,
-                y,
-                w,
-                h,
+                WmRect::new(x, y, w as i32, h as i32),
                 lpad,
                 invert,
                 detail_height,
@@ -878,10 +893,7 @@ impl Drw {
 
         let (x, w) = self.text_run_loop(
             d,
-            x,
-            y,
-            w,
-            h,
+            WmRect::new(x, y, w as i32, h as i32),
             text,
             invert,
             detail_height,
@@ -902,10 +914,7 @@ impl Drw {
     fn text_run_loop(
         &mut self,
         d: *mut XftDraw,
-        mut x: i32,
-        y: i32,
-        mut w: u32,
-        h: u32,
+        bounds: WmRect,
         text: &str,
         invert: bool,
         detail_height: i32,
@@ -913,6 +922,10 @@ impl Drw {
         fg_color: Option<&XftColor>,
         bg_color: Option<&XftColor>,
     ) -> (i32, u32) {
+        let mut x = bounds.x;
+        let y = bounds.y;
+        let mut w = bounds.w.max(0) as u32;
+        let h = bounds.h.max(0) as u32;
         if self.display.is_null() {
             return (x, w);
         }
@@ -1047,7 +1060,11 @@ impl Drw {
 
             // Draw the ellipsis if we overflowed (but guard against recursion).
             if render && overflow && text != "..." {
-                self.draw_ellipsis(ellipsis_x, y, ellipsis_w, h, invert, detail_height);
+                self.draw_ellipsis(
+                    WmRect::new(ellipsis_x, y, ellipsis_w as i32, h as i32),
+                    invert,
+                    detail_height,
+                );
             }
 
             if text_pos >= text_bytes.len() || overflow {
@@ -1079,10 +1096,10 @@ impl Drw {
     /// Draw `"..."` at `(x, y)` within `w × h`, used when text overflows.
     ///
     /// Passes `detail_height = -1` to suppress recursive ellipsis measurement.
-    fn draw_ellipsis(&mut self, x: i32, y: i32, w: u32, h: u32, invert: bool, detail_height: i32) {
+    fn draw_ellipsis(&mut self, bounds: WmRect, invert: bool, detail_height: i32) {
         // detail_height == -1 prevents a further recursive call back here.
         let dh = if detail_height >= 0 { detail_height } else { 0 };
-        self.text(x, y, w, h, 0, "...", invert, -1.max(dh - 1));
+        self.text(bounds, 0, "...", invert, -1.max(dh - 1));
     }
 
     /// Return `true` if `codepoint` is in the no-match cache.

@@ -33,9 +33,7 @@ pub struct OutputSurfaceEntry {
     pub surface:
         DrmOutput<DrmAllocator, DrmFramebufferExporter, super::DrmFrameMetadata, DrmDeviceFd>,
     pub output: Output,
-    pub x_offset: i32,
-    pub width: i32,
-    pub height: i32,
+    pub rect: crate::types::Rect,
     pub vrr_support: BackendVrrSupport,
     pub configured_vrr_mode: VrrMode,
     pub vrr_enabled: bool,
