@@ -359,7 +359,7 @@ impl DrawContext {
         Ok(Color { color })
     }
 
-    pub fn clr_create_rgba(&self, rgba: [f32; 4]) -> Color {
+    pub fn clr_create_rgba(&self, rgba: crate::bar::color::Rgba) -> Color {
         let clamp = |v: f32| -> u16 {
             let v = v.clamp(0.0, 1.0);
             (v * 65535.0).round() as u16
@@ -367,10 +367,10 @@ impl DrawContext {
         let mut color = XftColor {
             pixel: 0,
             color: XRenderColor {
-                red: clamp(rgba[0]),
-                green: clamp(rgba[1]),
-                blue: clamp(rgba[2]),
-                alpha: clamp(rgba[3]),
+                red: clamp(rgba.r()),
+                green: clamp(rgba.g()),
+                blue: clamp(rgba.b()),
+                alpha: clamp(rgba.a()),
             },
         };
 

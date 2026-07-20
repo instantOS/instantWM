@@ -536,12 +536,12 @@ fn draw_i3_block(
     let mut foreground = block
         .color
         .as_deref()
-        .and_then(crate::bar::color::rgba_from_hex)
+        .and_then(|s| s.parse().ok())
         .unwrap_or(base_scheme.foreground);
     let mut background = block
         .background
         .as_deref()
-        .and_then(crate::bar::color::rgba_from_hex)
+        .and_then(|s| s.parse().ok())
         .unwrap_or(base_scheme.background);
     let mut detail = base_scheme.detail;
 
@@ -561,7 +561,7 @@ fn draw_i3_block(
     let border_color = block
         .border
         .as_deref()
-        .and_then(crate::bar::color::rgba_from_hex)
+        .and_then(|s| s.parse().ok())
         .unwrap_or(block_scheme.detail);
     painter.set_scheme(BarScheme {
         foreground: border_color,
@@ -660,10 +660,11 @@ mod tests {
     }
 
     fn scheme() -> BarScheme {
+        use crate::bar::color::Rgba;
         BarScheme {
-            foreground: [1.0; 4],
-            background: [0.0, 0.0, 0.0, 1.0],
-            detail: [0.5; 4],
+            foreground: Rgba::new(1.0, 1.0, 1.0, 1.0),
+            background: Rgba::rgb(0.0, 0.0, 0.0),
+            detail: Rgba::new(0.5, 0.5, 0.5, 0.5),
         }
     }
 

@@ -1,3 +1,4 @@
+use crate::bar::color::Rgba;
 use crate::types::{Point, Rect, Size};
 
 pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, color: [u8; 4]) {
@@ -25,11 +26,8 @@ pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, col
     }
 }
 
-pub(super) fn fill_rect(pixels: &mut [u8], canvas_size: Size, rect: Rect, color: [f32; 4]) {
-    let r = (color[0] * 255.0) as u8;
-    let g = (color[1] * 255.0) as u8;
-    let b = (color[2] * 255.0) as u8;
-    let a = (color[3] * 255.0) as u8;
+pub(super) fn fill_rect(pixels: &mut [u8], canvas_size: Size, rect: Rect, color: Rgba) {
+    let [r, g, b, a] = color.to_rgba8();
     let x_end = (rect.x + rect.w).min(canvas_size.w);
     let y_end = (rect.y + rect.h).min(canvas_size.h);
     let x_start = rect.x.max(0);

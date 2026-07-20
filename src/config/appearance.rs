@@ -3,13 +3,12 @@
 //! Backends consume the resolved, typed colour tables. Theme selection and
 //! user overrides are handled while loading TOML, before runtime state exists.
 
+use crate::bar::color::Rgba;
 use crate::config::config_toml::{ColorConfig, ColorTheme};
 use crate::types::{
     BorderColorConfig, CloseButtonColorConfigs, CloseButtonColorSet, ColorSchemeRgba,
     StatusColorConfig, TagColorConfigs, TagColorSet, WindowColorConfigs, WindowColorSet,
 };
-
-type Rgba = [f32; 4];
 
 #[derive(Clone, Copy)]
 struct Accent {
@@ -72,22 +71,21 @@ const fn hex(hex: &str) -> Rgba {
     }
     let b = hex.as_bytes();
     let i = if b[0] == b'#' { 1 } else { 0 };
-    [
+    Rgba::rgb(
         (digit(b[i]) * 16 + digit(b[i + 1])) as f32 / 255.0,
         (digit(b[i + 2]) * 16 + digit(b[i + 3])) as f32 / 255.0,
         (digit(b[i + 4]) * 16 + digit(b[i + 5])) as f32 / 255.0,
-        1.0,
-    ]
+    )
 }
 
 const fn mix(color: Rgba, other: Rgba, other_weight: f32) -> Rgba {
-    let color_weight = 1.0 - other_weight;
-    [
-        color[0] * color_weight + other[0] * other_weight,
-        color[1] * color_weight + other[1] * other_weight,
-        color[2] * color_weight + other[2] * other_weight,
-        color[3] * color_weight + other[3] * other_weight,
-    ]
+    let cw = 1.0 - other_weight;
+    Rgba::new(
+        color.r() * cw + other.r() * other_weight,
+        color.g() * cw + other.g() * other_weight,
+        color.b() * cw + other.b() * other_weight,
+        color.a() * cw + other.a() * other_weight,
+    )
 }
 
 fn palette(theme: ColorTheme) -> ThemePalette {
@@ -338,8 +336,8 @@ mod tests {
     fn instantos_primary_detail_is_a_muted_shadow() {
         let primary = palette(ColorTheme::Instantos).primary;
         assert_ne!(primary.fill, primary.detail);
-        assert!(primary.detail[0] < primary.fill[0]);
-        assert!(primary.detail[1] < primary.fill[1]);
-        assert!(primary.detail[2] < primary.fill[2]);
+        assert!(primary.detail.r() < primary.fill.r());
+        assert!(primary.detail.g() < primary.fill.g());
+        assert!(primary.detail.b() < primary.fill.b());
     }
 }

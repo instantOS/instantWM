@@ -14,24 +14,9 @@ struct SchemeKey {
 impl SchemeKey {
     fn from_scheme(s: &BarScheme) -> Self {
         Self {
-            foreground: [
-                s.foreground[0].to_bits(),
-                s.foreground[1].to_bits(),
-                s.foreground[2].to_bits(),
-                s.foreground[3].to_bits(),
-            ],
-            background: [
-                s.background[0].to_bits(),
-                s.background[1].to_bits(),
-                s.background[2].to_bits(),
-                s.background[3].to_bits(),
-            ],
-            detail: [
-                s.detail[0].to_bits(),
-                s.detail[1].to_bits(),
-                s.detail[2].to_bits(),
-                s.detail[3].to_bits(),
-            ],
+            foreground: s.foreground.into_array().map(f32::to_bits),
+            background: s.background.into_array().map(f32::to_bits),
+            detail: s.detail.into_array().map(f32::to_bits),
         }
     }
 }

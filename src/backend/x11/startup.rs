@@ -285,19 +285,17 @@ fn init_schemes(
     bordercolors: &crate::types::BorderColorConfig,
     statusbarcolors: &crate::types::StatusColorConfig,
 ) {
-    use crate::bar::color::rgba_to_hex;
-
     let normal = drw
-        .clr_create(&rgba_to_hex(bordercolors.normal))
+        .clr_create(&bordercolors.normal.to_string())
         .expect("Failed to create normal border color");
     let tile = drw
-        .clr_create(&rgba_to_hex(bordercolors.tile_focus))
+        .clr_create(&bordercolors.tile_focus.to_string())
         .expect("Failed to create tile focus border color");
     let float = drw
-        .clr_create(&rgba_to_hex(bordercolors.float_focus))
+        .clr_create(&bordercolors.float_focus.to_string())
         .expect("Failed to create float focus border color");
     let snap = drw
-        .clr_create(&rgba_to_hex(bordercolors.snap))
+        .clr_create(&bordercolors.snap.to_string())
         .expect("Failed to create snap border color");
 
     let borderscheme = BorderScheme {
@@ -309,9 +307,9 @@ fn init_schemes(
 
     let status = drw
         .scm_create(&[
-            &rgba_to_hex(statusbarcolors.fg),
-            &rgba_to_hex(statusbarcolors.bg),
-            &rgba_to_hex(statusbarcolors.detail),
+            &statusbarcolors.fg.to_string(),
+            &statusbarcolors.bg.to_string(),
+            &statusbarcolors.detail.to_string(),
         ])
         .expect("Failed to create status bar colors");
 

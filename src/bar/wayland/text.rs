@@ -147,19 +147,15 @@ impl TextRasterizer {
         canvas_size: Size,
         bounds: Rect,
         text: &str,
-        color: [f32; 4],
+        color: crate::bar::color::Rgba,
     ) {
         if text.is_empty() || !bounds.size().is_positive() {
             return;
         }
 
         let font_size = self.effective_font_size(text, bounds.h);
-        let cosmic_color = CosmicColor::rgba(
-            (color[0] * 255.0) as u8,
-            (color[1] * 255.0) as u8,
-            (color[2] * 255.0) as u8,
-            (color[3] * 255.0) as u8,
-        );
+        let [r, g, b, a] = color.to_rgba8();
+        let cosmic_color = CosmicColor::rgba(r, g, b, a);
         let key = TextRenderKey {
             text: text.to_string(),
             width: bounds.w,

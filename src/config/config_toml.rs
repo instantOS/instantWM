@@ -521,7 +521,6 @@ fn merge_toml_values(base: &mut toml::Value, over: toml::Value) {
 #[cfg(test)]
 mod theme_tests {
     use super::*;
-    use crate::bar::color::rgba_from_hex;
 
     fn parse(source: &str) -> ThemeConfig {
         let value = toml::from_str(source).unwrap();
@@ -535,11 +534,8 @@ mod theme_tests {
     fn built_in_theme_is_used_as_color_base() {
         let config = parse(r#"theme = "nord""#);
         assert_eq!(config.theme, ColorTheme::Nord);
-        assert_eq!(config.colors.status.bg, rgba_from_hex("#2e3440").unwrap());
-        assert_eq!(
-            config.colors.border.tile_focus,
-            rgba_from_hex("#81a1c1").unwrap()
-        );
+        assert_eq!(config.colors.status.bg, "#2e3440".parse().unwrap());
+        assert_eq!(config.colors.border.tile_focus, "#81a1c1".parse().unwrap());
     }
 
     #[test]
@@ -551,12 +547,9 @@ mod theme_tests {
             bg = "#123456"
             "##,
         );
-        assert_eq!(config.colors.status.bg, rgba_from_hex("#123456").unwrap());
-        assert_eq!(config.colors.status.fg, rgba_from_hex("#4c4f69").unwrap());
-        assert_eq!(
-            config.colors.border.tile_focus,
-            rgba_from_hex("#1e66f5").unwrap()
-        );
+        assert_eq!(config.colors.status.bg, "#123456".parse().unwrap());
+        assert_eq!(config.colors.status.fg, "#4c4f69".parse().unwrap());
+        assert_eq!(config.colors.border.tile_focus, "#1e66f5".parse().unwrap());
     }
 
     #[test]

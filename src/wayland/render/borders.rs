@@ -44,7 +44,11 @@ impl WindowBorderInfo {
     }
 
     /// Returns the border color based on focus state.
-    fn border_color(&self, is_focused: bool, colors: &BorderColorConfig) -> [f32; 4] {
+    fn border_color(
+        &self,
+        is_focused: bool,
+        colors: &BorderColorConfig,
+    ) -> crate::bar::color::Rgba {
         if is_focused {
             if self.is_floating || !self.is_tiling_layout {
                 colors.float_focus
@@ -299,11 +303,11 @@ pub fn render_border_elements(
     elements
 }
 
-fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: [f32; 4]) {
+fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::bar::color::Rgba) {
     if !rect.size().is_positive() {
         return;
     }
-    let buffer = SolidColorBuffer::new((rect.w, rect.h), color);
+    let buffer = SolidColorBuffer::new((rect.w, rect.h), color.into_array());
     out.push(SolidColorRenderElement::from_buffer(
         &buffer,
         (rect.x, rect.y),

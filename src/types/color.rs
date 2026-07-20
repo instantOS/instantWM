@@ -3,7 +3,7 @@
 //! Types for managing colors in the window manager UI.
 
 use crate::backend::x11::draw::Color;
-use crate::bar::color::{Rgba, deserialize_hex_color, serialize_hex_color};
+use crate::bar::color::Rgba;
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
@@ -179,22 +179,10 @@ impl StatusScheme {
 #[serde(default)]
 pub struct ColorSchemeRgba {
     /// Foreground color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub fg: Rgba,
     /// Background color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub bg: Rgba,
     /// Detail color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub detail: Rgba,
 }
 
@@ -285,11 +273,11 @@ impl ColorSchemeRgba {
 
     /// Construct an empty (all black) scheme.
     pub fn empty() -> Self {
-        Self::new([0.0; 4], [0.0; 4], [0.0; 4])
+        Self::new(Rgba::ZERO, Rgba::ZERO, Rgba::ZERO)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.fg == [0.0; 4] && self.bg == [0.0; 4] && self.detail == [0.0; 4]
+        self.fg == Rgba::ZERO && self.bg == Rgba::ZERO && self.detail == Rgba::ZERO
     }
 }
 
@@ -361,28 +349,12 @@ impl CloseButtonColorConfigs {
 #[serde(default)]
 pub struct BorderColorConfig {
     /// Normal border color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub normal: Rgba,
     /// Focused tiled window color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub tile_focus: Rgba,
     /// Focused floating window color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub float_focus: Rgba,
     /// Snap indicator color.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub snap: Rgba,
 }
 
@@ -411,22 +383,10 @@ impl BorderColorConfig {
 #[serde(default)]
 pub struct StatusColorConfig {
     /// Status bar foreground.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub fg: Rgba,
     /// Status bar background.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub bg: Rgba,
     /// Status bar detail/accent.
-    #[serde(
-        deserialize_with = "deserialize_hex_color",
-        serialize_with = "serialize_hex_color"
-    )]
     pub detail: Rgba,
 }
 

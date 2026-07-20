@@ -93,9 +93,10 @@ fn hash_presentation(hasher: &mut DefaultHasher, presentation: &scene::BarPresen
 fn hash_scheme(hasher: &mut DefaultHasher, scheme: &BarScheme) {
     for value in scheme
         .foreground
-        .iter()
-        .chain(scheme.background.iter())
-        .chain(scheme.detail.iter())
+        .into_array()
+        .into_iter()
+        .chain(scheme.background.into_array())
+        .chain(scheme.detail.into_array())
     {
         value.to_bits().hash(hasher);
     }

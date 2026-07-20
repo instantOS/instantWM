@@ -164,12 +164,10 @@ pub fn update_bars(
     x11_runtime: &X11RuntimeConfig,
     systray: Option<&XEmbedTray>,
 ) {
-    use crate::bar::color::rgba_to_u32;
-
     let (bar_configs, xlibdisplay, root, status_bg) = {
         let bar_height = globals.config.derived.bar_height;
         let showsystray = globals.config.systray.show;
-        let status_bg = rgba_to_u32(globals.config.colors.status_bar.bg);
+        let status_bg: u32 = globals.config.colors.status_bar.bg.into();
         let xlibdisplay = x11_runtime.xlibdisplay.0;
         let root = x11_runtime.root;
         let selected_monitor_id = globals.selected_monitor_id();
