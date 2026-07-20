@@ -1,10 +1,10 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=.git/HEAD");
-    println!("cargo:rerun-if-changed=.git/index");
+    emit_git_rerun_paths();
 
     println!("cargo:rustc-link-lib=Xinerama");
     println!("cargo:rustc-link-lib=X11");
@@ -37,7 +37,11 @@ fn compute_ipc_source_hash() -> String {
     let mut hasher = DefaultHasher::new();
 
     // Hash all files that affect IPC protocol (must match on both client and server)
-    let ipc_files = ["src/ipc_types.rs", "src/ipc.rs", "src/bin/instantwmctl.rs"];
+    let ipc_files = [
+        "src/ipc_types.rs",
+        "src/ipc/mod.rs",
+        "src/bin/instantwmctl.rs",
+    ];
 
     for file in &ipc_files {
         println!("cargo:rerun-if-changed={}", file);
@@ -46,30 +50,49 @@ fn compute_ipc_source_hash() -> String {
         }
     }
 
-    // Include build timestamp to ensure different builds have different versions
-    // even if source hasn't changed (catches build environment differences)
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    timestamp.hash(&mut hasher);
-
     format!("{:016x}", hasher.finish())
 }
 
-fn git_head_commit() -> Option<String> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .ok()?;
+/// Re-run when the checked-out commit changes without rebuilding for staged files.
+fn emit_git_rerun_paths() {
+    let Some(git_dir) = git_output(&["rev-parse", "--git-dir"]).map(PathBuf::from) else {
+        return;
+    };
+
+    let head = git_dir.join("HEAD");
+    if head.exists() {
+        println!("cargo:rerun-if-changed={}", head.display());
+    }
+
+    let head_log = git_dir.join("logs/HEAD");
+    if head_log.exists() {
+        println!("cargo:rerun-if-changed={}", head_log.display());
+    }
+
+    if let Some(head_ref) = git_output(&["symbolic-ref", "-q", "HEAD"]) {
+        let ref_path = git_dir.join(head_ref);
+        if ref_path.exists() {
+            println!("cargo:rerun-if-changed={}", ref_path.display());
+        } else {
+            let packed_refs = git_dir.join("packed-refs");
+            if packed_refs.exists() {
+                println!("cargo:rerun-if-changed={}", packed_refs.display());
+            }
+        }
+    }
+}
+
+fn git_output(args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git").args(args).output().ok()?;
     if !output.status.success() {
         return None;
     }
-    let commit = String::from_utf8(output.stdout).ok()?;
-    let commit = commit.trim();
-    if commit.is_empty() {
-        None
-    } else {
-        Some(commit.to_string())
-    }
+
+    let value = String::from_utf8(output.stdout).ok()?;
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn git_head_commit() -> Option<String> {
+    git_output(&["rev-parse", "HEAD"])
 }
