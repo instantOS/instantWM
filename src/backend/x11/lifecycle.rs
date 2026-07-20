@@ -333,7 +333,7 @@ fn configure_client_border(
     client.border_width = border_width;
 
     let x11_window: Window = window.into();
-    let pixel = x11_runtime.borderscheme.normal.bg.pixel();
+    let pixel = x11_runtime.border_scheme.normal.bg.pixel();
     let _ = x11.conn.change_window_attributes(
         x11_window,
         &ChangeWindowAttributesAux::new().border_pixel(Some(pixel)),

@@ -107,7 +107,7 @@ pub fn refresh_border_color(
     win: WindowId,
     focused: bool,
 ) {
-    let scheme = &x11_runtime.borderscheme;
+    let scheme = &x11_runtime.border_scheme;
     let Some(c) = globals.model.client(win) else {
         return;
     };

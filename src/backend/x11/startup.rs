@@ -315,6 +315,6 @@ fn init_schemes(
         ])
         .expect("Failed to create status bar colors");
 
-    x11_runtime.borderscheme = borderscheme;
-    x11_runtime.statusscheme = StatusScheme::new(status.fg, status.bg, status.detail);
+    x11_runtime.border_scheme = borderscheme;
+    x11_runtime.status_scheme = StatusScheme::new(status.fg, status.bg, status.detail);
 }

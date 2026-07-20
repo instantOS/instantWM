@@ -607,7 +607,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let selmon_id = ctx.core.model().selected_monitor_id();
     let systray_win_opt = ctx.xembed_tray.as_ref().map(|s| s.win);
-    let statusescheme_bg_pixel = ctx.x11_runtime.statusscheme.bg.color.pixel as u32;
+    let statusescheme_bg_pixel = ctx.x11_runtime.status_scheme.bg.color.pixel as u32;
 
     let Some(systray_win) = systray_win_opt else {
         return;

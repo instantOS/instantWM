@@ -39,9 +39,9 @@ pub struct X11RuntimeConfig {
     pub xlibdisplay: XlibDisplay,
     pub draw: Option<DrawContext>,
     /// X11 color schemes for borders (different states: normal, tile focus, float focus, snap).
-    pub borderscheme: BorderScheme,
+    pub border_scheme: BorderScheme,
     /// X11 color scheme for status bar.
-    pub statusscheme: StatusScheme,
+    pub status_scheme: StatusScheme,
     /// X11 cursors for different cursor states.
     pub cursors: [Option<Cursor>; 10],
     /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
@@ -64,8 +64,8 @@ impl Default for X11RuntimeConfig {
             wm_check_win: 0,
             xlibdisplay: XlibDisplay(std::ptr::null_mut()),
             draw: None,
-            borderscheme: BorderScheme::default(),
-            statusscheme: StatusScheme::default(),
+            border_scheme: BorderScheme::default(),
+            status_scheme: StatusScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor: None,
             window_animations: crate::animation::WindowAnimations::new(),

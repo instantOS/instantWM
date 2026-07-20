@@ -268,7 +268,7 @@ pub fn update_systray(
         let net_system_tray = x11_runtime.netatom.system_tray;
         let net_system_tray_horz = x11_runtime.netatom.system_tray_orientation_horz;
         let manager_atom = x11_runtime.xatom.manager;
-        let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
+        let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
 
         let systray_win = Some(x11.conn).and_then(|conn| {
             let systray_win = conn.generate_id().ok()?;
@@ -357,7 +357,7 @@ pub fn update_systray(
     };
 
     let bar_height = core.config().derived.bar_height;
-    let bg_pixel = x11_runtime.statusscheme.bg.color.pixel as u32;
+    let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
 
     let icon_layout: Vec<(WindowId, Size)> = icons
         .iter()
