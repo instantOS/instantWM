@@ -6,19 +6,25 @@ use crate::types::{HorizontalDirection, MonitorId, TagMask, WindowId};
 fn finalize_view_change(ctx: &mut WmCtx, selmon_id: MonitorId) {
     ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);
+    // Tag selection is itself bar-visible state. Do not rely on focus or
+    // client layout work to invalidate the bar: an empty tag has neither.
+    ctx.request_bar_update();
     ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
 }
 
-fn adjacent_scroll_mask(tagset: TagMask, dir: HorizontalDirection) -> Option<TagMask> {
+pub(crate) fn adjacent_scroll_mask(
+    tagset: TagMask,
+    dir: HorizontalDirection,
+    tag_count: usize,
+) -> Option<TagMask> {
     if !tagset.is_single() {
         return None;
     }
 
     let current_tag = tagset.first_tag()?;
-    let max_tag = crate::constants::animation::MAX_TAG_NUMBER as usize;
     let next_tag = match dir {
         HorizontalDirection::Left if current_tag > 1 => current_tag - 1,
-        HorizontalDirection::Right if current_tag < max_tag => current_tag + 1,
+        HorizontalDirection::Right if current_tag < tag_count => current_tag + 1,
         _ => return None,
     };
 
@@ -220,8 +226,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
     }
-    crate::focus::focus(ctx, None);
-    ctx.core_mut().queue_layout_for_monitor_urgent(selmon_id);
+    finalize_view_change(ctx, selmon_id);
 }
 
 pub fn follow_view(ctx: &mut WmCtx) {
@@ -257,11 +262,11 @@ mod tests {
     fn adjacent_scroll_mask_moves_left_and_right() {
         let tagset = TagMask::single(3).unwrap_or(TagMask::EMPTY);
         assert_eq!(
-            adjacent_scroll_mask(tagset, HorizontalDirection::Left),
+            adjacent_scroll_mask(tagset, HorizontalDirection::Left, 9),
             TagMask::single(2)
         );
         assert_eq!(
-            adjacent_scroll_mask(tagset, HorizontalDirection::Right),
+            adjacent_scroll_mask(tagset, HorizontalDirection::Right, 9),
             TagMask::single(4)
         );
     }
@@ -270,11 +275,15 @@ mod tests {
     fn adjacent_scroll_mask_requires_single_tag_and_bounds() {
         let multi = TagMask::single(2).unwrap_or(TagMask::EMPTY)
             | TagMask::single(3).unwrap_or(TagMask::EMPTY);
-        assert_eq!(adjacent_scroll_mask(multi, HorizontalDirection::Left), None);
+        assert_eq!(
+            adjacent_scroll_mask(multi, HorizontalDirection::Left, 9),
+            None
+        );
         assert_eq!(
             adjacent_scroll_mask(
                 TagMask::single(1).unwrap_or(TagMask::EMPTY),
-                HorizontalDirection::Left
+                HorizontalDirection::Left,
+                9,
             ),
             None
         );
@@ -283,10 +292,13 @@ mod tests {
 
 #[cfg(test)]
 mod view_selection_tests {
-    use super::commit_view_selection;
+    use super::{commit_view_selection, view_tags};
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
     use crate::core_state::CoreState;
     use crate::monitor::MonitorManager;
     use crate::types::*;
+    use crate::wm::Wm;
 
     fn make_globals_with_one_monitor(selected: TagMask) -> CoreState {
         let mut g = CoreState::default();
@@ -312,6 +324,28 @@ mod view_selection_tests {
 
         let mon = g.monitor(MonitorId::from_raw(0)).unwrap();
         assert_eq!(mon.selected_tags(), tag2);
+    }
+
+    #[test]
+    fn changing_an_empty_view_explicitly_invalidates_the_bar() {
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 9;
+        let mut monitor = Monitor::default();
+        monitor.set_selected_tags(tag1);
+        let monitor_id = wm.core.model.monitors.push(monitor);
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.bar.mark_drawn();
+        assert!(!wm.bar.needs_redraw());
+
+        view_tags(&mut wm.ctx(), tag2);
+
+        assert!(wm.bar.needs_redraw());
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag2
+        );
     }
 
     #[test]
@@ -365,28 +399,15 @@ mod view_selection_tests {
     }
 }
 
-pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let tagset = ctx.core().model().expect_selected_monitor().selected_tags();
-
-    let Some(new_mask) = adjacent_scroll_mask(tagset, dir) else {
-        return;
-    };
-
-    let g = ctx.core_mut().state_mut();
-    let Some(selmon_id) = commit_view_selection(&mut g.model.monitors, new_mask) else {
-        return;
-    };
-
-    finalize_view_change(ctx, selmon_id);
-}
-
 /// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
     let tagset = ctx.core().model().expect_selected_monitor().selected_tags();
 
-    let new_mask = adjacent_scroll_mask(tagset, dir)?;
+    let new_mask = adjacent_scroll_mask(tagset, dir, ctx.core().model().tags.count())?;
     let g = ctx.core_mut().state_mut();
     let selmon_id = commit_view_selection(&mut g.model.monitors, new_mask)?;
+    ctx.update_ewmh_desktop_props();
     crate::focus::focus(ctx, None);
+    ctx.request_bar_update();
     Some(selmon_id)
 }

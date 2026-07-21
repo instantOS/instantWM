@@ -34,7 +34,10 @@ The default Super bindings use the tree whenever the focused window is tiled:
   right boundary (including an empty or single-window tag), the horizontal
   commands switch to the adjacent tag instead.
 - `Super+Shift+Arrow` swaps with a visual neighbour without changing split
-  topology. `Super+Shift+H/J/K/L` is retained as an alternative.
+  topology. At the left or right edge, the window moves to the adjacent tag
+  and the view follows it, so repeated presses keep moving the same window.
+  Floating windows use the same fallback when they reach the monitor edge.
+  `Super+Shift+H/J/K/L` is retained as an alternative.
 - `Super+Ctrl+Arrow` resizes an axis run while preserving peer ratios.
   `Super+Alt+H/J/K/L` is retained as an alternative.
 - `Super++` and `Super+-` grow or shrink along the most local split.

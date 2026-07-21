@@ -91,12 +91,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
             let on_bar = crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root);
 
-            if wm_ctx
-                .core()
-                .model()
-                .client_view(drag.win())
-                .is_some_and(|view| view.monitor.is_tiling_layout() && view.client.mode.is_tiling())
-            {
+            if crate::layouts::manager::uses_manual_tree_pointer_interaction(&wm_ctx, drag.win()) {
                 // Tiled motion selects a semantic drop target; the tree is
                 // mutated only on release by the shared completion path.
                 let edge =

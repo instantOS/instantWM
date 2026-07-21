@@ -5,9 +5,13 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
-pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
+/// Move a floating client by one keyboard step.
+///
+/// Returns whether its geometry changed. A `false` horizontal result lets the
+/// key dispatcher continue the same movement onto an adjacent tag.
+pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
     let Some(view) = ctx.core().model().client_view(win) else {
-        return;
+        return false;
     };
     let is_floating = view.client.mode.is_floating();
     let geo = view.client.geo;
@@ -15,7 +19,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let mon_rect = view.monitor.monitor_rect;
 
     if view.monitor.is_tiling_layout() && !is_floating {
-        return;
+        return false;
     }
 
     const MOVE_STEP: i32 = 40;
@@ -32,17 +36,23 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 
+    let target = Rect {
+        x: new_x,
+        y: new_y,
+        w: geo.w,
+        h: geo.h,
+    };
+    if target == geo {
+        return false;
+    }
+
     ctx.move_resize(
         win,
-        Rect {
-            x: new_x,
-            y: new_y,
-            w: geo.w,
-            h: geo.h,
-        },
+        target,
         MoveResizeOptions::animate_to(FLOAT_MOVE_FRAME_COUNT),
     );
     ctx.warp_cursor_to_client(win);
+    true
 }
 
 pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {

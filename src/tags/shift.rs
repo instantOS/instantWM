@@ -7,12 +7,26 @@ use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
 use crate::types::{Direction, HorizontalDirection, Rect, TagMask, WindowId};
 
-pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
+pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> bool {
     let Some(win) = ctx.core().model().selected_win() else {
-        return;
+        return false;
+    };
+    let current_tags = ctx.core().model().expect_selected_monitor().selected_tags();
+    let Some(target_tags) =
+        crate::tags::view::adjacent_scroll_mask(current_tags, dir, ctx.core().model().tags.count())
+    else {
+        return false;
     };
     shift_tag(ctx, dir.into(), 1);
-    crate::tags::view::scroll_view(ctx, dir);
+    let moved = ctx
+        .core()
+        .model()
+        .client(win)
+        .is_some_and(|client| client.tags.intersects(target_tags));
+    if !moved {
+        return false;
+    }
+    crate::tags::view::view_tags(ctx, target_tags);
 
     // `shift_tag` and `scroll_view` deliberately use generic focus fallback,
     // but this combined command promises to keep interacting with the window
@@ -24,7 +38,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
         .model()
         .client_is_visible_on_selected_monitor(win)
     {
-        return;
+        return false;
     }
 
     crate::focus::focus(ctx, Some(win));
@@ -34,6 +48,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
     if ctx.core().behavior().focus_follows_mouse {
         ctx.warp_cursor_to_client_center(win);
     }
+    true
 }
 
 pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {

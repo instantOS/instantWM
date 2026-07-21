@@ -122,6 +122,22 @@ fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
     }
 }
 
+fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    let side = match direction {
+        HorizontalDirection::Left => Side::Left,
+        HorizontalDirection::Right => Side::Right,
+    };
+    if swap_tree_neighbor(ctx, side) {
+        return;
+    }
+    let Some(win) = ctx.core().model().selected_win() else {
+        return;
+    };
+    if !moveresize(ctx, win, direction.into()) {
+        let _ = move_client_follow_view(ctx, direction);
+    }
+}
+
 define_named_actions!(
     Zoom => { name: "zoom", arg_example: None, doc: "zoom client into master area", run: |ctx, _args| { zoom(ctx); } },
     None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
@@ -157,8 +173,8 @@ define_named_actions!(
     KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "grow a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
     KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "swap a tiled window upward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Up.into()); } } },
     KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "swap a tiled window downward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Down.into()); } } },
-    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "swap a tiled window left or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Left) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, HorizontalDirection::Left.into()); } } },
-    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "swap a tiled window right or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, HorizontalDirection::Right.into()); } } },
+    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move a window left, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Left); } },
+    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move a window right, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Right); } },
     TreeGrow => { name: "tree_grow", arg_example: None, doc: "grow the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, true); } },
     TreeShrink => { name: "tree_shrink", arg_example: None, doc: "shrink the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, false); } },
     PushUp => { name: "push_up", arg_example: None, doc: "swap a tiled window upward (legacy action)", run: |ctx, _args| { swap_tree_neighbor(ctx, Side::Top); } },
@@ -254,9 +270,15 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{NamedAction, parse_named_action};
+    use super::{NamedAction, move_horizontal, parse_named_action};
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
     use crate::layouts::LayoutCommand;
-    use crate::types::StackDirection;
+    use crate::layouts::tree::Preset;
+    use crate::types::{
+        Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask, WindowId,
+    };
+    use crate::wm::Wm;
 
     #[test]
     fn layout_command_from_name_accepts_only_canonical_names() {
@@ -326,5 +348,59 @@ mod tests {
             Some(NamedAction::BeginTreePlacement)
         );
         assert_eq!(parse_named_action("begin_keyboard_move"), None);
+    }
+
+    #[test]
+    fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 3;
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let left = WindowId(1);
+        let right = WindowId(2);
+        for win in [left, right] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag1,
+                mode: ClientMode::Tiling,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tag1);
+        monitor.clients = vec![left, right];
+        monitor.selected = Some(left);
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &[left, right], 1);
+
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+
+        // The first press has a visual neighbour, so it only swaps the tree.
+        assert_eq!(wm.core.model.client(left).unwrap().tags, tag1);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag1
+        );
+
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+
+        // The same client is now at the right edge, so the next press carries
+        // it into the adjacent tag and follows it there.
+        assert_eq!(wm.core.model.client(left).unwrap().tags, tag2);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag2
+        );
+        assert_eq!(wm.core.model.selected_win(), Some(left));
     }
 }

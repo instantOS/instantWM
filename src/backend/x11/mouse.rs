@@ -52,17 +52,14 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         return;
     };
 
-    // Use override from title drag if available (preserves pre-drag floating dimensions),
-    // otherwise get the current client geometry.
-    let Some(grab_start_rect) =
-        float_restore_geo.or_else(|| ctx.core.model().client(win).map(|client| client.geo))
-    else {
+    let Some(grab_start_rect) = ctx.core.model().client(win).map(|client| client.geo) else {
         return;
     };
 
     let mut state = MoveState {
         start_point: start,
         grab_start_rect,
+        drop_restore_rect: float_restore_geo.unwrap_or(grab_start_rect),
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
@@ -99,7 +96,7 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
     crate::mouse::drag::finish_drag_move(
         &mut wm_ctx,
         win,
-        state.grab_start_rect,
+        state.drop_restore_rect,
         state.edge_snap_indicator,
         None,
         release_modifiers,

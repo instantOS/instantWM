@@ -1,6 +1,6 @@
 use super::{
     available_tree_resize_direction, clients_with_planned_borders, compute_monitor_z_order,
-    pointer_tree_resize_allowed, shifted_master_count,
+    manual_tree_pointer_interaction_allowed, pointer_tree_resize_allowed, shifted_master_count,
 };
 use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
@@ -86,6 +86,22 @@ fn pointer_resize_keeps_requested_corner_when_both_axes_exist() {
 
 #[test]
 fn pointer_tree_resize_preserves_the_requested_floating_fallbacks() {
+    assert!(!manual_tree_pointer_interaction_allowed(
+        PresentationMode::Tiled,
+        true,
+        1,
+    ));
+    assert!(!manual_tree_pointer_interaction_allowed(
+        PresentationMode::Maximized,
+        true,
+        3,
+    ));
+    assert!(manual_tree_pointer_interaction_allowed(
+        PresentationMode::Tiled,
+        true,
+        3,
+    ));
+
     assert!(!pointer_tree_resize_allowed(
         PresentationMode::Tiled,
         true,

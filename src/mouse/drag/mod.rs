@@ -37,7 +37,7 @@ pub use move_drop::{
 };
 pub use tag::{drag_tag, drag_tag_begin, drag_tag_finish, drag_tag_motion};
 pub use title::{
-    title_drag_begin, title_drag_finish, title_drag_motion, window_title_mouse_handler,
+    thresholded_client_drag, title_drag_finish, title_drag_motion, window_title_mouse_handler,
 };
 
 use crate::contexts::WmCtx;

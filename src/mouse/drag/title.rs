@@ -10,7 +10,7 @@ use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
 use crate::mouse::drag::move_drop::promote_to_floating;
-use crate::mouse::resize::resize_mouse_directional;
+use crate::mouse::resize::{resize_mouse_directional, resize_mouse_from_cursor};
 use crate::mouse::warp;
 use crate::types::geometry::Point;
 use crate::types::*;
@@ -68,23 +68,46 @@ pub fn title_drag_begin(
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
 fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
-    let (win, btn, start_point) = {
+    let (win, btn, start_point, suppress_click_action) = {
         let Some(drag) = ctx.core().drag_state().armed_interaction() else {
             return false;
         };
-        (drag.win(), drag.button(), drag.start_point())
+        (
+            drag.win(),
+            drag.button(),
+            drag.start_point(),
+            drag.suppress_click_action(),
+        )
     };
     let is_right_click = btn == MouseButton::Right;
 
     if is_right_click {
+        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
+            // Bar-title resizing retains its established bottom-right handle;
+            // Super+right-drag uses the pointer's quadrant instead.
+            if !suppress_click_action {
+                warp_to_resize_direction(ctx, win, ResizeDirection::BottomRight);
+            }
+            // Tree resize owns an initial tree snapshot, so replace the armed
+            // click with the authoritative resize interaction after the drag
+            // threshold has been crossed.
+            let _ = ctx.core_mut().drag_state_mut().finish_armed();
+            resize_mouse_from_cursor(ctx, btn);
+            return true;
+        }
+
         // Right-click: promote to floating, set up resize mode, warp cursor.
         let Some((current_geo, _)) = promote_to_floating(ctx, win, None) else {
             return false;
         };
 
-        let hit_x = start_point.x - current_geo.x;
-        let hit_y = start_point.y - current_geo.y;
-        let dir = ResizeDirection::from_hit(current_geo.size(), Point::new(hit_x, hit_y));
+        let dir = if suppress_click_action {
+            let hit_x = start_point.x - current_geo.x;
+            let hit_y = start_point.y - current_geo.y;
+            ResizeDirection::from_hit(current_geo.size(), Point::new(hit_x, hit_y))
+        } else {
+            ResizeDirection::BottomRight
+        };
 
         let bw = match ctx.core().model().client(win) {
             Some(c) => c.border_width,
@@ -116,12 +139,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
     // A tiled left-drag is a manual-tree placement gesture. Floating windows
     // continue to move directly. Keeping the tiled source in its original slot
     // also makes cancellation lossless.
-    let is_tiled = ctx
-        .core()
-        .model()
-        .client_view(win)
-        .is_some_and(|view| view.monitor.is_tiling_layout() && view.client.mode.is_tiling());
-    let (current_geo, anchor_rebased) = if is_tiled {
+    let uses_tree = crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win);
+    let (current_geo, anchor_rebased) = if uses_tree {
         let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
             return false;
         };
@@ -133,7 +152,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         result
     };
 
-    let start = if is_tiled {
+    let start = if uses_tree {
         start_point
     } else if anchor_rebased {
         root
@@ -203,17 +222,48 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     };
 
     if is_right_click {
+        if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
+            if !armed.suppress_click_action() {
+                warp_to_resize_direction(ctx, win, ResizeDirection::BottomRight);
+            }
+            resize_mouse_from_cursor(ctx, btn);
+            return true;
+        }
+
+        // The initial title/client drag already crossed the threshold. Promote
+        // now rather than making the user cross a second resize threshold.
+        let direction = if armed.suppress_click_action() {
+            let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
+                return false;
+            };
+            ResizeDirection::from_hit(
+                geo.size(),
+                Point::new(armed.start_point().x - geo.x, armed.start_point().y - geo.y),
+            )
+        } else {
+            ResizeDirection::BottomRight
+        };
+        let Some((current_geo, _)) = promote_to_floating(ctx, win, None) else {
+            return false;
+        };
         if let Some(c) = ctx.core().model().client(win) {
-            let offset = ResizeDirection::BottomRight.warp_offset(c.geo.size(), c.border_width);
-            ctx.pointer_backend()
-                .warp_pointer((c.geo.x + offset.x) as f64, (c.geo.y + offset.y) as f64);
+            let offset = direction.warp_offset(current_geo.size(), c.border_width);
+            ctx.pointer_backend().warp_pointer(
+                (current_geo.x + offset.x) as f64,
+                (current_geo.y + offset.y) as f64,
+            );
         }
         if let WmCtx::X11(x11) = ctx {
-            resize_mouse_directional(x11, Some(ResizeDirection::BottomRight), btn);
+            resize_mouse_directional(x11, Some(direction), btn);
         }
     } else {
-        // Pass saved floating dimensions to preserve them when dropping on the bar
         let float_restore_geo = armed.drop_restore_geo();
+        if !crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win)
+            && promote_to_floating(ctx, win, Some(root)).is_none()
+        {
+            return false;
+        }
+        // Pass saved floating dimensions to preserve them when dropping on the bar
         if let WmCtx::X11(x11) = ctx {
             let mut wmctx = WmCtx::X11(x11.reborrow());
             warp::warp_into(&mut wmctx, win);
@@ -221,6 +271,20 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         }
     }
     true
+}
+
+fn warp_to_resize_direction(ctx: &mut WmCtx, win: WindowId, direction: ResizeDirection) {
+    let Some((geo, border_width)) = ctx
+        .core()
+        .model()
+        .client(win)
+        .map(|client| (client.geo, client.border_width))
+    else {
+        return;
+    };
+    let offset = direction.warp_offset(geo.size(), border_width);
+    ctx.pointer_backend()
+        .warp_pointer((geo.x + offset.x) as f64, (geo.y + offset.y) as f64);
 }
 
 /// Finish a title drag interaction (button release without exceeding the
@@ -275,7 +339,20 @@ pub fn window_title_mouse_handler(
     btn: MouseButton,
     click_root: Point,
 ) {
-    if !title_drag_begin(ctx, win, btn, click_root, false) {
+    thresholded_client_drag(ctx, win, btn, click_root, false);
+}
+
+/// Start a client move/resize that remains a click until the pointer crosses
+/// [`DRAG_THRESHOLD`]. Used by both Super+client drags and bar-title drags so
+/// X11 and Wayland have identical activation semantics.
+pub fn thresholded_client_drag(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    btn: MouseButton,
+    click_root: Point,
+    suppress_click_action: bool,
+) {
+    if !title_drag_begin(ctx, win, btn, click_root, suppress_click_action) {
         return;
     }
 

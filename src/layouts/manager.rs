@@ -614,6 +614,13 @@ pub(crate) fn pointer_tree_resize_start(
         .monitor
         .collect_tiled(&ctx.core().model().clients)
         .len();
+    if !manual_tree_pointer_interaction_allowed(
+        view.monitor.current_layout(),
+        view.client.mode.is_tiling(),
+        tiled_count,
+    ) {
+        return None;
+    }
     let tree = &view.monitor.per_tag()?.layout_tree;
     let left = tree.can_resize_side(window, crate::layouts::tree::Side::Left);
     let right = tree.can_resize_side(window, crate::layouts::tree::Side::Right);
@@ -654,10 +661,32 @@ fn pointer_tree_resize_allowed(
     horizontal: bool,
     vertical: bool,
 ) -> bool {
-    presentation == PresentationMode::Tiled
-        && client_is_tiled
-        && tiled_count > 1
+    manual_tree_pointer_interaction_allowed(presentation, client_is_tiled, tiled_count)
         && (horizontal || vertical)
+}
+
+fn manual_tree_pointer_interaction_allowed(
+    presentation: PresentationMode,
+    client_is_tiled: bool,
+    tiled_count: usize,
+) -> bool {
+    presentation == PresentationMode::Tiled && client_is_tiled && tiled_count > 1
+}
+
+/// Whether pointer movement/resizing should edit the persistent layout tree.
+///
+/// A lone tiled client has no meaningful tree relationship to manipulate, and
+/// maximized presentation deliberately hides those relationships. Both cases
+/// therefore use the ordinary floating drag behavior.
+pub(crate) fn uses_manual_tree_pointer_interaction(ctx: &WmCtx<'_>, window: WindowId) -> bool {
+    let Some(view) = ctx.core().model().client_view(window) else {
+        return false;
+    };
+    manual_tree_pointer_interaction_allowed(
+        view.monitor.current_layout(),
+        view.client.mode.is_tiling(),
+        view.monitor.tiled_client_count(&ctx.core().model().clients),
+    )
 }
 
 fn available_tree_resize_direction(
