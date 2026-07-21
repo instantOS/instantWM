@@ -291,12 +291,16 @@ pub(crate) fn move_resize(
             ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
         }
         MoveResizeMode::AnimateTo | MoveResizeMode::AnimateFrom(_) => {
-            crate::animation::cancel_animation(ctx, win);
-
             let from = match options.mode {
-                MoveResizeMode::AnimateTo => client_geometry.current_rect,
+                MoveResizeMode::AnimateTo => {
+                    crate::animation::take_current_animation_rect(ctx, win, Instant::now())
+                        .unwrap_or(client_geometry.current_rect)
+                }
                 MoveResizeMode::Immediate => unreachable!(),
-                MoveResizeMode::AnimateFrom(from) => from,
+                MoveResizeMode::AnimateFrom(from) => {
+                    crate::animation::cancel_animation(ctx, win);
+                    from
+                }
             };
             if !from.is_valid() {
                 return;

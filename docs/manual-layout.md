@@ -101,11 +101,19 @@ candidate exists; Tab remains available for strict candidate-list traversal.
 
 ## Overview
 
-Overview preserves each client's current size and arranges windows as a stable
-overlapping card hand. Card origins and backend z-order advance together, which
-guarantees every non-topmost window an exposed pointer hit strip. The order is
-captured on entry, grouped by first tag and then stable monitor order, so focus
-changes do not reshuffle the hand. Portrait monitors use a vertical hand.
+Overview preserves each client's current size and arranges windows as a stable,
+two-dimensional field of overlapping cards. Rows are slightly staggered and
+the space around the active card expands on both axes; cards receive gradually
+less space with increasing grid distance. Moving the pointer over a card
+animates the emphasis without stealing keyboard focus. Directional focus keys
+navigate the same grid and move the emphasis with keyboard focus.
+
+Card origins and backend z-order advance together, which keeps an exposed
+pointer target for every card even though clients are not resized into
+thumbnails. The order is captured on entry, grouped by first tag and then stable
+monitor order, so focus changes do not reshuffle the underlying card order.
+Animations are retargeted from their current visual position when pointer or
+keyboard input arrives quickly.
 
 True-fullscreen clients participate as ordinary cards while overview is active.
 All original geometries are snapshotted once in the overview session—including

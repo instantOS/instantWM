@@ -595,6 +595,11 @@ fn update_hover_resize_state(
     hovered_win: Option<crate::types::WindowId>,
     no_active_drag: bool,
 ) -> bool {
+    if wm.core.model.is_overview_active() {
+        let mut ctx = wm.ctx();
+        clear_hover_offer(&mut ctx);
+        return false;
+    }
     if !no_active_drag {
         return false;
     }
@@ -641,6 +646,11 @@ fn update_pointer_focus(
     suppress_hover_focus: bool,
     root: RootPoint,
 ) {
+    if wm.core.model.is_overview_active() {
+        let mut ctx = wm.ctx();
+        crate::focus::hover_focus_target(&mut ctx, hovered_win, false, Some(root));
+        return;
+    }
     if let Some(lock_win) = active_drag_window {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {

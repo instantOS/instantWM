@@ -197,6 +197,26 @@ pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
     }
 }
 
+/// Take an in-flight animation and return its rectangle at `now` without
+/// snapping to the obsolete target. This is the correct starting point when a
+/// live interaction retargets a moving window.
+pub(crate) fn take_current_animation_rect(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    now: Instant,
+) -> Option<Rect> {
+    match ctx {
+        WmCtx::X11(x11) => x11
+            .x11_runtime
+            .take_window_animation(win)
+            .map(|animation| animation.tick(now).rect),
+        WmCtx::Wayland(wl) => wl
+            .wayland
+            .with_state(|state| state.take_current_window_animation_rect(win, now))
+            .flatten(),
+    }
+}
+
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
     let old_selected_tags = ctx.core().model().expect_selected_monitor().selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {

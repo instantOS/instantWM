@@ -273,6 +273,20 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     if ctx.core.behavior().current_mode.tree_placement().is_some() {
         return;
     }
+    if ctx.core.model().is_overview_active() {
+        let hovered = crate::backend::x11::mouse::cursor_client_win(
+            ctx.core.g,
+            ctx.x11.conn,
+            ctx.x11_runtime.root,
+        );
+        crate::focus::hover_focus_target(
+            &mut WmCtx::X11(ctx.reborrow()),
+            hovered,
+            false,
+            Some(Point::new(e.root_x as i32, e.root_y as i32)),
+        );
+        return;
+    }
     let focusfollowsfloatmouse = ctx.core.behavior().focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);

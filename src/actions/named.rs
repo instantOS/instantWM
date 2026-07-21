@@ -73,6 +73,10 @@ macro_rules! define_named_actions {
 }
 
 fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    if ctx.core().model().is_overview_active() {
+        crate::overview::focus_direction(ctx, direction.into());
+        return;
+    }
     if ctx
         .core()
         .model()
@@ -99,6 +103,10 @@ fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
 }
 
 fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
+    if ctx.core().model().is_overview_active() {
+        crate::overview::focus_direction(ctx, direction.into());
+        return;
+    }
     if ctx
         .core()
         .model()

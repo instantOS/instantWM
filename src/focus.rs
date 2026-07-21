@@ -211,6 +211,7 @@ pub(crate) fn focus_generic(
 /// focused window must be visually on top.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     focus_impl(ctx, win, false);
+    crate::overview::follow_focus(ctx);
 }
 
 fn focus_impl(
@@ -299,6 +300,12 @@ pub fn hover_focus_target(
     entering_root: bool,
     pointer_pos: Option<Point>,
 ) {
+    // Overview hover is presentation state, not keyboard focus. Handling it
+    // here keeps both backends on one path and makes it work independently of
+    // the user's focus-follows-mouse preference.
+    if crate::overview::hover_window(ctx, hovered_win, pointer_pos) {
+        return;
+    }
     // Keyboard tree placement owns a virtual selection cursor. Physical
     // pointer motion must not steal focus from the source window while that
     // session is active.

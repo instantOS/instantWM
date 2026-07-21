@@ -3,7 +3,7 @@ use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
 use crate::core_state::ActiveWmMode;
 use crate::floating::change_snap;
-use crate::focus::{direction_focus, focus_stack};
+use crate::focus::focus_stack;
 
 use crate::types::*;
 use crate::types::{Direction, StackDirection, VerticalDirection};
@@ -162,7 +162,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx.core().model().is_overview_active();
 
     if is_overview {
-        direction_focus(ctx, VerticalDirection::Up.into());
+        crate::overview::focus_direction(ctx, VerticalDirection::Up.into());
         return;
     }
 
@@ -195,7 +195,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx.core().model().is_overview_active();
 
     if is_overview {
-        direction_focus(ctx, VerticalDirection::Down.into());
+        crate::overview::focus_direction(ctx, VerticalDirection::Down.into());
         return;
     }
 

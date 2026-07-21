@@ -267,6 +267,7 @@ fn overview_treats_true_fullscreen_as_an_ordinary_card() {
             tags,
             vec![win],
             HashMap::from([(win, original)]),
+            Some(win),
         )),
         ..Monitor::default()
     };

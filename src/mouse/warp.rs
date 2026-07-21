@@ -82,6 +82,7 @@ pub fn warp_to_resize_corner(
     let c = ctx.core().model().client(win)?;
     let offset = direction.warp_offset(c.geo.size(), c.border_width);
     let target = Point::new(c.geo.x + offset.x, c.geo.y + offset.y);
-    ctx.pointer_backend().warp_pointer(target.x as f64, target.y as f64);
+    ctx.pointer_backend()
+        .warp_pointer(target.x as f64, target.y as f64);
     Some(target)
 }

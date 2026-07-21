@@ -1,37 +1,111 @@
 use super::*;
 
 #[test]
-fn landscape_card_hand_preserves_sizes_and_exposes_every_card() {
+fn card_field_preserves_sizes_and_uses_both_axes() {
     let work = Rect::new(10, 20, 1200, 700);
     let sizes = vec![Size::new(900, 600); 12];
 
-    let rects = card_hand_rects(work, &sizes);
+    let rects = card_field_rects(work, &sizes, 5);
 
     assert_eq!(rects.len(), sizes.len());
     for (rect, size) in rects.iter().zip(&sizes) {
         assert_eq!(rect.size(), *size);
+        assert!(rect.x >= work.x);
         assert!(rect.y >= work.y);
     }
-    for pair in rects.windows(2) {
-        let exposed_width = (pair[1].x - pair[0].x).min(pair[0].w);
-        assert!(exposed_width > 0, "every covered card needs a hit strip");
+    assert!(
+        rects
+            .iter()
+            .map(|rect| rect.x)
+            .collect::<HashSet<_>>()
+            .len()
+            > 1
+    );
+    assert!(
+        rects
+            .iter()
+            .map(|rect| rect.y)
+            .collect::<HashSet<_>>()
+            .len()
+            > 1
+    );
+    for (index, card) in rects.iter().enumerate() {
+        assert!(
+            rects[index + 1..].iter().all(|later| {
+                card.x < later.x
+                    || card.y < later.y
+                    || card.x >= later.x + later.w
+                    || card.y >= later.y + later.h
+            }),
+            "a later card covered card {index}'s activation corner"
+        );
     }
-    let top = rects.last().unwrap();
-    assert!(top.x < work.x + work.w);
 }
 
 #[test]
-fn portrait_card_hand_cascades_vertically() {
-    let work = Rect::new(50, 100, 600, 1200);
-    let sizes = vec![Size::new(500, 850); 8];
+fn active_card_gets_the_largest_grid_territory() {
+    let work = Rect::new(0, 0, 1200, 800);
+    let sizes = vec![Size::new(800, 600); 12];
+    let grid = CardGrid::for_work_rect(work, sizes.len());
+    let active = 6;
+    let (active_row, active_column) = grid.position(active);
+    let columns = weighted_edges(work.x, work.w, grid.columns, active_column);
+    let rows = weighted_edges(work.y, work.h, grid.rows, active_row);
 
-    let rects = card_hand_rects(work, &sizes);
+    let active_width = columns[active_column + 1] - columns[active_column];
+    let active_height = rows[active_row + 1] - rows[active_row];
 
-    for pair in rects.windows(2) {
-        let exposed_height = (pair[1].y - pair[0].y).min(pair[0].h);
-        assert!(exposed_height > 0, "every covered card needs a hit strip");
-    }
-    assert!(rects.windows(2).all(|pair| pair[0].x == pair[1].x));
+    assert!(
+        columns
+            .windows(2)
+            .all(|edge| edge[1] - edge[0] <= active_width)
+    );
+    assert!(
+        rows.windows(2)
+            .all(|edge| edge[1] - edge[0] <= active_height)
+    );
+    let widths = columns
+        .windows(2)
+        .map(|edge| edge[1] - edge[0])
+        .collect::<Vec<_>>();
+    assert!(widths[active_column] > widths[active_column - 1]);
+    assert!(widths[active_column - 1] > widths[active_column - 2]);
+}
+
+#[test]
+fn keyboard_navigation_matches_the_visual_grid() {
+    let work = Rect::new(0, 0, 1200, 700);
+    let windows = (1..=8).map(WindowId).collect::<Vec<_>>();
+
+    assert_eq!(
+        grid_neighbor(&windows, Some(WindowId(2)), Direction::Down, work),
+        Some(WindowId(6))
+    );
+    assert_eq!(
+        grid_neighbor(&windows, Some(WindowId(8)), Direction::Up, work),
+        Some(WindowId(4))
+    );
+    assert_eq!(
+        grid_neighbor(&windows, Some(WindowId(1)), Direction::Left, work),
+        None
+    );
+}
+
+#[test]
+fn stationary_pointer_cannot_retarget_a_moving_card_field() {
+    let tags = TagMask::single(1).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let point = Point::new(400, 300);
+    let mut state = OverviewState::new(tags, vec![first, second], HashMap::new(), Some(first));
+
+    assert!(state.update_pointer_target(Some(second), Some(point)));
+    // A synthetic crossing caused by the animation uses the same root point.
+    assert!(!state.update_pointer_target(Some(first), Some(point)));
+    assert_eq!(state.active_window, Some(second));
+
+    assert!(state.update_pointer_target(Some(first), Some(Point::new(399, 300))));
+    assert_eq!(state.active_window, Some(first));
 }
 
 #[test]
@@ -81,7 +155,7 @@ fn a_window_mapped_during_overview_gets_one_restore_snapshot() {
     let mut monitor = Monitor {
         available_rect: Rect::new(0, 0, 1000, 700),
         clients: vec![win],
-        overview_state: Some(OverviewState::new(tags, Vec::new(), HashMap::new())),
+        overview_state: Some(OverviewState::new(tags, Vec::new(), HashMap::new(), None)),
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
