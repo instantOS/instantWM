@@ -140,7 +140,7 @@ pub fn execute_button_action(
             WmCtx::Wayland(_) => {
                 if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                     crate::focus::focus(ctx, Some(win));
-                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.root, false);
+                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.root, true);
                 }
             }
         },

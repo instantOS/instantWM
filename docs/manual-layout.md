@@ -127,11 +127,12 @@ drop command. Floating windows retain direct movement, and screen-edge/tag-bar
 drops retain their existing meanings.
 
 `Super+right-drag` on a tiled window resizes the tree seam nearest the grabbed
-edge. Space is transferred only between the two branches sharing that seam;
-the window's opposite edge and unrelated siblings stay fixed. The seam stops
-at either branch's minimum-size constraint. Floating windows retain ordinary
-free resizing, while a lone tiled window or maximized presentation still
-falls back to floating resize behavior.
+edge. Space is transferred between the source and all siblings on the grabbed
+edge's side, preserving those siblings' existing ratios. Siblings across the
+window's opposite edge stay fixed, so only the physical edge being dragged
+moves. The seam stops at the affected branches' minimum-size constraints.
+Floating windows retain ordinary free resizing, while a lone tiled window or
+maximized presentation still falls back to floating resize behavior.
 
 ## Configuration
 
