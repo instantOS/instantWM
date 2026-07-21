@@ -48,6 +48,11 @@ The default Super bindings use the tree whenever the focused window is tiled:
   This deliberately uses Super to enter the mode; the browser prototype could
   not reserve that modifier.
 
+Placement candidates are normalized by their resulting leaf order and visual
+geometry. Equivalent descriptions of one seam—such as “right of A” and “left
+of B”—therefore appear as one target, and pointer drops on either side resolve
+to the same canonical result.
+
 Keyboard placement is the built-in `placement` WM mode, not a separate input
 state. It is visible in the bar and `instantwmctl mode list`; changing modes by
 IPC or a binding cancels placement and removes its preview. IPC cannot enter

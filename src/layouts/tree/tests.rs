@@ -321,7 +321,7 @@ fn keyboard_and_pointer_targets_apply_the_same_semantic_candidate() {
     let target = original
         .placement_targets(WindowId(1), rect, 0.34)
         .into_iter()
-        .find(|target| target.target == WindowId(2) && target.side == Some(Side::Right))
+        .find(|target| target.side.is_some())
         .unwrap();
 
     let mut keyboard = original.clone();
@@ -329,6 +329,98 @@ fn keyboard_and_pointer_targets_apply_the_same_semantic_candidate() {
     assert!(keyboard.apply_placement_target(WindowId(1), target));
     assert!(pointer.place_at_point(WindowId(1), target.position, rect, 0.34));
     assert_eq!(keyboard.bounds(rect), pointer.bounds(rect));
+}
+
+#[test]
+fn adjacent_descriptions_of_the_same_seam_share_one_candidate() {
+    let mut tree = LayoutTree::default();
+    tree.root = equal_run(&windows(4), Axis::Vertical, &mut || tree.allocate());
+    let source = WindowId(4);
+    let rect = Rect::new(0, 0, 400, 100);
+    let raw = tree.raw_placement_targets(source, rect, 0.34);
+    let right_of_a = raw
+        .iter()
+        .copied()
+        .find(|target| target.target == WindowId(1) && target.side == Some(Side::Right))
+        .expect("right edge of A is an advertised raw target");
+    let left_of_b = raw
+        .iter()
+        .copied()
+        .find(|target| target.target == WindowId(2) && target.side == Some(Side::Left))
+        .expect("left edge of B is an advertised raw target");
+    let expected = tree.placement_outcome(source, right_of_a).unwrap();
+    assert!(
+        expected.approximately_eq(&tree.placement_outcome(source, left_of_b).unwrap()),
+        "both descriptions address the seam between A and B"
+    );
+
+    let equivalent_targets = tree
+        .placement_targets(source, rect, 0.34)
+        .into_iter()
+        .filter(|target| {
+            tree.placement_outcome(source, *target)
+                .is_some_and(|outcome| outcome.approximately_eq(&expected))
+        })
+        .count();
+    assert_eq!(equivalent_targets, 1);
+
+    let mut from_a = tree.clone();
+    let mut from_b = tree;
+    assert!(from_a.place_at_point(source, right_of_a.position, rect, 0.34));
+    assert!(from_b.place_at_point(source, left_of_b.position, rect, 0.34));
+    assert_eq!(from_a.bounds(rect), from_b.bounds(rect));
+}
+
+#[test]
+fn placement_outcomes_tolerate_small_geometry_differences() {
+    let leaves = vec![WindowId(1), WindowId(2)];
+    let first = PlacementOutcome {
+        leaves: leaves.clone(),
+        rects: vec![
+            (
+                WindowId(1),
+                FRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.5,
+                    h: 1.0,
+                },
+            ),
+            (
+                WindowId(2),
+                FRect {
+                    x: 0.5,
+                    y: 0.0,
+                    w: 0.5,
+                    h: 1.0,
+                },
+            ),
+        ],
+    };
+    let slightly_resized = PlacementOutcome {
+        leaves,
+        rects: vec![
+            (
+                WindowId(1),
+                FRect {
+                    x: 0.0,
+                    y: 0.0,
+                    w: 0.53,
+                    h: 1.0,
+                },
+            ),
+            (
+                WindowId(2),
+                FRect {
+                    x: 0.53,
+                    y: 0.0,
+                    w: 0.47,
+                    h: 1.0,
+                },
+            ),
+        ],
+    };
+    assert!(first.approximately_eq(&slightly_resized));
 }
 
 #[test]

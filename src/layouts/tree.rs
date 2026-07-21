@@ -248,6 +248,32 @@ struct EdgeCandidate {
     scope_depth: usize,
 }
 
+/// Maximum per-edge/extent difference in unit-tree coordinates for two
+/// placement results to represent the same user-visible destination.
+const PLACEMENT_EQUIVALENCE_TOLERANCE: f64 = 0.04;
+
+#[derive(Debug)]
+struct PlacementOutcome {
+    leaves: Vec<WindowId>,
+    rects: Vec<(WindowId, FRect)>,
+}
+
+impl PlacementOutcome {
+    fn approximately_eq(&self, other: &Self) -> bool {
+        self.leaves == other.leaves
+            && self.rects.len() == other.rects.len()
+            && self.rects.iter().zip(&other.rects).all(
+                |((left_window, left), (right_window, right))| {
+                    left_window == right_window
+                        && (left.x - right.x).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
+                        && (left.y - right.y).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
+                        && (left.w - right.w).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
+                        && (left.h - right.h).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
+                },
+            )
+    }
+}
+
 fn sane_weight(weight: f64) -> f64 {
     if weight.is_finite() && weight > 0.0 {
         weight
@@ -876,7 +902,44 @@ impl LayoutTree {
         distinct
     }
 
+    /// Enumerate distinct user-visible placement results. Raw hit regions can
+    /// describe one result in several ways (for example, either side of a
+    /// shared seam); only the first deterministic representative is exposed.
     pub fn placement_targets(
+        &self,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> Vec<PlacementTarget> {
+        self.normalized_placement_targets(source, layout_rect, edge_fraction)
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect()
+    }
+
+    fn normalized_placement_targets(
+        &self,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> Vec<(PlacementTarget, PlacementOutcome)> {
+        let mut distinct = Vec::<(PlacementTarget, PlacementOutcome)>::new();
+        for target in self.raw_placement_targets(source, layout_rect, edge_fraction) {
+            let Some(outcome) = self.placement_outcome(source, target) else {
+                continue;
+            };
+            if distinct
+                .iter()
+                .any(|(_, existing)| existing.approximately_eq(&outcome))
+            {
+                continue;
+            }
+            distinct.push((target, outcome));
+        }
+        distinct
+    }
+
+    fn raw_placement_targets(
         &self,
         source: WindowId,
         layout_rect: Rect,
@@ -927,6 +990,39 @@ impl LayoutTree {
             }
         }
         output
+    }
+
+    fn placement_outcome(
+        &self,
+        source: WindowId,
+        target: PlacementTarget,
+    ) -> Option<PlacementOutcome> {
+        let mut preview = self.clone();
+        if !preview.apply_placement_target(source, target) {
+            return None;
+        }
+        let mut rects = preview.float_bounds().into_iter().collect::<Vec<_>>();
+        rects.sort_by_key(|(window, _)| *window);
+        Some(PlacementOutcome {
+            leaves: preview.leaves(),
+            rects,
+        })
+    }
+
+    fn canonical_placement_target(
+        &self,
+        source: WindowId,
+        target: PlacementTarget,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> PlacementTarget {
+        let Some(outcome) = self.placement_outcome(source, target) else {
+            return target;
+        };
+        self.normalized_placement_targets(source, layout_rect, edge_fraction)
+            .into_iter()
+            .find(|(_, candidate_outcome)| candidate_outcome.approximately_eq(&outcome))
+            .map_or(target, |(candidate, _)| candidate)
     }
 
     pub fn apply_placement_target(&mut self, source: WindowId, target: PlacementTarget) -> bool {
@@ -1088,7 +1184,15 @@ impl LayoutTree {
                 }
                 let index = ((distance.max(0.0) * candidates.len() as f64).floor() as usize)
                     .min(candidates.len() - 1);
-                self.move_to_scope(source, target, side, candidates[index].scope.clone())
+                let target = PlacementTarget {
+                    target,
+                    side: Some(side),
+                    candidate_index: index,
+                    position: point,
+                };
+                let target =
+                    self.canonical_placement_target(source, target, layout_rect, edge_fraction);
+                self.apply_placement_target(source, target)
             }
             _ => self.swap_windows(source, target),
         }
