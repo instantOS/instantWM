@@ -281,6 +281,16 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
         &mut drag_geo,
     );
 
+    if has_tiling && !is_floating {
+        let preview = (!state.cursor_on_bar && state.edge_snap_indicator.is_none())
+            .then(|| crate::layouts::preview_tree_at_point(ctx, win, root))
+            .flatten();
+        ctx.update_layout_preview(preview);
+        return;
+    }
+
+    ctx.update_layout_preview(None);
+
     if !has_tiling || is_floating {
         if let Some(client) = ctx.core().model().client(win).cloned() {
             snap_to_monitor_edges(ctx, &client, &mut new_pos);
@@ -530,6 +540,9 @@ pub fn complete_move_drop(
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
 ) {
+    // Hide the speculative frame before applying the authoritative drop. This
+    // also covers release outside every valid tree target.
+    ctx.update_layout_preview(None);
     let pointer = pointer_override.or_else(|| ctx.pointer_backend().pointer_location());
     let edge =
         edge_hint.or_else(|| pointer.and_then(|root| check_edge_snap(ctx.core().model(), root)));

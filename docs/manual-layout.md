@@ -60,6 +60,10 @@ at the outside edge toward local scopes farther inward. Continuous grid seams
 and contiguous virtual child ranges are valid; a leaf crossing the seam
 invalidates it.
 
+While dragging, a thick hollow frame shows the source window's exact final
+outer rectangle for the target under the pointer. The frame disappears over
+the tag bar and screen-edge drop zones, whose existing actions take precedence.
+
 The gesture is implemented once in the backend-neutral layout layer. X11's
 synchronous drag and Wayland's asynchronous pointer interaction call the same
 drop command. Floating windows retain direct movement, and screen-edge/tag-bar

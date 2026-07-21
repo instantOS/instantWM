@@ -598,6 +598,39 @@ pub fn place_tree_at_point(
     changed
 }
 
+/// Compute the exact final outer rectangle for a tiled pointer drop without
+/// changing the tree. Returns `None` when the point is not a valid target.
+pub fn preview_tree_at_point(
+    ctx: &WmCtx<'_>,
+    window: WindowId,
+    point: crate::types::Point,
+) -> Option<Rect> {
+    let monitor = ctx.core().model().selected_monitor();
+    if !monitor.is_tiling_layout()
+        || !ctx
+            .core()
+            .model()
+            .client(window)
+            .is_some_and(|client| client.mode.is_tiling())
+    {
+        return None;
+    }
+    let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
+    let placement = LayoutPlacement::new(
+        &ctx.core().config().layout,
+        monitor,
+        LayoutKind::Tile,
+        tiled_count,
+    );
+    let slot = monitor.per_tag()?.layout_tree.preview_placement_at_point(
+        window,
+        point,
+        placement.work_rect(),
+        ctx.core().config().layout.pointer_edge_fraction,
+    )?;
+    tree_slot_outer_rect(ctx, window, placement, slot)
+}
+
 pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     if !ctx.core().model().selected_monitor().is_tiling_layout() {
         return false;
@@ -685,7 +718,6 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         tags,
         targets,
         selected,
-        preview_rect,
     });
     crate::focus::focus(ctx, Some(focus_target));
     ctx.pointer_backend()
@@ -712,11 +744,16 @@ fn tree_placement_preview_rect(
         target,
         placement.work_rect(),
     )?;
-    let border = ctx
-        .core()
-        .model()
-        .client(source)
-        .map_or(0, |client| client.border_width.max(0));
+    tree_slot_outer_rect(ctx, source, placement, slot)
+}
+
+fn tree_slot_outer_rect(
+    ctx: &WmCtx<'_>,
+    source: WindowId,
+    placement: LayoutPlacement,
+    slot: Rect,
+) -> Option<Rect> {
+    let border = ctx.core().model().client(source)?.border_width.max(0);
     let content = placement.client_rect(slot, border);
     Some(Rect::new(
         content.x,
@@ -736,11 +773,6 @@ fn refresh_keyboard_tree_preview(ctx: &mut WmCtx<'_>) {
     let preview = selected.and_then(|(source, target)| {
         target.and_then(|target| tree_placement_preview_rect(ctx, source, target))
     });
-    if let Some(preview_rect) = preview
-        && let Some(state) = ctx.core_mut().state_mut().tree_placement.as_mut()
-    {
-        state.preview_rect = preview_rect;
-    }
     ctx.update_layout_preview(preview);
 }
 

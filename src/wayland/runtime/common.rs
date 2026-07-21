@@ -674,6 +674,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
     };
     if cancelled_drag {
         crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Default);
+        ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
     let g = ctx.core_mut().state_mut();
@@ -692,6 +693,7 @@ fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelRea
         .is_some()
     {
         crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Default);
+        ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
 }

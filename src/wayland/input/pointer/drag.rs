@@ -114,8 +114,21 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             {
                 // Tiled motion selects a semantic drop target; the tree is
                 // mutated only on release by the shared completion path.
+                let edge = crate::mouse::drag::move_drop::check_edge_snap(ctx.core.model(), root);
+                let preview = (!on_bar && edge.is_none())
+                    .then(|| {
+                        crate::layouts::preview_tree_at_point(
+                            &crate::contexts::WmCtx::Wayland(ctx.reborrow()),
+                            drag.win(),
+                            root,
+                        )
+                    })
+                    .flatten();
+                crate::contexts::WmCtx::Wayland(ctx.reborrow()).update_layout_preview(preview);
                 return true;
             }
+
+            crate::contexts::WmCtx::Wayland(ctx.reborrow()).update_layout_preview(None);
 
             let mut new_pos = Point::new(
                 drag.win_start_geo().x + (root.x - drag.start_point().x),

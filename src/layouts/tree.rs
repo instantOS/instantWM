@@ -963,6 +963,24 @@ impl LayoutTree {
             .flatten()
     }
 
+    /// Return the source slot produced by dropping at `point`, without
+    /// mutating the authoritative tree. This deliberately calls
+    /// [`Self::place_at_point`] on a clone so pointer previews and releases
+    /// cannot drift into subtly different target-resolution rules.
+    pub fn preview_placement_at_point(
+        &self,
+        source: WindowId,
+        point: Point,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> Option<Rect> {
+        let mut preview = self.clone();
+        preview
+            .place_at_point(source, point, layout_rect, edge_fraction)
+            .then(|| preview.bounds(layout_rect).get(&source).copied())
+            .flatten()
+    }
+
     fn move_to_scope(
         &mut self,
         source: WindowId,
@@ -2100,6 +2118,32 @@ mod tests {
         let mut applied = tree.clone();
         assert!(applied.apply_placement_target(WindowId(1), target));
         assert_eq!(applied.bounds(rect)[&WindowId(1)], preview);
+    }
+
+    #[test]
+    fn pointer_placement_preview_matches_release_and_does_not_mutate() {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(Preset::Grid, &windows(6), None, 1, 0.55);
+        let rect = Rect::new(20, 30, 600, 400);
+        let before = tree.bounds(rect);
+        let points = tree
+            .placement_targets(WindowId(1), rect, 0.34)
+            .into_iter()
+            .filter(|target| target.target == WindowId(5))
+            .map(|target| target.position)
+            .collect::<Vec<_>>();
+        assert!(points.len() > 1, "exercise both centre and edge targets");
+
+        for point in points {
+            let preview = tree
+                .preview_placement_at_point(WindowId(1), point, rect, 0.34)
+                .expect("advertised placement point must be valid");
+            assert_eq!(tree.bounds(rect), before);
+
+            let mut applied = tree.clone();
+            assert!(applied.place_at_point(WindowId(1), point, rect, 0.34));
+            assert_eq!(applied.bounds(rect)[&WindowId(1)], preview);
+        }
     }
 
     #[test]

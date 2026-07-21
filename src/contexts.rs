@@ -432,6 +432,10 @@ impl<'a> WmCtx<'a> {
 
     /// Refresh the backend-native visualization of a pending tree placement.
     pub fn update_layout_preview(&mut self, rect: Option<Rect>) {
+        if self.core().state().layout_preview == rect {
+            return;
+        }
+        self.core_mut().state_mut().layout_preview = rect;
         match self {
             WmCtx::X11(ctx) => crate::backend::x11::keyboard::update_layout_preview(
                 &ctx.x11,

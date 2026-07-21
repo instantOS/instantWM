@@ -213,6 +213,9 @@ pub struct CoreState {
     pub keyboard_layout: KeyboardLayoutState,
     /// Active keyboard traversal of semantic manual-tree placement targets.
     pub tree_placement: Option<KeyboardTreePlacement>,
+    /// Backend-neutral outer rectangle of the currently previewed manual-tree
+    /// placement. Both keyboard and pointer placement project this state.
+    pub layout_preview: Option<Rect>,
     pub pending_launches: VecDeque<PendingLaunch>,
 }
 
@@ -226,8 +229,6 @@ pub struct KeyboardTreePlacement {
     pub tags: TagMask,
     pub targets: Vec<crate::layouts::tree::PlacementTarget>,
     pub selected: usize,
-    /// Exact final outer rectangle for the currently selected target.
-    pub preview_rect: Rect,
 }
 
 impl CoreState {

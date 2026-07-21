@@ -524,11 +524,7 @@ pub struct FixedSceneElements {
 /// Build the shared scene pieces that do not depend on the target output.
 pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
-    let layout_preview = wm
-        .core
-        .tree_placement
-        .as_ref()
-        .map(|placement| placement.preview_rect);
+    let layout_preview = wm.core.layout_preview;
     let borders_hash =
         crate::wayland::render::borders::get_borders_hash(&wm.core.model, state, layout_preview);
 
