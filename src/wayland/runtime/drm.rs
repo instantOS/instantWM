@@ -447,7 +447,7 @@ fn run_event_loop(
                     &shared_layout,
                 );
             }
-            super::common::process_window_animations_and_request_render(state);
+            super::common::process_animations_and_request_render(state);
             process_commit_redraws(state, loop_state, output_surfaces);
             sync_output_vrr_modes_from_state(state, output_surfaces, loop_state);
             sync_output_enabled_from_state(state, output_surfaces, loop_state);
@@ -477,11 +477,9 @@ fn run_event_loop(
             }
 
             // Arm an on-demand animation timer when animations are active.
-            anim_guard.ensure_armed(
-                state.has_active_window_animations(),
-                &loop_handle,
-                move |state| state.has_active_window_animations(),
-            );
+            anim_guard.ensure_armed(state.has_active_animations(), &loop_handle, move |state| {
+                state.has_active_animations()
+            });
 
             if let Some(keyboard_handle) = state.seat.get_keyboard() {
                 process_cursor_warp(wm, state, &pointer_handle, &keyboard_handle, loop_state);
@@ -731,6 +729,7 @@ fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfac
         BackendVrrSupport::Supported => {
             let hard_blocked = state.is_locked()
                 || state.has_window_animations_on_output(&entry.output)
+                || state.has_active_layout_preview_animation()
                 || has_pending_screencopy_for_output(state, &output_name)
                 || !state.overlay_windows_for_render(&entry.output).is_empty()
                 || !matches!(

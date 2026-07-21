@@ -341,7 +341,9 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
 
     fn end_modal_keyboard(&mut self) {}
 
-    fn layout_preview_changed(&mut self, _rect: Option<Rect>) {
-        self.wayland.request_render();
+    fn layout_preview_changed(&mut self, rect: Option<Rect>, animate: bool) {
+        let _ = self
+            .wayland
+            .with_state(|state| state.set_layout_preview_target(rect, animate));
     }
 }

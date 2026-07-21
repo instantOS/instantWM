@@ -122,7 +122,7 @@ pub trait InteractiveResizeOps {
 pub trait LayoutInteractionOps {
     fn begin_modal_keyboard(&mut self) -> bool;
     fn end_modal_keyboard(&mut self);
-    fn layout_preview_changed(&mut self, rect: Option<Rect>);
+    fn layout_preview_changed(&mut self, rect: Option<Rect>, animate: bool);
 }
 
 /// Output discovery and configuration.

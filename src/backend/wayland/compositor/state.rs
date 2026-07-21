@@ -186,6 +186,7 @@ pub struct WaylandState {
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
     pub(super) window_animations: crate::animation::WindowAnimations,
+    pub(super) layout_preview_animation: crate::animation::LayoutPreviewAnimation,
     /// Foreign toplevel handles for each window (for taskbar/panel support).
     pub(super) foreign_toplevel_handles: HashMap<WindowId, ForeignToplevelHandle>,
 
@@ -516,6 +517,7 @@ impl WaylandState {
             active_resizes: HashSet::new(),
             window_index: HashMap::new(),
             window_animations: crate::animation::WindowAnimations::new(),
+            layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
             foreign_toplevel_handles: HashMap::new(),
             pending_warp: None,
             runtime: WaylandRuntimeState::default(),

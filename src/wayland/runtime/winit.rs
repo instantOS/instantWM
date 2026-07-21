@@ -120,7 +120,7 @@ pub fn run() -> ! {
             // already applied at the compositor level in handle_pointer_axis).
             wm.work.input_config = false;
 
-            super::common::process_window_animations_and_request_render(state);
+            super::common::process_animations_and_request_render(state);
 
             // The async bar renderer wakes us with a bare render ping after a
             // result is ready.  While the bar is dirty, consume that wakeup by
@@ -131,12 +131,12 @@ pub fn run() -> ! {
 
             // ── 3. Arm animation timer if needed ────────────────────────
             anim_guard.ensure_armed(
-                state.has_active_window_animations(),
+                state.has_active_animations(),
                 &loop_handle_for_timer,
                 |_state| {
                     // Timer wakes the loop; animation ticking + render
                     // happen in the main body on the next iteration.
-                    _state.has_active_window_animations()
+                    _state.has_active_animations()
                 },
             );
 

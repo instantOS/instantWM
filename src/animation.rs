@@ -16,6 +16,70 @@ pub struct WindowAnimation {
 
 pub type WindowAnimations = HashMap<WindowId, WindowAnimation>;
 
+/// Backend-local visual state for the manual-layout preview.
+///
+/// The core owns the authoritative target rectangle. Backends own this small
+/// projection because they already own animation clocks and redraw scheduling.
+/// Retargeting starts at the currently displayed rectangle, so repeated key
+/// presses remain continuous instead of jumping back to an obsolete origin.
+#[derive(Clone, Debug, Default)]
+pub struct LayoutPreviewAnimation {
+    displayed: Option<Rect>,
+    transition: Option<WindowAnimation>,
+}
+
+impl LayoutPreviewAnimation {
+    pub fn set_target(
+        &mut self,
+        target: Option<Rect>,
+        animate: bool,
+        duration: Duration,
+        now: Instant,
+    ) -> Option<Rect> {
+        let Some(target) = target else {
+            self.displayed = None;
+            self.transition = None;
+            return None;
+        };
+
+        let from = self.tick(now);
+        if !animate || from.is_none() || from == Some(target) {
+            self.displayed = Some(target);
+            self.transition = None;
+            return self.displayed;
+        }
+
+        let from = from.expect("an animated preview has a displayed origin");
+        self.transition = Some(WindowAnimation {
+            from,
+            to: target,
+            started_at: now,
+            duration,
+        });
+        self.displayed
+    }
+
+    pub fn tick(&mut self, now: Instant) -> Option<Rect> {
+        let Some(transition) = self.transition.as_ref() else {
+            return self.displayed;
+        };
+        let tick = transition.tick(now);
+        self.displayed = Some(tick.rect);
+        if tick.done {
+            self.transition = None;
+        }
+        self.displayed
+    }
+
+    pub fn displayed(&self) -> Option<Rect> {
+        self.displayed
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.transition.is_some()
+    }
+}
+
 pub fn ease_out_cubic(t: f64) -> f64 {
     let t = t - 1.0;
     1.0 + t * t * t
@@ -51,6 +115,59 @@ impl WindowAnimation {
             },
             done: raw_t >= 1.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_preview_tests {
+    use super::*;
+
+    #[test]
+    fn preview_retargets_from_its_current_visual_rectangle() {
+        let start = Instant::now();
+        let duration = Duration::from_millis(100);
+        let mut preview = LayoutPreviewAnimation::default();
+        let first = Rect::new(0, 0, 100, 100);
+        let second = Rect::new(100, 0, 100, 100);
+        let third = Rect::new(200, 0, 100, 100);
+
+        assert_eq!(
+            preview.set_target(Some(first), true, duration, start),
+            Some(first)
+        );
+        preview.set_target(Some(second), true, duration, start);
+        assert_eq!(
+            preview.tick(start + Duration::from_millis(50)).unwrap().x,
+            88
+        );
+
+        let displayed = preview.displayed().unwrap();
+        assert_eq!(
+            preview.set_target(
+                Some(third),
+                true,
+                duration,
+                start + Duration::from_millis(50),
+            ),
+            Some(displayed),
+        );
+        assert!(preview.is_active());
+    }
+
+    #[test]
+    fn hiding_preview_cancels_its_transition() {
+        let now = Instant::now();
+        let mut preview = LayoutPreviewAnimation::default();
+        preview.set_target(Some(Rect::new(0, 0, 100, 100)), false, Duration::ZERO, now);
+        preview.set_target(
+            Some(Rect::new(100, 0, 100, 100)),
+            true,
+            Duration::from_millis(100),
+            now,
+        );
+
+        assert_eq!(preview.set_target(None, true, Duration::ZERO, now), None);
+        assert!(!preview.is_active());
     }
 }
 

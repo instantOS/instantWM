@@ -130,6 +130,32 @@ pub fn update_layout_preview(
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
     rect: Option<crate::types::Rect>,
+    animate: bool,
+) {
+    let displayed = x11_runtime.layout_preview_animation.set_target(
+        rect,
+        animate,
+        std::time::Duration::from_millis(
+            crate::constants::animation::WAYLAND_DEFAULT_ANIMATION_MILLIS,
+        ),
+        std::time::Instant::now(),
+    );
+    render_layout_preview(x11, x11_runtime, displayed);
+}
+
+pub(crate) fn tick_layout_preview(
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    now: std::time::Instant,
+) {
+    let displayed = x11_runtime.layout_preview_animation.tick(now);
+    render_layout_preview(x11, x11_runtime, displayed);
+}
+
+fn render_layout_preview(
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    rect: Option<crate::types::Rect>,
 ) {
     let conn = x11.conn;
     if rect.is_some() && x11_runtime.layout_preview_windows.is_none() {
@@ -213,8 +239,8 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
         ungrab_modal_keyboard(&self.x11);
     }
 
-    fn layout_preview_changed(&mut self, rect: Option<crate::types::Rect>) {
-        update_layout_preview(&self.x11, self.x11_runtime, rect);
+    fn layout_preview_changed(&mut self, rect: Option<crate::types::Rect>, animate: bool) {
+        update_layout_preview(&self.x11, self.x11_runtime, rect, animate);
     }
 }
 

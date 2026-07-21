@@ -434,14 +434,21 @@ impl<'a> WmCtx<'a> {
 
     /// Refresh the backend-native visualization of a pending tree placement.
     pub fn update_layout_preview(&mut self, rect: Option<Rect>) {
-        if self.core().state().layout_preview == rect {
+        let previous = self.core().state().layout_preview;
+        if previous == rect {
             return;
         }
+        // Keyboard navigation changes a discrete virtual target and benefits
+        // from interpolation. Pointer previews must track motion immediately.
+        let animate = previous.is_some()
+            && rect.is_some()
+            && self.core().behavior().animated
+            && self.current_mode().tree_placement().is_some();
         self.core_mut().state_mut().layout_preview = rect;
         use crate::backend::LayoutInteractionOps;
         match self {
-            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect),
-            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect),
+            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect, animate),
+            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect, animate),
         }
     }
 

@@ -198,22 +198,12 @@ fn build_popup_occluders(state: &WaylandState) -> Vec<Rect> {
 
 /// Compute a zero-allocation u64 hash representing the current compositor state
 /// that affects borders (geometries, focus, tag masks, and popups).
-pub fn get_borders_hash(
-    model: &WmModel,
-    state: &WaylandState,
-    layout_preview: Option<Rect>,
-) -> u64 {
+pub fn get_borders_hash(model: &WmModel, state: &WaylandState) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
     // 1. Selected window
     model.selected_win().hash(&mut hasher);
-    if let Some(preview) = layout_preview {
-        preview.x.hash(&mut hasher);
-        preview.y.hash(&mut hasher);
-        preview.w.hash(&mut hasher);
-        preview.h.hash(&mut hasher);
-    }
 
     // 2. Monitor layout / selected tags
     for mon in model.monitors.iter_all() {
@@ -268,7 +258,6 @@ pub fn render_border_elements(
     model: &WmModel,
     colors: &BorderColorConfig,
     state: &WaylandState,
-    layout_preview: Option<Rect>,
 ) -> Vec<SolidColorRenderElement> {
     let windows = collect_window_info(model, state);
     let selected_win = model.selected_win();
@@ -311,16 +300,26 @@ pub fn render_border_elements(
         }
     }
 
-    if let Some(preview) = layout_preview {
-        for side in crate::layouts::placement::outline_rectangles(
-            preview,
-            crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
-        ) {
-            push_solid(&mut elements, side, colors.snap);
-        }
-    }
-
     elements
+}
+
+/// Append the four inexpensive solid elements forming the animated placement
+/// preview. Keeping these out of the fixed-scene cache avoids rebuilding bars
+/// and every client border on each animation frame.
+pub fn append_layout_preview(
+    out: &mut Vec<SolidColorRenderElement>,
+    preview: Option<Rect>,
+    color: crate::bar::color::Rgba,
+) {
+    let Some(preview) = preview else {
+        return;
+    };
+    for side in crate::layouts::placement::outline_rectangles(
+        preview,
+        crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
+    ) {
+        push_solid(out, side, color);
+    }
 }
 
 fn push_solid(out: &mut Vec<SolidColorRenderElement>, rect: Rect, color: crate::bar::color::Rgba) {

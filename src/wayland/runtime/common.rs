@@ -817,15 +817,15 @@ fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: boo
 
 /// Run compositor-space sync and animation progression in one place, then
 /// preserve the resulting redraw in the shared Wayland scheduler.
-pub(crate) fn process_window_animations_and_request_render(state: &mut WaylandState) {
+pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     let space_synced = if state.take_space_sync_pending() {
         state.sync_space_from_globals();
         true
     } else {
         false
     };
-    if state.has_active_window_animations() {
-        state.tick_window_animations();
+    if state.has_active_animations() {
+        state.tick_animations();
     }
 
     // Animation ticks enqueue output-local redraws themselves. Space sync can

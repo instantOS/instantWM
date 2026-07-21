@@ -519,14 +519,13 @@ pub fn poll_systray(wm: &mut Wm) {
 pub struct FixedSceneElements {
     pub bar_buffers: Vec<(MemoryRenderBuffer, crate::types::Point)>,
     pub borders: Vec<SolidColorRenderElement>,
+    pub layout_preview_color: crate::bar::color::Rgba,
 }
 
 /// Build the shared scene pieces that do not depend on the target output.
 pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
-    let layout_preview = wm.core.layout_preview;
-    let borders_hash =
-        crate::wayland::render::borders::get_borders_hash(&wm.core.model, state, layout_preview);
+    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
 
     if !wm.bar.needs_redraw()
         && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
@@ -542,8 +541,8 @@ pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<F
             &wm.core.model,
             &wm.core.config.colors.border,
             state,
-            layout_preview,
         ),
+        layout_preview_color: wm.core.config.colors.border.snap,
     });
 
     if !wm.bar.needs_redraw() {
@@ -608,10 +607,17 @@ pub fn build_common_scene_elements_from_fixed(
         }
     }
 
+    let mut borders = fixed.borders.clone();
+    crate::wayland::render::borders::append_layout_preview(
+        &mut borders,
+        state.layout_preview_rect(),
+        fixed.layout_preview_color,
+    );
+
     CommonSceneElements {
         overlays,
         bar,
-        borders: fixed.borders.clone(),
+        borders,
     }
 }
 

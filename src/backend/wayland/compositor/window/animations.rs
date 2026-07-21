@@ -13,6 +13,24 @@ pub(crate) enum WindowMoveMode {
 }
 
 impl WaylandState {
+    pub(crate) fn set_layout_preview_target(&mut self, target: Option<Rect>, animate: bool) {
+        self.layout_preview_animation.set_target(
+            target,
+            animate,
+            Duration::from_millis(WAYLAND_DEFAULT_ANIMATION_MILLIS),
+            Instant::now(),
+        );
+        self.request_render();
+    }
+
+    pub(crate) fn layout_preview_rect(&self) -> Option<Rect> {
+        self.layout_preview_animation.displayed()
+    }
+
+    pub(crate) fn has_active_layout_preview_animation(&self) -> bool {
+        self.layout_preview_animation.is_active()
+    }
+
     fn insert_or_replace_window_animation(
         &mut self,
         window_id: WindowId,
@@ -225,11 +243,16 @@ impl WaylandState {
     }
 
     /// Tick all active window animations.
-    pub fn tick_window_animations(&mut self) {
-        if self.window_animations.is_empty() {
+    pub fn tick_animations(&mut self) {
+        let preview_active = self.layout_preview_animation.is_active();
+        if self.window_animations.is_empty() && !preview_active {
             return;
         }
         let now = Instant::now();
+        if preview_active {
+            self.layout_preview_animation.tick(now);
+            self.request_render();
+        }
         let mut updates: Vec<(WindowId, Point<i32, Logical>, bool)> = Vec::new();
         for (win, anim) in &self.window_animations {
             let tick = anim.tick(now);
@@ -270,6 +293,11 @@ impl WaylandState {
     /// Check if there are active window animations.
     pub fn has_active_window_animations(&self) -> bool {
         !self.window_animations.is_empty()
+    }
+
+    /// Check if any compositor visual transition needs another frame.
+    pub fn has_active_animations(&self) -> bool {
+        self.has_active_window_animations() || self.layout_preview_animation.is_active()
     }
 
     /// Check if the window has an in-flight animation heading toward `outer_target`

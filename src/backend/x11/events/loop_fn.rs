@@ -69,15 +69,10 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             crate::runtime::event_loop_tick_with_options(wm, ipc_server, Default::default());
 
             // ── 3. Arm animation timer if needed ────────────────────────
-            let has_animations = wm
-                .backend
-                .x11_data()
-                .is_some_and(|d| !d.x11_runtime.window_animations.is_empty());
+            let has_animations = has_x11_animations(wm);
             anim_guard.ensure_armed(has_animations, &loop_handle_for_timer, |wm| {
                 tick_x11_animations(wm);
-                wm.backend
-                    .x11_data()
-                    .is_some_and(|d| !d.x11_runtime.window_animations.is_empty())
+                has_x11_animations(wm)
             });
 
             // ── 4. Flush X11 connection ─────────────────────────────────
@@ -89,6 +84,13 @@ pub fn run(wm: &mut Wm, ipc_server: &mut Option<IpcServer>) {
             }
         })
         .expect("X11 event loop run");
+}
+
+fn has_x11_animations(wm: &Wm) -> bool {
+    wm.backend.x11_data().is_some_and(|data| {
+        !data.x11_runtime.window_animations.is_empty()
+            || data.x11_runtime.layout_preview_animation.is_active()
+    })
 }
 
 /// Drain all pending X11 events from the connection and dispatch them.
@@ -116,11 +118,16 @@ fn tick_x11_animations(wm: &mut Wm) {
             None => return,
         };
 
-        if data.x11_runtime.window_animations.is_empty() {
+        let preview_active = data.x11_runtime.layout_preview_animation.is_active();
+        if data.x11_runtime.window_animations.is_empty() && !preview_active {
             return;
         }
 
         let now = std::time::Instant::now();
+        if preview_active {
+            let x11 = crate::backend::x11::X11BackendRef::new(&data.conn, data.screen_num);
+            crate::backend::x11::keyboard::tick_layout_preview(&x11, &mut data.x11_runtime, now);
+        }
         let mut finished = Vec::new();
         let mut finished_targets = Vec::new();
         let mut needs_flush = false;
