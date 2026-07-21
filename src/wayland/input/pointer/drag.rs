@@ -59,6 +59,7 @@ pub fn hover_resize_drag_begin(
                 geometry: geo,
             },
         ),
+        crate::core_state::DragType::TreeResize(_) => return false,
     };
     if started.is_err() {
         return false;
@@ -76,6 +77,7 @@ pub fn hover_resize_drag_begin(
                 AltCursor::Resize(dir),
             );
         }
+        crate::core_state::DragType::TreeResize(_) => unreachable!("handled before drag start"),
     }
     crate::focus::focus(
         &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
@@ -159,6 +161,20 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             }
             true
         }
+        crate::core_state::DragType::TreeResize(direction) => {
+            let Some(origin) = drag.tree_resize_origin() else {
+                return false;
+            };
+            let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+            crate::layouts::manager::update_pointer_tree_resize(
+                &mut wm_ctx,
+                drag.win(),
+                origin,
+                direction,
+                drag.start_point(),
+                root,
+            )
+        }
         crate::core_state::DragType::Resize(dir) => {
             let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
             let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
@@ -214,6 +230,9 @@ pub fn hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) ->
             );
         }
         crate::core_state::DragType::Resize(_) => {
+            crate::mouse::drag::finish_drag_resize(&mut wm_ctx, drag.win());
+        }
+        crate::core_state::DragType::TreeResize(_) => {
             crate::mouse::drag::finish_drag_resize(&mut wm_ctx, drag.win());
         }
     }

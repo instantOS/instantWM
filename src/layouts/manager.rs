@@ -570,6 +570,210 @@ pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
     changed
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct PointerTreeResizeStart {
+    pub direction: crate::types::ResizeDirection,
+    pub origin: crate::layouts::tree::LayoutTree,
+}
+
+/// Prepare a Super+right-button tree resize, or return `None` when the
+/// ordinary floating-resize behavior should be used instead.
+pub(crate) fn pointer_tree_resize_start(
+    ctx: &WmCtx<'_>,
+    window: WindowId,
+    point: crate::types::Point,
+) -> Option<PointerTreeResizeStart> {
+    use crate::layouts::tree::Axis;
+
+    let view = ctx.core().model().client_view(window)?;
+    let tiled_count = view
+        .monitor
+        .collect_tiled(&ctx.core().model().clients)
+        .len();
+    let tree = &view.monitor.per_tag()?.layout_tree;
+    let horizontal = tree.can_resize_axis(window, Axis::Vertical);
+    let vertical = tree.can_resize_axis(window, Axis::Horizontal);
+    if !pointer_tree_resize_allowed(
+        view.monitor.current_layout(),
+        view.client.mode.is_tiling(),
+        tiled_count,
+        horizontal,
+        vertical,
+    ) {
+        return None;
+    }
+    let hit = crate::types::Point::new(point.x - view.client.geo.x, point.y - view.client.geo.y);
+    let requested = crate::types::ResizeDirection::from_hit(view.client.geo.size(), hit);
+    let direction = available_tree_resize_direction(
+        requested,
+        horizontal,
+        vertical,
+        hit,
+        view.client.geo.size(),
+    )?;
+    Some(PointerTreeResizeStart {
+        direction,
+        origin: tree.clone(),
+    })
+}
+
+fn pointer_tree_resize_allowed(
+    presentation: PresentationMode,
+    client_is_tiled: bool,
+    tiled_count: usize,
+    horizontal: bool,
+    vertical: bool,
+) -> bool {
+    presentation == PresentationMode::Tiled
+        && client_is_tiled
+        && tiled_count > 1
+        && (horizontal || vertical)
+}
+
+fn available_tree_resize_direction(
+    requested: crate::types::ResizeDirection,
+    horizontal: bool,
+    vertical: bool,
+    hit: crate::types::Point,
+    size: crate::types::Size,
+) -> Option<crate::types::ResizeDirection> {
+    use crate::types::ResizeDirection;
+
+    let (left, right, top, bottom) = requested.affected_edges();
+    let mut horizontal_edge = horizontal
+        .then_some(if left {
+            ResizeDirection::Left
+        } else if right {
+            ResizeDirection::Right
+        } else if hit.x < size.w / 2 {
+            ResizeDirection::Left
+        } else {
+            ResizeDirection::Right
+        })
+        .filter(|_| left || right || !vertical);
+    let mut vertical_edge = vertical
+        .then_some(if top {
+            ResizeDirection::Top
+        } else if bottom {
+            ResizeDirection::Bottom
+        } else if hit.y < size.h / 2 {
+            ResizeDirection::Top
+        } else {
+            ResizeDirection::Bottom
+        })
+        .filter(|_| top || bottom || !horizontal);
+
+    // If the requested physical edge has no corresponding tree run, fall
+    // back to the nearest available run so every eligible tiled drag works.
+    if horizontal_edge.is_none() && vertical_edge.is_none() {
+        if horizontal {
+            horizontal_edge = Some(if hit.x < size.w / 2 {
+                ResizeDirection::Left
+            } else {
+                ResizeDirection::Right
+            });
+        } else if vertical {
+            vertical_edge = Some(if hit.y < size.h / 2 {
+                ResizeDirection::Top
+            } else {
+                ResizeDirection::Bottom
+            });
+        }
+    }
+
+    match (horizontal_edge, vertical_edge) {
+        (Some(ResizeDirection::Left), Some(ResizeDirection::Top)) => Some(ResizeDirection::TopLeft),
+        (Some(ResizeDirection::Right), Some(ResizeDirection::Top)) => {
+            Some(ResizeDirection::TopRight)
+        }
+        (Some(ResizeDirection::Left), Some(ResizeDirection::Bottom)) => {
+            Some(ResizeDirection::BottomLeft)
+        }
+        (Some(ResizeDirection::Right), Some(ResizeDirection::Bottom)) => {
+            Some(ResizeDirection::BottomRight)
+        }
+        (Some(edge), None) | (None, Some(edge)) => Some(edge),
+        _ => None,
+    }
+}
+
+/// Re-evaluate a tiled resize from its immutable drag origin.
+pub(crate) fn update_pointer_tree_resize(
+    ctx: &mut WmCtx<'_>,
+    window: WindowId,
+    origin: &crate::layouts::tree::LayoutTree,
+    direction: crate::types::ResizeDirection,
+    start: crate::types::Point,
+    current: crate::types::Point,
+) -> bool {
+    use crate::layouts::tree::Side;
+
+    let (layout_rect, minimum_weight, monitor_id) = {
+        let view = match ctx.core().model().client_view(window) {
+            Some(view)
+                if view.monitor.current_layout() == PresentationMode::Tiled
+                    && view.client.mode.is_tiling()
+                    && view.client.is_visible(view.monitor.selected_tags()) =>
+            {
+                view
+            }
+            _ => return false,
+        };
+        let tiled_count = view
+            .monitor
+            .collect_tiled(&ctx.core().model().clients)
+            .len() as u32;
+        (
+            LayoutPlacement::new(
+                &ctx.core().config().layout,
+                view.monitor,
+                PresentationMode::Tiled,
+                tiled_count,
+            )
+            .work_rect(),
+            ctx.core().config().layout.minimum_weight,
+            view.monitor.id(),
+        )
+    };
+    let mut candidate = origin.clone();
+    let (left, right, top, bottom) = direction.affected_edges();
+    if left || right {
+        let side = if left { Side::Left } else { Side::Right };
+        let _ = candidate.resize_by_pixels(
+            window,
+            side,
+            current.x - start.x,
+            layout_rect,
+            minimum_weight,
+        );
+    }
+    if top || bottom {
+        let side = if top { Side::Top } else { Side::Bottom };
+        let _ = candidate.resize_by_pixels(
+            window,
+            side,
+            current.y - start.y,
+            layout_rect,
+            minimum_weight,
+        );
+    }
+    ctx.core_mut()
+        .model_mut()
+        .monitor_mut(monitor_id)
+        .expect("client view guaranteed its monitor exists")
+        .per_tag_state()
+        .layout_tree = candidate;
+    let animated = ctx.core().behavior().animated;
+    if animated {
+        ctx.core_mut().behavior_mut().animated = false;
+    }
+    arrange(ctx, Some(monitor_id));
+    if animated {
+        ctx.core_mut().behavior_mut().animated = true;
+    }
+    true
+}
+
 pub fn place_tree_at_point(
     ctx: &mut WmCtx<'_>,
     window: WindowId,
@@ -1162,11 +1366,14 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{clients_with_planned_borders, compute_monitor_z_order};
+    use super::{
+        available_tree_resize_direction, clients_with_planned_borders, compute_monitor_z_order,
+        pointer_tree_resize_allowed,
+    };
     use crate::config::config_toml::LayoutConfig;
     use crate::layouts::PresentationMode;
     use crate::layouts::tree::{Preset, Side};
-    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
+    use crate::types::{Client, Monitor, Point, Rect, ResizeDirection, Size, TagMask, WindowId};
     use std::collections::HashMap;
 
     fn visible_client(win: WindowId) -> Client {
@@ -1187,6 +1394,76 @@ mod tests {
             monitor.z_order.attach_top(win);
         }
         monitor
+    }
+
+    #[test]
+    fn pointer_resize_falls_back_to_an_axis_present_in_the_tree() {
+        assert_eq!(
+            available_tree_resize_direction(
+                ResizeDirection::Top,
+                true,
+                false,
+                Point::new(80, 20),
+                Size::new(100, 100),
+            ),
+            Some(ResizeDirection::Right)
+        );
+        assert_eq!(
+            available_tree_resize_direction(
+                ResizeDirection::Left,
+                false,
+                true,
+                Point::new(20, 80),
+                Size::new(100, 100),
+            ),
+            Some(ResizeDirection::Bottom)
+        );
+    }
+
+    #[test]
+    fn pointer_resize_keeps_requested_corner_when_both_axes_exist() {
+        assert_eq!(
+            available_tree_resize_direction(
+                ResizeDirection::TopLeft,
+                true,
+                true,
+                Point::new(5, 5),
+                Size::new(100, 100),
+            ),
+            Some(ResizeDirection::TopLeft)
+        );
+    }
+
+    #[test]
+    fn pointer_tree_resize_preserves_the_requested_floating_fallbacks() {
+        assert!(!pointer_tree_resize_allowed(
+            PresentationMode::Tiled,
+            true,
+            1,
+            true,
+            false,
+        ));
+        assert!(!pointer_tree_resize_allowed(
+            PresentationMode::Maximized,
+            true,
+            3,
+            true,
+            true,
+        ));
+        assert!(!pointer_tree_resize_allowed(
+            PresentationMode::Tiled,
+            false,
+            3,
+            true,
+            true,
+        ));
+        assert!(pointer_tree_resize_allowed(
+            PresentationMode::Tiled,
+            true,
+            3,
+            true,
+            false,
+        ));
     }
 
     #[test]

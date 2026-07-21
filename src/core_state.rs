@@ -382,7 +382,11 @@ impl Clone for RuntimeConfig {
 pub enum DragType {
     #[default]
     Move,
+    /// Direct geometry resize for a floating client.
     Resize(ResizeDirection),
+    /// Weight resize for a tiled leaf. The initial tree is stored alongside
+    /// the private interaction state so motion is independent of event rate.
+    TreeResize(ResizeDirection),
 }
 
 #[derive(Debug, Clone)]
@@ -401,6 +405,9 @@ pub struct DragInteraction {
     was_focused: bool,
     was_hidden: bool,
     suppress_click_action: bool,
+    /// Present exactly when `drag_type` is `TreeResize`. Constructors are
+    /// private to this module and preserve the relationship.
+    tree_resize_origin: Option<crate::layouts::tree::LayoutTree>,
 }
 
 impl DragInteraction {
@@ -422,6 +429,7 @@ impl DragInteraction {
             was_focused: false,
             was_hidden: false,
             suppress_click_action: false,
+            tree_resize_origin: None,
         }
     }
 
@@ -437,6 +445,7 @@ impl DragInteraction {
             was_focused: params.was_focused,
             was_hidden: params.was_hidden,
             suppress_click_action: params.suppress_click_action,
+            tree_resize_origin: None,
         }
     }
 
@@ -471,6 +480,10 @@ impl DragInteraction {
         self.suppress_click_action
     }
 
+    pub fn tree_resize_origin(&self) -> Option<&crate::layouts::tree::LayoutTree> {
+        self.tree_resize_origin.as_ref()
+    }
+
     fn record_motion(&mut self, point: Point) {
         self.last_root_point = point;
     }
@@ -480,6 +493,7 @@ impl DragInteraction {
         self.start_point = start;
         self.last_root_point = start;
         self.win_start_geo = geo;
+        self.tree_resize_origin = None;
     }
 }
 
@@ -849,6 +863,21 @@ impl DragState {
         ))
     }
 
+    pub fn begin_tree_resize(
+        &mut self,
+        win: WindowId,
+        button: MouseButton,
+        dir: ResizeDirection,
+        start: Point,
+        geo: Rect,
+        origin: crate::layouts::tree::LayoutTree,
+    ) -> Result<(), DragAlreadyActive> {
+        let mut drag =
+            DragInteraction::immediate(win, button, DragType::TreeResize(dir), start, geo);
+        drag.tree_resize_origin = Some(origin);
+        self.begin_active(drag)
+    }
+
     fn begin_active(&mut self, drag: DragInteraction) -> Result<(), DragAlreadyActive> {
         if !self.interactive.is_idle() {
             return Err(DragAlreadyActive);
@@ -871,6 +900,11 @@ impl DragState {
         start: Point,
         geo: Rect,
     ) -> Result<(), DragNotArmed> {
+        if matches!(drag_type, DragType::TreeResize(_)) {
+            // A tree resize requires an authoritative origin snapshot and is
+            // therefore created only through `begin_tree_resize`.
+            return Err(DragNotArmed);
+        }
         let mut drag = match std::mem::take(&mut self.interactive) {
             InteractiveDrag::Armed(drag) => drag,
             other => {

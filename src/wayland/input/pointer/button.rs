@@ -138,6 +138,7 @@ fn handle_button_press(
         let mut ctx = wm.ctx();
         crate::mouse::pointer::button_region_at(ctx.core_mut(), button.root, clicked_win)
     };
+    let clean_modifiers = clean_modifier_state(keyboard_handle);
 
     match pointer_region {
         PointerRegion::Bar { pos, .. } => {
@@ -147,7 +148,7 @@ fn handle_button_press(
                 pos,
                 button.button_code,
                 button.root,
-                clean_modifier_state(keyboard_handle),
+                clean_modifiers,
             );
             pointer_handle.frame(state);
             return true;
@@ -155,13 +156,8 @@ fn handle_button_press(
         PointerRegion::Sidebar(_) => {
             state.dismiss_native_systray_menu();
             if let Some(btn) = button.wm_button {
-                let _ = consume_pointer_binding(
-                    wm,
-                    pointer_region,
-                    btn,
-                    button.root,
-                    clean_modifier_state(keyboard_handle),
-                );
+                let _ =
+                    consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers);
             }
             pointer_handle.frame(state);
             return true;
@@ -171,20 +167,17 @@ fn handle_button_press(
 
     state.dismiss_native_systray_menu();
 
-    if begin_hover_resize_drag(wm, button) {
+    // Explicit modified client bindings (notably Super+RMB) take precedence
+    // over the decoration-border gesture. Otherwise pressing near a border
+    // can silently turn a configured resize into a hover move/resize.
+    if clean_modifiers == 0 && begin_hover_resize_drag(wm, button) {
         return true;
     }
 
     focus_button_target(wm, clicked_win);
 
     let consumed = button.wm_button.is_some_and(|btn| {
-        consume_pointer_binding(
-            wm,
-            pointer_region,
-            btn,
-            button.root,
-            clean_modifier_state(keyboard_handle),
-        )
+        consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers)
     });
 
     if !consumed {

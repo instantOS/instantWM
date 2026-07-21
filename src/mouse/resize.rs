@@ -91,6 +91,18 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
 
+    if let Some(tree_resize) = crate::layouts::manager::pointer_tree_resize_start(ctx, win, ptr) {
+        match ctx {
+            WmCtx::X11(x11) => {
+                resize_tree_mouse_x11(x11, win, btn, ptr, geo, tree_resize);
+            }
+            WmCtx::Wayland(wl) => {
+                begin_wayland_tree_resize(wl, win, btn, ptr, geo, tree_resize);
+            }
+        }
+        return;
+    }
+
     // Promote tiled windows to floating before starting the resize.
     let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
     if !is_floating && has_tiling {
@@ -129,6 +141,77 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
             begin_wayland_super_resize(wl, win, btn, dir, geo);
         }
     }
+}
+
+fn begin_wayland_tree_resize(
+    wl: &mut crate::contexts::WmCtxWayland<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    start: Point,
+    geo: Rect,
+    resize: crate::layouts::manager::PointerTreeResizeStart,
+) {
+    if wl
+        .core
+        .drag_state_mut()
+        .begin_tree_resize(win, btn, resize.direction, start, geo, resize.origin)
+        .is_err()
+    {
+        return;
+    }
+    let mut ctx = WmCtx::Wayland(wl.reborrow());
+    set_cursor_style(&mut ctx, AltCursor::Resize(resize.direction));
+    crate::focus::focus(&mut ctx, Some(win));
+    ctx.raise_client(win);
+}
+
+fn resize_tree_mouse_x11(
+    ctx: &mut WmCtxX11<'_>,
+    win: WindowId,
+    btn: MouseButton,
+    start: Point,
+    geo: Rect,
+    resize: crate::layouts::manager::PointerTreeResizeStart,
+) {
+    if ctx
+        .core
+        .drag_state_mut()
+        .begin_tree_resize(
+            win,
+            btn,
+            resize.direction,
+            start,
+            geo,
+            resize.origin.clone(),
+        )
+        .is_err()
+    {
+        return;
+    }
+    crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::Resize(resize.direction),
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                ctx.core.drag_state_mut().record_interactive_motion(*root);
+                let mut wm_ctx = WmCtx::X11(ctx.reborrow());
+                let _ = crate::layouts::manager::update_pointer_tree_resize(
+                    &mut wm_ctx,
+                    win,
+                    &resize.origin,
+                    resize.direction,
+                    start,
+                    *root,
+                );
+            }
+            true
+        },
+    );
+    crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
+        .expect("X11 tree resize must finish using its grab button");
+    crate::mouse::drag::finish_drag_resize(&mut WmCtx::X11(ctx.reborrow()), win);
 }
 
 /// Activate a `DragInteraction` for a Super+RMB resize initiated anywhere

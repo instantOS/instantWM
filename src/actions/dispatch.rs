@@ -185,6 +185,12 @@ pub fn execute_button_action(
             let _ = scratchpad_show_name(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME);
         }
         ButtonAction::ToggleFloatingSelected => toggle_floating(ctx),
-        ButtonAction::ResizeMouseFromCursor => resize_mouse_from_cursor(ctx, arg.btn),
+        ButtonAction::ResizeMouseFromCursor => {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
+                crate::focus::select_monitor_for_client(ctx, win);
+                crate::focus::focus(ctx, Some(win));
+            }
+            resize_mouse_from_cursor(ctx, arg.btn);
+        }
     }
 }

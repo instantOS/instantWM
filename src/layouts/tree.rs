@@ -581,6 +581,63 @@ impl LayoutTree {
         changed
     }
 
+    /// Resize the deepest applicable run by a pointer displacement.
+    ///
+    /// `pixels` is the movement of the grabbed physical edge: positive means
+    /// right/down and negative means left/up. It is normalized against the
+    /// actual containing run rather than the whole monitor, so nested splits
+    /// track the pointer one-for-one.
+    pub fn resize_by_pixels(
+        &mut self,
+        source: WindowId,
+        side: Side,
+        pixels: i32,
+        layout_rect: Rect,
+        minimum_weight: f64,
+    ) -> bool {
+        if pixels == 0 {
+            return false;
+        }
+        let axis = side.axis();
+        let Some(normalized_span) = self.resize_span(source, axis) else {
+            return false;
+        };
+        let layout_span = match axis {
+            Axis::Vertical => layout_rect.w,
+            Axis::Horizontal => layout_rect.h,
+        };
+        let physical_span = normalized_span * f64::from(layout_span.max(1));
+        if physical_span <= EPSILON {
+            return false;
+        }
+        let edge_delta = f64::from(pixels) / physical_span;
+        let weight_delta = if side.is_leading() {
+            -edge_delta
+        } else {
+            edge_delta
+        };
+        let Some(root) = self.root.take() else {
+            return false;
+        };
+        let (root, changed) =
+            resize_deepest_run_by(root, source, axis, weight_delta, minimum_weight);
+        self.root = Some(root);
+        changed
+    }
+
+    /// Whether `source` belongs to a split that can be resized on `axis`.
+    pub fn can_resize_axis(&self, source: WindowId, axis: Axis) -> bool {
+        self.resize_span(source, axis).is_some()
+    }
+
+    fn resize_span(&self, source: WindowId, axis: Axis) -> Option<f64> {
+        let root = self.root.as_ref()?;
+        let split = deepest_resize_split(root, source, axis)?;
+        let bounds = self.all_float_bounds();
+        let rect = bounds.get(&NodeKey::Split(split))?;
+        Some(rect.axis_size(axis))
+    }
+
     pub fn resize_smart(&mut self, source: WindowId, grow: bool) -> bool {
         self.resize_smart_with_config(source, grow, CommandConfig::default())
     }
@@ -1516,6 +1573,18 @@ fn resize_deepest_run(
     grow: bool,
     config: CommandConfig,
 ) -> (Node, bool) {
+    let step = finite_clamp(config.resize_step, 0.001, 0.5, DEFAULT_RESIZE_STEP);
+    let delta = if grow { step } else { -step };
+    resize_deepest_run_by(node, target, axis, delta, config.minimum_weight)
+}
+
+fn resize_deepest_run_by(
+    node: Node,
+    target: WindowId,
+    axis: Axis,
+    delta: f64,
+    minimum_weight: f64,
+) -> (Node, bool) {
     let Node::Split(mut split) = node else {
         return (node, false);
     };
@@ -1528,7 +1597,8 @@ fn resize_deepest_run(
     };
 
     let child_node = split.children[index].node.clone();
-    let (resized_child, changed) = resize_deepest_run(child_node, target, axis, grow, config);
+    let (resized_child, changed) =
+        resize_deepest_run_by(child_node, target, axis, delta, minimum_weight);
     split.children[index].node = resized_child;
     if changed {
         return (Node::Split(split), true);
@@ -1538,12 +1608,11 @@ fn resize_deepest_run(
     }
 
     let count = split.children.len();
-    let minimum = finite_clamp(config.minimum_weight, 0.001, 0.49, DEFAULT_MINIMUM_WEIGHT)
-        .min(0.5 / count as f64);
+    let minimum =
+        finite_clamp(minimum_weight, 0.001, 0.49, DEFAULT_MINIMUM_WEIGHT).min(0.5 / count as f64);
     let maximum = 1.0 - minimum * (count - 1) as f64;
     let current = split.children[index].weight;
-    let step = finite_clamp(config.resize_step, 0.001, 0.5, DEFAULT_RESIZE_STEP);
-    let requested = current + if grow { step } else { -step };
+    let requested = current + if delta.is_finite() { delta } else { 0.0 };
     let target_weight = requested.clamp(minimum, maximum);
     if (target_weight - current).abs() < EPSILON {
         return (Node::Split(split), false);
@@ -1557,6 +1626,18 @@ fn resize_deepest_run(
         };
     }
     (Node::Split(split), true)
+}
+
+fn deepest_resize_split(node: &Node, target: WindowId, axis: Axis) -> Option<SplitId> {
+    let Node::Split(split) = node else {
+        return None;
+    };
+    let child = split
+        .children
+        .iter()
+        .find(|child| child.node.contains(target))?;
+    deepest_resize_split(&child.node, target, axis)
+        .or_else(|| (split.axis == axis && split.children.len() >= 2).then_some(split.id))
 }
 
 fn redistribute_containing_run(node: Node, target: WindowId, axis: Axis) -> Node {
@@ -2071,6 +2152,42 @@ mod tests {
             assert!(applied.place_at_point(WindowId(1), point, rect, 0.34));
             assert_eq!(applied.bounds(rect)[&WindowId(1)], preview);
         }
+    }
+
+    #[test]
+    fn pointer_resize_tracks_the_grabbed_edge_in_pixels() {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);
+        let layout = Rect::new(0, 0, 1000, 600);
+        let before = tree.bounds(layout)[&WindowId(1)];
+
+        assert!(tree.resize_by_pixels(WindowId(1), Side::Right, 120, layout, 0.15));
+        let after = tree.bounds(layout)[&WindowId(1)];
+
+        assert_eq!(after.w - before.w, 120);
+        assert_canonical(&tree);
+    }
+
+    #[test]
+    fn leading_edge_motion_has_the_opposite_weight_sign() {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);
+        let layout = Rect::new(0, 0, 1000, 600);
+        let before = tree.bounds(layout)[&WindowId(1)];
+
+        assert!(tree.resize_by_pixels(WindowId(1), Side::Left, 100, layout, 0.15));
+        let after = tree.bounds(layout)[&WindowId(1)];
+
+        assert_eq!(before.w - after.w, 100);
+    }
+
+    #[test]
+    fn resize_axis_reports_only_structural_runs() {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);
+
+        assert!(tree.can_resize_axis(WindowId(1), Axis::Vertical));
+        assert!(!tree.can_resize_axis(WindowId(1), Axis::Horizontal));
     }
 
     #[test]

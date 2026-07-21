@@ -229,6 +229,41 @@ mod tests {
     }
 
     #[test]
+    fn tree_resize_owns_a_snapshot_without_entering_protocol_resize() {
+        let win = WindowId(7);
+        let protocol = RecordingProtocol::default();
+        let mut interactions = DragState::default();
+        let mut tree = crate::layouts::tree::LayoutTree::default();
+        tree.apply_preset(
+            crate::layouts::tree::Preset::MasterStack,
+            &[win, WindowId(8)],
+            Some(win),
+            1,
+            0.5,
+        );
+
+        interactions
+            .begin_tree_resize(
+                win,
+                MouseButton::Right,
+                ResizeDirection::Right,
+                Point::new(100, 100),
+                geometry(),
+                tree,
+            )
+            .unwrap();
+        let active = interactions.active_interaction().unwrap();
+        assert_eq!(
+            active.drag_type(),
+            DragType::TreeResize(ResizeDirection::Right)
+        );
+        assert!(active.tree_resize_origin().is_some());
+
+        let _ = finish(&mut interactions, &protocol, MouseButton::Right).unwrap();
+        assert!(protocol.events.borrow().is_empty());
+    }
+
+    #[test]
     fn move_lifecycle_never_touches_resize_protocol() {
         let win = WindowId(7);
         let protocol = RecordingProtocol::default();
