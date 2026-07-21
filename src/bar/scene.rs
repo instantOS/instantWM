@@ -140,39 +140,60 @@ pub(crate) fn build_monitor_snapshots(
     let base_font_size = core.config().fonts.size();
     let font_families = core.config().fonts.families();
     let bar_hover = core.bar.hover;
-    let selected_status =
-        match core.behavior().current_mode.clone() {
-            crate::core_state::ActiveWmMode::Overview => StatusPresentation::Overview(
-                status_content(core, "mode: overview".to_string(), include_status_items),
-            ),
-            crate::core_state::ActiveWmMode::Named(name) => {
-                let mode_display = core
-                    .state()
-                    .config
-                    .bindings
-                    .modes
-                    .get(&name)
-                    .and_then(|mode| mode.description.as_ref())
-                    .cloned()
-                    .unwrap_or_else(|| name.clone());
-                StatusPresentation::WmMode {
-                    name,
-                    content: status_content(
-                        core,
-                        format!("mode: {mode_display}"),
-                        include_status_items,
-                    ),
-                }
+    enum ModeStatus {
+        Default,
+        Overview,
+        Named { name: String, display: String },
+    }
+    let mode_status = match &core.behavior().current_mode {
+        crate::core_state::ActiveWmMode::Overview => ModeStatus::Overview,
+        crate::core_state::ActiveWmMode::Named(name) => {
+            let display = core
+                .config()
+                .bindings
+                .modes
+                .get(name)
+                .and_then(|mode| mode.description.as_ref())
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            ModeStatus::Named {
+                name: name.clone(),
+                display,
             }
-            crate::core_state::ActiveWmMode::Default => {
-                let text = core.bar.runtime.status_text.clone();
-                if text.is_empty() {
-                    StatusPresentation::Hidden
-                } else {
-                    StatusPresentation::Runtime(status_content(core, text, include_status_items))
-                }
+        }
+        crate::core_state::ActiveWmMode::TreePlacement(_) => {
+            let name = crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string();
+            let display = core
+                .config()
+                .bindings
+                .modes
+                .get(&name)
+                .and_then(|mode| mode.description.as_ref())
+                .cloned()
+                .unwrap_or_else(|| "place window".to_string());
+            ModeStatus::Named { name, display }
+        }
+        crate::core_state::ActiveWmMode::Default => ModeStatus::Default,
+    };
+    let selected_status = match mode_status {
+        ModeStatus::Overview => StatusPresentation::Overview(status_content(
+            core,
+            "mode: overview".to_string(),
+            include_status_items,
+        )),
+        ModeStatus::Named { name, display } => StatusPresentation::WmMode {
+            name,
+            content: status_content(core, format!("mode: {display}"), include_status_items),
+        },
+        ModeStatus::Default => {
+            let text = core.bar.runtime.status_text.clone();
+            if text.is_empty() {
+                StatusPresentation::Hidden
+            } else {
+                StatusPresentation::Runtime(status_content(core, text, include_status_items))
             }
-        };
+        }
+    };
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(id, _)| id).collect();
 
     let mut snapshots = Vec::new();

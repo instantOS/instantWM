@@ -180,3 +180,73 @@ pub fn get_desktop_keybinds() -> Vec<Key> {
         key!(0, XK_9 => KeyAction::ViewTag { tag_idx: 8 }),
     ]
 }
+
+/// Default bindings for the compositor-owned tree placement mode. Super is
+/// intentionally absent: the dispatcher ignores a still-held Super modifier
+/// after the Super+M entry chord, while every binding remains configurable as
+/// an ordinary named action under `[modes.placement]`.
+pub fn get_tree_placement_keybinds() -> Vec<Key> {
+    vec![
+        key!(0, XK_LEFT => KeyAction::named(NamedAction::PlacementLeft)),
+        key!(0, XK_H => KeyAction::named(NamedAction::PlacementLeft)),
+        key!(0, XK_RIGHT => KeyAction::named(NamedAction::PlacementRight)),
+        key!(0, XK_L => KeyAction::named(NamedAction::PlacementRight)),
+        key!(0, XK_UP => KeyAction::named(NamedAction::PlacementUp)),
+        key!(0, XK_K => KeyAction::named(NamedAction::PlacementUp)),
+        key!(0, XK_DOWN => KeyAction::named(NamedAction::PlacementDown)),
+        key!(0, XK_J => KeyAction::named(NamedAction::PlacementDown)),
+        key!(SHIFT, XK_LEFT => KeyAction::named(NamedAction::PlacementSwapLeft)),
+        key!(SHIFT, XK_H => KeyAction::named(NamedAction::PlacementSwapLeft)),
+        key!(SHIFT, XK_RIGHT => KeyAction::named(NamedAction::PlacementSwapRight)),
+        key!(SHIFT, XK_L => KeyAction::named(NamedAction::PlacementSwapRight)),
+        key!(SHIFT, XK_UP => KeyAction::named(NamedAction::PlacementSwapUp)),
+        key!(SHIFT, XK_K => KeyAction::named(NamedAction::PlacementSwapUp)),
+        key!(SHIFT, XK_DOWN => KeyAction::named(NamedAction::PlacementSwapDown)),
+        key!(SHIFT, XK_J => KeyAction::named(NamedAction::PlacementSwapDown)),
+        key!(CONTROL, XK_LEFT => KeyAction::named(NamedAction::PlacementResizeLeft)),
+        key!(CONTROL, XK_H => KeyAction::named(NamedAction::PlacementResizeLeft)),
+        key!(CONTROL, XK_RIGHT => KeyAction::named(NamedAction::PlacementResizeRight)),
+        key!(CONTROL, XK_L => KeyAction::named(NamedAction::PlacementResizeRight)),
+        key!(CONTROL, XK_UP => KeyAction::named(NamedAction::PlacementResizeUp)),
+        key!(CONTROL, XK_K => KeyAction::named(NamedAction::PlacementResizeUp)),
+        key!(CONTROL, XK_DOWN => KeyAction::named(NamedAction::PlacementResizeDown)),
+        key!(CONTROL, XK_J => KeyAction::named(NamedAction::PlacementResizeDown)),
+        key!(0, XK_TAB => KeyAction::named(NamedAction::PlacementNext)),
+        key!(SHIFT, XK_TAB => KeyAction::named(NamedAction::PlacementPrevious)),
+        key!(0, XK_SPACE => KeyAction::named(NamedAction::PlacementCenter)),
+        key!(0, XK_RETURN => KeyAction::named(NamedAction::PlacementApply)),
+        key!(0, XK_ESCAPE => KeyAction::named(NamedAction::PlacementCancel)),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named_action(modifiers: u32, keysym: u32) -> Option<NamedAction> {
+        get_tree_placement_keybinds()
+            .into_iter()
+            .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
+            .and_then(|key| match key.action {
+                KeyAction::Named { action, .. } => Some(action),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn placement_defaults_are_regular_named_actions() {
+        assert_eq!(named_action(0, XK_H), Some(NamedAction::PlacementLeft));
+        assert_eq!(
+            named_action(SHIFT, XK_LEFT),
+            Some(NamedAction::PlacementSwapLeft)
+        );
+        assert_eq!(
+            named_action(CONTROL, XK_J),
+            Some(NamedAction::PlacementResizeDown)
+        );
+        assert_eq!(
+            named_action(0, XK_ESCAPE),
+            Some(NamedAction::PlacementCancel)
+        );
+    }
+}

@@ -30,6 +30,11 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::ModeList(mode_list)
         }
         ModeCommand::Set(name) => {
+            if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
+                return Response::err(
+                    "Mode 'placement' can only be entered by begin_keyboard_move".to_string(),
+                );
+            }
             if !wm.core.config.bindings.modes.contains_key(&name)
                 && !matches!(
                     ActiveWmMode::from_name(&name),
@@ -51,6 +56,13 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             Response::Message(format!("Switched to mode '{}'", name))
         }
         ModeCommand::Toggle(name) => {
+            if name == crate::core_state::TREE_PLACEMENT_MODE_NAME
+                && wm.core.behavior.current_mode.as_str() != name
+            {
+                return Response::err(
+                    "Mode 'placement' can only be entered by begin_keyboard_move".to_string(),
+                );
+            }
             if !wm.core.config.bindings.modes.contains_key(&name)
                 && !matches!(
                     ActiveWmMode::from_name(&name),
@@ -79,5 +91,32 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
 
             Response::Message(format!("Toggled mode, now in '{}'", mode_name))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::config::ModeConfig;
+
+    #[test]
+    fn ipc_cannot_enter_interaction_owned_placement_mode() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.config.bindings.modes.insert(
+            crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
+            ModeConfig::default(),
+        );
+
+        let response = handle_mode_command(
+            &mut wm,
+            ModeCommand::Set(crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string()),
+        );
+
+        assert!(
+            matches!(response, Response::Err(message) if message.contains("begin_keyboard_move"))
+        );
+        assert_eq!(wm.core.behavior.current_mode, ActiveWmMode::Default);
     }
 }

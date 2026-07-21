@@ -12,9 +12,11 @@ use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::tree::Side;
 use crate::layouts::{
-    LayoutKind, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by, resize_tree,
-    resize_tree_smart, set_layout, set_master_factor, swap_tree_neighbor, toggle_layout,
-    toggle_maximized_layout,
+    LayoutKind, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
+    cycle_layout_direction, finish_keyboard_tree_placement, focus_tree_neighbor,
+    inc_master_count_by, resize_keyboard_tree_placement, resize_tree, resize_tree_smart,
+    set_layout, set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
+    swap_tree_neighbor, toggle_layout, toggle_maximized_layout,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
@@ -171,10 +173,27 @@ define_named_actions!(
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen", run: |ctx, _args| { toggle_fake_fullscreen(ctx); } },
     DrawWindow => { name: "draw_window", arg_example: None, doc: "start dragging/resizing window", run: |ctx, _args| { draw_window(ctx); } },
     BeginKeyboardMove => { name: "begin_keyboard_move", arg_example: None, doc: "move window with keyboard", run: |ctx, _args| { begin_keyboard_move(ctx); } },
+    PlacementLeft => { name: "placement_left", arg_example: None, doc: "select the placement target to the left", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Left); } },
+    PlacementRight => { name: "placement_right", arg_example: None, doc: "select the placement target to the right", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Right); } },
+    PlacementUp => { name: "placement_up", arg_example: None, doc: "select the placement target above", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Top); } },
+    PlacementDown => { name: "placement_down", arg_example: None, doc: "select the placement target below", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Bottom); } },
+    PlacementSwapLeft => { name: "placement_swap_left", arg_example: None, doc: "swap the armed window with its left neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Left); } },
+    PlacementSwapRight => { name: "placement_swap_right", arg_example: None, doc: "swap the armed window with its right neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Right); } },
+    PlacementSwapUp => { name: "placement_swap_up", arg_example: None, doc: "swap the armed window with its upper neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Top); } },
+    PlacementSwapDown => { name: "placement_swap_down", arg_example: None, doc: "swap the armed window with its lower neighbour", run: |ctx, _args| { swap_keyboard_tree_placement(ctx, Side::Bottom); } },
+    PlacementResizeLeft => { name: "placement_resize_left", arg_example: None, doc: "resize the armed window at its left edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Left); } },
+    PlacementResizeRight => { name: "placement_resize_right", arg_example: None, doc: "resize the armed window at its right edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Right); } },
+    PlacementResizeUp => { name: "placement_resize_up", arg_example: None, doc: "resize the armed window at its upper edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Top); } },
+    PlacementResizeDown => { name: "placement_resize_down", arg_example: None, doc: "resize the armed window at its lower edge", run: |ctx, _args| { resize_keyboard_tree_placement(ctx, Side::Bottom); } },
+    PlacementNext => { name: "placement_next", arg_example: None, doc: "select the next placement target", run: |ctx, _args| { cycle_keyboard_tree_placement(ctx, false); } },
+    PlacementPrevious => { name: "placement_previous", arg_example: None, doc: "select the previous placement target", run: |ctx, _args| { cycle_keyboard_tree_placement(ctx, true); } },
+    PlacementCenter => { name: "placement_center", arg_example: None, doc: "select the center replacement target", run: |ctx, _args| { center_keyboard_tree_placement(ctx); } },
+    PlacementApply => { name: "placement_apply", arg_example: None, doc: "apply the pending tree placement", run: |ctx, _args| { finish_keyboard_tree_placement(ctx, true); } },
+    PlacementCancel => { name: "placement_cancel", arg_example: None, doc: "cancel the pending tree placement", run: |ctx, _args| { finish_keyboard_tree_placement(ctx, false); } },
     NextKeyboardLayout => { name: "next_keyboard_layout", arg_example: None, doc: "cycle to next keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Next); } },
     PrevKeyboardLayout => { name: "prev_keyboard_layout", arg_example: None, doc: "cycle to previous keyboard layout", run: |ctx, _args| { let _ = crate::keyboard_layout::cycle_keyboard_layout(ctx, StackDirection::Previous); } },
     KeyboardLayout => { name: "keyboard_layout", arg_example: Some("us(intl)"), doc: "set keyboard layout", run: |ctx, args| { if let Some(name) = args.first() { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name); } } },
-    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { if let Some(name) = args.first() { ctx.set_current_mode(name.clone()); } } },
+    SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { if let Some(name) = args.first() && name != crate::core_state::TREE_PLACEMENT_MODE_NAME { ctx.set_current_mode(name.clone()); } } },
     Spawn => { name: "spawn", arg_example: Some("kitty"), doc: "spawn command", run: |ctx, args| { spawn(ctx, args); } },
     SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| LayoutKind::from_name(s)) { set_layout(ctx, name); } } },
     FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| StackDirection::from_name(s)) { focus_stack(ctx, direction); } } }

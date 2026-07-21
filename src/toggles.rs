@@ -82,6 +82,12 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
+    if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
+        if matches!(ctx.current_mode(), ActiveWmMode::TreePlacement(_)) {
+            ctx.reset_mode();
+        }
+        return;
+    }
     let next_mode = toggle_mode_name(ctx.current_mode(), name);
     // Overview exit is handled by `exit_overview` (which updates
     // `current_mode` directly) rather than `set_current_mode` to avoid

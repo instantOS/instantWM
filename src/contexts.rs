@@ -302,7 +302,8 @@ impl<'a> CoreCtx<'a> {
                 self.g.config.bindings.modes.contains_key(name)
             }
             crate::core_state::ActiveWmMode::Default
-            | crate::core_state::ActiveWmMode::Overview => true,
+            | crate::core_state::ActiveWmMode::Overview
+            | crate::core_state::ActiveWmMode::TreePlacement(_) => true,
         };
         if !mode_exists {
             self.g.behavior.current_mode = crate::core_state::ActiveWmMode::Default;
@@ -611,15 +612,25 @@ impl<'a> WmCtx<'a> {
         &mut self,
         next_mode: crate::core_state::ActiveWmMode,
         overview_exit: crate::overview::ExitMode,
-    ) {
-        let previous_mode = self.core().behavior().current_mode.clone();
+    ) -> crate::core_state::ActiveWmMode {
+        let previous_mode = std::mem::replace(
+            &mut self.core_mut().behavior_mut().current_mode,
+            next_mode.clone(),
+        );
         if previous_mode == next_mode {
-            return;
+            return previous_mode;
         }
 
-        self.core_mut().behavior_mut().current_mode = next_mode.clone();
         crate::overview::handle_mode_transition(self, &previous_mode, &next_mode, overview_exit);
+        if matches!(
+            previous_mode,
+            crate::core_state::ActiveWmMode::TreePlacement(_)
+        ) {
+            self.update_layout_preview(None);
+            self.end_modal_keyboard();
+        }
         self.request_bar_update();
+        previous_mode
     }
 
     pub fn reset_mode(&mut self) {
@@ -631,5 +642,44 @@ impl<'a> WmCtx<'a> {
         f: impl FnOnce(&mut crate::core_state::WmBehavior) -> R,
     ) -> R {
         f(self.core_mut().behavior_mut())
+    }
+}
+
+#[cfg(test)]
+mod mode_transition_tests {
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::core_state::{ActiveWmMode, KeyboardTreePlacement};
+    use crate::layouts::tree::PlacementTarget;
+    use crate::types::{MonitorId, Point, Rect, TagMask, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn leaving_placement_clears_its_preview_through_the_mode_transition() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let placement = KeyboardTreePlacement::new(
+            WindowId(1),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            vec![PlacementTarget {
+                target: WindowId(2),
+                side: None,
+                candidate_index: 0,
+                position: Point::new(10, 10),
+            }],
+            0,
+        )
+        .expect("valid placement");
+        wm.core.behavior.current_mode = ActiveWmMode::TreePlacement(placement);
+        wm.core.layout_preview = Some(Rect::new(0, 0, 100, 100));
+
+        wm.ctx()
+            .set_current_mode(ActiveWmMode::Named("resize".to_string()));
+
+        assert_eq!(
+            wm.core.behavior.current_mode,
+            ActiveWmMode::Named("resize".to_string())
+        );
+        assert_eq!(wm.core.layout_preview, None);
     }
 }

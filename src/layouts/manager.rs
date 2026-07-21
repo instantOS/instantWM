@@ -14,10 +14,8 @@ use std::cmp::max;
 use std::collections::HashMap;
 
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
-    if ctx.core().state().tree_placement.is_some() && !keyboard_tree_placement_is_current(ctx) {
-        ctx.core_mut().state_mut().tree_placement = None;
-        ctx.update_layout_preview(None);
-        ctx.end_modal_keyboard();
+    if ctx.current_mode().tree_placement().is_some() && !keyboard_tree_placement_is_current(ctx) {
+        ctx.reset_mode();
     }
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
 
@@ -662,6 +660,11 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
 }
 
 pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
+    match ctx.current_mode() {
+        crate::core_state::ActiveWmMode::TreePlacement(_) => return true,
+        crate::core_state::ActiveWmMode::Overview => ctx.reset_mode(),
+        crate::core_state::ActiveWmMode::Default | crate::core_state::ActiveWmMode::Named(_) => {}
+    }
     let (source, monitor_id, tags, targets, source_center) = {
         let monitor = ctx.core().model().selected_monitor();
         let Some(source) = monitor.selected else {
@@ -725,13 +728,13 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         ctx.end_modal_keyboard();
         return false;
     };
-    ctx.core_mut().state_mut().tree_placement = Some(crate::core_state::KeyboardTreePlacement {
-        source,
-        monitor_id,
-        tags,
-        targets,
-        selected,
-    });
+    let Some(state) =
+        crate::core_state::KeyboardTreePlacement::new(source, monitor_id, tags, targets, selected)
+    else {
+        ctx.end_modal_keyboard();
+        return false;
+    };
+    ctx.set_current_mode(crate::core_state::ActiveWmMode::TreePlacement(state));
     crate::focus::focus(ctx, Some(focus_target));
     ctx.pointer_backend()
         .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
@@ -779,18 +782,17 @@ fn tree_slot_outer_rect(
 fn refresh_keyboard_tree_preview(ctx: &mut WmCtx<'_>) {
     let selected = ctx
         .core()
-        .state()
-        .tree_placement
-        .as_ref()
-        .map(|state| (state.source, state.targets.get(state.selected).copied()));
-    let preview = selected.and_then(|(source, target)| {
-        target.and_then(|target| tree_placement_preview_rect(ctx, source, target))
-    });
+        .behavior()
+        .current_mode
+        .tree_placement()
+        .map(|state| (state.source, state.selected_target()));
+    let preview =
+        selected.and_then(|(source, target)| tree_placement_preview_rect(ctx, source, target));
     ctx.update_layout_preview(preview);
 }
 
 fn keyboard_tree_placement_is_current(ctx: &WmCtx<'_>) -> bool {
-    let Some(state) = ctx.core().state().tree_placement.as_ref() else {
+    let Some(state) = ctx.current_mode().tree_placement() else {
         return false;
     };
     if ctx.core().model().selected_monitor_id() != state.monitor_id {
@@ -814,22 +816,20 @@ fn keyboard_tree_placement_is_current(ctx: &WmCtx<'_>) -> bool {
 
 pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     if !keyboard_tree_placement_is_current(ctx) {
-        ctx.core_mut().state_mut().tree_placement = None;
-        ctx.update_layout_preview(None);
-        ctx.end_modal_keyboard();
+        ctx.reset_mode();
         return true;
     }
     let next = {
-        let Some(state) = ctx.core().state().tree_placement.as_ref() else {
+        let Some(state) = ctx.current_mode().tree_placement() else {
             return false;
         };
-        let current = state.targets[state.selected].position;
+        let current = state.selected_target().position;
         state
-            .targets
+            .targets()
             .iter()
             .enumerate()
             .filter_map(|(index, target)| {
-                if index == state.selected {
+                if state.selected_target() == *target {
                     return None;
                 }
                 let dx = target.position.x - current.x;
@@ -863,12 +863,13 @@ pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::t
     let (focus_target, cursor_target) = {
         let state = ctx
             .core_mut()
-            .state_mut()
-            .tree_placement
-            .as_mut()
+            .behavior_mut()
+            .current_mode
+            .tree_placement_mut()
             .expect("placement was checked above");
-        state.selected = next;
-        (state.targets[next].target, state.targets[next].position)
+        let _ = state.select(next);
+        let target = state.selected_target();
+        (target.target, target.position)
     };
     crate::focus::focus(ctx, Some(focus_target));
     ctx.pointer_backend()
@@ -886,11 +887,11 @@ pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::t
     let (source, cursor) = {
         let state = ctx
             .core()
-            .state()
-            .tree_placement
-            .as_ref()
+            .behavior()
+            .current_mode
+            .tree_placement()
             .expect("placement was checked above");
-        (state.source, state.targets[state.selected].position)
+        (state.source, state.selected_target().position)
     };
     let changed = ctx
         .core_mut()
@@ -918,11 +919,11 @@ pub fn resize_keyboard_tree_placement(
     let (source, cursor) = {
         let state = ctx
             .core()
-            .state()
-            .tree_placement
-            .as_ref()
+            .behavior()
+            .current_mode
+            .tree_placement()
             .expect("placement was checked above");
-        (state.source, state.targets[state.selected].position)
+        (state.source, state.selected_target().position)
     };
     let layout_config = ctx.core().config().layout;
     let changed = ctx
@@ -948,7 +949,7 @@ pub fn resize_keyboard_tree_placement(
 
 fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::Point) {
     let targets = {
-        let Some(state) = ctx.core().state().tree_placement.as_ref() else {
+        let Some(state) = ctx.current_mode().tree_placement() else {
             return;
         };
         let monitor = ctx.core().model().selected_monitor();
@@ -985,12 +986,11 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
     let cursor_target = targets[selected].position;
     let state = ctx
         .core_mut()
-        .state_mut()
-        .tree_placement
-        .as_mut()
+        .behavior_mut()
+        .current_mode
+        .tree_placement_mut()
         .expect("placement remains active while rebuilding targets");
-    state.targets = targets;
-    state.selected = selected;
+    let _ = state.replace_targets(targets, selected);
     crate::focus::focus(ctx, Some(focus_target));
     ctx.pointer_backend()
         .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
@@ -999,25 +999,21 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
 
 pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bool {
     if !keyboard_tree_placement_is_current(ctx) {
-        ctx.core_mut().state_mut().tree_placement = None;
-        ctx.update_layout_preview(None);
-        ctx.end_modal_keyboard();
+        ctx.reset_mode();
         return true;
     }
     let (focus_target, cursor_target) = {
-        let Some(state) = ctx.core_mut().state_mut().tree_placement.as_mut() else {
+        let Some(state) = ctx
+            .core_mut()
+            .behavior_mut()
+            .current_mode
+            .tree_placement_mut()
+        else {
             return false;
         };
-        let len = state.targets.len();
-        state.selected = if backwards {
-            (state.selected + len - 1) % len
-        } else {
-            (state.selected + 1) % len
-        };
-        (
-            state.targets[state.selected].target,
-            state.targets[state.selected].position,
-        )
+        state.cycle(backwards);
+        let target = state.selected_target();
+        (target.target, target.position)
     };
     crate::focus::focus(ctx, Some(focus_target));
     ctx.pointer_backend()
@@ -1028,25 +1024,29 @@ pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bo
 
 pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
     if !keyboard_tree_placement_is_current(ctx) {
-        ctx.core_mut().state_mut().tree_placement = None;
-        ctx.update_layout_preview(None);
-        ctx.end_modal_keyboard();
+        ctx.reset_mode();
         return true;
     }
     let (focus_target, cursor_target) = {
-        let Some(state) = ctx.core_mut().state_mut().tree_placement.as_mut() else {
+        let Some(state) = ctx
+            .core_mut()
+            .behavior_mut()
+            .current_mode
+            .tree_placement_mut()
+        else {
             return false;
         };
-        let target_window = state.targets[state.selected].target;
+        let target_window = state.selected_target().target;
         let Some(index) = state
-            .targets
+            .targets()
             .iter()
             .position(|target| target.target == target_window && target.side.is_none())
         else {
             return true;
         };
-        state.selected = index;
-        (target_window, state.targets[index].position)
+        let cursor_target = state.targets()[index].position;
+        let _ = state.select(index);
+        (target_window, cursor_target)
     };
     crate::focus::focus(ctx, Some(focus_target));
     ctx.pointer_backend()
@@ -1056,11 +1056,13 @@ pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
 }
 
 pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool {
-    let Some(state) = ctx.core_mut().state_mut().tree_placement.take() else {
+    let previous = ctx.transition_current_mode(
+        crate::core_state::ActiveWmMode::Default,
+        crate::overview::ExitMode::RestorePrevious,
+    );
+    let crate::core_state::ActiveWmMode::TreePlacement(state) = previous else {
         return false;
     };
-    ctx.update_layout_preview(None);
-    ctx.end_modal_keyboard();
     let context_is_current = ctx.core().model().selected_monitor_id() == state.monitor_id
         && ctx.core().model().selected_monitor().selected_tags() == state.tags
         && ctx
@@ -1077,7 +1079,7 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
             .selected_monitor_mut()
             .per_tag_state()
             .layout_tree
-            .apply_placement_target(state.source, state.targets[state.selected]);
+            .apply_placement_target(state.source, state.selected_target());
     if context_is_current {
         crate::focus::focus(ctx, Some(state.source));
     }

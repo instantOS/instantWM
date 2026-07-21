@@ -276,9 +276,26 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         merge_mode(theme.modes.get("desktop"), "desktop", false, Vec::new()),
     );
 
+    let mut placement_mode = merge_mode(
+        theme.modes.get(crate::core_state::TREE_PLACEMENT_MODE_NAME),
+        "place window",
+        false,
+        keybindings::get_tree_placement_keybinds(),
+    );
+    // Placement has a transactional apply/cancel lifecycle; treating one
+    // command as transient would discard that transaction mid-navigation.
+    placement_mode.transient = false;
+    modes.insert(
+        crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
+        placement_mode,
+    );
+
     // Add all other user-defined modes
     for (name, spec) in &theme.modes {
-        if name == "prefix" || name == "desktop" {
+        if name == "prefix"
+            || name == "desktop"
+            || name == crate::core_state::TREE_PLACEMENT_MODE_NAME
+        {
             continue;
         }
         let keybinds = keybind_config::merge_keybinds(Vec::new(), &spec.keybinds);

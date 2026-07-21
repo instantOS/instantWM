@@ -47,6 +47,30 @@ The default Super bindings use the tree whenever the focused window is tiled:
   This deliberately uses Super to enter the mode; the browser prototype could
   not reserve that modifier.
 
+Keyboard placement is the built-in `placement` WM mode, not a separate input
+state. It is visible in the bar and `instantwmctl mode list`; changing modes by
+IPC or a binding cancels placement and removes its preview. IPC cannot enter
+`placement` directly because entry needs a validated source window and target
+set; use the `begin_keyboard_move` action. Its commands are normal named
+actions (`placement_left`, `placement_swap_left`, `placement_resize_left`,
+`placement_next`, `placement_center`, `placement_apply`, `placement_cancel`,
+and their directional variants), so defaults can be replaced in TOML:
+
+```toml
+[modes.placement]
+description = "place window"
+
+[[modes.placement.keybinds]]
+modifiers = []
+key = "a"
+action = "placement_left"
+```
+
+Super is ignored as an entry modifier while this mode is active, allowing it
+to remain held after Super+M. Other modifiers remain meaningful. An explicit
+`none` action can make an otherwise unrelated key a consumed no-op; an unbound
+non-modifier cancels placement.
+
 `Super+Ctrl+M` toggles maximized presentation. Pressing it again returns to the
 unchanged manual tree. `Super+J/K` cycles tiled windows in stable tree-leaf
 order while maximized; floating windows remain separate overlays. The broken

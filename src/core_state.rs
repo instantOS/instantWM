@@ -211,15 +211,13 @@ pub struct CoreState {
     pub drag: DragState,
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
-    /// Active keyboard traversal of semantic manual-tree placement targets.
-    pub tree_placement: Option<KeyboardTreePlacement>,
     /// Backend-neutral outer rectangle of the currently previewed manual-tree
     /// placement. Both keyboard and pointer placement project this state.
     pub layout_preview: Option<Rect>,
     pub pending_launches: VecDeque<PendingLaunch>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyboardTreePlacement {
     pub source: WindowId,
     /// The tree is owned by this exact monitor/tag view. Capturing both keeps
@@ -227,8 +225,67 @@ pub struct KeyboardTreePlacement {
     /// or monitor change.
     pub monitor_id: MonitorId,
     pub tags: TagMask,
-    pub targets: Vec<crate::layouts::tree::PlacementTarget>,
-    pub selected: usize,
+    targets: Vec<crate::layouts::tree::PlacementTarget>,
+    selected: usize,
+}
+
+impl KeyboardTreePlacement {
+    pub fn new(
+        source: WindowId,
+        monitor_id: MonitorId,
+        tags: TagMask,
+        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        selected: usize,
+    ) -> Option<Self> {
+        targets.get(selected)?;
+        Some(Self {
+            source,
+            monitor_id,
+            tags,
+            targets,
+            selected,
+        })
+    }
+
+    pub fn targets(&self) -> &[crate::layouts::tree::PlacementTarget] {
+        &self.targets
+    }
+
+    pub fn selected_target(&self) -> crate::layouts::tree::PlacementTarget {
+        // Only the validating constructor and replacement method can create
+        // this state, so a selected target always exists.
+        self.targets[self.selected]
+    }
+
+    pub fn select(&mut self, selected: usize) -> bool {
+        if selected >= self.targets.len() {
+            return false;
+        }
+        self.selected = selected;
+        true
+    }
+
+    pub fn cycle(&mut self, backwards: bool) {
+        let len = self.targets.len();
+        self.selected = if backwards {
+            (self.selected + len - 1) % len
+        } else {
+            (self.selected + 1) % len
+        };
+    }
+
+    pub fn replace_targets(
+        &mut self,
+        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        selected: usize,
+    ) -> bool {
+        if targets.get(selected).is_none() {
+            return false;
+        }
+        self.targets = targets;
+        self.selected = selected;
+        true
+    }
 }
 
 impl CoreState {
@@ -284,7 +341,7 @@ impl CoreState {
     pub fn normalize_current_mode(&mut self) {
         let mode_exists = match &self.behavior.current_mode {
             ActiveWmMode::Named(name) => self.config.bindings.modes.contains_key(name),
-            ActiveWmMode::Default | ActiveWmMode::Overview => true,
+            ActiveWmMode::Default | ActiveWmMode::Overview | ActiveWmMode::TreePlacement(_) => true,
         };
         if !mode_exists {
             self.behavior.current_mode = ActiveWmMode::Default;
@@ -1027,8 +1084,14 @@ impl KeyboardLayoutState {
 pub enum ActiveWmMode {
     Default,
     Overview,
+    /// Compositor-owned keyboard placement. Keeping the interaction payload
+    /// in the mode makes it impossible for modal input and the advertised WM
+    /// mode to disagree.
+    TreePlacement(KeyboardTreePlacement),
     Named(String),
 }
+
+pub const TREE_PLACEMENT_MODE_NAME: &str = "placement";
 
 impl ActiveWmMode {
     pub fn from_name(name: impl Into<String>) -> Self {
@@ -1044,7 +1107,22 @@ impl ActiveWmMode {
         match self {
             Self::Default => "default",
             Self::Overview => crate::overview::OVERVIEW_MODE_NAME,
+            Self::TreePlacement(_) => TREE_PLACEMENT_MODE_NAME,
             Self::Named(name) => name,
+        }
+    }
+
+    pub fn tree_placement(&self) -> Option<&KeyboardTreePlacement> {
+        match self {
+            Self::TreePlacement(state) => Some(state),
+            _ => None,
+        }
+    }
+
+    pub fn tree_placement_mut(&mut self) -> Option<&mut KeyboardTreePlacement> {
+        match self {
+            Self::TreePlacement(state) => Some(state),
+            _ => None,
         }
     }
 }
@@ -1063,7 +1141,9 @@ impl From<String> for ActiveWmMode {
 
 #[cfg(test)]
 mod active_wm_mode_tests {
-    use super::ActiveWmMode;
+    use super::{ActiveWmMode, KeyboardTreePlacement};
+    use crate::layouts::tree::{PlacementTarget, Side};
+    use crate::types::{MonitorId, Point, TagMask, WindowId};
 
     #[test]
     fn external_mode_names_are_normalized_into_explicit_states() {
@@ -1074,6 +1154,38 @@ mod active_wm_mode_tests {
             ActiveWmMode::from_name("resize"),
             ActiveWmMode::Named("resize".to_string())
         );
+    }
+
+    #[test]
+    fn keyboard_placement_rejects_an_invalid_selection() {
+        let target = PlacementTarget {
+            target: WindowId(2),
+            side: Some(Side::Left),
+            candidate_index: 0,
+            position: Point::new(10, 20),
+        };
+        assert!(
+            KeyboardTreePlacement::new(
+                WindowId(1),
+                MonitorId::default(),
+                TagMask::EMPTY,
+                vec![target],
+                1,
+            )
+            .is_none()
+        );
+
+        let mut placement = KeyboardTreePlacement::new(
+            WindowId(1),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            vec![target],
+            0,
+        )
+        .expect("valid selection");
+        assert_eq!(placement.selected_target(), target);
+        assert!(!placement.select(1));
+        assert_eq!(placement.selected_target(), target);
     }
 }
 

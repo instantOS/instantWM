@@ -9,88 +9,34 @@ use crate::types::*;
 use crate::types::{Direction, StackDirection, VerticalDirection};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TreePlacementCommand {
-    Navigate(crate::layouts::tree::Side),
-    Swap(crate::layouts::tree::Side),
-    Resize(crate::layouts::tree::Side),
-    Cycle { backwards: bool },
-    Center,
-    Apply,
-    Cancel,
-    Modifier,
+fn normalize_binding_keysym(keysym: u32) -> u32 {
+    if (b'A' as u32..=b'Z' as u32).contains(&keysym) {
+        keysym + u32::from(b'a' - b'A')
+    } else {
+        keysym
+    }
 }
 
-fn tree_placement_command(keysym: u32, cleaned: u16) -> TreePlacementCommand {
-    use crate::config::keybindings::{CONTROL, MODKEY, SHIFT};
+fn is_modifier_keysym(keysym: u32) -> bool {
     use crate::config::keysyms::*;
-    use crate::layouts::tree::Side;
-
-    if matches!(
+    matches!(
         keysym,
         XK_SHIFT_L | XK_SHIFT_R | XK_CONTROL_L | XK_CONTROL_R | XK_SUPER_L | XK_SUPER_R
-    ) {
-        return TreePlacementCommand::Modifier;
-    }
-
-    // Super may still be held from the chord that entered placement. It is
-    // optional inside the mode; every other modifier is part of the command.
-    let modifiers = u32::from(cleaned) & !MODKEY;
-    let direction = match keysym {
-        XK_LEFT | XK_H | XK_H_UPPER => Some(Side::Left),
-        XK_RIGHT | XK_L | XK_L_UPPER => Some(Side::Right),
-        XK_UP | XK_K | XK_K_UPPER => Some(Side::Top),
-        XK_DOWN | XK_J | XK_J_UPPER => Some(Side::Bottom),
-        _ => None,
-    };
-    if let Some(side) = direction {
-        return match modifiers {
-            0 => TreePlacementCommand::Navigate(side),
-            SHIFT => TreePlacementCommand::Swap(side),
-            CONTROL => TreePlacementCommand::Resize(side),
-            _ => TreePlacementCommand::Cancel,
-        };
-    }
-
-    match (keysym, modifiers) {
-        (XK_TAB, 0) => TreePlacementCommand::Cycle { backwards: false },
-        (XK_TAB, SHIFT) => TreePlacementCommand::Cycle { backwards: true },
-        (XK_SPACE, 0) => TreePlacementCommand::Center,
-        (XK_RETURN, 0) => TreePlacementCommand::Apply,
-        // Escape and every unrelated key cancel and are consumed. This avoids
-        // accidentally typing the cancelling key into the focused client.
-        _ => TreePlacementCommand::Cancel,
-    }
+    )
 }
 
 pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
-
-    if ctx.core().state().tree_placement.is_some() {
-        return match tree_placement_command(keysym, cleaned) {
-            TreePlacementCommand::Navigate(side) => {
-                crate::layouts::step_keyboard_tree_placement(ctx, side)
-            }
-            TreePlacementCommand::Swap(side) => {
-                crate::layouts::swap_keyboard_tree_placement(ctx, side)
-            }
-            TreePlacementCommand::Resize(side) => {
-                crate::layouts::resize_keyboard_tree_placement(ctx, side)
-            }
-            TreePlacementCommand::Cycle { backwards } => {
-                crate::layouts::cycle_keyboard_tree_placement(ctx, backwards)
-            }
-            TreePlacementCommand::Center => crate::layouts::center_keyboard_tree_placement(ctx),
-            TreePlacementCommand::Apply => {
-                crate::layouts::finish_keyboard_tree_placement(ctx, true)
-            }
-            TreePlacementCommand::Cancel => {
-                crate::layouts::finish_keyboard_tree_placement(ctx, false)
-            }
-            TreePlacementCommand::Modifier => true,
-        };
-    }
+    let placement_active = matches!(ctx.current_mode(), ActiveWmMode::TreePlacement(_));
+    // Super may still be held after the chord that entered placement. Treat it
+    // as an entry modifier, not part of commands within the mode.
+    let binding_mask = if placement_active {
+        cleaned & !(crate::config::keybindings::MODKEY as u16)
+    } else {
+        cleaned
+    };
+    let binding_keysym = normalize_binding_keysym(keysym);
 
     // Super + Escape always resets to default mode
     if !matches!(ctx.current_mode(), ActiveWmMode::Default)
@@ -113,8 +59,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         &ctx.core().config().bindings.modes,
         ctx.core().model().selected_win(),
         ctx.current_mode(),
-        keysym,
-        cleaned,
+        binding_keysym,
+        binding_mask,
         numlockmask,
     )
     .map(|resolution| (Some(resolution.action), resolution.transient))
@@ -124,6 +70,13 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
         execute_key_action(ctx, &action);
         if transient {
             ctx.reset_mode();
+        }
+        true
+    } else if placement_active {
+        // Modifier presses are part of forming the next chord. Every other
+        // unbound key cancels and is consumed so it cannot leak to a client.
+        if !is_modifier_keysym(keysym) {
+            crate::layouts::finish_keyboard_tree_placement(ctx, false);
         }
         true
     } else {
@@ -171,6 +124,13 @@ fn resolve_key_action(
     let find = |binds: &[Key]| find_matching_action(binds, keysym, cleaned, numlockmask);
 
     match mode {
+        ActiveWmMode::TreePlacement(_) => modes
+            .get(crate::core_state::TREE_PLACEMENT_MODE_NAME)
+            .and_then(|mode| find(&mode.keybinds))
+            .map(|action| KeyResolution {
+                action,
+                transient: false,
+            }),
         ActiveWmMode::Named(name) => {
             let mode_cfg = modes.get(name.as_str());
             let transient = mode_cfg.is_some_and(|m| m.transient);
@@ -253,64 +213,31 @@ mod tests {
     use crate::actions::NamedAction;
     use crate::core_state::ActiveWmMode;
 
-    #[test]
-    fn tree_placement_accepts_arrows_and_vim_directions() {
-        use crate::config::keysyms::*;
-        use crate::layouts::tree::Side;
-
-        for (keysym, side) in [
-            (XK_LEFT, Side::Left),
-            (XK_H, Side::Left),
-            (XK_DOWN, Side::Bottom),
-            (XK_J, Side::Bottom),
-            (XK_UP, Side::Top),
-            (XK_K, Side::Top),
-            (XK_RIGHT, Side::Right),
-            (XK_L, Side::Right),
-        ] {
-            assert_eq!(
-                tree_placement_command(keysym, 0),
-                TreePlacementCommand::Navigate(side)
-            );
-        }
+    fn placement_mode() -> ActiveWmMode {
+        let state = crate::core_state::KeyboardTreePlacement::new(
+            WindowId(1),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            vec![crate::layouts::tree::PlacementTarget {
+                target: WindowId(2),
+                side: None,
+                candidate_index: 0,
+                position: Point::new(0, 0),
+            }],
+            0,
+        )
+        .expect("valid placement test state");
+        ActiveWmMode::TreePlacement(state)
     }
 
     #[test]
-    fn tree_placement_modifiers_select_swap_and_resize() {
-        use crate::config::keybindings::{CONTROL, MODKEY, SHIFT};
-        use crate::config::keysyms::*;
-        use crate::layouts::tree::Side;
-
-        assert_eq!(
-            tree_placement_command(XK_H_UPPER, SHIFT as u16),
-            TreePlacementCommand::Swap(Side::Left)
-        );
-        assert_eq!(
-            tree_placement_command(XK_RIGHT, (CONTROL | MODKEY) as u16),
-            TreePlacementCommand::Resize(Side::Right)
-        );
-        assert_eq!(
-            tree_placement_command(XK_J, (SHIFT | CONTROL) as u16),
-            TreePlacementCommand::Cancel
-        );
-    }
-
-    #[test]
-    fn unrelated_tree_placement_keys_cancel_but_chord_modifiers_do_not() {
+    fn key_normalization_handles_shifted_letters_and_modifier_keys() {
         use crate::config::keysyms::*;
 
-        assert_eq!(
-            tree_placement_command(XK_SHIFT_L, 0),
-            TreePlacementCommand::Modifier
-        );
-        assert_eq!(
-            tree_placement_command(XK_CONTROL_R, 0),
-            TreePlacementCommand::Modifier
-        );
-        assert_eq!(
-            tree_placement_command(XK_Q, 0),
-            TreePlacementCommand::Cancel
-        );
+        assert_eq!(normalize_binding_keysym(XK_H_UPPER), XK_H);
+        assert!(is_modifier_keysym(XK_SHIFT_L));
+        assert!(is_modifier_keysym(XK_CONTROL_R));
+        assert!(!is_modifier_keysym(XK_Q));
     }
 
     #[test]
@@ -352,6 +279,46 @@ mod tests {
             _ => panic!("unexpected action kind"),
         }
         assert!(resolved.transient);
+    }
+
+    #[test]
+    fn placement_resolves_only_its_configured_mode_actions() {
+        let placement_key = Key {
+            mod_mask: 0,
+            keysym: 42,
+            action: KeyAction::named(NamedAction::PlacementLeft),
+        };
+        let global_key = Key {
+            mod_mask: 0,
+            keysym: 43,
+            action: KeyAction::named(NamedAction::FocusNext),
+        };
+        let global_keys = [global_key];
+        let mut modes = HashMap::new();
+        modes.insert(
+            crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
+            ModeConfig {
+                description: None,
+                transient: true,
+                keybinds: vec![placement_key],
+            },
+        );
+        let mode = placement_mode();
+
+        let resolved = resolve_key_action(&global_keys, &[], &modes, None, &mode, 42, 0, 0)
+            .expect("configured placement action");
+        assert!(matches!(
+            resolved.action,
+            KeyAction::Named {
+                action: NamedAction::PlacementLeft,
+                ..
+            }
+        ));
+        assert!(
+            !resolved.transient,
+            "placement is intrinsically non-transient"
+        );
+        assert!(resolve_key_action(&global_keys, &[], &modes, None, &mode, 43, 0, 0).is_none());
     }
 
     #[test]
