@@ -1,5 +1,86 @@
 use super::*;
 
+#[derive(Debug, Clone, Copy)]
+enum PeerScope {
+    All,
+    BeforeTarget,
+    AfterTarget,
+}
+
+impl PeerScope {
+    fn contains(self, candidate: usize, target: usize) -> bool {
+        match self {
+            Self::All => candidate != target,
+            Self::BeforeTarget => candidate < target,
+            Self::AfterTarget => candidate > target,
+        }
+    }
+}
+
+/// Resize one child while proportionally scaling the selected peer group.
+/// Keeping this policy in one place makes keyboard resizing (`All`) and
+/// physical-edge dragging (`BeforeTarget`/`AfterTarget`) differ only in which
+/// peers are allowed to yield space.
+fn resize_split_child(
+    split: &mut Split,
+    target: usize,
+    delta: f64,
+    minimum_weight: f64,
+    peers: PeerScope,
+) -> bool {
+    let peer_count = split
+        .children
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| peers.contains(*index, target))
+        .count();
+    if peer_count == 0 {
+        return false;
+    }
+
+    let current = split.children[target].weight;
+    let selected_peer_weight = split
+        .children
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| peers.contains(*index, target))
+        .map(|(_, child)| child.weight)
+        .sum::<f64>();
+    // Canonical splits sum to one. Use that exact invariant for the all-peer
+    // path to retain its established rounding behavior.
+    let adjustable_weight = match peers {
+        PeerScope::All => 1.0,
+        PeerScope::BeforeTarget | PeerScope::AfterTarget => current + selected_peer_weight,
+    };
+    let peer_weight = adjustable_weight - current;
+    let configured_minimum = finite_clamp(minimum_weight, 0.001, 0.49, DEFAULT_MINIMUM_WEIGHT);
+    let minimum = match peers {
+        // Preserve the keyboard command's existing range: it always leaves at
+        // least half the run available to its peers collectively.
+        PeerScope::All => configured_minimum.min(0.5 / split.children.len() as f64),
+        // A pointer edge can only consume the weight on that edge's side.
+        PeerScope::BeforeTarget | PeerScope::AfterTarget => {
+            configured_minimum.min(adjustable_weight / (peer_count + 1) as f64)
+        }
+    };
+    let maximum = adjustable_weight - minimum * peer_count as f64;
+    let requested = current + if delta.is_finite() { delta } else { 0.0 };
+    let target_weight = requested.clamp(minimum, maximum);
+    if (target_weight - current).abs() < EPSILON || peer_weight <= EPSILON {
+        return false;
+    }
+
+    let peer_scale = (adjustable_weight - target_weight) / peer_weight;
+    for (index, child) in split.children.iter_mut().enumerate() {
+        if index == target {
+            child.weight = target_weight;
+        } else if peers.contains(index, target) {
+            child.weight *= peer_scale;
+        }
+    }
+    true
+}
+
 pub(super) fn immediate_parent_axis(node: &Node, target: WindowId) -> Option<Axis> {
     let Node::Split(split) = node else {
         return None;
@@ -56,25 +137,8 @@ pub(super) fn resize_deepest_run_by(
         return (Node::Split(split), false);
     }
 
-    let count = split.children.len();
-    let minimum =
-        finite_clamp(minimum_weight, 0.001, 0.49, DEFAULT_MINIMUM_WEIGHT).min(0.5 / count as f64);
-    let maximum = 1.0 - minimum * (count - 1) as f64;
-    let current = split.children[index].weight;
-    let requested = current + if delta.is_finite() { delta } else { 0.0 };
-    let target_weight = requested.clamp(minimum, maximum);
-    if (target_weight - current).abs() < EPSILON {
-        return (Node::Split(split), false);
-    }
-    let peer_scale = (1.0 - target_weight) / (1.0 - current);
-    for (child_index, child) in split.children.iter_mut().enumerate() {
-        child.weight = if child_index == index {
-            target_weight
-        } else {
-            child.weight * peer_scale
-        };
-    }
-    (Node::Split(split), true)
+    let changed = resize_split_child(&mut split, index, delta, minimum_weight, PeerScope::All);
+    (Node::Split(split), changed)
 }
 
 pub(super) fn deepest_resize_split(node: &Node, target: WindowId, axis: Axis) -> Option<SplitId> {
@@ -136,29 +200,16 @@ pub(super) fn resize_deepest_edge_by(
         return (Node::Split(split), true);
     }
 
-    let neighbor = if split.axis != side.axis() {
-        None
-    } else if side.is_leading() {
-        index.checked_sub(1)
-    } else {
-        (index + 1 < split.children.len()).then_some(index + 1)
-    };
-    let Some(neighbor) = neighbor else {
-        return (Node::Split(split), false);
-    };
-
-    let pair_weight = split.children[index].weight + split.children[neighbor].weight;
-    let minimum =
-        finite_clamp(minimum_weight, 0.001, 0.49, DEFAULT_MINIMUM_WEIGHT).min(pair_weight / 2.0);
-    let current = split.children[index].weight;
-    let requested = current + if delta.is_finite() { delta } else { 0.0 };
-    let target_weight = requested.clamp(minimum, pair_weight - minimum);
-    if (target_weight - current).abs() < EPSILON {
+    if split.axis != side.axis() {
         return (Node::Split(split), false);
     }
-    split.children[index].weight = target_weight;
-    split.children[neighbor].weight = pair_weight - target_weight;
-    (Node::Split(split), true)
+    let peers = if side.is_leading() {
+        PeerScope::BeforeTarget
+    } else {
+        PeerScope::AfterTarget
+    };
+    let changed = resize_split_child(&mut split, index, delta, minimum_weight, peers);
+    (Node::Split(split), changed)
 }
 
 pub(super) fn redistribute_containing_run(node: Node, target: WindowId, axis: Axis) -> Node {

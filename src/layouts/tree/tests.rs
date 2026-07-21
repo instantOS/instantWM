@@ -577,6 +577,91 @@ fn pointer_resize_moves_only_the_grabbed_seam() {
 }
 
 #[test]
+fn pointer_outer_edge_resize_matches_keyboard_peer_redistribution() {
+    let mut keyboard = LayoutTree::default();
+    keyboard.root = equal_run(&windows(4), Axis::Vertical, &mut || keyboard.allocate());
+    let mut pointer = keyboard.clone();
+    let layout = Rect::new(0, 0, 1000, 600);
+
+    assert!(keyboard.resize_by_pixels(WindowId(1), Side::Right, 100, layout, 0.15));
+    assert!(pointer.resize_edge_by_pixels(WindowId(1), Side::Right, 100, layout, 0.15));
+
+    assert_eq!(pointer.bounds(layout), keyboard.bounds(layout));
+    assert_canonical(&pointer);
+}
+
+#[test]
+fn pointer_resize_preserves_ratios_only_on_the_grabbed_side() {
+    let mut tree = LayoutTree::default();
+    let split_id = tree.allocate();
+    tree.root = make_split(
+        split_id,
+        Axis::Vertical,
+        windows(4)
+            .into_iter()
+            .zip([0.2, 0.2, 0.4, 0.2])
+            .map(|(window, weight)| WeightedNode {
+                node: Node::Window(window),
+                weight,
+            })
+            .collect(),
+    );
+    let layout = Rect::new(0, 0, 1000, 600);
+    let before = tree.bounds(layout);
+
+    assert!(tree.resize_edge_by_pixels(WindowId(2), Side::Right, 100, layout, 0.05));
+    let after = tree.bounds(layout);
+
+    assert_eq!(after[&WindowId(1)], before[&WindowId(1)]);
+    assert_eq!(after[&WindowId(2)].x, before[&WindowId(2)].x);
+    assert_eq!(after[&WindowId(2)].w - before[&WindowId(2)].w, 100);
+    assert!(
+        (after[&WindowId(3)].w - 2 * after[&WindowId(4)].w).abs() <= 1,
+        "integer rounding may differ by one pixel, but the 2:1 ratio must remain"
+    );
+    assert_eq!(
+        after[&WindowId(4)].x + after[&WindowId(4)].w,
+        before[&WindowId(4)].x + before[&WindowId(4)].w
+    );
+    assert_canonical(&tree);
+}
+
+#[test]
+fn pointer_leading_edge_preserves_ratios_and_the_opposite_edge() {
+    let mut tree = LayoutTree::default();
+    let split_id = tree.allocate();
+    tree.root = make_split(
+        split_id,
+        Axis::Vertical,
+        windows(4)
+            .into_iter()
+            .zip([0.2, 0.4, 0.2, 0.2])
+            .map(|(window, weight)| WeightedNode {
+                node: Node::Window(window),
+                weight,
+            })
+            .collect(),
+    );
+    let layout = Rect::new(0, 0, 1000, 600);
+    let before = tree.bounds(layout);
+
+    assert!(tree.resize_edge_by_pixels(WindowId(3), Side::Left, -100, layout, 0.05));
+    let after = tree.bounds(layout);
+
+    assert_eq!(after[&WindowId(4)], before[&WindowId(4)]);
+    assert_eq!(
+        after[&WindowId(3)].x + after[&WindowId(3)].w,
+        before[&WindowId(3)].x + before[&WindowId(3)].w
+    );
+    assert_eq!(after[&WindowId(3)].w - before[&WindowId(3)].w, 100);
+    assert!(
+        (after[&WindowId(2)].w - 2 * after[&WindowId(1)].w).abs() <= 1,
+        "leading peers must retain their 2:1 ratio"
+    );
+    assert_canonical(&tree);
+}
+
+#[test]
 fn constrained_bounds_reserve_minimums_without_overlap() {
     let mut tree = LayoutTree::default();
     tree.root = equal_run(&windows(3), Axis::Vertical, &mut || tree.allocate());

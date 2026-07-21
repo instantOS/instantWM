@@ -703,8 +703,9 @@ impl LayoutTree {
 
     /// Move only the grabbed seam, keeping the source's opposite edge fixed.
     ///
-    /// Unlike keyboard growth, pointer resizing transfers space solely
-    /// between the source branch and the adjacent branch on `side`.
+    /// Unlike keyboard growth, pointer resizing transfers space solely from
+    /// the source branch's peers on `side`. Their existing ratios are
+    /// preserved, while peers beyond the source's opposite edge stay fixed.
     pub fn resize_edge_by_pixels(
         &mut self,
         source: WindowId,
