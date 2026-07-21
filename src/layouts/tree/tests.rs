@@ -691,3 +691,18 @@ fn every_public_mutation_preserves_canonical_invariants() {
         );
     }
 }
+
+#[test]
+fn verify_redistribute_bug_demo() {
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::MasterStack, &windows(3), None, 1, 0.7);
+    let before = tree.bounds(Rect::new(0, 0, 1000, 1000));
+    let master_w_before = before[&WindowId(1)].w;
+    eprintln!("master width before insert: {} (expect ~700)", master_w_before);
+
+    tree.reconcile(&[WindowId(1), WindowId(2), WindowId(3), WindowId(4)]);
+    let after = tree.bounds(Rect::new(0, 0, 1000, 1000));
+    let master_w_after = after[&WindowId(1)].w;
+    eprintln!("master width after insert: {} (bug: drops to ~250)", master_w_after);
+    assert_canonical(&tree);
+}
