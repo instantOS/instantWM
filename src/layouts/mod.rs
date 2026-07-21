@@ -35,7 +35,6 @@
 pub mod algo;
 pub mod manager;
 pub(crate) mod placement;
-mod placement_modal;
 pub mod query;
 pub mod tree;
 

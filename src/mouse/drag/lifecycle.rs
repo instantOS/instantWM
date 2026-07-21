@@ -6,7 +6,8 @@
 
 use crate::backend::InteractiveResizeOps;
 use crate::core_state::{
-    DragAlreadyActive, DragCancelReason, DragInteraction, DragNotArmed, DragState, DragType,
+    ArmedDragType, DragAlreadyActive, DragCancelReason, DragInteraction, DragNotArmed, DragState,
+    DragType,
 };
 use crate::types::{MouseButton, Point, Rect, ResizeDirection, WindowId};
 
@@ -54,7 +55,7 @@ pub fn activate_armed_resize(
     let win = interactions.armed_interaction().ok_or(DragNotArmed)?.win();
     protocol.begin_interactive_resize(win);
     interactions
-        .activate_armed(DragType::Resize(direction), start, geometry)
+        .activate_armed(ArmedDragType::Resize(direction), start, geometry)
         .expect("validated armed interaction must activate");
     Ok(())
 }
@@ -203,7 +204,7 @@ mod tests {
 
         assert_eq!(
             interactions.activate_armed(
-                DragType::Resize(ResizeDirection::Right),
+                ArmedDragType::Resize(ResizeDirection::Right),
                 Point::new(810, 300),
                 geometry(),
             ),
@@ -257,7 +258,10 @@ mod tests {
             active.drag_type(),
             DragType::TreeResize(ResizeDirection::Right)
         );
-        assert!(active.tree_resize_origin().is_some());
+        assert!(matches!(
+            active.operation(),
+            crate::core_state::DragOperationRef::TreeResize { .. }
+        ));
 
         let _ = finish(&mut interactions, &protocol, MouseButton::Right).unwrap();
         assert!(protocol.events.borrow().is_empty());

@@ -25,10 +25,8 @@ pub fn hover_resize_drag_begin(
     };
 
     if btn == MouseButton::Middle {
-        crate::client::kill::close_win(
-            &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-            target.win,
-        );
+        let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
+        crate::client::kill::close_win(&mut wm_ctx, target.win);
         return true;
     }
 
@@ -64,26 +62,16 @@ pub fn hover_resize_drag_begin(
     if started.is_err() {
         return false;
     }
+    let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
     match drag_type {
-        crate::core_state::DragType::Move => {
-            set_cursor_style(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                AltCursor::Move,
-            );
-        }
+        crate::core_state::DragType::Move => set_cursor_style(&mut wm_ctx, AltCursor::Move),
         crate::core_state::DragType::Resize(dir) => {
-            set_cursor_style(
-                &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-                AltCursor::Resize(dir),
-            );
+            set_cursor_style(&mut wm_ctx, AltCursor::Resize(dir));
         }
         crate::core_state::DragType::TreeResize(_) => unreachable!("handled before drag start"),
     }
-    crate::focus::focus(
-        &mut crate::contexts::WmCtx::Wayland(ctx.reborrow()),
-        Some(win),
-    );
-    crate::contexts::WmCtx::Wayland(ctx.reborrow()).raise_client(win);
+    crate::focus::focus(&mut wm_ctx, Some(win));
+    wm_ctx.raise_client(win);
     true
 }
 
@@ -98,8 +86,8 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
     };
     ctx.core.drag_state_mut().record_interactive_motion(root);
 
-    match drag.drag_type() {
-        crate::core_state::DragType::Move => {
+    match drag.operation() {
+        crate::core_state::DragOperationRef::Move => {
             let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
             let on_bar = crate::mouse::drag::update_bar_hover_simple(&mut wm_ctx, root);
 
@@ -161,10 +149,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             }
             true
         }
-        crate::core_state::DragType::TreeResize(direction) => {
-            let Some(origin) = drag.tree_resize_origin() else {
-                return false;
-            };
+        crate::core_state::DragOperationRef::TreeResize { direction, origin } => {
             let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
             crate::layouts::manager::update_pointer_tree_resize(
                 &mut wm_ctx,
@@ -175,7 +160,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
                 root,
             )
         }
-        crate::core_state::DragType::Resize(dir) => {
+        crate::core_state::DragOperationRef::Resize(dir) => {
             let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
             let (affects_left, affects_right, affects_top, affects_bottom) = dir.affected_edges();
             let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(

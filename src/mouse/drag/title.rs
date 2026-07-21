@@ -153,7 +153,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
     if ctx
         .core_mut()
         .drag_state_mut()
-        .activate_armed(crate::core_state::DragType::Move, start, current_geo)
+        .activate_armed(crate::core_state::ArmedDragType::Move, start, current_geo)
         .is_err()
     {
         return false;

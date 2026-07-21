@@ -19,12 +19,11 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
     // it moved. Verify that the move reached the displayed view before
     // restoring that explicit focus target.
     let monitor_id = ctx.core().model().selected_monitor_id();
-    let visible_tags = ctx.core().model().selected_monitor().selected_tags();
-    let followed =
-        ctx.core().model().client(win).is_some_and(|client| {
-            client.monitor_id == monitor_id && client.is_visible(visible_tags)
-        });
-    if !followed {
+    if !ctx
+        .core()
+        .model()
+        .client_is_visible_on_selected_monitor(win)
+    {
         return;
     }
 

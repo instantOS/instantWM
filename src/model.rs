@@ -114,6 +114,17 @@ impl WmModel {
         self.monitors.selected_monitor()
     }
 
+    /// Whether `win` belongs to the selected monitor and is visible in its
+    /// current tag view. This resolves the client/monitor relationship and
+    /// selected view as one model query.
+    pub fn client_is_visible_on_selected_monitor(&self, win: WindowId) -> bool {
+        let selected_monitor_id = self.selected_monitor_id();
+        let selected_tags = self.selected_monitor().selected_tags();
+        self.client_view(win).is_some_and(|view| {
+            view.monitor.id() == selected_monitor_id && view.client.is_visible(selected_tags)
+        })
+    }
+
     /// Shorthand to get the selected monitor mutably (Option version).
     pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut crate::types::Monitor> {
         self.monitors.selected_monitor_mut()
@@ -320,7 +331,7 @@ impl Default for WmModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::Rect;
+    use crate::types::{Rect, TagMask};
 
     #[test]
     fn client_view_resolves_client_and_assigned_monitor() {
@@ -358,6 +369,39 @@ mod tests {
         assert!(model.client(win).is_some());
         assert!(model.client_view(win).is_none());
         assert!(model.client_view(WindowId(8)).is_none());
+    }
+
+    #[test]
+    fn selected_view_visibility_is_resolved_as_one_model_query() {
+        let mut model = WmModel::new();
+        let visible_tags = TagMask::single(2).unwrap();
+        let selected_monitor = model.monitors.push(Monitor::default());
+        let other_monitor = model.monitors.push(Monitor::default());
+        model.monitors.set_selected(selected_monitor);
+        model
+            .monitor_mut(selected_monitor)
+            .unwrap()
+            .set_selected_tags(visible_tags);
+
+        let visible = WindowId(1);
+        let hidden = WindowId(2);
+        let elsewhere = WindowId(3);
+        for (win, monitor_id, tags) in [
+            (visible, selected_monitor, visible_tags),
+            (hidden, selected_monitor, TagMask::single(1).unwrap()),
+            (elsewhere, other_monitor, visible_tags),
+        ] {
+            model.insert_client(Client {
+                win,
+                monitor_id,
+                tags,
+                ..Client::default()
+            });
+        }
+
+        assert!(model.client_is_visible_on_selected_monitor(visible));
+        assert!(!model.client_is_visible_on_selected_monitor(hidden));
+        assert!(!model.client_is_visible_on_selected_monitor(elsewhere));
     }
 
     #[test]

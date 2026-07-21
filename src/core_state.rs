@@ -247,6 +247,17 @@ impl KeyboardTreePlacement {
         })
     }
 
+    pub fn new_nearest(
+        source: WindowId,
+        monitor_id: MonitorId,
+        tags: TagMask,
+        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        point: Point,
+    ) -> Option<Self> {
+        let selected = Self::nearest_target_index(&targets, point);
+        Self::new(source, monitor_id, tags, targets, selected)
+    }
+
     pub fn targets(&self) -> &[crate::layouts::tree::PlacementTarget] {
         &self.targets
     }
@@ -257,8 +268,89 @@ impl KeyboardTreePlacement {
         self.targets[self.selected]
     }
 
-    pub fn selected_index(&self) -> usize {
-        self.selected
+    /// Whether the monitor/tag/tree context captured at entry is still the
+    /// authoritative context in which this session may operate.
+    pub fn is_current_for(&self, model: &WmModel) -> bool {
+        if model.selected_monitor_id() != self.monitor_id {
+            return false;
+        }
+        let monitor = model.selected_monitor();
+        monitor.selected_tags() == self.tags
+            && model.client_view(self.source).is_some_and(|view| {
+                view.monitor.id() == self.monitor_id
+                    && view.client.mode.is_tiling()
+                    && view.client.is_visible(self.tags)
+            })
+            && monitor
+                .per_tag()
+                .is_some_and(|tag| tag.layout_tree.leaves().contains(&self.source))
+    }
+
+    fn nearest_target_index(
+        targets: &[crate::layouts::tree::PlacementTarget],
+        point: Point,
+    ) -> usize {
+        targets
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, target)| {
+                let dx = i64::from(target.position.x - point.x);
+                let dy = i64::from(target.position.y - point.y);
+                dx * dx + dy * dy
+            })
+            .map_or(0, |(index, _)| index)
+    }
+
+    /// Select the best candidate lying visually in `side` from the current
+    /// candidate. Returns false when there is no candidate in that direction.
+    pub fn select_direction(&mut self, side: crate::layouts::tree::Side) -> bool {
+        let current = self.selected_target().position;
+        let next =
+            self.targets
+                .iter()
+                .enumerate()
+                .filter_map(|(index, target)| {
+                    if index == self.selected {
+                        return None;
+                    }
+                    let dx = target.position.x - current.x;
+                    let dy = target.position.y - current.y;
+                    let primary = match side {
+                        crate::layouts::tree::Side::Left => -dx,
+                        crate::layouts::tree::Side::Right => dx,
+                        crate::layouts::tree::Side::Top => -dy,
+                        crate::layouts::tree::Side::Bottom => dy,
+                    };
+                    if primary <= 0 {
+                        return None;
+                    }
+                    let cross =
+                        match side {
+                            crate::layouts::tree::Side::Left
+                            | crate::layouts::tree::Side::Right => dy.abs(),
+                            crate::layouts::tree::Side::Top
+                            | crate::layouts::tree::Side::Bottom => dx.abs(),
+                        };
+                    let score = i64::from(primary)
+                        + i64::from(cross) * 2
+                        + i64::from(cross) * i64::from(cross) / i64::from(primary + 1);
+                    Some((index, score))
+                })
+                .min_by_key(|(index, score)| (*score, *index))
+                .map(|(index, _)| index);
+        next.is_some_and(|index| self.select(index))
+    }
+
+    pub fn select_center_of_current_window(&mut self) -> bool {
+        let window = self.selected_target().target;
+        let Some(index) = self
+            .targets
+            .iter()
+            .position(|target| target.target == window && target.side.is_none())
+        else {
+            return false;
+        };
+        self.select(index)
     }
 
     pub fn select(&mut self, selected: usize) -> bool {
@@ -289,6 +381,15 @@ impl KeyboardTreePlacement {
         self.targets = targets;
         self.selected = selected;
         true
+    }
+
+    pub fn replace_targets_near(
+        &mut self,
+        targets: Vec<crate::layouts::tree::PlacementTarget>,
+        point: Point,
+    ) -> bool {
+        let selected = Self::nearest_target_index(&targets, point);
+        self.replace_targets(targets, selected)
     }
 }
 
@@ -389,11 +490,56 @@ pub enum DragType {
     TreeResize(ResizeDirection),
 }
 
+/// Operations to which an armed title-bar interaction may transition.
+/// Tree resizing is deliberately absent because it must start with an
+/// authoritative layout-tree snapshot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArmedDragType {
+    Move,
+    Resize(ResizeDirection),
+}
+
+/// Authoritative operation carried by an active drag.
+///
+/// Unlike [`DragType`], this owns all data required to execute the operation.
+/// In particular, a tree resize cannot exist without the tree snapshot from
+/// which pointer deltas are evaluated.
+#[derive(Debug, Clone)]
+enum DragOperation {
+    Move,
+    Resize(ResizeDirection),
+    TreeResize {
+        direction: ResizeDirection,
+        origin: crate::layouts::tree::LayoutTree,
+    },
+}
+
+impl DragOperation {
+    fn kind(&self) -> DragType {
+        match self {
+            Self::Move => DragType::Move,
+            Self::Resize(direction) => DragType::Resize(*direction),
+            Self::TreeResize { direction, .. } => DragType::TreeResize(*direction),
+        }
+    }
+}
+
+/// Borrowed view of an interaction operation for motion handlers.
+#[derive(Debug, Clone, Copy)]
+pub enum DragOperationRef<'a> {
+    Move,
+    Resize(ResizeDirection),
+    TreeResize {
+        direction: ResizeDirection,
+        origin: &'a crate::layouts::tree::LayoutTree,
+    },
+}
+
 #[derive(Debug, Clone)]
 pub struct DragInteraction {
     win: WindowId,
     button: MouseButton,
-    drag_type: DragType,
+    operation: DragOperation,
     win_start_geo: Rect,
     start_point: Point,
     last_root_point: Point,
@@ -405,23 +551,20 @@ pub struct DragInteraction {
     was_focused: bool,
     was_hidden: bool,
     suppress_click_action: bool,
-    /// Present exactly when `drag_type` is `TreeResize`. Constructors are
-    /// private to this module and preserve the relationship.
-    tree_resize_origin: Option<crate::layouts::tree::LayoutTree>,
 }
 
 impl DragInteraction {
     fn immediate(
         win: WindowId,
         button: MouseButton,
-        drag_type: DragType,
+        operation: DragOperation,
         start: Point,
         geo: Rect,
     ) -> Self {
         Self {
             win,
             button,
-            drag_type,
+            operation,
             start_point: start,
             win_start_geo: geo,
             drop_restore_geo: geo,
@@ -429,7 +572,6 @@ impl DragInteraction {
             was_focused: false,
             was_hidden: false,
             suppress_click_action: false,
-            tree_resize_origin: None,
         }
     }
 
@@ -437,7 +579,7 @@ impl DragInteraction {
         Self {
             win: params.win,
             button: params.button,
-            drag_type: DragType::Move,
+            operation: DragOperation::Move,
             start_point: params.start,
             win_start_geo: params.geometry,
             drop_restore_geo: params.restore_geometry,
@@ -445,7 +587,6 @@ impl DragInteraction {
             was_focused: params.was_focused,
             was_hidden: params.was_hidden,
             suppress_click_action: params.suppress_click_action,
-            tree_resize_origin: None,
         }
     }
 
@@ -456,7 +597,18 @@ impl DragInteraction {
         self.button
     }
     pub fn drag_type(&self) -> DragType {
-        self.drag_type
+        self.operation.kind()
+    }
+
+    pub fn operation(&self) -> DragOperationRef<'_> {
+        match &self.operation {
+            DragOperation::Move => DragOperationRef::Move,
+            DragOperation::Resize(direction) => DragOperationRef::Resize(*direction),
+            DragOperation::TreeResize { direction, origin } => DragOperationRef::TreeResize {
+                direction: *direction,
+                origin,
+            },
+        }
     }
     pub fn win_start_geo(&self) -> Rect {
         self.win_start_geo
@@ -480,20 +632,18 @@ impl DragInteraction {
         self.suppress_click_action
     }
 
-    pub fn tree_resize_origin(&self) -> Option<&crate::layouts::tree::LayoutTree> {
-        self.tree_resize_origin.as_ref()
-    }
-
     fn record_motion(&mut self, point: Point) {
         self.last_root_point = point;
     }
 
-    fn activate_as(&mut self, drag_type: DragType, start: Point, geo: Rect) {
-        self.drag_type = drag_type;
+    fn activate_as(&mut self, drag_type: ArmedDragType, start: Point, geo: Rect) {
+        self.operation = match drag_type {
+            ArmedDragType::Move => DragOperation::Move,
+            ArmedDragType::Resize(direction) => DragOperation::Resize(direction),
+        };
         self.start_point = start;
         self.last_root_point = start;
         self.win_start_geo = geo;
-        self.tree_resize_origin = None;
     }
 }
 
@@ -840,7 +990,7 @@ impl DragState {
         self.begin_active(DragInteraction::immediate(
             win,
             button,
-            DragType::Move,
+            DragOperation::Move,
             start,
             geo,
         ))
@@ -857,7 +1007,7 @@ impl DragState {
         self.begin_active(DragInteraction::immediate(
             win,
             button,
-            DragType::Resize(dir),
+            DragOperation::Resize(dir),
             start,
             geo,
         ))
@@ -872,10 +1022,16 @@ impl DragState {
         geo: Rect,
         origin: crate::layouts::tree::LayoutTree,
     ) -> Result<(), DragAlreadyActive> {
-        let mut drag =
-            DragInteraction::immediate(win, button, DragType::TreeResize(dir), start, geo);
-        drag.tree_resize_origin = Some(origin);
-        self.begin_active(drag)
+        self.begin_active(DragInteraction::immediate(
+            win,
+            button,
+            DragOperation::TreeResize {
+                direction: dir,
+                origin,
+            },
+            start,
+            geo,
+        ))
     }
 
     fn begin_active(&mut self, drag: DragInteraction) -> Result<(), DragAlreadyActive> {
@@ -896,15 +1052,10 @@ impl DragState {
 
     pub fn activate_armed(
         &mut self,
-        drag_type: DragType,
+        drag_type: ArmedDragType,
         start: Point,
         geo: Rect,
     ) -> Result<(), DragNotArmed> {
-        if matches!(drag_type, DragType::TreeResize(_)) {
-            // A tree resize requires an authoritative origin snapshot and is
-            // therefore created only through `begin_tree_resize`.
-            return Err(DragNotArmed);
-        }
         let mut drag = match std::mem::take(&mut self.interactive) {
             InteractiveDrag::Armed(drag) => drag,
             other => {
@@ -1163,6 +1314,11 @@ impl ActiveWmMode {
             _ => None,
         }
     }
+
+    pub fn tree_placement_is_current_for(&self, model: &WmModel) -> bool {
+        self.tree_placement()
+            .is_some_and(|placement| placement.is_current_for(model))
+    }
 }
 
 impl From<&str> for ActiveWmMode {
@@ -1224,6 +1380,62 @@ mod active_wm_mode_tests {
         assert_eq!(placement.selected_target(), target);
         assert!(!placement.select(1));
         assert_eq!(placement.selected_target(), target);
+    }
+
+    fn target(window: u32, x: i32, y: i32) -> PlacementTarget {
+        PlacementTarget {
+            target: WindowId(window),
+            side: None,
+            candidate_index: 0,
+            position: Point::new(x, y),
+        }
+    }
+
+    #[test]
+    fn keyboard_placement_nearest_target_is_stable_for_equal_distances() {
+        let targets = [target(1, -10, 0), target(2, 10, 0)];
+        let placement = KeyboardTreePlacement::new_nearest(
+            WindowId(9),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            targets.to_vec(),
+            Point::new(0, 0),
+        )
+        .unwrap();
+        assert_eq!(placement.selected_target(), targets[0]);
+    }
+
+    #[test]
+    fn keyboard_placement_direction_rejects_targets_behind_it() {
+        let targets = vec![target(1, 0, 0), target(2, 100, 0), target(3, -100, 0)];
+        let mut placement = KeyboardTreePlacement::new(
+            WindowId(9),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            targets,
+            0,
+        )
+        .unwrap();
+
+        assert!(placement.select_direction(Side::Right));
+        assert_eq!(placement.selected_target().target, WindowId(2));
+        assert!(!placement.select_direction(Side::Top));
+    }
+
+    #[test]
+    fn keyboard_placement_direction_prefers_visual_alignment() {
+        let targets = vec![target(1, 0, 0), target(2, 80, 100), target(3, 100, 5)];
+        let mut placement = KeyboardTreePlacement::new(
+            WindowId(9),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            targets,
+            0,
+        )
+        .unwrap();
+
+        assert!(placement.select_direction(Side::Right));
+        assert_eq!(placement.selected_target().target, WindowId(3));
     }
 }
 
