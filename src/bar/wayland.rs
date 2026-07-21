@@ -231,8 +231,8 @@ pub fn render_bar_buffers(
         crate::systray::layout(
             status_notifier_tray,
             None,
-            core.model().selected_monitor().work_rect().w,
-            core.model().selected_monitor().bar_height,
+            core.model().expect_selected_monitor().work_rect().w,
+            core.model().expect_selected_monitor().bar_height,
             core.config().systray.spacing,
         )
         .total_width

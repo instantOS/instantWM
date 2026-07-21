@@ -283,7 +283,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     }
 
     // 2. Snapshot selection state before any changes
-    let selected_monitor = ctx.core.model().selected_monitor();
+    let selected_monitor = ctx.core.model().expect_selected_monitor();
     let selected_window = selected_monitor.selected;
     let is_floating_sel = {
         let is_floating = selected_window
@@ -427,12 +427,12 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     if event_win != root_win {
         let root_y = e.root_y as i32;
         let mon = {
-            let selected_monitor = ctx.core.model().selected_monitor();
+            let selected_monitor = ctx.core.model().expect_selected_monitor();
             selected_monitor.monitor_id
         };
         let gesture = ctx.core.bar.hover.gesture_on(mon);
         let show_bar = {
-            let selected_monitor = ctx.core.model_mut().selected_monitor_mut();
+            let selected_monitor = ctx.core.model_mut().expect_selected_monitor_mut();
             selected_monitor.per_tag_state().show_bar
         };
         let in_bar = show_bar
@@ -463,7 +463,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
     // Early-out: cursor is below the bar area.
     let (monitor_id, monitor_y, bar_height) = {
-        let mon = ctx.core.model().selected_monitor();
+        let mon = ctx.core.model().expect_selected_monitor();
         (
             mon.monitor_id,
             mon.monitor_rect.y,
@@ -532,7 +532,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
         match e.atom {
             x if x == u32::from(AtomEnum::WM_NORMAL_HINTS) => {
                 if let Some(c) = ctx.core.model_mut().client_mut(event_win) {
-                    c.size_hints_dirty = false;
+                    c.size_hints_valid = false;
                 }
             }
             x if x == u32::from(AtomEnum::WM_HINTS) => {

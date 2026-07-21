@@ -220,6 +220,10 @@ impl WindowOps for X11BackendRef<'_> {
         );
     }
 
+    fn set_border_width(&self, window: WindowId, width: i32) {
+        X11BackendRef::set_border_width(self, window, width);
+    }
+
     fn raise_window_visual_only(&self, window: WindowId) {
         let x11_win: Window = window.into();
         let _ = self.conn.configure_window(

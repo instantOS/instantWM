@@ -180,7 +180,7 @@ fn assign_initial_monitor_and_tags(
         };
         return true;
     }
-    let Some(selected_monitor) = state.model.selected_monitor_opt() else {
+    let Some(selected_monitor) = state.model.selected_monitor() else {
         return false;
     };
     client.monitor_id = selected_monitor.id();

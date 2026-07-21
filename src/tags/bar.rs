@@ -77,7 +77,7 @@ pub(crate) fn visible_tags<'a>(
 /// Return the total pixel width of the tag strip (including the start-menu
 /// button at the left edge).
 pub fn get_tag_width(core: &CoreCtx) -> i32 {
-    let m = core.model().selected_monitor();
+    let m = core.model().expect_selected_monitor();
     if m.tags.is_empty() {
         return core.config().bar.startmenu_size;
     }

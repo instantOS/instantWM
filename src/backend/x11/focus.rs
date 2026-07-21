@@ -113,7 +113,7 @@ pub fn refresh_border_color(
     };
 
     let pixel = if focused {
-        let has_tiling = globals.selected_monitor().is_tiling_layout();
+        let has_tiling = globals.expect_selected_monitor().is_tiling_layout();
         let isfloating = c.mode.is_free_positioned() || !has_tiling;
         if isfloating {
             scheme.float_focus.bg.pixel()

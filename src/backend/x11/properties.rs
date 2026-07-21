@@ -180,7 +180,7 @@ pub fn update_ewmh_desktop_props(
 }
 
 fn current_desktop(globals: &crate::core_state::CoreState) -> Option<u32> {
-    let mon = globals.selected_monitor();
+    let mon = globals.expect_selected_monitor();
     let tag = mon.selected_tags().first_tag().unwrap_or(1);
     desktop_for_monitor_tag(globals, mon.id(), tag)
 }

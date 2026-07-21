@@ -250,29 +250,36 @@ struct EdgeCandidate {
     scope_depth: usize,
 }
 
-/// Maximum per-edge/extent difference in unit-tree coordinates for two
-/// placement results to represent the same user-visible destination.
-const PLACEMENT_EQUIVALENCE_TOLERANCE: f64 = 0.04;
+/// Minimum overlap between two source-window previews for them to represent
+/// the same user-visible destination. Placement candidates may reach the same
+/// slot through different structural scopes, which can redistribute space
+/// among peers and give the source slightly different dimensions. The preview
+/// only exposes the source rectangle, so comparing every hidden peer makes
+/// those indistinguishable choices leak into keyboard and pointer navigation.
+const PLACEMENT_PREVIEW_OVERLAP: f64 = 0.75;
 
 #[derive(Debug)]
 struct PlacementOutcome {
     leaves: Vec<WindowId>,
-    rects: Vec<(WindowId, FRect)>,
+    preview: FRect,
 }
 
 impl PlacementOutcome {
     fn approximately_eq(&self, other: &Self) -> bool {
-        self.leaves == other.leaves
-            && self.rects.len() == other.rects.len()
-            && self.rects.iter().zip(&other.rects).all(
-                |((left_window, left), (right_window, right))| {
-                    left_window == right_window
-                        && (left.x - right.x).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
-                        && (left.y - right.y).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
-                        && (left.w - right.w).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
-                        && (left.h - right.h).abs() <= PLACEMENT_EQUIVALENCE_TOLERANCE
-                },
-            )
+        if self.leaves != other.leaves {
+            return false;
+        }
+
+        let intersection_width = (self.preview.right().min(other.preview.right())
+            - self.preview.x.max(other.preview.x))
+        .max(0.0);
+        let intersection_height = (self.preview.bottom().min(other.preview.bottom())
+            - self.preview.y.max(other.preview.y))
+        .max(0.0);
+        let intersection = intersection_width * intersection_height;
+        let union =
+            self.preview.w * self.preview.h + other.preview.w * other.preview.h - intersection;
+        union > EPSILON && intersection / union + EPSILON >= PLACEMENT_PREVIEW_OVERLAP
     }
 }
 
@@ -353,6 +360,14 @@ impl FRect {
         let right = (self.x + self.w).round() as i32;
         let bottom = (self.y + self.h).round() as i32;
         Rect::new(x, y, (right - x).max(1), (bottom - y).max(1))
+    }
+
+    fn right(self) -> f64 {
+        self.x + self.w
+    }
+
+    fn bottom(self) -> f64 {
+        self.y + self.h
     }
 
     fn axis_start(self, axis: Axis) -> f64 {
@@ -1083,11 +1098,10 @@ impl LayoutTree {
         if !preview.apply_placement_target(source, target) {
             return None;
         }
-        let mut rects = preview.float_bounds().into_iter().collect::<Vec<_>>();
-        rects.sort_by_key(|(window, _)| *window);
+        let preview_rect = preview.float_bounds().get(&source).copied()?;
         Some(PlacementOutcome {
             leaves: preview.leaves(),
-            rects,
+            preview: preview_rect,
         })
     }
 

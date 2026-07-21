@@ -120,7 +120,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
 
             // While hovering over the bar, keep the window just below it.
             if on_bar {
-                let mon = wm_ctx.core().model().selected_monitor();
+                let mon = wm_ctx.core().model().expect_selected_monitor();
                 new_pos.y = mon.bar_y() + mon.bar_height;
             }
 

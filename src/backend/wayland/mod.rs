@@ -237,6 +237,10 @@ impl WindowOps for WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.resize_window(window, rect));
     }
 
+    fn set_border_width(&self, _window: WindowId, _width: i32) {
+        // Wayland borders are compositor-rendered from core client state.
+    }
+
     fn raise_window_visual_only(&self, window: WindowId) {
         let _ = self.with_state(|state: &mut WaylandState| state.raise_window_visual_only(window));
     }
@@ -267,7 +271,7 @@ impl WindowOps for WaylandBackend {
     }
 
     fn window_protocol(&self, window: WindowId) -> WindowProtocol {
-        self.window_protocol(window)
+        WaylandBackend::window_protocol(self, window)
     }
 }
 
@@ -345,5 +349,20 @@ impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> 
         let _ = self
             .wayland
             .with_state(|state| state.set_layout_preview_target(rect, animate));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WaylandBackend;
+    use crate::backend::{WindowOps, WindowProtocol};
+    use crate::types::WindowId;
+
+    #[test]
+    fn window_protocol_trait_dispatch_delegates_to_inherent_query() {
+        let backend = WaylandBackend::new();
+        let ops: &dyn WindowOps = &backend;
+
+        assert_eq!(ops.window_protocol(WindowId(1)), WindowProtocol::Unknown);
     }
 }

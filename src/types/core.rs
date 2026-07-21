@@ -26,6 +26,12 @@ pub type ClientId = usize;
 pub struct MonitorId(u64);
 
 impl MonitorId {
+    /// Stable numeric representation for diagnostics and IPC.
+    #[inline]
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+
     /// Construct a raw id from its internal representation.
     ///
     /// This is the sole construction path, intended only for the

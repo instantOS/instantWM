@@ -207,7 +207,7 @@ pub fn scratchpad_make(
 
     // Read monitor dimensions before mutable borrow
     let (mon_ww, mon_wh) = {
-        let mon = ctx.core().model().selected_monitor();
+        let mon = ctx.core().model().expect_selected_monitor();
         (mon.work_rect().w, mon.work_rect().h)
     };
 
@@ -236,7 +236,7 @@ pub fn scratchpad_unmake(ctx: &mut WmCtx, window_id: Option<WindowId>) {
         return;
     };
 
-    let monitor_tags = ctx.core().model().selected_monitor().selected_tags();
+    let monitor_tags = ctx.core().model().expect_selected_monitor().selected_tags();
 
     let Some(client) = ctx.core().model().client(selected_window) else {
         return;
@@ -553,7 +553,7 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
         .is_some_and(|c| c.is_sticky);
 
     let (mon_ww, mon_wh) = {
-        let mon = ctx.core().model().selected_monitor();
+        let mon = ctx.core().model().expect_selected_monitor();
         (mon.work_rect().w, mon.work_rect().h)
     };
 

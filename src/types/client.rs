@@ -190,8 +190,8 @@ pub struct Client {
     /// Size hints from WM_NORMAL_HINTS property.
     pub size_hints: SizeHints,
 
-    /// Whether size hints are valid.
-    pub size_hints_dirty: bool,
+    /// Whether [`size_hints`](Self::size_hints) contains a current backend snapshot.
+    pub size_hints_valid: bool,
     /// Current border width.
     pub border_width: i32,
     /// Previous border width.

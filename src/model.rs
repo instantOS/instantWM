@@ -99,19 +99,19 @@ impl WmModel {
         self.monitors.set_selected(id);
     }
 
-    /// Shorthand to get the selected monitor.
-    pub fn selected_monitor(&self) -> &crate::types::Monitor {
+    /// Get the selected monitor, if outputs have been initialized.
+    pub fn selected_monitor(&self) -> Option<&crate::types::Monitor> {
+        self.monitors.selected_monitor()
+    }
+
+    /// Get the selected monitor when the caller's lifecycle guarantees one.
+    pub fn expect_selected_monitor(&self) -> &crate::types::Monitor {
         self.monitors.selected_monitor_unchecked()
     }
 
-    /// Shorthand to get the selected monitor mutably.
-    pub fn selected_monitor_mut(&mut self) -> &mut crate::types::Monitor {
+    /// Get the selected monitor mutably when lifecycle guarantees one.
+    pub fn expect_selected_monitor_mut(&mut self) -> &mut crate::types::Monitor {
         self.monitors.selected_monitor_mut_unchecked()
-    }
-
-    /// Shorthand to get the selected monitor (Option version).
-    pub fn selected_monitor_opt(&self) -> Option<&crate::types::Monitor> {
-        self.monitors.selected_monitor()
     }
 
     /// Whether `win` belongs to the selected monitor and is visible in its
@@ -119,20 +119,20 @@ impl WmModel {
     /// selected view as one model query.
     pub fn client_is_visible_on_selected_monitor(&self, win: WindowId) -> bool {
         let selected_monitor_id = self.selected_monitor_id();
-        let selected_tags = self.selected_monitor().selected_tags();
+        let selected_tags = self.expect_selected_monitor().selected_tags();
         self.client_view(win).is_some_and(|view| {
             view.monitor.id() == selected_monitor_id && view.client.is_visible(selected_tags)
         })
     }
 
     /// Shorthand to get the selected monitor mutably (Option version).
-    pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut crate::types::Monitor> {
+    pub fn selected_monitor_mut(&mut self) -> Option<&mut crate::types::Monitor> {
         self.monitors.selected_monitor_mut()
     }
 
     /// Return `true` if overview mode is active on the selected monitor.
     pub fn is_overview_active(&self) -> bool {
-        self.selected_monitor().overview_state.is_some()
+        self.expect_selected_monitor().overview_state.is_some()
     }
 
     /// Return `true` if overview mode is active on the given monitor.
@@ -423,4 +423,18 @@ mod tests {
             Some(source)
         );
     }
+}
+#[test]
+fn selected_monitor_query_is_empty_before_output_initialization() {
+    let model = WmModel::new();
+
+    assert!(model.selected_monitor().is_none());
+}
+
+#[test]
+#[should_panic(expected = "no monitors")]
+fn expect_selected_monitor_documents_the_operational_invariant() {
+    let model = WmModel::new();
+
+    let _ = model.expect_selected_monitor();
 }

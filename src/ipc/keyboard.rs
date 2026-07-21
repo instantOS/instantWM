@@ -38,22 +38,11 @@ pub fn handle_keyboard_command(wm: &mut Wm, cmd: KeyboardCommand) -> Response {
             Response::Message(list)
         }
         KeyboardCommand::Set(layouts) => {
-            let globals_layouts: Vec<crate::core_state::KeyboardLayout> = layouts
-                .into_iter()
-                .map(|l| crate::core_state::KeyboardLayout {
-                    name: l.name,
-                    variant: l.variant,
-                })
-                .collect();
-            keyboard_layout::set_keyboard_layouts(&mut ctx, globals_layouts);
+            keyboard_layout::set_keyboard_layouts(&mut ctx, layouts);
             Response::ok()
         }
         KeyboardCommand::Add(layout) => {
-            let globals_layout = crate::core_state::KeyboardLayout {
-                name: layout.name,
-                variant: layout.variant,
-            };
-            match keyboard_layout::add_keyboard_layout(&mut ctx, globals_layout) {
+            match keyboard_layout::add_keyboard_layout(&mut ctx, layout) {
                 Ok(()) => Response::ok(),
                 Err(e) => Response::err(e),
             }

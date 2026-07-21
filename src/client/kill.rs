@@ -28,7 +28,12 @@ fn force_close(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn shut_kill(ctx: &mut WmCtx) {
-    let has_clients = !ctx.core().model().selected_monitor().clients.is_empty();
+    let has_clients = !ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .clients
+        .is_empty();
 
     if has_clients {
         if let Some(win) = ctx.core().model().selected_win() {

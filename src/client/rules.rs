@@ -180,6 +180,7 @@ fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowPropert
     {
         let changed = client.size_hints != hints;
         client.size_hints = hints;
+        client.size_hints_valid = true;
         changed
     } else {
         false

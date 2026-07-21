@@ -76,6 +76,9 @@ pub enum BackendEvent {
 /// Window lifecycle and stacking effects shared by all backends.
 pub trait WindowOps {
     fn resize_window(&self, window: WindowId, rect: Rect);
+    /// Apply a backend-native border width when the backend has one.
+    /// Compositor-rendered backends may implement this as a no-op.
+    fn set_border_width(&self, window: WindowId, width: i32);
     fn raise_window_visual_only(&self, window: WindowId);
     fn apply_z_order(&self, windows: &[WindowId]);
     fn set_focus(&self, window: WindowId);
@@ -252,6 +255,15 @@ impl WindowOps for Backend {
                 X11BackendRef::new(&data.conn, data.screen_num).resize_window(window, rect)
             }
             Backend::Wayland(data) => data.backend.resize_window(window, rect),
+        }
+    }
+
+    fn set_border_width(&self, window: WindowId, width: i32) {
+        match self {
+            Backend::X11(data) => {
+                X11BackendRef::new(&data.conn, data.screen_num).set_border_width(window, width)
+            }
+            Backend::Wayland(data) => data.backend.set_border_width(window, width),
         }
     }
 

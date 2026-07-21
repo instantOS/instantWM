@@ -13,7 +13,7 @@ pub fn apply_icccm_size_hints(
 ) {
     let needs_update = model
         .client(win)
-        .map(|c| !c.size_hints_dirty)
+        .map(|c| !c.size_hints_valid)
         .unwrap_or(false);
 
     if needs_update {

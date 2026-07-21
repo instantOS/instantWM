@@ -114,7 +114,7 @@ fn resize_target_for_window(
     root: Point,
 ) -> Option<HoverResizeTarget> {
     let c = model.client(win)?;
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let selected_tags = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
 
@@ -138,7 +138,7 @@ fn resize_target_for_window(
 }
 
 fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     mon.bar_contains_y(&model.clients, root_y)
 }
 
@@ -161,7 +161,7 @@ fn hover_resize_target_at(model: &WmModel, root: Point) -> Option<HoverResizeTar
     if pointer_in_bar(model, root.y) {
         return None;
     }
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     mon.iter_clients(&model.clients)
         .find_map(|(win, _)| resize_target_for_window(model, win, root))
 }
@@ -188,7 +188,7 @@ fn find_tiled_win_at_point(
     point: Point,
     skip_win: Option<WindowId>,
 ) -> Option<WindowId> {
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let selected = mon.selected_tags();
     let has_tiling = mon.is_tiling_layout();
     if !has_tiling {
@@ -217,8 +217,8 @@ fn find_tiled_win_at_point(
 
 /// Check whether any visible client on the current monitor is tiled.
 fn has_visible_tiled_client(model: &WmModel) -> bool {
-    let has_tiling = model.selected_monitor().is_tiling_layout();
-    let mon = model.selected_monitor();
+    let has_tiling = model.expect_selected_monitor().is_tiling_layout();
+    let mon = model.expect_selected_monitor();
     let selected = mon.selected_tags();
     has_tiling
         && mon
@@ -478,7 +478,11 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             Some(w) => w,
             None => return false,
         };
-        let is_tiling_layout = wm_ctx.core().model().selected_monitor().is_tiling_layout();
+        let is_tiling_layout = wm_ctx
+            .core()
+            .model()
+            .expect_selected_monitor()
+            .is_tiling_layout();
         let sel_geo = match wm_ctx.core().model().client(selected_window) {
             Some(c) if c.mode.is_floating() || !is_tiling_layout => c.geo,
             _ => return false,
@@ -489,7 +493,11 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             Some(w) if w != selected_window => w,
             _ => return false,
         };
-        let has_tiling = wm_ctx.core().model().selected_monitor().is_tiling_layout();
+        let has_tiling = wm_ctx
+            .core()
+            .model()
+            .expect_selected_monitor()
+            .is_tiling_layout();
         if !has_tiling {
             return false;
         }

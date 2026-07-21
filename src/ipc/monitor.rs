@@ -48,14 +48,15 @@ fn list_monitors(wm: &Wm) -> Response {
         .monitors_iter()
         .enumerate()
         .map(|(pos, (id, m))| crate::ipc_types::MonitorInfo {
-            id: pos,
-            index: m.num,
+            id: id.get(),
+            position: pos,
+            backend_index: m.num,
             name: m.name.clone(),
             width: m.monitor_rect.w,
             height: m.monitor_rect.h,
             x: m.monitor_rect.x,
             y: m.monitor_rect.y,
-            is_primary: id == selected_id,
+            is_selected: id == selected_id,
             vrr_support: output_info
                 .get(&m.name)
                 .map(|o| o.vrr_support)
@@ -101,7 +102,7 @@ fn set_monitor_config(
     vrr: Option<crate::config::config_toml::VrrMode>,
 ) -> Response {
     let resolved_id = if identifier == "focused" {
-        let name = wm.core.selected_monitor().name.clone();
+        let name = wm.core.expect_selected_monitor().name.clone();
         if name.is_empty() {
             "*".to_string()
         } else {
@@ -130,7 +131,7 @@ fn list_modes(wm: &mut Wm, identifier: Option<String>) -> Response {
     // Determine which displays to query
     let display_names: Vec<String> = match identifier.as_deref() {
         Some("focused") | None => {
-            let name = wm.core.selected_monitor().name.clone();
+            let name = wm.core.expect_selected_monitor().name.clone();
             if name.is_empty() {
                 // List all displays
                 match &wm.backend {
@@ -236,4 +237,30 @@ fn get_xrandr_modes(
     }
 
     Ok(modes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::list_monitors;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::ipc_types::Response;
+    use crate::types::Monitor;
+    use crate::wm::Wm;
+
+    #[test]
+    fn monitor_ipc_separates_stable_id_from_spatial_position() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let first = wm.core.model.monitors.push(Monitor::default());
+        let second = wm.core.model.monitors.push(Monitor::default());
+
+        let Response::MonitorList(monitors) = list_monitors(&wm) else {
+            panic!("monitor list response");
+        };
+
+        assert_eq!(monitors[0].id, first.get());
+        assert_eq!(monitors[0].position, 0);
+        assert_eq!(monitors[1].id, second.get());
+        assert_eq!(monitors[1].position, 1);
+    }
 }

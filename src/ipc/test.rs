@@ -31,7 +31,7 @@ fn move_pointer(wm: &mut Wm, mut x: f64, mut y: f64, normalized: bool) -> Respon
         if !(0.0..=1.0).contains(&x) || !(0.0..=1.0).contains(&y) {
             return Response::err("normalized pointer coordinates must be between 0 and 1");
         }
-        let rect = wm.core.model.selected_monitor().monitor_rect;
+        let rect = wm.core.model.expect_selected_monitor().monitor_rect;
         x = f64::from(rect.x) + x * f64::from((rect.w - 1).max(0));
         y = f64::from(rect.y) + y * f64::from((rect.h - 1).max(0));
     }

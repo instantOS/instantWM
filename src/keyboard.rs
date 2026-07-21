@@ -166,7 +166,11 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
         return;
     }
 
-    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout();
 
     if !has_tiling {
         if let Some(win) = ctx.core().model().selected_win() {
@@ -195,7 +199,11 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
         return;
     }
 
-    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout();
 
     if !has_tiling {
         if let Some(win) = ctx.core().model().selected_win() {

@@ -33,13 +33,17 @@ pub fn tag_all(ctx: &mut WmCtx, mask: TagMask) {
         return;
     }
 
-    let current_tag = ctx.core().model().selected_monitor().current_tag_number();
+    let current_tag = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .current_tag_number();
     let Some(current_tag) = current_tag else {
         return;
     };
     let current_tag_mask = TagMask::single(current_tag).unwrap_or(TagMask::EMPTY);
 
-    let m = ctx.core().model().selected_monitor();
+    let m = ctx.core().model().expect_selected_monitor();
     let clients_on_tag: Vec<_> = m
         .iter_clients(&ctx.core().model().clients)
         .filter(|(_, c)| c.tags.intersects(current_tag_mask))

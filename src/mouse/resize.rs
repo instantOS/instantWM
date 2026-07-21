@@ -104,7 +104,11 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
     }
 
     // Promote tiled windows to floating before starting the resize.
-    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout();
     if !is_floating && has_tiling {
         toggle_floating(ctx);
         let selmon_id = ctx.core().model().selected_monitor_id();
@@ -354,7 +358,11 @@ pub fn resize_mouse_directional(
                 let snap = ctx.core.config().window.snap_threshold;
 
                 let should_toggle = if let Some(client) = ctx.core.model().client(win) {
-                    let has_tiling = ctx.core.model().selected_monitor().is_tiling_layout();
+                    let has_tiling = ctx
+                        .core
+                        .model()
+                        .expect_selected_monitor()
+                        .is_tiling_layout();
 
                     !client.mode.is_floating()
                         && has_tiling
@@ -371,7 +379,11 @@ pub fn resize_mouse_directional(
                         Some(c) => c.mode.is_floating(),
                         None => return false,
                     };
-                    let has_tiling = ctx.core.model().selected_monitor().is_tiling_layout();
+                    let has_tiling = ctx
+                        .core
+                        .model()
+                        .expect_selected_monitor()
+                        .is_tiling_layout();
 
                     if !has_tiling || is_floating {
                         with_wm_ctx_x11(ctx, |ctx| {

@@ -47,10 +47,8 @@ impl MotionEvent {
         output_width: i32,
         output_height: i32,
     ) -> Point<f64, smithay::utils::Logical> {
-        // Output geometry is half-open: (0, 0) is valid, while
-        // (width, height) is already outside it.
-        let max_x = output_width.saturating_sub(1).max(0) as f64;
-        let max_y = output_height.saturating_sub(1).max(0) as f64;
+        let max_x = output_width.max(0) as f64;
+        let max_y = output_height.max(0) as f64;
         match self {
             MotionEvent::Absolute { x, y, .. } => {
                 Point::from((x.clamp(0.0, max_x), y.clamp(0.0, max_y)))
@@ -78,7 +76,7 @@ mod tests {
     use smithay::utils::Point;
 
     #[test]
-    fn relative_motion_stays_inside_output_at_right_and_bottom_edges() {
+    fn relative_motion_reaches_output_right_and_bottom_edges() {
         let event = MotionEvent::Relative {
             dx: 100.0,
             dy: 100.0,
@@ -90,12 +88,12 @@ mod tests {
 
         assert_eq!(
             event.compute_location(Point::from((1910.0, 1070.0)), 1920, 1080),
-            Point::from((1919.0, 1079.0))
+            Point::from((1920.0, 1080.0))
         );
     }
 
     #[test]
-    fn absolute_motion_stays_inside_output_at_right_and_bottom_edges() {
+    fn absolute_motion_reaches_output_right_and_bottom_edges() {
         let event = MotionEvent::Absolute {
             x: 1920.0,
             y: 1080.0,
@@ -104,7 +102,7 @@ mod tests {
 
         assert_eq!(
             event.compute_location(Point::from((0.0, 0.0)), 1920, 1080),
-            Point::from((1919.0, 1079.0))
+            Point::from((1920.0, 1080.0))
         );
     }
 }

@@ -279,7 +279,7 @@ impl KeyboardTreePlacement {
         if model.selected_monitor_id() != self.monitor_id {
             return false;
         }
-        let monitor = model.selected_monitor();
+        let monitor = model.expect_selected_monitor();
         monitor.selected_tags() == self.tags
             && model.client_view(self.source).is_some_and(|view| {
                 view.monitor.id() == self.monitor_id
@@ -408,14 +408,17 @@ impl CoreState {
     pub fn set_selected_monitor(&mut self, id: MonitorId) {
         self.model.set_selected_monitor(id);
     }
-    pub fn selected_monitor(&self) -> &Monitor {
+    pub fn selected_monitor(&self) -> Option<&Monitor> {
         self.model.selected_monitor()
     }
-    pub fn selected_monitor_mut(&mut self) -> &mut Monitor {
-        self.model.selected_monitor_mut()
+    pub fn expect_selected_monitor(&self) -> &Monitor {
+        self.model.expect_selected_monitor()
     }
-    pub fn selected_monitor_mut_opt(&mut self) -> Option<&mut Monitor> {
-        self.model.selected_monitor_mut_opt()
+    pub fn expect_selected_monitor_mut(&mut self) -> &mut Monitor {
+        self.model.expect_selected_monitor_mut()
+    }
+    pub fn selected_monitor_mut(&mut self) -> Option<&mut Monitor> {
+        self.model.selected_monitor_mut()
     }
     pub fn monitor(&self, id: MonitorId) -> Option<&Monitor> {
         self.model.monitor(id)

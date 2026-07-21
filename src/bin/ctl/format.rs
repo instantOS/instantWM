@@ -88,7 +88,7 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
                 w.id,
                 title,
                 format_window_protocol(w.protocol),
-                w.monitor,
+                w.monitor_position,
                 tags,
                 state
             );
@@ -149,7 +149,7 @@ fn format_window_info(window: &WindowInfo, json: bool) {
         println!("id: {}", window.id);
         println!("title: {}", window.title);
         println!("protocol: {}", format_window_protocol(window.protocol));
-        println!("monitor: {}", window.monitor);
+        println!("monitor: {}", window.monitor_position);
         println!("tags: {}", tags);
         println!(
             "geometry: {}x{}+{}+{}",
@@ -189,7 +189,7 @@ fn format_monitor_list(monitors: &[MonitorInfo], json: bool) {
         println!("{}", serde_json::to_string_pretty(monitors).unwrap());
     } else {
         for m in monitors {
-            let marker = if m.is_primary { "*" } else { " " };
+            let marker = if m.is_selected { "*" } else { " " };
             let vrr_mode = m
                 .vrr_mode
                 .map(|mode| format!("{mode:?}").to_lowercase())
@@ -198,7 +198,7 @@ fn format_monitor_list(monitors: &[MonitorInfo], json: bool) {
             println!(
                 "{}{} {}: {}x{}+{}+{} vrr[support={:?} mode={} enabled={}]",
                 marker,
-                m.index,
+                m.position,
                 m.name,
                 m.width,
                 m.height,

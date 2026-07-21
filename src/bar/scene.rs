@@ -134,7 +134,7 @@ pub(crate) fn build_monitor_snapshots(
     tray_menu: Option<&crate::systray::TrayMenuPresentation>,
     include_status_items: bool,
 ) -> Vec<MonitorBarSnapshot> {
-    let selected_monitor_num = core.model().selected_monitor().num;
+    let selected_monitor_num = core.model().expect_selected_monitor().num;
     let show_systray = core.config().systray.show;
     let systray_spacing = core.config().systray.spacing;
     let base_font_size = core.config().fonts.size();

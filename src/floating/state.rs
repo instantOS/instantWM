@@ -101,7 +101,7 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
 }
 
 pub fn toggle_floating(ctx: &mut WmCtx) {
-    let mon = ctx.core().model().selected_monitor();
+    let mon = ctx.core().model().expect_selected_monitor();
     let selected_window = match mon.selected {
         Some(sel)
             if !ctx
@@ -175,7 +175,7 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
     let maximized_win = ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .maximized_client(&ctx.core().model().clients);
     let selected_window = ctx.core().model().selected_win();
     let animated = ctx.core().behavior().animated;
@@ -215,7 +215,7 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
     if ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .maximized_client(&ctx.core().model().clients)
         == Some(win)
     {

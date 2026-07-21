@@ -106,11 +106,6 @@ impl MonitorManager {
         self.monitors.is_empty()
     }
 
-    pub fn clear(&mut self) {
-        self.monitors.clear();
-        self.selected = MonitorId::default();
-    }
-
     // -------------------------------------------------------------------------
     // Iteration (spatial order)
     // -------------------------------------------------------------------------
@@ -129,11 +124,6 @@ impl MonitorManager {
 
     pub fn iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.monitors.iter_mut()
-    }
-
-    /// Read-only access to all monitors as a slice, in spatial order.
-    pub fn as_slice(&self) -> &[Monitor] {
-        &self.monitors
     }
 
     // -------------------------------------------------------------------------

@@ -24,12 +24,7 @@ impl WaylandState {
                 .model
                 .monitors
                 .find_monitor_at_pointer(request.anchor)
-                .or_else(|| {
-                    globals
-                        .model
-                        .selected_monitor_opt()
-                        .map(|monitor| monitor.id())
-                })?;
+                .or_else(|| globals.model.selected_monitor().map(|monitor| monitor.id()))?;
             let monitor = globals.monitor(monitor_id)?;
             Some((monitor_id, monitor.selected_tags(), monitor.work_rect()))
         }) else {

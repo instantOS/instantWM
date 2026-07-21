@@ -51,7 +51,7 @@ fn enter(ctx: &mut WmCtx<'_>) {
     let all_tags = TagMask::all(ctx.core().model().tags.count());
 
     {
-        let mon = ctx.core_mut().model_mut().selected_monitor_mut();
+        let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
         if mon.overview_state.is_some() {
             return;
         }
@@ -68,7 +68,7 @@ fn enter(ctx: &mut WmCtx<'_>) {
 
 fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
     let state = {
-        let mon = ctx.core_mut().model_mut().selected_monitor_mut();
+        let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
         mon.overview_state.take()
     };
 
@@ -83,7 +83,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 
             if !restore_mask.is_empty() {
                 let _ = {
-                    let mon = ctx.core_mut().model_mut().selected_monitor_mut();
+                    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
                     mon.set_selected_tags_with_history(restore_mask)
                 };
             }
@@ -109,7 +109,7 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
                 && !mask.is_empty()
             {
                 let _ = {
-                    let mon = ctx.core_mut().model_mut().selected_monitor_mut();
+                    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
                     mon.set_selected_tags_with_history(mask)
                 };
             }
@@ -132,7 +132,13 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
         return;
     }
 
-    if ctx.core().model().selected_monitor().clients.is_empty() {
+    if ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .clients
+        .is_empty()
+    {
         return;
     }
 

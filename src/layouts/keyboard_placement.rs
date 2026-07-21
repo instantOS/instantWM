@@ -25,7 +25,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
         crate::core_state::ActiveWmMode::Default | crate::core_state::ActiveWmMode::Named(_) => {}
     }
     let (source, monitor_id, tags, targets, source_center) = {
-        let monitor = ctx.core().model().selected_monitor();
+        let monitor = ctx.core().model().expect_selected_monitor();
         let Some(source) = monitor.selected else {
             return TreePlacementStart::NotApplicable;
         };
@@ -181,7 +181,7 @@ pub fn swap_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::t
     let changed = ctx
         .core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
         .swap_with_neighbor(source, side)
@@ -217,7 +217,7 @@ pub fn resize_keyboard_tree_placement(
     let changed = ctx
         .core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
         .resize_with_config(

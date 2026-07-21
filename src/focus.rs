@@ -37,7 +37,7 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusT
     }
 
     let sel_mon_id = model.selected_monitor_id();
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let selected = mon.selected_tags();
     let current_sel = mon.selected;
 
@@ -360,7 +360,7 @@ fn should_hover_focus(
         .client(win)
         .map(|c| c.mode.is_floating())
         .unwrap_or(false);
-    let has_tiling = model.selected_monitor().is_tiling_layout();
+    let has_tiling = model.expect_selected_monitor().is_tiling_layout();
     if !behavior.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
         return false;
     }
@@ -421,7 +421,7 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
     select_monitor(ctx, monitor_id);
 
     let target_tags = client_tags.without_scratchpad();
-    let visible_tags = ctx.core().model().selected_monitor().selected_tags();
+    let visible_tags = ctx.core().model().expect_selected_monitor().selected_tags();
     if !target_tags.is_empty() && !target_tags.intersects(visible_tags) {
         crate::tags::view::view_tags(ctx, target_tags);
     }
@@ -526,7 +526,7 @@ fn get_direction_focus_candidate(
     if model.monitors.is_empty() {
         return None;
     }
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let source_win = mon.selected?;
     let source_client = model.client(source_win)?;
     let source_center = source_client.geo.center();
@@ -646,7 +646,7 @@ fn get_stack_focus_target(
     if model.monitors.is_empty() {
         return None;
     }
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let stack = get_visible_stack(mon, &model.clients);
 
     if stack.is_empty() {

@@ -78,9 +78,6 @@ impl ArrangePlan {
         // 2. Apply border widths
         for (win, border) in &self.borders {
             ctx.set_border(*win, *border);
-            if let WmCtx::X11(x11) = ctx {
-                x11.x11.set_border_width(*win, *border);
-            }
         }
 
         // 3. Apply monitor updates
@@ -480,7 +477,7 @@ pub(crate) fn compute_monitor_z_order(
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutCommand) {
     let Some(preset) = layout.tree_preset() else {
-        let m = ctx.core_mut().model_mut().selected_monitor_mut();
+        let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
         m.per_tag_state().layouts.set_layout(layout.presentation());
         finish_layout_change(ctx);
         return;
@@ -488,7 +485,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutCommand) {
 
     ctx.core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .last_tree_layout = preset;
     apply_tree_preset(ctx, preset);
@@ -496,7 +493,7 @@ pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutCommand) {
 
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
     let (windows, selected, master_count, master_factor) = {
-        let monitor = ctx.core().model().selected_monitor();
+        let monitor = ctx.core().model().expect_selected_monitor();
         let windows = monitor
             .collect_tiled(&ctx.core().model().clients)
             .into_iter()
@@ -509,7 +506,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
             f64::from(monitor.master_factor),
         )
     };
-    let monitor = ctx.core_mut().model_mut().selected_monitor_mut();
+    let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     let state = monitor.per_tag_state();
     state.layouts.set_layout(PresentationMode::Tiled);
     state
@@ -520,7 +517,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
 
 pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
     let neighbor = {
-        let monitor = ctx.core().model().selected_monitor();
+        let monitor = ctx.core().model().expect_selected_monitor();
         if !monitor.is_tiling_layout() {
             return false;
         }
@@ -539,7 +536,12 @@ pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side
 }
 
 pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+    if !ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout()
+    {
         return false;
     }
     let Some(selected) = ctx.core().model().selected_win() else {
@@ -548,7 +550,7 @@ pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side)
     let changed = ctx
         .core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
         .swap_with_neighbor(selected, side)
@@ -560,7 +562,12 @@ pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side)
 }
 
 pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
-    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+    if !ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout()
+    {
         return false;
     }
     let Some(selected) = ctx.core().model().selected_win() else {
@@ -570,7 +577,7 @@ pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> boo
     let changed = ctx
         .core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
         .resize_with_config(
@@ -588,7 +595,12 @@ pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> boo
 }
 
 pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
-    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+    if !ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout()
+    {
         return false;
     }
     let Some(selected) = ctx.core().model().selected_win() else {
@@ -598,7 +610,7 @@ pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
     let changed = ctx
         .core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
         .resize_smart_with_config(
@@ -852,7 +864,7 @@ pub(crate) fn update_pointer_tree_resize(
 fn selected_tiling_constraints(
     ctx: &WmCtx<'_>,
 ) -> Option<(LayoutPlacement, HashMap<WindowId, Size>)> {
-    let monitor = ctx.core().model().selected_monitor();
+    let monitor = ctx.core().model().expect_selected_monitor();
     let tiled = monitor.collect_tiled(&ctx.core().model().clients);
     let placement = LayoutPlacement::new(
         &ctx.core().config().layout,
@@ -880,7 +892,7 @@ pub(crate) fn constrained_tree_placement_targets(
     let Some(tree) = ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .per_tag()
         .map(|state| &state.layout_tree)
     else {
@@ -911,7 +923,7 @@ pub(crate) fn preview_constrained_tree_target(
     let mut candidate = ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .per_tag()?
         .layout_tree
         .clone();
@@ -936,7 +948,7 @@ pub(crate) fn apply_constrained_tree_target(
     let Some(mut candidate) = ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .per_tag()
         .map(|state| state.layout_tree.clone())
     else {
@@ -951,7 +963,7 @@ pub(crate) fn apply_constrained_tree_target(
     }
     ctx.core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree = candidate;
     true
@@ -962,7 +974,12 @@ pub fn place_tree_at_point(
     window: WindowId,
     point: crate::types::Point,
 ) -> bool {
-    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+    if !ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout()
+    {
         return false;
     }
     let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
@@ -972,7 +989,7 @@ pub fn place_tree_at_point(
     let Some(mut candidate) = ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .per_tag()
         .map(|state| state.layout_tree.clone())
     else {
@@ -985,7 +1002,7 @@ pub fn place_tree_at_point(
     if changed {
         ctx.core_mut()
             .model_mut()
-            .selected_monitor_mut()
+            .expect_selected_monitor_mut()
             .per_tag_state()
             .layout_tree = candidate;
         finish_layout_change(ctx);
@@ -1000,7 +1017,7 @@ pub fn preview_tree_at_point(
     window: WindowId,
     point: crate::types::Point,
 ) -> Option<Rect> {
-    let monitor = ctx.core().model().selected_monitor();
+    let monitor = ctx.core().model().expect_selected_monitor();
     if !monitor.is_tiling_layout()
         || !ctx
             .core()
@@ -1041,13 +1058,18 @@ pub fn preview_tree_at_point(
 }
 
 pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
-    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+    if !ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout()
+    {
         return false;
     }
     let changed = ctx
         .core_mut()
         .model_mut()
-        .selected_monitor_mut()
+        .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
         .promote(window);
@@ -1058,20 +1080,25 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
-    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     m.per_tag_state().layouts.toggle_slot();
     finish_layout_change(ctx);
 }
 
 /// Toggle maximized-stack presentation without modifying the manual tree.
 pub fn toggle_maximized_layout(ctx: &mut WmCtx<'_>) {
-    let next =
-        if ctx.core().model().selected_monitor().current_layout() == PresentationMode::Maximized {
-            PresentationMode::Tiled
-        } else {
-            PresentationMode::Maximized
-        };
-    let monitor = ctx.core_mut().model_mut().selected_monitor_mut();
+    let next = if ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .current_layout()
+        == PresentationMode::Maximized
+    {
+        PresentationMode::Tiled
+    } else {
+        PresentationMode::Maximized
+    };
+    let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     monitor.per_tag_state().layouts.set_layout(next);
     finish_layout_change(ctx);
 }
@@ -1083,7 +1110,7 @@ pub(super) fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     let current_layout = {
-        let monitor = ctx.core().model().selected_monitor();
+        let monitor = ctx.core().model().expect_selected_monitor();
         match monitor.current_layout() {
             PresentationMode::Floating => LayoutCommand::Floating,
             PresentationMode::Maximized => LayoutCommand::Maximized,
@@ -1115,9 +1142,9 @@ pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
     let ccount = ctx
         .core()
         .state()
-        .selected_monitor()
+        .expect_selected_monitor()
         .tiled_client_count(&ctx.core().model().clients) as i32;
-    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     if delta > 0 && m.master_count >= ccount {
         m.master_count = ccount;
     } else {
@@ -1141,14 +1168,14 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
     let is_tiling = ctx
         .core()
         .state()
-        .selected_monitor()
+        .expect_selected_monitor()
         .current_layout()
         .is_tiling();
     if !is_tiling {
         return;
     }
 
-    let current_factor = ctx.core().model().selected_monitor().master_factor;
+    let current_factor = ctx.core().model().expect_selected_monitor().master_factor;
     let new_factor = if delta < 1.0 {
         delta + current_factor
     } else {
@@ -1162,14 +1189,14 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
         && ctx
             .core()
             .state()
-            .selected_monitor()
+            .expect_selected_monitor()
             .tiled_client_count(&ctx.core().model().clients)
             > 1;
     if animation_on {
         ctx.core_mut().behavior_mut().animated = false;
     }
 
-    let m = ctx.core_mut().model_mut().selected_monitor_mut();
+    let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     m.master_factor = new_factor;
     m.per_tag_state().master_factor = new_factor;
 

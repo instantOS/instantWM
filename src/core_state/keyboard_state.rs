@@ -1,49 +1,5 @@
 use super::*;
 
-/// A single keyboard layout with optional variant.
-#[derive(Debug, Clone, Default)]
-pub struct KeyboardLayout {
-    /// XKB layout name (e.g., "us", "de", "fr").
-    pub name: String,
-    /// XKB variant for this layout (e.g., "nodeadkeys", "colemak").
-    pub variant: Option<String>,
-}
-
-impl KeyboardLayout {
-    /// Create a new keyboard layout.
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            variant: None,
-        }
-    }
-
-    /// Create a new keyboard layout with a variant.
-    pub fn with_variant(name: impl Into<String>, variant: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            variant: Some(variant.into()),
-        }
-    }
-}
-
-impl From<&str> for KeyboardLayout {
-    fn from(s: &str) -> Self {
-        // Parse "layout(variant)" syntax
-        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
-            Self::with_variant(name, variant)
-        } else {
-            Self::new(s)
-        }
-    }
-}
-
-impl From<String> for KeyboardLayout {
-    fn from(s: String) -> Self {
-        Self::from(s.as_str())
-    }
-}
-
 /// Keyboard (XKB) layout runtime state.
 #[derive(Debug, Clone, Default)]
 pub struct KeyboardLayoutState {

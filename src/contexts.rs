@@ -520,9 +520,11 @@ impl<'a> WmCtx<'a> {
     }
 
     pub fn set_border(&mut self, win: WindowId, width: i32) {
+        let width = width.max(0);
         if let Some(client) = self.core_mut().model_mut().client_mut(win) {
-            client.border_width = width.max(0);
+            client.border_width = width;
         }
+        self.window_backend().set_border_width(win, width);
     }
 
     /// Update root EWMH workspace/tag properties. X11 only; no-op on Wayland.
@@ -541,7 +543,7 @@ impl<'a> WmCtx<'a> {
     pub fn warp_cursor_to_client(&mut self, win: WindowId) {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
-            let mon = self.core().model().selected_monitor();
+            let mon = self.core().model().expect_selected_monitor();
             let target_x = (mon.work_rect().x + mon.work_rect().w / 2) as f64;
             let target_y = (mon.work_rect().y + mon.work_rect().h / 2) as f64;
             self.pointer_backend().warp_pointer(target_x, target_y);

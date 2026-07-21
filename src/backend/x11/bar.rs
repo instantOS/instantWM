@@ -137,7 +137,7 @@ pub fn resize_bar_win(
     // The systray width calculation only needs immutable access.
     let bar_height = globals.config.derived.bar_height;
     let showsystray = globals.config.systray.show;
-    let is_selmon = globals.selected_monitor().num == m.num;
+    let is_selmon = globals.expect_selected_monitor().num == m.num;
 
     let mut w = m.work_rect().w as u32;
     if showsystray && is_selmon {

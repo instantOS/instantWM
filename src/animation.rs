@@ -198,7 +198,7 @@ pub fn cancel_animation(ctx: &mut WmCtx<'_>, win: WindowId) {
 }
 
 pub fn scroll_view_with_slide(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let old_selected_tags = ctx.core().model().selected_monitor().selected_tags();
+    let old_selected_tags = ctx.core().model().expect_selected_monitor().selected_tags();
     let Some(selmon_id) = crate::tags::view::scroll_view_for_slide(ctx, dir) else {
         return;
     };

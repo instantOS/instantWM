@@ -716,7 +716,7 @@ impl Monitor {
     ) -> crate::types::BarPosition {
         use crate::bar::model::{build_fallback_hit_cache, hit_test};
 
-        let is_selmon = core.model().selected_monitor().num == self.num;
+        let is_selmon = core.model().expect_selected_monitor().num == self.num;
 
         // Prefer the pre-built hit cache populated during rendering; fall back to
         // computing a temporary one from the same utility functions.

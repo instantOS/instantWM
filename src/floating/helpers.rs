@@ -15,7 +15,7 @@ use crate::types::WindowId;
 /// should be no-ops when a tiling layout is active and the window is not
 /// explicitly floating.
 pub fn has_tiling_layout(model: &WmModel) -> bool {
-    model.selected_monitor().is_tiling_layout()
+    model.expect_selected_monitor().is_tiling_layout()
 }
 
 // ── Geometry helpers ──────────────────────────────────────────────────────────

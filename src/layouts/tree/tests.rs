@@ -372,55 +372,126 @@ fn adjacent_descriptions_of_the_same_seam_share_one_candidate() {
 }
 
 #[test]
-fn placement_outcomes_tolerate_small_geometry_differences() {
+fn placement_outcomes_compare_the_visible_preview_and_preserve_leaf_order() {
     let leaves = vec![WindowId(1), WindowId(2)];
     let first = PlacementOutcome {
         leaves: leaves.clone(),
-        rects: vec![
-            (
-                WindowId(1),
-                FRect {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 0.5,
-                    h: 1.0,
-                },
-            ),
-            (
-                WindowId(2),
-                FRect {
-                    x: 0.5,
-                    y: 0.0,
-                    w: 0.5,
-                    h: 1.0,
-                },
-            ),
-        ],
+        preview: FRect {
+            x: 0.0,
+            y: 0.2625,
+            w: 1.0,
+            h: 0.25,
+        },
     };
     let slightly_resized = PlacementOutcome {
-        leaves,
-        rects: vec![
-            (
-                WindowId(1),
-                FRect {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 0.53,
-                    h: 1.0,
-                },
-            ),
-            (
-                WindowId(2),
-                FRect {
-                    x: 0.53,
-                    y: 0.0,
-                    w: 0.47,
-                    h: 1.0,
-                },
-            ),
-        ],
+        leaves: leaves.clone(),
+        preview: FRect {
+            x: 0.0,
+            y: 0.23333333333333328,
+            w: 1.0,
+            h: 0.33333333333333326,
+        },
     };
     assert!(first.approximately_eq(&slightly_resized));
+
+    let different_order = PlacementOutcome {
+        leaves: vec![WindowId(2), WindowId(1)],
+        preview: slightly_resized.preview,
+    };
+    assert!(!first.approximately_eq(&different_order));
+
+    let substantially_different = PlacementOutcome {
+        leaves,
+        preview: FRect {
+            x: 0.5,
+            y: 0.35,
+            w: 0.5,
+            h: 0.35,
+        },
+    };
+    assert!(!first.approximately_eq(&substantially_different));
+}
+
+#[test]
+fn keyboard_navigation_skips_duplicate_three_row_previews() {
+    use crate::core_state::KeyboardTreePlacement;
+    use crate::types::{MonitorId, TagMask};
+
+    let mut tree = LayoutTree::default();
+    let top_id = tree.allocate();
+    let bottom_id = tree.allocate();
+    let root_id = tree.allocate();
+    let top = make_split(
+        top_id,
+        Axis::Vertical,
+        vec![WindowId(1), WindowId(2)]
+            .into_iter()
+            .map(|window| WeightedNode {
+                node: Node::Window(window),
+                weight: 1.0,
+            })
+            .collect(),
+    )
+    .unwrap();
+    let bottom = make_split(
+        bottom_id,
+        Axis::Vertical,
+        vec![WindowId(4), WindowId(5)]
+            .into_iter()
+            .map(|window| WeightedNode {
+                node: Node::Window(window),
+                weight: 1.0,
+            })
+            .collect(),
+    )
+    .unwrap();
+    tree.root = make_split(
+        root_id,
+        Axis::Horizontal,
+        vec![
+            WeightedNode {
+                node: top,
+                weight: 0.35,
+            },
+            WeightedNode {
+                node: Node::Window(WindowId(3)),
+                weight: 0.35,
+            },
+            WeightedNode {
+                node: bottom,
+                weight: 0.30,
+            },
+        ],
+    );
+
+    let source = WindowId(1);
+    let layout_rect = Rect::new(0, 0, 1234, 657);
+    let targets = tree.placement_targets(source, layout_rect, 0.34);
+    let mut placement = KeyboardTreePlacement::new_nearest(
+        source,
+        MonitorId::default(),
+        TagMask::EMPTY,
+        targets,
+        tree.bounds(layout_rect)[&source].center(),
+    )
+    .unwrap();
+    assert!(placement.select_direction(Side::Top));
+    assert!(placement.select_direction(Side::Right));
+    assert!(placement.select_direction(Side::Bottom));
+    let first_down = tree
+        .placement_outcome(source, placement.selected_target())
+        .unwrap();
+
+    assert!(placement.select_direction(Side::Bottom));
+    let second_down = tree
+        .placement_outcome(source, placement.selected_target())
+        .unwrap();
+
+    assert!(
+        !first_down.approximately_eq(&second_down),
+        "successive navigation steps must not expose equivalent previews"
+    );
+    assert_eq!(placement.selected_target().target, WindowId(3));
 }
 
 #[test]

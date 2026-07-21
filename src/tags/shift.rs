@@ -38,7 +38,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
 pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
     let (win, current_tag, tagset, tagmask, animated) = {
-        let mon = ctx.core().model().selected_monitor();
+        let mon = ctx.core().model().expect_selected_monitor();
         let Some(win) = mon.selected else {
             return;
         };
@@ -65,7 +65,11 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
         return;
     }
 
-    let target_tags = ctx.core().model().selected_monitor().current_tag_number();
+    let target_tags = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .current_tag_number();
 
     // Get mutable borrow for reset_sticky, then drop it
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
@@ -100,7 +104,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     ctx.window_backend().raise_window_visual_only(win);
-    let mon_w = ctx.core().model().selected_monitor().monitor_rect.w;
+    let mon_w = ctx.core().model().expect_selected_monitor().monitor_rect.w;
     let Some(geo) = ctx.core().state().model.client(win).map(|c| c.geo) else {
         return;
     };
@@ -180,7 +184,10 @@ mod tests {
 
         move_client_follow_view(&mut wm.ctx(), HorizontalDirection::Right);
 
-        assert_eq!(wm.core.model.selected_monitor().selected_tags(), tag2);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag2
+        );
         assert_eq!(wm.core.model.selected_win(), Some(moved));
         assert_eq!(
             wm.core.model.client(moved).map(|client| client.tags),
@@ -189,7 +196,10 @@ mod tests {
 
         let tag3 = TagMask::single(3).expect("tag 3");
         move_client_follow_view(&mut wm.ctx(), HorizontalDirection::Right);
-        assert_eq!(wm.core.model.selected_monitor().selected_tags(), tag3);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag3
+        );
         assert_eq!(wm.core.model.selected_win(), Some(moved));
         assert_eq!(
             wm.core.model.client(moved).map(|client| client.tags),

@@ -56,7 +56,7 @@ pub fn view_tags(ctx: &mut WmCtx, mask: TagMask) {
 
 pub fn toggle_view(ctx: &mut WmCtx, mask: TagMask) {
     let tagmask = ctx.core().model().tags.mask();
-    let new_mask = ctx.core().model().selected_monitor().selected_tags() ^ (mask & tagmask);
+    let new_mask = ctx.core().model().expect_selected_monitor().selected_tags() ^ (mask & tagmask);
     if new_mask.is_empty() {
         return;
     }
@@ -93,7 +93,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
         return;
     }
 
-    let current = ctx.core().model().selected_monitor().selected_tags();
+    let current = ctx.core().model().expect_selected_monitor().selected_tags();
 
     // If this is the only visible tag, removing it would leave nothing — bail.
     if current & valid_mask == clicked_mask {
@@ -106,7 +106,7 @@ pub fn toggle_view_tag(ctx: &mut WmCtx, tag_idx: usize) {
 }
 
 pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
-    let mon = ctx.core().model().selected_monitor();
+    let mon = ctx.core().model().expect_selected_monitor();
     let (tagset, numtags) = (mon.selected_tags(), ctx.core().model().tags.count());
 
     let mut next_mask = tagset;
@@ -118,7 +118,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
             HorizontalDirection::Left => tagset.rotate_right(step as usize, numtags),
         };
 
-        let clients = ctx.core().model().selected_monitor().clients.clone();
+        let clients = ctx.core().model().expect_selected_monitor().clients.clone();
 
         for &win in &clients {
             if let Some(c) = ctx.core().model().client(win)
@@ -145,7 +145,7 @@ pub fn shift_view(ctx: &mut WmCtx, direction: HorizontalDirection) {
 }
 
 pub fn last_view(ctx: &mut WmCtx) {
-    let mon = ctx.core().model().selected_monitor();
+    let mon = ctx.core().model().expect_selected_monitor();
     let (current_tag, prev_tag) = (mon.current_tag_number(), mon.prev_tag);
 
     if current_tag == prev_tag {
@@ -168,7 +168,11 @@ pub fn win_view(ctx: &mut WmCtx) {
     };
 
     if tag_mask.is_scratchpad_only() {
-        let current_tag = ctx.core().model().selected_monitor().current_tag_number();
+        let current_tag = ctx
+            .core()
+            .model()
+            .expect_selected_monitor()
+            .current_tag_number();
         if let Some(mask) = current_tag.and_then(TagMask::single) {
             view_tags(ctx, mask);
         }
@@ -183,7 +187,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let selmon_id = ctx.core().model().selected_monitor_id();
     let tagmask = ctx.core().model().tags.mask();
     let newtag = mask & tagmask;
-    let mon = ctx.core().model().selected_monitor();
+    let mon = ctx.core().model().expect_selected_monitor();
     let (current_tag, current_tagset) = (mon.current_tag_number(), mon.selected_tags());
     if newtag == current_tagset || current_tagset.is_empty() || !current_tagset.is_single() {
         return;
@@ -191,7 +195,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
     let target_idx = newtag.first_tag().unwrap_or(0);
     let clients_to_swap: Vec<WindowId> = {
         let mut result = Vec::new();
-        let m = ctx.core().model().selected_monitor();
+        let m = ctx.core().model().expect_selected_monitor();
         for (win, c) in m.iter_clients(&ctx.core().model().clients) {
             let ctags = c.tags;
             if ctags.intersects(newtag) || ctags.intersects(current_tagset) {
@@ -211,7 +215,7 @@ pub fn swap_tags(ctx: &mut WmCtx, mask: TagMask) {
             });
         }
     }
-    let mon = ctx.core_mut().model_mut().selected_monitor_mut();
+    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     mon.set_selected_tags(newtag);
     if mon.prev_tag == Some(target_idx) {
         mon.prev_tag = current_tag;
@@ -228,7 +232,7 @@ pub fn follow_view(ctx: &mut WmCtx) {
     let Some(target_mask) = ctx
         .core()
         .model()
-        .selected_monitor()
+        .expect_selected_monitor()
         .prev_tag
         .and_then(TagMask::single)
     else {
@@ -362,7 +366,7 @@ mod view_selection_tests {
 }
 
 pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
-    let tagset = ctx.core().model().selected_monitor().selected_tags();
+    let tagset = ctx.core().model().expect_selected_monitor().selected_tags();
 
     let Some(new_mask) = adjacent_scroll_mask(tagset, dir) else {
         return;
@@ -378,7 +382,7 @@ pub fn scroll_view(ctx: &mut WmCtx, dir: HorizontalDirection) {
 
 /// Scroll to adjacent tag and return the affected monitor id.
 pub fn scroll_view_for_slide(ctx: &mut WmCtx, dir: HorizontalDirection) -> Option<MonitorId> {
-    let tagset = ctx.core().model().selected_monitor().selected_tags();
+    let tagset = ctx.core().model().expect_selected_monitor().selected_tags();
 
     let new_mask = adjacent_scroll_mask(tagset, dir)?;
     let g = ctx.core_mut().state_mut();

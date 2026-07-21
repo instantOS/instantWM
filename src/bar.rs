@@ -335,7 +335,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
     }
 
     let (monitor_id, bar_rect, output_origin) = {
-        let monitor = ctx.core().model().selected_monitor();
+        let monitor = ctx.core().model().expect_selected_monitor();
         (
             monitor.id(),
             Rect::new(

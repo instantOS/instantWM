@@ -536,6 +536,7 @@ fn handle_map_window(
     client.name = properties.title.clone();
     if let Some(size_hints) = properties.size_hints {
         client.size_hints = size_hints;
+        client.size_hints_valid = true;
     }
     client.border_width = g.config.window.border_width_px;
     client.old_border_width = g.config.window.border_width_px;
@@ -547,7 +548,7 @@ fn handle_map_window(
             client.mode = crate::types::ClientMode::Floating;
         }
     } else {
-        let Some(selected_monitor) = g.model.selected_monitor_opt() else {
+        let Some(selected_monitor) = g.model.selected_monitor() else {
             return;
         };
         client.monitor_id = selected_monitor.id();
@@ -557,7 +558,7 @@ fn handle_map_window(
     // Pending launch contexts can outlive an output. Normalize that stale
     // relationship once, before any geometry or visibility policy uses it.
     if g.monitor(client.monitor_id).is_none() {
-        let Some(selected_monitor) = g.model.selected_monitor_opt() else {
+        let Some(selected_monitor) = g.model.selected_monitor() else {
             return;
         };
         client.monitor_id = selected_monitor.id();

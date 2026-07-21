@@ -1,51 +1,10 @@
 pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
 pub use crate::layouts::LayoutCommand;
-pub use crate::types::{MonitorDirection, SpecialNext, TagMask, ToggleAction};
+pub use crate::types::{KeyboardLayout, MonitorDirection, SpecialNext, TagMask, ToggleAction};
 use bincode::{Decode, Encode};
 
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
-
-#[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
-pub struct KeyboardLayout {
-    pub name: String,
-    pub variant: Option<String>,
-}
-
-impl KeyboardLayout {
-    pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            variant: None,
-        }
-    }
-
-    pub fn with_variant(name: impl Into<String>, variant: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            variant: Some(variant.into()),
-        }
-    }
-}
-
-impl From<&str> for KeyboardLayout {
-    fn from(s: &str) -> Self {
-        if let Some((name, variant)) = s.strip_suffix(')').and_then(|s| s.rsplit_once('(')) {
-            Self::with_variant(name, variant)
-        } else {
-            Self::new(s)
-        }
-    }
-}
-
-impl From<crate::core_state::KeyboardLayout> for KeyboardLayout {
-    fn from(l: crate::core_state::KeyboardLayout) -> Self {
-        Self {
-            name: l.name,
-            variant: l.variant,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct IpcRequest {
@@ -428,7 +387,7 @@ impl TryFrom<&crate::types::client::Client> for SizeHintsInfo {
     type Error = ();
 
     fn try_from(c: &crate::types::client::Client) -> Result<Self, Self::Error> {
-        if !c.size_hints_dirty {
+        if !c.size_hints_valid {
             return Err(());
         }
         let h = &c.size_hints;
@@ -447,10 +406,11 @@ impl TryFrom<&crate::types::client::Client> for SizeHintsInfo {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct WindowInfo {
-    pub id: u64,
+    pub id: u32,
     pub title: String,
     pub protocol: WindowProtocol,
-    pub monitor: usize,
+    /// Spatial monitor position used by monitor-switching commands.
+    pub monitor_position: usize,
     pub tags: TagMask,
     pub geometry: GeometryInfo,
     pub border_width: i32,
@@ -469,10 +429,10 @@ impl WindowInfo {
         monitor_position: usize,
     ) -> Self {
         Self {
-            id: c.win.0 as u64,
+            id: c.win.0,
             title: c.name.clone(),
             protocol,
-            monitor: monitor_position,
+            monitor_position,
             tags: c.tags & valid_tag_mask,
             geometry: c.geo.into(),
             border_width: c.border_width,
@@ -485,23 +445,21 @@ impl WindowInfo {
 
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub struct MonitorInfo {
-    pub id: usize,
-    pub index: i32,
+    /// Stable identifier, distinct from display ordering.
+    pub id: u64,
+    /// Current spatial position in the monitor list.
+    pub position: usize,
+    /// Backend-assigned monitor number retained for diagnostics.
+    pub backend_index: i32,
     pub name: String,
     pub width: i32,
     pub height: i32,
     pub x: i32,
     pub y: i32,
-    pub is_primary: bool,
+    pub is_selected: bool,
     pub vrr_support: crate::backend::BackendVrrSupport,
     pub vrr_mode: Option<VrrMode>,
     pub vrr_enabled: bool,
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct MonitorListInfo {
-    pub monitors: Vec<MonitorInfo>,
-    pub selected: usize,
 }
 
 pub use crate::floating::scratchpad::ScratchpadInfo;

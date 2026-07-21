@@ -1,19 +1,5 @@
-//! Layout query helpers — stateless reads over the global window/monitor state.
-//!
-//! These functions answer questions like "how many tiled clients are on the
-//! selected monitor?" or "what is the active layout?" without mutating
-//! any state.  They are kept separate from the arrange/z-order machinery so
-//! that both the algorithm modules and the manager can depend on them without
-//! creating circular imports.
+//! Stateless policy helpers shared by layout presentations and the tree manager.
 
-// ── per-monitor counts ────────────────────────────────────────────────────────
-
-// ── visibility walk ───────────────────────────────────────────────────────────
-
-/// Walk the client list starting at `start_win` and return the first
-/// client that passes [`Client::is_visible`].
-/// TODO: does this mess with stacking policy? What is a sensible order?
-/// Choosing just ANY client should be the last resort
 // ── layout query ──────────────────────────────────────────────────────────────
 
 /// Returns `fast_frame_count` if animation is enabled and client count exceeds threshold,

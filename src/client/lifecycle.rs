@@ -28,7 +28,7 @@ pub struct PendingLaunch {
 pub fn current_launch_context(model: &WmModel) -> LaunchContext {
     LaunchContext {
         monitor_id: model.selected_monitor_id(),
-        tags: model.selected_monitor().selected_tags(),
+        tags: model.expect_selected_monitor().selected_tags(),
         is_floating: false,
     }
 }

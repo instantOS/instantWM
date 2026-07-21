@@ -47,6 +47,10 @@ pub use monitor::*;
 pub mod input;
 pub use input::*;
 
+// Keyboard layout values shared by runtime state and IPC
+pub mod keyboard;
+pub use keyboard::*;
+
 // Window rules
 pub mod rules;
 pub use rules::*;

@@ -6,7 +6,7 @@
 //! keybindings or IPC.
 
 use crate::contexts::WmCtx;
-use crate::core_state::KeyboardLayout;
+use crate::types::KeyboardLayout;
 use crate::types::input::StackDirection;
 use std::process::Command;
 

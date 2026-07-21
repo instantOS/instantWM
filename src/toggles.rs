@@ -51,13 +51,16 @@ pub fn toggle_show_tags(ctx: &mut WmCtx, action: ToggleAction) {
     let (_selmon_id, new_showtags) = {
         let selmon_id = ctx.core().model().selected_monitor_id();
 
-        let showtags = ctx.core().model().selected_monitor().showtags;
+        let showtags = ctx.core().model().expect_selected_monitor().showtags;
         let new_showtags = toggled_bool(showtags, action);
 
         (selmon_id, new_showtags)
     };
 
-    ctx.core_mut().model_mut().selected_monitor_mut().showtags = new_showtags;
+    ctx.core_mut()
+        .model_mut()
+        .expect_selected_monitor_mut()
+        .showtags = new_showtags;
 
     let tagwidth = get_tag_width(ctx.core());
     ctx.core_mut().model_mut().tags.width = tagwidth;
@@ -113,7 +116,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
     }
 
     let bar_height = ctx.core().config().derived.bar_height;
-    let selected_monitor = ctx.core_mut().model_mut().selected_monitor_mut();
+    let selected_monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     selected_monitor.per_tag_state().show_bar = !selected_monitor.per_tag_state().show_bar;
     selected_monitor.show_bar = selected_monitor.per_tag_state().show_bar;
 

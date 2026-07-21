@@ -116,7 +116,7 @@ pub(crate) fn hit_test(
 pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> MonitorHitCache {
     use crate::bar::get_layout_symbol_width;
 
-    let is_selmon = core.model().selected_monitor().num == mon.num;
+    let is_selmon = core.model().expect_selected_monitor().num == mon.num;
     let bar_layout_symbol_width = get_layout_symbol_width(core, mon);
     let bar_height = mon.bar_height;
 

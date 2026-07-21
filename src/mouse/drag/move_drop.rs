@@ -54,7 +54,7 @@ pub fn snap_window_to_monitor_edges(
 
 /// Returns edge snap position based on cursor position.
 pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<SnapPosition> {
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let mask = mon.selected_tags();
 
     if root.x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && root.x > mon.monitor_rect.x - 1 {
@@ -96,7 +96,7 @@ pub fn update_tiled_drag_preview(
 
 /// Returns `true` when `root` (root-space) is inside the bar of `selmon`.
 pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
-    let mon = model.selected_monitor();
+    let mon = model.expect_selected_monitor();
     let mask = mon.selected_tags();
     mon.show_bar_for_mask(mask)
         && mon.y_in_bar(root.y)
@@ -128,7 +128,7 @@ pub struct MoveState {
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let sel = {
         let g = ctx.core_mut().state_mut();
-        let mon = g.selected_monitor();
+        let mon = g.expect_selected_monitor();
         mon.selected?
     };
     let c = ctx.core().model().client(sel)?;
@@ -167,11 +167,11 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         let has_tiling = ctx
             .core_mut()
             .state_mut()
-            .selected_monitor()
+            .expect_selected_monitor()
             .is_tiling_layout();
 
         if !has_tiling {
-            let mon = ctx.core().model().selected_monitor();
+            let mon = ctx.core().model().expect_selected_monitor();
             let bar_height = mon.bar_height;
             if let Some(c) = ctx.core().model().client(selected_window) {
                 let nearly_maximized = c.geo.x >= mon.monitor_rect.x - MAX_UNMAXIMIZE_OFFSET
@@ -211,7 +211,7 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
     if on_bar {
         let new_gesture = {
             let core = ctx.core();
-            let mon = core.model().selected_monitor();
+            let mon = core.model().expect_selected_monitor();
             let local_x = root.x - mon.work_rect().x;
             mon.bar_position_at_x(core, local_x).to_gesture()
         };
@@ -242,7 +242,7 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
     if on_bar {
         let new_gesture = {
             let core = ctx.core();
-            let mon = core.model().selected_monitor();
+            let mon = core.model().expect_selected_monitor();
             let local_x = root.x - mon.work_rect().x;
             mon.bar_position_at_x(core, local_x).to_gesture()
         };
@@ -273,13 +273,17 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     // While hovering over the bar, keep the window just below it.
     if state.cursor_on_bar {
         let bar_bottom = {
-            let mon = ctx.core().model().selected_monitor();
+            let mon = ctx.core().model().expect_selected_monitor();
             mon.bar_y() + mon.bar_height
         };
         new_pos.y = bar_bottom;
     }
 
-    let has_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
+    let has_tiling = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout();
 
     let (mut is_floating, mut drag_geo) = match ctx.core().model().client(win) {
         Some(c) => (c.mode.is_floating(), c.geo),
@@ -421,7 +425,7 @@ pub fn handle_bar_drop(
 
     let position = {
         let core = ctx.core();
-        let mon = core.model().selected_monitor();
+        let mon = core.model().expect_selected_monitor();
         let local_x = root.x - mon.work_rect().x;
         mon.bar_position_at_x(core, local_x)
     };
@@ -511,12 +515,16 @@ pub fn apply_edge_drop(
         return false;
     }
 
-    let is_tiling = ctx.core().model().selected_monitor().is_tiling_layout();
+    let is_tiling = ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_tiling_layout();
 
     if is_tiling {
         let (mon_my, mon_mh) = (
-            ctx.core().model().selected_monitor().monitor_rect.y,
-            ctx.core().model().selected_monitor().monitor_rect.h,
+            ctx.core().model().expect_selected_monitor().monitor_rect.y,
+            ctx.core().model().expect_selected_monitor().monitor_rect.h,
         );
 
         // Upper 2/3 of the monitor → move view; lower 1/3 → send window.
