@@ -63,7 +63,7 @@ fn same_axis_insertions_form_one_n_ary_run() {
 fn grid_is_a_persistent_tree_transformation() {
     let mut tree = LayoutTree::default();
     let wins = windows(4);
-    tree.apply_preset(Preset::Grid, &wins, None, 1, 0.55);
+    tree.apply_preset(Preset::Grid, &wins, 1);
     let rects = tree.bounds(Rect::new(0, 0, 100, 100));
     assert_eq!(rects[&WindowId(1)], Rect::new(0, 0, 50, 50));
     assert_eq!(rects[&WindowId(4)], Rect::new(50, 50, 50, 50));
@@ -75,7 +75,7 @@ fn grid_is_a_persistent_tree_transformation() {
 fn traversal_uses_first_structural_seam() {
     let mut tree = LayoutTree::default();
     let wins = windows(4);
-    tree.apply_preset(Preset::Grid, &wins, None, 1, 0.55);
+    tree.apply_preset(Preset::Grid, &wins, 1);
     assert_eq!(
         tree.visual_neighbor(WindowId(4), Side::Left),
         Some(WindowId(2))
@@ -497,7 +497,7 @@ fn keyboard_navigation_skips_duplicate_three_row_previews() {
 #[test]
 fn placement_preview_is_exact_and_does_not_mutate_the_tree() {
     let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::Grid, &windows(4), None, 1, 0.55);
+    tree.apply_preset(Preset::Grid, &windows(4), 1);
     let rect = Rect::new(0, 0, 400, 300);
     let before = tree.bounds(rect);
     let target = tree
@@ -519,7 +519,7 @@ fn placement_preview_is_exact_and_does_not_mutate_the_tree() {
 #[test]
 fn pointer_placement_preview_matches_release_and_does_not_mutate() {
     let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::Grid, &windows(6), None, 1, 0.55);
+    tree.apply_preset(Preset::Grid, &windows(6), 1);
     let rect = Rect::new(20, 30, 600, 400);
     let before = tree.bounds(rect);
     let points = tree
@@ -545,7 +545,7 @@ fn pointer_placement_preview_matches_release_and_does_not_mutate() {
 #[test]
 fn pointer_resize_tracks_the_grabbed_edge_in_pixels() {
     let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);
+    tree.apply_preset(Preset::MasterStack, &windows(2), 1);
     let layout = Rect::new(0, 0, 1000, 600);
     let before = tree.bounds(layout)[&WindowId(1)];
 
@@ -713,7 +713,7 @@ fn constrained_bounds_reject_impossible_minimums() {
 #[test]
 fn leading_edge_motion_has_the_opposite_weight_sign() {
     let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);
+    tree.apply_preset(Preset::MasterStack, &windows(2), 1);
     let layout = Rect::new(0, 0, 1000, 600);
     let before = tree.bounds(layout)[&WindowId(1)];
 
@@ -726,7 +726,7 @@ fn leading_edge_motion_has_the_opposite_weight_sign() {
 #[test]
 fn resize_axis_reports_only_structural_runs() {
     let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);
+    tree.apply_preset(Preset::MasterStack, &windows(2), 1);
 
     assert!(tree.can_resize_axis(WindowId(1), Axis::Vertical));
     assert!(!tree.can_resize_axis(WindowId(1), Axis::Horizontal));
@@ -741,10 +741,9 @@ fn every_public_mutation_preserves_canonical_invariants() {
         Preset::HorizontalGrid,
         Preset::BottomStack,
         Preset::BottomStackHorizontal,
-        Preset::Focus,
     ] {
         let mut tree = LayoutTree::default();
-        tree.apply_preset(preset, &wins, Some(WindowId(4)), 2, 0.6);
+        tree.apply_preset(preset, &wins, 2);
         assert_canonical(&tree);
         tree.resize(WindowId(4), Side::Right);
         tree.resize_smart(WindowId(5), false);
@@ -780,14 +779,45 @@ fn every_public_mutation_preserves_canonical_invariants() {
 #[test]
 fn verify_redistribute_bug_demo() {
     let mut tree = LayoutTree::default();
-    tree.apply_preset(Preset::MasterStack, &windows(3), None, 1, 0.7);
+    tree.apply_preset(Preset::MasterStack, &windows(3), 1);
     let before = tree.bounds(Rect::new(0, 0, 1000, 1000));
     let master_w_before = before[&WindowId(1)].w;
-    eprintln!("master width before insert: {} (expect ~700)", master_w_before);
+    eprintln!("master width before insert: {}", master_w_before);
 
     tree.reconcile(&[WindowId(1), WindowId(2), WindowId(3), WindowId(4)]);
     let after = tree.bounds(Rect::new(0, 0, 1000, 1000));
     let master_w_after = after[&WindowId(1)].w;
-    eprintln!("master width after insert: {} (bug: drops to ~250)", master_w_after);
+    eprintln!(
+        "master width after insert: {} (bug: drops to ~250)",
+        master_w_after
+    );
     assert_canonical(&tree);
+}
+
+#[test]
+fn reapplying_master_stack_preserves_ratio_from_the_tree() {
+    let mut tree = LayoutTree::default();
+    let area = Rect::new(0, 0, 1000, 600);
+    tree.apply_preset(Preset::MasterStack, &windows(2), 1);
+    assert!(tree.resize_by_pixels(WindowId(1), Side::Right, 120, area, 0.15));
+    let before = tree.bounds(area)[&WindowId(1)].w;
+
+    tree.apply_preset(Preset::MasterStack, &windows(3), 1);
+
+    assert_eq!(tree.bounds(area)[&WindowId(1)].w, before);
+}
+
+#[test]
+fn master_count_supports_every_value_through_the_window_count() {
+    let area = Rect::new(0, 0, 900, 600);
+    for count in 0..=3 {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(Preset::MasterStack, &windows(3), count);
+        let bounds = tree.bounds(area);
+        assert_eq!(bounds.len(), 3);
+        if count == 0 || count == 3 {
+            assert!(bounds.values().all(|rect| rect.w == area.w));
+        }
+        assert_canonical(&tree);
+    }
 }

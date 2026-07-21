@@ -7,7 +7,7 @@ use crate::floating::{
     key_resize, moveresize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
     scratchpad_toggle, set_scratchpad_direction, toggle_floating,
 };
-use crate::focus::{direction_focus, focus_last_client, focus_stack};
+use crate::focus::{direction_focus, focus_last_client, focus_stack, focus_stack_neighbor};
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::tree::Side;
@@ -15,8 +15,8 @@ use crate::layouts::{
     LayoutCommand, begin_tree_placement, center_keyboard_tree_placement,
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
     focus_tree_neighbor, inc_master_count_by, resize_keyboard_tree_placement, resize_tree,
-    resize_tree_smart, set_layout, set_master_factor, step_keyboard_tree_placement,
-    swap_keyboard_tree_placement, swap_tree_neighbor, toggle_layout, toggle_tiling_maximized,
+    resize_tree_smart, set_layout, step_keyboard_tree_placement, swap_keyboard_tree_placement,
+    swap_tree_neighbor, toggle_tiling_maximized,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
@@ -73,6 +73,26 @@ macro_rules! define_named_actions {
 }
 
 fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    if ctx.core().model().is_overview_active() {
+        crate::overview::focus_direction(ctx, direction.into());
+        return;
+    }
+    if ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_maximized_layout()
+    {
+        let stack_direction = match direction {
+            HorizontalDirection::Left => StackDirection::Previous,
+            HorizontalDirection::Right => StackDirection::Next,
+        };
+        if !focus_stack_neighbor(ctx, stack_direction) {
+            crate::animation::scroll_view_with_slide(ctx, direction);
+        }
+        return;
+    }
+
     let side = match direction {
         HorizontalDirection::Left => Side::Left,
         HorizontalDirection::Right => Side::Right,
@@ -83,6 +103,10 @@ fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
 }
 
 fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
+    if ctx.core().model().is_overview_active() {
+        crate::overview::focus_direction(ctx, direction.into());
+        return;
+    }
     if ctx
         .core()
         .model()
@@ -101,8 +125,28 @@ fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
         VerticalDirection::Up => Side::Top,
         VerticalDirection::Down => Side::Bottom,
     };
-    if !focus_tree_neighbor(ctx, side) {
-        direction_focus(ctx, direction.into());
+    if !focus_tree_neighbor(ctx, side) && !direction_focus(ctx, direction.into()) {
+        let stack_direction = match direction {
+            VerticalDirection::Up => StackDirection::Previous,
+            VerticalDirection::Down => StackDirection::Next,
+        };
+        focus_stack(ctx, stack_direction);
+    }
+}
+
+fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    let side = match direction {
+        HorizontalDirection::Left => Side::Left,
+        HorizontalDirection::Right => Side::Right,
+    };
+    if swap_tree_neighbor(ctx, side) {
+        return;
+    }
+    let Some(win) = ctx.core().model().selected_win() else {
+        return;
+    };
+    if !moveresize(ctx, win, direction.into()) {
+        let _ = move_client_follow_view(ctx, direction);
     }
 }
 
@@ -115,31 +159,24 @@ define_named_actions!(
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
-    FocusUp => { name: "focus_up", arg_example: None, doc: "focus above, or cycle backward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
-    FocusDown => { name: "focus_down", arg_example: None, doc: "focus below, or cycle forward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
-    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, switching to the previous tag at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
-    FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, switching to the next tag at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
+    FocusUp => { name: "focus_up", arg_example: None, doc: "focus above; cycle backward in bar order when no window is above", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
+    FocusDown => { name: "focus_down", arg_example: None, doc: "focus below; cycle forward in bar order when no window is below", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
+    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, or move backward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
+    FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
-    ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
     LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Tile); } },
     LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Floating); } },
     LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
-    LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "compatibility alias for layout_maximized", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
     ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle between manual tiling and maximized-stack presentation without changing the tree", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Grid); } },
-    LayoutDeck => { name: "layout_deck", arg_example: None, doc: "rewrite the tree as a non-overlapping master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Deck); } },
     LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BottomStack); } },
     LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::HorizGrid); } },
-    LayoutGaplessGrid => { name: "layout_gapless_grid", arg_example: None, doc: "set gapless-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::GaplessGrid); } },
     LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
     DecMasterCount => { name: "dec_master_count", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_master_count_by(ctx, -1); } },
-    MasterFactorGrow => { name: "master_factor_grow", arg_example: None, doc: "increase master area width", run: |ctx, _args| { set_master_factor(ctx, 0.05); } },
-    MasterFactorShrink => { name: "master_factor_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_master_factor(ctx, -0.05); } },
-    SetMasterFactor => { name: "set_master_factor", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_master_factor(ctx, delta); } } },
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
     KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "grow a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
@@ -148,8 +185,8 @@ define_named_actions!(
     KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "grow a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
     KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "swap a tiled window upward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Up.into()); } } },
     KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "swap a tiled window downward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Down.into()); } } },
-    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "swap a tiled window left or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Left) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, HorizontalDirection::Left.into()); } } },
-    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "swap a tiled window right or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, HorizontalDirection::Right.into()); } } },
+    KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move a window left, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Left); } },
+    KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move a window right, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Right); } },
     TreeGrow => { name: "tree_grow", arg_example: None, doc: "grow the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, true); } },
     TreeShrink => { name: "tree_shrink", arg_example: None, doc: "shrink the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, false); } },
     PushUp => { name: "push_up", arg_example: None, doc: "swap a tiled window upward (legacy action)", run: |ctx, _args| { swap_tree_neighbor(ctx, Side::Top); } },
@@ -245,37 +282,39 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{NamedAction, parse_named_action};
+    use super::{NamedAction, focus_vertical, move_horizontal, parse_named_action};
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
     use crate::layouts::LayoutCommand;
-    use crate::types::StackDirection;
+    use crate::layouts::tree::Preset;
+    use crate::types::{
+        Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,
+        VerticalDirection, WindowId,
+    };
+    use crate::wm::Wm;
 
     #[test]
-    fn layout_command_from_name_accepts_aliases() {
+    fn layout_command_from_name_accepts_only_canonical_names() {
         assert_eq!(LayoutCommand::from_name("tile"), Some(LayoutCommand::Tile));
         assert_eq!(
             LayoutCommand::from_name("floating"),
             Some(LayoutCommand::Floating)
         );
         assert_eq!(
-            LayoutCommand::from_name("horizgrid"),
+            LayoutCommand::from_name("horiz-grid"),
             Some(LayoutCommand::HorizGrid)
         );
         assert_eq!(
-            LayoutCommand::from_name("gaplessgrid"),
-            Some(LayoutCommand::GaplessGrid)
-        );
-        assert_eq!(
-            LayoutCommand::from_name("bstackhoriz"),
+            LayoutCommand::from_name("bstack-horiz"),
             Some(LayoutCommand::BStackHoriz)
         );
         assert_eq!(
             LayoutCommand::from_name("maximized"),
             Some(LayoutCommand::Maximized)
         );
-        assert_eq!(
-            LayoutCommand::from_name("monocle"),
-            Some(LayoutCommand::Maximized)
-        );
+        for alias in ["tiling", "float", "monocle", "deck", "gaplessgrid"] {
+            assert_eq!(LayoutCommand::from_name(alias), None);
+        }
         assert_eq!(LayoutCommand::from_name("bad"), None);
     }
 
@@ -322,5 +361,102 @@ mod tests {
             Some(NamedAction::BeginTreePlacement)
         );
         assert_eq!(parse_named_action("begin_keyboard_move"), None);
+    }
+
+    #[test]
+    fn horizontal_window_move_crosses_tags_only_at_the_tree_edge() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        wm.core.model.tags.num_tags = 3;
+        let tag1 = TagMask::single(1).unwrap();
+        let tag2 = TagMask::single(2).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let left = WindowId(1);
+        let right = WindowId(2);
+        for win in [left, right] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag1,
+                mode: ClientMode::Tiling,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tag1);
+        monitor.clients = vec![left, right];
+        monitor.selected = Some(left);
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &[left, right], 1);
+
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+
+        // The first press has a visual neighbour, so it only swaps the tree.
+        assert_eq!(wm.core.model.client(left).unwrap().tags, tag1);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag1
+        );
+
+        move_horizontal(&mut wm.ctx(), HorizontalDirection::Right);
+
+        // The same client is now at the right edge, so the next press carries
+        // it into the adjacent tag and follows it there.
+        assert_eq!(wm.core.model.client(left).unwrap().tags, tag2);
+        assert_eq!(
+            wm.core.model.expect_selected_monitor().selected_tags(),
+            tag2
+        );
+        assert_eq!(wm.core.model.selected_win(), Some(left));
+    }
+
+    #[test]
+    fn vertical_focus_falls_back_to_cycling_in_bar_order() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tag = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let left = WindowId(1);
+        let middle = WindowId(2);
+        let right = WindowId(3);
+        for win in [left, middle, right] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag,
+                mode: ClientMode::Tiling,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tag);
+        monitor.clients = vec![left, middle, right];
+        monitor.selected = Some(middle);
+        monitor.per_tag_state().layout_tree.apply_preset(
+            Preset::BottomStack,
+            &[left, middle, right],
+            0,
+        );
+
+        focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+        assert_eq!(wm.core.model.selected_win(), Some(right));
+
+        focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+        assert_eq!(wm.core.model.selected_win(), Some(left));
+
+        focus_vertical(&mut wm.ctx(), VerticalDirection::Up);
+        assert_eq!(wm.core.model.selected_win(), Some(right));
     }
 }

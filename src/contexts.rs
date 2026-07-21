@@ -49,6 +49,12 @@ impl<'a> CoreCtx<'a> {
         &mut self.g.model
     }
 
+    /// Return a managed client's current logical geometry.
+    #[inline]
+    pub fn client_geo(&self, win: WindowId) -> Option<Rect> {
+        self.model().client(win).map(|client| client.geo)
+    }
+
     /// Access all backend-neutral state. Prefer the category-specific
     /// accessors when an operation only needs one part of the state.
     pub fn state(&self) -> &CoreState {
@@ -399,6 +405,33 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Return a managed client's current logical geometry.
+    #[inline]
+    pub fn client_geo(&self, win: WindowId) -> Option<Rect> {
+        self.core().client_geo(win)
+    }
+
+    /// Record the requested cursor and project it through the active backend.
+    /// Backend implementations suppress redundant native updates.
+    pub fn set_cursor_style(&mut self, style: crate::types::AltCursor) {
+        self.core_mut().behavior_mut().requested_cursor = style;
+        use crate::backend::CursorOps;
+        match self {
+            WmCtx::X11(ctx) => ctx.apply_cursor_style(style),
+            WmCtx::Wayland(ctx) => ctx.apply_cursor_style(style),
+        }
+    }
+
+    /// Ask the active backend to close a managed window gracefully, falling
+    /// back to its forceful mechanism when the protocol requires it.
+    pub fn close_window(&mut self, win: WindowId) {
+        use crate::backend::WindowCloseOps;
+        match self {
+            WmCtx::X11(ctx) => ctx.close_window(win),
+            WmCtx::Wayland(ctx) => ctx.close_window(win),
+        }
+    }
+
     pub fn output_backend(&self) -> &dyn crate::backend::OutputOps {
         match self {
             WmCtx::X11(ctx) => &ctx.x11,
@@ -544,9 +577,7 @@ impl<'a> WmCtx<'a> {
         // No target window – centre on the selected monitor's work area.
         if win == WindowId::default() {
             let mon = self.core().model().expect_selected_monitor();
-            let target_x = (mon.work_rect().x + mon.work_rect().w / 2) as f64;
-            let target_y = (mon.work_rect().y + mon.work_rect().h / 2) as f64;
-            self.pointer_backend().warp_pointer(target_x, target_y);
+            self.pointer_backend().warp_to_point(mon.center());
             return;
         }
 
@@ -558,12 +589,8 @@ impl<'a> WmCtx<'a> {
             return;
         };
 
-        // Skip if already inside the window (including border).
-        let in_window = c.geo.contains_point(ptr)
-            || (ptr.x > c.geo.x - c.border_width
-                && ptr.y > c.geo.y - c.border_width
-                && ptr.x < c.geo.x + c.geo.w + c.border_width * 2
-                && ptr.y < c.geo.y + c.geo.h + c.border_width * 2);
+        // Skip if already inside the window's border-aware outer bounds.
+        let in_window = c.total_rect().contains_point(ptr);
 
         let on_bar = self.core().model().client_view(win).is_some_and(|view| {
             view.monitor
@@ -574,9 +601,7 @@ impl<'a> WmCtx<'a> {
             return;
         }
 
-        let target_x = (c.geo.x + c.geo.w / 2) as f64;
-        let target_y = (c.geo.y + c.geo.h / 2) as f64;
-        self.pointer_backend().warp_pointer(target_x, target_y);
+        self.pointer_backend().warp_to_point(c.geo.center());
     }
 
     /// Warp unconditionally to the center of a client's current geometry.
@@ -585,13 +610,10 @@ impl<'a> WmCtx<'a> {
     /// containment as an early return: after changing tags, the same screen
     /// coordinates may belong to an entirely different visible window.
     pub fn warp_cursor_to_client_center(&mut self, win: WindowId) {
-        let Some(rect) = self.core().model().client(win).map(|client| client.geo) else {
+        let Some(rect) = self.client_geo(win) else {
             return;
         };
-        self.pointer_backend().warp_pointer(
-            f64::from(rect.x + rect.w / 2),
-            f64::from(rect.y + rect.h / 2),
-        );
+        self.pointer_backend().warp_to_point(rect.center());
     }
 
     /// Returns true when running under Wayland.

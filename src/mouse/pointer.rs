@@ -46,10 +46,10 @@ fn sidebar_min_y(monitor_rect: Rect, bar_height: i32) -> i32 {
 pub fn right_sidebar_rect(monitor_rect: Rect, bar_height: i32) -> Rect {
     let min_y = sidebar_min_y(monitor_rect, bar_height);
     Rect::new(
-        monitor_rect.x + monitor_rect.w - crate::types::SIDEBAR_WIDTH,
+        monitor_rect.right() - crate::types::SIDEBAR_WIDTH,
         min_y,
         crate::types::SIDEBAR_WIDTH,
-        (monitor_rect.y + monitor_rect.h - min_y).max(0),
+        (monitor_rect.bottom() - min_y).max(0),
     )
 }
 

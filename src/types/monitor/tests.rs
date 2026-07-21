@@ -53,7 +53,6 @@ fn per_tag_state_defaults_match_normal_tiling_defaults() {
     let state = PerTagState::default();
 
     assert_eq!(state.master_count, 1);
-    assert_eq!(state.master_factor, 0.55);
 }
 
 #[test]
@@ -70,6 +69,20 @@ fn monitor_lookup_includes_bar_outside_work_area() {
     assert_eq!(
         monitors.id_intersecting_rect(Rect::new(200, 60, 1, 1)),
         Some(id)
+    );
+}
+
+#[test]
+fn local_work_point_accounts_for_monitor_origin_and_reserved_space() {
+    let monitor = Monitor {
+        monitor_rect: Rect::new(100, 50, 800, 600),
+        available_rect: Rect::new(120, 80, 760, 550),
+        ..Monitor::default()
+    };
+
+    assert_eq!(
+        monitor.local_work_point(Point::new(145, 105)),
+        Point::new(25, 25)
     );
 }
 
@@ -238,14 +251,9 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(3), WindowId(1), WindowId(2)],
-        Some(WindowId(3)),
         1,
-        0.55,
     );
-    monitor
-        .per_tag_state()
-        .layouts
-        .set_layout(PresentationMode::Maximized);
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
 
     let clients = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)]
         .into_iter()

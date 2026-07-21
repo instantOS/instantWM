@@ -673,7 +673,7 @@ fn exit_with_error(message: &str) -> ! {
 /// The set of valid sections comes from the WM (`instantwm::ipc::config`) so
 /// this stays a single source of truth rather than a parallel list.
 fn validate_list_prefix(prefix: &str) -> Result<(), String> {
-    use instantwm::ipc::config::{RUNTIME_CONFIG_SECTIONS, SectionStatus, section_status};
+    use instantwm::ipc::config::{RuntimeConfigSection, SectionStatus, section_status};
     let section = prefix.split('.').next().unwrap_or(prefix);
     match section_status(section) {
         SectionStatus::Exposed => Ok(()),
@@ -682,7 +682,11 @@ fn validate_list_prefix(prefix: &str) -> Result<(), String> {
         )),
         SectionStatus::Unknown => Err(format!(
             "unknown section '{section}' (known: {})",
-            RUNTIME_CONFIG_SECTIONS.join(", ")
+            RuntimeConfigSection::EXPOSED
+                .into_iter()
+                .map(RuntimeConfigSection::name)
+                .collect::<Vec<_>>()
+                .join(", ")
         )),
     }
 }

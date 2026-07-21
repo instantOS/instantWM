@@ -25,7 +25,7 @@ fn top_right_zones(monitor: Rect) -> HotCornerZones {
     fn zone(monitor: Rect, width: i32, height: i32) -> Rect {
         let width = width.min(monitor.w.max(0));
         let height = height.min(monitor.h.max(0));
-        Rect::new(monitor.x + monitor.w - width, monitor.y, width, height)
+        Rect::new(monitor.right() - width, monitor.y, width, height)
     }
 
     HotCornerZones {

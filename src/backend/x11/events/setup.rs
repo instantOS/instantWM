@@ -144,9 +144,7 @@ pub fn setup_root(wm: &mut Wm) {
     ctx.update_ewmh_desktop_props();
 
     if let crate::contexts::WmCtx::X11(mut x11_ctx) = ctx {
-        crate::mouse::set_cursor_style(
-            &mut crate::contexts::WmCtx::X11(x11_ctx.reborrow()),
-            crate::types::AltCursor::Default,
-        );
+        crate::contexts::WmCtx::X11(x11_ctx.reborrow())
+            .set_cursor_style(crate::types::AltCursor::Default);
     }
 }

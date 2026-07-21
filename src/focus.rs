@@ -211,6 +211,7 @@ pub(crate) fn focus_generic(
 /// focused window must be visually on top.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     focus_impl(ctx, win, false);
+    crate::overview::follow_focus(ctx);
 }
 
 fn focus_impl(
@@ -299,6 +300,13 @@ pub fn hover_focus_target(
     entering_root: bool,
     pointer_pos: Option<Point>,
 ) {
+    // Overview owns a pending selection rather than immediately sending
+    // keyboard input to each hovered application. Handling it here keeps both
+    // backends on one focus-follows-mouse path; confirming overview commits the
+    // hovered card as real focus.
+    if crate::overview::hover_window(ctx, hovered_win, pointer_pos) {
+        return;
+    }
     // Keyboard tree placement owns a virtual selection cursor. Physical
     // pointer motion must not steal focus from the source window while that
     // session is active.
@@ -605,30 +613,62 @@ fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<
         }
     }
 
-    let mut stack = Vec::new();
-    for (c_win, c) in mon.iter_clients(clients) {
-        if c.is_visible(selected) {
-            stack.push(c_win);
-        }
-    }
-
-    stack
+    // Outside maximized presentation, keyboard stack cycling follows the
+    // exact title order exposed by the bar. Hidden/minimized entries retain a
+    // title but cannot receive focus until explicitly restored, so skip them.
+    mon.bar_client_order(clients)
+        .into_iter()
+        .filter(|win| {
+            clients
+                .get(win)
+                .is_some_and(|client| client.is_visible(selected))
+        })
+        .collect()
 }
 
 /// Shared logic to compute the next stack index for focus.
+fn stack_focus_target(
+    stack: &[WindowId],
+    selected_window: Option<WindowId>,
+    direction: StackDirection,
+    wrap: bool,
+) -> Option<WindowId> {
+    if stack.is_empty() {
+        return None;
+    }
+
+    let Some(current_idx) = selected_window.and_then(|win| stack.iter().position(|&w| w == win))
+    else {
+        return if direction.is_forward() {
+            stack.first().copied()
+        } else {
+            stack.last().copied()
+        };
+    };
+
+    if direction.is_forward() {
+        stack
+            .get(current_idx + 1)
+            .copied()
+            .or_else(|| wrap.then(|| stack[0]))
+    } else {
+        current_idx
+            .checked_sub(1)
+            .and_then(|idx| stack.get(idx).copied())
+            .or_else(|| wrap.then(|| stack[stack.len() - 1]))
+    }
+}
+
 fn get_stack_focus_target(
     model: &crate::model::WmModel,
     direction: StackDirection,
+    wrap: bool,
 ) -> Option<WindowId> {
     if model.monitors.is_empty() {
         return None;
     }
     let mon = model.expect_selected_monitor();
     let stack = get_visible_stack(mon, &model.clients);
-
-    if stack.is_empty() {
-        return None;
-    }
 
     let selected_window = model
         .selected_win()
@@ -643,20 +683,7 @@ fn get_stack_focus_target(
                 .flatten()
                 .filter(|win| stack.contains(win))
         });
-    let current_idx = match selected_window {
-        Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
-        None => 0,
-    };
-
-    let next_idx = if direction.is_forward() {
-        (current_idx + 1) % stack.len()
-    } else if current_idx == 0 {
-        stack.len() - 1
-    } else {
-        current_idx - 1
-    };
-
-    Some(stack[next_idx])
+    stack_focus_target(&stack, selected_window, direction, wrap)
 }
 
 /// Focus the best visible window in `direction`.
@@ -674,19 +701,32 @@ pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) -> bool {
 }
 
 pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
-    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction) {
+    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction, true) {
         focus(ctx, Some(target));
+    }
+}
+
+/// Focus the adjacent window in stable stack/bar order without wrapping.
+///
+/// Returns `false` at the outer edge, allowing a caller to continue navigation
+/// into an adjacent tag instead of cycling back within the current one.
+pub fn focus_stack_neighbor(ctx: &mut WmCtx, direction: StackDirection) -> bool {
+    if let Some(target) = get_stack_focus_target(ctx.core().model(), direction, false) {
+        focus(ctx, Some(target));
+        true
+    } else {
+        false
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FocusBackendOps, focus_generic, get_visible_stack};
+    use super::{FocusBackendOps, focus_generic, get_visible_stack, stack_focus_target};
     use crate::bar::BarState;
     use crate::client::focus::FocusState;
     use crate::contexts::CoreCtx;
     use crate::core_state::{CoreState, PendingWork};
-    use crate::types::{Client, Monitor, TagMask, WindowId};
+    use crate::types::{Client, Monitor, StackDirection, TagMask, WindowId};
     use std::cell::Cell;
 
     #[derive(Default)]
@@ -749,14 +789,9 @@ mod tests {
         monitor.per_tag_state().layout_tree.apply_preset(
             crate::layouts::tree::Preset::MasterStack,
             &[WindowId(3), WindowId(1), WindowId(2)],
-            Some(WindowId(1)),
             1,
-            0.55,
         );
-        monitor
-            .per_tag_state()
-            .layouts
-            .set_layout(crate::layouts::PresentationMode::Maximized);
+        monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
         let clients = [WindowId(1), WindowId(2), WindowId(3)]
             .into_iter()
             .map(|win| {
@@ -776,5 +811,40 @@ mod tests {
         let bar_order = monitor.bar_client_order(&clients);
         assert_eq!(cycle_order, vec![WindowId(3), WindowId(1)]);
         assert_eq!(&bar_order[..cycle_order.len()], cycle_order);
+    }
+
+    #[test]
+    fn bounded_stack_navigation_follows_order_and_stops_at_outer_edges() {
+        let order = [WindowId(3), WindowId(1), WindowId(4)];
+
+        assert_eq!(
+            stack_focus_target(&order, Some(WindowId(1)), StackDirection::Previous, false,),
+            Some(WindowId(3))
+        );
+        assert_eq!(
+            stack_focus_target(&order, Some(WindowId(1)), StackDirection::Next, false,),
+            Some(WindowId(4))
+        );
+        assert_eq!(
+            stack_focus_target(&order, Some(WindowId(3)), StackDirection::Previous, false,),
+            None
+        );
+        assert_eq!(
+            stack_focus_target(&order, Some(WindowId(4)), StackDirection::Next, false,),
+            None
+        );
+        assert_eq!(
+            stack_focus_target(&order, Some(WindowId(3)), StackDirection::Previous, true,),
+            Some(WindowId(4))
+        );
+        assert_eq!(
+            stack_focus_target(
+                &[WindowId(1)],
+                Some(WindowId(1)),
+                StackDirection::Next,
+                false,
+            ),
+            None
+        );
     }
 }

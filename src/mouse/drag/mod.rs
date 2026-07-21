@@ -37,7 +37,7 @@ pub use move_drop::{
 };
 pub use tag::{drag_tag, drag_tag_begin, drag_tag_finish, drag_tag_motion};
 pub use title::{
-    title_drag_begin, title_drag_finish, title_drag_motion, window_title_mouse_handler,
+    thresholded_client_drag, title_drag_finish, title_drag_motion, window_title_mouse_handler,
 };
 
 use crate::contexts::WmCtx;
@@ -61,11 +61,19 @@ pub fn finish_drag_move(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
+    modifiers: u32,
 ) {
     debug_assert!(ctx.core().drag_state().interactive().is_idle());
-    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
-    complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
+    complete_move_drop(
+        ctx,
+        win,
+        grab_start_rect,
+        edge_hint,
+        pointer_override,
+        modifiers,
+    );
 }
 
 /// Shared post-resize-drag teardown used by both X11 and Wayland backends.
@@ -75,7 +83,7 @@ pub fn finish_drag_move(
 /// before invoking this cleanup.
 pub fn finish_drag_resize(ctx: &mut WmCtx, win: WindowId) {
     debug_assert!(ctx.core().drag_state().interactive().is_idle());
-    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);
 }

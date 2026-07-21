@@ -321,10 +321,7 @@ pub fn handle_pointer_motion(
     // newly shown or hidden overlay. Session-locked input must never trigger
     // WM UI.
     if !state.is_locked() {
-        let root = RootPoint::new(
-            final_location.x.round() as i32,
-            final_location.y.round() as i32,
-        );
+        let root = RootPoint::from_f64_round(final_location.x, final_location.y);
         let mut ctx = wm.ctx();
         crate::mouse::update_overlay_hot_corner(&mut ctx, root);
     }
@@ -354,10 +351,7 @@ pub fn dispatch_pointer_motion(
     time_msec: u32,
 ) {
     let pointer_location = state.runtime.pointer_location;
-    let root = RootPoint::new(
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    );
+    let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
 
     // Get active drag window once - used in multiple phases
     let active_drag_window = active_drag_window(wm);
@@ -384,7 +378,14 @@ pub fn dispatch_pointer_motion(
     }
 
     // Phase 4: Handle bar interaction (early return path)
-    let bar_pos = update_bar_hit_state(wm, root, false);
+    // An armed/active tag drag owns the bar hover until release. Running the
+    // ordinary hover path as well makes the two states alternate every motion
+    // frame, which is visible as flicker on Wayland.
+    let bar_pos = if wm.core.drag.tag.active {
+        None
+    } else {
+        update_bar_hit_state(wm, root, false)
+    };
     if handle_bar_motion(
         wm,
         state,
@@ -521,10 +522,7 @@ fn handle_resize_drag_motion(
     let pointer_location = state.runtime.pointer_location;
     if !hover_resize_drag_motion(
         ctx,
-        RootPoint::new(
-            pointer_location.x.round() as i32,
-            pointer_location.y.round() as i32,
-        ),
+        RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
     ) {
         return false;
     }
@@ -588,6 +586,11 @@ fn update_hover_resize_state(
     hovered_win: Option<crate::types::WindowId>,
     no_active_drag: bool,
 ) -> bool {
+    if wm.core.model.is_overview_active() {
+        let mut ctx = wm.ctx();
+        clear_hover_offer(&mut ctx);
+        return false;
+    }
     if !no_active_drag {
         return false;
     }
@@ -634,6 +637,11 @@ fn update_pointer_focus(
     suppress_hover_focus: bool,
     root: RootPoint,
 ) {
+    if wm.core.model.is_overview_active() {
+        let mut ctx = wm.ctx();
+        crate::focus::hover_focus_target(&mut ctx, hovered_win, false, Some(root));
+        return;
+    }
     if let Some(lock_win) = active_drag_window {
         let ctx = wm.ctx();
         let crate::contexts::WmCtx::Wayland(mut ctx) = ctx else {

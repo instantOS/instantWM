@@ -1,7 +1,9 @@
-use crate::client::{current_launch_context, new_startup_id, record_pending_launch};
+use crate::client::{PendingLaunch, current_launch_context, new_startup_id, record_pending_launch};
 use crate::contexts::WmCtx;
 use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::xdg_activation::XdgActivationTokenData;
+use std::collections::VecDeque;
+use std::process::{Child, Command, Stdio};
 
 pub(crate) struct SpawnLaunchMetadata {
     pub(crate) context: crate::client::LaunchContext,
@@ -14,36 +16,13 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
         return;
     }
 
-    let mut command = std::process::Command::new(argv[0].as_ref());
+    let mut command = Command::new(argv[0].as_ref());
     command.args(argv.iter().skip(1).map(|s| s.as_ref()));
-    let metadata = configure_spawn_command(ctx, &mut command);
-
-    // Ensure XWayland DISPLAY is present for X11 apps if running under Wayland.
-    if let WmCtx::Wayland(wl) = ctx {
-        if let Some(d) = wl.wayland.xdisplay() {
-            command.env("DISPLAY", format!(":{d}"));
-        } else if let Ok(val) = std::env::var("DISPLAY") {
-            command.env("DISPLAY", val);
-        }
-    }
-
-    // Detach the process by redirecting standard streams to null.
-    command
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-
-    use std::os::unix::process::CommandExt;
-    command.process_group(0);
+    let metadata = prepare_spawn_command(ctx, &mut command);
 
     match command.spawn() {
         Ok(child) => {
-            record_pending_launch(
-                ctx.core_mut().pending_launches_mut(),
-                Some(child.id()),
-                Some(metadata.startup_id),
-                metadata.context,
-            );
+            record_spawned_child(ctx.core_mut().pending_launches_mut(), &child, metadata);
         }
         Err(e) => {
             log::error!("instantwm: failed to spawn '{}': {}", argv[0].as_ref(), e);
@@ -51,10 +30,8 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
     }
 }
 
-pub(crate) fn configure_spawn_command(
-    ctx: &WmCtx,
-    command: &mut std::process::Command,
-) -> SpawnLaunchMetadata {
+/// Apply the process policy shared by keybinding and IPC launches.
+pub(crate) fn prepare_spawn_command(ctx: &WmCtx, command: &mut Command) -> SpawnLaunchMetadata {
     let context = current_launch_context(ctx.core().model());
     let startup_id = new_startup_id();
     command.env("DESKTOP_STARTUP_ID", &startup_id);
@@ -81,12 +58,42 @@ pub(crate) fn configure_spawn_command(
         }) {
             command.env("XDG_ACTIVATION_TOKEN", token);
         }
+
+        // Ensure XWayland clients inherit the compositor-owned display. Keep
+        // the ambient value as a fallback while XWayland is still starting.
+        if let Some(display) = wl.wayland.xdisplay() {
+            command.env("DISPLAY", format!(":{display}"));
+        } else if let Ok(display) = std::env::var("DISPLAY") {
+            command.env("DISPLAY", display);
+        }
     }
+
+    // Launched applications must not retain the compositor's terminal or log
+    // pipes, and belong to their own process group.
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    use std::os::unix::process::CommandExt;
+    command.process_group(0);
 
     SpawnLaunchMetadata {
         context,
         startup_id,
     }
+}
+
+pub(crate) fn record_spawned_child(
+    pending_launches: &mut VecDeque<PendingLaunch>,
+    child: &Child,
+    metadata: SpawnLaunchMetadata,
+) {
+    record_pending_launch(
+        pending_launches,
+        Some(child.id()),
+        Some(metadata.startup_id),
+        metadata.context,
+    );
 }
 
 pub fn clean_mask(mask: u32, numlockmask: u32) -> u32 {

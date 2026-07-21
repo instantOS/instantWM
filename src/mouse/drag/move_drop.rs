@@ -41,14 +41,14 @@ pub fn snap_window_to_monitor_edges(
 
     if (work_rect.x - position.x).abs() < snap {
         position.x = work_rect.x;
-    } else if (work_rect.x + work_rect.w - (position.x + outer_size.w)).abs() < snap {
-        position.x = work_rect.x + work_rect.w - outer_size.w;
+    } else if (work_rect.right() - (position.x + outer_size.w)).abs() < snap {
+        position.x = work_rect.right() - outer_size.w;
     }
 
     if (work_rect.y - position.y).abs() < snap {
         position.y = work_rect.y;
-    } else if (work_rect.y + work_rect.h - (position.y + outer_size.h)).abs() < snap {
-        position.y = work_rect.y + work_rect.h - outer_size.h;
+    } else if (work_rect.bottom() - (position.y + outer_size.h)).abs() < snap {
+        position.y = work_rect.bottom() - outer_size.h;
     }
 }
 
@@ -60,8 +60,8 @@ pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<Sna
     if root.x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && root.x > mon.monitor_rect.x - 1 {
         return Some(SnapPosition::Left);
     }
-    if root.x > mon.monitor_rect.x + mon.monitor_rect.w - OVERLAY_ZONE_WIDTH
-        && root.x < mon.monitor_rect.x + mon.monitor_rect.w + 1
+    if root.x > mon.monitor_rect.right() - OVERLAY_ZONE_WIDTH
+        && root.x < mon.monitor_rect.right() + 1
     {
         return Some(SnapPosition::Right);
     }
@@ -101,7 +101,7 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
     mon.show_bar_for_mask(mask)
         && mon.y_in_bar(root.y)
         && root.x >= mon.monitor_rect.x
-        && root.x < mon.monitor_rect.x + mon.monitor_rect.w
+        && root.x < mon.monitor_rect.right()
 }
 
 // ── move_mouse helpers ────────────────────────────────────────────────────
@@ -112,6 +112,11 @@ pub struct MoveState {
     pub start_point: Point,
     /// Window geometry at drag start.
     pub grab_start_rect: Rect,
+    /// Floating geometry to retain if the drag ends by re-tiling the client.
+    /// This is deliberately separate from `grab_start_rect`: promoting a
+    /// tiled client changes the geometry used for motion without discarding
+    /// its saved floating restore geometry.
+    pub drop_restore_rect: Rect,
     /// Whether the cursor was over the bar on the previous motion event.
     pub cursor_on_bar: bool,
     /// The last edge-snap zone the cursor was in.
@@ -212,8 +217,8 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().expect_selected_monitor();
-            let local_x = root.x - mon.work_rect().x;
-            mon.bar_position_at_x(core, local_x).to_gesture()
+            mon.bar_position_at_x(core, mon.local_work_point(root).x)
+                .to_gesture()
         };
 
         let monitor_id = ctx.core().model().selected_monitor_id();
@@ -243,8 +248,8 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().expect_selected_monitor();
-            let local_x = root.x - mon.work_rect().x;
-            mon.bar_position_at_x(core, local_x).to_gesture()
+            mon.bar_position_at_x(core, mon.local_work_point(root).x)
+                .to_gesture()
         };
         let monitor_id = ctx.core().model().selected_monitor_id();
         let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
@@ -279,29 +284,7 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
         new_pos.y = bar_bottom;
     }
 
-    let has_tiling = ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout();
-
-    let (mut is_floating, mut drag_geo) = match ctx.core().model().client(win) {
-        Some(c) => (c.mode.is_floating(), c.geo),
-        None => return,
-    };
-
-    maybe_promote_tiled_drag_to_floating(
-        ctx,
-        win,
-        event,
-        &mut new_pos,
-        state,
-        has_tiling,
-        &mut is_floating,
-        &mut drag_geo,
-    );
-
-    if has_tiling && !is_floating {
+    if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
         update_tiled_drag_preview(
             ctx,
             win,
@@ -312,82 +295,27 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
         return;
     }
 
+    // Thresholding is owned by the shared client/title drag state machine.
+    // Once motion reaches this function, any tiled client that cannot perform
+    // a meaningful tree edit becomes an ordinary floating move.
+    let Some((drag_geo, _)) = promote_to_floating(ctx, win, None) else {
+        return;
+    };
     ctx.update_layout_preview(None);
 
-    if !has_tiling || is_floating {
-        if let Some(client) = ctx.core().model().client(win).cloned() {
-            snap_to_monitor_edges(ctx, &client, &mut new_pos);
-        }
-        ctx.move_resize(
-            win,
-            Rect {
-                x: new_pos.x,
-                y: new_pos.y,
-                w: drag_geo.w,
-                h: drag_geo.h,
-            },
-            MoveResizeOptions::hinted_immediate(true),
-        );
+    if let Some(client) = ctx.core().model().client(win).cloned() {
+        snap_to_monitor_edges(ctx, &client, &mut new_pos);
     }
-}
-
-fn maybe_promote_tiled_drag_to_floating(
-    ctx: &mut WmCtx,
-    win: WindowId,
-    event: Point,
-    pos: &mut Point,
-    state: &mut MoveState,
-    has_tiling: bool,
-    is_floating: &mut bool,
-    drag_geo: &mut Rect,
-) {
-    // Manual tiling uses a drag as a semantic tree placement gesture. Keep the
-    // source leaf in place until release so both backends can apply the same
-    // swap/reparent command to the original topology. Floating remains an
-    // explicit mode change (toggle_floating).
-    if has_tiling && !*is_floating {
-        return;
-    }
-    let snap = ctx.core().config().window.snap_threshold;
-    if *is_floating
-        || !has_tiling
-        || ((pos.x - drag_geo.x).abs() <= snap && (pos.y - drag_geo.y).abs() <= snap)
-    {
-        return;
-    }
-
-    // Resolve float dimensions before touching state.
-    // If the window was never floating, float_geo will be zeroed; fall
-    // back to the current tiled dimensions so the window doesn't collapse.
-    let Some((float_w, float_h)) = ctx.core().model().client(win).map(|client| {
-        let effective = client.effective_float_geo();
-        (effective.w, effective.h)
-    }) else {
-        return;
-    };
-
-    // Flip isfloating + restore border — zero configure_window calls.
-    let _ = set_window_mode(ctx, win, BaseClientMode::Floating);
-
-    // Re-tile the remaining windows (touches only the other clients).
-    let selmon_id = ctx.core().model().selected_monitor_id();
-    arrange(ctx, Some(selmon_id));
-
-    // The window's width is changing (tiled → floating), so the old
-    // `grab_start_x`-based `pos.x` would leave the window at x≈0 while the cursor
-    // is far to the right. Re-center under cursor and rebase drag anchors.
-    pos.x = event.x - float_w / 2;
-    state.grab_start_rect.x = pos.x;
-    state.grab_start_rect.y = pos.y;
-    state.start_point = event;
-
-    *is_floating = true;
-    *drag_geo = Rect {
-        x: pos.x,
-        y: pos.y,
-        w: float_w,
-        h: float_h,
-    };
+    ctx.move_resize(
+        win,
+        Rect {
+            x: new_pos.x,
+            y: new_pos.y,
+            w: drag_geo.w,
+            h: drag_geo.h,
+        },
+        MoveResizeOptions::hinted_immediate(true),
+    );
 }
 
 /// Clears `bar_dragging` and redraws the bar unconditionally.
@@ -415,6 +343,7 @@ pub fn handle_bar_drop(
     win: WindowId,
     grab_start_rect: Rect,
     pointer_override: Option<Point>,
+    modifiers: u32,
 ) {
     let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
         return;
@@ -426,8 +355,7 @@ pub fn handle_bar_drop(
     let position = {
         let core = ctx.core();
         let mon = core.model().expect_selected_monitor();
-        let local_x = root.x - mon.work_rect().x;
-        mon.bar_position_at_x(core, local_x)
+        mon.bar_position_at_x(core, mon.local_work_point(root).x)
     };
 
     // Remember whether the window was floating *before* any state change so
@@ -462,10 +390,11 @@ pub fn handle_bar_drop(
         {
             let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);
         }
-        crate::tags::client_tags::set_client_tag(
+        crate::mouse::drag::tag::apply_window_tag_drop(
             ctx,
             win,
             TagMask::from_index(tag_idx).unwrap_or(TagMask::EMPTY),
+            modifiers,
         );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
@@ -566,6 +495,7 @@ pub fn complete_move_drop(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
+    modifiers: u32,
 ) {
     // Hide the speculative frame before applying the authoritative drop. This
     // also covers release outside every valid tree target.
@@ -589,7 +519,7 @@ pub fn complete_move_drop(
         if handled_tree {
             return;
         }
-        handle_bar_drop(ctx, win, grab_start_rect, pointer);
+        handle_bar_drop(ctx, win, grab_start_rect, pointer, modifiers);
         handle_client_monitor_switch(ctx, win);
     }
 }

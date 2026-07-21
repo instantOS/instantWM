@@ -6,8 +6,7 @@ use crate::floating::{
 };
 use crate::model::WmModel;
 use crate::mouse::{
-    drag_tag, resize_aspect_mouse, resize_mouse_from_cursor, sidebar_gesture_begin,
-    window_title_mouse_handler,
+    drag_tag, resize_aspect_mouse, sidebar_gesture_begin, window_title_mouse_handler,
 };
 use crate::toggles::toggle_locked;
 use crate::types::TagMask;
@@ -94,12 +93,12 @@ pub fn execute_button_action(
         ButtonAction::DragTagBegin => match ctx {
             WmCtx::X11(ctx_x11) => {
                 if let Some(pos) = arg.bar_position() {
-                    drag_tag(ctx_x11, pos, arg.btn, arg.root.x);
+                    drag_tag(ctx_x11, pos, arg.btn, arg.root);
                 }
             }
             WmCtx::Wayland(_) => {
                 if let Some(pos) = arg.bar_position() {
-                    let _ = crate::mouse::drag::drag_tag_begin(ctx, pos, arg.btn);
+                    let _ = crate::mouse::drag::drag_tag_begin(ctx, pos, arg.btn, arg.root);
                 }
             }
         },
@@ -122,28 +121,12 @@ pub fn execute_button_action(
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
             }
         }
-        ButtonAction::FollowSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().model().selected_win()
-                && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
-            {
-                crate::tags::client_tags::follow_tag(ctx, win, mask);
+        ButtonAction::ClientMoveDrag => {
+            if let Some(win) = button_target_client(ctx.core().model(), &arg) {
+                crate::focus::focus(ctx, Some(win));
+                crate::mouse::drag::thresholded_client_drag(ctx, win, arg.btn, arg.root, true);
             }
         }
-        ButtonAction::ClientMoveDrag => match ctx {
-            WmCtx::X11(ctx_x11) => {
-                if let Some(win) = button_target_client(ctx_x11.core.model(), &arg) {
-                    let mut wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-                    crate::focus::focus(&mut wm_ctx, Some(win));
-                }
-                crate::backend::x11::mouse::move_mouse(ctx_x11, arg.btn, None)
-            }
-            WmCtx::Wayland(_) => {
-                if let Some(win) = button_target_client(ctx.core().model(), &arg) {
-                    crate::focus::focus(ctx, Some(win));
-                    crate::mouse::drag::title_drag_begin(ctx, win, arg.btn, arg.root, true);
-                }
-            }
-        },
         ButtonAction::ResizeSelectedAspect => {
             if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::focus::focus(ctx, Some(win));
@@ -189,8 +172,8 @@ pub fn execute_button_action(
             if let Some(win) = button_target_client(ctx.core().model(), &arg) {
                 crate::focus::select_monitor_for_client(ctx, win);
                 crate::focus::focus(ctx, Some(win));
+                crate::mouse::drag::thresholded_client_drag(ctx, win, arg.btn, arg.root, true);
             }
-            resize_mouse_from_cursor(ctx, arg.btn);
         }
     }
 }

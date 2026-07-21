@@ -23,9 +23,8 @@ use crate::model::WmModel;
 use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, Size, WindowId};
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
-use super::cursor::set_cursor_style;
-
 use super::resize::resize_mouse_directional;
+use super::warp;
 
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
@@ -49,13 +48,13 @@ fn offer_hover_resize(ctx: &mut WmCtx, target: HoverResizeTarget) {
             win: target.win,
             dir: target.dir,
         });
-    set_cursor_style(ctx, AltCursor::Resize(target.dir));
+    ctx.set_cursor_style(AltCursor::Resize(target.dir));
 }
 
 /// Clear any active hover offer and reset the cursor if the state changed.
 pub fn clear_hover_offer(ctx: &mut WmCtx) {
     if ctx.core_mut().drag_state_mut().clear_hover_offer() {
-        set_cursor_style(ctx, AltCursor::Default);
+        ctx.set_cursor_style(AltCursor::Default);
     }
 }
 
@@ -128,11 +127,10 @@ fn resize_target_for_window(
         return None;
     }
 
-    let hit_x = root.x - c.geo.x;
-    let hit_y = root.y - c.geo.y;
+    let hit = c.geo.local_point(root);
     Some(HoverResizeTarget {
         win,
-        dir: ResizeDirection::from_hit(c.geo.size(), Point::new(hit_x, hit_y)),
+        dir: ResizeDirection::from_hit(c.geo.size(), hit),
         geo: c.geo,
     })
 }
@@ -140,18 +138,6 @@ fn resize_target_for_window(
 fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
     let mon = model.expect_selected_monitor();
     mon.bar_contains_y(&model.clients, root_y)
-}
-
-// ── Cursor helpers ───────────────────────────────────────────────────────────
-
-/// Warp the pointer to the edge/corner of `win` described by `dir`.
-fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let Some(c) = ctx.core().model().client(win) else {
-        return;
-    };
-    let offset = dir.warp_offset(c.geo.size(), c.border_width);
-    ctx.pointer_backend()
-        .warp_pointer((c.geo.x + offset.x) as f64, (c.geo.y + offset.y) as f64);
 }
 
 // ── Border detection ─────────────────────────────────────────────────────────
@@ -285,7 +271,7 @@ pub fn update_sidebar_offer_at(ctx: &mut WmCtx, root: crate::types::Point) -> Si
                 .state_mut()
                 .drag
                 .set_hover_offer(HoverOffer::Sidebar(target));
-            set_cursor_style(ctx, AltCursor::Resize(ResizeDirection::Left));
+            ctx.set_cursor_style(AltCursor::Resize(ResizeDirection::Left));
         }
         return SidebarOfferUpdate::Active;
     }
@@ -443,7 +429,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                                     Size::new(w, h),
                                     Point::new(win_x, win_y),
                                 );
-                                warp_pointer_resize(&mut wm_ctx, win, dir);
+                                let _ = warp::warp_to_resize_corner(&mut wm_ctx, win, dir);
                                 resize_mouse_directional(ctx, Some(dir), btn);
                             }
                         }

@@ -238,9 +238,7 @@ mod tests {
         tree.apply_preset(
             crate::layouts::tree::Preset::MasterStack,
             &[win, WindowId(8)],
-            Some(win),
             1,
-            0.5,
         );
 
         interactions

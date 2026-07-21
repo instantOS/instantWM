@@ -389,7 +389,7 @@ fn handle_raise_window(wm: &mut Wm, win: crate::types::WindowId) {
 fn handle_begin_move(wm: &mut Wm, state: &WaylandState, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
     let point = state.runtime.pointer_location;
-    let root = crate::types::Point::new(point.x.round() as i32, point.y.round() as i32);
+    let root = crate::types::Point::from_f64_round(point.x, point.y);
     crate::mouse::drag::title::title_drag_begin(
         &mut ctx,
         win,
@@ -677,7 +677,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
         false
     };
     if cancelled_drag {
-        crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Default);
+        ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
@@ -696,7 +696,7 @@ fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelRea
     if crate::mouse::drag::lifecycle::cancel(wl_ctx.core.drag_state_mut(), wl_ctx.wayland, reason)
         .is_some()
     {
-        crate::mouse::set_cursor_style(&mut ctx, crate::types::AltCursor::Default);
+        ctx.set_cursor_style(crate::types::AltCursor::Default);
         ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
@@ -726,8 +726,8 @@ fn handle_begin_resize(
     let mut ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(wl_ctx) = &mut ctx {
         let point = state.runtime.pointer_location;
-        let start = crate::types::Point::new(point.x.round() as i32, point.y.round() as i32);
-        let Some(geometry) = wl_ctx.core.model().client(win).map(|client| client.geo) else {
+        let start = crate::types::Point::from_f64_round(point.x, point.y);
+        let Some(geometry) = wl_ctx.core.client_geo(win) else {
             return;
         };
         if crate::mouse::drag::lifecycle::begin_resize(
@@ -745,10 +745,8 @@ fn handle_begin_resize(
         {
             return;
         }
-        crate::mouse::set_cursor_style(
-            &mut crate::contexts::WmCtx::Wayland(wl_ctx.reborrow()),
-            crate::types::AltCursor::Resize(dir),
-        );
+        crate::contexts::WmCtx::Wayland(wl_ctx.reborrow())
+            .set_cursor_style(crate::types::AltCursor::Resize(dir));
     }
 }
 

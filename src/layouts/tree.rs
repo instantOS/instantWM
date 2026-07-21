@@ -20,7 +20,7 @@ use constraints::*;
 use placement_ops::*;
 #[cfg(test)]
 use presets::equal_run;
-use presets::{build_focus, build_grid, build_master_stack};
+use presets::{build_grid, build_master_stack};
 use resize_ops::*;
 pub use types::{Axis, CommandConfig, PlacementTarget, Preset, Side};
 use types::{DEFAULT_MINIMUM_WEIGHT, DEFAULT_RESIZE_STEP};
@@ -580,10 +580,15 @@ impl LayoutTree {
         &mut self,
         preset: Preset,
         ordered_windows: &[WindowId],
-        selected: Option<WindowId>,
         master_count: usize,
-        master_factor: f64,
     ) {
+        let master_ratio = match preset {
+            Preset::MasterStack => self.root_leading_ratio(Axis::Vertical),
+            Preset::BottomStack | Preset::BottomStackHorizontal => {
+                self.root_leading_ratio(Axis::Horizontal)
+            }
+            Preset::Grid | Preset::HorizontalGrid => 0.5,
+        };
         self.reconcile(ordered_windows);
         let windows = self.leaves();
         if windows.is_empty() {
@@ -601,24 +606,36 @@ impl LayoutTree {
             Preset::MasterStack => build_master_stack(
                 &windows,
                 master_count,
-                master_factor,
+                master_ratio,
                 Axis::Vertical,
                 &mut allocate,
             ),
             Preset::BottomStack => build_master_stack(
                 &windows,
                 master_count,
-                master_factor,
+                master_ratio,
                 Axis::Horizontal,
                 &mut allocate,
             ),
             Preset::Grid => build_grid(&windows, false, &mut allocate),
             Preset::HorizontalGrid => build_grid(&windows, true, &mut allocate),
             Preset::BottomStackHorizontal => {
-                build_master_stack(&windows, 1, master_factor, Axis::Horizontal, &mut allocate)
+                build_master_stack(&windows, 1, master_ratio, Axis::Horizontal, &mut allocate)
             }
-            Preset::Focus => build_focus(&windows, selected, &mut allocate),
         };
+    }
+
+    /// Preserve the leading share of an existing root split when a preset is
+    /// reapplied. The tree is the source of truth for proportions; presets use
+    /// an even split when the current root has no corresponding axis.
+    fn root_leading_ratio(&self, axis: Axis) -> f64 {
+        let Some(Node::Split(split)) = &self.root else {
+            return 0.5;
+        };
+        if split.axis != axis {
+            return 0.5;
+        }
+        split.children.first().map_or(0.5, |child| child.weight)
     }
 
     /// Swap the focused leaf with the topology-first visual neighbour.
@@ -1066,7 +1083,7 @@ impl LayoutTree {
                             rect.center().y,
                         ),
                         Side::Right => Point::new(
-                            rect.x + rect.w - (f64::from(rect.w) * band_fraction).round() as i32,
+                            rect.right() - (f64::from(rect.w) * band_fraction).round() as i32,
                             rect.center().y,
                         ),
                         Side::Top => Point::new(
@@ -1075,7 +1092,7 @@ impl LayoutTree {
                         ),
                         Side::Bottom => Point::new(
                             rect.center().x,
-                            rect.y + rect.h - (f64::from(rect.h) * band_fraction).round() as i32,
+                            rect.bottom() - (f64::from(rect.h) * band_fraction).round() as i32,
                         ),
                     };
                     output.push(PlacementTarget {
@@ -1266,9 +1283,9 @@ impl LayoutTree {
         let inset_y = (f64::from(rect.h) * edge_fraction).max(1.0);
         let distances = [
             (Side::Left, f64::from(point.x - rect.x) / inset_x),
-            (Side::Right, f64::from(rect.x + rect.w - point.x) / inset_x),
+            (Side::Right, f64::from(rect.right() - point.x) / inset_x),
             (Side::Top, f64::from(point.y - rect.y) / inset_y),
-            (Side::Bottom, f64::from(rect.y + rect.h - point.y) / inset_y),
+            (Side::Bottom, f64::from(rect.bottom() - point.y) / inset_y),
         ];
         let nearest = distances
             .into_iter()

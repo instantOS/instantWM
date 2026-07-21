@@ -21,7 +21,6 @@ Most old layout names now describe one-shot transformations:
 - `layout_maximized` is a persistent presentation mode: every tiled window
   fills the work area and the focused tiled window is stacked on top. The
   underlying manual tree is preserved and reconciled while the mode is active.
-  `layout_monocle` remains an input compatibility alias.
 - `layout_float` remains a persistent floating mode.
 
 After a transformation, manual swaps, resizes, spawns, and pointer placements
@@ -30,10 +29,18 @@ same applies to `instantwmctl layout <name>`.
 
 The default Super bindings use the tree whenever the focused window is tiled:
 
-- `Super+Arrow` focuses across the first structural seam. Geometry only
-  chooses between leaves which share that seam.
+- `Super+Arrow` and `Super+H/J/K/L` focus across the first structural seam.
+  Geometry only chooses between leaves which share that seam. At the left or
+  right boundary (including an empty or single-window tag), the horizontal
+  commands switch to the adjacent tag instead. If Up or Down has neither a
+  tree nor geometric neighbour, it cycles backward or forward through the
+  visible title order shown in the bar. This makes vertical keys useful in a
+  purely left-to-right tree as well.
 - `Super+Shift+Arrow` swaps with a visual neighbour without changing split
-  topology. `Super+Shift+H/J/K/L` is retained as an alternative.
+  topology. At the left or right edge, the window moves to the adjacent tag
+  and the view follows it, so repeated presses keep moving the same window.
+  Floating windows use the same fallback when they reach the monitor edge.
+  `Super+Shift+H/J/K/L` is retained as an alternative.
 - `Super+Ctrl+Arrow` resizes an axis run while preserving peer ratios.
   `Super+Alt+H/J/K/L` is retained as an alternative.
 - `Super++` and `Super+-` grow or shrink along the most local split.
@@ -90,6 +97,33 @@ to remain held after Super+M. Other modifiers remain meaningful. An explicit
 `none` action can make an otherwise unrelated key a consumed no-op; an unbound
 non-modifier cancels placement.
 
+Directional candidate navigation wraps intelligently when it reaches a visual
+edge. The opposite edge is chosen first and alignment on the other axis breaks
+ties, so another arrow or Vim-key press always advances when more than one
+candidate exists; Tab remains available for strict candidate-list traversal.
+
+## Overview
+
+Overview preserves each client's current size and arranges windows as a stable,
+two-dimensional field of overlapping cards. Rows are slightly staggered and
+the space around the active card expands on both axes; cards receive gradually
+less space with increasing grid distance. Moving the pointer over a card
+animates the emphasis without stealing keyboard focus. Directional focus keys
+navigate the same grid and move the emphasis with keyboard focus.
+
+Card origins and backend z-order advance together, which keeps an exposed
+pointer target for every card even though clients are not resized into
+thumbnails. The order is captured on entry, grouped by first tag and then stable
+monitor order, so focus changes do not reshuffle the underlying card order.
+Animations are retargeted from their current visual position when pointer or
+keyboard input arrives quickly.
+
+True-fullscreen clients participate as ordinary cards while overview is active.
+All original geometries are snapshotted once in the overview session—including
+for windows mapped while it is open—and restored before the normal per-tag
+layout is arranged on exit. Overview therefore neither repeatedly resizes
+clients into small grid cells nor corrupts floating restore geometry.
+
 `Super+W` (`toggle_tiling_maximized`) toggles maximized presentation. Pressing
 it again returns to the unchanged manual tree. `Super+J/K` cycles tiled windows
 in stable tree-leaf order while maximized. The bar presents those tiled titles
@@ -103,9 +137,21 @@ maximize binding has been removed.
 remains available as `layout_tile` and from the layout-symbol menu rather than
 occupying the direct `Super+T` binding.
 
+`Super+I/D` reapplies the master-stack preset with one more or fewer master
+windows. The count is bounded to `0..=tiled window count`; zero and the full
+count produce a single full-width run. Reapplying a compatible preset preserves
+the current root split ratio from the tree instead of consulting separate
+master-factor state.
+
 The existing action names (`focus_left`, `key_move_left`, `key_resize_left`,
 and their other directions) work in custom TOML bindings. The direction-free
 names are `tree_grow` and `tree_shrink`.
+
+While maximized, horizontal focus deliberately ignores the hidden tree
+geometry. `Super+H/Left` and `Super+L/Right` walk backward and forward through
+the stable tiled title order shown in the bar. Reaching the outer title
+continues to the adjacent tag, just as reaching a spatial edge does while
+tiled.
 
 ## Pointer placement
 
@@ -120,6 +166,11 @@ invalidates it.
 While dragging, a thick hollow frame shows the source window's exact final
 outer rectangle for the target under the pointer. The frame disappears over
 the tag bar and screen-edge drop zones, whose existing actions take precedence.
+Dropping a window on a tag moves it there without changing the current view.
+Hold Alt when releasing to move the window and follow it to that tag. The same
+release-time rule applies when dragging a tag indicator: plain drag moves the
+selected window, while Alt-drag moves and follows. Modifiers may be changed at
+any point during the gesture.
 
 The gesture is implemented once in the backend-neutral layout layer. X11's
 synchronous drag and Wayland's asynchronous pointer interaction call the same
@@ -150,7 +201,7 @@ The resize step is the fraction transferred per command. The minimum bounds
 children where the run size permits it. The pointer fraction controls semantic
 edge-band depth. Values are clamped to safe ranges when loaded.
 `maximized_gaps` controls whether maximized tiled windows retain the configured
-outer gap; the old `monocle_gaps` spelling remains accepted.
+outer gap.
 
 ## Lifecycle rules
 

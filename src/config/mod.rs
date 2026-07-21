@@ -19,7 +19,7 @@
 //! - **Change colors** → [`appearance::palette`]
 //! - **Add an external command** → [`commands`] (add field + `Cmd` variant)
 //! - **Change a window rule** → [`rules`]
-//! - **Tune WM parameters** (border width, mfact, …) → [`Config`] defaults below
+//! - **Tune WM parameters** (border width, gaps, …) → [`Config`] defaults below
 
 pub mod appearance;
 pub mod buttons;
@@ -153,10 +153,6 @@ pub struct Config {
     pub resize_hints: bool,
     /// Respect decoration hints.
     pub decor_hints: bool,
-    /// Master area size factor (0.0–1.0).
-    pub master_factor: f32,
-    /// Number of clients in master area.
-    pub master_count: i32,
     /// Tiled layout gap configuration.
     pub layout: config_toml::LayoutConfig,
 
@@ -327,8 +323,6 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         // --- Tiling ---
         resize_hints: true,
         decor_hints: true,
-        master_factor: 0.55,
-        master_count: 1,
         layout: theme.layout,
 
         // --- Tags ---

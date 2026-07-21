@@ -152,8 +152,12 @@ fn event_to_backend(event: &x11rb::protocol::Event) -> Option<BackendEvent> {
             root: Point::new(m.root_x as i32, m.root_y as i32),
             modifiers: u16::from(m.state) as u32,
         }),
-        x11rb::protocol::Event::ButtonRelease(br) => MouseButton::from_x11_detail(br.detail)
-            .map(|button| BackendEvent::ButtonRelease { button }),
+        x11rb::protocol::Event::ButtonRelease(br) => {
+            MouseButton::from_x11_detail(br.detail).map(|button| BackendEvent::ButtonRelease {
+                button,
+                modifiers: u16::from(br.state) as u32,
+            })
+        }
         x11rb::protocol::Event::ButtonPress(bp) => MouseButton::from_x11_detail(bp.detail)
             .map(|button| BackendEvent::ButtonPress { button }),
         x11rb::protocol::Event::KeyPress(kp) => Some(BackendEvent::KeyPress {
@@ -197,13 +201,16 @@ where
 /// If `with_keys` is true, also captures KeyPress events.
 /// The closure `on_event` returns `true` to continue the loop, `false` to break.
 /// Events are converted to [`BackendEvent`] so callers are backend-agnostic.
+/// Returns the modifier mask from the matching button release, when one was
+/// observed. This is the authoritative state for modifier-sensitive drops.
 pub fn mouse_drag_loop<F>(
     ctx: &mut WmCtxX11<'_>,
     btn: MouseButton,
     cursor: AltCursor,
     with_keys: bool,
     mut on_event: F,
-) where
+) -> Option<u32>
+where
     F: FnMut(&mut WmCtxX11<'_>, &BackendEvent) -> bool,
 {
     let grabbed = if with_keys {
@@ -213,11 +220,12 @@ pub fn mouse_drag_loop<F>(
     };
 
     if !grabbed {
-        return;
+        return None;
     }
 
     pump_deferred_work(ctx);
 
+    let mut release_modifiers = None;
     loop {
         // Wait for at least one event (blocking).
         let Some(mut event) = wait_event(&ctx.x11) else {
@@ -241,7 +249,7 @@ pub fn mouse_drag_loop<F>(
                             if !call_on_event(&mut on_event, ctx, &event) {
                                 pump_deferred_work(ctx);
                                 ungrab(&ctx.x11);
-                                return;
+                                return None;
                             }
                             pump_deferred_work(ctx);
 
@@ -251,12 +259,12 @@ pub fn mouse_drag_loop<F>(
                             {
                                 pump_deferred_work(ctx);
                                 ungrab(&ctx.x11);
-                                return;
+                                return Some(u16::from(br.state) as u32);
                             }
                             if !call_on_event(&mut on_event, ctx, &next_evt) {
                                 pump_deferred_work(ctx);
                                 ungrab(&ctx.x11);
-                                return;
+                                return None;
                             }
                             pump_deferred_work(ctx);
 
@@ -276,6 +284,7 @@ pub fn mouse_drag_loop<F>(
         let should_continue = match &event {
             x11rb::protocol::Event::ButtonRelease(br) => {
                 if br.detail == btn.to_x11_detail() {
+                    release_modifiers = Some(u16::from(br.state) as u32);
                     false
                 } else {
                     call_on_event(&mut on_event, ctx, &event)
@@ -293,4 +302,5 @@ pub fn mouse_drag_loop<F>(
 
     pump_deferred_work(ctx);
     ungrab(&ctx.x11);
+    release_modifiers
 }

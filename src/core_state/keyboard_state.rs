@@ -235,7 +235,7 @@ mod active_wm_mode_tests {
     }
 
     #[test]
-    fn keyboard_placement_direction_rejects_targets_behind_it() {
+    fn keyboard_placement_direction_wraps_at_a_visual_edge() {
         let targets = vec![target(1, 0, 0), target(2, 100, 0), target(3, -100, 0)];
         let mut placement = KeyboardTreePlacement::new(
             WindowId(9),
@@ -248,7 +248,8 @@ mod active_wm_mode_tests {
 
         assert!(placement.select_direction(Side::Right));
         assert_eq!(placement.selected_target().target, WindowId(2));
-        assert!(!placement.select_direction(Side::Top));
+        assert!(placement.select_direction(Side::Top));
+        assert_eq!(placement.selected_target().target, WindowId(1));
     }
 
     #[test]
@@ -265,5 +266,26 @@ mod active_wm_mode_tests {
 
         assert!(placement.select_direction(Side::Right));
         assert_eq!(placement.selected_target().target, WindowId(3));
+    }
+
+    #[test]
+    fn keyboard_placement_wrap_prefers_alignment_on_the_opposite_edge() {
+        let targets = vec![
+            target(1, 100, 100),
+            target(2, 0, 10),
+            target(3, 20, 102),
+            target(4, 0, 300),
+        ];
+        let mut placement = KeyboardTreePlacement::new(
+            WindowId(9),
+            MonitorId::default(),
+            TagMask::EMPTY,
+            targets,
+            0,
+        )
+        .unwrap();
+
+        assert!(placement.select_direction(Side::Right));
+        assert_eq!(placement.selected_target().target, WindowId(2));
     }
 }

@@ -34,6 +34,12 @@ pub fn set_x11_root_cursor(
     }
 }
 
+impl crate::backend::CursorOps for WmCtxX11<'_> {
+    fn apply_cursor_style(&mut self, style: AltCursor) {
+        set_x11_root_cursor(&self.x11, self.x11_runtime, style);
+    }
+}
+
 /// X11-only synchronous window move implementation.
 ///
 /// Grab → event loop → release handling. This is deliberately reachable only
@@ -52,17 +58,14 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         return;
     };
 
-    // Use override from title drag if available (preserves pre-drag floating dimensions),
-    // otherwise get the current client geometry.
-    let Some(grab_start_rect) =
-        float_restore_geo.or_else(|| ctx.core.model().client(win).map(|client| client.geo))
-    else {
+    let Some(grab_start_rect) = ctx.core.client_geo(win) else {
         return;
     };
 
     let mut state = MoveState {
         start_point: start,
         grab_start_rect,
+        drop_restore_rect: float_restore_geo.unwrap_or(grab_start_rect),
         cursor_on_bar: false,
         edge_snap_indicator: None,
     };
@@ -76,15 +79,22 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         return;
     }
 
-    crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let BackendEvent::Motion { root, .. } = event {
-            let root = *root;
-            ctx.core.drag_state_mut().record_interactive_motion(root);
-            let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-            on_motion(&mut wm_ctx, win, root, root, &mut state);
-        }
-        true
-    });
+    let release_modifiers = crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::Move,
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                let root = *root;
+                ctx.core.drag_state_mut().record_interactive_motion(root);
+                let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+                on_motion(&mut wm_ctx, win, root, root, &mut state);
+            }
+            true
+        },
+    )
+    .unwrap_or(0);
 
     crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
         .expect("X11 drag loop must finish the interaction using its grab button");
@@ -92,9 +102,10 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
     crate::mouse::drag::finish_drag_move(
         &mut wm_ctx,
         win,
-        state.grab_start_rect,
+        state.drop_restore_rect,
         state.edge_snap_indicator,
         None,
+        release_modifiers,
     );
 }
 

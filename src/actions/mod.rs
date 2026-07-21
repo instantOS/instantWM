@@ -49,7 +49,6 @@ pub enum ButtonAction {
     ToggleClickedViewTag,
     SetSelectedClientClickedTag,
     ToggleSelectedClientClickedTag,
-    FollowSelectedClientClickedTag,
     ClientMoveDrag,
     ResizeSelectedAspect,
     KillSelectedClient,

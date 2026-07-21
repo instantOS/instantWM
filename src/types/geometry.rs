@@ -75,11 +75,11 @@ impl MonitorPosition {
                     RelativePosition::LeftOf => {
                         Point::new(reference.x - current_size.w, reference.y)
                     }
-                    RelativePosition::RightOf => Point::new(reference.x + reference.w, reference.y),
+                    RelativePosition::RightOf => Point::new(reference.right(), reference.y),
                     RelativePosition::Above => {
                         Point::new(reference.x, reference.y - current_size.h)
                     }
-                    RelativePosition::Below => Point::new(reference.x, reference.y + reference.h),
+                    RelativePosition::Below => Point::new(reference.x, reference.bottom()),
                 })
             }
         }
@@ -99,6 +99,12 @@ impl Point {
     /// Create a new point.
     pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
+    }
+
+    /// Round a pair of floating-point coordinates into the WM's logical pixel grid.
+    #[inline]
+    pub fn from_f64_round(x: f64, y: f64) -> Self {
+        Self::new(x.round() as i32, y.round() as i32)
     }
 
     /// Return the absolute difference between X coordinates.
@@ -209,6 +215,24 @@ impl Rect {
         Size::new(self.w, self.h)
     }
 
+    /// Exclusive horizontal end coordinate.
+    #[inline]
+    pub const fn right(self) -> i32 {
+        self.x + self.w
+    }
+
+    /// Exclusive vertical end coordinate.
+    #[inline]
+    pub const fn bottom(self) -> i32 {
+        self.y + self.h
+    }
+
+    /// Translate a point from global coordinates into this rectangle's local space.
+    #[inline]
+    pub const fn local_point(self, point: Point) -> Point {
+        Point::new(point.x - self.x, point.y - self.y)
+    }
+
     /// Calculate the area of this rectangle.
     #[inline]
     pub fn area(&self) -> i32 {
@@ -218,10 +242,7 @@ impl Rect {
     /// Check if a point is contained within this rectangle.
     #[inline]
     pub fn contains_point(&self, point: Point) -> bool {
-        point.x >= self.x
-            && point.x < self.x + self.w
-            && point.y >= self.y
-            && point.y < self.y + self.h
+        point.x >= self.x && point.x < self.right() && point.y >= self.y && point.y < self.bottom()
     }
 
     /// Check if this rectangle intersects with another.
@@ -229,8 +250,8 @@ impl Rect {
     pub fn intersects_other(&self, other: &Rect) -> bool {
         let x1 = self.x.max(other.x);
         let y1 = self.y.max(other.y);
-        let x2 = (self.x + self.w).min(other.x + other.w);
-        let y2 = (self.y + self.h).min(other.y + other.h);
+        let x2 = self.right().min(other.right());
+        let y2 = self.bottom().min(other.bottom());
         x1 < x2 && y1 < y2
     }
 
@@ -240,8 +261,8 @@ impl Rect {
     pub fn intersection(&self, other: &Rect) -> Option<Rect> {
         let x1 = self.x.max(other.x);
         let y1 = self.y.max(other.y);
-        let x2 = (self.x + self.w).min(other.x + other.w);
-        let y2 = (self.y + self.h).min(other.y + other.h);
+        let x2 = self.right().min(other.right());
+        let y2 = self.bottom().min(other.bottom());
         if x2 <= x1 || y2 <= y1 {
             return None;
         }
@@ -272,8 +293,8 @@ impl Rect {
                 h: i.y - self.y,
             });
         }
-        let self_bottom = self.y + self.h;
-        let i_bottom = i.y + i.h;
+        let self_bottom = self.bottom();
+        let i_bottom = i.bottom();
         if i_bottom < self_bottom {
             out.push(Rect {
                 x: self.x,
@@ -290,8 +311,8 @@ impl Rect {
                 h: i.h,
             });
         }
-        let self_right = self.x + self.w;
-        let i_right = i.x + i.w;
+        let self_right = self.right();
+        let i_right = i.right();
         if i_right < self_right {
             out.push(Rect {
                 x: i_right,
@@ -377,8 +398,8 @@ impl Rect {
     /// x and y so at least part of the window remains visible.
     #[inline]
     pub fn clamp_position(&mut self, bounds: &Rect, total_w: i32, total_h: i32) {
-        let right_bound = bounds.x + bounds.w;
-        let bottom_bound = bounds.y + bounds.h;
+        let right_bound = bounds.right();
+        let bottom_bound = bounds.bottom();
 
         if self.x > right_bound {
             self.x = right_bound - total_w;
@@ -425,17 +446,14 @@ impl Rect {
     /// of the resize border.
     #[inline]
     pub fn contains_resize_border_point(&self, point: Point, border_zone: i32) -> bool {
-        if point.x > self.x
-            && point.x < self.x + self.w
-            && point.y > self.y
-            && point.y < self.y + self.h
+        if point.x > self.x && point.x < self.right() && point.y > self.y && point.y < self.bottom()
         {
             return false;
         }
         if point.y < self.y - border_zone
             || point.x < self.x - border_zone
-            || point.y > self.y + self.h + border_zone
-            || point.x > self.x + self.w + border_zone
+            || point.y > self.bottom() + border_zone
+            || point.x > self.right() + border_zone
         {
             return false;
         }
@@ -468,6 +486,10 @@ mod tests {
             Rect::from_position_and_size(rect.position(), rect.size()),
             rect
         );
+        assert_eq!(rect.right(), 810);
+        assert_eq!(rect.bottom(), 620);
+        assert_eq!(rect.local_point(Point::new(25, 47)), Point::new(15, 27));
+        assert_eq!(Point::from_f64_round(10.49, -3.51), Point::new(10, -4));
     }
 
     #[test]

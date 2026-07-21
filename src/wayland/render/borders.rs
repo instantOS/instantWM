@@ -9,7 +9,7 @@ use smithay::desktop::PopupManager;
 
 use crate::backend::wayland::compositor::{WaylandState, WindowIdMarker};
 use crate::model::WmModel;
-use crate::types::{BorderColorConfig, Rect, Size, WindowId};
+use crate::types::{BorderColorConfig, Rect, WindowId};
 
 /// Information about a window needed for border rendering.
 #[derive(Debug, Clone, Copy)]
@@ -24,18 +24,9 @@ struct WindowBorderInfo {
 }
 
 impl WindowBorderInfo {
-    /// Total outer size including borders.
-    fn outer_size(&self) -> Size {
-        let border_width = self.border_width;
-        Size::new(
-            self.content_rect.w + 2 * border_width,
-            self.content_rect.h + 2 * border_width,
-        )
-    }
-
     /// Bounding rectangle including borders.
     fn bounding_rect(&self) -> Rect {
-        self.content_rect.with_size(self.outer_size())
+        self.content_rect.with_borders(self.border_width)
     }
 
     /// Checks if this window should render borders.
@@ -108,7 +99,7 @@ fn generate_border_rectangles(outer_rect: Rect, border_width: i32) -> Vec<Rect> 
         // Bottom border
         Rect::new(
             outer_rect.x,
-            outer_rect.y + outer_rect.h - border_width,
+            outer_rect.bottom() - border_width,
             outer_rect.w,
             border_width,
         ),
@@ -121,7 +112,7 @@ fn generate_border_rectangles(outer_rect: Rect, border_width: i32) -> Vec<Rect> 
         ),
         // Right border (between top and bottom)
         Rect::new(
-            outer_rect.x + outer_rect.w - border_width,
+            outer_rect.right() - border_width,
             outer_rect.y + border_width,
             border_width,
             inner_height,

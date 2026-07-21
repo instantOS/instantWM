@@ -27,3 +27,10 @@ pub fn force_close(ctx_x11: &mut WmCtxX11<'_>, win: WindowId, wmatom_delete: u32
         let _ = ctx_x11.x11.conn.kill_client(x11_win);
     }
 }
+
+impl crate::backend::WindowCloseOps for WmCtxX11<'_> {
+    fn close_window(&mut self, window: WindowId) {
+        let delete_atom = self.x11_runtime.wmatom.delete;
+        force_close(self, window, delete_atom);
+    }
+}

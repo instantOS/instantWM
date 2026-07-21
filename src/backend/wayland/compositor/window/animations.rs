@@ -242,6 +242,27 @@ impl WaylandState {
         }
     }
 
+    /// Remove an in-flight animation at its currently displayed position and
+    /// convert that position back to the WM's outer-coordinate convention.
+    pub(crate) fn take_current_window_animation_rect(
+        &mut self,
+        win: WindowId,
+        now: Instant,
+    ) -> Option<Rect> {
+        let animation = self.window_animations.remove(&win)?;
+        let rect = animation.tick(now).rect;
+        let border_width = self
+            .globals()
+            .and_then(|globals| globals.model.client(win).map(|client| client.border_width))
+            .unwrap_or(0);
+        Some(Rect {
+            x: rect.x - border_width,
+            y: rect.y - border_width,
+            w: rect.w,
+            h: rect.h,
+        })
+    }
+
     /// Tick all active window animations.
     pub fn tick_animations(&mut self) {
         let preview_active = self.layout_preview_animation.is_active();

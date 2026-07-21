@@ -71,6 +71,11 @@ package() {
 
     # Wayland session
     install -Dm644 utils/instantwm-wayland.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-wayland.desktop"
+    install -Dm755 scripts/instantwm-wayland.sh "$pkgdir/usr/bin/instantwm-wayland"
+
+    # Wayland debug session
+    install -Dm644 utils/instantwm-wayland-debug.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-debug.desktop"
+    install -Dm755 scripts/instantwm-debug.sh "$pkgdir/usr/bin/instantwm-debug"
 
     # Portal routing for Wayland screen sharing/screenshot support
     install -Dm644 resources/instantwm-portals.conf "$pkgdir/usr/share/xdg-desktop-portal/instantwm-portals.conf"

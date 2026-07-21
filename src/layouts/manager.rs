@@ -8,11 +8,8 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
-use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, MonitorUpdates, PresentationMode};
-use crate::types::{
-    Client, ClientMode, Monitor, MonitorId, PerTagState, Rect, Size, TiledClientInfo, WindowId,
-};
-use std::cmp::max;
+use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, PresentationMode};
+use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
 use std::collections::HashMap;
 
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
@@ -23,7 +20,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     {
         ctx.reset_mode();
     }
-    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
 
     if let Some(id) = monitor_id {
         crate::client::apply_visibility(ctx);
@@ -68,33 +65,17 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
 impl ArrangePlan {
     fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-        // 1. Save floating geometry for overview mode
-        for &win in &self.save_geo {
-            if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-                client.save_floating_geometry();
-            }
-        }
-
-        // 2. Apply border widths
+        // 1. Apply border widths
         for (win, border) in &self.borders {
             ctx.set_border(*win, *border);
         }
 
-        // 3. Apply monitor updates
+        // 2. Apply monitor updates
         if let Some(m) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
-            m.master_count = self.monitor_updates.master_count;
-            m.master_factor = self.monitor_updates.master_factor;
-            m.bar_height = self.monitor_updates.bar_height;
-
-            // Sync per-tag state back (copy values to avoid borrow conflict)
-            let master_count = m.master_count;
-            let master_factor = m.master_factor;
-            let pertag = m.per_tag_state();
-            pertag.master_count = master_count;
-            pertag.master_factor = master_factor;
+            m.bar_height = self.bar_height;
         }
 
-        // 4. In maximized presentation, raise the selected window before animated moves
+        // 3. In maximized presentation, raise the selected window before animated moves
         //    so it doesn't briefly render beneath siblings during animation.
         if let Some(selected) = ctx
             .core()
@@ -107,23 +88,21 @@ impl ArrangePlan {
             ctx.window_backend().flush();
         }
 
-        // 5. Apply client moves (layout placements)
+        // 4. Apply client moves (layout placements)
         for output in &self.client_moves {
             ctx.move_resize(output.win, output.rect, output.options);
         }
 
-        // 6. Apply fullscreen moves last — fullscreen overrides layout geometry
+        // 5. Apply fullscreen moves last — fullscreen overrides layout geometry
         for output in &self.fullscreen_moves {
             ctx.move_resize(output.win, output.rect, output.options);
         }
 
-        // 7. Raise selected window in overview mode
-        if self.is_overview
-            && let Some(monitor) = ctx.core().model().monitor(monitor_id)
-            && let Some(selected) = monitor.selected
-            && self.client_moves.iter().any(|o| o.win == selected)
-        {
-            ctx.window_backend().raise_window_visual_only(selected);
+        // 6. Overlapping layouts own their complete visual order. In overview,
+        // raising only the selected card could cover another card's exposed
+        // hit region, so reapply the stable hand order as one operation.
+        if let Some(z_order) = &self.z_order {
+            ctx.window_backend().apply_z_order(z_order);
             ctx.window_backend().flush();
         }
     }
@@ -138,14 +117,6 @@ impl Monitor {
         bar_height: i32,
         animated: bool,
     ) -> ArrangePlan {
-        let defaults = PerTagState::new(self.show_bar);
-        let (master_count, master_factor) = self
-            .per_tag()
-            .map(|p| (p.master_count, p.master_factor))
-            .unwrap_or((defaults.master_count, defaults.master_factor));
-
-        self.master_count = master_count;
-        self.master_factor = master_factor;
         self.set_bar_height(bar_height);
 
         // Compute borders
@@ -158,11 +129,11 @@ impl Monitor {
         // client) leaves a border-sized strip until the next arrange.
         let layout_clients = clients_with_planned_borders(clients, &borders);
 
-        // Compute layout moves and save_geo
+        // Compute layout moves and any explicit overlapping order.
         let is_overview = self.overview_state.is_some();
-        let (client_moves, save_geo) = if is_overview {
-            let (moves, save_geo) = crate::overview::compute(self, &layout_clients);
-            (moves, save_geo)
+        let (client_moves, z_order) = if is_overview {
+            let overview = crate::overview::compute(self, &layout_clients);
+            (overview.moves, Some(overview.z_order))
         } else {
             let layout = self.current_layout();
             let moves = match layout {
@@ -182,23 +153,23 @@ impl Monitor {
                     crate::layouts::algo::floating(self, &layout_clients, animated)
                 }
             };
-            (moves, Vec::new())
+            (moves, None)
         };
 
-        // Compute fullscreen moves
-        let fullscreen_moves = compute_fullscreen_moves(self, clients);
+        // Fullscreen participates as an ordinary card in overview. Reapplying
+        // fullscreen geometry here would cover the complete hand.
+        let fullscreen_moves = if is_overview {
+            Vec::new()
+        } else {
+            compute_fullscreen_moves(self, clients)
+        };
 
         ArrangePlan {
-            monitor_updates: MonitorUpdates {
-                master_count,
-                master_factor,
-                bar_height: self.bar_height,
-            },
+            bar_height: self.bar_height,
             borders,
             client_moves,
             fullscreen_moves,
-            save_geo,
-            is_overview,
+            z_order,
         }
     }
 }
@@ -478,40 +449,38 @@ pub(crate) fn compute_monitor_z_order(
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutCommand) {
     let Some(preset) = layout.tree_preset() else {
         let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-        m.per_tag_state().layouts.set_layout(layout.presentation());
+        m.per_tag_state().presentation = layout.presentation();
         finish_layout_change(ctx);
         return;
     };
 
-    ctx.core_mut()
-        .model_mut()
-        .expect_selected_monitor_mut()
-        .per_tag_state()
-        .last_tree_layout = preset;
     apply_tree_preset(ctx, preset);
 }
 
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
-    let (windows, selected, master_count, master_factor) = {
+    let (windows, master_count) = {
         let monitor = ctx.core().model().expect_selected_monitor();
         let windows = monitor
             .collect_tiled(&ctx.core().model().clients)
             .into_iter()
             .map(|client| client.win)
             .collect::<Vec<_>>();
-        (
-            windows,
-            monitor.selected,
-            monitor.master_count.max(1) as usize,
-            f64::from(monitor.master_factor),
-        )
+        let requested = monitor.per_tag().map_or(1, |state| state.master_count);
+        let requested = if windows.is_empty() {
+            requested
+        } else {
+            requested.min(windows.len())
+        };
+        (windows, requested)
     };
     let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     let state = monitor.per_tag_state();
-    state.layouts.set_layout(PresentationMode::Tiled);
+    state.presentation = PresentationMode::Tiled;
+    state.preset_cycle_cursor = preset;
+    state.master_count = master_count;
     state
         .layout_tree
-        .apply_preset(preset, &windows, selected, master_count, master_factor);
+        .apply_preset(preset, &windows, master_count);
     finish_layout_change(ctx);
 }
 
@@ -645,6 +614,13 @@ pub(crate) fn pointer_tree_resize_start(
         .monitor
         .collect_tiled(&ctx.core().model().clients)
         .len();
+    if !manual_tree_pointer_interaction_allowed(
+        view.monitor.current_layout(),
+        view.client.mode.is_tiling(),
+        tiled_count,
+    ) {
+        return None;
+    }
     let tree = &view.monitor.per_tag()?.layout_tree;
     let left = tree.can_resize_side(window, crate::layouts::tree::Side::Left);
     let right = tree.can_resize_side(window, crate::layouts::tree::Side::Right);
@@ -661,7 +637,7 @@ pub(crate) fn pointer_tree_resize_start(
     ) {
         return None;
     }
-    let hit = crate::types::Point::new(point.x - view.client.geo.x, point.y - view.client.geo.y);
+    let hit = view.client.geo.local_point(point);
     let requested = crate::types::ResizeDirection::from_hit(view.client.geo.size(), hit);
     let direction = available_tree_resize_direction(
         requested,
@@ -685,10 +661,32 @@ fn pointer_tree_resize_allowed(
     horizontal: bool,
     vertical: bool,
 ) -> bool {
-    presentation == PresentationMode::Tiled
-        && client_is_tiled
-        && tiled_count > 1
+    manual_tree_pointer_interaction_allowed(presentation, client_is_tiled, tiled_count)
         && (horizontal || vertical)
+}
+
+fn manual_tree_pointer_interaction_allowed(
+    presentation: PresentationMode,
+    client_is_tiled: bool,
+    tiled_count: usize,
+) -> bool {
+    presentation == PresentationMode::Tiled && client_is_tiled && tiled_count > 1
+}
+
+/// Whether pointer movement/resizing should edit the persistent layout tree.
+///
+/// A lone tiled client has no meaningful tree relationship to manipulate, and
+/// maximized presentation deliberately hides those relationships. Both cases
+/// therefore use the ordinary floating drag behavior.
+pub(crate) fn uses_manual_tree_pointer_interaction(ctx: &WmCtx<'_>, window: WindowId) -> bool {
+    let Some(view) = ctx.core().model().client_view(window) else {
+        return false;
+    };
+    manual_tree_pointer_interaction_allowed(
+        view.monitor.current_layout(),
+        view.client.mode.is_tiling(),
+        view.monitor.tiled_client_count(&ctx.core().model().clients),
+    )
 }
 
 fn available_tree_resize_direction(
@@ -1079,12 +1077,6 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     changed
 }
 
-pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
-    let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-    m.per_tag_state().layouts.toggle_slot();
-    finish_layout_change(ctx);
-}
-
 /// Toggle maximized-stack presentation without modifying the manual tree.
 pub fn toggle_tiling_maximized(ctx: &mut WmCtx<'_>) {
     let next = if ctx
@@ -1099,7 +1091,7 @@ pub fn toggle_tiling_maximized(ctx: &mut WmCtx<'_>) {
         PresentationMode::Maximized
     };
     let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-    monitor.per_tag_state().layouts.set_layout(next);
+    monitor.per_tag_state().presentation = next;
     finish_layout_change(ctx);
 }
 
@@ -1116,7 +1108,7 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
             PresentationMode::Maximized => LayoutCommand::Maximized,
             PresentationMode::Tiled => monitor
                 .per_tag()
-                .and_then(|state| LayoutCommand::from_tree_preset(state.last_tree_layout))
+                .and_then(|state| LayoutCommand::from_tree_preset(state.preset_cycle_cursor))
                 .unwrap_or(LayoutCommand::Tile),
         }
     };
@@ -1139,72 +1131,32 @@ pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
 }
 
 pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
-    let ccount = ctx
+    let window_count = ctx
         .core()
         .state()
         .expect_selected_monitor()
-        .tiled_client_count(&ctx.core().model().clients) as i32;
-    let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-    if delta > 0 && m.master_count >= ccount {
-        m.master_count = ccount;
-    } else {
-        let new_nmaster = max(m.master_count + delta, 0);
-        m.master_count = new_nmaster;
+        .tiled_client_count(&ctx.core().model().clients);
+    if window_count == 0 || delta == 0 {
+        return;
     }
-    m.per_tag_state().master_count = m.master_count;
-    apply_tree_preset(ctx, crate::layouts::tree::Preset::MasterStack);
+    let state = ctx
+        .core_mut()
+        .model_mut()
+        .expect_selected_monitor_mut()
+        .per_tag_state();
+    let current = state.master_count.min(window_count);
+    let next = shifted_master_count(current, delta, window_count);
+    state.master_count = next;
+    if next != current {
+        apply_tree_preset(ctx, crate::layouts::tree::Preset::MasterStack);
+    }
 }
 
-pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
-    if delta == 0.0 {
-        return;
-    }
-    // Kept as a compatibility action name. Under manual tiling this is an
-    // imperative local resize, not a persistent parameter which overwrites the
-    // tree on every arrange.
-    if resize_tree_smart(ctx, delta > 0.0) {
-        return;
-    }
-    let is_tiling = ctx
-        .core()
-        .state()
-        .expect_selected_monitor()
-        .current_layout()
-        .is_tiling();
-    if !is_tiling {
-        return;
-    }
-
-    let current_factor = ctx.core().model().expect_selected_monitor().master_factor;
-    let new_factor = if delta < 1.0 {
-        delta + current_factor
-    } else {
-        delta - 1.0
-    };
-    if !(0.05..=0.95).contains(&new_factor) {
-        return;
-    }
-
-    let animation_on = ctx.core().behavior().animated
-        && ctx
-            .core()
-            .state()
-            .expect_selected_monitor()
-            .tiled_client_count(&ctx.core().model().clients)
-            > 1;
-    if animation_on {
-        ctx.core_mut().behavior_mut().animated = false;
-    }
-
-    let m = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-    m.master_factor = new_factor;
-    m.per_tag_state().master_factor = new_factor;
-
-    let selected_monitor_id = ctx.core().model().selected_monitor_id();
-    arrange(ctx, Some(selected_monitor_id));
-    if animation_on {
-        ctx.core_mut().behavior_mut().animated = true;
-    }
+fn shifted_master_count(current: usize, delta: i32, window_count: usize) -> usize {
+    current
+        .min(window_count)
+        .saturating_add_signed(delta as isize)
+        .min(window_count)
 }
 
 #[cfg(test)]

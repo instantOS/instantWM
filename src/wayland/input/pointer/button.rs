@@ -26,10 +26,7 @@ pub fn handle_pointer_button_raw(
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let root = RootPoint::new(
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    );
+    let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
     let wm_button = MouseButton::from_wayland_code(button);
 
     let button = ButtonPress {
@@ -256,7 +253,7 @@ fn handle_button_release(
     // A release belongs to whichever interaction consumed its press. Finish
     // WM drags even when the pointer has moved over an overlay; ordinary
     // overlay releases are forwarded by the non-WM-drag path below.
-    if finish_hover_resize_drag(wm, button) {
+    if finish_hover_resize_drag(wm, keyboard_handle, button) {
         return true;
     }
 
@@ -287,13 +284,17 @@ fn handle_button_release(
     false
 }
 
-fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
+fn finish_hover_resize_drag(
+    wm: &mut Wm,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    button: ButtonPress,
+) -> bool {
     let Some(btn) = button.wm_button else {
         return false;
     };
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        hover_resize_drag_finish(&mut ctx, btn)
+        hover_resize_drag_finish(&mut ctx, btn, clean_modifier_state(keyboard_handle))
     } else {
         false
     }

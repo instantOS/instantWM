@@ -30,12 +30,12 @@ pub(super) fn clone_node_by_key(node: &Node, key: NodeKey) -> Option<Node> {
 pub(super) fn bounding_rect(rects: &[FRect]) -> Option<FRect> {
     let first = *rects.first()?;
     let (mut left, mut top, mut right, mut bottom) =
-        (first.x, first.y, first.x + first.w, first.y + first.h);
+        (first.x, first.y, first.right(), first.bottom());
     for rect in &rects[1..] {
         left = left.min(rect.x);
         top = top.min(rect.y);
-        right = right.max(rect.x + rect.w);
-        bottom = bottom.max(rect.y + rect.h);
+        right = right.max(rect.right());
+        bottom = bottom.max(rect.bottom());
     }
     Some(FRect {
         x: left,

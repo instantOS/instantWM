@@ -169,7 +169,6 @@ pub struct LayoutConfig {
     /// Disable gaps when a tiling layout has one or fewer tiled windows.
     pub smart_gaps: bool,
     /// Apply configured gaps to maximized-stack presentation.
-    #[serde(alias = "monocle_gaps")]
     pub maximized_gaps: bool,
     /// Fraction of an axis changed by one manual-tree keyboard resize.
     pub keyboard_resize_step: f64,
@@ -257,6 +256,16 @@ pub enum VrrMode {
 pub enum ToggleSetting {
     Enabled,
     Disabled,
+}
+
+impl From<bool> for ToggleSetting {
+    fn from(enabled: bool) -> Self {
+        if enabled {
+            Self::Enabled
+        } else {
+            Self::Disabled
+        }
+    }
 }
 
 /// Acceleration profile for pointer devices.
@@ -613,16 +622,5 @@ mod theme_tests {
         assert_eq!(config.theme, ColorTheme::Instantos);
         // …and the rest of the config still loads.
         assert_eq!(config.layout.inner_gap, 7);
-    }
-
-    #[test]
-    fn legacy_monocle_gaps_name_maps_to_maximized_gaps() {
-        let config = parse(
-            r#"
-            [layout]
-            monocle_gaps = true
-            "#,
-        );
-        assert!(config.layout.maximized_gaps);
     }
 }

@@ -41,7 +41,6 @@
 
 pub mod bindings;
 pub mod constants;
-pub(crate) mod cursor;
 pub mod drag;
 pub mod hot_corner;
 pub mod hover;
@@ -52,10 +51,6 @@ pub mod slop;
 pub mod warp;
 
 // ── Context ─────────────────────────────────────────────────────────────────────
-
-// ── warp ──────────────────────────────────────────────────────────────────────
-
-pub use cursor::set_cursor_style;
 
 // ── drag ──────────────────────────────────────────────────────────────────────
 
@@ -75,7 +70,7 @@ pub use hover::{
 
 // ── resize ────────────────────────────────────────────────────────────────────
 
-pub use resize::{resize_aspect_mouse, resize_mouse_from_cursor};
+pub use resize::resize_aspect_mouse;
 
 // ── slop ─────────────────────────────────────────────────────────────────────
 

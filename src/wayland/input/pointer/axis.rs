@@ -47,10 +47,7 @@ pub fn handle_pointer_axis_raw(
 ) {
     let scroll_factor = resolve_scroll_factor(&wm.core.config.input);
 
-    let root = RootPoint::new(
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    );
+    let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
 
     // Check if the pointer is in the bar area; if so, dispatch bar scroll.
     let scroll_delta = vertical_v120.or(vertical);

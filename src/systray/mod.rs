@@ -19,15 +19,15 @@ const MIN_MENU_CELL_WIDTH: i32 = 24;
 /// Prefer opening leftward (tray icons normally live at the right edge) and
 /// below a top bar, while keeping the complete window in the work area.
 pub(crate) fn native_menu_rect(work_rect: Rect, requested: Rect, anchor: Point) -> Rect {
-    let max_x = (work_rect.x + work_rect.w - requested.w).max(work_rect.x);
-    let max_y = (work_rect.y + work_rect.h - requested.h).max(work_rect.y);
+    let max_x = (work_rect.right() - requested.w).max(work_rect.x);
+    let max_y = (work_rect.bottom() - requested.h).max(work_rect.y);
 
     let x = (anchor.x - requested.w).clamp(work_rect.x, max_x);
     let y = if anchor.y < work_rect.y {
         work_rect.y
-    } else if anchor.y >= work_rect.y + work_rect.h {
+    } else if anchor.y >= work_rect.bottom() {
         max_y
-    } else if anchor.y + requested.h <= work_rect.y + work_rect.h {
+    } else if anchor.y + requested.h <= work_rect.bottom() {
         anchor.y
     } else {
         (anchor.y - requested.h).clamp(work_rect.y, max_y)

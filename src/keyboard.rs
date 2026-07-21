@@ -3,7 +3,7 @@ use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
 use crate::core_state::ActiveWmMode;
 use crate::floating::change_snap;
-use crate::focus::{direction_focus, focus_stack};
+use crate::focus::focus_stack;
 
 use crate::types::*;
 use crate::types::{Direction, StackDirection, VerticalDirection};
@@ -162,7 +162,7 @@ pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx.core().model().is_overview_active();
 
     if is_overview {
-        direction_focus(ctx, VerticalDirection::Up.into());
+        crate::overview::focus_direction(ctx, VerticalDirection::Up.into());
         return;
     }
 
@@ -195,7 +195,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
     let is_overview = ctx.core().model().is_overview_active();
 
     if is_overview {
-        direction_focus(ctx, VerticalDirection::Down.into());
+        crate::overview::focus_direction(ctx, VerticalDirection::Down.into());
         return;
     }
 
@@ -334,7 +334,7 @@ mod tests {
         let desktop_key = Key {
             mod_mask: 0,
             keysym: 9,
-            action: KeyAction::named(NamedAction::ToggleLayout),
+            action: KeyAction::named(NamedAction::ToggleBar),
         };
 
         let resolved = resolve_key_action(
@@ -350,7 +350,7 @@ mod tests {
         .expect("expected desktop action");
 
         match resolved.action {
-            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::ToggleLayout),
+            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::ToggleBar),
             _ => panic!("unexpected action kind"),
         }
 
@@ -359,7 +359,7 @@ mod tests {
             &[Key {
                 mod_mask: 0,
                 keysym: 9,
-                action: KeyAction::named(NamedAction::ToggleLayout),
+                action: KeyAction::named(NamedAction::ToggleBar),
             }],
             &HashMap::new(),
             Some(WindowId(1)),

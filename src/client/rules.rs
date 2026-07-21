@@ -77,7 +77,7 @@ fn apply_rules_impl(
     let before = rule_state_snapshot(g, win);
     let mut placement = InitialRulePlacement::Default;
 
-    // --- Initialise fields we are about to set -------------------------------
+    // Title and an already-established runtime role survive rule refreshes.
     if let Some(c) = g.model.client_mut(win) {
         if !props.title.is_empty() {
             c.name = props.title.clone();
@@ -90,7 +90,38 @@ fn apply_rules_impl(
         if c.scratchpad.is_some() {
             return InitialRuleOutcome::default();
         }
+    }
 
+    // `ins` and the other compositor integrations launch scratchpad terminals
+    // with a stable `scratchpad_<name>` class/app-id. Classify that protocol
+    // role before clearing inherited tags or running ordinary window rules, so
+    // the client can never occupy a tiling leaf for its first arrange.
+    if let Some(name) =
+        crate::floating::scratchpad::name_from_window_identity(&props.class, &props.instance)
+            .map(str::to_owned)
+    {
+        let role = g.model.client_view(win).map(|view| {
+            (
+                view.client.tags,
+                view.monitor.work_rect().w,
+                view.monitor.work_rect().h,
+            )
+        });
+        if let Some((restore_tags, monitor_width, monitor_height)) = role
+            && g.model.scratchpad_find(&name).is_none()
+            && let Some(client) = g.model.client_mut(win)
+        {
+            client.apply_scratchpad_state(&name, None, restore_tags, monitor_width, monitor_height);
+            client.show_as_scratchpad(restore_tags, None);
+            return InitialRuleOutcome {
+                changed: before != rule_state_snapshot(g, win),
+                placement: InitialRulePlacement::Center,
+            };
+        }
+    }
+
+    // --- Initialise fields we are about to set -------------------------------
+    if let Some(c) = g.model.client_mut(win) {
         c.mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
             ClientMode::Floating
         } else {
@@ -561,6 +592,62 @@ mod tests {
 
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
         assert!(g.model.client(win).unwrap().mode.is_floating());
+    }
+
+    #[test]
+    fn scratchpad_identity_is_classified_before_the_first_layout() {
+        use crate::types::Rect;
+
+        let mut g = CoreState::default();
+        g.model.tags.num_tags = 3;
+        let selected_tags = TagMask::single(2).unwrap();
+        let mut monitor = Monitor::new_with_values(true, true);
+        monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.set_selected_tags(selected_tags);
+        g.model.monitors.push(monitor);
+
+        let win = WindowId(45);
+        g.model.insert_client(Client {
+            win,
+            monitor_id: MonitorId::default(),
+            tags: selected_tags,
+            mode: ClientMode::Tiling,
+            ..Default::default()
+        });
+
+        let outcome = apply_initial_rules(
+            &mut g,
+            win,
+            &WindowProperties {
+                class: "scratchpad_menu".to_string(),
+                ..Default::default()
+            },
+            None,
+        );
+
+        let client = g.model.client(win).unwrap();
+        assert_eq!(outcome.placement, InitialRulePlacement::Center);
+        assert!(outcome.changed);
+        assert!(client.mode.is_floating());
+        assert!(client.is_sticky);
+        assert_eq!(client.tags, selected_tags);
+        let scratchpad = client.scratchpad.as_ref().unwrap();
+        assert_eq!(scratchpad.name, "menu");
+        assert_eq!(scratchpad.restore_tags, selected_tags);
+        g.model
+            .monitor_mut(MonitorId::default())
+            .unwrap()
+            .clients
+            .push(win);
+        assert!(
+            g.model
+                .monitor(MonitorId::default())
+                .unwrap()
+                .collect_tiled(&g.model.clients)
+                .is_empty(),
+            "an inferred scratchpad must never become a layout-tree leaf"
+        );
     }
 
     #[test]
