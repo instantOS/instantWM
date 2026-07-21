@@ -31,7 +31,6 @@ use smithay::{
         },
         shell::xdg::{
             PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
-            XdgToplevelSurfaceData,
             decoration::XdgDecorationHandler,
             dialog::{ToplevelDialogHint, XdgDialogHandler},
         },
@@ -41,6 +40,13 @@ use smithay::{
 };
 
 use super::{focus::KeyboardFocusTarget, state::WaylandState};
+
+fn xdg_toplevel_policy_wants_floating(has_parent: bool, has_fixed_size: bool) -> bool {
+    // xdg-dialog-v1 explicitly has no effect on an unattached toplevel. GTK
+    // creates an xdg_dialog_v1 object for ordinary, non-modal windows too, so
+    // the dialog object itself must not be used as a floating hint.
+    has_parent || has_fixed_size
+}
 
 impl WaylandState {
     /// Apply the xdg-positioner's constraint adjustments against the outputs
@@ -98,18 +104,10 @@ impl WaylandState {
     }
 
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
-        surface.parent().is_some()
-            || self.xdg_toplevel_is_dialog(surface)
-            || self.xdg_toplevel_has_fixed_size_constraints(surface)
-    }
-
-    fn xdg_toplevel_is_dialog(&self, surface: &ToplevelSurface) -> bool {
-        compositor::with_states(surface.wl_surface(), |states| {
-            states
-                .data_map
-                .get::<XdgToplevelSurfaceData>()
-                .is_some_and(|data| data.lock().unwrap().dialog_hint != ToplevelDialogHint::Unknown)
-        })
+        xdg_toplevel_policy_wants_floating(
+            surface.parent().is_some(),
+            self.xdg_toplevel_has_fixed_size_constraints(surface),
+        )
     }
 
     pub(crate) fn xdg_toplevel_has_fixed_size_constraints(
@@ -139,6 +137,24 @@ impl WaylandState {
                 self.request_space_sync();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::xdg_toplevel_policy_wants_floating;
+
+    #[test]
+    fn standalone_resizable_toplevel_is_tiled() {
+        // Whether the client created an xdg_dialog_v1 object is deliberately
+        // not an input: without a parent the protocol says it has no effect.
+        assert!(!xdg_toplevel_policy_wants_floating(false, false));
+    }
+
+    #[test]
+    fn transient_or_fixed_size_toplevel_is_floating() {
+        assert!(xdg_toplevel_policy_wants_floating(true, false));
+        assert!(xdg_toplevel_policy_wants_floating(false, true));
     }
 }
 
