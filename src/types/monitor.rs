@@ -16,7 +16,7 @@ use crate::types::input::StackDirection;
 /// Persistent per-monitor client z-order.
 ///
 /// The stored order is bottom-to-top. Layout policy may project this into a
-/// different backend order temporarily (for example, monocle promotes the
+/// different backend order temporarily (for example, maximized presentation promotes the
 /// focused client visually), but focus changes alone should not mutate this
 /// persistent order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -131,7 +131,7 @@ pub struct Monitor {
     /// Last tiled focus per tag mask.
     ///
     /// This is distinct from `sel`: a floating dialog can hold keyboard focus
-    /// while monocle still needs to keep the previously focused tiled client
+    /// while maximized presentation keeps the previously focused tiled client
     /// visible below it.
     pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
     /// Per-tag runtime state (master factor, master_count, layouts, etc.).
@@ -561,9 +561,9 @@ impl Monitor {
         self.layouts_for_mask(self.selected_tags()).is_tiling()
     }
 
-    /// Check if the current layout is a monocle layout.
-    pub fn is_monocle_layout(&self) -> bool {
-        self.layouts_for_mask(self.selected_tags()).is_monocle()
+    /// Check if tiled clients use maximized-stack presentation.
+    pub fn is_maximized_layout(&self) -> bool {
+        self.layouts_for_mask(self.selected_tags()).is_maximized()
     }
 
     /// Get the current layout kind.

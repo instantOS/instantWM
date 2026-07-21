@@ -20,7 +20,7 @@
 //! Tile      "+"    master/stack tiling
 //! Grid      "#"    square grid
 //! Floating  "-"    free floating (no tiling)
-//! Monocle  "[M]"   fullscreen stack (monocle)
+//! Maximized "[M]"  focused full-work-area tiled stack
 //! Deck     "H[]"   master + stacked deck
 //! BottomStack "TTT" bottom-stack (horizontal master row)
 //! ```
@@ -81,9 +81,9 @@ pub struct ArrangePlan {
 
 /// Layout command accepted by configuration and IPC.
 ///
-/// `Floating` changes the persistent mode. Every other variant is a one-shot
-/// command which rewrites the manual tree; it is not an active algorithm that
-/// will overwrite later edits during arrange.
+/// `Floating` and `Maximized` are persistent presentation modes. Every other
+/// variant is a one-shot command which rewrites the manual tree; it is not an
+/// active algorithm that will overwrite later edits during arrange.
 #[derive(
     Debug,
     Clone,
@@ -105,8 +105,9 @@ pub enum LayoutKind {
     Grid,
     /// Free floating layout (`-`).
     Floating,
-    /// Monocle layout (`[M]`).
-    Monocle,
+    /// Maximized tiled stack (`[M]`). The underlying manual tree is preserved.
+    #[serde(alias = "maximized", alias = "monocle", alias = "Monocle")]
+    Maximized,
     /// Deck layout (`H[]`).
     Deck,
     /// Bottom-stack layout (`TTT`).
@@ -125,7 +126,7 @@ impl LayoutKind {
             Self::Tile => "tile",
             Self::Grid => "grid",
             Self::Floating => "floating",
-            Self::Monocle => "monocle",
+            Self::Maximized => "maximized",
             Self::Deck => "deck",
             Self::BottomStack => "bottom-stack",
             Self::HorizGrid => "horiz-grid",
@@ -139,7 +140,7 @@ impl LayoutKind {
             Self::Tile => "Manual Tree",
             Self::Grid => "Grid",
             Self::Floating => "Floating",
-            Self::Monocle => "Monocle",
+            Self::Maximized => "Maximized",
             Self::Deck => "Deck",
             Self::BottomStack => "Bottom Stack",
             Self::HorizGrid => "Horizontal Grid",
@@ -153,7 +154,7 @@ impl LayoutKind {
             Self::Tile => "Rewrite the manual tree as a master/stack",
             Self::Grid => "Rewrite the manual tree as an even grid",
             Self::Floating => "Windows can be freely moved and resized",
-            Self::Monocle => "Rewrite the tree with the focused window dominant",
+            Self::Maximized => "Stack tiled windows at full work-area size",
             Self::Deck => "Rewrite the tree as a non-overlapping master/stack",
             Self::BottomStack => "Rewrite the tree with the master group on top",
             Self::HorizGrid => "Rewrite the tree as a rows-first grid",
@@ -171,7 +172,7 @@ impl LayoutKind {
             Self::Tile => "[]",
             Self::Grid => "#",
             Self::Floating => "-",
-            Self::Monocle => "[M]",
+            Self::Maximized => "[M]",
             Self::Deck => "H[]",
             Self::BottomStack => "TTT",
             Self::HorizGrid => "###",
@@ -194,7 +195,7 @@ impl LayoutKind {
             Self::Tile => algo::tile(monitor, clients, layout_cfg, animated),
             Self::Grid => algo::grid(monitor, clients, layout_cfg, animated),
             Self::Floating => algo::floating(monitor, clients, animated),
-            Self::Monocle => algo::monocle(monitor, clients, layout_cfg, animated),
+            Self::Maximized => algo::maximized(monitor, clients, layout_cfg, animated),
             Self::Deck => algo::deck(monitor, clients, layout_cfg, animated),
             Self::BottomStack => algo::bottom_stack(monitor, clients, layout_cfg, animated),
             Self::HorizGrid => algo::horizgrid(monitor, clients, layout_cfg, animated),
@@ -208,7 +209,7 @@ impl LayoutKind {
             self,
             Self::Tile
                 | Self::Grid
-                | Self::Monocle
+                | Self::Maximized
                 | Self::Deck
                 | Self::BottomStack
                 | Self::HorizGrid
@@ -217,8 +218,8 @@ impl LayoutKind {
         )
     }
 
-    pub fn is_monocle(self) -> bool {
-        matches!(self, Self::Monocle)
+    pub fn is_maximized(self) -> bool {
+        matches!(self, Self::Maximized)
     }
 
     pub fn all() -> &'static [LayoutKind] {
@@ -226,7 +227,7 @@ impl LayoutKind {
             Self::Tile,
             Self::Grid,
             Self::Floating,
-            Self::Monocle,
+            Self::Maximized,
             Self::Deck,
             Self::BottomStack,
             Self::HorizGrid,
@@ -244,7 +245,7 @@ impl FromStr for LayoutKind {
             "tile" | "tiling" => Ok(Self::Tile),
             "grid" => Ok(Self::Grid),
             "float" | "floating" => Ok(Self::Floating),
-            "monocle" => Ok(Self::Monocle),
+            "maximized" | "maximize" | "maximized-stack" | "monocle" => Ok(Self::Maximized),
             "deck" => Ok(Self::Deck),
             "bottomstack" | "bottom-stack" | "bstack" => Ok(Self::BottomStack),
             "horizgrid" => Ok(Self::HorizGrid),
@@ -262,5 +263,5 @@ pub use manager::{
     focus_tree_neighbor, inc_master_count_by, place_tree_at_point, preview_tree_at_point,
     promote_tree, resize_keyboard_tree_placement, resize_tree, resize_tree_smart, set_layout,
     set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
-    swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
+    swap_tree_neighbor, sync_monitor_z_order, toggle_layout, toggle_maximized_layout,
 };

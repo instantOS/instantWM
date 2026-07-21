@@ -128,7 +128,7 @@ print(monitor["width"], monitor["height"])
   fi
 fi
 
-layouts=(tile grid monocle deck bottom-stack horizgrid gaplessgrid bstackhoriz floating)
+layouts=(tile grid maximized deck bottom-stack horizgrid gaplessgrid bstackhoriz floating)
 deadline=$((WORKLOAD_STARTED + ${PROFILE_DURATION:-20} - 1))
 layout_iteration=0
 while (( SECONDS < deadline )); do

@@ -5,7 +5,7 @@ use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
     key_resize, moveresize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
-    scratchpad_toggle, set_scratchpad_direction, toggle_floating, toggle_maximized,
+    scratchpad_toggle, set_scratchpad_direction, toggle_floating,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack};
 use crate::ipc_types::ScratchpadInitialStatus;
@@ -14,6 +14,7 @@ use crate::layouts::tree::Side;
 use crate::layouts::{
     LayoutKind, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by, resize_tree,
     resize_tree_smart, set_layout, set_master_factor, swap_tree_neighbor, toggle_layout,
+    toggle_maximized_layout,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::{begin_keyboard_move, draw_window};
@@ -87,7 +88,9 @@ define_named_actions!(
     ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
     LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutKind::Tile); } },
     LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Floating); } },
-    LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "rewrite the tree with the focused window dominant", run: |ctx, _args| { set_layout(ctx, LayoutKind::Monocle); } },
+    LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutKind::Maximized); } },
+    LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "compatibility alias for layout_maximized", run: |ctx, _args| { set_layout(ctx, LayoutKind::Maximized); } },
+    ToggleMaximizedLayout => { name: "toggle_maximized_layout", arg_example: None, doc: "toggle maximized-stack presentation while preserving the manual tree", run: |ctx, _args| { toggle_maximized_layout(ctx); } },
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutKind::Grid); } },
     LayoutDeck => { name: "layout_deck", arg_example: None, doc: "rewrite the tree as a non-overlapping master-stack", run: |ctx, _args| { set_layout(ctx, LayoutKind::Deck); } },
     LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BottomStack); } },
@@ -102,7 +105,6 @@ define_named_actions!(
     MasterFactorShrink => { name: "master_factor_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_master_factor(ctx, -0.05); } },
     SetMasterFactor => { name: "set_master_factor", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_master_factor(ctx, delta); } } },
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
-    ToggleMaximized => { name: "toggle_maximized", arg_example: None, doc: "toggle maximized state", run: |ctx, _args| { toggle_maximized(ctx); } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
     KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "grow a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
     KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "shrink a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
@@ -212,6 +214,14 @@ mod tests {
         assert_eq!(
             LayoutKind::from_name("bstackhoriz"),
             Some(LayoutKind::BStackHoriz)
+        );
+        assert_eq!(
+            LayoutKind::from_name("maximized"),
+            Some(LayoutKind::Maximized)
+        );
+        assert_eq!(
+            LayoutKind::from_name("monocle"),
+            Some(LayoutKind::Maximized)
         );
         assert_eq!(LayoutKind::from_name("bad"), None);
     }

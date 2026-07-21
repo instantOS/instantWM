@@ -87,7 +87,7 @@ pub fn manage(
     apply_default_border(ctx.core.model_mut(), border_px, window);
     let (monitor_work_rect, monitor_rect) = monitor_rects_for_client(ctx.core.model(), window);
     clamp_client_to_work_area(ctx.core.model_mut(), window, monitor_work_rect);
-    let is_monocle = is_monocle_on_client_monitor(ctx.core.model(), window);
+    let is_maximized = is_maximized_on_client_monitor(ctx.core.model(), window);
     let bar_height = ctx.core.config().derived.bar_height;
     configure_client_border(
         ctx.core.model_mut(),
@@ -97,7 +97,7 @@ pub fn manage(
         window,
         border_px,
         monitor_rect,
-        is_monocle,
+        is_maximized,
     );
 
     let hinted_position_is_explicit = apply_manage_hints(ctx, window);
@@ -300,10 +300,10 @@ fn clamp_client_to_work_area(
     }
 }
 
-fn is_monocle_on_client_monitor(model: &crate::model::WmModel, window: WindowId) -> bool {
+fn is_maximized_on_client_monitor(model: &crate::model::WmModel, window: WindowId) -> bool {
     model
         .client_view(window)
-        .is_some_and(|view| view.monitor.is_monocle_layout())
+        .is_some_and(|view| view.monitor.is_maximized_layout())
 }
 
 fn configure_client_border(
@@ -314,14 +314,14 @@ fn configure_client_border(
     window: WindowId,
     border_px: i32,
     monitor_rect: Rect,
-    is_monocle: bool,
+    is_maximized: bool,
 ) {
     let Some(client) = model.client_mut(window) else {
         return;
     };
 
     let border_width = if client.mode.is_tiling()
-        && is_monocle
+        && is_maximized
         && client.geo.w > monitor_rect.w - 30
         && client.geo.h > monitor_rect.h - 30 - bar_height
     {

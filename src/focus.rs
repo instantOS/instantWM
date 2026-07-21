@@ -207,7 +207,7 @@ pub(crate) fn focus_generic(
 ///
 /// Updates `mon.selected`, backend seat focus, and — when the selection actually
 /// changed — syncs the affected monitor z-order so visuals stay in sync.
-/// This is critical for overlapping layouts (monocle, floating) where the
+/// This is critical for overlapping layouts (maximized stack, floating) where the
 /// focused window must be visually on top.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     focus_impl(ctx, win, false);
@@ -588,9 +588,41 @@ pub fn focus_last_client(ctx: &mut WmCtx) {
 }
 
 fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
-    let mut stack = Vec::new();
     let selected = mon.selected_tags();
 
+    if mon.is_maximized_layout() {
+        // The persistent tree is a stable, user-controlled order. Unlike
+        // z-order it does not change merely because a window was focused.
+        let tree_order = mon
+            .per_tag()
+            .map(|state| state.layout_tree.leaves())
+            .unwrap_or_default();
+        let mut stack = tree_order
+            .into_iter()
+            .filter(|win| {
+                clients
+                    .get(win)
+                    .is_some_and(|client| client.is_tiled(selected))
+            })
+            .collect::<Vec<_>>();
+        // Lifecycle paths normally reconcile before focus input, but append a
+        // just-managed tiled client defensively so it can never become
+        // unreachable from cycling during the intervening event turn.
+        for &win in &mon.clients {
+            if !stack.contains(&win)
+                && clients
+                    .get(&win)
+                    .is_some_and(|client| client.is_tiled(selected))
+            {
+                stack.push(win);
+            }
+        }
+        if !stack.is_empty() {
+            return stack;
+        }
+    }
+
+    let mut stack = Vec::new();
     for (c_win, c) in mon.iter_clients(clients) {
         if c.is_visible(selected) {
             stack.push(c_win);
@@ -615,7 +647,19 @@ fn get_stack_focus_target(
         return None;
     }
 
-    let selected_window = model.selected_win();
+    let selected_window = model
+        .selected_win()
+        .filter(|win| stack.contains(win))
+        .or_else(|| {
+            mon.is_maximized_layout()
+                .then(|| {
+                    mon.tag_tiled_focus_history
+                        .get(&mon.selected_tags())
+                        .copied()
+                })
+                .flatten()
+                .filter(|win| stack.contains(win))
+        });
     let current_idx = match selected_window {
         Some(w) => stack.iter().position(|&win| win == w).unwrap_or(0),
         None => 0,
@@ -646,7 +690,7 @@ pub fn focus_stack(ctx: &mut WmCtx, direction: StackDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{FocusBackendOps, focus_generic};
+    use super::{FocusBackendOps, focus_generic, get_visible_stack};
     use crate::bar::BarState;
     use crate::client::focus::FocusState;
     use crate::contexts::CoreCtx;
@@ -703,5 +747,43 @@ mod tests {
 
         focus_generic(&mut core, None, &mut backend, true).unwrap();
         assert_eq!(backend.focused.get(), 1);
+    }
+
+    #[test]
+    fn maximized_stack_uses_tree_order_and_excludes_floating_clients() {
+        let tag = TagMask::single(1).unwrap();
+        let mut monitor = Monitor::default();
+        monitor.set_selected_tags(tag);
+        monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3)];
+        monitor.per_tag_state().layout_tree.apply_preset(
+            crate::layouts::tree::Preset::MasterStack,
+            &[WindowId(3), WindowId(1), WindowId(2)],
+            Some(WindowId(1)),
+            1,
+            0.55,
+        );
+        monitor
+            .per_tag_state()
+            .layouts
+            .set_layout(crate::layouts::LayoutKind::Maximized);
+        let clients = [WindowId(1), WindowId(2), WindowId(3)]
+            .into_iter()
+            .map(|win| {
+                let mut client = Client {
+                    win,
+                    tags: tag,
+                    ..Client::default()
+                };
+                if win == WindowId(2) {
+                    client.mode = crate::types::ClientMode::Floating;
+                }
+                (win, client)
+            })
+            .collect();
+
+        assert_eq!(
+            get_visible_stack(&monitor, &clients),
+            vec![WindowId(3), WindowId(1)]
+        );
     }
 }

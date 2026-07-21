@@ -7,7 +7,7 @@
 //! | Module        | Algorithms                                    |
 //! |---------------|-----------------------------------------------|
 //! | [`tile`]      | `tile`                                        |
-//! | [`monocle`]   | `monocle`                                     |
+//! | [`maximized`] | `maximized`                                   |
 //! | [`grid`]      | `grid`, `horizgrid`, `gaplessgrid`            |
 //! | [`stack`]     | `deck`, `bottom_stack`, `bstackhoriz`         |
 //! | [`fibonacci`] | `spiral`, `dwindle`, `fibonacci`              |
@@ -17,7 +17,7 @@
 mod fibonacci;
 mod float;
 mod grid;
-mod monocle;
+mod maximized;
 mod stack;
 mod three_column;
 pub(super) mod tile;
@@ -25,8 +25,8 @@ pub(super) mod tile;
 // ── tile ─────────────────────────────────────────────────────────────────────
 pub use tile::tile;
 
-// ── monocle ──────────────────────────────────────────────────────────────────
-pub use monocle::monocle;
+// ── maximized ────────────────────────────────────────────────────────────────
+pub use maximized::maximized;
 
 // ── grid family ──────────────────────────────────────────────────────────────
 pub use grid::{gaplessgrid, grid, horizgrid};

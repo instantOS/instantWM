@@ -4,7 +4,7 @@
 //!
 //! - [`snap`]    — snap positions, the navigation matrix, apply/change/reset snap
 //! - [`state`]   — save/restore float geometry & border width; set_window_mode;
-//!   toggle/set/change floating state; toggle_maximized
+//!   toggle/set/change floating state; internal client-maximize transitions
 //! - [`movement`] — keyboard move, resize, center window, scale client
 //! - [`batch`]   — save/restore all floating positions, distribute clients
 //! - [`helpers`] — visible_client, has_tiling_layout, apply_size
@@ -33,7 +33,8 @@ pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-pub use state::{set_window_mode, toggle_floating, toggle_maximized};
+pub(crate) use state::toggle_client_maximized;
+pub use state::{set_window_mode, toggle_floating};
 
 // ── scratchpad ────────────────────────────────────────────────────────────────
 

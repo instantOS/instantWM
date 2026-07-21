@@ -116,9 +116,9 @@ impl TagLayouts {
         self.get_layout().is_tiling()
     }
 
-    /// Returns true if the current layout is a monocle layout.
-    pub fn is_monocle(self) -> bool {
-        self.get_layout().is_monocle()
+    /// Returns true if tiled clients use maximized-stack presentation.
+    pub fn is_maximized(self) -> bool {
+        self.get_layout().is_maximized()
     }
 
     /// Get the symbol of the current layout.

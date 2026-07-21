@@ -12,14 +12,16 @@ populated branch, alternating axes.
 
 ## Commands and default keys
 
-The old layout names now describe one-shot transformations:
+Most old layout names now describe one-shot transformations:
 
 - `layout_tile` rewrites the current tree as master/stack.
 - `layout_grid` and `layout_horiz_grid` rewrite it as column-first and
   row-first grids.
 - `layout_bottom_stack` and `layout_bstack_horiz` create bottom-stack trees.
-- `layout_monocle` keeps every window and gives the focused window a dominant
-  slot. A split tree deliberately has no overlapping monocle/deck state.
+- `layout_maximized` is a persistent presentation mode: every tiled window
+  fills the work area and the focused tiled window is stacked on top. The
+  underlying manual tree is preserved and reconciled while the mode is active.
+  `layout_monocle` remains an input compatibility alias.
 - `layout_float` remains a persistent floating mode.
 
 After a transformation, manual swaps, resizes, spawns, and pointer placements
@@ -45,9 +47,10 @@ The default Super bindings use the tree whenever the focused window is tiled:
   This deliberately uses Super to enter the mode; the browser prototype could
   not reserve that modifier.
 
-The former `Super+M` focused/monocle command is now `Super+Ctrl+M` and remains
-available as `layout_monocle`. Bindings displaced from the arrow keys remain
-available as named actions for custom configuration.
+`Super+Ctrl+M` toggles maximized presentation. Pressing it again returns to the
+unchanged manual tree. `Super+J/K` cycles tiled windows in stable tree-leaf
+order while maximized; floating windows remain separate overlays. The broken
+per-window `Super+Ctrl+F` maximize binding has been removed.
 
 The existing action names (`focus_left`, `key_move_left`, `key_resize_left`,
 and their other directions) work in custom TOML bindings. The direction-free
@@ -81,11 +84,14 @@ The `[layout]` section also accepts:
 keyboard_resize_step = 0.05
 minimum_weight = 0.15
 pointer_edge_fraction = 0.34
+maximized_gaps = false
 ```
 
 The resize step is the fraction transferred per command. The minimum bounds
 children where the run size permits it. The pointer fraction controls semantic
 edge-band depth. Values are clamped to safe ranges when loaded.
+`maximized_gaps` controls whether maximized tiled windows retain the configured
+outer gap; the old `monocle_gaps` spelling remains accepted.
 
 ## Lifecycle rules
 

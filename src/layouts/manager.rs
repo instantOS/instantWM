@@ -92,13 +92,13 @@ impl ArrangePlan {
             pertag.master_factor = master_factor;
         }
 
-        // 4. For monocle, raise the selected window before animated moves
+        // 4. In maximized presentation, raise the selected window before animated moves
         //    so it doesn't briefly render beneath siblings during animation.
         if let Some(selected) = ctx
             .core()
             .state()
             .monitor(monitor_id)
-            .filter(|m| m.current_layout().is_monocle())
+            .filter(|m| m.current_layout().is_maximized())
             .and_then(|m| m.selected)
         {
             ctx.window_backend().raise_window_visual_only(selected);
@@ -162,9 +162,12 @@ impl Monitor {
             (moves, save_geo)
         } else {
             let layout = self.current_layout();
-            let moves = if layout.is_tiling() {
+            let moves = if layout == LayoutKind::Tile {
                 compute_manual_tree(self, &layout_clients, layout_cfg, animated)
             } else {
+                if layout == LayoutKind::Maximized {
+                    reconcile_manual_tree(self, &layout_clients);
+                }
                 layout.compute(self, &layout_clients, layout_cfg, animated)
             };
             (moves, Vec::new())
@@ -186,6 +189,15 @@ impl Monitor {
             is_overview,
         }
     }
+}
+
+fn reconcile_manual_tree(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) {
+    let windows = monitor
+        .collect_tiled(clients)
+        .into_iter()
+        .map(|client| client.win)
+        .collect::<Vec<_>>();
+    monitor.per_tag_state().layout_tree.reconcile(&windows);
 }
 
 fn compute_manual_tree(
@@ -240,7 +252,7 @@ fn clients_with_planned_borders(
 
 fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<(WindowId, i32)> {
     let is_tiling = monitor.current_layout().is_tiling();
-    let is_monocle = monitor.current_layout().is_monocle();
+    let is_maximized = monitor.current_layout().is_maximized();
     let clientcount = monitor.tiled_client_count(clients) as u32;
     let selected_tags = monitor.selected_tags();
 
@@ -256,7 +268,7 @@ fn compute_borders(monitor: &Monitor, clients: &HashMap<WindowId, Client>) -> Ve
 
             Some((
                 win,
-                border_width_for_layout_client(info, clientcount, is_tiling, is_monocle),
+                border_width_for_layout_client(info, clientcount, is_tiling, is_maximized),
             ))
         })
         .collect()
@@ -291,10 +303,10 @@ fn border_width_for_layout_client(
     client: &Client,
     clientcount: u32,
     is_tiling: bool,
-    is_monocle: bool,
+    is_maximized: bool,
 ) -> i32 {
     let strip_border = client.mode.is_true_fullscreen()
-        || (client.mode.is_tiling() && ((clientcount == 1 && is_tiling) || is_monocle));
+        || (client.mode.is_tiling() && ((clientcount == 1 && is_tiling) || is_maximized));
 
     if strip_border {
         0
@@ -394,7 +406,7 @@ pub(crate) fn compute_monitor_z_order(
         let selected = floating_stack.remove(idx);
         floating_stack.push(selected);
     } else {
-        // In overlapping tiled layouts such as monocle, the focused tiled
+        // In maximized presentation, the focused tiled
         // client must be projected to the top of the tiled layer without
         // mutating persistent z-order.
         if let Some(idx) = tiled_stack.iter().position(|&win| win == selected_window) {
@@ -416,7 +428,7 @@ pub(crate) fn compute_monitor_z_order(
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
-    if layout == LayoutKind::Floating {
+    if matches!(layout, LayoutKind::Floating | LayoutKind::Maximized) {
         let m = ctx.core_mut().model_mut().selected_monitor_mut();
         m.per_tag_state().layouts.set_layout(layout);
         finish_layout_change(ctx);
@@ -439,8 +451,9 @@ fn preset_for_legacy_layout(layout: LayoutKind) -> crate::layouts::tree::Preset 
         LayoutKind::HorizGrid => Preset::HorizontalGrid,
         LayoutKind::BottomStack => Preset::BottomStack,
         LayoutKind::BStackHoriz => Preset::BottomStackHorizontal,
-        LayoutKind::Monocle => Preset::Focus,
-        LayoutKind::Floating => unreachable!("floating is a mode, not a tree preset"),
+        LayoutKind::Floating | LayoutKind::Maximized => {
+            unreachable!("persistent presentation modes are not tree presets")
+        }
     }
 }
 
@@ -947,14 +960,13 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
             tiled_count,
         )
         .work_rect();
-        let targets = monitor.per_tag().map_or_else(Vec::new, |tag| {
+        monitor.per_tag().map_or_else(Vec::new, |tag| {
             tag.layout_tree.placement_targets(
                 state.source,
                 layout_rect,
                 ctx.core().config().layout.pointer_edge_fraction,
             )
-        });
-        targets
+        })
     };
     if targets.is_empty() {
         let _ = finish_keyboard_tree_placement(ctx, false);
@@ -1081,6 +1093,18 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
     finish_layout_change(ctx);
 }
 
+/// Toggle maximized-stack presentation without modifying the manual tree.
+pub fn toggle_maximized_layout(ctx: &mut WmCtx<'_>) {
+    let next = if ctx.core().model().selected_monitor().current_layout() == LayoutKind::Maximized {
+        LayoutKind::Tile
+    } else {
+        LayoutKind::Maximized
+    };
+    let monitor = ctx.core_mut().model_mut().selected_monitor_mut();
+    monitor.per_tag_state().layouts.set_layout(next);
+    finish_layout_change(ctx);
+}
+
 fn finish_layout_change(ctx: &mut WmCtx<'_>) {
     let selected_monitor_id = ctx.core().model().selected_monitor_id();
     arrange(ctx, Some(selected_monitor_id));
@@ -1089,8 +1113,11 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     let current_layout = {
         let monitor = ctx.core().model().selected_monitor();
-        if monitor.current_layout() == LayoutKind::Floating {
-            LayoutKind::Floating
+        if matches!(
+            monitor.current_layout(),
+            LayoutKind::Floating | LayoutKind::Maximized
+        ) {
+            monitor.current_layout()
         } else {
             monitor
                 .per_tag()
@@ -1189,8 +1216,9 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
 mod tests {
     use super::{clients_with_planned_borders, compute_monitor_z_order};
     use crate::config::config_toml::LayoutConfig;
+    use crate::layouts::LayoutKind;
     use crate::layouts::tree::{Preset, Side};
-    use crate::types::{Client, Monitor, TagMask, WindowId};
+    use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
     use std::collections::HashMap;
 
     fn visible_client(win: WindowId) -> Client {
@@ -1289,6 +1317,92 @@ mod tests {
             .unwrap()
             .rect;
         assert_ne!(first_rect, second_rect);
+    }
+
+    #[test]
+    fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
+        let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+        let mut monitor = monitor_with_order(&windows, WindowId(3));
+        monitor.available_rect = Rect::new(0, 0, 400, 300);
+        monitor.clients = windows.to_vec();
+        let clients = windows
+            .into_iter()
+            .map(|window| (window, visible_client(window)))
+            .collect::<HashMap<_, _>>();
+        let selected = monitor.selected;
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
+        let tree_before = monitor
+            .per_tag_state()
+            .layout_tree
+            .bounds(Rect::new(0, 0, 400, 300));
+        monitor
+            .per_tag_state()
+            .layouts
+            .set_layout(LayoutKind::Maximized);
+
+        let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+        assert_eq!(maximized.client_moves.len(), windows.len());
+        assert!(
+            maximized
+                .client_moves
+                .iter()
+                .all(|output| output.rect == Rect::new(0, 0, 400, 300))
+        );
+        assert_eq!(
+            monitor
+                .per_tag_state()
+                .layout_tree
+                .bounds(Rect::new(0, 0, 400, 300)),
+            tree_before
+        );
+
+        monitor.per_tag_state().layouts.set_layout(LayoutKind::Tile);
+        let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+        let first_rect = manual.client_moves.first().unwrap().rect;
+        assert!(
+            manual
+                .client_moves
+                .iter()
+                .skip(1)
+                .any(|output| output.rect != first_rect)
+        );
+        assert_eq!(
+            monitor
+                .per_tag_state()
+                .layout_tree
+                .bounds(Rect::new(0, 0, 400, 300)),
+            tree_before
+        );
+    }
+
+    #[test]
+    fn maximized_presentation_reconciles_new_tiled_leaves() {
+        let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2)], WindowId(1));
+        monitor.available_rect = Rect::new(0, 0, 300, 200);
+        monitor.clients = vec![WindowId(1), WindowId(2)];
+        monitor
+            .per_tag_state()
+            .layouts
+            .set_layout(LayoutKind::Maximized);
+        let mut clients = monitor
+            .clients
+            .iter()
+            .copied()
+            .map(|window| (window, visible_client(window)))
+            .collect::<HashMap<_, _>>();
+        let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+
+        monitor.clients.push(WindowId(3));
+        monitor.z_order.attach_top(WindowId(3));
+        clients.insert(WindowId(3), visible_client(WindowId(3)));
+        let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+
+        let leaves = monitor.per_tag_state().layout_tree.leaves();
+        assert_eq!(leaves.len(), 3);
+        assert!(leaves.contains(&WindowId(3)));
     }
 
     #[test]

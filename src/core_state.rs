@@ -1264,7 +1264,7 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
         inner_gap: cfg.layout.inner_gap.max(0),
         outer_gap: cfg.layout.outer_gap.max(0),
         smart_gaps: cfg.layout.smart_gaps,
-        monocle_gaps: cfg.layout.monocle_gaps,
+        maximized_gaps: cfg.layout.maximized_gaps,
         keyboard_resize_step: finite_clamp(cfg.layout.keyboard_resize_step, 0.001, 0.5, 0.05),
         minimum_weight: finite_clamp(cfg.layout.minimum_weight, 0.001, 0.49, 0.15),
         pointer_edge_fraction: finite_clamp(cfg.layout.pointer_edge_fraction, 0.05, 0.49, 0.34),

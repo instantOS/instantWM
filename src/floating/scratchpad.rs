@@ -603,7 +603,7 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
         .client(selected)
         .is_some_and(|c| c.mode.is_true_fullscreen());
     if is_fullscreen {
-        crate::floating::toggle_maximized(ctx);
+        crate::floating::toggle_client_maximized(ctx);
     }
 
     scratchpad_make(

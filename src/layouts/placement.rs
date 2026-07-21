@@ -23,8 +23,8 @@ impl LayoutPlacement {
         tiled_client_count: u32,
     ) -> Self {
         let smart_gaps_disabled = cfg.smart_gaps && tiled_client_count <= 1;
-        let monocle_disabled = layout.is_monocle() && !cfg.monocle_gaps;
-        let gaps_enabled = layout.is_tiling() && !smart_gaps_disabled && !monocle_disabled;
+        let maximized_disabled = layout.is_maximized() && !cfg.maximized_gaps;
+        let gaps_enabled = layout.is_tiling() && !smart_gaps_disabled && !maximized_disabled;
 
         let outer_gap = if gaps_enabled {
             cfg.outer_gap.max(0)
@@ -151,7 +151,7 @@ mod tests {
             inner_gap,
             outer_gap,
             smart_gaps,
-            monocle_gaps: false,
+            maximized_gaps: false,
             ..LayoutConfig::default()
         }
     }
@@ -213,10 +213,10 @@ mod tests {
     }
 
     #[test]
-    fn monocle_ignores_gaps_by_default() {
+    fn maximized_ignores_gaps_by_default() {
         let cfg = config_with_gaps(8, 8, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Monocle, 3);
+        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Maximized, 3);
 
         assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
     }

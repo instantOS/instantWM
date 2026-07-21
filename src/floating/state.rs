@@ -171,7 +171,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
 /// Works on both X11 and Wayland.  The X11-specific `apply_size` nudge is
 /// only applied on X11, since Wayland geometry is driven by the compositor
 /// render loop and needs no such hint.
-pub fn toggle_maximized(ctx: &mut WmCtx) {
+pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
     let maximized_win = ctx
         .core()
         .model()

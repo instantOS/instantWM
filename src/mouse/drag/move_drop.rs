@@ -127,7 +127,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         return None;
     }
     if is_maximized {
-        crate::floating::toggle_maximized(ctx);
+        crate::floating::toggle_client_maximized(ctx);
         return None;
     }
     let selected_window = sel;
