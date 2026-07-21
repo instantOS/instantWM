@@ -37,6 +37,7 @@ pub(crate) struct SystraySnapshot {
 pub(crate) struct StatusContent {
     pub text: String,
     pub items: Vec<crate::bar::status::StatusItem>,
+    pub click_events: bool,
 }
 
 #[derive(Clone)]
@@ -105,6 +106,7 @@ pub(crate) struct MonitorBarSnapshot {
     pub font_families: Vec<String>,
     pub is_selected_monitor: bool,
     pub status_scheme: BarScheme,
+    pub status_hover_color: crate::bar::color::Rgba,
     pub startmenu_size: i32,
     pub horizontal_padding: i32,
     pub gesture: Gesture,
@@ -180,17 +182,29 @@ pub(crate) fn build_monitor_snapshots(
             core,
             "mode: overview".to_string(),
             include_status_items,
+            false,
         )),
         ModeStatus::Named { name, display } => StatusPresentation::WmMode {
             name,
-            content: status_content(core, format!("mode: {display}"), include_status_items),
+            content: status_content(
+                core,
+                format!("mode: {display}"),
+                include_status_items,
+                false,
+            ),
         },
         ModeStatus::Default => {
             let text = core.bar.runtime.status_text.clone();
             if text.is_empty() {
                 StatusPresentation::Hidden
             } else {
-                StatusPresentation::Runtime(status_content(core, text, include_status_items))
+                let click_events = core.bar.runtime.status_click_events;
+                StatusPresentation::Runtime(status_content(
+                    core,
+                    text,
+                    include_status_items,
+                    click_events,
+                ))
             }
         }
     };
@@ -294,6 +308,7 @@ pub(crate) fn build_monitor_snapshots(
             font_families: font_families.clone(),
             is_selected_monitor,
             status_scheme: core.status_scheme(),
+            status_hover_color: core.config().colors.status_bar.hover,
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
             gesture,
@@ -316,13 +331,22 @@ pub(crate) fn build_monitor_snapshots(
     snapshots
 }
 
-fn status_content(core: &mut CoreCtx, text: String, include_items: bool) -> StatusContent {
+fn status_content(
+    core: &mut CoreCtx,
+    text: String,
+    include_items: bool,
+    click_events: bool,
+) -> StatusContent {
     let items = if include_items {
         core.bar.status_items_for_text(&text).to_vec()
     } else {
         Vec::new()
     };
-    StatusContent { text, items }
+    StatusContent {
+        text,
+        items,
+        click_events,
+    }
 }
 
 fn draw_startmenu_icon_snapshot(
@@ -503,11 +527,23 @@ fn render_monitor_snapshot_base(
             .is_some_and(|content| !content.items.is_empty())
     {
         let content = snapshot.presentation.status.content().unwrap();
+        let hover = if content.click_events {
+            match snapshot.gesture {
+                Gesture::StatusBlock(block_index) => Some(crate::bar::status::StatusBlockHover {
+                    block_index,
+                    color: snapshot.status_hover_color,
+                }),
+                _ => None,
+            }
+        } else {
+            None
+        };
         let status_right = snapshot.rect.w - systray_width;
         crate::bar::status::draw_status_items(
             Rect::new(x, 0, (status_right - x).max(0), bar_height),
             content.items.as_slice(),
             snapshot.status_scheme.clone(),
+            hover,
             painter,
         )
     } else {

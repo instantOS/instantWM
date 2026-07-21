@@ -8,11 +8,20 @@ use crate::config::config_toml::ThemeConfig;
 use crate::config::keybind_config::{
     ActionSpec, KeybindSpec, StructuredAction, merge_keybinds, parse_keysym, parse_modifiers,
 };
-use crate::config::keybindings::{MODKEY, get_desktop_keybinds, get_keys};
-use crate::config::keysyms::{XK_RETURN, XK_SPACE};
+use crate::config::keybindings::{CONTROL, MODKEY, get_desktop_keybinds, get_keys};
+use crate::config::keysyms::{XK_L, XK_RETURN, XK_SPACE};
 use crate::types::Key;
 
 const TERMINAL_CANDIDATES: &[&str] = &["kitty", "ghostty", "wezterm", "xterm", "st"];
+const WAYLAND_LOCKSCREEN_CANDIDATES: &[&str] = &[
+    "hyprlock",
+    "swaylock",
+    "gtklock",
+    "waylock",
+    "slock",
+    "instantlock",
+];
+const X11_LOCKSCREEN_CANDIDATES: &[&str] = &["slock", "instantlock", "i3lock", "xlock"];
 
 pub struct DefaultKeybinds {
     pub keys: Vec<Key>,
@@ -50,6 +59,14 @@ fn build_generated_keybind_specs(
         ));
     }
 
+    if !has_override(user_keybinds, MODKEY | CONTROL, XK_L) {
+        specs.push(spawn_keybind_spec(
+            vec!["super".to_string(), "ctrl".to_string()],
+            "l",
+            vec![resolve_lockscreen_command(backend).to_string()],
+        ));
+    }
+
     specs
 }
 
@@ -80,19 +97,45 @@ fn backend_launcher(backend: BackendKind) -> &'static str {
     }
 }
 
-fn resolve_terminal_command() -> &'static str {
-    first_installed_terminal(command_exists).unwrap_or(TERMINAL_CANDIDATES[0])
+pub fn resolve_lockscreen_command(backend: BackendKind) -> &'static str {
+    let default_script = ".config/instantos/default/lockscreen";
+    if command_exists(default_script) {
+        return default_script;
+    }
+
+    let candidates = match backend {
+        BackendKind::Wayland => WAYLAND_LOCKSCREEN_CANDIDATES,
+        BackendKind::X11 => X11_LOCKSCREEN_CANDIDATES,
+    };
+
+    first_installed_command(candidates, command_exists).unwrap_or(default_script)
 }
 
-fn first_installed_terminal(mut exists: impl FnMut(&str) -> bool) -> Option<&'static str> {
-    TERMINAL_CANDIDATES
+fn resolve_terminal_command() -> &'static str {
+    first_installed_command(TERMINAL_CANDIDATES, command_exists).unwrap_or(TERMINAL_CANDIDATES[0])
+}
+
+fn first_installed_command(
+    candidates: &[&'static str],
+    mut exists: impl FnMut(&str) -> bool,
+) -> Option<&'static str> {
+    candidates
         .iter()
         .copied()
         .find(|candidate| exists(candidate))
 }
 
-fn command_exists(command: &str) -> bool {
+pub fn command_exists(command: &str) -> bool {
     if command.contains('/') {
+        if (command.starts_with(".config/") || command.starts_with("~/"))
+            && let Some(home) = env::var_os("HOME")
+        {
+            let rel = command.strip_prefix("~/").unwrap_or(command);
+            let expanded = Path::new(&home).join(rel);
+            if is_executable(&expanded) {
+                return true;
+            }
+        }
         return is_executable(Path::new(command));
     }
 
@@ -132,10 +175,10 @@ mod tests {
     }
 
     #[test]
-    fn first_installed_terminal_uses_first_available_candidate() {
+    fn first_installed_command_uses_first_available_candidate() {
         let terminal =
-            first_installed_terminal(|candidate| matches!(candidate, "wezterm" | "xterm"));
-        assert_eq!(terminal, Some("wezterm"));
+            first_installed_command(&["wezterm", "xterm"], |candidate| candidate == "xterm");
+        assert_eq!(terminal, Some("xterm"));
     }
 
     #[test]
@@ -166,5 +209,14 @@ mod tests {
             spawn_args_for(&wayland.keys, MODKEY, XK_SPACE),
             Some(&["fuzzel".to_string()][..]),
         );
+    }
+
+    #[test]
+    fn generated_lockscreen_binds_super_ctrl_l() {
+        let x11 = build_default_keybinds(BackendKind::X11, &ThemeConfig::default());
+        let wayland = build_default_keybinds(BackendKind::Wayland, &ThemeConfig::default());
+
+        assert!(spawn_args_for(&x11.keys, MODKEY | CONTROL, XK_L).is_some());
+        assert!(spawn_args_for(&wayland.keys, MODKEY | CONTROL, XK_L).is_some());
     }
 }

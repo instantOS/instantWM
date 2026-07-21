@@ -13,7 +13,8 @@ pub(crate) use model::{
 };
 pub(crate) use parse::{parse_i3bar_header, parse_status, parse_status_fallback};
 pub(crate) use render::{
-    StatusClickGeometry, StatusRenderOutput, draw_status_items, emit_i3bar_status_click,
+    StatusBlockHover, StatusClickGeometry, StatusRenderOutput, draw_status_items,
+    emit_i3bar_status_click, hit_test_i3_click_target,
 };
 pub(crate) use runtime::{
     apply_status_update, drain_internal_status_updates, flush_i3bar_click_events,

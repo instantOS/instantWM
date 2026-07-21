@@ -10,13 +10,22 @@ pub(crate) struct SpawnLaunchMetadata {
     pub(crate) startup_id: String,
 }
 
+fn is_lockscreen_cmd(cmd: &str) -> bool {
+    cmd == ".config/instantos/default/lockscreen"
+        || cmd == "~/.config/instantos/default/lockscreen"
+        || cmd.ends_with("/lockscreen")
+        || cmd == "slock"
+        || cmd == "instantlock"
+}
+
 /// Spawn a command directly.
 pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
     if argv.is_empty() {
         return;
     }
 
-    let mut command = Command::new(argv[0].as_ref());
+    let primary_cmd = argv[0].as_ref();
+    let mut command = Command::new(primary_cmd);
     command.args(argv.iter().skip(1).map(|s| s.as_ref()));
     let metadata = prepare_spawn_command(ctx, &mut command);
 
@@ -25,7 +34,40 @@ pub fn spawn<S: AsRef<str>>(ctx: &mut WmCtx, argv: &[S]) {
             record_spawned_child(ctx.core_mut().pending_launches_mut(), &child, metadata);
         }
         Err(e) => {
-            log::error!("instantwm: failed to spawn '{}': {}", argv[0].as_ref(), e);
+            if e.kind() == std::io::ErrorKind::NotFound && is_lockscreen_cmd(primary_cmd) {
+                let fallback = crate::config::generated_keybinds::resolve_lockscreen_command(
+                    ctx.backend_kind(),
+                );
+                if fallback != primary_cmd
+                    && crate::config::generated_keybinds::command_exists(fallback)
+                {
+                    log::info!(
+                        "instantwm: lockscreen '{}' not found, falling back to '{}'",
+                        primary_cmd,
+                        fallback
+                    );
+                    let mut fallback_cmd = Command::new(fallback);
+                    let fallback_meta = prepare_spawn_command(ctx, &mut fallback_cmd);
+                    match fallback_cmd.spawn() {
+                        Ok(child) => {
+                            record_spawned_child(
+                                ctx.core_mut().pending_launches_mut(),
+                                &child,
+                                fallback_meta,
+                            );
+                            return;
+                        }
+                        Err(fallback_err) => {
+                            log::error!(
+                                "instantwm: fallback lockscreen '{}' failed to spawn: {}",
+                                fallback,
+                                fallback_err
+                            );
+                        }
+                    }
+                }
+            }
+            log::error!("instantwm: failed to spawn '{}': {}", primary_cmd, e);
         }
     }
 }

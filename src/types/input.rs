@@ -157,6 +157,8 @@ pub enum Gesture {
     CloseButton,
     /// Cursor is over the start-menu icon.
     StartMenu,
+    /// Cursor is over a clickable i3bar block, identified by protocol order.
+    StatusBlock(usize),
 }
 
 impl Gesture {

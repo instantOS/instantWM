@@ -15,6 +15,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 pub struct BarRuntime {
     pub status_text: String,
+    /// Whether the active i3bar protocol stream advertised click events.
+    pub status_click_events: bool,
     /// Cached systray width (pixels), updated before rendering.
     pub systray_width: i32,
 }
@@ -213,6 +215,17 @@ impl BarState {
         self.ensure_status_cached(text);
         &self.status_cache
     }
+
+    fn status_hover_gesture(&self, monitor_id: MonitorId, bar_position: Point) -> Gesture {
+        if !self.runtime.status_click_events {
+            return Gesture::None;
+        }
+        self.monitor_hit_cache(monitor_id)
+            .and_then(|hit| {
+                status::hit_test_i3_click_target(&hit.status_click_targets, bar_position)
+            })
+            .map_or(Gesture::None, Gesture::StatusBlock)
+    }
 }
 
 pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
@@ -261,9 +274,9 @@ pub fn resolve_bar_position_at_root(
 
 #[cfg(test)]
 mod tests {
-    use super::{BarHoverState, BarState};
-    use crate::bar::status::StatusItem;
-    use crate::types::{Gesture, MonitorId};
+    use super::{BarHoverState, BarState, MonitorHitCache};
+    use crate::bar::status::{StatusClickTarget, StatusItem};
+    use crate::types::{Gesture, MonitorId, Point, Rect};
 
     #[test]
     fn prepared_status_is_parsed_on_first_cache_read() {
@@ -292,6 +305,36 @@ mod tests {
         assert_eq!(hover, BarHoverState::default());
         assert!(!hover.clear());
     }
+
+    #[test]
+    fn status_hover_requires_click_events_and_uses_rendered_block_bounds() {
+        let monitor_id = MonitorId::from_raw(1);
+        let mut bar = BarState::default();
+        bar.replace_hit_cache(
+            monitor_id,
+            MonitorHitCache {
+                status_click_targets: vec![StatusClickTarget {
+                    bounds: Rect::new(80, 0, 40, 24),
+                    block_index: 3,
+                }],
+                ..MonitorHitCache::default()
+            },
+        );
+
+        assert_eq!(
+            bar.status_hover_gesture(monitor_id, Point::new(90, 10)),
+            Gesture::None
+        );
+        bar.runtime.status_click_events = true;
+        assert_eq!(
+            bar.status_hover_gesture(monitor_id, Point::new(90, 10)),
+            Gesture::StatusBlock(3)
+        );
+        assert_eq!(
+            bar.status_hover_gesture(monitor_id, Point::new(120, 10)),
+            Gesture::None
+        );
+    }
 }
 
 pub fn update_hover(
@@ -312,9 +355,14 @@ pub fn update_hover(
         ctx.request_bar_update();
     }
 
-    let old_gesture = ctx.core().bar.hover.gesture_on(monitor_id);
-    let gesture = if pos == BarPosition::StatusText {
-        old_gesture
+    let gesture = if pos == BarPosition::StatusText && ctx.core().bar.runtime.status_click_events {
+        let bar_position = {
+            let monitor = ctx.core().model().monitor(monitor_id)?;
+            Point::new(root.x - monitor.work_rect().x, root.y - monitor.bar_y())
+        };
+        ctx.core()
+            .bar
+            .status_hover_gesture(monitor_id, bar_position)
     } else {
         pos.to_gesture()
     };
@@ -333,6 +381,10 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
 
     if !matches!(ctx.current_mode(), ActiveWmMode::Default) {
         ctx.reset_mode();
+        return;
+    }
+
+    if !ctx.core().bar.runtime.status_click_events {
         return;
     }
 

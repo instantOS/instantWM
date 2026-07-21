@@ -2,8 +2,17 @@ use super::TEXT_PADDING;
 use super::{
     I3Align, I3Block, I3ClickEvent, I3MinWidth, ParsedStatus, StatusClickTarget, StatusItem,
 };
+use crate::bar::color::Rgba;
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::types::{Point, Rect};
+
+const HOVER_INDICATOR_HEIGHT: i32 = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct StatusBlockHover {
+    pub block_index: usize,
+    pub color: Rgba,
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct StatusRenderOutput {
@@ -454,6 +463,7 @@ pub(crate) fn draw_status_items(
     available_bounds: Rect,
     items: &[StatusItem],
     base_scheme: BarScheme,
+    hover: Option<StatusBlockHover>,
     painter: &mut dyn BarPainter,
 ) -> StatusRenderOutput {
     let layout = measure_layout(available_bounds, items, painter);
@@ -501,6 +511,20 @@ pub(crate) fn draw_status_items(
                     block,
                     &base_scheme,
                 );
+                if let Some(hover) = hover.filter(|hover| hover.block_index == block_index) {
+                    let color = hover.color;
+                    let height = HOVER_INDICATOR_HEIGHT.min(bounds.h).max(0);
+                    painter.set_scheme(BarScheme {
+                        foreground: color,
+                        background: color,
+                        detail: color,
+                    });
+                    painter.rect(
+                        Rect::new(bounds.x, bounds.bottom() - height, bounds.w, height),
+                        true,
+                        false,
+                    );
+                }
                 click_targets.push(StatusClickTarget {
                     bounds,
                     block_index,
@@ -634,6 +658,8 @@ mod tests {
     struct RecordingPainter {
         texts: Vec<String>,
         measurement_calls: usize,
+        scheme: Option<BarScheme>,
+        rectangles: Vec<(Rect, Rgba)>,
     }
 
     impl BarPainter for RecordingPainter {
@@ -642,9 +668,18 @@ mod tests {
             text.chars().count() as i32 * 10
         }
 
-        fn set_scheme(&mut self, _scheme: BarScheme) {}
+        fn set_scheme(&mut self, scheme: BarScheme) {
+            self.scheme = Some(scheme);
+        }
 
-        fn rect(&mut self, _bounds: Rect, _filled: bool, _invert: bool) {}
+        fn rect(&mut self, bounds: Rect, _filled: bool, invert: bool) {
+            let color = self
+                .scheme
+                .as_ref()
+                .expect("drawing requires a color scheme")
+                .rect_color(invert);
+            self.rectangles.push((bounds, color));
+        }
 
         fn text(
             &mut self,
@@ -694,11 +729,11 @@ mod tests {
         let items = vec![StatusItem::I3Block(item)];
 
         let mut wide = RecordingPainter::default();
-        draw_status_items(Rect::new(0, 0, 200, 20), &items, scheme(), &mut wide);
+        draw_status_items(Rect::new(0, 0, 200, 20), &items, scheme(), None, &mut wide);
         assert_eq!(wide.texts, ["processor"]);
 
         let mut narrow = RecordingPainter::default();
-        draw_status_items(Rect::new(0, 0, 50, 20), &items, scheme(), &mut narrow);
+        draw_status_items(Rect::new(0, 0, 50, 20), &items, scheme(), None, &mut narrow);
         assert_eq!(narrow.texts, ["cpu"]);
     }
 
@@ -709,7 +744,13 @@ mod tests {
         let items = vec![StatusItem::I3Block(first), StatusItem::I3Block(block("b"))];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+        let output = draw_status_items(
+            Rect::new(0, 0, 100, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
         assert_eq!(output.click_targets.len(), 2);
         let first = output.click_targets[0].bounds;
         let second = output.click_targets[1].bounds;
@@ -720,6 +761,44 @@ mod tests {
                 Point::new(first.x + first.w, first.y + 1),
             ),
             None
+        );
+    }
+
+    #[test]
+    fn hovered_block_gets_an_accent_without_recoloring_its_contents() {
+        let items = vec![
+            StatusItem::I3Block(block("cpu")),
+            StatusItem::I3Block(block("memory")),
+        ];
+        let hover_color = Rgba::rgb(0.2, 0.8, 1.0);
+        let mut painter = RecordingPainter::default();
+
+        let output = draw_status_items(
+            Rect::new(0, 0, 200, 20),
+            &items,
+            scheme(),
+            Some(StatusBlockHover {
+                block_index: 1,
+                color: hover_color,
+            }),
+            &mut painter,
+        );
+        let hovered = output.click_targets[1].bounds;
+        let indicator = Rect::new(
+            hovered.x,
+            hovered.bottom() - HOVER_INDICATOR_HEIGHT,
+            hovered.w,
+            HOVER_INDICATOR_HEIGHT,
+        );
+
+        assert!(painter.rectangles.contains(&(indicator, hover_color)));
+        assert_eq!(
+            painter
+                .rectangles
+                .iter()
+                .filter(|(_, color)| *color == hover_color)
+                .count(),
+            1
         );
     }
 
@@ -753,7 +832,13 @@ mod tests {
     fn empty_blocks_have_no_layout_or_click_target() {
         let items = vec![StatusItem::I3Block(block(""))];
         let mut painter = RecordingPainter::default();
-        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+        let output = draw_status_items(
+            Rect::new(0, 0, 100, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
 
         assert_eq!(output.bounds, Rect::default());
         assert!(output.click_targets.is_empty());
@@ -767,7 +852,13 @@ mod tests {
         let items = vec![StatusItem::I3Block(item)];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+        let output = draw_status_items(
+            Rect::new(0, 0, 100, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
 
         assert_eq!(output.click_targets[0].bounds.w, 50);
         assert_eq!(output.bounds.w, 52);
@@ -778,7 +869,13 @@ mod tests {
         let items = vec![StatusItem::I3Block(block("x"))];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(Rect::new(0, 0, 100, 20), &items, scheme(), &mut painter);
+        let output = draw_status_items(
+            Rect::new(0, 0, 100, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
         let block_width = output.click_targets[0].bounds.w;
 
         assert_eq!(output.bounds.w, block_width + 2);
@@ -792,7 +889,13 @@ mod tests {
         ];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(Rect::new(0, 0, 120, 20), &items, scheme(), &mut painter);
+        let output = draw_status_items(
+            Rect::new(0, 0, 120, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
 
         assert_eq!(output.click_targets[0].block_index, 1);
     }
@@ -811,7 +914,13 @@ mod tests {
 
         // Force every short-text candidate to be considered. Width selection
         // after measurement must remain arithmetic-only.
-        draw_status_items(Rect::new(0, 0, 20, 20), &items, scheme(), &mut painter);
+        draw_status_items(
+            Rect::new(0, 0, 20, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
 
         // One measurement each for full_text, short_text, and textual min_width.
         assert_eq!(painter.measurement_calls, items.len() * 3);
@@ -824,7 +933,13 @@ mod tests {
         let items = vec![StatusItem::I3Block(item)];
         let mut painter = RecordingPainter::default();
 
-        let output = draw_status_items(Rect::new(0, 0, 20, 20), &items, scheme(), &mut painter);
+        let output = draw_status_items(
+            Rect::new(0, 0, 20, 20),
+            &items,
+            scheme(),
+            None,
+            &mut painter,
+        );
 
         assert_eq!(output.bounds, Rect::default());
         assert!(output.click_targets.is_empty());

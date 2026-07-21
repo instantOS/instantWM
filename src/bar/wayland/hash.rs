@@ -29,6 +29,9 @@ fn hash_monitor_snapshot(hasher: &mut DefaultHasher, snapshot: &scene::MonitorBa
     snapshot.font_families.hash(hasher);
     snapshot.is_selected_monitor.hash(hasher);
     hash_scheme(hasher, &snapshot.status_scheme);
+    for value in snapshot.status_hover_color.into_array() {
+        value.to_bits().hash(hasher);
+    }
     snapshot.startmenu_size.hash(hasher);
     snapshot.horizontal_padding.hash(hasher);
     hash_gesture(hasher, snapshot.gesture);
@@ -79,6 +82,7 @@ fn hash_presentation(hasher: &mut DefaultHasher, presentation: &scene::BarPresen
     }
     if let Some(content) = presentation.status.content() {
         content.text.hash(hasher);
+        content.click_events.hash(hasher);
         hash_status_items(hasher, &content.items);
     }
     presentation
@@ -106,7 +110,9 @@ fn hash_gesture(hasher: &mut DefaultHasher, gesture: crate::types::Gesture) {
     std::mem::discriminant(&gesture).hash(hasher);
     match gesture {
         crate::types::Gesture::WinTitle(win) => win.hash(hasher),
-        crate::types::Gesture::Tag(tag) => tag.hash(hasher),
+        crate::types::Gesture::Tag(tag) | crate::types::Gesture::StatusBlock(tag) => {
+            tag.hash(hasher)
+        }
         crate::types::Gesture::None
         | crate::types::Gesture::CloseButton
         | crate::types::Gesture::StartMenu => {}

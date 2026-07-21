@@ -446,6 +446,13 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    pub fn backend_kind(&self) -> crate::backend::BackendKind {
+        match self {
+            WmCtx::X11(_) => crate::backend::BackendKind::X11,
+            WmCtx::Wayland(_) => crate::backend::BackendKind::Wayland,
+        }
+    }
+
     /// Begin/end a compositor-owned keyboard mode. Wayland already owns the
     /// input stream; X11 needs an active grab so unmodified modal keys cannot
     /// leak to the focused client.

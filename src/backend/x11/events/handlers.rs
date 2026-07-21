@@ -507,11 +507,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     ctx.core.model_mut().tags.width = crate::tags::get_tag_width(&ctx.core);
 
     let pos = crate::bar::update_hover(&mut WmCtx::X11(ctx.reborrow()), root, false, false);
-    if matches!(
-        pos,
-        Some(BarPosition::StatusText | BarPosition::Root) | None
-    ) && current_gesture != Gesture::None
-    {
+    if matches!(pos, Some(BarPosition::Root) | None) && current_gesture != Gesture::None {
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
     }
 }

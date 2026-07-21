@@ -289,6 +289,7 @@ impl From<ColorTheme> for ColorConfig {
                 fg: p.foreground,
                 bg: p.background,
                 detail: p.background,
+                hover: p.primary.hover_fill,
             },
         }
     }
@@ -318,6 +319,18 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn every_builtin_status_hover_contrasts_with_the_bar() {
+        for theme in ColorTheme::ALL {
+            let status = ColorConfig::from(*theme).status;
+            assert_ne!(
+                status.hover, status.bg,
+                "{} status hover must contrast with the bar background",
+                theme
+            );
         }
     }
 

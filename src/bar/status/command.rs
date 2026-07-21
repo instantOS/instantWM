@@ -105,7 +105,7 @@ pub(crate) fn spawn_default_status() {
             if stop.load(Ordering::Relaxed) {
                 break;
             }
-            super::runtime::send_status_update(&default_status_text());
+            super::runtime::send_status_update(&default_status_text(), false);
             thread::sleep(Duration::from_secs(30));
         }
     });
@@ -150,6 +150,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
         let mut child_stdin = child.stdin.take();
 
         let mut i3bar_mode = false;
+        let mut click_events = false;
 
         if let Some(stdout) = stdout {
             let reader = BufReader::new(stdout);
@@ -169,6 +170,7 @@ pub(crate) fn spawn_status_command(cmd: &str) {
 
                 if !i3bar_mode && let Some(header) = parse_i3bar_header(text) {
                     i3bar_mode = true;
+                    click_events = header.click_events;
                     if header.click_events
                         && let Some(mut stdin) = child_stdin.take()
                     {
@@ -186,12 +188,12 @@ pub(crate) fn spawn_status_command(cmd: &str) {
 
                 if i3bar_mode {
                     if parse_i3bar_json(text.as_bytes()).is_some() {
-                        super::runtime::send_status_update(text);
+                        super::runtime::send_status_update(text, click_events);
                     } else {
                         log::debug!("dropping malformed i3bar status frame: {text}");
                     }
                 } else {
-                    super::runtime::send_status_update(text);
+                    super::runtime::send_status_update(text, false);
                 }
             }
         }
