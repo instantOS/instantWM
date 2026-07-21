@@ -270,6 +270,9 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
 /// (which calls XQueryPointer) to get the actual topmost window under the cursor,
 /// rather than just using the event window which could be a hidden window below.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
+    if ctx.core.behavior().current_mode.tree_placement().is_some() {
+        return;
+    }
     let focusfollowsfloatmouse = ctx.core.behavior().focus_follows_float_mouse;
     let event_win = WindowId::from(e.event);
     let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
@@ -447,7 +450,8 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let root = Point::new(e.root_x as i32, e.root_y as i32);
 
     // Handle focus-follows-mouse monitor switching
-    if ctx.core.behavior().focus_follows_mouse
+    if ctx.core.behavior().current_mode.tree_placement().is_none()
+        && ctx.core.behavior().focus_follows_mouse
         && crate::focus::select_monitor_at_pointer(&mut WmCtx::X11(ctx.reborrow()), root)
     {
         return;

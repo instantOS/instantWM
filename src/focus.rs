@@ -299,6 +299,12 @@ pub fn hover_focus_target(
     entering_root: bool,
     pointer_pos: Option<Point>,
 ) {
+    // Keyboard tree placement owns a virtual selection cursor. Physical
+    // pointer motion must not steal focus from the source window while that
+    // session is active.
+    if ctx.current_mode().tree_placement().is_some() {
+        return;
+    }
     if !ctx.core().behavior().focus_follows_mouse {
         return;
     }

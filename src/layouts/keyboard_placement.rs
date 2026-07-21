@@ -69,16 +69,11 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         return false;
     }
     let selected_target = state.selected_target();
-    let focus_target = selected_target.target;
-    let cursor_target = selected_target.position;
     let Some(preview_rect) = tree_placement_preview_rect(ctx, source, selected_target) else {
         ctx.end_modal_keyboard();
         return false;
     };
     ctx.set_current_mode(crate::core_state::ActiveWmMode::TreePlacement(state));
-    crate::focus::focus(ctx, Some(focus_target));
-    ctx.pointer_backend()
-        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
     ctx.update_layout_preview(Some(preview_rect));
     true
 }
@@ -140,7 +135,7 @@ pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::t
         ctx.reset_mode();
         return true;
     }
-    let (focus_target, cursor_target) = {
+    {
         let state = ctx
             .core_mut()
             .behavior_mut()
@@ -150,12 +145,7 @@ pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::t
         if !state.select_direction(side) {
             return true;
         }
-        let target = state.selected_target();
-        (target.target, target.position)
-    };
-    crate::focus::focus(ctx, Some(focus_target));
-    ctx.pointer_backend()
-        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    }
     refresh_keyboard_tree_preview(ctx);
     true
 }
@@ -268,12 +258,6 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
         .tree_placement_mut()
         .expect("placement remains active while rebuilding targets");
     let _ = state.replace_targets_near(targets, preferred);
-    let target = state.selected_target();
-    let focus_target = target.target;
-    let cursor_target = target.position;
-    crate::focus::focus(ctx, Some(focus_target));
-    ctx.pointer_backend()
-        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
     refresh_keyboard_tree_preview(ctx);
 }
 
@@ -285,7 +269,7 @@ pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bo
         ctx.reset_mode();
         return true;
     }
-    let (focus_target, cursor_target) = {
+    {
         let Some(state) = ctx
             .core_mut()
             .behavior_mut()
@@ -295,12 +279,7 @@ pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bo
             return false;
         };
         state.cycle(backwards);
-        let target = state.selected_target();
-        (target.target, target.position)
-    };
-    crate::focus::focus(ctx, Some(focus_target));
-    ctx.pointer_backend()
-        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    }
     refresh_keyboard_tree_preview(ctx);
     true
 }
@@ -313,7 +292,7 @@ pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         ctx.reset_mode();
         return true;
     }
-    let (focus_target, cursor_target) = {
+    {
         let Some(state) = ctx
             .core_mut()
             .behavior_mut()
@@ -325,12 +304,7 @@ pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         if !state.select_center_of_current_window() {
             return true;
         }
-        let target = state.selected_target();
-        (target.target, target.position)
-    };
-    crate::focus::focus(ctx, Some(focus_target));
-    ctx.pointer_backend()
-        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    }
     refresh_keyboard_tree_preview(ctx);
     true
 }
@@ -360,4 +334,60 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
         super::manager::finish_layout_change(ctx);
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::layouts::tree::Preset;
+    use crate::types::{Client, ClientMode, Monitor, Rect, TagMask, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn keyboard_placement_navigation_keeps_focus_on_its_source() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let source = WindowId(1);
+        let peer = WindowId(2);
+        for win in [source, peer] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags,
+                mode: ClientMode::Tiling,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        monitor.clients = vec![source, peer];
+        monitor.selected = Some(source);
+        monitor.per_tag_state().layout_tree.apply_preset(
+            Preset::MasterStack,
+            &[source, peer],
+            Some(source),
+            1,
+            0.5,
+        );
+
+        assert!(begin_keyboard_tree_placement(&mut wm.ctx()));
+        assert_eq!(wm.core.model.selected_win(), Some(source));
+
+        assert!(cycle_keyboard_tree_placement(&mut wm.ctx(), false));
+        assert_eq!(wm.core.model.selected_win(), Some(source));
+
+        assert!(step_keyboard_tree_placement(
+            &mut wm.ctx(),
+            crate::layouts::tree::Side::Right,
+        ));
+        assert_eq!(wm.core.model.selected_win(), Some(source));
+    }
 }
