@@ -30,8 +30,10 @@ same applies to `instantwmctl layout <name>`.
 
 The default Super bindings use the tree whenever the focused window is tiled:
 
-- `Super+Arrow` focuses across the first structural seam. Geometry only
-  chooses between leaves which share that seam.
+- `Super+Arrow` and `Super+H/J/K/L` focus across the first structural seam.
+  Geometry only chooses between leaves which share that seam. At the left or
+  right boundary (including an empty or single-window tag), the horizontal
+  commands switch to the adjacent tag instead.
 - `Super+Shift+Arrow` swaps with a visual neighbour without changing split
   topology. `Super+Shift+H/J/K/L` is retained as an alternative.
 - `Super+Ctrl+Arrow` resizes an axis run while preserving peer ratios.
