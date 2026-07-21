@@ -6,6 +6,8 @@
 
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::placement::LayoutPlacement;
+use crate::layouts::query::framecount_for_layout;
 use crate::layouts::{ArrangePlan, LayoutKind, LayoutOutput, MonitorUpdates};
 use crate::types::{Client, ClientMode, Monitor, MonitorId, PerTagState, WindowId};
 use std::cmp::max;
@@ -155,10 +157,12 @@ impl Monitor {
             (moves, save_geo)
         } else {
             let layout = self.current_layout();
-            (
-                layout.compute(self, &layout_clients, layout_cfg, animated),
-                Vec::new(),
-            )
+            let moves = if layout.is_tiling() {
+                compute_manual_tree(self, &layout_clients, layout_cfg, animated)
+            } else {
+                layout.compute(self, &layout_clients, layout_cfg, animated)
+            };
+            (moves, Vec::new())
         };
 
         // Compute fullscreen moves
@@ -177,6 +181,43 @@ impl Monitor {
             is_overview,
         }
     }
+}
+
+fn compute_manual_tree(
+    monitor: &mut Monitor,
+    clients: &HashMap<WindowId, Client>,
+    layout_cfg: &crate::config::config_toml::LayoutConfig,
+    animated: bool,
+) -> Vec<LayoutOutput> {
+    let tiled = monitor.collect_tiled(clients);
+    let windows: Vec<_> = tiled.iter().map(|client| client.win).collect();
+    let placement =
+        LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Tile, windows.len() as u32);
+    let work_rect = placement.work_rect();
+    let slots = {
+        let tree = &mut monitor.per_tag_state().layout_tree;
+        tree.reconcile(&windows);
+        tree.bounds(work_rect)
+    };
+    let frame_count = framecount_for_layout(
+        animated,
+        windows.len(),
+        crate::constants::animation::FAST_ANIM_THRESHOLD,
+        crate::constants::animation::FAST_FRAME_COUNT,
+        crate::constants::animation::DEFAULT_FRAME_COUNT,
+    );
+
+    tiled
+        .into_iter()
+        .filter_map(|client| {
+            let slot = slots.get(&client.win).copied()?;
+            Some(LayoutOutput {
+                win: client.win,
+                rect: placement.client_rect(slot, client.border_width),
+                options: MoveResizeOptions::animate_to(frame_count),
+            })
+        })
+        .collect()
 }
 
 fn clients_with_planned_borders(
@@ -370,9 +411,438 @@ pub(crate) fn compute_monitor_z_order(
 }
 
 pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
-    let m = ctx.core_mut().model_mut().selected_monitor_mut();
-    m.per_tag_state().layouts.set_layout(layout);
+    if layout == LayoutKind::Floating {
+        let m = ctx.core_mut().model_mut().selected_monitor_mut();
+        m.per_tag_state().layouts.set_layout(layout);
+        finish_layout_change(ctx);
+        return;
+    }
+
+    ctx.core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .last_tree_layout = layout;
+    apply_tree_preset(ctx, preset_for_legacy_layout(layout));
+}
+
+fn preset_for_legacy_layout(layout: LayoutKind) -> crate::layouts::tree::Preset {
+    use crate::layouts::tree::Preset;
+    match layout {
+        LayoutKind::Tile | LayoutKind::Deck => Preset::MasterStack,
+        LayoutKind::Grid | LayoutKind::GaplessGrid => Preset::Grid,
+        LayoutKind::HorizGrid => Preset::HorizontalGrid,
+        LayoutKind::BottomStack => Preset::BottomStack,
+        LayoutKind::BStackHoriz => Preset::BottomStackHorizontal,
+        LayoutKind::Monocle => Preset::Focus,
+        LayoutKind::Floating => unreachable!("floating is a mode, not a tree preset"),
+    }
+}
+
+pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
+    let (windows, selected, master_count, master_factor) = {
+        let monitor = ctx.core().model().selected_monitor();
+        let windows = monitor
+            .collect_tiled(&ctx.core().model().clients)
+            .into_iter()
+            .map(|client| client.win)
+            .collect::<Vec<_>>();
+        (
+            windows,
+            monitor.selected,
+            monitor.master_count.max(1) as usize,
+            f64::from(monitor.master_factor),
+        )
+    };
+    let monitor = ctx.core_mut().model_mut().selected_monitor_mut();
+    let state = monitor.per_tag_state();
+    state.layouts.set_layout(LayoutKind::Tile);
+    state
+        .layout_tree
+        .apply_preset(preset, &windows, selected, master_count, master_factor);
     finish_layout_change(ctx);
+}
+
+pub fn focus_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
+    let neighbor = {
+        let monitor = ctx.core().model().selected_monitor();
+        if !monitor.is_tiling_layout() {
+            return false;
+        }
+        let Some(selected) = monitor.selected else {
+            return false;
+        };
+        monitor
+            .per_tag()
+            .and_then(|state| state.layout_tree.visual_neighbor(selected, side))
+    };
+    let Some(neighbor) = neighbor else {
+        return false;
+    };
+    crate::focus::focus(ctx, Some(neighbor));
+    true
+}
+
+pub fn swap_tree_neighbor(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
+    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+        return false;
+    }
+    let Some(selected) = ctx.core().model().selected_win() else {
+        return false;
+    };
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree
+        .swap_with_neighbor(selected, side)
+        .is_some();
+    if changed {
+        finish_layout_change(ctx);
+    }
+    changed
+}
+
+pub fn resize_tree(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
+    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+        return false;
+    }
+    let Some(selected) = ctx.core().model().selected_win() else {
+        return false;
+    };
+    let layout_config = ctx.core().config().layout;
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree
+        .resize_with_config(
+            selected,
+            side,
+            crate::layouts::tree::CommandConfig {
+                resize_step: layout_config.keyboard_resize_step,
+                minimum_weight: layout_config.minimum_weight,
+            },
+        );
+    if changed {
+        finish_layout_change(ctx);
+    }
+    changed
+}
+
+pub fn resize_tree_smart(ctx: &mut WmCtx<'_>, grow: bool) -> bool {
+    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+        return false;
+    }
+    let Some(selected) = ctx.core().model().selected_win() else {
+        return false;
+    };
+    let layout_config = ctx.core().config().layout;
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree
+        .resize_smart_with_config(
+            selected,
+            grow,
+            crate::layouts::tree::CommandConfig {
+                resize_step: layout_config.keyboard_resize_step,
+                minimum_weight: layout_config.minimum_weight,
+            },
+        );
+    if changed {
+        finish_layout_change(ctx);
+    }
+    changed
+}
+
+pub fn place_tree_at_point(
+    ctx: &mut WmCtx<'_>,
+    window: WindowId,
+    point: crate::types::Point,
+) -> bool {
+    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+        return false;
+    }
+    let layout_rect = {
+        let monitor = ctx.core().model().selected_monitor();
+        let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
+        LayoutPlacement::new(
+            &ctx.core().config().layout,
+            monitor,
+            LayoutKind::Tile,
+            tiled_count,
+        )
+        .work_rect()
+    };
+    let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree
+        .place_at_point(window, point, layout_rect, edge_fraction);
+    if changed {
+        finish_layout_change(ctx);
+    }
+    changed
+}
+
+pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
+    if !ctx.core().model().selected_monitor().is_tiling_layout() {
+        return false;
+    }
+    let changed = ctx
+        .core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree
+        .promote(window);
+    if changed {
+        finish_layout_change(ctx);
+    }
+    changed
+}
+
+pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
+    let (source, monitor_id, tags, targets, source_center) = {
+        let monitor = ctx.core().model().selected_monitor();
+        let Some(source) = monitor.selected else {
+            return false;
+        };
+        if !monitor.is_tiling_layout()
+            || !ctx
+                .core()
+                .model()
+                .client(source)
+                .is_some_and(|client| client.mode.is_tiling())
+        {
+            return false;
+        }
+        let Some(tree) = monitor.per_tag().map(|state| &state.layout_tree) else {
+            return false;
+        };
+        let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
+        let layout_rect = LayoutPlacement::new(
+            &ctx.core().config().layout,
+            monitor,
+            LayoutKind::Tile,
+            tiled_count,
+        )
+        .work_rect();
+        let targets = tree.placement_targets(
+            source,
+            layout_rect,
+            ctx.core().config().layout.pointer_edge_fraction,
+        );
+        let source_center = tree
+            .bounds(layout_rect)
+            .get(&source)
+            .map_or_else(|| layout_rect.center(), |rect| rect.center());
+        (
+            source,
+            monitor.id(),
+            monitor.selected_tags(),
+            targets,
+            source_center,
+        )
+    };
+    if targets.is_empty() {
+        return false;
+    }
+    if !ctx.begin_modal_keyboard() {
+        return false;
+    }
+    let selected = targets
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, target)| {
+            let dx = i64::from(target.position.x - source_center.x);
+            let dy = i64::from(target.position.y - source_center.y);
+            dx * dx + dy * dy
+        })
+        .map_or(0, |(index, _)| index);
+    let focus_target = targets[selected].target;
+    let cursor_target = targets[selected].position;
+    ctx.core_mut().state_mut().tree_placement = Some(crate::core_state::KeyboardTreePlacement {
+        source,
+        monitor_id,
+        tags,
+        targets,
+        selected,
+    });
+    crate::focus::focus(ctx, Some(focus_target));
+    ctx.pointer_backend()
+        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    true
+}
+
+fn keyboard_tree_placement_is_current(ctx: &WmCtx<'_>) -> bool {
+    let Some(state) = ctx.core().state().tree_placement.as_ref() else {
+        return false;
+    };
+    if ctx.core().model().selected_monitor_id() != state.monitor_id {
+        return false;
+    }
+    let monitor = ctx.core().model().selected_monitor();
+    monitor.selected_tags() == state.tags
+        && monitor
+            .per_tag()
+            .is_some_and(|tag| tag.layout_tree.leaves().contains(&state.source))
+}
+
+pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::tree::Side) -> bool {
+    if !keyboard_tree_placement_is_current(ctx) {
+        ctx.core_mut().state_mut().tree_placement = None;
+        ctx.end_modal_keyboard();
+        return true;
+    }
+    let next = {
+        let Some(state) = ctx.core().state().tree_placement.as_ref() else {
+            return false;
+        };
+        let current = state.targets[state.selected].position;
+        state
+            .targets
+            .iter()
+            .enumerate()
+            .filter_map(|(index, target)| {
+                if index == state.selected {
+                    return None;
+                }
+                let dx = target.position.x - current.x;
+                let dy = target.position.y - current.y;
+                let primary = match side {
+                    crate::layouts::tree::Side::Left => -dx,
+                    crate::layouts::tree::Side::Right => dx,
+                    crate::layouts::tree::Side::Top => -dy,
+                    crate::layouts::tree::Side::Bottom => dy,
+                };
+                if primary <= 0 {
+                    return None;
+                }
+                let cross = match side {
+                    crate::layouts::tree::Side::Left | crate::layouts::tree::Side::Right => {
+                        dy.abs()
+                    }
+                    crate::layouts::tree::Side::Top | crate::layouts::tree::Side::Bottom => {
+                        dx.abs()
+                    }
+                };
+                let score = i64::from(primary)
+                    + i64::from(cross) * 2
+                    + i64::from(cross) * i64::from(cross) / i64::from(primary + 1);
+                Some((index, score))
+            })
+            .min_by_key(|(index, score)| (*score, *index))
+            .map(|(index, _)| index)
+    };
+    let Some(next) = next else { return true };
+    let (focus_target, cursor_target) = {
+        let state = ctx
+            .core_mut()
+            .state_mut()
+            .tree_placement
+            .as_mut()
+            .expect("placement was checked above");
+        state.selected = next;
+        (state.targets[next].target, state.targets[next].position)
+    };
+    crate::focus::focus(ctx, Some(focus_target));
+    ctx.pointer_backend()
+        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    true
+}
+
+pub fn cycle_keyboard_tree_placement(ctx: &mut WmCtx<'_>, backwards: bool) -> bool {
+    if !keyboard_tree_placement_is_current(ctx) {
+        ctx.core_mut().state_mut().tree_placement = None;
+        ctx.end_modal_keyboard();
+        return true;
+    }
+    let (focus_target, cursor_target) = {
+        let Some(state) = ctx.core_mut().state_mut().tree_placement.as_mut() else {
+            return false;
+        };
+        let len = state.targets.len();
+        state.selected = if backwards {
+            (state.selected + len - 1) % len
+        } else {
+            (state.selected + 1) % len
+        };
+        (
+            state.targets[state.selected].target,
+            state.targets[state.selected].position,
+        )
+    };
+    crate::focus::focus(ctx, Some(focus_target));
+    ctx.pointer_backend()
+        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    true
+}
+
+pub fn center_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
+    if !keyboard_tree_placement_is_current(ctx) {
+        ctx.core_mut().state_mut().tree_placement = None;
+        ctx.end_modal_keyboard();
+        return true;
+    }
+    let (focus_target, cursor_target) = {
+        let Some(state) = ctx.core_mut().state_mut().tree_placement.as_mut() else {
+            return false;
+        };
+        let target_window = state.targets[state.selected].target;
+        let Some(index) = state
+            .targets
+            .iter()
+            .position(|target| target.target == target_window && target.side.is_none())
+        else {
+            return true;
+        };
+        state.selected = index;
+        (target_window, state.targets[index].position)
+    };
+    crate::focus::focus(ctx, Some(focus_target));
+    ctx.pointer_backend()
+        .warp_pointer(f64::from(cursor_target.x), f64::from(cursor_target.y));
+    true
+}
+
+pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool {
+    let Some(state) = ctx.core_mut().state_mut().tree_placement.take() else {
+        return false;
+    };
+    ctx.end_modal_keyboard();
+    let context_is_current = ctx.core().model().selected_monitor_id() == state.monitor_id
+        && ctx.core().model().selected_monitor().selected_tags() == state.tags
+        && ctx
+            .core()
+            .model()
+            .selected_monitor()
+            .per_tag()
+            .is_some_and(|tag| tag.layout_tree.leaves().contains(&state.source));
+    let changed = context_is_current
+        && apply
+        && ctx
+            .core_mut()
+            .model_mut()
+            .selected_monitor_mut()
+            .per_tag_state()
+            .layout_tree
+            .apply_placement_target(state.source, state.targets[state.selected]);
+    if context_is_current {
+        crate::focus::focus(ctx, Some(state.source));
+    }
+    if changed {
+        finish_layout_change(ctx);
+    }
+    true
 }
 
 pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
@@ -387,7 +857,17 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 }
 
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
-    let current_layout = ctx.core().model().selected_monitor().current_layout();
+    let current_layout = {
+        let monitor = ctx.core().model().selected_monitor();
+        if monitor.current_layout() == LayoutKind::Floating {
+            LayoutKind::Floating
+        } else {
+            monitor
+                .per_tag()
+                .map(|state| state.last_tree_layout)
+                .unwrap_or(LayoutKind::Tile)
+        }
+    };
     let all_layouts = LayoutKind::all();
     let layouts_len = all_layouts.len();
     let current_idx = all_layouts
@@ -420,12 +900,17 @@ pub fn inc_master_count_by(ctx: &mut WmCtx<'_>, delta: i32) {
         m.master_count = new_nmaster;
     }
     m.per_tag_state().master_count = m.master_count;
-    let selected_monitor_id = ctx.core().model().selected_monitor_id();
-    arrange(ctx, Some(selected_monitor_id));
+    apply_tree_preset(ctx, crate::layouts::tree::Preset::MasterStack);
 }
 
 pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
     if delta == 0.0 {
+        return;
+    }
+    // Kept as a compatibility action name. Under manual tiling this is an
+    // imperative local resize, not a persistent parameter which overwrites the
+    // tree on every arrange.
+    if resize_tree_smart(ctx, delta > 0.0) {
         return;
     }
     let is_tiling = ctx
@@ -473,6 +958,8 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
 #[cfg(test)]
 mod tests {
     use super::{clients_with_planned_borders, compute_monitor_z_order};
+    use crate::config::config_toml::LayoutConfig;
+    use crate::layouts::tree::{Preset, Side};
     use crate::types::{Client, Monitor, TagMask, WindowId};
     use std::collections::HashMap;
 
@@ -527,6 +1014,51 @@ mod tests {
             monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
             vec![WindowId(1), WindowId(2), WindowId(3)]
         );
+    }
+
+    #[test]
+    fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
+        let mut monitor = monitor_with_order(
+            &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
+            WindowId(1),
+        );
+        monitor.available_rect = crate::types::Rect::new(0, 0, 100, 100);
+        monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+        let clients = monitor
+            .clients
+            .iter()
+            .copied()
+            .map(|window| (window, visible_client(window)))
+            .collect::<HashMap<_, _>>();
+        let windows = monitor.clients.clone();
+        let selected = monitor.selected;
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
+
+        let first = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+        assert!(
+            monitor
+                .per_tag_state()
+                .layout_tree
+                .resize(WindowId(1), Side::Right)
+        );
+        let second = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+
+        let first_rect = first
+            .client_moves
+            .iter()
+            .find(|output| output.win == WindowId(1))
+            .unwrap()
+            .rect;
+        let second_rect = second
+            .client_moves
+            .iter()
+            .find(|output| output.win == WindowId(1))
+            .unwrap()
+            .rect;
+        assert_ne!(first_rect, second_rect);
     }
 
     #[test]

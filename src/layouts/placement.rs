@@ -136,6 +136,7 @@ mod tests {
             outer_gap,
             smart_gaps,
             monocle_gaps: false,
+            ..LayoutConfig::default()
         }
     }
 

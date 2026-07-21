@@ -1,4 +1,4 @@
-//! Window layout system.
+//! Persistent manual window-layout system.
 //!
 //! This module is the single public face of the layout subsystem.  It is
 //! split into four focused sub-modules so that each concern stays small and
@@ -6,7 +6,8 @@
 //!
 //! | Sub-module    | Responsibility                                              |
 //! |---------------|-------------------------------------------------------------|
-//! | [`algo`]      | Pure geometry algorithms (tile, monocle, grid, …)          |
+//! | [`tree`]      | Canonical weighted tree and semantic transformations       |
+//! | [`algo`]      | Legacy preset geometry kept for compatibility tests         |
 //! | [`query`]     | Stateless reads: client counts, layout index resolution     |
 //! | [`manager`]   | Stateful operations: arrange, sync_monitor_z_order, set/cycle layout, …  |
 //!
@@ -33,6 +34,7 @@ pub mod algo;
 pub mod manager;
 pub(crate) mod placement;
 pub mod query;
+pub mod tree;
 
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -77,10 +79,11 @@ pub struct ArrangePlan {
     pub is_overview: bool,
 }
 
-/// All available window layouts.
+/// Layout command accepted by configuration and IPC.
 ///
-/// Each variant corresponds to a specific arrangement algorithm.
-/// Properties like `is_tiling()` and `symbol()` are implemented as methods.
+/// `Floating` changes the persistent mode. Every other variant is a one-shot
+/// command which rewrites the manual tree; it is not an active algorithm that
+/// will overwrite later edits during arrange.
 #[derive(
     Debug,
     Clone,
@@ -133,7 +136,7 @@ impl LayoutKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Tile => "Tile",
+            Self::Tile => "Manual Tree",
             Self::Grid => "Grid",
             Self::Floating => "Floating",
             Self::Monocle => "Monocle",
@@ -147,15 +150,15 @@ impl LayoutKind {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::Tile => "Windows split the screen side-by-side",
-            Self::Grid => "Windows arranged in an even grid pattern",
+            Self::Tile => "Rewrite the manual tree as a master/stack",
+            Self::Grid => "Rewrite the manual tree as an even grid",
             Self::Floating => "Windows can be freely moved and resized",
-            Self::Monocle => "One window fills the entire screen at a time",
-            Self::Deck => "Large main window with smaller windows stacked on the side",
-            Self::BottomStack => "Main window on top, others stacked below",
-            Self::HorizGrid => "Windows arranged in vertical columns-first grid",
-            Self::GaplessGrid => "Grid layout without gaps",
-            Self::BStackHoriz => "Main window on top, others stacked horizontally below",
+            Self::Monocle => "Rewrite the tree with the focused window dominant",
+            Self::Deck => "Rewrite the tree as a non-overlapping master/stack",
+            Self::BottomStack => "Rewrite the tree with the master group on top",
+            Self::HorizGrid => "Rewrite the tree as a rows-first grid",
+            Self::GaplessGrid => "Rewrite the tree as a grid (legacy alias)",
+            Self::BStackHoriz => "Rewrite the tree as a horizontal bottom stack",
         }
     }
 
@@ -165,7 +168,7 @@ impl LayoutKind {
 
     pub fn symbol(self) -> &'static str {
         match self {
-            Self::Tile => "+",
+            Self::Tile => "[]",
             Self::Grid => "#",
             Self::Floating => "-",
             Self::Monocle => "[M]",
@@ -254,6 +257,9 @@ impl FromStr for LayoutKind {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 pub use manager::{
-    arrange, cycle_layout_direction, inc_master_count_by, set_layout, set_master_factor,
-    sync_monitor_z_order, toggle_layout,
+    apply_tree_preset, arrange, begin_keyboard_tree_placement, center_keyboard_tree_placement,
+    cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
+    focus_tree_neighbor, inc_master_count_by, place_tree_at_point, promote_tree, resize_tree,
+    resize_tree_smart, set_layout, set_master_factor, step_keyboard_tree_placement,
+    swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
 };

@@ -793,6 +793,10 @@ pub struct PerTagState {
     pub master_factor: f32,
     pub show_bar: bool,
     pub layouts: TagLayouts,
+    /// Persistent manual tiling topology for this exact visible tag mask.
+    pub layout_tree: crate::layouts::tree::LayoutTree,
+    /// Last one-shot tree preset command, used only as the cycle cursor.
+    pub last_tree_layout: LayoutKind,
 }
 
 impl Default for PerTagState {
@@ -808,6 +812,8 @@ impl PerTagState {
             master_factor: 0.55,
             show_bar,
             layouts: TagLayouts::default(),
+            layout_tree: crate::layouts::tree::LayoutTree::default(),
+            last_tree_layout: LayoutKind::Tile,
         }
     }
 }

@@ -6,6 +6,10 @@
 
 instantWM the window manager of instantOS.
 
+Tiled windows use a persistent manual tree on both X11 and Wayland. See the
+[manual layout guide](docs/manual-layout.md) for tree invariants, migrated
+layout commands, default Super bindings, pointer placement, and configuration.
+
 ![img](https://github.com/instantOS/instantLOGO/blob/main/screeenshots/screenshot1.png)
 
 ## Installation

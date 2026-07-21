@@ -1,0 +1,89 @@
+# Manual tree layout
+
+instantWM's tiled mode is a persistent, weighted tree. It is shared by the X11
+and Wayland backends and stored independently for every monitor and visible tag
+mask. Arrange passes do not recreate an automatic layout.
+
+`vertical` splits contain left-to-right children; `horizontal` splits contain
+top-to-bottom children. Splits are n-ary and canonical: adjacent splits on the
+same axis are folded into one run, weights are positive and normalized, and an
+empty or single-child split is collapsed. Newly tiled windows split the least
+populated branch, alternating axes.
+
+## Commands and default keys
+
+The old layout names now describe one-shot transformations:
+
+- `layout_tile` rewrites the current tree as master/stack.
+- `layout_grid` and `layout_horiz_grid` rewrite it as column-first and
+  row-first grids.
+- `layout_bottom_stack` and `layout_bstack_horiz` create bottom-stack trees.
+- `layout_monocle` keeps every window and gives the focused window a dominant
+  slot. A split tree deliberately has no overlapping monocle/deck state.
+- `layout_float` remains a persistent floating mode.
+
+After a transformation, manual swaps, resizes, spawns, and pointer placements
+remain in effect. A later arrange does not run the transformation again. The
+same applies to `instantwmctl layout <name>`.
+
+The default Super bindings use the tree whenever the focused window is tiled:
+
+- `Super+Arrow` focuses across the first structural seam. Geometry only
+  chooses between leaves which share that seam.
+- `Super+Shift+Arrow` swaps with a visual neighbour without changing split
+  topology. `Super+Shift+H/J/K/L` is retained as an alternative.
+- `Super+Ctrl+Arrow` resizes an axis run while preserving peer ratios.
+  `Super+Alt+H/J/K/L` is retained as an alternative.
+- `Super++` and `Super+-` grow or shrink along the most local split.
+- `Super+M` enters keyboard placement. The compositor cursor starts at
+  the nearest semantic pointer target. Arrow moves geometrically, Tab/Shift+Tab
+  visits every candidate, Space selects the current window's centre swap,
+  Enter applies, and Escape cancels. This deliberately uses Super to enter the
+  mode; the browser prototype could not reserve that modifier.
+
+The former `Super+M` focused/monocle command is now `Super+Ctrl+M` and remains
+available as `layout_monocle`. Bindings displaced from the arrow keys remain
+available as named actions for custom configuration.
+
+The existing action names (`focus_left`, `key_move_left`, `key_resize_left`,
+and their other directions) work in custom TOML bindings. The direction-free
+names are `tree_grow` and `tree_shrink`.
+
+## Pointer placement
+
+Dragging a tiled window no longer converts it to floating. The source stays in
+the original tree until release, making cancellation lossless. Dropping in
+another tiled window's centre swaps slots. Dropping in an edge band reparents
+the source on that side. Bands proceed from wide ancestor/aligned-seam scopes
+at the outside edge toward local scopes farther inward. Continuous grid seams
+and contiguous virtual child ranges are valid; a leaf crossing the seam
+invalidates it.
+
+The gesture is implemented once in the backend-neutral layout layer. X11's
+synchronous drag and Wayland's asynchronous pointer interaction call the same
+drop command. Floating windows retain direct movement, and screen-edge/tag-bar
+drops retain their existing meanings.
+
+## Configuration
+
+The `[layout]` section also accepts:
+
+```toml
+[layout]
+keyboard_resize_step = 0.05
+minimum_weight = 0.15
+pointer_edge_fraction = 0.34
+```
+
+The resize step is the fraction transferred per command. The minimum bounds
+children where the run size permits it. The pointer fraction controls semantic
+edge-band depth. Values are clamped to safe ranges when loaded.
+
+## Lifecycle rules
+
+Before computing geometry, the tree reconciles against visible tiled clients.
+Closing, floating, retagging, or moving a window removes its leaf and collapses
+its parent. New or newly tiled windows use balanced insertion. Surviving
+topology and weights remain. Exact tag-mask ownership means tag 1, tag 2, and
+the combined tag 1+2 view can remember independent arrangements without giving
+one window two positions in a single tree.

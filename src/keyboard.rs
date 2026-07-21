@@ -13,6 +13,27 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
 
+    if ctx.core().state().tree_placement.is_some() {
+        use crate::config::keysyms::*;
+        use crate::layouts::tree::Side;
+        return match keysym {
+            XK_LEFT => crate::layouts::step_keyboard_tree_placement(ctx, Side::Left),
+            XK_RIGHT => crate::layouts::step_keyboard_tree_placement(ctx, Side::Right),
+            XK_UP => crate::layouts::step_keyboard_tree_placement(ctx, Side::Top),
+            XK_DOWN => crate::layouts::step_keyboard_tree_placement(ctx, Side::Bottom),
+            XK_TAB => crate::layouts::cycle_keyboard_tree_placement(
+                ctx,
+                cleaned & crate::config::keybindings::SHIFT as u16 != 0,
+            ),
+            XK_SPACE => crate::layouts::center_keyboard_tree_placement(ctx),
+            XK_RETURN => crate::layouts::finish_keyboard_tree_placement(ctx, true),
+            XK_ESCAPE => crate::layouts::finish_keyboard_tree_placement(ctx, false),
+            // Placement is modal: do not leak unrelated keys to a client while
+            // a compositor command is awaiting confirmation.
+            _ => true,
+        };
+    }
+
     // Super + Escape always resets to default mode
     if !matches!(ctx.current_mode(), ActiveWmMode::Default)
         && keysym == crate::config::keysyms::XK_ESCAPE

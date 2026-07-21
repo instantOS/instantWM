@@ -113,13 +113,29 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         return true;
     }
 
-    // Left-click: promote to floating (centering under pointer if newly floated),
-    // and keep title drag active so calloop drives it.
-    let Some((current_geo, anchor_rebased)) = promote_to_floating(ctx, win, Some(root)) else {
-        return false;
+    // A tiled left-drag is a manual-tree placement gesture. Floating windows
+    // continue to move directly. Keeping the tiled source in its original slot
+    // also makes cancellation lossless.
+    let is_tiled = ctx
+        .core()
+        .model()
+        .client_view(win)
+        .is_some_and(|view| view.monitor.is_tiling_layout() && view.client.mode.is_tiling());
+    let (current_geo, anchor_rebased) = if is_tiled {
+        let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
+            return false;
+        };
+        (geo, false)
+    } else {
+        let Some(result) = promote_to_floating(ctx, win, Some(root)) else {
+            return false;
+        };
+        result
     };
 
-    let start = if anchor_rebased {
+    let start = if is_tiled {
+        start_point
+    } else if anchor_rebased {
         root
     } else {
         warp::warp_into(ctx, win);

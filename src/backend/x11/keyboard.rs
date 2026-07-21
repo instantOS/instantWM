@@ -105,6 +105,26 @@ pub fn grab_keys(
     let _ = conn.flush();
 }
 
+/// Own all keyboard input for a short compositor modal interaction.
+pub fn grab_modal_keyboard(x11: &X11BackendRef, x11_runtime: &X11RuntimeConfig) -> bool {
+    x11.conn
+        .grab_keyboard(
+            false,
+            x11_runtime.root,
+            x11rb::CURRENT_TIME,
+            GrabMode::ASYNC,
+            GrabMode::ASYNC,
+        )
+        .ok()
+        .and_then(|cookie| cookie.reply().ok())
+        .is_some_and(|reply| reply.status == GrabStatus::SUCCESS)
+}
+
+pub fn ungrab_modal_keyboard(x11: &X11BackendRef) {
+    let _ = x11.conn.ungrab_keyboard(x11rb::CURRENT_TIME);
+    let _ = x11.conn.flush();
+}
+
 /// Update the cached numlock modifier mask from the X11 server.
 pub fn update_num_lock_mask(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     let new_numlockmask = {

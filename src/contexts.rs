@@ -412,6 +412,24 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Begin/end a compositor-owned keyboard mode. Wayland already owns the
+    /// input stream; X11 needs an active grab so unmodified modal keys cannot
+    /// leak to the focused client.
+    pub fn begin_modal_keyboard(&self) -> bool {
+        match self {
+            WmCtx::X11(ctx) => {
+                crate::backend::x11::keyboard::grab_modal_keyboard(&ctx.x11, ctx.x11_runtime())
+            }
+            WmCtx::Wayland(_) => true,
+        }
+    }
+
+    pub fn end_modal_keyboard(&self) {
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::keyboard::ungrab_modal_keyboard(&ctx.x11);
+        }
+    }
+
     /// Request backend-specific space/compositor sync after authoritative WM
     /// geometry changes.
     pub fn request_space_sync(&self) {

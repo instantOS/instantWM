@@ -308,6 +308,13 @@ fn maybe_promote_tiled_drag_to_floating(
     is_floating: &mut bool,
     drag_geo: &mut Rect,
 ) {
+    // Manual tiling uses a drag as a semantic tree placement gesture. Keep the
+    // source leaf in place until release so both backends can apply the same
+    // swap/reparent command to the original topology. Floating remains an
+    // explicit mode change (toggle_floating).
+    if has_tiling && !*is_floating {
+        return;
+    }
     let snap = ctx.core().config().window.snap_threshold;
     if *is_floating
         || !has_tiling
@@ -530,6 +537,18 @@ pub fn complete_move_drop(
         .map(|root| apply_edge_drop(ctx, win, edge, root))
         .unwrap_or(false);
     if !handled_edge {
+        let handled_tree = pointer.is_some_and(|root| {
+            !point_is_on_bar(ctx.core().model(), root)
+                && ctx
+                    .core()
+                    .model()
+                    .client(win)
+                    .is_some_and(|client| client.mode.is_tiling())
+                && crate::layouts::place_tree_at_point(ctx, win, root)
+        });
+        if handled_tree {
+            return;
+        }
         handle_bar_drop(ctx, win, grab_start_rect, pointer);
         handle_client_monitor_switch(ctx, win);
     }

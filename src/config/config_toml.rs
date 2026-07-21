@@ -155,10 +155,12 @@ impl std::str::FromStr for ColorTheme {
 /// outer_gap = 8
 /// smart_gaps = true
 /// monocle_gaps = false
+/// keyboard_resize_step = 0.05
+/// minimum_weight = 0.15
+/// pointer_edge_fraction = 0.34
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, Serialize)]
 #[serde(default)]
-#[derive(Default)]
 pub struct LayoutConfig {
     /// Gap between tiled windows in logical pixels.
     pub inner_gap: i32,
@@ -168,6 +170,26 @@ pub struct LayoutConfig {
     pub smart_gaps: bool,
     /// Apply configured gaps to monocle layout.
     pub monocle_gaps: bool,
+    /// Fraction of an axis changed by one manual-tree keyboard resize.
+    pub keyboard_resize_step: f64,
+    /// Preferred minimum weight for a child in a manual axis run.
+    pub minimum_weight: f64,
+    /// Fraction of a target window occupied by pointer edge-placement bands.
+    pub pointer_edge_fraction: f64,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            inner_gap: 0,
+            outer_gap: 0,
+            smart_gaps: false,
+            monocle_gaps: false,
+            keyboard_resize_step: 0.05,
+            minimum_weight: 0.15,
+            pointer_edge_fraction: 0.34,
+        }
+    }
 }
 
 /// Cursor configuration for Wayland.

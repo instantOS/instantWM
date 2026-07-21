@@ -211,7 +211,21 @@ pub struct CoreState {
     pub drag: DragState,
     pub hot_corner: HotCornerState,
     pub keyboard_layout: KeyboardLayoutState,
+    /// Active keyboard traversal of semantic manual-tree placement targets.
+    pub tree_placement: Option<KeyboardTreePlacement>,
     pub pending_launches: VecDeque<PendingLaunch>,
+}
+
+#[derive(Debug, Clone)]
+pub struct KeyboardTreePlacement {
+    pub source: WindowId,
+    /// The tree is owned by this exact monitor/tag view. Capturing both keeps
+    /// a modal placement from being applied to a different tree after a view
+    /// or monitor change.
+    pub monitor_id: MonitorId,
+    pub tags: TagMask,
+    pub targets: Vec<crate::layouts::tree::PlacementTarget>,
+    pub selected: usize,
 }
 
 impl CoreState {
@@ -1217,6 +1231,13 @@ impl PendingWork {
 /// a partially-applied reload. Display geometry is backend-derived and is
 /// therefore preserved across config replacement.
 pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
+    let finite_clamp = |value: f64, minimum: f64, maximum: f64, fallback: f64| {
+        if value.is_finite() {
+            value.clamp(minimum, maximum)
+        } else {
+            fallback
+        }
+    };
     let config = &mut state.config;
     let derived = config.derived.clone();
     let mut next = RuntimeConfig {
@@ -1241,6 +1262,9 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
         outer_gap: cfg.layout.outer_gap.max(0),
         smart_gaps: cfg.layout.smart_gaps,
         monocle_gaps: cfg.layout.monocle_gaps,
+        keyboard_resize_step: finite_clamp(cfg.layout.keyboard_resize_step, 0.001, 0.5, 0.05),
+        minimum_weight: finite_clamp(cfg.layout.minimum_weight, 0.001, 0.49, 0.15),
+        pointer_edge_fraction: finite_clamp(cfg.layout.pointer_edge_fraction, 0.05, 0.49, 0.34),
     };
 
     next.colors.window = cfg.window_colors.clone();

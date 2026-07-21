@@ -42,7 +42,6 @@ pub use title::{
 };
 
 use crate::contexts::WmCtx;
-use crate::floating::set_window_mode;
 use crate::types::*;
 
 // Submodules
@@ -69,6 +68,9 @@ pub mod title;
 /// The button used to end the drag defaults to `MouseButton::Left` on Wayland
 /// (matching the most common keyboard-move UX on other compositors).
 pub fn begin_keyboard_move(ctx: &mut WmCtx) {
+    if crate::layouts::begin_keyboard_tree_placement(ctx) {
+        return;
+    }
     // Pre-flight checks are shared: exit maximized state, un-snap, etc.
     let Some(win) = prepare_drag_target(ctx) else {
         return;
@@ -85,21 +87,13 @@ pub fn begin_keyboard_move(ctx: &mut WmCtx) {
             let Some(root) = wl.wayland.pointer_location() else {
                 return;
             };
-            let (geo, is_floating) = match wl.core.model().client(win) {
-                Some(c) => (c.geo, c.mode.is_floating()),
+            let geo = match wl.core.model().client(win) {
+                Some(c) => c.geo,
                 None => return,
             };
 
-            // Ensure the window is floating so the move makes sense.
-            if !is_floating {
-                let _ = set_window_mode(
-                    &mut WmCtx::Wayland(wl.reborrow()),
-                    win,
-                    crate::types::BaseClientMode::Floating,
-                );
-                let selmon_id = wl.core.model().selected_monitor_id();
-                crate::layouts::arrange(&mut WmCtx::Wayland(wl.reborrow()), Some(selmon_id));
-            }
+            // Tiled windows use the same armed pointer placement gesture as a
+            // title drag; floating windows still move directly.
 
             if wl
                 .core

@@ -106,6 +106,17 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
         crate::core_state::DragType::Move => {
             let on_bar = update_move_bar_hover(ctx, root);
 
+            if ctx
+                .core
+                .model()
+                .client_view(drag.win())
+                .is_some_and(|view| view.monitor.is_tiling_layout() && view.client.mode.is_tiling())
+            {
+                // Tiled motion selects a semantic drop target; the tree is
+                // mutated only on release by the shared completion path.
+                return true;
+            }
+
             let mut new_pos = Point::new(
                 drag.win_start_geo().x + (root.x - drag.start_point().x),
                 drag.win_start_geo().y + (root.y - drag.start_point().y),

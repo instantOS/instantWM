@@ -5,36 +5,14 @@
 //! nor the layout algorithms need to know about each other's internals.
 
 use crate::contexts::WmCtx;
-use crate::focus::focus;
-
-// ---------------------------------------------------------------------------
-// zoom
-// ---------------------------------------------------------------------------
-
-fn pop(ctx: &mut WmCtx, win: crate::types::WindowId) {
-    ctx.core_mut().model_mut().detach(win);
-    ctx.core_mut().model_mut().attach(win);
-    let monitor_id = ctx
-        .core()
-        .model()
-        .client(win)
-        .map(|client| client.monitor_id);
-    focus(ctx, Some(win));
-
-    if let Some(mid) = monitor_id {
-        ctx.core_mut().queue_layout_for_monitor_urgent(mid);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // zoom
 // ---------------------------------------------------------------------------
 
 /// Promote the selected window to the master position.
 ///
-/// In a tiling layout the "master" is the first client in the focus-order
-/// list (the leftmost / largest slot, depending on the layout algorithm).
-/// [`zoom`] moves the selected window there via [`pop`].
+/// In manual tiling the "master" is the first visual leaf. [`zoom`] swaps the
+/// selected window into that leaf without rebuilding the tree.
 ///
 /// # Edge cases
 ///
@@ -68,21 +46,5 @@ pub fn zoom(ctx: &mut WmCtx) {
         return;
     }
 
-    let mon = view.monitor;
-
-    // Find the current master (first tiled client on the monitor).
-    let first_on_monitor = mon.clients.first().copied();
-    let first_tiled =
-        first_on_monitor.and_then(|w| mon.next_tiled(&ctx.core().model().clients, Some(w)));
-
-    if first_tiled == Some(win) {
-        let next = mon.next_tiled(&ctx.core().model().clients, first_tiled);
-
-        // Nothing to promote if there is only one tiled window.
-        if next.is_none() {
-            return;
-        }
-    }
-
-    pop(ctx, win);
+    crate::layouts::promote_tree(ctx, win);
 }
