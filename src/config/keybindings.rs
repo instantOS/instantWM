@@ -124,6 +124,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MOD1, XK_TAB => KeyAction::named_args(NamedAction::Spawn, &["iswitch"])),
         key!(MODKEY, XK_DEAD_CIRCUMFLEX => KeyAction::named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
         key!(MODKEY | CONTROL, XK_L => KeyAction::named_args(NamedAction::Spawn, defaults::LOCKSCREEN)),
+        key!(MODKEY | CONTROL, XK_C => KeyAction::named_args(NamedAction::Spawn, defaults::SETTINGS)),
         key!(MODKEY | SHIFT, XK_ESCAPE => KeyAction::named_args(NamedAction::Spawn, defaults::SYSTEMMONITOR)),
         key!(MODKEY, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::AREA)),
         key!(MODKEY | SHIFT, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::FULL)),
@@ -281,6 +282,29 @@ mod tests {
         assert_eq!(
             named_action(0, XK_ESCAPE),
             Some(NamedAction::PlacementCancel)
+        );
+    }
+
+    #[test]
+    fn super_ctrl_c_launches_settings_gui() {
+        let spawn_args = get_keys()
+            .into_iter()
+            .find(|key| key.mod_mask == MODKEY | CONTROL && key.keysym == XK_C)
+            .and_then(|key| match key.action {
+                KeyAction::Named {
+                    action: NamedAction::Spawn,
+                    args,
+                } => Some(args),
+                _ => None,
+            });
+
+        assert_eq!(
+            spawn_args,
+            Some(vec![
+                "ins".to_string(),
+                "settings".to_string(),
+                "--gui".to_string()
+            ])
         );
     }
 }

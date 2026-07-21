@@ -9,6 +9,7 @@ pub mod defaults {
     pub const BROWSER: &[&str] = &[".config/instantos/default/browser"];
     pub const EDITOR: &[&str] = &[".config/instantos/default/editor"];
     pub const SYSTEMMONITOR: &[&str] = &[".config/instantos/default/systemmonitor"];
+    pub const SETTINGS: &[&str] = &["ins", "settings", "--gui"];
 }
 
 /// Volume and brightness controls.
