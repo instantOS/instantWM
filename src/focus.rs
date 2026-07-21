@@ -300,9 +300,10 @@ pub fn hover_focus_target(
     entering_root: bool,
     pointer_pos: Option<Point>,
 ) {
-    // Overview hover is presentation state, not keyboard focus. Handling it
-    // here keeps both backends on one path and makes it work independently of
-    // the user's focus-follows-mouse preference.
+    // Overview owns a pending selection rather than immediately sending
+    // keyboard input to each hovered application. Handling it here keeps both
+    // backends on one focus-follows-mouse path; confirming overview commits the
+    // hovered card as real focus.
     if crate::overview::hover_window(ctx, hovered_win, pointer_pos) {
         return;
     }

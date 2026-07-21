@@ -1,5 +1,42 @@
 use super::*;
 
+fn wm_with_overview_clients(
+    selected_tags: TagMask,
+    clients: &[(WindowId, TagMask)],
+) -> crate::wm::Wm {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    wm.core.model.tags.num_tags = clients
+        .iter()
+        .filter_map(|(_, tags)| tags.first_tag())
+        .max()
+        .unwrap_or(1);
+    let monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(0, 0, 1200, 700),
+        available_rect: Rect::new(0, 0, 1200, 700),
+        ..Monitor::default()
+    });
+    wm.core.model.monitors.set_selected(monitor_id);
+    for &(win, tags) in clients {
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            geo: Rect::new(100, 100, 700, 500),
+            ..Client::default()
+        });
+    }
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.set_selected_tags(selected_tags);
+    monitor.clients = clients.iter().map(|(win, _)| *win).collect();
+    for &(win, _) in clients {
+        monitor.z_order.attach_top(win);
+    }
+    monitor.selected = clients.first().map(|(win, _)| *win);
+    wm
+}
+
 #[test]
 fn card_field_preserves_sizes_and_uses_both_axes() {
     let work = Rect::new(10, 20, 1200, 700);
@@ -215,4 +252,53 @@ fn a_window_mapped_during_overview_gets_one_restore_snapshot() {
         monitor.overview_state.as_ref().unwrap().restore_geometry[&win],
         original
     );
+}
+
+#[test]
+fn hovered_card_is_committed_on_overview_confirmation() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut wm = wm_with_overview_clients(tag1, &[(first, tag1), (second, tag2)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    assert!(hover_window(
+        &mut wm.ctx(),
+        Some(second),
+        Some(Point::new(900, 300))
+    ));
+    // Hover selection is pending: the application does not receive keyboard
+    // focus until the user confirms overview.
+    assert_eq!(wm.core.model.selected_win(), Some(first));
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+
+    assert_eq!(wm.core.model.selected_win(), Some(second));
+    assert_eq!(
+        wm.core.model.expect_selected_monitor().selected_tags(),
+        tag2
+    );
+}
+
+#[test]
+fn keyboard_navigation_continues_from_the_hovered_card() {
+    let tags = TagMask::single(1).unwrap();
+    let first = WindowId(1);
+    let second = WindowId(2);
+    let mut wm = wm_with_overview_clients(tags, &[(first, tags), (second, tags)]);
+
+    toggle_overview(&mut wm.ctx(), TagMask::ALL_BITS);
+    hover_window(&mut wm.ctx(), Some(second), Some(Point::new(900, 300)));
+    assert!(focus_direction(&mut wm.ctx(), Direction::Left));
+
+    let state = wm
+        .core
+        .model
+        .expect_selected_monitor()
+        .overview_state
+        .as_ref()
+        .unwrap();
+    assert_eq!(state.active_window, Some(first));
+    assert_eq!(wm.core.model.selected_win(), Some(first));
 }
