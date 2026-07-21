@@ -1,6 +1,6 @@
 use super::{
     available_tree_resize_direction, clients_with_planned_borders, compute_monitor_z_order,
-    pointer_tree_resize_allowed,
+    pointer_tree_resize_allowed, shifted_master_count,
 };
 use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
@@ -15,6 +15,15 @@ fn visible_client(win: WindowId) -> Client {
     };
     client.set_tag_mask(TagMask::single(1).unwrap());
     client
+}
+
+#[test]
+fn master_count_is_bounded_by_the_current_tiled_window_count() {
+    assert_eq!(shifted_master_count(1, -1, 4), 0);
+    assert_eq!(shifted_master_count(0, -1, 4), 0);
+    assert_eq!(shifted_master_count(3, 1, 4), 4);
+    assert_eq!(shifted_master_count(4, 1, 4), 4);
+    assert_eq!(shifted_master_count(8, -1, 3), 2);
 }
 
 fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
@@ -152,11 +161,10 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
     let windows = monitor.clients.clone();
-    let selected = monitor.selected;
     monitor
         .per_tag_state()
         .layout_tree
-        .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
+        .apply_preset(Preset::Grid, &windows, 1);
 
     let first = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     assert!(
@@ -194,14 +202,10 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
     clients.get_mut(&WindowId(2)).unwrap().size_hints.minw = 160;
-    let selected = monitor.selected;
-    monitor.per_tag_state().layout_tree.apply_preset(
-        Preset::MasterStack,
-        &windows,
-        selected,
-        1,
-        1.0 / 3.0,
-    );
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::MasterStack, &windows, 1);
 
     let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     let rects = plan
@@ -241,19 +245,15 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .into_iter()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
-    let selected = monitor.selected;
     monitor
         .per_tag_state()
         .layout_tree
-        .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
+        .apply_preset(Preset::Grid, &windows, 1);
     let tree_before = monitor
         .per_tag_state()
         .layout_tree
         .bounds(Rect::new(0, 0, 400, 300));
-    monitor
-        .per_tag_state()
-        .layouts
-        .set_layout(PresentationMode::Maximized);
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
 
     let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     assert_eq!(maximized.client_moves.len(), windows.len());
@@ -271,10 +271,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         tree_before
     );
 
-    monitor
-        .per_tag_state()
-        .layouts
-        .set_layout(PresentationMode::Tiled);
+    monitor.per_tag_state().presentation = PresentationMode::Tiled;
     let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     let first_rect = manual.client_moves.first().unwrap().rect;
     assert!(
@@ -298,10 +295,7 @@ fn maximized_presentation_reconciles_new_tiled_leaves() {
     let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2)], WindowId(1));
     monitor.available_rect = Rect::new(0, 0, 300, 200);
     monitor.clients = vec![WindowId(1), WindowId(2)];
-    monitor
-        .per_tag_state()
-        .layouts
-        .set_layout(PresentationMode::Maximized);
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
     let mut clients = monitor
         .clients
         .iter()

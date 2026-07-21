@@ -15,8 +15,8 @@ use crate::layouts::{
     LayoutCommand, begin_tree_placement, center_keyboard_tree_placement,
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
     focus_tree_neighbor, inc_master_count_by, resize_keyboard_tree_placement, resize_tree,
-    resize_tree_smart, set_layout, set_master_factor, step_keyboard_tree_placement,
-    swap_keyboard_tree_placement, swap_tree_neighbor, toggle_layout, toggle_tiling_maximized,
+    resize_tree_smart, set_layout, step_keyboard_tree_placement, swap_keyboard_tree_placement,
+    swap_tree_neighbor, toggle_tiling_maximized,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
@@ -137,25 +137,18 @@ define_named_actions!(
     FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
-    ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
     LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Tile); } },
     LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Floating); } },
     LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
-    LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "compatibility alias for layout_maximized", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
     ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle between manual tiling and maximized-stack presentation without changing the tree", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Grid); } },
-    LayoutDeck => { name: "layout_deck", arg_example: None, doc: "rewrite the tree as a non-overlapping master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Deck); } },
     LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BottomStack); } },
     LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::HorizGrid); } },
-    LayoutGaplessGrid => { name: "layout_gapless_grid", arg_example: None, doc: "set gapless-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::GaplessGrid); } },
     LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
     DecMasterCount => { name: "dec_master_count", arg_example: None, doc: "decrease master window count", run: |ctx, _args| { inc_master_count_by(ctx, -1); } },
-    MasterFactorGrow => { name: "master_factor_grow", arg_example: None, doc: "increase master area width", run: |ctx, _args| { set_master_factor(ctx, 0.05); } },
-    MasterFactorShrink => { name: "master_factor_shrink", arg_example: None, doc: "decrease master area width", run: |ctx, _args| { set_master_factor(ctx, -0.05); } },
-    SetMasterFactor => { name: "set_master_factor", arg_example: Some("0.05"), doc: "set master factor", run: |ctx, args| { if let Some(delta) = args.first().and_then(|s| s.parse::<f32>().ok()) { set_master_factor(ctx, delta); } } },
     CenterWindow => { name: "center_window", arg_example: None, doc: "center focused window", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { center_window(ctx, win); } } },
     DistributeClients => { name: "distribute_clients", arg_example: None, doc: "distribute windows evenly", run: |ctx, _args| { distribute_clients(ctx); } },
     KeyResizeUp => { name: "key_resize_up", arg_example: None, doc: "grow a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Up.into()); } } },
@@ -266,32 +259,27 @@ mod tests {
     use crate::types::StackDirection;
 
     #[test]
-    fn layout_command_from_name_accepts_aliases() {
+    fn layout_command_from_name_accepts_only_canonical_names() {
         assert_eq!(LayoutCommand::from_name("tile"), Some(LayoutCommand::Tile));
         assert_eq!(
             LayoutCommand::from_name("floating"),
             Some(LayoutCommand::Floating)
         );
         assert_eq!(
-            LayoutCommand::from_name("horizgrid"),
+            LayoutCommand::from_name("horiz-grid"),
             Some(LayoutCommand::HorizGrid)
         );
         assert_eq!(
-            LayoutCommand::from_name("gaplessgrid"),
-            Some(LayoutCommand::GaplessGrid)
-        );
-        assert_eq!(
-            LayoutCommand::from_name("bstackhoriz"),
+            LayoutCommand::from_name("bstack-horiz"),
             Some(LayoutCommand::BStackHoriz)
         );
         assert_eq!(
             LayoutCommand::from_name("maximized"),
             Some(LayoutCommand::Maximized)
         );
-        assert_eq!(
-            LayoutCommand::from_name("monocle"),
-            Some(LayoutCommand::Maximized)
-        );
+        for alias in ["tiling", "float", "monocle", "deck", "gaplessgrid"] {
+            assert_eq!(LayoutCommand::from_name(alias), None);
+        }
         assert_eq!(LayoutCommand::from_name("bad"), None);
     }
 

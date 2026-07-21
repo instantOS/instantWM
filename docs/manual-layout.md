@@ -21,7 +21,6 @@ Most old layout names now describe one-shot transformations:
 - `layout_maximized` is a persistent presentation mode: every tiled window
   fills the work area and the focused tiled window is stacked on top. The
   underlying manual tree is preserved and reconciled while the mode is active.
-  `layout_monocle` remains an input compatibility alias.
 - `layout_float` remains a persistent floating mode.
 
 After a transformation, manual swaps, resizes, spawns, and pointer placements
@@ -105,6 +104,12 @@ maximize binding has been removed.
 remains available as `layout_tile` and from the layout-symbol menu rather than
 occupying the direct `Super+T` binding.
 
+`Super+I/D` reapplies the master-stack preset with one more or fewer master
+windows. The count is bounded to `0..=tiled window count`; zero and the full
+count produce a single full-width run. Reapplying a compatible preset preserves
+the current root split ratio from the tree instead of consulting separate
+master-factor state.
+
 The existing action names (`focus_left`, `key_move_left`, `key_resize_left`,
 and their other directions) work in custom TOML bindings. The direction-free
 names are `tree_grow` and `tree_shrink`.
@@ -163,7 +168,7 @@ The resize step is the fraction transferred per command. The minimum bounds
 children where the run size permits it. The pointer fraction controls semantic
 edge-band depth. Values are clamped to safe ranges when loaded.
 `maximized_gaps` controls whether maximized tiled windows retain the configured
-outer gap; the old `monocle_gaps` spelling remains accepted.
+outer gap.
 
 ## Lifecycle rules
 

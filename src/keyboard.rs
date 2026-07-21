@@ -334,7 +334,7 @@ mod tests {
         let desktop_key = Key {
             mod_mask: 0,
             keysym: 9,
-            action: KeyAction::named(NamedAction::ToggleLayout),
+            action: KeyAction::named(NamedAction::ToggleBar),
         };
 
         let resolved = resolve_key_action(
@@ -350,7 +350,7 @@ mod tests {
         .expect("expected desktop action");
 
         match resolved.action {
-            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::ToggleLayout),
+            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::ToggleBar),
             _ => panic!("unexpected action kind"),
         }
 
@@ -359,7 +359,7 @@ mod tests {
             &[Key {
                 mod_mask: 0,
                 keysym: 9,
-                action: KeyAction::named(NamedAction::ToggleLayout),
+                action: KeyAction::named(NamedAction::ToggleBar),
             }],
             &HashMap::new(),
             Some(WindowId(1)),

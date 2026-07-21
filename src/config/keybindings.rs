@@ -57,7 +57,6 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_C => KeyAction::named(NamedAction::LayoutGrid)),
         key!(MODKEY, XK_F => KeyAction::named(NamedAction::LayoutFloat)),
         key!(MODKEY, XK_W => KeyAction::named(NamedAction::ToggleTilingMaximized)),
-        key!(MODKEY, XK_P => KeyAction::named(NamedAction::ToggleLayout)),
         key!(MODKEY | CONTROL, XK_COMMA => KeyAction::named(NamedAction::CycleLayoutPrev)),
         key!(MODKEY | CONTROL, XK_PERIOD => KeyAction::named(NamedAction::CycleLayoutNext)),
         key!(MODKEY, XK_LEFT => KeyAction::named(NamedAction::FocusLeft)),

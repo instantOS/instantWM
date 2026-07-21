@@ -363,13 +363,10 @@ mod tests {
         monitor.set_selected_tags(tags);
         monitor.clients = vec![source, peer];
         monitor.selected = Some(source);
-        monitor.per_tag_state().layout_tree.apply_preset(
-            Preset::MasterStack,
-            &[source, peer],
-            Some(source),
-            1,
-            0.5,
-        );
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &[source, peer], 1);
 
         assert_eq!(
             begin_tree_placement(&mut wm.ctx()),
@@ -409,13 +406,10 @@ mod tests {
         monitor.set_selected_tags(tags);
         monitor.clients = vec![source];
         monitor.selected = Some(source);
-        monitor.per_tag_state().layout_tree.apply_preset(
-            Preset::MasterStack,
-            &[source],
-            Some(source),
-            1,
-            0.5,
-        );
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &[source], 1);
 
         assert_eq!(
             begin_tree_placement(&mut wm.ctx()),
@@ -456,13 +450,10 @@ mod tests {
         monitor.set_selected_tags(tags);
         monitor.clients = vec![source, peer];
         monitor.selected = Some(source);
-        monitor.per_tag_state().layout_tree.apply_preset(
-            Preset::MasterStack,
-            &[source, peer],
-            Some(source),
-            1,
-            0.5,
-        );
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .apply_preset(Preset::MasterStack, &[source, peer], 1);
 
         let targets =
             crate::layouts::manager::constrained_tree_placement_targets(&wm.ctx(), source);

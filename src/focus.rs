@@ -778,14 +778,9 @@ mod tests {
         monitor.per_tag_state().layout_tree.apply_preset(
             crate::layouts::tree::Preset::MasterStack,
             &[WindowId(3), WindowId(1), WindowId(2)],
-            Some(WindowId(1)),
             1,
-            0.55,
         );
-        monitor
-            .per_tag_state()
-            .layouts
-            .set_layout(crate::layouts::PresentationMode::Maximized);
+        monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
         let clients = [WindowId(1), WindowId(2), WindowId(3)]
             .into_iter()
             .map(|win| {

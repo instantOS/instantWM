@@ -37,7 +37,6 @@ pub enum StructuredAction {
     None,
     SetLayout(String),
     FocusStack(String),
-    SetMasterFactor(f64),
     IncMasterCount(i32),
     KeyboardLayout(String),
     SetMode(String),
@@ -242,12 +241,6 @@ fn compile_action(spec: &ActionSpec) -> Option<KeyAction> {
             action: NamedAction::FocusStack,
             args: vec![dir.clone()],
         }),
-        ActionSpec::Structured(StructuredAction::SetMasterFactor(delta)) => {
-            Some(KeyAction::Named {
-                action: NamedAction::SetMasterFactor,
-                args: vec![delta.to_string()],
-            })
-        }
         ActionSpec::Structured(StructuredAction::IncMasterCount(n)) => Some(KeyAction::Named {
             action: NamedAction::IncMasterCount,
             args: vec![n.to_string()],
@@ -387,7 +380,7 @@ mod tests {
             KeybindSpec {
                 modifiers: vec!["Mod1".to_string()],
                 key: "o".to_string(),
-                action: ActionSpec::Named("toggle_layout".to_string()),
+                action: ActionSpec::Named("focus_left".to_string()),
             },
         ];
 

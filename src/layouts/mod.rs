@@ -25,7 +25,6 @@
 //! Grid      "#"    square grid
 //! Floating  "-"    free floating (no tiling)
 //! Maximized "[M]"  focused full-work-area tiled stack
-//! Deck     "H[]"   master + stacked deck
 //! BottomStack "TTT" bottom-stack (horizontal master row)
 //! ```
 //!
@@ -95,21 +94,13 @@ pub struct LayoutOutput {
     pub options: MoveResizeOptions,
 }
 
-/// Pure-data snapshot of the monitor state changes after an arrange pass.
-#[derive(Debug, Clone)]
-pub struct MonitorUpdates {
-    pub master_count: i32,
-    pub master_factor: f32,
-    pub bar_height: i32,
-}
-
 /// Complete set of changes required to arrange one monitor.
 ///
 /// Produced by [`crate::types::Monitor::compute_arrange`] (mutates a snapshot to compute bar geometry)
 /// and applied atomically by [`ArrangePlan::apply`].
 #[derive(Debug, Clone)]
 pub struct ArrangePlan {
-    pub monitor_updates: MonitorUpdates,
+    pub bar_height: i32,
     pub borders: Vec<(WindowId, i32)>,
     pub client_moves: Vec<LayoutOutput>,
     pub fullscreen_moves: Vec<LayoutOutput>,
@@ -147,16 +138,11 @@ pub enum LayoutCommand {
     /// Free floating layout (`-`).
     Floating,
     /// Maximized tiled stack (`[M]`). The underlying manual tree is preserved.
-    #[serde(alias = "maximized", alias = "monocle", alias = "Monocle")]
     Maximized,
-    /// Deck layout (`H[]`).
-    Deck,
     /// Bottom-stack layout (`TTT`).
     BottomStack,
     /// Horizontal grid layout (`###`).
     HorizGrid,
-    /// Gapless grid layout (`g#`).
-    GaplessGrid,
     /// Bottom-stack horizontal layout (`===`).
     BStackHoriz,
 }
@@ -166,20 +152,16 @@ impl LayoutCommand {
         match self {
             Self::Floating => PresentationMode::Floating,
             Self::Maximized => PresentationMode::Maximized,
-            Self::Tile
-            | Self::Grid
-            | Self::Deck
-            | Self::BottomStack
-            | Self::HorizGrid
-            | Self::GaplessGrid
-            | Self::BStackHoriz => PresentationMode::Tiled,
+            Self::Tile | Self::Grid | Self::BottomStack | Self::HorizGrid | Self::BStackHoriz => {
+                PresentationMode::Tiled
+            }
         }
     }
 
     pub const fn tree_preset(self) -> Option<tree::Preset> {
         match self {
-            Self::Tile | Self::Deck => Some(tree::Preset::MasterStack),
-            Self::Grid | Self::GaplessGrid => Some(tree::Preset::Grid),
+            Self::Tile => Some(tree::Preset::MasterStack),
+            Self::Grid => Some(tree::Preset::Grid),
             Self::HorizGrid => Some(tree::Preset::HorizontalGrid),
             Self::BottomStack => Some(tree::Preset::BottomStack),
             Self::BStackHoriz => Some(tree::Preset::BottomStackHorizontal),
@@ -194,7 +176,6 @@ impl LayoutCommand {
             tree::Preset::HorizontalGrid => Some(Self::HorizGrid),
             tree::Preset::BottomStack => Some(Self::BottomStack),
             tree::Preset::BottomStackHorizontal => Some(Self::BStackHoriz),
-            tree::Preset::Focus => None,
         }
     }
     pub fn name(self) -> &'static str {
@@ -203,10 +184,8 @@ impl LayoutCommand {
             Self::Grid => "grid",
             Self::Floating => "floating",
             Self::Maximized => "maximized",
-            Self::Deck => "deck",
             Self::BottomStack => "bottom-stack",
             Self::HorizGrid => "horiz-grid",
-            Self::GaplessGrid => "gapless-grid",
             Self::BStackHoriz => "bstack-horiz",
         }
     }
@@ -217,10 +196,8 @@ impl LayoutCommand {
             Self::Grid => "Grid",
             Self::Floating => "Floating",
             Self::Maximized => "Maximized",
-            Self::Deck => "Deck",
             Self::BottomStack => "Bottom Stack",
             Self::HorizGrid => "Horizontal Grid",
-            Self::GaplessGrid => "Gapless Grid",
             Self::BStackHoriz => "Bottom Stack Horizontal",
         }
     }
@@ -231,10 +208,8 @@ impl LayoutCommand {
             Self::Grid => "Rewrite the manual tree as an even grid",
             Self::Floating => "Windows can be freely moved and resized",
             Self::Maximized => "Stack tiled windows at full work-area size",
-            Self::Deck => "Rewrite the tree as a non-overlapping master/stack",
             Self::BottomStack => "Rewrite the tree with the master group on top",
             Self::HorizGrid => "Rewrite the tree as a rows-first grid",
-            Self::GaplessGrid => "Rewrite the tree as a grid (legacy alias)",
             Self::BStackHoriz => "Rewrite the tree as a horizontal bottom stack",
         }
     }
@@ -249,10 +224,8 @@ impl LayoutCommand {
             Self::Grid => "#",
             Self::Floating => "-",
             Self::Maximized => "[M]",
-            Self::Deck => "H[]",
             Self::BottomStack => "TTT",
             Self::HorizGrid => "###",
-            Self::GaplessGrid => "g#",
             Self::BStackHoriz => "===",
         }
     }
@@ -264,9 +237,6 @@ impl LayoutCommand {
 
     /// Canonical commands shown by the CLI and visited by layout cycling.
     ///
-    /// `Deck` and `GaplessGrid` remain accepted compatibility aliases, but
-    /// are omitted because they map to the same tree presets as `Tile` and
-    /// `Grid` respectively.
     pub fn all() -> &'static [LayoutCommand] {
         &[
             Self::Tile,
@@ -285,15 +255,13 @@ impl FromStr for LayoutCommand {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
-            "tile" | "tiling" => Ok(Self::Tile),
+            "tile" => Ok(Self::Tile),
             "grid" => Ok(Self::Grid),
-            "float" | "floating" => Ok(Self::Floating),
-            "maximized" | "maximize" | "maximized-stack" | "monocle" => Ok(Self::Maximized),
-            "deck" => Ok(Self::Deck),
-            "bottomstack" | "bottom-stack" | "bstack" => Ok(Self::BottomStack),
-            "horizgrid" => Ok(Self::HorizGrid),
-            "gaplessgrid" => Ok(Self::GaplessGrid),
-            "bstackhoriz" => Ok(Self::BStackHoriz),
+            "floating" => Ok(Self::Floating),
+            "maximized" => Ok(Self::Maximized),
+            "bottom-stack" => Ok(Self::BottomStack),
+            "horiz-grid" => Ok(Self::HorizGrid),
+            "bstack-horiz" => Ok(Self::BStackHoriz),
             _ => Err(()),
         }
     }
@@ -308,8 +276,7 @@ pub use keyboard_placement::{
 pub use manager::{
     apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by,
     place_tree_at_point, preview_tree_at_point, promote_tree, resize_tree, resize_tree_smart,
-    set_layout, set_master_factor, swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
-    toggle_tiling_maximized,
+    set_layout, swap_tree_neighbor, sync_monitor_z_order, toggle_tiling_maximized,
 };
 
 #[cfg(test)]
@@ -355,7 +322,6 @@ mod command_tests {
             let command = LayoutCommand::from_tree_preset(preset).unwrap();
             assert_eq!(command.tree_preset(), Some(preset));
         }
-        assert_eq!(LayoutCommand::from_tree_preset(Preset::Focus), None);
     }
 
     #[test]

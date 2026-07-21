@@ -5,7 +5,7 @@
 //! - `geometry` - Rectangles, size hints, positioning
 //! - `atoms` - X11 atom identifiers
 //! - `color` - Color schemes and configurations
-//! - `tag` - Tag system types (Tag, TagSet, TagLayouts)
+//! - `tag` - Tag system types (Tag, TagSet)
 //! - `client` - Client/window management types
 //! - `monitor` - Monitor/screen types
 //! - `input` - Input handling (mouse, keyboard, gestures)

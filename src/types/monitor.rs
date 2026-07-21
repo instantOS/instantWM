@@ -6,7 +6,6 @@ use std::collections::HashMap;
 
 use crate::layouts::PresentationMode;
 use crate::types::MonitorId;
-use crate::types::TagLayouts;
 use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
@@ -27,10 +26,6 @@ pub struct Monitor {
     /// Stable identifier of this monitor, assigned by `MonitorManager` on
     /// insertion and never changed afterwards. Read via `Monitor::id()`.
     pub(crate) monitor_id: MonitorId,
-    /// Master factor for tiling layouts (0.0 to 1.0).
-    pub master_factor: f32,
-    /// Number of clients in the master area for tiling layouts.
-    pub master_count: i32,
     /// Monitor index number (0-based).
     pub num: i32,
     /// Per-monitor UI scale, currently used by the Wayland bar.
@@ -82,7 +77,7 @@ pub struct Monitor {
     /// while maximized presentation keeps the previously focused tiled client
     /// visible below it.
     pub tag_tiled_focus_history: HashMap<TagMask, WindowId>,
-    /// Per-tag runtime state (master factor, master_count, layouts, etc.).
+    /// Per-tag runtime presentation, tree, preset cursor, and bar state.
     pub per_tag: HashMap<TagMask, PerTagState>,
     /// Overview mode state.
     pub overview_state: Option<crate::overview::OverviewState>,
@@ -96,8 +91,6 @@ impl Default for Monitor {
     fn default() -> Self {
         Self {
             monitor_id: MonitorId::default(),
-            master_factor: 0.55,
-            master_count: 1,
             num: 0,
             ui_scale: 1.0,
             bar_height: 0,
@@ -518,11 +511,11 @@ impl Monitor {
         }
     }
 
-    /// Returns layout state for the given tag mask (immutable lookup).
-    pub fn layouts_for_mask(&self, mask: TagMask) -> TagLayouts {
+    /// Returns presentation state for the given tag mask.
+    pub fn presentation_for_mask(&self, mask: TagMask) -> PresentationMode {
         self.per_tag
             .get(&mask)
-            .map(|s| s.layouts)
+            .map(|state| state.presentation)
             .unwrap_or_default()
     }
 
@@ -553,29 +546,25 @@ impl Monitor {
 
     /// Get the current layout symbol for this monitor.
     pub fn layout_symbol(&self) -> String {
-        self.layouts_for_mask(self.selected_tags())
+        self.presentation_for_mask(self.selected_tags())
             .symbol()
             .to_string()
     }
 
     /// Check if the current layout is a tiling layout.
     pub fn is_tiling_layout(&self) -> bool {
-        self.layouts_for_mask(self.selected_tags()).is_tiling()
+        self.presentation_for_mask(self.selected_tags()).is_tiling()
     }
 
     /// Check if tiled clients use maximized-stack presentation.
     pub fn is_maximized_layout(&self) -> bool {
-        self.layouts_for_mask(self.selected_tags()).is_maximized()
+        self.presentation_for_mask(self.selected_tags())
+            .is_maximized()
     }
 
     /// Get the current persistent presentation mode.
     pub fn current_layout(&self) -> PresentationMode {
-        self.layouts_for_mask(self.selected_tags()).get_layout()
-    }
-
-    /// Toggle between primary and secondary layout slots.
-    pub fn toggle_layout_slot(&mut self) {
-        self.per_tag_state().layouts.toggle_slot();
+        self.presentation_for_mask(self.selected_tags())
     }
 
     /// Set the effective bar height.

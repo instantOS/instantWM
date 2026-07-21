@@ -224,7 +224,7 @@ pub fn get_layout_symbol_width(core: &CoreCtx, m: &Monitor) -> i32 {
         let symbol = if core.model().is_overview_active_on(m) {
             "OVR"
         } else {
-            m.layouts_for_mask(m.selected_tags()).symbol()
+            m.presentation_for_mask(m.selected_tags()).symbol()
         };
         symbol.len() as i32 * 8 // rough estimate: 8px per char
     };

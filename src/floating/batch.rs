@@ -73,7 +73,7 @@ fn collect_floating_wins(model: &crate::model::WmModel, mid: MonitorId) -> Vec<W
         let tag_is_floating = mon
             .per_tag
             .get(&tag_mask)
-            .map(|s| !s.layouts.is_tiling())
+            .map(|state| !state.presentation.is_tiling())
             .unwrap_or(false);
 
         if !tag_is_floating {

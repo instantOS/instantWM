@@ -69,8 +69,6 @@ pub enum Preset {
     HorizontalGrid,
     BottomStack,
     BottomStackHorizontal,
-    /// Preserve every leaf while giving the selected one a dominant slot.
-    Focus,
 }
 
 /// Opaque semantic target shared by pointer and keyboard placement.

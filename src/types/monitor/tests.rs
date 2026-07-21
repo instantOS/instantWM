@@ -53,7 +53,6 @@ fn per_tag_state_defaults_match_normal_tiling_defaults() {
     let state = PerTagState::default();
 
     assert_eq!(state.master_count, 1);
-    assert_eq!(state.master_factor, 0.55);
 }
 
 #[test]
@@ -238,14 +237,9 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
     monitor.per_tag_state().layout_tree.apply_preset(
         crate::layouts::tree::Preset::MasterStack,
         &[WindowId(3), WindowId(1), WindowId(2)],
-        Some(WindowId(3)),
         1,
-        0.55,
     );
-    monitor
-        .per_tag_state()
-        .layouts
-        .set_layout(PresentationMode::Maximized);
+    monitor.per_tag_state().presentation = PresentationMode::Maximized;
 
     let clients = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)]
         .into_iter()

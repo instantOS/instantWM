@@ -28,14 +28,17 @@ pub(super) fn equal_run(
 pub(super) fn build_master_stack(
     windows: &[WindowId],
     requested_master_count: usize,
-    master_factor: f64,
+    master_ratio: f64,
     outer_axis: Axis,
     allocate: &mut impl FnMut() -> SplitId,
 ) -> Option<Node> {
     if windows.len() <= 1 {
         return windows.first().copied().map(Node::Window);
     }
-    let master_count = requested_master_count.max(1).min(windows.len() - 1);
+    let master_count = requested_master_count.min(windows.len());
+    if master_count == 0 || master_count == windows.len() {
+        return equal_run(windows, outer_axis.other(), allocate);
+    }
     let masters = equal_run(&windows[..master_count], outer_axis.other(), allocate)?;
     let stack = equal_run(&windows[master_count..], outer_axis.other(), allocate)?;
     let id = allocate();
@@ -45,11 +48,11 @@ pub(super) fn build_master_stack(
         vec![
             WeightedNode {
                 node: masters,
-                weight: master_factor.clamp(0.05, 0.95),
+                weight: master_ratio.clamp(0.05, 0.95),
             },
             WeightedNode {
                 node: stack,
-                weight: 1.0 - master_factor.clamp(0.05, 0.95),
+                weight: 1.0 - master_ratio.clamp(0.05, 0.95),
             },
         ],
     )
@@ -93,38 +96,4 @@ pub(super) fn build_grid(
     }
     let id = allocate();
     make_split(id, outer_axis, groups)
-}
-
-pub(super) fn build_focus(
-    windows: &[WindowId],
-    selected: Option<WindowId>,
-    allocate: &mut impl FnMut() -> SplitId,
-) -> Option<Node> {
-    let focused = selected
-        .filter(|window| windows.contains(window))
-        .unwrap_or(windows[0]);
-    let peers: Vec<_> = windows
-        .iter()
-        .copied()
-        .filter(|window| *window != focused)
-        .collect();
-    if peers.is_empty() {
-        return Some(Node::Window(focused));
-    }
-    let peer_run = equal_run(&peers, Axis::Horizontal, allocate)?;
-    let id = allocate();
-    make_split(
-        id,
-        Axis::Vertical,
-        vec![
-            WeightedNode {
-                node: Node::Window(focused),
-                weight: 0.85,
-            },
-            WeightedNode {
-                node: peer_run,
-                weight: 0.15,
-            },
-        ],
-    )
 }
