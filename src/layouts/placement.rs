@@ -6,8 +6,13 @@
 
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::BORDER_MULTIPLIER;
-use crate::layouts::LayoutKind;
+use crate::layouts::PresentationMode;
 use crate::types::{Monitor, Rect};
+
+/// Thickness of the hollow manual-placement preview frame in logical pixels.
+/// It is intentionally independent of ordinary client borders: users may
+/// configure those to zero while the placement affordance must remain clear.
+pub(crate) const LAYOUT_PREVIEW_BORDER_WIDTH: i32 = 6;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct LayoutPlacement {
@@ -19,7 +24,7 @@ impl LayoutPlacement {
     pub(crate) fn new(
         cfg: &LayoutConfig,
         monitor: &Monitor,
-        layout: LayoutKind,
+        layout: PresentationMode,
         tiled_client_count: u32,
     ) -> Self {
         let smart_gaps_disabled = cfg.smart_gaps && tiled_client_count <= 1;
@@ -141,9 +146,11 @@ pub(crate) fn outline_rectangles(rect: Rect, requested_width: i32) -> [Rect; 4] 
 
 #[cfg(test)]
 mod tests {
-    use super::{LayoutPlacement, inset_rect_saturating, outline_rectangles};
+    use super::{
+        LAYOUT_PREVIEW_BORDER_WIDTH, LayoutPlacement, inset_rect_saturating, outline_rectangles,
+    };
     use crate::config::config_toml::LayoutConfig;
-    use crate::layouts::LayoutKind;
+    use crate::layouts::PresentationMode;
     use crate::types::{Monitor, Rect};
 
     fn config_with_gaps(inner_gap: i32, outer_gap: i32, smart_gaps: bool) -> LayoutConfig {
@@ -167,7 +174,7 @@ mod tests {
     fn no_gaps_preserves_slot_except_border() {
         let cfg = config_with_gaps(0, 0, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Tile, 2);
+        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 2);
 
         assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
         assert_eq!(
@@ -180,7 +187,7 @@ mod tests {
     fn outer_gap_shrinks_layout_work_rect() {
         let cfg = config_with_gaps(0, 8, false);
         let monitor = monitor_with_work_rect(Rect::new(10, 20, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Tile, 2);
+        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 2);
 
         assert_eq!(placement.work_rect(), Rect::new(18, 28, 84, 64));
     }
@@ -189,7 +196,7 @@ mod tests {
     fn inner_gap_is_split_between_adjacent_slots() {
         let cfg = config_with_gaps(9, 0, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Tile, 2);
+        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 2);
 
         let left = placement.client_rect(Rect::new(0, 0, 50, 80), 0);
         let right = placement.client_rect(Rect::new(50, 0, 50, 80), 0);
@@ -203,7 +210,7 @@ mod tests {
     fn smart_gaps_disable_all_gaps_for_single_tiled_client() {
         let cfg = config_with_gaps(8, 8, true);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Tile, 1);
+        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Tiled, 1);
 
         assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
         assert_eq!(
@@ -216,7 +223,7 @@ mod tests {
     fn maximized_ignores_gaps_by_default() {
         let cfg = config_with_gaps(8, 8, false);
         let monitor = monitor_with_work_rect(Rect::new(0, 0, 100, 80));
-        let placement = LayoutPlacement::new(&cfg, &monitor, LayoutKind::Maximized, 3);
+        let placement = LayoutPlacement::new(&cfg, &monitor, PresentationMode::Maximized, 3);
 
         assert_eq!(placement.work_rect(), Rect::new(0, 0, 100, 80));
     }
@@ -232,7 +239,7 @@ mod tests {
     #[test]
     fn outline_is_hollow_and_keeps_all_sides_inside_the_rect() {
         assert_eq!(
-            outline_rectangles(Rect::new(10, 20, 100, 80), 6),
+            outline_rectangles(Rect::new(10, 20, 100, 80), LAYOUT_PREVIEW_BORDER_WIDTH,),
             [
                 Rect::new(10, 20, 100, 6),
                 Rect::new(10, 94, 100, 6),

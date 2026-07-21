@@ -416,18 +416,19 @@ impl<'a> WmCtx<'a> {
     /// Begin/end a compositor-owned keyboard mode. Wayland already owns the
     /// input stream; X11 needs an active grab so unmodified modal keys cannot
     /// leak to the focused client.
-    pub fn begin_modal_keyboard(&self) -> bool {
+    pub fn begin_modal_keyboard(&mut self) -> bool {
+        use crate::backend::LayoutInteractionOps;
         match self {
-            WmCtx::X11(ctx) => {
-                crate::backend::x11::keyboard::grab_modal_keyboard(&ctx.x11, ctx.x11_runtime())
-            }
-            WmCtx::Wayland(_) => true,
+            WmCtx::X11(ctx) => ctx.begin_modal_keyboard(),
+            WmCtx::Wayland(ctx) => ctx.begin_modal_keyboard(),
         }
     }
 
-    pub fn end_modal_keyboard(&self) {
-        if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::keyboard::ungrab_modal_keyboard(&ctx.x11);
+    pub fn end_modal_keyboard(&mut self) {
+        use crate::backend::LayoutInteractionOps;
+        match self {
+            WmCtx::X11(ctx) => ctx.end_modal_keyboard(),
+            WmCtx::Wayland(ctx) => ctx.end_modal_keyboard(),
         }
     }
 
@@ -437,13 +438,10 @@ impl<'a> WmCtx<'a> {
             return;
         }
         self.core_mut().state_mut().layout_preview = rect;
+        use crate::backend::LayoutInteractionOps;
         match self {
-            WmCtx::X11(ctx) => crate::backend::x11::keyboard::update_layout_preview(
-                &ctx.x11,
-                ctx.x11_runtime,
-                rect,
-            ),
-            WmCtx::Wayland(ctx) => ctx.wayland.request_render(),
+            WmCtx::X11(ctx) => ctx.layout_preview_changed(rect),
+            WmCtx::Wayland(ctx) => ctx.layout_preview_changed(rect),
         }
     }
 

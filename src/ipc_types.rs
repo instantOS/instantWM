@@ -1,6 +1,6 @@
 pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
-pub use crate::layouts::LayoutKind;
+pub use crate::layouts::LayoutCommand;
 pub use crate::types::{MonitorDirection, SpecialNext, TagMask, ToggleAction};
 use bincode::{Decode, Encode};
 
@@ -339,7 +339,7 @@ pub enum IpcCommand {
     WarpFocus,
     TagMon(MonitorDirection),
     FollowMon(MonitorDirection),
-    Layout(LayoutKind),
+    Layout(LayoutCommand),
     Border(Option<u32>),
     SpecialNext(SpecialNext),
     UpdateStatus(String),

@@ -12,7 +12,7 @@ use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::tree::Side;
 use crate::layouts::{
-    LayoutKind, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
+    LayoutCommand, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
     cycle_layout_direction, finish_keyboard_tree_placement, focus_tree_neighbor,
     inc_master_count_by, resize_keyboard_tree_placement, resize_tree, resize_tree_smart,
     set_layout, set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
@@ -88,17 +88,17 @@ define_named_actions!(
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
     ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
-    LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutKind::Tile); } },
-    LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::Floating); } },
-    LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutKind::Maximized); } },
-    LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "compatibility alias for layout_maximized", run: |ctx, _args| { set_layout(ctx, LayoutKind::Maximized); } },
+    LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Tile); } },
+    LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Floating); } },
+    LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
+    LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "compatibility alias for layout_maximized", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
     ToggleMaximizedLayout => { name: "toggle_maximized_layout", arg_example: None, doc: "toggle maximized-stack presentation while preserving the manual tree", run: |ctx, _args| { toggle_maximized_layout(ctx); } },
-    LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutKind::Grid); } },
-    LayoutDeck => { name: "layout_deck", arg_example: None, doc: "rewrite the tree as a non-overlapping master-stack", run: |ctx, _args| { set_layout(ctx, LayoutKind::Deck); } },
-    LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BottomStack); } },
-    LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::HorizGrid); } },
-    LayoutGaplessGrid => { name: "layout_gapless_grid", arg_example: None, doc: "set gapless-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::GaplessGrid); } },
-    LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutKind::BStackHoriz); } },
+    LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Grid); } },
+    LayoutDeck => { name: "layout_deck", arg_example: None, doc: "rewrite the tree as a non-overlapping master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Deck); } },
+    LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BottomStack); } },
+    LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::HorizGrid); } },
+    LayoutGaplessGrid => { name: "layout_gapless_grid", arg_example: None, doc: "set gapless-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::GaplessGrid); } },
+    LayoutBStackHoriz => { name: "layout_bstack_horiz", arg_example: None, doc: "set bstack-horiz layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BStackHoriz); } },
     CycleLayoutNext => { name: "cycle_layout_next", arg_example: None, doc: "cycle to next layout", run: |ctx, _args| { cycle_layout_direction(ctx, true); } },
     CycleLayoutPrev => { name: "cycle_layout_prev", arg_example: None, doc: "cycle to previous layout", run: |ctx, _args| { cycle_layout_direction(ctx, false); } },
     IncMasterCount => { name: "inc_master_count", arg_example: Some("1"), doc: "increase master window count", run: |ctx, args| { inc_master_count_by(ctx, args.first().and_then(|s| s.parse().ok()).unwrap_or(1)); } },
@@ -195,7 +195,7 @@ define_named_actions!(
     KeyboardLayout => { name: "keyboard_layout", arg_example: Some("us(intl)"), doc: "set keyboard layout", run: |ctx, args| { if let Some(name) = args.first() { crate::keyboard_layout::set_keyboard_layout_by_name(ctx, name); } } },
     SetMode => { name: "set_mode", arg_example: Some("resize"), doc: "set WM mode (sway-like modes)", run: |ctx, args| { if let Some(name) = args.first() && name != crate::core_state::TREE_PLACEMENT_MODE_NAME { ctx.set_current_mode(name.clone()); } } },
     Spawn => { name: "spawn", arg_example: Some("kitty"), doc: "spawn command", run: |ctx, args| { spawn(ctx, args); } },
-    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| LayoutKind::from_name(s)) { set_layout(ctx, name); } } },
+    SetLayout => { name: "set_layout", arg_example: Some("tile"), doc: "set layout", run: |ctx, args| { if let Some(name) = args.first().and_then(|s| LayoutCommand::from_name(s)) { set_layout(ctx, name); } } },
     FocusStack => { name: "focus_stack", arg_example: Some("next"), doc: "focus stack direction", run: |ctx, args| { if let Some(direction) = args.first().and_then(|s| StackDirection::from_name(s)) { focus_stack(ctx, direction); } } }
 );
 
@@ -212,37 +212,37 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 #[cfg(test)]
 mod tests {
     use super::{NamedAction, parse_named_action};
-    use crate::layouts::LayoutKind;
+    use crate::layouts::LayoutCommand;
     use crate::types::StackDirection;
 
     #[test]
-    fn layout_kind_from_name_accepts_aliases() {
-        assert_eq!(LayoutKind::from_name("tile"), Some(LayoutKind::Tile));
+    fn layout_command_from_name_accepts_aliases() {
+        assert_eq!(LayoutCommand::from_name("tile"), Some(LayoutCommand::Tile));
         assert_eq!(
-            LayoutKind::from_name("floating"),
-            Some(LayoutKind::Floating)
+            LayoutCommand::from_name("floating"),
+            Some(LayoutCommand::Floating)
         );
         assert_eq!(
-            LayoutKind::from_name("horizgrid"),
-            Some(LayoutKind::HorizGrid)
+            LayoutCommand::from_name("horizgrid"),
+            Some(LayoutCommand::HorizGrid)
         );
         assert_eq!(
-            LayoutKind::from_name("gaplessgrid"),
-            Some(LayoutKind::GaplessGrid)
+            LayoutCommand::from_name("gaplessgrid"),
+            Some(LayoutCommand::GaplessGrid)
         );
         assert_eq!(
-            LayoutKind::from_name("bstackhoriz"),
-            Some(LayoutKind::BStackHoriz)
+            LayoutCommand::from_name("bstackhoriz"),
+            Some(LayoutCommand::BStackHoriz)
         );
         assert_eq!(
-            LayoutKind::from_name("maximized"),
-            Some(LayoutKind::Maximized)
+            LayoutCommand::from_name("maximized"),
+            Some(LayoutCommand::Maximized)
         );
         assert_eq!(
-            LayoutKind::from_name("monocle"),
-            Some(LayoutKind::Maximized)
+            LayoutCommand::from_name("monocle"),
+            Some(LayoutCommand::Maximized)
         );
-        assert_eq!(LayoutKind::from_name("bad"), None);
+        assert_eq!(LayoutCommand::from_name("bad"), None);
     }
 
     #[test]

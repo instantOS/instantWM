@@ -1,6 +1,6 @@
 use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
-    ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutKind,
+    ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutCommand,
     ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
     SpecialNext, TagCommand, TestCommand, ToggleAction, ToggleCommand, Transform, VrrMode,
     WindowCommand,
@@ -585,7 +585,7 @@ impl From<CommandKind> for IpcCommand {
             CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
             CommandKind::Layout { name } => {
                 let name = name.expect("layout name required (use 'layout list' to see layouts)");
-                let layout = LayoutKind::from_str(&name)
+                let layout = LayoutCommand::from_str(&name)
                     .expect("invalid layout name (use 'layout list' to see layouts)");
                 IpcCommand::Layout(layout)
             }

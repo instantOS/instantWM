@@ -333,3 +333,15 @@ impl OutputOps for WaylandBackend {
         .unwrap_or_default()
     }
 }
+
+impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxWayland<'_> {
+    fn begin_modal_keyboard(&mut self) -> bool {
+        true
+    }
+
+    fn end_modal_keyboard(&mut self) {}
+
+    fn layout_preview_changed(&mut self, _rect: Option<Rect>) {
+        self.wayland.request_render();
+    }
+}

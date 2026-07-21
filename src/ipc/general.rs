@@ -1,5 +1,5 @@
 use crate::ipc_types::Response;
-use crate::layouts::{LayoutKind, set_layout as layouts_set_layout};
+use crate::layouts::{LayoutCommand, set_layout as layouts_set_layout};
 use crate::monitor::move_to_monitor_and_follow;
 use crate::tags::send_to_monitor;
 
@@ -93,7 +93,7 @@ pub fn follow_mon(wm: &mut Wm, direction: MonitorDirection) -> Response {
     Response::ok()
 }
 
-pub fn set_layout(wm: &mut Wm, layout: LayoutKind) -> Response {
+pub fn set_layout(wm: &mut Wm, layout: LayoutCommand) -> Response {
     layouts_set_layout(&mut wm.ctx(), layout);
     Response::ok()
 }

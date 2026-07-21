@@ -50,8 +50,8 @@ use std::collections::HashMap;
 
 use crate::config::config_toml::LayoutConfig;
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::LayoutKind;
 use crate::layouts::LayoutOutput;
+use crate::layouts::PresentationMode;
 use crate::layouts::placement::LayoutPlacement;
 use crate::types::client::Client;
 use crate::types::{Monitor, Rect, WindowId};
@@ -109,7 +109,7 @@ fn fibonacci(
         return Vec::new();
     }
 
-    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Tile, n);
+    let placement = LayoutPlacement::new(layout_cfg, monitor, PresentationMode::Tiled, n);
     let work_rect = placement.work_rect();
 
     // ── iteratively partition the work area ───────────────────────────────

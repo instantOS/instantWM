@@ -2,7 +2,7 @@
 //!
 //! Types for workspace tags, layouts, and tag management.
 
-use crate::layouts::LayoutKind;
+use crate::layouts::PresentationMode;
 use crate::types::{TagMask, color::TagColorConfigs};
 
 /// Identifies which layout slot (primary or secondary) is currently active.
@@ -50,17 +50,17 @@ impl LayoutSlot {
 /// enabling `restore_last_layout()` functionality.
 #[derive(Debug, Clone, Copy)]
 pub struct TagLayouts {
-    primary: LayoutKind,
-    secondary: LayoutKind,
+    primary: PresentationMode,
+    secondary: PresentationMode,
     active_slot: LayoutSlot,
-    last_layout: Option<LayoutKind>,
+    last_layout: Option<PresentationMode>,
 }
 
 impl Default for TagLayouts {
     fn default() -> Self {
         Self {
-            primary: LayoutKind::Tile,
-            secondary: LayoutKind::Floating,
+            primary: PresentationMode::Tiled,
+            secondary: PresentationMode::Floating,
             active_slot: LayoutSlot::default(),
             last_layout: None,
         }
@@ -69,7 +69,7 @@ impl Default for TagLayouts {
 
 impl TagLayouts {
     /// Get the currently active layout.
-    pub fn get_layout(self) -> LayoutKind {
+    pub fn get_layout(self) -> PresentationMode {
         match self.active_slot {
             LayoutSlot::Primary => self.primary,
             LayoutSlot::Secondary => self.secondary,
@@ -79,7 +79,7 @@ impl TagLayouts {
     /// Set a new layout on the active slot, saving the current one to `last_layout`.
     ///
     /// If the new layout matches the current one, this is a no-op.
-    pub fn set_layout(&mut self, layout: LayoutKind) {
+    pub fn set_layout(&mut self, layout: PresentationMode) {
         let current = self.get_layout();
         if current == layout {
             return;

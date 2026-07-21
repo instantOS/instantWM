@@ -11,7 +11,7 @@ use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
-use crate::layouts::{LayoutKind, LayoutOutput};
+use crate::layouts::{LayoutOutput, PresentationMode};
 use crate::types::client::Client;
 use crate::types::{Monitor, WindowId};
 
@@ -27,7 +27,7 @@ pub fn maximized(
     let placement = LayoutPlacement::new(
         layout_cfg,
         monitor,
-        LayoutKind::Maximized,
+        PresentationMode::Maximized,
         tiled_client_count,
     );
     let work_rect = placement.work_rect();

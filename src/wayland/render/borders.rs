@@ -312,7 +312,10 @@ pub fn render_border_elements(
     }
 
     if let Some(preview) = layout_preview {
-        for side in crate::layouts::placement::outline_rectangles(preview, 6) {
+        for side in crate::layouts::placement::outline_rectangles(
+            preview,
+            crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
+        ) {
             push_solid(&mut elements, side, colors.snap);
         }
     }

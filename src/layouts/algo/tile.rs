@@ -20,8 +20,8 @@
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::LayoutKind;
 use crate::layouts::LayoutOutput;
+use crate::layouts::PresentationMode;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::types::client::Client;
@@ -66,7 +66,12 @@ pub fn tile(
         DEFAULT_FRAME_COUNT,
     );
 
-    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Tile, tiled_client_count);
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        PresentationMode::Tiled,
+        tiled_client_count,
+    );
     let work_rect = placement.work_rect();
     let nmaster = effective_nmaster(monitor, tiled_client_count);
     let master_area_width = master_width(work_rect.w, monitor, tiled_client_count, nmaster);

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use crate::layouts::LayoutKind;
+use crate::layouts::PresentationMode;
 use crate::types::MonitorId;
 use crate::types::TagLayouts;
 use crate::types::TagMask;
@@ -566,8 +566,8 @@ impl Monitor {
         self.layouts_for_mask(self.selected_tags()).is_maximized()
     }
 
-    /// Get the current layout kind.
-    pub fn current_layout(&self) -> LayoutKind {
+    /// Get the current persistent presentation mode.
+    pub fn current_layout(&self) -> PresentationMode {
         self.layouts_for_mask(self.selected_tags()).get_layout()
     }
 
@@ -796,7 +796,7 @@ pub struct PerTagState {
     /// Persistent manual tiling topology for this exact visible tag mask.
     pub layout_tree: crate::layouts::tree::LayoutTree,
     /// Last one-shot tree preset command, used only as the cycle cursor.
-    pub last_tree_layout: LayoutKind,
+    pub last_tree_layout: crate::layouts::tree::Preset,
 }
 
 impl Default for PerTagState {
@@ -813,7 +813,7 @@ impl PerTagState {
             show_bar,
             layouts: TagLayouts::default(),
             layout_tree: crate::layouts::tree::LayoutTree::default(),
-            last_tree_layout: LayoutKind::Tile,
+            last_tree_layout: crate::layouts::tree::Preset::MasterStack,
         }
     }
 }

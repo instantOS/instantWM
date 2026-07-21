@@ -173,9 +173,13 @@ pub fn update_layout_preview(
     };
     if let Some(rect) = rect {
         let color = x11_runtime.border_scheme.snap.bg.pixel();
-        for (window, side) in windows
-            .into_iter()
-            .zip(crate::layouts::placement::outline_rectangles(rect, 6))
+        for (window, side) in
+            windows
+                .into_iter()
+                .zip(crate::layouts::placement::outline_rectangles(
+                    rect,
+                    crate::layouts::placement::LAYOUT_PREVIEW_BORDER_WIDTH,
+                ))
         {
             let _ = conn.change_window_attributes(
                 window,
@@ -198,6 +202,20 @@ pub fn update_layout_preview(
         }
     }
     let _ = conn.flush();
+}
+
+impl crate::backend::LayoutInteractionOps for crate::contexts::WmCtxX11<'_> {
+    fn begin_modal_keyboard(&mut self) -> bool {
+        grab_modal_keyboard(&self.x11, self.x11_runtime)
+    }
+
+    fn end_modal_keyboard(&mut self) {
+        ungrab_modal_keyboard(&self.x11);
+    }
+
+    fn layout_preview_changed(&mut self, rect: Option<crate::types::Rect>) {
+        update_layout_preview(&self.x11, self.x11_runtime, rect);
+    }
 }
 
 /// Update the cached numlock modifier mask from the X11 server.

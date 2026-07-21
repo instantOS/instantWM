@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::LayoutKind;
 use crate::layouts::LayoutOutput;
+use crate::layouts::PresentationMode;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::types::client::Client;
@@ -27,7 +27,12 @@ pub fn deck(
         return vec![];
     }
 
-    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Deck, tiled_client_count);
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        PresentationMode::Tiled,
+        tiled_client_count,
+    );
     let work_rect = placement.work_rect();
     let nmaster = monitor.master_count.max(0) as u32;
     let master_area_width: i32 = if tiled_client_count > nmaster {
@@ -108,7 +113,7 @@ pub fn bottom_stack(
     let placement = LayoutPlacement::new(
         layout_cfg,
         monitor,
-        LayoutKind::BottomStack,
+        PresentationMode::Tiled,
         tiled_client_count,
     );
     let work_rect = placement.work_rect();
@@ -199,7 +204,7 @@ pub fn bstackhoriz(
     let placement = LayoutPlacement::new(
         layout_cfg,
         monitor,
-        LayoutKind::BottomStack,
+        PresentationMode::Tiled,
         tiled_client_count,
     );
     let work_rect = placement.work_rect();

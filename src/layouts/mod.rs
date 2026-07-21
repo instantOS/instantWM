@@ -11,10 +11,12 @@
 //! | [`query`]     | Stateless reads: client counts, layout index resolution     |
 //! | [`manager`]   | Stateful operations: arrange, sync_monitor_z_order, set/cycle layout, …  |
 //!
-//! ## Layout enum
+//! ## Layout commands and presentation state
 //!
-//! All available layouts are represented by [`LayoutKind`], a simple enum.
-//! This enables pattern matching and compile-time exhaustiveness checking.
+//! [`PresentationMode`] is persistent per tag. [`LayoutCommand`] is an
+//! imperative request: it either changes that presentation or rewrites the
+//! manual tree using a preset. Keeping these types separate prevents a
+//! one-shot preset such as grid from becoming bogus persistent state.
 //!
 //! ```text
 //! Tile      "+"    master/stack tiling
@@ -33,15 +35,52 @@
 pub mod algo;
 pub mod manager;
 pub(crate) mod placement;
+mod placement_modal;
 pub mod query;
 pub mod tree;
 
-use std::collections::HashMap;
 use std::str::FromStr;
 
 use crate::geometry::MoveResizeOptions;
-use crate::types::client::Client;
-use crate::types::{Monitor, Rect, WindowId};
+use crate::types::{Rect, WindowId};
+
+/// Persistent way in which a tag presents its authoritative manual tree.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Default,
+    bincode::Decode,
+    bincode::Encode,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum PresentationMode {
+    #[default]
+    Tiled,
+    Floating,
+    Maximized,
+}
+
+impl PresentationMode {
+    pub const fn is_tiling(self) -> bool {
+        !matches!(self, Self::Floating)
+    }
+
+    pub const fn is_maximized(self) -> bool {
+        matches!(self, Self::Maximized)
+    }
+
+    pub const fn symbol(self) -> &'static str {
+        match self {
+            Self::Tiled => "[]",
+            Self::Floating => "-",
+            Self::Maximized => "[M]",
+        }
+    }
+}
 
 /// The computed geometry output for a single client in a layout pass.
 ///
@@ -64,7 +103,7 @@ pub struct MonitorUpdates {
 
 /// Complete set of changes required to arrange one monitor.
 ///
-/// Produced by [`Monitor::compute_arrange`] (mutates a snapshot to compute bar geometry)
+/// Produced by [`crate::types::Monitor::compute_arrange`] (mutates a snapshot to compute bar geometry)
 /// and applied atomically by [`ArrangePlan::apply`].
 #[derive(Debug, Clone)]
 pub struct ArrangePlan {
@@ -97,7 +136,7 @@ pub struct ArrangePlan {
     serde::Deserialize,
     clap::ValueEnum,
 )]
-pub enum LayoutKind {
+pub enum LayoutCommand {
     /// Classic master/stack tiling (`+`).
     #[default]
     Tile,
@@ -120,7 +159,42 @@ pub enum LayoutKind {
     BStackHoriz,
 }
 
-impl LayoutKind {
+impl LayoutCommand {
+    pub const fn presentation(self) -> PresentationMode {
+        match self {
+            Self::Floating => PresentationMode::Floating,
+            Self::Maximized => PresentationMode::Maximized,
+            Self::Tile
+            | Self::Grid
+            | Self::Deck
+            | Self::BottomStack
+            | Self::HorizGrid
+            | Self::GaplessGrid
+            | Self::BStackHoriz => PresentationMode::Tiled,
+        }
+    }
+
+    pub const fn tree_preset(self) -> Option<tree::Preset> {
+        match self {
+            Self::Tile | Self::Deck => Some(tree::Preset::MasterStack),
+            Self::Grid | Self::GaplessGrid => Some(tree::Preset::Grid),
+            Self::HorizGrid => Some(tree::Preset::HorizontalGrid),
+            Self::BottomStack => Some(tree::Preset::BottomStack),
+            Self::BStackHoriz => Some(tree::Preset::BottomStackHorizontal),
+            Self::Floating | Self::Maximized => None,
+        }
+    }
+
+    pub const fn from_tree_preset(preset: tree::Preset) -> Option<Self> {
+        match preset {
+            tree::Preset::MasterStack => Some(Self::Tile),
+            tree::Preset::Grid => Some(Self::Grid),
+            tree::Preset::HorizontalGrid => Some(Self::HorizGrid),
+            tree::Preset::BottomStack => Some(Self::BottomStack),
+            tree::Preset::BottomStackHorizontal => Some(Self::BStackHoriz),
+            tree::Preset::Focus => None,
+        }
+    }
     pub fn name(self) -> &'static str {
         match self {
             Self::Tile => "tile",
@@ -181,63 +255,30 @@ impl LayoutKind {
         }
     }
 
-    /// Compute layout geometry for this layout kind.
+    /// Whether executing this command leaves the tag in a tiled presentation.
+    pub const fn results_in_tiling(self) -> bool {
+        self.presentation().is_tiling()
+    }
+
+    /// Canonical commands shown by the CLI and visited by layout cycling.
     ///
-    /// Pure computation — returns `LayoutOutput`s without side effects.
-    pub fn compute(
-        self,
-        monitor: &Monitor,
-        clients: &HashMap<WindowId, Client>,
-        layout_cfg: &crate::config::config_toml::LayoutConfig,
-        animated: bool,
-    ) -> Vec<LayoutOutput> {
-        match self {
-            Self::Tile => algo::tile(monitor, clients, layout_cfg, animated),
-            Self::Grid => algo::grid(monitor, clients, layout_cfg, animated),
-            Self::Floating => algo::floating(monitor, clients, animated),
-            Self::Maximized => algo::maximized(monitor, clients, layout_cfg, animated),
-            Self::Deck => algo::deck(monitor, clients, layout_cfg, animated),
-            Self::BottomStack => algo::bottom_stack(monitor, clients, layout_cfg, animated),
-            Self::HorizGrid => algo::horizgrid(monitor, clients, layout_cfg, animated),
-            Self::GaplessGrid => algo::gaplessgrid(monitor, clients, layout_cfg, animated),
-            Self::BStackHoriz => algo::bstackhoriz(monitor, clients, layout_cfg, animated),
-        }
-    }
-
-    pub fn is_tiling(self) -> bool {
-        matches!(
-            self,
-            Self::Tile
-                | Self::Grid
-                | Self::Maximized
-                | Self::Deck
-                | Self::BottomStack
-                | Self::HorizGrid
-                | Self::GaplessGrid
-                | Self::BStackHoriz
-        )
-    }
-
-    pub fn is_maximized(self) -> bool {
-        matches!(self, Self::Maximized)
-    }
-
-    pub fn all() -> &'static [LayoutKind] {
+    /// `Deck` and `GaplessGrid` remain accepted compatibility aliases, but
+    /// are omitted because they map to the same tree presets as `Tile` and
+    /// `Grid` respectively.
+    pub fn all() -> &'static [LayoutCommand] {
         &[
             Self::Tile,
             Self::Grid,
             Self::Floating,
             Self::Maximized,
-            Self::Deck,
             Self::BottomStack,
             Self::HorizGrid,
-            Self::GaplessGrid,
             Self::BStackHoriz,
         ]
     }
 }
 
-impl FromStr for LayoutKind {
+impl FromStr for LayoutCommand {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -265,3 +306,63 @@ pub use manager::{
     set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
     swap_tree_neighbor, sync_monitor_z_order, toggle_layout, toggle_maximized_layout,
 };
+
+#[cfg(test)]
+mod command_tests {
+    use super::{LayoutCommand, PresentationMode};
+    use crate::layouts::tree::Preset;
+
+    #[test]
+    fn presentation_commands_cannot_be_mistaken_for_tree_presets() {
+        assert_eq!(LayoutCommand::Floating.tree_preset(), None);
+        assert_eq!(LayoutCommand::Maximized.tree_preset(), None);
+        assert_eq!(
+            LayoutCommand::Floating.presentation(),
+            PresentationMode::Floating
+        );
+        assert_eq!(
+            LayoutCommand::Maximized.presentation(),
+            PresentationMode::Maximized
+        );
+    }
+
+    #[test]
+    fn structural_commands_always_select_tiled_presentation() {
+        for command in LayoutCommand::all()
+            .iter()
+            .copied()
+            .filter(|command| command.tree_preset().is_some())
+        {
+            assert_eq!(command.presentation(), PresentationMode::Tiled);
+            assert!(command.results_in_tiling());
+        }
+    }
+
+    #[test]
+    fn canonical_presets_map_back_to_cycle_commands() {
+        for preset in [
+            Preset::MasterStack,
+            Preset::Grid,
+            Preset::HorizontalGrid,
+            Preset::BottomStack,
+            Preset::BottomStackHorizontal,
+        ] {
+            let command = LayoutCommand::from_tree_preset(preset).unwrap();
+            assert_eq!(command.tree_preset(), Some(preset));
+        }
+        assert_eq!(LayoutCommand::from_tree_preset(Preset::Focus), None);
+    }
+
+    #[test]
+    fn canonical_command_list_has_no_duplicate_tree_presets() {
+        let presets = LayoutCommand::all()
+            .iter()
+            .filter_map(|command| command.tree_preset())
+            .collect::<std::collections::HashSet<_>>();
+        let structural_count = LayoutCommand::all()
+            .iter()
+            .filter(|command| command.tree_preset().is_some())
+            .count();
+        assert_eq!(presets.len(), structural_count);
+    }
+}

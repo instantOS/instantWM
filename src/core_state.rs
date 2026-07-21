@@ -257,6 +257,10 @@ impl KeyboardTreePlacement {
         self.targets[self.selected]
     }
 
+    pub fn selected_index(&self) -> usize {
+        self.selected
+    }
+
     pub fn select(&mut self, selected: usize) -> bool {
         if selected >= self.targets.len() {
             return false;

@@ -78,6 +78,22 @@ pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<Sna
     None
 }
 
+/// Project the semantic tiled-drop target into the shared preview overlay.
+/// Both the synchronous X11 drag loop and Wayland's event-driven drag path
+/// call this routine so bar and screen-edge precedence cannot diverge.
+pub fn update_tiled_drag_preview(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    root: Point,
+    on_bar: bool,
+    edge: Option<SnapPosition>,
+) {
+    let preview = (!on_bar && edge.is_none())
+        .then(|| crate::layouts::preview_tree_at_point(ctx, win, root))
+        .flatten();
+    ctx.update_layout_preview(preview);
+}
+
 /// Returns `true` when `root` (root-space) is inside the bar of `selmon`.
 pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
     let mon = model.selected_monitor();
@@ -282,10 +298,13 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     );
 
     if has_tiling && !is_floating {
-        let preview = (!state.cursor_on_bar && state.edge_snap_indicator.is_none())
-            .then(|| crate::layouts::preview_tree_at_point(ctx, win, root))
-            .flatten();
-        ctx.update_layout_preview(preview);
+        update_tiled_drag_preview(
+            ctx,
+            win,
+            root,
+            state.cursor_on_bar,
+            state.edge_snap_indicator,
+        );
         return;
     }
 

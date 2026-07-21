@@ -39,7 +39,7 @@ use crate::types::{Monitor, SnapPosition, WindowId};
 
 /// Floating layout arrange function.
 ///
-/// Called by the [`Floating`](crate::layouts::LayoutKind::Floating) layout
+/// Called by the [`Floating`](crate::layouts::PresentationMode::Floating) layout
 /// — leaves clients at their self-managed positions but still needs snap
 /// geometry enforced and the window stack sorted.
 pub fn floating(

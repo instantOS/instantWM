@@ -8,7 +8,7 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
-use crate::layouts::{ArrangePlan, LayoutKind, LayoutOutput, MonitorUpdates};
+use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, MonitorUpdates, PresentationMode};
 use crate::types::{Client, ClientMode, Monitor, MonitorId, PerTagState, Rect, WindowId};
 use std::cmp::max;
 use std::collections::HashMap;
@@ -160,13 +160,17 @@ impl Monitor {
             (moves, save_geo)
         } else {
             let layout = self.current_layout();
-            let moves = if layout == LayoutKind::Tile {
-                compute_manual_tree(self, &layout_clients, layout_cfg, animated)
-            } else {
-                if layout == LayoutKind::Maximized {
-                    reconcile_manual_tree(self, &layout_clients);
+            let moves = match layout {
+                PresentationMode::Tiled => {
+                    compute_manual_tree(self, &layout_clients, layout_cfg, animated)
                 }
-                layout.compute(self, &layout_clients, layout_cfg, animated)
+                PresentationMode::Maximized => {
+                    reconcile_manual_tree(self, &layout_clients);
+                    crate::layouts::algo::maximized(self, &layout_clients, layout_cfg, animated)
+                }
+                PresentationMode::Floating => {
+                    crate::layouts::algo::floating(self, &layout_clients, animated)
+                }
             };
             (moves, Vec::new())
         };
@@ -206,8 +210,12 @@ fn compute_manual_tree(
 ) -> Vec<LayoutOutput> {
     let tiled = monitor.collect_tiled(clients);
     let windows: Vec<_> = tiled.iter().map(|client| client.win).collect();
-    let placement =
-        LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Tile, windows.len() as u32);
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        PresentationMode::Tiled,
+        windows.len() as u32,
+    );
     let work_rect = placement.work_rect();
     let slots = {
         let tree = &mut monitor.per_tag_state().layout_tree;
@@ -425,34 +433,20 @@ pub(crate) fn compute_monitor_z_order(
     Some(stack)
 }
 
-pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutKind) {
-    if matches!(layout, LayoutKind::Floating | LayoutKind::Maximized) {
+pub fn set_layout(ctx: &mut WmCtx<'_>, layout: super::LayoutCommand) {
+    let Some(preset) = layout.tree_preset() else {
         let m = ctx.core_mut().model_mut().selected_monitor_mut();
-        m.per_tag_state().layouts.set_layout(layout);
+        m.per_tag_state().layouts.set_layout(layout.presentation());
         finish_layout_change(ctx);
         return;
-    }
+    };
 
     ctx.core_mut()
         .model_mut()
         .selected_monitor_mut()
         .per_tag_state()
-        .last_tree_layout = layout;
-    apply_tree_preset(ctx, preset_for_legacy_layout(layout));
-}
-
-fn preset_for_legacy_layout(layout: LayoutKind) -> crate::layouts::tree::Preset {
-    use crate::layouts::tree::Preset;
-    match layout {
-        LayoutKind::Tile | LayoutKind::Deck => Preset::MasterStack,
-        LayoutKind::Grid | LayoutKind::GaplessGrid => Preset::Grid,
-        LayoutKind::HorizGrid => Preset::HorizontalGrid,
-        LayoutKind::BottomStack => Preset::BottomStack,
-        LayoutKind::BStackHoriz => Preset::BottomStackHorizontal,
-        LayoutKind::Floating | LayoutKind::Maximized => {
-            unreachable!("persistent presentation modes are not tree presets")
-        }
-    }
+        .last_tree_layout = preset;
+    apply_tree_preset(ctx, preset);
 }
 
 pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Preset) {
@@ -472,7 +466,7 @@ pub fn apply_tree_preset(ctx: &mut WmCtx<'_>, preset: crate::layouts::tree::Pres
     };
     let monitor = ctx.core_mut().model_mut().selected_monitor_mut();
     let state = monitor.per_tag_state();
-    state.layouts.set_layout(LayoutKind::Tile);
+    state.layouts.set_layout(PresentationMode::Tiled);
     state
         .layout_tree
         .apply_preset(preset, &windows, selected, master_count, master_factor);
@@ -590,7 +584,7 @@ pub fn place_tree_at_point(
         LayoutPlacement::new(
             &ctx.core().config().layout,
             monitor,
-            LayoutKind::Tile,
+            PresentationMode::Tiled,
             tiled_count,
         )
         .work_rect()
@@ -630,7 +624,7 @@ pub fn preview_tree_at_point(
     let placement = LayoutPlacement::new(
         &ctx.core().config().layout,
         monitor,
-        LayoutKind::Tile,
+        PresentationMode::Tiled,
         tiled_count,
     );
     let slot = monitor.per_tag()?.layout_tree.preview_placement_at_point(
@@ -686,7 +680,7 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         let layout_rect = LayoutPlacement::new(
             &ctx.core().config().layout,
             monitor,
-            LayoutKind::Tile,
+            PresentationMode::Tiled,
             tiled_count,
         )
         .work_rect();
@@ -713,15 +707,7 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
     if !ctx.begin_modal_keyboard() {
         return false;
     }
-    let selected = targets
-        .iter()
-        .enumerate()
-        .min_by_key(|(_, target)| {
-            let dx = i64::from(target.position.x - source_center.x);
-            let dy = i64::from(target.position.y - source_center.y);
-            dx * dx + dy * dy
-        })
-        .map_or(0, |(index, _)| index);
+    let selected = crate::layouts::placement_modal::nearest_target(&targets, source_center);
     let focus_target = targets[selected].target;
     let cursor_target = targets[selected].position;
     let Some(preview_rect) = tree_placement_preview_rect(ctx, source, targets[selected]) else {
@@ -752,7 +738,7 @@ fn tree_placement_preview_rect(
     let placement = LayoutPlacement::new(
         &ctx.core().config().layout,
         monitor,
-        LayoutKind::Tile,
+        PresentationMode::Tiled,
         tiled_count,
     );
     let slot = monitor.per_tag()?.layout_tree.preview_placement_target(
@@ -823,41 +809,11 @@ pub fn step_keyboard_tree_placement(ctx: &mut WmCtx<'_>, side: crate::layouts::t
         let Some(state) = ctx.current_mode().tree_placement() else {
             return false;
         };
-        let current = state.selected_target().position;
-        state
-            .targets()
-            .iter()
-            .enumerate()
-            .filter_map(|(index, target)| {
-                if state.selected_target() == *target {
-                    return None;
-                }
-                let dx = target.position.x - current.x;
-                let dy = target.position.y - current.y;
-                let primary = match side {
-                    crate::layouts::tree::Side::Left => -dx,
-                    crate::layouts::tree::Side::Right => dx,
-                    crate::layouts::tree::Side::Top => -dy,
-                    crate::layouts::tree::Side::Bottom => dy,
-                };
-                if primary <= 0 {
-                    return None;
-                }
-                let cross = match side {
-                    crate::layouts::tree::Side::Left | crate::layouts::tree::Side::Right => {
-                        dy.abs()
-                    }
-                    crate::layouts::tree::Side::Top | crate::layouts::tree::Side::Bottom => {
-                        dx.abs()
-                    }
-                };
-                let score = i64::from(primary)
-                    + i64::from(cross) * 2
-                    + i64::from(cross) * i64::from(cross) / i64::from(primary + 1);
-                Some((index, score))
-            })
-            .min_by_key(|(index, score)| (*score, *index))
-            .map(|(index, _)| index)
+        crate::layouts::placement_modal::directional_target(
+            state.targets(),
+            state.selected_index(),
+            side,
+        )
     };
     let Some(next) = next else { return true };
     let (focus_target, cursor_target) = {
@@ -957,7 +913,7 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
         let layout_rect = LayoutPlacement::new(
             &ctx.core().config().layout,
             monitor,
-            LayoutKind::Tile,
+            PresentationMode::Tiled,
             tiled_count,
         )
         .work_rect();
@@ -973,15 +929,7 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
         let _ = finish_keyboard_tree_placement(ctx, false);
         return;
     }
-    let selected = targets
-        .iter()
-        .enumerate()
-        .min_by_key(|(_, target)| {
-            let dx = i64::from(target.position.x - preferred.x);
-            let dy = i64::from(target.position.y - preferred.y);
-            dx * dx + dy * dy
-        })
-        .map_or(0, |(index, _)| index);
+    let selected = crate::layouts::placement_modal::nearest_target(&targets, preferred);
     let focus_target = targets[selected].target;
     let cursor_target = targets[selected].position;
     let state = ctx
@@ -1097,11 +1045,12 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 
 /// Toggle maximized-stack presentation without modifying the manual tree.
 pub fn toggle_maximized_layout(ctx: &mut WmCtx<'_>) {
-    let next = if ctx.core().model().selected_monitor().current_layout() == LayoutKind::Maximized {
-        LayoutKind::Tile
-    } else {
-        LayoutKind::Maximized
-    };
+    let next =
+        if ctx.core().model().selected_monitor().current_layout() == PresentationMode::Maximized {
+            PresentationMode::Tiled
+        } else {
+            PresentationMode::Maximized
+        };
     let monitor = ctx.core_mut().model_mut().selected_monitor_mut();
     monitor.per_tag_state().layouts.set_layout(next);
     finish_layout_change(ctx);
@@ -1115,19 +1064,16 @@ fn finish_layout_change(ctx: &mut WmCtx<'_>) {
 pub fn cycle_layout_direction(ctx: &mut WmCtx<'_>, forward: bool) {
     let current_layout = {
         let monitor = ctx.core().model().selected_monitor();
-        if matches!(
-            monitor.current_layout(),
-            LayoutKind::Floating | LayoutKind::Maximized
-        ) {
-            monitor.current_layout()
-        } else {
-            monitor
+        match monitor.current_layout() {
+            PresentationMode::Floating => LayoutCommand::Floating,
+            PresentationMode::Maximized => LayoutCommand::Maximized,
+            PresentationMode::Tiled => monitor
                 .per_tag()
-                .map(|state| state.last_tree_layout)
-                .unwrap_or(LayoutKind::Tile)
+                .and_then(|state| LayoutCommand::from_tree_preset(state.last_tree_layout))
+                .unwrap_or(LayoutCommand::Tile),
         }
     };
-    let all_layouts = LayoutKind::all();
+    let all_layouts = LayoutCommand::all();
     let layouts_len = all_layouts.len();
     let current_idx = all_layouts
         .iter()
@@ -1218,7 +1164,7 @@ pub fn set_master_factor(ctx: &mut WmCtx<'_>, delta: f32) {
 mod tests {
     use super::{clients_with_planned_borders, compute_monitor_z_order};
     use crate::config::config_toml::LayoutConfig;
-    use crate::layouts::LayoutKind;
+    use crate::layouts::PresentationMode;
     use crate::layouts::tree::{Preset, Side};
     use crate::types::{Client, Monitor, Rect, TagMask, WindowId};
     use std::collections::HashMap;
@@ -1343,7 +1289,7 @@ mod tests {
         monitor
             .per_tag_state()
             .layouts
-            .set_layout(LayoutKind::Maximized);
+            .set_layout(PresentationMode::Maximized);
 
         let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
         assert_eq!(maximized.client_moves.len(), windows.len());
@@ -1361,7 +1307,10 @@ mod tests {
             tree_before
         );
 
-        monitor.per_tag_state().layouts.set_layout(LayoutKind::Tile);
+        monitor
+            .per_tag_state()
+            .layouts
+            .set_layout(PresentationMode::Tiled);
         let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
         let first_rect = manual.client_moves.first().unwrap().rect;
         assert!(
@@ -1388,7 +1337,7 @@ mod tests {
         monitor
             .per_tag_state()
             .layouts
-            .set_layout(LayoutKind::Maximized);
+            .set_layout(PresentationMode::Maximized);
         let mut clients = monitor
             .clients
             .iter()

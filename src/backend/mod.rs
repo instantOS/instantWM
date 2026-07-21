@@ -115,6 +115,16 @@ pub trait InteractiveResizeOps {
     fn end_interactive_resize(&self, window: WindowId);
 }
 
+/// Backend effects used by compositor-owned modal interactions.
+///
+/// Core state remains authoritative in `WmCtx`; implementations only acquire
+/// or release backend input ownership and project preview state for rendering.
+pub trait LayoutInteractionOps {
+    fn begin_modal_keyboard(&mut self) -> bool;
+    fn end_modal_keyboard(&mut self);
+    fn layout_preview_changed(&mut self, rect: Option<Rect>);
+}
+
 /// Output discovery and configuration.
 pub trait OutputOps {
     /// Set monitor configuration. Every active backend owns output policy.

@@ -35,8 +35,8 @@ use std::collections::HashMap;
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::{DEFAULT_FRAME_COUNT, FAST_ANIM_THRESHOLD, FAST_FRAME_COUNT};
 use crate::geometry::MoveResizeOptions;
-use crate::layouts::LayoutKind;
 use crate::layouts::LayoutOutput;
+use crate::layouts::PresentationMode;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::types::client::Client;
@@ -67,7 +67,7 @@ pub fn grid(
     }
 
     let tiled = monitor.collect_tiled(clients);
-    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::Grid, n as u32);
+    let placement = LayoutPlacement::new(layout_cfg, monitor, PresentationMode::Tiled, n as u32);
     let work_rect = placement.work_rect();
 
     let framecount = framecount_for_layout(animated, n as usize, FAST_ANIM_THRESHOLD, 3, 6);
@@ -186,7 +186,7 @@ pub fn horizgrid(
 
     // Collect tiled clients first
     let tiled = monitor.collect_tiled(clients);
-    let placement = LayoutPlacement::new(layout_cfg, monitor, LayoutKind::HorizGrid, n);
+    let placement = LayoutPlacement::new(layout_cfg, monitor, PresentationMode::Tiled, n);
     let work_rect = placement.work_rect();
 
     let mut result = Vec::new();

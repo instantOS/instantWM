@@ -126,7 +126,6 @@ pub fn finish_drag_move(
 ) {
     debug_assert!(ctx.core().drag_state().interactive().is_idle());
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
-    ctx.update_layout_preview(None);
     clear_bar_hover(ctx);
     complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
 }

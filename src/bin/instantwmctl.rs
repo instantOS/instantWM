@@ -382,7 +382,7 @@ fn main() {
                 );
                 std::process::exit(1);
             };
-            let Ok(layout) = instantwm::layouts::LayoutKind::from_str(name) else {
+            let Ok(layout) = instantwm::layouts::LayoutCommand::from_str(name) else {
                 eprintln!(
                     "instantwmctl: invalid layout '{name}' (use 'instantwmctl layout list' to see layouts)"
                 );
@@ -708,7 +708,7 @@ fn filter_config_list(response: Response, prefix: &str) -> Response {
 }
 
 fn print_layout_list(json: bool) {
-    let layouts: Vec<_> = instantwm::layouts::LayoutKind::all()
+    let layouts: Vec<_> = instantwm::layouts::LayoutCommand::all()
         .iter()
         .map(|layout| {
             serde_json::json!({
@@ -716,7 +716,7 @@ fn print_layout_list(json: bool) {
                 "label": layout.label(),
                 "description": layout.description(),
                 "symbol": layout.symbol(),
-                "tiling": layout.is_tiling(),
+                "tiling": layout.results_in_tiling(),
             })
         })
         .collect();
@@ -724,7 +724,7 @@ fn print_layout_list(json: bool) {
     if json {
         println!("{}", serde_json::to_string_pretty(&layouts).unwrap());
     } else {
-        for layout in instantwm::layouts::LayoutKind::all() {
+        for layout in instantwm::layouts::LayoutCommand::all() {
             println!(
                 "{:<13} {:<14} {}",
                 layout.name(),
