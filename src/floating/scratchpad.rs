@@ -12,6 +12,18 @@ const EDGE_MARGIN_X: i32 = 20;
 const EDGE_MARGIN_Y: i32 = 40;
 
 pub const DEFAULT_EDGE_SCRATCHPAD_NAME: &str = "instantwm_edge_scratchpad";
+pub(crate) const SCRATCHPAD_IDENTITY_PREFIX: &str = "scratchpad_";
+
+/// Infer the scratchpad role advertised by launchers such as `ins` before the
+/// client participates in its first layout. Native Wayland uses `class` as the
+/// app-id; X11 terminals may put the same identity in either WM_CLASS field.
+pub(crate) fn name_from_window_identity<'a>(class: &'a str, instance: &'a str) -> Option<&'a str> {
+    [class, instance].into_iter().find_map(|identity| {
+        identity
+            .strip_prefix(SCRATCHPAD_IDENTITY_PREFIX)
+            .filter(|name| !name.is_empty())
+    })
+}
 
 /// Complete geometry for one edge-scratchpad transition.
 ///
@@ -617,7 +629,7 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 
 #[cfg(test)]
 mod tests {
-    use super::EdgeSlideRects;
+    use super::{EdgeSlideRects, name_from_window_identity};
     use crate::types::input::EdgeDirection;
     use crate::types::{Rect, Size};
 
@@ -626,6 +638,20 @@ mod tests {
             && inner.y >= outer.y
             && inner.x + inner.w <= outer.x + outer.w
             && inner.y + inner.h <= outer.y + outer.h
+    }
+
+    #[test]
+    fn scratchpad_identity_accepts_wayland_app_id_and_x11_instance() {
+        assert_eq!(
+            name_from_window_identity("scratchpad_menu", ""),
+            Some("menu")
+        );
+        assert_eq!(
+            name_from_window_identity("kitty", "scratchpad_notes"),
+            Some("notes")
+        );
+        assert_eq!(name_from_window_identity("scratchpad_", "kitty"), None);
+        assert_eq!(name_from_window_identity("kitty", "kitty"), None);
     }
 
     #[test]

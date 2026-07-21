@@ -237,7 +237,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         } else {
             ResizeDirection::BottomRight
         };
-        let Some((current_geo, _)) = promote_to_floating(ctx, win, None) else {
+        let Some((_current_geo, _)) = promote_to_floating(ctx, win, None) else {
             return false;
         };
         let _ = warp::warp_to_resize_corner(ctx, win, direction);
