@@ -32,7 +32,10 @@ The default Super bindings use the tree whenever the focused window is tiled:
 - `Super+Arrow` and `Super+H/J/K/L` focus across the first structural seam.
   Geometry only chooses between leaves which share that seam. At the left or
   right boundary (including an empty or single-window tag), the horizontal
-  commands switch to the adjacent tag instead.
+  commands switch to the adjacent tag instead. If Up or Down has neither a
+  tree nor geometric neighbour, it cycles backward or forward through the
+  visible title order shown in the bar. This makes vertical keys useful in a
+  purely left-to-right tree as well.
 - `Super+Shift+Arrow` swaps with a visual neighbour without changing split
   topology. At the left or right edge, the window moves to the adjacent tag
   and the view follows it, so repeated presses keep moving the same window.

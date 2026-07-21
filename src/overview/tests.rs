@@ -109,6 +109,45 @@ fn stationary_pointer_cannot_retarget_a_moving_card_field() {
 }
 
 #[test]
+fn returning_from_overview_does_not_create_same_tag_history() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let mut monitor = Monitor {
+        prev_tag: Some(1),
+        ..Monitor::default()
+    };
+    monitor.set_selected_tags(tag2);
+    monitor.set_selected_tags(TagMask::all(9));
+
+    restore_overview_tags(&mut monitor, tag2, tag2);
+
+    assert_eq!(monitor.selected_tags(), tag2);
+    assert_eq!(monitor.prev_tag, Some(1));
+    assert_ne!(monitor.current_tag_number(), monitor.prev_tag);
+    assert_eq!(monitor.prev_tag.and_then(TagMask::single), Some(tag1));
+}
+
+#[test]
+fn selecting_another_overview_card_records_the_origin_tag() {
+    let tag1 = TagMask::single(1).unwrap();
+    let tag2 = TagMask::single(2).unwrap();
+    let tag3 = TagMask::single(3).unwrap();
+    let mut monitor = Monitor {
+        prev_tag: Some(1),
+        ..Monitor::default()
+    };
+    monitor.set_selected_tags(tag2);
+    monitor.set_selected_tags(TagMask::all(9));
+
+    restore_overview_tags(&mut monitor, tag2, tag3);
+
+    assert_eq!(monitor.selected_tags(), tag3);
+    assert_eq!(monitor.prev_tag, Some(2));
+    assert_eq!(monitor.prev_tag.and_then(TagMask::single), Some(tag2));
+    assert_ne!(monitor.prev_tag.and_then(TagMask::single), Some(tag1));
+}
+
+#[test]
 fn overview_order_groups_windows_by_their_first_tag_stably() {
     let tag1 = TagMask::single(1).unwrap();
     let tag2 = TagMask::single(2).unwrap();

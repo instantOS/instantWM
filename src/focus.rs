@@ -612,14 +612,17 @@ fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<
         }
     }
 
-    let mut stack = Vec::new();
-    for (c_win, c) in mon.iter_clients(clients) {
-        if c.is_visible(selected) {
-            stack.push(c_win);
-        }
-    }
-
-    stack
+    // Outside maximized presentation, keyboard stack cycling follows the
+    // exact title order exposed by the bar. Hidden/minimized entries retain a
+    // title but cannot receive focus until explicitly restored, so skip them.
+    mon.bar_client_order(clients)
+        .into_iter()
+        .filter(|win| {
+            clients
+                .get(win)
+                .is_some_and(|client| client.is_visible(selected))
+        })
+        .collect()
 }
 
 /// Shared logic to compute the next stack index for focus.

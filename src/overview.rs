@@ -136,7 +136,10 @@ fn enter(ctx: &mut WmCtx<'_>) {
             return;
         }
         let restore_tags = mon.selected_tags();
-        let _ = mon.set_selected_tags_with_history(all_tags);
+        // The all-tags view is a temporary projection, not user navigation.
+        // Updating tag history here makes Super+Tab point back to the tag
+        // overview will restore, producing a same-tag history entry on exit.
+        mon.set_selected_tags(all_tags);
         mon.overview_state = Some(OverviewState::new(
             restore_tags,
             window_order,
@@ -166,10 +169,8 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             restore_window_geometry(ctx, selected_monitor_id, &state.restore_geometry);
 
             if !restore_mask.is_empty() {
-                let _ = {
-                    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-                    mon.set_selected_tags_with_history(restore_mask)
-                };
+                let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+                restore_overview_tags(mon, restore_mask, restore_mask);
             }
 
             crate::focus::focus(ctx, None);
@@ -192,10 +193,8 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
             if let Some(mask) = target_mask
                 && !mask.is_empty()
             {
-                let _ = {
-                    let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
-                    mon.set_selected_tags_with_history(mask)
-                };
+                let mon = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+                restore_overview_tags(mon, restore_mask, mask);
             }
 
             if let Some(win) = selected_window {
@@ -208,6 +207,17 @@ fn exit(ctx: &mut WmCtx<'_>, mode: ExitMode) {
 
     ctx.core_mut()
         .queue_layout_for_monitor_urgent(selected_monitor_id);
+}
+
+/// Leave overview's temporary all-tags projection without treating that
+/// projection as tag history. When selection chooses another tag, replay the
+/// transition from the pre-overview mask so ordinary Super+Tab semantics are
+/// retained.
+fn restore_overview_tags(monitor: &mut Monitor, restore_mask: TagMask, target_mask: TagMask) {
+    monitor.set_selected_tags(restore_mask);
+    if target_mask != restore_mask {
+        let _ = monitor.set_selected_tags_with_history(target_mask);
+    }
 }
 
 pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {

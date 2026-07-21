@@ -125,8 +125,12 @@ fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
         VerticalDirection::Up => Side::Top,
         VerticalDirection::Down => Side::Bottom,
     };
-    if !focus_tree_neighbor(ctx, side) {
-        direction_focus(ctx, direction.into());
+    if !focus_tree_neighbor(ctx, side) && !direction_focus(ctx, direction.into()) {
+        let stack_direction = match direction {
+            VerticalDirection::Up => StackDirection::Previous,
+            VerticalDirection::Down => StackDirection::Next,
+        };
+        focus_stack(ctx, stack_direction);
     }
 }
 
@@ -155,8 +159,8 @@ define_named_actions!(
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
-    FocusUp => { name: "focus_up", arg_example: None, doc: "focus above, or cycle backward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
-    FocusDown => { name: "focus_down", arg_example: None, doc: "focus below, or cycle forward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
+    FocusUp => { name: "focus_up", arg_example: None, doc: "focus above; cycle backward in bar order when no window is above", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
+    FocusDown => { name: "focus_down", arg_example: None, doc: "focus below; cycle forward in bar order when no window is below", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
     FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, or move backward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
     FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
@@ -278,13 +282,14 @@ fn edge_scratchpad_set_direction(ctx: &mut WmCtx, dir: EdgeDirection) {
 
 #[cfg(test)]
 mod tests {
-    use super::{NamedAction, move_horizontal, parse_named_action};
+    use super::{NamedAction, focus_vertical, move_horizontal, parse_named_action};
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::layouts::LayoutCommand;
     use crate::layouts::tree::Preset;
     use crate::types::{
-        Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask, WindowId,
+        Client, ClientMode, HorizontalDirection, Monitor, Rect, StackDirection, TagMask,
+        VerticalDirection, WindowId,
     };
     use crate::wm::Wm;
 
@@ -410,5 +415,48 @@ mod tests {
             tag2
         );
         assert_eq!(wm.core.model.selected_win(), Some(left));
+    }
+
+    #[test]
+    fn vertical_focus_falls_back_to_cycling_in_bar_order() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tag = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+
+        let left = WindowId(1);
+        let middle = WindowId(2);
+        let right = WindowId(3);
+        for win in [left, middle, right] {
+            wm.core.model.insert_client(Client {
+                win,
+                monitor_id,
+                tags: tag,
+                mode: ClientMode::Tiling,
+                ..Client::default()
+            });
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tag);
+        monitor.clients = vec![left, middle, right];
+        monitor.selected = Some(middle);
+        monitor.per_tag_state().layout_tree.apply_preset(
+            Preset::BottomStack,
+            &[left, middle, right],
+            0,
+        );
+
+        focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+        assert_eq!(wm.core.model.selected_win(), Some(right));
+
+        focus_vertical(&mut wm.ctx(), VerticalDirection::Down);
+        assert_eq!(wm.core.model.selected_win(), Some(left));
+
+        focus_vertical(&mut wm.ctx(), VerticalDirection::Up);
+        assert_eq!(wm.core.model.selected_win(), Some(right));
     }
 }
