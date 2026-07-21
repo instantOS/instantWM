@@ -321,10 +321,7 @@ pub fn handle_pointer_motion(
     // newly shown or hidden overlay. Session-locked input must never trigger
     // WM UI.
     if !state.is_locked() {
-        let root = RootPoint::new(
-            final_location.x.round() as i32,
-            final_location.y.round() as i32,
-        );
+        let root = RootPoint::from_f64_round(final_location.x, final_location.y);
         let mut ctx = wm.ctx();
         crate::mouse::update_overlay_hot_corner(&mut ctx, root);
     }
@@ -354,10 +351,7 @@ pub fn dispatch_pointer_motion(
     time_msec: u32,
 ) {
     let pointer_location = state.runtime.pointer_location;
-    let root = RootPoint::new(
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    );
+    let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
 
     // Get active drag window once - used in multiple phases
     let active_drag_window = active_drag_window(wm);
@@ -528,10 +522,7 @@ fn handle_resize_drag_motion(
     let pointer_location = state.runtime.pointer_location;
     if !hover_resize_drag_motion(
         ctx,
-        RootPoint::new(
-            pointer_location.x.round() as i32,
-            pointer_location.y.round() as i32,
-        ),
+        RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
     ) {
         return false;
     }

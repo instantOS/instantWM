@@ -34,6 +34,12 @@ pub fn set_x11_root_cursor(
     }
 }
 
+impl crate::backend::CursorOps for WmCtxX11<'_> {
+    fn apply_cursor_style(&mut self, style: AltCursor) {
+        set_x11_root_cursor(&self.x11, self.x11_runtime, style);
+    }
+}
+
 /// X11-only synchronous window move implementation.
 ///
 /// Grab → event loop → release handling. This is deliberately reachable only
@@ -52,7 +58,7 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         return;
     };
 
-    let Some(grab_start_rect) = ctx.core.model().client(win).map(|client| client.geo) else {
+    let Some(grab_start_rect) = ctx.core.client_geo(win) else {
         return;
     };
 

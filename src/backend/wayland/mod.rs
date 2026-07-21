@@ -121,7 +121,7 @@ impl WaylandBackend {
     pub fn pointer_location(&self) -> Option<Point> {
         self.with_state(|state: &mut WaylandState| {
             let loc = state.pointer.current_location();
-            Point::new(loc.x.round() as i32, loc.y.round() as i32)
+            Point::from_f64_round(loc.x, loc.y)
         })
     }
 
@@ -282,6 +282,23 @@ impl PointerOps for WaylandBackend {
 
     fn warp_pointer(&self, x: f64, y: f64) {
         WaylandBackend::warp_pointer(self, x, y);
+    }
+}
+
+impl crate::backend::CursorOps for crate::contexts::WmCtxWayland<'_> {
+    fn apply_cursor_style(&mut self, style: crate::types::AltCursor) {
+        let icon = match style {
+            crate::types::AltCursor::Default => None,
+            crate::types::AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
+            crate::types::AltCursor::Resize(direction) => Some(direction.to_wayland_icon()),
+        };
+        self.wayland.set_cursor_icon_override(icon);
+    }
+}
+
+impl crate::backend::WindowCloseOps for crate::contexts::WmCtxWayland<'_> {
+    fn close_window(&mut self, window: WindowId) {
+        let _ = self.wayland.close_window(window);
     }
 }
 

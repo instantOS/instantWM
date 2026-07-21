@@ -5,7 +5,6 @@ use crate::geometry::MoveResizeOptions;
 use crate::mouse::constants::RESIZE_BORDER_ZONE;
 use crate::mouse::drag::lifecycle::{ResizeDragParams, begin_resize, finish};
 use crate::mouse::hover::selected_hover_resize_target_at;
-use crate::mouse::set_cursor_style;
 use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId};
 use crate::wm::Wm;
 
@@ -64,9 +63,9 @@ pub fn hover_resize_drag_begin(
     }
     let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx.reborrow());
     match drag_type {
-        crate::core_state::DragType::Move => set_cursor_style(&mut wm_ctx, AltCursor::Move),
+        crate::core_state::DragType::Move => wm_ctx.set_cursor_style(AltCursor::Move),
         crate::core_state::DragType::Resize(dir) => {
-            set_cursor_style(&mut wm_ctx, AltCursor::Resize(dir));
+            wm_ctx.set_cursor_style(AltCursor::Resize(dir));
         }
         crate::core_state::DragType::TreeResize(_) => unreachable!("handled before drag start"),
     }
@@ -161,7 +160,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             let (new_x, new_w) = crate::mouse::resize::compute_axis_resize(
                 root.x,
                 drag.win_start_geo().x,
-                drag.win_start_geo().x + drag.win_start_geo().w,
+                drag.win_start_geo().right(),
                 0,
                 affects_left,
                 affects_right,
@@ -169,7 +168,7 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
             let (new_y, new_h) = crate::mouse::resize::compute_axis_resize(
                 root.y,
                 drag.win_start_geo().y,
-                drag.win_start_geo().y + drag.win_start_geo().h,
+                drag.win_start_geo().bottom(),
                 0,
                 affects_top,
                 affects_bottom,
@@ -214,10 +213,7 @@ pub fn hover_resize_drag_finish(
                 modifiers,
             );
         }
-        crate::core_state::DragType::Resize(_) => {
-            crate::mouse::drag::finish_drag_resize(&mut wm_ctx, drag.win());
-        }
-        crate::core_state::DragType::TreeResize(_) => {
+        crate::core_state::DragType::Resize(_) | crate::core_state::DragType::TreeResize(_) => {
             crate::mouse::drag::finish_drag_resize(&mut wm_ctx, drag.win());
         }
     }

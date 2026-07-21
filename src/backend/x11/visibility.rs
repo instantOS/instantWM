@@ -81,7 +81,7 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
                 );
             }
         } else {
-            let w_val = geo.w + 2 * entry.border_width;
+            let w_val = geo.total_width(entry.border_width);
             let y = geo.y;
 
             let x11_win: Window = win.into();

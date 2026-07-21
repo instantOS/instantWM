@@ -7,7 +7,6 @@ use crate::backend::BackendEvent;
 use crate::contexts::WmCtx;
 use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
-use crate::mouse::cursor::set_cursor_style;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
 use crate::mouse::drag::move_drop::promote_to_floating;
 use crate::mouse::resize::{resize_mouse_directional, resize_mouse_from_cursor};
@@ -102,9 +101,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         };
 
         let dir = if suppress_click_action {
-            let hit_x = start_point.x - current_geo.x;
-            let hit_y = start_point.y - current_geo.y;
-            ResizeDirection::from_hit(current_geo.size(), Point::new(hit_x, hit_y))
+            ResizeDirection::from_hit(current_geo.size(), current_geo.local_point(start_point))
         } else {
             ResizeDirection::BottomRight
         };
@@ -125,7 +122,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             {
                 return false;
             }
-            set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
+            WmCtx::Wayland(wl.reborrow()).set_cursor_style(AltCursor::Resize(dir));
         }
         return true;
     }
@@ -135,7 +132,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
     // also makes cancellation lossless.
     let uses_tree = crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win);
     let (current_geo, anchor_rebased) = if uses_tree {
-        let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
+        let Some(geo) = ctx.client_geo(win) else {
             return false;
         };
         (geo, false)
@@ -171,7 +168,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
     {
         return false;
     }
-    set_cursor_style(ctx, AltCursor::Move);
+    ctx.set_cursor_style(AltCursor::Move);
     true
 }
 
@@ -227,13 +224,10 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         // The initial title/client drag already crossed the threshold. Promote
         // now rather than making the user cross a second resize threshold.
         let direction = if armed.suppress_click_action() {
-            let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
+            let Some(geo) = ctx.client_geo(win) else {
                 return false;
             };
-            ResizeDirection::from_hit(
-                geo.size(),
-                Point::new(armed.start_point().x - geo.x, armed.start_point().y - geo.y),
-            )
+            ResizeDirection::from_hit(geo.size(), geo.local_point(armed.start_point()))
         } else {
             ResizeDirection::BottomRight
         };
@@ -285,16 +279,14 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
             crate::focus::focus(ctx, Some(win));
         }
         crate::client::zoom(ctx);
-    } else if was_hidden {
-        crate::client::show_window(ctx, win);
-        crate::focus::focus(ctx, Some(win));
-        let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
-        sync_monitor_z_order(ctx, selmon_id);
-    } else if was_focused {
+    } else if was_focused && !was_hidden {
         crate::client::hide_for_user(ctx, win);
     } else {
+        if was_hidden {
+            crate::client::show_window(ctx, win);
+        }
         crate::focus::focus(ctx, Some(win));
-        let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
+        let selmon_id = ctx.core().model().selected_monitor_id();
         sync_monitor_z_order(ctx, selmon_id);
     }
 }

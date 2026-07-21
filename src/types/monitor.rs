@@ -275,6 +275,12 @@ impl Monitor {
         self.work_rect().center()
     }
 
+    /// Translate a root-coordinate point into this monitor's work-area space.
+    #[inline]
+    pub fn local_work_point(&self, point: Point) -> Point {
+        self.work_rect().local_point(point)
+    }
+
     /// Count the number of visible clients on this monitor.
     pub fn client_count(&self, clients: &HashMap<WindowId, Client>) -> usize {
         let selected = self.selected_tags();

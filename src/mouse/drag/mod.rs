@@ -64,7 +64,7 @@ pub fn finish_drag_move(
     modifiers: u32,
 ) {
     debug_assert!(ctx.core().drag_state().interactive().is_idle());
-    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
     complete_move_drop(
         ctx,
@@ -83,7 +83,7 @@ pub fn finish_drag_move(
 /// before invoking this cleanup.
 pub fn finish_drag_resize(ctx: &mut WmCtx, win: WindowId) {
     debug_assert!(ctx.core().drag_state().interactive().is_idle());
-    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
     crate::mouse::monitor::handle_client_monitor_switch(ctx, win);
     ctx.raise_client(win);
 }

@@ -73,6 +73,20 @@ fn monitor_lookup_includes_bar_outside_work_area() {
 }
 
 #[test]
+fn local_work_point_accounts_for_monitor_origin_and_reserved_space() {
+    let monitor = Monitor {
+        monitor_rect: Rect::new(100, 50, 800, 600),
+        available_rect: Rect::new(120, 80, 760, 550),
+        ..Monitor::default()
+    };
+
+    assert_eq!(
+        monitor.local_work_point(Point::new(145, 105)),
+        Point::new(25, 25)
+    );
+}
+
+#[test]
 fn monitor_lookup_returns_stable_id_for_each_full_output() {
     let left = Monitor {
         monitor_rect: Rect::new(0, 0, 100, 100),

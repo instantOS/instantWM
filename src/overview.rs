@@ -597,7 +597,7 @@ fn card_field_rects(work_rect: Rect, sizes: &[Size], active_index: usize) -> Vec
             } else {
                 0
             };
-            let x = (cell_left + stagger).min(work_rect.x + work_rect.w - 1);
+            let x = (cell_left + stagger).min(work_rect.right() - 1);
             let y = cell_top;
             let x = if size.w < cell_right - x {
                 x + (cell_right - x - size.w) / 2

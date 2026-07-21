@@ -41,14 +41,14 @@ pub fn snap_window_to_monitor_edges(
 
     if (work_rect.x - position.x).abs() < snap {
         position.x = work_rect.x;
-    } else if (work_rect.x + work_rect.w - (position.x + outer_size.w)).abs() < snap {
-        position.x = work_rect.x + work_rect.w - outer_size.w;
+    } else if (work_rect.right() - (position.x + outer_size.w)).abs() < snap {
+        position.x = work_rect.right() - outer_size.w;
     }
 
     if (work_rect.y - position.y).abs() < snap {
         position.y = work_rect.y;
-    } else if (work_rect.y + work_rect.h - (position.y + outer_size.h)).abs() < snap {
-        position.y = work_rect.y + work_rect.h - outer_size.h;
+    } else if (work_rect.bottom() - (position.y + outer_size.h)).abs() < snap {
+        position.y = work_rect.bottom() - outer_size.h;
     }
 }
 
@@ -60,8 +60,8 @@ pub fn check_edge_snap(model: &crate::model::WmModel, root: Point) -> Option<Sna
     if root.x < mon.monitor_rect.x + OVERLAY_ZONE_WIDTH && root.x > mon.monitor_rect.x - 1 {
         return Some(SnapPosition::Left);
     }
-    if root.x > mon.monitor_rect.x + mon.monitor_rect.w - OVERLAY_ZONE_WIDTH
-        && root.x < mon.monitor_rect.x + mon.monitor_rect.w + 1
+    if root.x > mon.monitor_rect.right() - OVERLAY_ZONE_WIDTH
+        && root.x < mon.monitor_rect.right() + 1
     {
         return Some(SnapPosition::Right);
     }
@@ -101,7 +101,7 @@ pub fn point_is_on_bar(model: &crate::model::WmModel, root: Point) -> bool {
     mon.show_bar_for_mask(mask)
         && mon.y_in_bar(root.y)
         && root.x >= mon.monitor_rect.x
-        && root.x < mon.monitor_rect.x + mon.monitor_rect.w
+        && root.x < mon.monitor_rect.right()
 }
 
 // ── move_mouse helpers ────────────────────────────────────────────────────
@@ -217,8 +217,8 @@ pub fn update_bar_hover(ctx: &mut WmCtx, root: Point, state: &mut MoveState) -> 
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().expect_selected_monitor();
-            let local_x = root.x - mon.work_rect().x;
-            mon.bar_position_at_x(core, local_x).to_gesture()
+            mon.bar_position_at_x(core, mon.local_work_point(root).x)
+                .to_gesture()
         };
 
         let monitor_id = ctx.core().model().selected_monitor_id();
@@ -248,8 +248,8 @@ pub fn update_bar_hover_simple(ctx: &mut WmCtx, root: Point) -> bool {
         let new_gesture = {
             let core = ctx.core();
             let mon = core.model().expect_selected_monitor();
-            let local_x = root.x - mon.work_rect().x;
-            mon.bar_position_at_x(core, local_x).to_gesture()
+            mon.bar_position_at_x(core, mon.local_work_point(root).x)
+                .to_gesture()
         };
         let monitor_id = ctx.core().model().selected_monitor_id();
         let gesture_changed = ctx.core().bar.hover.gesture_on(monitor_id) != new_gesture;
@@ -355,8 +355,7 @@ pub fn handle_bar_drop(
     let position = {
         let core = ctx.core();
         let mon = core.model().expect_selected_monitor();
-        let local_x = root.x - mon.work_rect().x;
-        mon.bar_position_at_x(core, local_x)
+        mon.bar_position_at_x(core, mon.local_work_point(root).x)
     };
 
     // Remember whether the window was floating *before* any state change so

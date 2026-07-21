@@ -191,7 +191,7 @@ impl BarPainter for WaylandBarPainter {
                 self.surface_rect.size(),
                 Rect::new(
                     bounds.x,
-                    bounds.y + bounds.h - detail_height,
+                    bounds.bottom() - detail_height,
                     bounds.w,
                     detail_height,
                 ),
@@ -213,7 +213,7 @@ impl BarPainter for WaylandBarPainter {
                 );
             }
         }
-        bounds.x + bounds.w
+        bounds.right()
     }
 }
 

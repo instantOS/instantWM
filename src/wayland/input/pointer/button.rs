@@ -26,10 +26,7 @@ pub fn handle_pointer_button_raw(
     pointer_location: Point<f64, smithay::utils::Logical>,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let root = RootPoint::new(
-        pointer_location.x.round() as i32,
-        pointer_location.y.round() as i32,
-    );
+    let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
     let wm_button = MouseButton::from_wayland_code(button);
 
     let button = ButtonPress {

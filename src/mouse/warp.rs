@@ -35,24 +35,23 @@ pub fn warp_into(ctx: &mut WmCtx, win: WindowId) {
         return;
     };
 
-    let (mut tx, mut ty) = ctx
+    let mut target = ctx
         .pointer_backend()
         .pointer_location()
-        .map(|p| (p.x, p.y))
-        .unwrap_or((c.geo.x + c.geo.w / 2, c.geo.y + c.geo.h / 2));
+        .unwrap_or_else(|| c.geo.center());
 
-    if tx < c.geo.x {
-        tx = c.geo.x + WARP_INTO_PADDING;
-    } else if tx > c.geo.x + c.geo.w {
-        tx = c.geo.x + c.geo.w - WARP_INTO_PADDING;
+    if target.x < c.geo.x {
+        target.x = c.geo.x + WARP_INTO_PADDING;
+    } else if target.x > c.geo.right() {
+        target.x = c.geo.right() - WARP_INTO_PADDING;
     }
-    if ty < c.geo.y {
-        ty = c.geo.y + WARP_INTO_PADDING;
-    } else if ty > c.geo.y + c.geo.h {
-        ty = c.geo.y + c.geo.h - WARP_INTO_PADDING;
+    if target.y < c.geo.y {
+        target.y = c.geo.y + WARP_INTO_PADDING;
+    } else if target.y > c.geo.bottom() {
+        target.y = c.geo.bottom() - WARP_INTO_PADDING;
     }
 
-    ctx.pointer_backend().warp_pointer(tx as f64, ty as f64);
+    ctx.pointer_backend().warp_to_point(target);
 }
 
 /// Keybinding/IPC handler: warp the cursor to the currently focused window.
@@ -82,7 +81,6 @@ pub fn warp_to_resize_corner(
     let c = ctx.core().model().client(win)?;
     let offset = direction.warp_offset(c.geo.size(), c.border_width);
     let target = Point::new(c.geo.x + offset.x, c.geo.y + offset.y);
-    ctx.pointer_backend()
-        .warp_pointer(target.x as f64, target.y as f64);
+    ctx.pointer_backend().warp_to_point(target);
     Some(target)
 }

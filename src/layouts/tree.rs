@@ -1083,7 +1083,7 @@ impl LayoutTree {
                             rect.center().y,
                         ),
                         Side::Right => Point::new(
-                            rect.x + rect.w - (f64::from(rect.w) * band_fraction).round() as i32,
+                            rect.right() - (f64::from(rect.w) * band_fraction).round() as i32,
                             rect.center().y,
                         ),
                         Side::Top => Point::new(
@@ -1092,7 +1092,7 @@ impl LayoutTree {
                         ),
                         Side::Bottom => Point::new(
                             rect.center().x,
-                            rect.y + rect.h - (f64::from(rect.h) * band_fraction).round() as i32,
+                            rect.bottom() - (f64::from(rect.h) * band_fraction).round() as i32,
                         ),
                     };
                     output.push(PlacementTarget {
@@ -1283,9 +1283,9 @@ impl LayoutTree {
         let inset_y = (f64::from(rect.h) * edge_fraction).max(1.0);
         let distances = [
             (Side::Left, f64::from(point.x - rect.x) / inset_x),
-            (Side::Right, f64::from(rect.x + rect.w - point.x) / inset_x),
+            (Side::Right, f64::from(rect.right() - point.x) / inset_x),
             (Side::Top, f64::from(point.y - rect.y) / inset_y),
-            (Side::Bottom, f64::from(rect.y + rect.h - point.y) / inset_y),
+            (Side::Bottom, f64::from(rect.bottom() - point.y) / inset_y),
         ];
         let nearest = distances
             .into_iter()

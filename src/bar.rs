@@ -253,8 +253,10 @@ pub fn resolve_bar_position_at_root(
         return None;
     }
 
-    let local_x = root.x - mon.work_rect().x;
-    Some((monitor_id, mon.bar_position_at_x(core, local_x)))
+    Some((
+        monitor_id,
+        mon.bar_position_at_x(core, mon.local_work_point(root).x),
+    ))
 }
 
 #[cfg(test)]

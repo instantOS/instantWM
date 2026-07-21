@@ -289,11 +289,11 @@ fn clamp_client_to_work_area(
     monitor_work_rect: Rect,
 ) {
     if let Some(client) = model.client_mut(window) {
-        if client.geo.x + client.total_width() > monitor_work_rect.x + monitor_work_rect.w {
-            client.geo.x = monitor_work_rect.x + monitor_work_rect.w - client.total_width();
+        if client.total_rect().right() > monitor_work_rect.right() {
+            client.geo.x = monitor_work_rect.right() - client.total_width();
         }
-        if client.geo.y + client.total_height() > monitor_work_rect.y + monitor_work_rect.h {
-            client.geo.y = monitor_work_rect.y + monitor_work_rect.h - client.total_height();
+        if client.total_rect().bottom() > monitor_work_rect.bottom() {
+            client.geo.y = monitor_work_rect.bottom() - client.total_height();
         }
         client.geo.x = max(client.geo.x, monitor_work_rect.x);
         client.geo.y = max(client.geo.y, monitor_work_rect.y);

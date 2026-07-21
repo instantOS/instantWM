@@ -80,8 +80,8 @@ fn resolve_floating_placement_for_client(
 
     let total_w = rect.total_width(client.border_width);
     let total_h = rect.total_height(client.border_width);
-    let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.x + work_rect.w;
-    let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.y + work_rect.h;
+    let fully_outside_x = rect.x + total_w <= work_rect.x || rect.x >= work_rect.right();
+    let fully_outside_y = rect.y + total_h <= work_rect.y || rect.y >= work_rect.bottom();
 
     // Wayland toplevels cannot provide an absolute position, and X11 clients
     // without USPosition/PPosition have likewise delegated placement to the

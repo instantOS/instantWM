@@ -4,7 +4,6 @@ use crate::backend::BackendEvent;
 use crate::config::{CONTROL, MOD1};
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::mouse::constants::DRAG_THRESHOLD;
-use crate::mouse::cursor::set_cursor_style;
 use crate::types::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,11 +54,11 @@ fn position_at(ctx: &WmCtx<'_>, monitor_id: MonitorId, root: Point) -> Option<Ba
     if !monitor.show_bar_for_mask(mask)
         || !monitor.y_in_bar(root.y)
         || root.x < monitor.monitor_rect.x
-        || root.x >= monitor.monitor_rect.x + monitor.monitor_rect.w
+        || root.x >= monitor.monitor_rect.right()
     {
         return None;
     }
-    Some(monitor.bar_position_at_x(core, root.x - monitor.work_rect().x))
+    Some(monitor.bar_position_at_x(core, monitor.local_work_point(root).x))
 }
 
 /// Arm a tag click. Motion beyond [`DRAG_THRESHOLD`] promotes it to a drag.
@@ -120,7 +119,7 @@ pub fn drag_tag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             return true;
         }
         ctx.core_mut().drag_state_mut().tag.dragging = true;
-        set_cursor_style(ctx, AltCursor::Move);
+        ctx.set_cursor_style(AltCursor::Move);
     }
 
     let position = position_at(ctx, monitor_id, root);
@@ -195,7 +194,7 @@ pub fn drag_tag_finish(ctx: &mut WmCtx, modifiers: u32) {
         ctx.core_mut().bar.hover.clear();
     }
     if drag.dragging {
-        set_cursor_style(ctx, AltCursor::Default);
+        ctx.set_cursor_style(AltCursor::Default);
     }
     ctx.request_bar_update();
 }

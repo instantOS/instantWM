@@ -43,7 +43,7 @@ pub fn begin_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) {
     {
         return;
     }
-    crate::mouse::set_cursor_style(ctx, AltCursor::Move);
+    ctx.set_cursor_style(AltCursor::Move);
 }
 
 pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
@@ -52,7 +52,7 @@ pub fn update_sidebar_gesture(ctx: &mut WmCtx, root_y: i32) {
     };
     if ctx.core().model().monitor(monitor_id).is_none() {
         ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
-        crate::mouse::set_cursor_style(ctx, AltCursor::Default);
+        ctx.set_cursor_style(AltCursor::Default);
         return;
     }
 
@@ -86,7 +86,7 @@ pub fn finish_sidebar_gesture(ctx: &mut WmCtx, btn: MouseButton) -> bool {
         return false;
     }
     ctx.core_mut().drag_state_mut().finish_sidebar_volume(btn);
-    crate::mouse::set_cursor_style(ctx, AltCursor::Default);
+    ctx.set_cursor_style(AltCursor::Default);
     true
 }
 

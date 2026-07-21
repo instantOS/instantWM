@@ -23,8 +23,8 @@ use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
 use crate::types::*;
 
-use super::cursor::set_cursor_style;
 use super::drag::lifecycle::{ResizeDragParams, begin_resize};
+use super::drag::move_drop::promote_to_floating;
 
 fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>) -> T) -> T {
     let mut ctx = WmCtx::X11(ctx_x11.reborrow());
@@ -110,17 +110,11 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         .expect_selected_monitor()
         .is_tiling_layout();
     if !is_floating && has_tiling {
-        toggle_floating(ctx);
-        let selmon_id = ctx.core().model().selected_monitor_id();
-        crate::layouts::arrange(ctx, Some(selmon_id));
-        // Re-read geometry after the layout change.
-        let Some(new_geo) = ctx.core().model().client(win).map(|client| client.geo) else {
+        let Some((new_geo, _)) = promote_to_floating(ctx, win, None) else {
             return;
         };
 
-        let hit_x = ptr.x - new_geo.x;
-        let hit_y = ptr.y - new_geo.y;
-        let dir = ResizeDirection::from_hit(new_geo.size(), Point::new(hit_x, hit_y));
+        let dir = ResizeDirection::from_hit(new_geo.size(), new_geo.local_point(ptr));
 
         match ctx {
             WmCtx::X11(x11) => {
@@ -133,9 +127,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     }
 
-    let hit_x = ptr.x - geo.x;
-    let hit_y = ptr.y - geo.y;
-    let dir = ResizeDirection::from_hit(geo.size(), Point::new(hit_x, hit_y));
+    let dir = ResizeDirection::from_hit(geo.size(), geo.local_point(ptr));
 
     match ctx {
         WmCtx::X11(x11) => {
@@ -163,8 +155,16 @@ fn begin_wayland_tree_resize(
     {
         return;
     }
+    prepare_wayland_resize(wl, win, resize.direction);
+}
+
+fn prepare_wayland_resize(
+    wl: &mut crate::contexts::WmCtxWayland<'_>,
+    win: WindowId,
+    direction: ResizeDirection,
+) {
     let mut ctx = WmCtx::Wayland(wl.reborrow());
-    set_cursor_style(&mut ctx, AltCursor::Resize(resize.direction));
+    ctx.set_cursor_style(AltCursor::Resize(direction));
     crate::focus::focus(&mut ctx, Some(win));
     ctx.raise_client(win);
 }
@@ -259,10 +259,7 @@ fn begin_wayland_super_resize(
     {
         return;
     }
-    set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
-    crate::focus::focus(&mut WmCtx::Wayland(wl.reborrow()), Some(win));
-    let mut wmctx = WmCtx::Wayland(wl.reborrow());
-    wmctx.raise_client(win);
+    prepare_wayland_resize(wl, win, dir);
 }
 
 // ── resize_mouse_directional ──────────────────────────────────────────────────
@@ -285,8 +282,8 @@ pub fn resize_mouse_directional(
                 c.mode.is_true_fullscreen(),
                 c.geo.x,
                 c.geo.y,
-                c.geo.x + c.geo.w,
-                c.geo.y + c.geo.h,
+                c.geo.right(),
+                c.geo.bottom(),
                 c.border_width,
             ),
             None => return,
@@ -307,7 +304,7 @@ pub fn resize_mouse_directional(
     let Some(start) = ctx.x11.pointer_location() else {
         return;
     };
-    let Some(geo) = ctx.core.model().client(win).map(|client| client.geo) else {
+    let Some(geo) = ctx.core.client_geo(win) else {
         return;
     };
     if begin_resize(
@@ -426,13 +423,11 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
         return;
     };
 
-    let Some(geo) = ctx.core().model().client(win).map(|client| client.geo) else {
+    let Some(geo) = ctx.client_geo(win) else {
         return;
     };
 
-    let hit_x = ptr.x - geo.x;
-    let hit_y = ptr.y - geo.y;
-    let dir = ResizeDirection::from_hit(geo.size(), Point::new(hit_x, hit_y));
+    let dir = ResizeDirection::from_hit(geo.size(), geo.local_point(ptr));
 
     match ctx {
         WmCtx::X11(x11) => {
@@ -462,7 +457,7 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
     let Some(start) = ctx.x11.pointer_location() else {
         return;
     };
-    let Some(geo) = ctx.core.model().client(win).map(|client| client.geo) else {
+    let Some(geo) = ctx.core.client_geo(win) else {
         return;
     };
     if begin_resize(
@@ -488,22 +483,10 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
         false,
         |ctx, event| {
             if let BackendEvent::Motion { root, .. } = event {
-                let (_, raw_nw) = compute_axis_resize(
-                    root.x,
-                    orig_geo.x,
-                    orig_geo.x + orig_geo.w,
-                    0,
-                    false,
-                    true,
-                );
-                let (_, raw_nh) = compute_axis_resize(
-                    root.y,
-                    orig_geo.y,
-                    orig_geo.y + orig_geo.h,
-                    0,
-                    false,
-                    true,
-                );
+                let (_, raw_nw) =
+                    compute_axis_resize(root.x, orig_geo.x, orig_geo.right(), 0, false, true);
+                let (_, raw_nh) =
+                    compute_axis_resize(root.y, orig_geo.y, orig_geo.bottom(), 0, false, true);
 
                 if let Some((client_geo, sh, min_aspect, max_aspect)) = ctx
                     .core

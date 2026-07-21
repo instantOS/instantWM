@@ -54,9 +54,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             };
             apply_snap(ctx_x11, win, &rect);
             let wm_ctx = WmCtx::X11(ctx_x11.reborrow());
-            wm_ctx
-                .pointer_backend()
-                .warp_pointer((rect.x + rect.w / 2) as f64, (rect.y + rect.h / 2) as f64);
+            wm_ctx.pointer_backend().warp_to_point(rect.center());
             crate::focus::focus(&mut WmCtx::X11(ctx_x11.reborrow()), Some(win));
         }
         WmCtx::Wayland(_) => {

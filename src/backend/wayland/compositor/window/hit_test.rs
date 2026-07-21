@@ -36,8 +36,8 @@ impl WaylandState {
 
         // Single window pass: find both the logical window and surface hit.
         use smithay::desktop::WindowSurfaceType;
-        let root_x = point.x.round() as i32;
-        let root_y = point.y.round() as i32;
+        let root = crate::types::Point::from_f64_round(point.x, point.y);
+        let (root_x, root_y) = (root.x, root.y);
         let globals = match self.globals() {
             Some(g) => g,
             None => {
@@ -175,8 +175,8 @@ impl WaylandState {
 
     /// Check if the pointer is currently over an overlay, launcher, or unmanaged window.
     pub fn is_pointer_over_overlay(&self, point: Point<f64, Logical>) -> bool {
-        let root_x = point.x.round() as i32;
-        let root_y = point.y.round() as i32;
+        let root = crate::types::Point::from_f64_round(point.x, point.y);
+        let (root_x, root_y) = (root.x, root.y);
         for (window, typ) in self.windows_in_z_order() {
             if typ.is_overlay() && self.overlay_rect_contains(window, root_x, root_y) {
                 return true;
@@ -188,8 +188,8 @@ impl WaylandState {
     /// Find the topmost window containing the given logical point within its core geometry.
     /// Used for WM hit-testing to prevent small surfaces from creating focus holes.
     pub fn logical_window_under_pointer(&self, point: Point<f64, Logical>) -> Option<WindowId> {
-        let root_x = point.x.round() as i32;
-        let root_y = point.y.round() as i32;
+        let root = crate::types::Point::from_f64_round(point.x, point.y);
+        let (root_x, root_y) = (root.x, root.y);
         let globals = self.globals()?;
 
         for (window, typ) in self.windows_in_z_order() {

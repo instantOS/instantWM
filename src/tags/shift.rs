@@ -120,7 +120,7 @@ pub fn shift_tag(ctx: &mut WmCtx, dir: Direction, offset: i32) {
 fn play_slide_animation(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     ctx.window_backend().raise_window_visual_only(win);
     let mon_w = ctx.core().model().expect_selected_monitor().monitor_rect.w;
-    let Some(geo) = ctx.core().state().model.client(win).map(|c| c.geo) else {
+    let Some(geo) = ctx.client_geo(win) else {
         return;
     };
 

@@ -29,10 +29,10 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
 
     new_x = new_x.max(mon_rect.x);
     new_y = new_y.max(mon_rect.y);
-    if new_y + geo.h > mon_rect.y + mon_rect.h {
+    if new_y + geo.h > mon_rect.bottom() {
         new_y = (mon_rect.h + mon_rect.y) - geo.h - border_width * 2;
     }
-    if new_x + geo.w > mon_rect.x + mon_rect.w {
+    if new_x + geo.w > mon_rect.right() {
         new_x = (mon_rect.w + mon_rect.x) - geo.w - border_width * 2;
     }
 

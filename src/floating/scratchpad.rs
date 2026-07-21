@@ -54,14 +54,14 @@ impl EdgeSlideRects {
                 requested_height,
             ),
             EdgeDirection::Right => Rect::new(
-                content.x + content.w - requested_width,
+                content.right() - requested_width,
                 content.y + vertical_margin,
                 requested_width,
                 vertical_span,
             ),
             EdgeDirection::Bottom => Rect::new(
                 content.x + horizontal_margin,
-                content.y + content.h - requested_height,
+                content.bottom() - requested_height,
                 horizontal_span,
                 requested_height,
             ),
@@ -75,8 +75,8 @@ impl EdgeSlideRects {
 
         let hidden = match direction {
             EdgeDirection::Top => Rect::new(shown.x, content.y - shown.h, shown.w, shown.h),
-            EdgeDirection::Right => Rect::new(content.x + content.w, shown.y, shown.w, shown.h),
-            EdgeDirection::Bottom => Rect::new(shown.x, content.y + content.h, shown.w, shown.h),
+            EdgeDirection::Right => Rect::new(content.right(), shown.y, shown.w, shown.h),
+            EdgeDirection::Bottom => Rect::new(shown.x, content.bottom(), shown.w, shown.h),
             EdgeDirection::Left => Rect::new(content.x - shown.w, shown.y, shown.w, shown.h),
         };
 

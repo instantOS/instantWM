@@ -104,10 +104,10 @@ impl LayoutPlacement {
 
         let half = self.inner_gap / 2;
         let other_half = self.inner_gap - half;
-        let work_right = self.work_rect().x + self.work_rect().w;
-        let work_bottom = self.work_rect().y + self.work_rect().h;
-        let slot_right = slot.x + slot.w;
-        let slot_bottom = slot.y + slot.h;
+        let work_right = self.work_rect().right();
+        let work_bottom = self.work_rect().bottom();
+        let slot_right = slot.right();
+        let slot_bottom = slot.bottom();
 
         let left = if slot.x <= self.work_rect().x {
             0
@@ -166,9 +166,9 @@ pub(crate) fn outline_rectangles(rect: Rect, requested_width: i32) -> [Rect; 4] 
     let inner_height = (rect.h - 2 * width).max(0);
     [
         Rect::new(rect.x, rect.y, rect.w.max(1), width),
-        Rect::new(rect.x, rect.y + rect.h - width, rect.w.max(1), width),
+        Rect::new(rect.x, rect.bottom() - width, rect.w.max(1), width),
         Rect::new(rect.x, rect.y + width, width, inner_height),
-        Rect::new(rect.x + rect.w - width, rect.y + width, width, inner_height),
+        Rect::new(rect.right() - width, rect.y + width, width, inner_height),
     ]
 }
 

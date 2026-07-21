@@ -20,7 +20,7 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     {
         ctx.reset_mode();
     }
-    crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
 
     if let Some(id) = monitor_id {
         crate::client::apply_visibility(ctx);
@@ -637,7 +637,7 @@ pub(crate) fn pointer_tree_resize_start(
     ) {
         return None;
     }
-    let hit = crate::types::Point::new(point.x - view.client.geo.x, point.y - view.client.geo.y);
+    let hit = view.client.geo.local_point(point);
     let requested = crate::types::ResizeDirection::from_hit(view.client.geo.size(), hit);
     let direction = available_tree_resize_direction(
         requested,

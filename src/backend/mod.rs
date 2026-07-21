@@ -12,7 +12,7 @@ use crate::backend::wayland::WaylandBackend;
 use crate::backend::x11::{X11BackendRef, X11RuntimeConfig};
 use crate::config::config_toml::VrrMode;
 use crate::systray::StatusNotifierTray;
-use crate::types::{MouseButton, Point, Rect, WindowId, XEmbedTray};
+use crate::types::{AltCursor, MouseButton, Point, Rect, WindowId, XEmbedTray};
 use bincode::{Decode, Encode};
 
 #[derive(
@@ -110,6 +110,24 @@ pub trait PointerOps {
 
     /// Warp pointer to (x, y) in root coordinates.
     fn warp_pointer(&self, x: f64, y: f64);
+
+    /// Warp to an integer logical point without repeating coordinate casts.
+    fn warp_to_point(&self, point: Point) {
+        self.warp_pointer(f64::from(point.x), f64::from(point.y));
+    }
+}
+
+/// Backend projection of the WM-owned cursor presentation.
+///
+/// Implemented by backend contexts rather than bare connections because X11
+/// cursor resources live in its runtime state.
+pub trait CursorOps {
+    fn apply_cursor_style(&mut self, style: AltCursor);
+}
+
+/// Graceful client termination projected through backend runtime state.
+pub trait WindowCloseOps {
+    fn close_window(&mut self, window: WindowId);
 }
 
 /// Backend effects associated with the lifetime of a user-driven resize.
