@@ -122,6 +122,11 @@ invalidates it.
 While dragging, a thick hollow frame shows the source window's exact final
 outer rectangle for the target under the pointer. The frame disappears over
 the tag bar and screen-edge drop zones, whose existing actions take precedence.
+Dropping a window on a tag moves it there without changing the current view.
+Hold Alt when releasing to move the window and follow it to that tag. The same
+release-time rule applies when dragging a tag indicator: plain drag moves the
+selected window, while Alt-drag moves and follows. Modifiers may be changed at
+any point during the gesture.
 
 The gesture is implemented once in the backend-neutral layout layer. X11's
 synchronous drag and Wayland's asynchronous pointer interaction call the same

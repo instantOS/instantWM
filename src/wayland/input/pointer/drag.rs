@@ -199,7 +199,11 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
 /// Handles finishes for all drags in the `Active` phase regardless of how the
 /// drag was initiated. Returns `false` for armed click interactions so
 /// `title_drag_finish` can handle the click action.
-pub fn hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) -> bool {
+pub fn hover_resize_drag_finish(
+    ctx: &mut WmCtxWayland<'_>,
+    btn: MouseButton,
+    modifiers: u32,
+) -> bool {
     let Some(drag) = finish(ctx.core.drag_state_mut(), ctx.wayland, btn) else {
         return false;
     };
@@ -212,6 +216,7 @@ pub fn hover_resize_drag_finish(ctx: &mut WmCtxWayland<'_>, btn: MouseButton) ->
                 drag.drop_restore_geo(),
                 None,
                 Some(drag.last_root_point()),
+                modifiers,
             );
         }
         crate::core_state::DragType::Resize(_) => {

@@ -244,10 +244,12 @@ pub struct TagDragState {
     pub active: bool,
     /// The initial tag mask that was clicked.
     pub initial_tag: TagMask,
+    /// Pointer position at press time, used to distinguish a click from a drag.
+    pub start: Point,
+    /// Whether pointer motion has crossed the drag threshold.
+    pub dragging: bool,
     /// Monitor ID where the drag started.
     pub monitor_id: MonitorId,
-    /// Monitor X origin (for converting root coords to local).
-    pub mon_mx: i32,
     /// Last seen tag gesture index (None = none).
     pub last_tag: Option<usize>,
     /// Whether cursor is still on the bar.

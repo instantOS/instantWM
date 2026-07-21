@@ -384,7 +384,14 @@ pub fn dispatch_pointer_motion(
     }
 
     // Phase 4: Handle bar interaction (early return path)
-    let bar_pos = update_bar_hit_state(wm, root, false);
+    // An armed/active tag drag owns the bar hover until release. Running the
+    // ordinary hover path as well makes the two states alternate every motion
+    // frame, which is visible as flicker on Wayland.
+    let bar_pos = if wm.core.drag.tag.active {
+        None
+    } else {
+        update_bar_hit_state(wm, root, false)
+    };
     if handle_bar_motion(
         wm,
         state,

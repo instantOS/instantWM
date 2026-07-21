@@ -76,15 +76,22 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         return;
     }
 
-    crate::backend::x11::grab::mouse_drag_loop(ctx, btn, AltCursor::Move, false, |ctx, event| {
-        if let BackendEvent::Motion { root, .. } = event {
-            let root = *root;
-            ctx.core.drag_state_mut().record_interactive_motion(root);
-            let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
-            on_motion(&mut wm_ctx, win, root, root, &mut state);
-        }
-        true
-    });
+    let release_modifiers = crate::backend::x11::grab::mouse_drag_loop(
+        ctx,
+        btn,
+        AltCursor::Move,
+        false,
+        |ctx, event| {
+            if let BackendEvent::Motion { root, .. } = event {
+                let root = *root;
+                ctx.core.drag_state_mut().record_interactive_motion(root);
+                let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
+                on_motion(&mut wm_ctx, win, root, root, &mut state);
+            }
+            true
+        },
+    )
+    .unwrap_or(0);
 
     crate::mouse::drag::lifecycle::finish(ctx.core.drag_state_mut(), &ctx.x11, btn)
         .expect("X11 drag loop must finish the interaction using its grab button");
@@ -95,6 +102,7 @@ pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Optio
         state.grab_start_rect,
         state.edge_snap_indicator,
         None,
+        release_modifiers,
     );
 }
 

@@ -94,12 +94,12 @@ pub fn execute_button_action(
         ButtonAction::DragTagBegin => match ctx {
             WmCtx::X11(ctx_x11) => {
                 if let Some(pos) = arg.bar_position() {
-                    drag_tag(ctx_x11, pos, arg.btn, arg.root.x);
+                    drag_tag(ctx_x11, pos, arg.btn, arg.root);
                 }
             }
             WmCtx::Wayland(_) => {
                 if let Some(pos) = arg.bar_position() {
-                    let _ = crate::mouse::drag::drag_tag_begin(ctx, pos, arg.btn);
+                    let _ = crate::mouse::drag::drag_tag_begin(ctx, pos, arg.btn, arg.root);
                 }
             }
         },
@@ -120,13 +120,6 @@ pub fn execute_button_action(
                 && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
             {
                 crate::tags::client_tags::toggle_tag(ctx, win, mask);
-            }
-        }
-        ButtonAction::FollowSelectedClientClickedTag => {
-            if let Some(win) = ctx.core().model().selected_win()
-                && let Some(mask) = arg.bar_position().and_then(|pos| pos.to_tag_mask())
-            {
-                crate::tags::client_tags::follow_tag(ctx, win, mask);
             }
         }
         ButtonAction::ClientMoveDrag => match ctx {

@@ -256,7 +256,7 @@ fn handle_button_release(
     // A release belongs to whichever interaction consumed its press. Finish
     // WM drags even when the pointer has moved over an overlay; ordinary
     // overlay releases are forwarded by the non-WM-drag path below.
-    if finish_hover_resize_drag(wm, button) {
+    if finish_hover_resize_drag(wm, keyboard_handle, button) {
         return true;
     }
 
@@ -287,13 +287,17 @@ fn handle_button_release(
     false
 }
 
-fn finish_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
+fn finish_hover_resize_drag(
+    wm: &mut Wm,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    button: ButtonPress,
+) -> bool {
     let Some(btn) = button.wm_button else {
         return false;
     };
     let ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(mut ctx) = ctx {
-        hover_resize_drag_finish(&mut ctx, btn)
+        hover_resize_drag_finish(&mut ctx, btn, clean_modifier_state(keyboard_handle))
     } else {
         false
     }

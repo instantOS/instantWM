@@ -68,7 +68,11 @@ pub enum BackendEvent {
     /// Button press (start of a click).
     ButtonPress { button: MouseButton },
     /// Button release.
-    ButtonRelease { button: MouseButton },
+    ButtonRelease {
+        button: MouseButton,
+        /// Modifier mask at release time.
+        modifiers: u32,
+    },
     /// Key press (used with `with_keys: true`).
     KeyPress { keycode: u32 },
 }

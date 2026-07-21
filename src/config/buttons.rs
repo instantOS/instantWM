@@ -65,7 +65,7 @@ pub fn get_buttons() -> Vec<Button> {
         btn!(Tag(0), 0, button:MouseButton::ScrollDown => ButtonAction::named(NamedAction::ScrollRight)),
         btn!(Tag(0), MODKEY, button:MouseButton::Left => ButtonAction::SetSelectedClientClickedTag),
         btn!(Tag(0), MODKEY, button:MouseButton::Right => ButtonAction::ToggleSelectedClientClickedTag),
-        btn!(Tag(0), MOD1, button:MouseButton::Left => ButtonAction::FollowSelectedClientClickedTag),
+        btn!(Tag(0), MOD1, button:MouseButton::Left => ButtonAction::DragTagBegin),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollUp => ButtonAction::named(NamedAction::ShiftViewLeft)),
         btn!(Tag(0), MODKEY, button:MouseButton::ScrollDown => ButtonAction::named(NamedAction::ShiftViewRight)),
         btn!(screen:Root, 0, button:MouseButton::Left => ButtonAction::named_args(NamedAction::Spawn, defaults::APPMENU)),

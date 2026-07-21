@@ -61,11 +61,19 @@ pub fn finish_drag_move(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
+    modifiers: u32,
 ) {
     debug_assert!(ctx.core().drag_state().interactive().is_idle());
     crate::mouse::cursor::set_cursor_style(ctx, crate::types::AltCursor::Default);
     clear_bar_hover(ctx);
-    complete_move_drop(ctx, win, grab_start_rect, edge_hint, pointer_override);
+    complete_move_drop(
+        ctx,
+        win,
+        grab_start_rect,
+        edge_hint,
+        pointer_override,
+        modifiers,
+    );
 }
 
 /// Shared post-resize-drag teardown used by both X11 and Wayland backends.

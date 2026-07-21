@@ -415,6 +415,7 @@ pub fn handle_bar_drop(
     win: WindowId,
     grab_start_rect: Rect,
     pointer_override: Option<Point>,
+    modifiers: u32,
 ) {
     let Some(root) = pointer_override.or_else(|| ctx.pointer_backend().pointer_location()) else {
         return;
@@ -462,10 +463,11 @@ pub fn handle_bar_drop(
         {
             let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);
         }
-        crate::tags::client_tags::set_client_tag(
+        crate::mouse::drag::tag::apply_window_tag_drop(
             ctx,
             win,
             TagMask::from_index(tag_idx).unwrap_or(TagMask::EMPTY),
+            modifiers,
         );
     } else if was_floating {
         // Dropped on the bar but not on a tag button: tile the window.
@@ -566,6 +568,7 @@ pub fn complete_move_drop(
     grab_start_rect: Rect,
     edge_hint: Option<SnapPosition>,
     pointer_override: Option<Point>,
+    modifiers: u32,
 ) {
     // Hide the speculative frame before applying the authoritative drop. This
     // also covers release outside every valid tree target.
@@ -589,7 +592,7 @@ pub fn complete_move_drop(
         if handled_tree {
             return;
         }
-        handle_bar_drop(ctx, win, grab_start_rect, pointer);
+        handle_bar_drop(ctx, win, grab_start_rect, pointer, modifiers);
         handle_client_monitor_switch(ctx, win);
     }
 }
