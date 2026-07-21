@@ -309,7 +309,7 @@ pub use manager::{
     apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by,
     place_tree_at_point, preview_tree_at_point, promote_tree, resize_tree, resize_tree_smart,
     set_layout, set_master_factor, swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
-    toggle_maximized_layout,
+    toggle_tiling_maximized,
 };
 
 #[cfg(test)]

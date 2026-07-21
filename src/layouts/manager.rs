@@ -1086,7 +1086,7 @@ pub fn toggle_layout(ctx: &mut WmCtx<'_>) {
 }
 
 /// Toggle maximized-stack presentation without modifying the manual tree.
-pub fn toggle_maximized_layout(ctx: &mut WmCtx<'_>) {
+pub fn toggle_tiling_maximized(ctx: &mut WmCtx<'_>) {
     let next = if ctx
         .core()
         .model()

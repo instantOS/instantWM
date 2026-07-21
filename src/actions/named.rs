@@ -16,7 +16,7 @@ use crate::layouts::{
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
     focus_tree_neighbor, inc_master_count_by, resize_keyboard_tree_placement, resize_tree,
     resize_tree_smart, set_layout, set_master_factor, step_keyboard_tree_placement,
-    swap_keyboard_tree_placement, swap_tree_neighbor, toggle_layout, toggle_maximized_layout,
+    swap_keyboard_tree_placement, swap_tree_neighbor, toggle_layout, toggle_tiling_maximized,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
@@ -92,7 +92,7 @@ define_named_actions!(
     LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Floating); } },
     LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
     LayoutMonocle => { name: "layout_monocle", arg_example: None, doc: "compatibility alias for layout_maximized", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
-    ToggleMaximizedLayout => { name: "toggle_maximized_layout", arg_example: None, doc: "toggle maximized-stack presentation while preserving the manual tree", run: |ctx, _args| { toggle_maximized_layout(ctx); } },
+    ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle between manual tiling and maximized-stack presentation without changing the tree", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Grid); } },
     LayoutDeck => { name: "layout_deck", arg_example: None, doc: "rewrite the tree as a non-overlapping master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Deck); } },
     LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BottomStack); } },
@@ -270,6 +270,15 @@ mod tests {
         );
         assert_eq!(parse_named_action("overlay_toggle"), None);
         assert_eq!(parse_named_action("overlay_direction_left"), None);
+    }
+
+    #[test]
+    fn tiling_maximized_toggle_has_an_explicit_presentation_name() {
+        assert_eq!(
+            parse_named_action("toggle_tiling_maximized"),
+            Some(NamedAction::ToggleTilingMaximized)
+        );
+        assert_eq!(parse_named_action("toggle_maximized_layout"), None);
     }
 
     #[test]

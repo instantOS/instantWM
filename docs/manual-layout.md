@@ -48,10 +48,11 @@ The default Super bindings use the tree whenever the focused window is tiled:
   This deliberately uses Super to enter the mode; the browser prototype could
   not reserve that modifier.
 
-Placement candidates are normalized by their resulting leaf order and visual
-geometry. Equivalent descriptions of one seam—such as “right of A” and “left
-of B”—therefore appear as one target, and pointer drops on either side resolve
-to the same canonical result.
+Placement candidates are normalized by their resulting leaf order and the
+visible source-window preview. Equivalent descriptions of one seam—such as
+“right of A” and “left of B”—therefore appear as one target, and structural
+scope choices with substantially overlapping previews do not create visually
+redundant navigation steps.
 
 When tiled size hints are enabled, placement candidates are also checked
 against every affected client's minimum outer size before they are shown.
@@ -89,10 +90,18 @@ to remain held after Super+M. Other modifiers remain meaningful. An explicit
 `none` action can make an otherwise unrelated key a consumed no-op; an unbound
 non-modifier cancels placement.
 
-`Super+Ctrl+M` toggles maximized presentation. Pressing it again returns to the
-unchanged manual tree. `Super+J/K` cycles tiled windows in stable tree-leaf
-order while maximized; floating windows remain separate overlays. The broken
-per-window `Super+Ctrl+F` maximize binding has been removed.
+`Super+W` (`toggle_tiling_maximized`) toggles maximized presentation. Pressing
+it again returns to the unchanged manual tree. `Super+J/K` cycles tiled windows
+in stable tree-leaf order while maximized. The bar presents those tiled titles
+in the same order, so J moves right and K moves left through the visible title
+sequence, wrapping at its ends. Floating windows remain separate overlays and
+their titles follow the tiled sequence. The broken per-window `Super+Ctrl+F`
+maximize binding has been removed.
+
+`Super+T` toggles the default edge overlay (`edge_scratchpad_toggle`), while
+`Super+Ctrl+T` creates it from the focused window. The master-stack tree preset
+remains available as `layout_tile` and from the layout-symbol menu rather than
+occupying the direct `Super+T` binding.
 
 The existing action names (`focus_left`, `key_move_left`, `key_resize_left`,
 and their other directions) work in custom TOML bindings. The direction-free

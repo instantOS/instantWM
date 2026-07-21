@@ -228,3 +228,46 @@ fn tiled_client_count_matches_collected_tiled_clients() {
     assert_eq!(monitor.tiled_client_count(&clients), 1);
     assert_eq!(monitor.collect_tiled(&clients).len(), 1);
 }
+
+#[test]
+fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
+    let tag = TagMask::single(1).unwrap();
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(tag);
+    monitor.clients = vec![WindowId(2), WindowId(3), WindowId(1), WindowId(4)];
+    monitor.per_tag_state().layout_tree.apply_preset(
+        crate::layouts::tree::Preset::MasterStack,
+        &[WindowId(3), WindowId(1), WindowId(2)],
+        Some(WindowId(3)),
+        1,
+        0.55,
+    );
+    monitor
+        .per_tag_state()
+        .layouts
+        .set_layout(PresentationMode::Maximized);
+
+    let clients = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)]
+        .into_iter()
+        .map(|win| {
+            let mut client = Client {
+                win,
+                tags: tag,
+                ..Client::default()
+            };
+            if matches!(win, WindowId(2) | WindowId(4)) {
+                client.mode = crate::types::ClientMode::Floating;
+            }
+            (win, client)
+        })
+        .collect::<HashMap<_, _>>();
+
+    assert_eq!(
+        monitor.tiled_tree_order(&clients),
+        vec![WindowId(3), WindowId(1)]
+    );
+    assert_eq!(
+        monitor.bar_client_order(&clients),
+        vec![WindowId(3), WindowId(1), WindowId(2), WindowId(4)]
+    );
+}

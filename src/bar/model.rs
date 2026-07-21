@@ -151,11 +151,7 @@ pub(crate) fn build_fallback_hit_cache(mon: &Monitor, core: &CoreCtx) -> Monitor
     let status_hit_x = mon.work_rect().w - systray_w;
 
     // ── Window title ranges ───────────────────────────────────────────────
-    let selected = mon.selected_tags();
-    let title_clients: Vec<WindowId> = mon
-        .iter_clients(&core.model().clients)
-        .filter_map(|(win, c)| c.shows_in_bar(selected).then_some(win))
-        .collect();
+    let title_clients = mon.bar_client_order(&core.model().clients);
 
     let mut title_ranges: Vec<TitleHitRange> = Vec::new();
     if !title_clients.is_empty() {

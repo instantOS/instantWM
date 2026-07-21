@@ -51,10 +51,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_D => KeyAction::named(NamedAction::DecMasterCount)),
         key!(MODKEY, XK_H => KeyAction::named(NamedAction::MasterFactorShrink)),
         key!(MODKEY, XK_L => KeyAction::named(NamedAction::MasterFactorGrow)),
-        key!(MODKEY, XK_T => KeyAction::named(NamedAction::LayoutTile)),
+        key!(MODKEY, XK_T => KeyAction::named(NamedAction::EdgeScratchpadToggle)),
         key!(MODKEY, XK_C => KeyAction::named(NamedAction::LayoutGrid)),
         key!(MODKEY, XK_F => KeyAction::named(NamedAction::LayoutFloat)),
-        key!(MODKEY | CONTROL, XK_M => KeyAction::named(NamedAction::ToggleMaximizedLayout)),
+        key!(MODKEY, XK_W => KeyAction::named(NamedAction::ToggleTilingMaximized)),
         key!(MODKEY, XK_P => KeyAction::named(NamedAction::ToggleLayout)),
         key!(MODKEY | CONTROL, XK_COMMA => KeyAction::named(NamedAction::CycleLayoutPrev)),
         key!(MODKEY | CONTROL, XK_PERIOD => KeyAction::named(NamedAction::CycleLayoutNext)),
@@ -96,8 +96,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_M => KeyAction::named(NamedAction::BeginTreePlacement)),
         key!(MODKEY, XK_E => KeyAction::named(NamedAction::ToggleOverview)),
         key!(MODKEY | SHIFT, XK_E => KeyAction::named(NamedAction::CancelOverview)),
-        key!(MODKEY, XK_W => KeyAction::named(NamedAction::EdgeScratchpadToggle)),
-        key!(MODKEY | CONTROL, XK_W => KeyAction::named(NamedAction::EdgeScratchpadCreate)),
+        key!(MODKEY | CONTROL, XK_T => KeyAction::named(NamedAction::EdgeScratchpadCreate)),
         key!(MODKEY, XK_S => KeyAction::named(NamedAction::ScratchpadToggle)),
         key!(MODKEY, XK_B => KeyAction::named(NamedAction::ToggleBar)),
         key!(MODKEY | CONTROL, XK_S => KeyAction::named(NamedAction::ToggleSticky)),
@@ -231,6 +230,29 @@ mod tests {
                 KeyAction::Named { action, .. } => Some(action),
                 _ => None,
             })
+    }
+
+    fn default_named_action(modifiers: u32, keysym: u32) -> Option<NamedAction> {
+        get_keys()
+            .into_iter()
+            .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
+            .and_then(|key| match key.action {
+                KeyAction::Named { action, .. } => Some(action),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn presentation_and_overlay_defaults_use_direct_super_bindings() {
+        assert_eq!(
+            default_named_action(MODKEY, XK_T),
+            Some(NamedAction::EdgeScratchpadToggle)
+        );
+        assert_eq!(
+            default_named_action(MODKEY, XK_W),
+            Some(NamedAction::ToggleTilingMaximized)
+        );
+        assert_eq!(default_named_action(MODKEY | CONTROL, XK_M), None);
     }
 
     #[test]

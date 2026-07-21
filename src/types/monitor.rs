@@ -326,6 +326,60 @@ impl Monitor {
             .collect()
     }
 
+    /// Tiled clients in the stable order represented by the current manual
+    /// tree. A newly managed client is appended defensively if reconciliation
+    /// has not reached the tree yet.
+    pub fn tiled_tree_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
+        let selected = self.selected_tags();
+        let mut ordered = self
+            .per_tag()
+            .map(|state| state.layout_tree.leaves())
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|win| {
+                clients
+                    .get(win)
+                    .is_some_and(|client| client.is_tiled(selected))
+            })
+            .collect::<Vec<_>>();
+
+        for &win in &self.clients {
+            if !ordered.contains(&win)
+                && clients
+                    .get(&win)
+                    .is_some_and(|client| client.is_tiled(selected))
+            {
+                ordered.push(win);
+            }
+        }
+        ordered
+    }
+
+    /// Client-title order presented by the bar.
+    ///
+    /// In maximized presentation, tiled titles are tabs for the overlapping
+    /// stack and therefore use the same tree order as keyboard focus cycling.
+    /// Floating overlays follow that sequence in ordinary monitor client order.
+    pub fn bar_client_order(&self, clients: &HashMap<WindowId, Client>) -> Vec<WindowId> {
+        let selected = self.selected_tags();
+        let mut ordered = if self.is_maximized_layout() {
+            self.tiled_tree_order(clients)
+        } else {
+            Vec::new()
+        };
+
+        for &win in &self.clients {
+            if !ordered.contains(&win)
+                && clients
+                    .get(&win)
+                    .is_some_and(|client| client.shows_in_bar(selected))
+            {
+                ordered.push(win);
+            }
+        }
+        ordered
+    }
+
     /// Move a client within this monitor's focus list (stack order).
     ///
     /// Returns true if the position changed, false otherwise (e.g., if the client

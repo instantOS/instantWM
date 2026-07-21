@@ -599,30 +599,7 @@ fn get_visible_stack(mon: &Monitor, clients: &HashMap<WindowId, Client>) -> Vec<
     if mon.is_maximized_layout() {
         // The persistent tree is a stable, user-controlled order. Unlike
         // z-order it does not change merely because a window was focused.
-        let tree_order = mon
-            .per_tag()
-            .map(|state| state.layout_tree.leaves())
-            .unwrap_or_default();
-        let mut stack = tree_order
-            .into_iter()
-            .filter(|win| {
-                clients
-                    .get(win)
-                    .is_some_and(|client| client.is_tiled(selected))
-            })
-            .collect::<Vec<_>>();
-        // Lifecycle paths normally reconcile before focus input, but append a
-        // just-managed tiled client defensively so it can never become
-        // unreachable from cycling during the intervening event turn.
-        for &win in &mon.clients {
-            if !stack.contains(&win)
-                && clients
-                    .get(&win)
-                    .is_some_and(|client| client.is_tiled(selected))
-            {
-                stack.push(win);
-            }
-        }
+        let stack = mon.tiled_tree_order(clients);
         if !stack.is_empty() {
             return stack;
         }
@@ -787,9 +764,9 @@ mod tests {
             })
             .collect();
 
-        assert_eq!(
-            get_visible_stack(&monitor, &clients),
-            vec![WindowId(3), WindowId(1)]
-        );
+        let cycle_order = get_visible_stack(&monitor, &clients);
+        let bar_order = monitor.bar_client_order(&clients);
+        assert_eq!(cycle_order, vec![WindowId(3), WindowId(1)]);
+        assert_eq!(&bar_order[..cycle_order.len()], cycle_order);
     }
 }

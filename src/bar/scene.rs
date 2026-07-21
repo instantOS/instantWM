@@ -234,10 +234,10 @@ pub(crate) fn build_monitor_snapshots(
 
         let selected_tags = mon.selected_tags();
         let mut titles = Vec::new();
-        for (_c_win, c) in mon
-            .iter_clients(&core.model().clients)
-            .filter(|(_, c)| c.shows_in_bar(selected_tags))
-        {
+        for win in mon.bar_client_order(&core.model().clients) {
+            let Some(c) = core.model().client(win) else {
+                continue;
+            };
             stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
             let scheme = core.window_scheme(c, is_hover);
