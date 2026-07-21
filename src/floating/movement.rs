@@ -19,7 +19,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     }
 
     const MOVE_STEP: i32 = 40;
-    let (dx, dy) = dir.move_delta(MOVE_STEP);
+    let (dx, dy) = dir.delta(MOVE_STEP);
     let mut new_x = geo.x + dx;
     let mut new_y = geo.y + dy;
 
@@ -60,7 +60,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     }
 
     const RESIZE_STEP: i32 = 40;
-    let (dw, dh) = dir.resize_delta(RESIZE_STEP);
+    let (dw, dh) = dir.delta(RESIZE_STEP);
     let nw = geo.w + dw;
     let nh = geo.h + dh;
 

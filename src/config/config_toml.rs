@@ -258,6 +258,16 @@ pub enum ToggleSetting {
     Disabled,
 }
 
+impl From<bool> for ToggleSetting {
+    fn from(enabled: bool) -> Self {
+        if enabled {
+            Self::Enabled
+        } else {
+            Self::Disabled
+        }
+    }
+}
+
 /// Acceleration profile for pointer devices.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]

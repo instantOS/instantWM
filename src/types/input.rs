@@ -82,16 +82,7 @@ impl AltCursor {
         match self {
             AltCursor::Default => 0,
             AltCursor::Move => 2,
-            AltCursor::Resize(dir) => match dir {
-                ResizeDirection::TopLeft => 8,
-                ResizeDirection::TopRight => 9,
-                ResizeDirection::BottomLeft => 6,
-                ResizeDirection::BottomRight => 7,
-                ResizeDirection::Top => 5,
-                ResizeDirection::Bottom => 5,
-                ResizeDirection::Left => 4,
-                ResizeDirection::Right => 4,
-            },
+            AltCursor::Resize(dir) => dir.cursor_index(),
         }
     }
 }
@@ -500,18 +491,8 @@ pub enum Direction {
 }
 
 impl Direction {
-    /// Get delta for movement as (dx, dy).
-    pub fn move_delta(self, step: i32) -> (i32, i32) {
-        match self {
-            Self::Down => (0, step),
-            Self::Up => (0, -step),
-            Self::Right => (step, 0),
-            Self::Left => (-step, 0),
-        }
-    }
-
-    /// Get delta for resize as (dw, dh) - grow direction.
-    pub fn resize_delta(self, step: i32) -> (i32, i32) {
+    /// Convert this cardinal direction to a signed `(x, y)` delta.
+    pub fn delta(self, step: i32) -> (i32, i32) {
         match self {
             Self::Down => (0, step),
             Self::Up => (0, -step),
@@ -570,5 +551,37 @@ impl FromStr for StackDirection {
             "prev" | "previous" | "up" | "backward" => Ok(Self::Previous),
             _ => Err(()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AltCursor, Direction, ResizeDirection};
+
+    #[test]
+    fn alt_resize_cursor_uses_resize_direction_mapping() {
+        for direction in [
+            ResizeDirection::TopLeft,
+            ResizeDirection::Top,
+            ResizeDirection::TopRight,
+            ResizeDirection::Right,
+            ResizeDirection::BottomRight,
+            ResizeDirection::Bottom,
+            ResizeDirection::BottomLeft,
+            ResizeDirection::Left,
+        ] {
+            assert_eq!(
+                AltCursor::Resize(direction).to_x11_index(),
+                direction.cursor_index()
+            );
+        }
+    }
+
+    #[test]
+    fn direction_delta_has_the_expected_axis_and_sign() {
+        assert_eq!(Direction::Up.delta(4), (0, -4));
+        assert_eq!(Direction::Down.delta(4), (0, 4));
+        assert_eq!(Direction::Left.delta(4), (-4, 0));
+        assert_eq!(Direction::Right.delta(4), (4, 0));
     }
 }

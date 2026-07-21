@@ -19,21 +19,59 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------
-// Section registry — the single source of truth for which top-level sections
-// this IPC surface exposes. `instantwmctl config list <prefix>` imports this
-// to validate prefixes instead of keeping a parallel list. The test
-// `runtime_config_sections_match_list_output` pins it to what `list()` emits.
+// Typed section registry. Parsing strings once and dispatching exhaustively on
+// this enum prevents get/set/list and the CLI validator from silently drifting.
 // ---------------------------------------------------------------------------
 
-/// Top-level runtime-config sections exposed via `get`/`set`/`list`, in the
-/// order `list()` emits them. `display` is excluded (see `HIDDEN_SECTIONS`).
-pub const RUNTIME_CONFIG_SECTIONS: &[&str] = &[
-    "window", "bar", "systray", "layout", "colors", "cursor", "fonts", "input", "monitors",
-];
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeConfigSection {
+    Window,
+    Bar,
+    Systray,
+    Layout,
+    Colors,
+    Cursor,
+    Fonts,
+    Input,
+    Monitors,
+    Display,
+}
 
-/// Sections that exist on the runtime config but are derived from the running
-/// outputs, so they are hidden from `get`/`set`/`list`.
-pub const HIDDEN_SECTIONS: &[&str] = &["display"];
+impl RuntimeConfigSection {
+    pub const EXPOSED: [Self; 9] = [
+        Self::Window,
+        Self::Bar,
+        Self::Systray,
+        Self::Layout,
+        Self::Colors,
+        Self::Cursor,
+        Self::Fonts,
+        Self::Input,
+        Self::Monitors,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Window => "window",
+            Self::Bar => "bar",
+            Self::Systray => "systray",
+            Self::Layout => "layout",
+            Self::Colors => "colors",
+            Self::Cursor => "cursor",
+            Self::Fonts => "fonts",
+            Self::Input => "input",
+            Self::Monitors => "monitors",
+            Self::Display => "display",
+        }
+    }
+
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::EXPOSED
+            .into_iter()
+            .chain([Self::Display])
+            .find(|section| section.name() == name)
+    }
+}
 
 /// How a top-level section name is exposed by this IPC surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,12 +87,10 @@ pub enum SectionStatus {
 /// Classify a top-level section name. Lets the client produce helpful errors
 /// for `config list <bad-section>` without duplicating the section list.
 pub fn section_status(name: &str) -> SectionStatus {
-    if RUNTIME_CONFIG_SECTIONS.contains(&name) {
-        SectionStatus::Exposed
-    } else if HIDDEN_SECTIONS.contains(&name) {
-        SectionStatus::Hidden
-    } else {
-        SectionStatus::Unknown
+    match RuntimeConfigSection::parse(name) {
+        Some(RuntimeConfigSection::Display) => SectionStatus::Hidden,
+        Some(_) => SectionStatus::Exposed,
+        None => SectionStatus::Unknown,
     }
 }
 
@@ -67,61 +103,71 @@ pub fn handle_config_command(wm: &mut Wm, cmd: ConfigCommand) -> Response {
 }
 
 fn get(wm: &Wm, key: &str) -> Response {
-    let Some((section, rest)) = key.split_once('.') else {
+    let Some((section_name, rest)) = key.split_once('.') else {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
+    };
+    let Some(section) = RuntimeConfigSection::parse(section_name) else {
+        return Response::err(format!("unknown section '{section_name}'"));
     };
     let g = &wm.core;
     let val = match section {
-        "window" => field_get(&g.config.window, rest),
-        "bar" => field_get(&g.config.bar, rest),
-        "systray" => field_get(&g.config.systray, rest),
-        "layout" => field_get(&g.config.layout, rest),
-        "colors" => field_get(&g.config.colors, rest),
-        "cursor" => field_get(&g.config.cursor, rest),
-        "fonts" => field_get(&g.config.fonts, rest),
-        "input" => return map_get(&g.config.input, "input", rest),
-        "monitors" => return map_get(&g.config.monitors, "monitors", rest),
-        "display" => {
+        RuntimeConfigSection::Window => field_get(&g.config.window, rest),
+        RuntimeConfigSection::Bar => field_get(&g.config.bar, rest),
+        RuntimeConfigSection::Systray => field_get(&g.config.systray, rest),
+        RuntimeConfigSection::Layout => field_get(&g.config.layout, rest),
+        RuntimeConfigSection::Colors => field_get(&g.config.colors, rest),
+        RuntimeConfigSection::Cursor => field_get(&g.config.cursor, rest),
+        RuntimeConfigSection::Fonts => field_get(&g.config.fonts, rest),
+        RuntimeConfigSection::Input => return map_get(&g.config.input, section.name(), rest),
+        RuntimeConfigSection::Monitors => {
+            return map_get(&g.config.monitors, section.name(), rest);
+        }
+        RuntimeConfigSection::Display => {
             return Response::err("display.* is derived from outputs and not exposed at runtime");
         }
-        _ => return Response::err(format!("unknown section '{section}'")),
     };
-    val.map(Response::ConfigValue)
-        .unwrap_or_else(|| Response::err(format!("unknown field '{rest}' on section '{section}'")))
+    val.map(Response::ConfigValue).unwrap_or_else(|| {
+        Response::err(format!(
+            "unknown field '{rest}' on section '{}'",
+            section.name()
+        ))
+    })
 }
 
 fn set(wm: &mut Wm, key: &str, value: String) -> Response {
-    let Some((section, rest)) = key.split_once('.') else {
+    let Some((section_name, rest)) = key.split_once('.') else {
         return Response::err("key must be 'section.field' (e.g. layout.inner_gap)");
+    };
+    let Some(section) = RuntimeConfigSection::parse(section_name) else {
+        return Response::err(format!("unknown section '{section_name}'"));
     };
 
     let g = &mut wm.core;
     let result = match section {
-        "window" => parse_then_set(&mut g.config.window, rest, value),
-        "bar" => parse_then_set(&mut g.config.bar, rest, value),
-        "systray" => parse_then_set(&mut g.config.systray, rest, value),
-        "layout" => parse_then_set(&mut g.config.layout, rest, value),
-        "colors" => parse_then_set(&mut g.config.colors, rest, value),
-        "cursor" => parse_then_set(&mut g.config.cursor, rest, value),
-        "fonts" => parse_then_set(&mut g.config.fonts, rest, value),
-        "input" => {
-            let resp = map_set(&mut g.config.input, "input", rest, value);
+        RuntimeConfigSection::Window => parse_then_set(&mut g.config.window, rest, value),
+        RuntimeConfigSection::Bar => parse_then_set(&mut g.config.bar, rest, value),
+        RuntimeConfigSection::Systray => parse_then_set(&mut g.config.systray, rest, value),
+        RuntimeConfigSection::Layout => parse_then_set(&mut g.config.layout, rest, value),
+        RuntimeConfigSection::Colors => parse_then_set(&mut g.config.colors, rest, value),
+        RuntimeConfigSection::Cursor => parse_then_set(&mut g.config.cursor, rest, value),
+        RuntimeConfigSection::Fonts => parse_then_set(&mut g.config.fonts, rest, value),
+        RuntimeConfigSection::Input => {
+            let resp = map_set(&mut g.config.input, section.name(), rest, value);
             if matches!(resp, Response::Ok) {
                 wm.work.queue_input_config_apply();
             }
             return resp;
         }
-        "monitors" => {
-            let resp = map_set(&mut g.config.monitors, "monitors", rest, value);
+        RuntimeConfigSection::Monitors => {
+            let resp = map_set(&mut g.config.monitors, section.name(), rest, value);
             if matches!(resp, Response::Ok) {
                 wm.work.queue_monitor_config_apply();
             }
             return resp;
         }
-        "display" => {
+        RuntimeConfigSection::Display => {
             return Response::err("display.* is derived from outputs and cannot be set at runtime");
         }
-        _ => return Response::err(format!("unknown section '{section}'")),
     };
     if let Err(e) = result {
         return Response::err(e);
@@ -133,21 +179,39 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
 fn list(wm: &Wm) -> Response {
     let g = &wm.core;
     let mut entries = Vec::new();
-    collect(&g.config.window, "window", &mut entries);
-    collect(&g.config.bar, "bar", &mut entries);
-    collect(&g.config.systray, "systray", &mut entries);
-    collect(&g.config.layout, "layout", &mut entries);
-    collect(&g.config.colors, "colors", &mut entries);
-    collect(&g.config.cursor, "cursor", &mut entries);
-    collect(&g.config.fonts, "fonts", &mut entries);
-    for (id, cfg) in &g.config.input {
-        collect(cfg, &format!("input.{id}"), &mut entries);
-    }
-    for (id, cfg) in &g.config.monitors {
-        collect(cfg, &format!("monitors.{id}"), &mut entries);
+    for section in RuntimeConfigSection::EXPOSED {
+        collect_section(g, section, &mut entries);
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     Response::ConfigList(entries)
+}
+
+fn collect_section(
+    core: &crate::core_state::CoreState,
+    section: RuntimeConfigSection,
+    entries: &mut Vec<(String, String)>,
+) {
+    let prefix = section.name();
+    match section {
+        RuntimeConfigSection::Window => collect(&core.config.window, prefix, entries),
+        RuntimeConfigSection::Bar => collect(&core.config.bar, prefix, entries),
+        RuntimeConfigSection::Systray => collect(&core.config.systray, prefix, entries),
+        RuntimeConfigSection::Layout => collect(&core.config.layout, prefix, entries),
+        RuntimeConfigSection::Colors => collect(&core.config.colors, prefix, entries),
+        RuntimeConfigSection::Cursor => collect(&core.config.cursor, prefix, entries),
+        RuntimeConfigSection::Fonts => collect(&core.config.fonts, prefix, entries),
+        RuntimeConfigSection::Input => {
+            for (id, config) in &core.config.input {
+                collect(config, &format!("{prefix}.{id}"), entries);
+            }
+        }
+        RuntimeConfigSection::Monitors => {
+            for (id, config) in &core.config.monitors {
+                collect(config, &format!("{prefix}.{id}"), entries);
+            }
+        }
+        RuntimeConfigSection::Display => unreachable!("hidden runtime-config section"),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -271,9 +335,9 @@ fn map_set<T: Serialize + DeserializeOwned + Default>(
     }
 }
 
-fn apply_side_effects(wm: &mut Wm, section: &str) {
+fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
     match section {
-        "bar" => {
+        RuntimeConfigSection::Bar => {
             sync_bar_config_to_monitors(wm);
             if matches!(wm.backend, crate::backend::Backend::X11(_)) {
                 crate::backend::x11::startup::init_drw_and_schemes(wm);
@@ -285,19 +349,21 @@ fn apply_side_effects(wm: &mut Wm, section: &str) {
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
         }
-        "window" | "layout" => {
+        RuntimeConfigSection::Window | RuntimeConfigSection::Layout => {
             let mut ctx = wm.ctx();
             ctx.request_bar_update();
             crate::layouts::manager::arrange(&mut ctx, None);
         }
-        "colors" | "fonts" => recolor(wm),
+        RuntimeConfigSection::Colors | RuntimeConfigSection::Fonts => recolor(wm),
         // TODO: cursor.size/theme needs the Wayland CursorManager to be
         // rebuilt before it takes effect. Until that lands, treat it as a
         // bar-only refresh and rely on the next reload for the real change.
-        "systray" | "cursor" => {
+        RuntimeConfigSection::Systray | RuntimeConfigSection::Cursor => {
             wm.bar.mark_dirty();
         }
-        _ => {}
+        RuntimeConfigSection::Input
+        | RuntimeConfigSection::Monitors
+        | RuntimeConfigSection::Display => {}
     }
 }
 
@@ -517,13 +583,13 @@ mod tests {
                 .collect(),
             other => panic!("expected ConfigList, got {other:?}"),
         };
-        let expected: std::collections::BTreeSet<String> = RUNTIME_CONFIG_SECTIONS
-            .iter()
-            .map(|s| s.to_string())
+        let expected: std::collections::BTreeSet<String> = RuntimeConfigSection::EXPOSED
+            .into_iter()
+            .map(|section| section.name().to_string())
             .collect();
         assert_eq!(
             emitted, expected,
-            "RUNTIME_CONFIG_SECTIONS drifted from list() output"
+            "typed runtime-config registry drifted from list() output"
         );
     }
 

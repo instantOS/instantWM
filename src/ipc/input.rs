@@ -1,6 +1,16 @@
-use crate::config::config_toml::{AccelProfile, ToggleSetting};
+use crate::config::config_toml::{AccelProfile, InputConfig};
 use crate::ipc_types::{InputCommand, Response};
 use crate::wm::Wm;
+use std::collections::HashMap;
+
+fn input_config_mut(
+    inputs: &mut HashMap<String, InputConfig>,
+    identifier: Option<String>,
+) -> &mut InputConfig {
+    inputs
+        .entry(identifier.unwrap_or_else(|| "*".into()))
+        .or_default()
+}
 
 pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
     let inputs = &mut wm.core.config.input;
@@ -48,9 +58,7 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
             return Response::Message(devices.join("\n"));
         }
         InputCommand::PointerAccel { identifier, value } => {
-            let identifier = identifier.unwrap_or_else(|| "*".to_string());
-            let cfg = inputs.entry(identifier).or_default();
-            cfg.pointer_accel = Some(value.clamp(-1.0, 1.0));
+            input_config_mut(inputs, identifier).pointer_accel = Some(value.clamp(-1.0, 1.0));
         }
         InputCommand::AccelProfile {
             identifier,
@@ -65,50 +73,28 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
                     ));
                 }
             };
-            let identifier = identifier.unwrap_or_else(|| "*".to_string());
-            let cfg = inputs.entry(identifier).or_default();
-            cfg.accel_profile = Some(p);
+            input_config_mut(inputs, identifier).accel_profile = Some(p);
         }
         InputCommand::Tap {
             identifier,
             enabled,
         } => {
-            let identifier = identifier.unwrap_or_else(|| "*".to_string());
-            let cfg = inputs.entry(identifier).or_default();
-            cfg.tap = Some(if enabled {
-                ToggleSetting::Enabled
-            } else {
-                ToggleSetting::Disabled
-            });
+            input_config_mut(inputs, identifier).tap = Some(enabled.into());
         }
         InputCommand::NaturalScroll {
             identifier,
             enabled,
         } => {
-            let identifier = identifier.unwrap_or_else(|| "*".to_string());
-            let cfg = inputs.entry(identifier).or_default();
-            cfg.natural_scroll = Some(if enabled {
-                ToggleSetting::Enabled
-            } else {
-                ToggleSetting::Disabled
-            });
+            input_config_mut(inputs, identifier).natural_scroll = Some(enabled.into());
         }
         InputCommand::ScrollFactor { identifier, value } => {
-            let identifier = identifier.unwrap_or_else(|| "*".to_string());
-            let cfg = inputs.entry(identifier).or_default();
-            cfg.scroll_factor = Some(value);
+            input_config_mut(inputs, identifier).scroll_factor = Some(value);
         }
         InputCommand::LeftHanded {
             identifier,
             enabled,
         } => {
-            let identifier = identifier.unwrap_or_else(|| "*".to_string());
-            let cfg = inputs.entry(identifier).or_default();
-            cfg.left_handed = Some(if enabled {
-                ToggleSetting::Enabled
-            } else {
-                ToggleSetting::Disabled
-            });
+            input_config_mut(inputs, identifier).left_handed = Some(enabled.into());
         }
     }
     wm.work.queue_input_config_apply();
