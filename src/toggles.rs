@@ -1,4 +1,5 @@
 use crate::contexts::WmCtx;
+use crate::core_state::ActiveWmMode;
 use crate::tags::get_tag_width;
 use crate::types::*;
 
@@ -8,11 +9,11 @@ fn toggled_bool(current: bool, action: ToggleAction) -> bool {
     next
 }
 
-fn toggle_mode_name(current: &str, name: &str) -> String {
-    if current == name {
-        "default".to_string()
+fn toggle_mode_name(current: &ActiveWmMode, name: &str) -> ActiveWmMode {
+    if current.as_str() == name {
+        ActiveWmMode::Default
     } else {
-        name.to_string()
+        ActiveWmMode::from_name(name)
     }
 }
 
@@ -81,15 +82,15 @@ pub fn unhide_all(ctx: &mut crate::contexts::WmCtx) {
 }
 
 pub fn toggle_mode(ctx: &mut WmCtx, name: &str) {
-    let mode = toggle_mode_name(ctx.current_mode(), name);
+    let next_mode = toggle_mode_name(ctx.current_mode(), name);
     // Overview exit is handled by `exit_overview` (which updates
     // `current_mode` directly) rather than `set_current_mode` to avoid
     // calling `handle_mode_transition` a second time — the exit logic
     // runs inside `exit_overview` itself.
-    if name == crate::overview::OVERVIEW_MODE_NAME && mode == "default" {
+    if name == crate::overview::OVERVIEW_MODE_NAME && next_mode == ActiveWmMode::Default {
         crate::overview::exit_overview(ctx, crate::overview::ExitMode::RestorePrevious);
     } else {
-        ctx.set_current_mode(mode);
+        ctx.set_current_mode(next_mode);
     }
     if let WmCtx::X11(x11) = ctx {
         crate::backend::x11::keyboard::grab_keys(x11.core.state(), &x11.x11, x11.x11_runtime);
@@ -142,6 +143,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
 #[cfg(test)]
 mod tests {
     use super::{toggle_mode_name, toggled_bool};
+    use crate::core_state::ActiveWmMode;
     use crate::types::ToggleAction;
 
     #[test]
@@ -154,7 +156,13 @@ mod tests {
 
     #[test]
     fn toggle_mode_name_toggles_back_to_default() {
-        assert_eq!(toggle_mode_name("default", "resize"), "resize");
-        assert_eq!(toggle_mode_name("resize", "resize"), "default");
+        assert_eq!(
+            toggle_mode_name(&ActiveWmMode::Default, "resize"),
+            ActiveWmMode::Named("resize".to_string())
+        );
+        assert_eq!(
+            toggle_mode_name(&ActiveWmMode::Named("resize".to_string()), "resize"),
+            ActiveWmMode::Default
+        );
     }
 }

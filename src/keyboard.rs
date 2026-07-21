@@ -1,6 +1,7 @@
 use crate::actions::{KeyAction, execute_key_action};
 use crate::config::ModeConfig;
 use crate::contexts::WmCtx;
+use crate::core_state::ActiveWmMode;
 use crate::floating::change_snap;
 use crate::focus::{direction_focus, focus_stack};
 
@@ -12,11 +13,8 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
     let numlockmask = ctx.numlock_mask();
     let cleaned = crate::util::clean_mask(mod_mask, numlockmask) as u16;
 
-    let current_mode = ctx.current_mode().to_string();
-
     // Super + Escape always resets to default mode
-    if !current_mode.is_empty()
-        && current_mode != "default"
+    if !matches!(ctx.current_mode(), ActiveWmMode::Default)
         && keysym == crate::config::keysyms::XK_ESCAPE
         && cleaned
             == crate::util::clean_mask(crate::config::keybindings::MODKEY, numlockmask) as u16
@@ -35,7 +33,7 @@ pub fn handle_keysym(ctx: &mut WmCtx, keysym: u32, mod_mask: u32) -> bool {
             .as_slice(),
         &ctx.core().config().bindings.modes,
         ctx.core().model().selected_win(),
-        &current_mode,
+        ctx.current_mode(),
         keysym,
         cleaned,
         numlockmask,
@@ -62,9 +60,9 @@ struct KeyResolution {
 
 pub(crate) fn desktop_bindings_enabled(
     selected_client: Option<WindowId>,
-    current_mode: &str,
+    mode: &ActiveWmMode,
 ) -> bool {
-    (!current_mode.is_empty() && current_mode != "default") || selected_client.is_none()
+    !matches!(mode, ActiveWmMode::Default) || selected_client.is_none()
 }
 
 fn find_matching_action(
@@ -86,37 +84,39 @@ fn resolve_key_action(
     desktop_keybinds: &[Key],
     modes: &HashMap<String, ModeConfig>,
     selected_client: Option<WindowId>,
-    current_mode: &str,
+    mode: &ActiveWmMode,
     keysym: u32,
     cleaned: u16,
     numlockmask: u32,
 ) -> Option<KeyResolution> {
     let find = |binds: &[Key]| find_matching_action(binds, keysym, cleaned, numlockmask);
 
-    if !current_mode.is_empty() && current_mode != "default" {
-        let mode_cfg = modes.get(current_mode);
-        let transient = mode_cfg.is_some_and(|m| m.transient);
-        // Priority: mode bindings → global bindings → desktop bindings
-        let action = mode_cfg
-            .and_then(|mode| find(&mode.keybinds))
-            .or_else(|| find(keys))
-            .or_else(|| find(desktop_keybinds));
-        return action.map(|action| KeyResolution { action, transient });
+    match mode {
+        ActiveWmMode::Named(name) => {
+            let mode_cfg = modes.get(name.as_str());
+            let transient = mode_cfg.is_some_and(|m| m.transient);
+            let action = mode_cfg
+                .and_then(|m| find(&m.keybinds))
+                .or_else(|| find(keys))
+                .or_else(|| find(desktop_keybinds));
+            action.map(|action| KeyResolution { action, transient })
+        }
+        _ => {
+            // Default & Overview: global bindings → desktop bindings (if enabled)
+            find(keys)
+                .or_else(|| {
+                    if desktop_bindings_enabled(selected_client, mode) {
+                        find(desktop_keybinds)
+                    } else {
+                        None
+                    }
+                })
+                .map(|action| KeyResolution {
+                    action,
+                    transient: false,
+                })
+        }
     }
-
-    // Default mode: global bindings → desktop bindings (if enabled)
-    find(keys)
-        .or_else(|| {
-            if desktop_bindings_enabled(selected_client, current_mode) {
-                find(desktop_keybinds)
-            } else {
-                None
-            }
-        })
-        .map(|action| KeyResolution {
-            action,
-            transient: false,
-        })
 }
 
 pub fn up_key(ctx: &mut WmCtx, direction: StackDirection) {
@@ -172,6 +172,7 @@ pub fn down_key(ctx: &mut WmCtx, direction: StackDirection) {
 mod tests {
     use super::*;
     use crate::actions::NamedAction;
+    use crate::core_state::ActiveWmMode;
 
     #[test]
     fn resolve_key_action_prefers_mode_binding_and_marks_transient() {
@@ -195,8 +196,17 @@ mod tests {
             },
         );
 
-        let resolved = resolve_key_action(&[global_key], &[], &modes, None, "resize", 42, 1, 0)
-            .expect("expected action");
+        let resolved = resolve_key_action(
+            &[global_key],
+            &[],
+            &modes,
+            None,
+            &ActiveWmMode::Named("resize".to_string()),
+            42,
+            1,
+            0,
+        )
+        .expect("expected action");
 
         match resolved.action {
             KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::FocusNext),
@@ -218,7 +228,7 @@ mod tests {
             &[desktop_key],
             &HashMap::new(),
             None,
-            "default",
+            &ActiveWmMode::Default,
             9,
             0,
             0,
@@ -239,7 +249,7 @@ mod tests {
             }],
             &HashMap::new(),
             Some(WindowId(1)),
-            "default",
+            &ActiveWmMode::Default,
             9,
             0,
             0,
@@ -249,8 +259,14 @@ mod tests {
 
     #[test]
     fn desktop_bindings_enabled_in_non_default_mode_even_with_selection() {
-        assert!(desktop_bindings_enabled(Some(WindowId(1)), "resize"));
-        assert!(!desktop_bindings_enabled(Some(WindowId(1)), "default"));
-        assert!(desktop_bindings_enabled(None, "default"));
+        assert!(desktop_bindings_enabled(
+            Some(WindowId(1)),
+            &ActiveWmMode::Named("resize".to_string())
+        ));
+        assert!(!desktop_bindings_enabled(
+            Some(WindowId(1)),
+            &ActiveWmMode::Default
+        ));
+        assert!(desktop_bindings_enabled(None, &ActiveWmMode::Default));
     }
 }

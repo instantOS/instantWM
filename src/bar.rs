@@ -7,6 +7,7 @@ pub mod status;
 pub mod wayland;
 
 use crate::contexts::{CoreCtx, WmCtx};
+use crate::core_state::ActiveWmMode;
 use crate::types::*;
 use std::collections::HashMap;
 
@@ -328,8 +329,7 @@ pub fn handle_status_text_click(ctx: &mut WmCtx, root: Point, button_code: u8, c
         return;
     }
 
-    let mode = ctx.current_mode();
-    if !mode.is_empty() && mode != "default" {
+    if !matches!(ctx.current_mode(), ActiveWmMode::Default) {
         ctx.reset_mode();
         return;
     }

@@ -88,9 +88,10 @@ pub fn grab_keys(
             }
         }
 
-        let current_mode = globals.behavior.current_mode.as_str();
-        let desktop_bindings_enabled =
-            crate::keyboard::desktop_bindings_enabled(globals.selected_win(), current_mode);
+        let desktop_bindings_enabled = crate::keyboard::desktop_bindings_enabled(
+            globals.selected_win(),
+            &globals.behavior.current_mode,
+        );
 
         if desktop_bindings_enabled {
             for key in desktop_keybinds {

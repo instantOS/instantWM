@@ -165,13 +165,11 @@ pub(crate) fn focus_generic(
 
     let current_sel = result.current_sel;
     let sel_mon_id = result.sel_mon_id;
-    let desktop_bindings_before = crate::keyboard::desktop_bindings_enabled(
-        current_sel,
-        core.behavior().current_mode.as_str(),
-    );
+    let desktop_bindings_before =
+        crate::keyboard::desktop_bindings_enabled(current_sel, &core.behavior().current_mode);
     let target = update_focus_state(core.model_mut(), result);
     let desktop_bindings_after =
-        crate::keyboard::desktop_bindings_enabled(target, core.behavior().current_mode.as_str());
+        crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
 
     // Track the previously focused window for focus-last-client.
     // This is done in the shared path so both backends behave identically.

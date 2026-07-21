@@ -136,7 +136,7 @@ pub fn toggle_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {
         return;
     }
 
-    ctx.set_current_mode(OVERVIEW_MODE_NAME.to_string());
+    ctx.set_current_mode(crate::core_state::ActiveWmMode::Overview);
 }
 
 pub fn cancel_overview(ctx: &mut WmCtx<'_>, _mask: TagMask) {

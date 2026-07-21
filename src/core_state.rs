@@ -1032,6 +1032,18 @@ impl ActiveWmMode {
     }
 }
 
+impl From<&str> for ActiveWmMode {
+    fn from(name: &str) -> Self {
+        Self::from_name(name)
+    }
+}
+
+impl From<String> for ActiveWmMode {
+    fn from(name: String) -> Self {
+        Self::from_name(name)
+    }
+}
+
 #[cfg(test)]
 mod active_wm_mode_tests {
     use super::ActiveWmMode;

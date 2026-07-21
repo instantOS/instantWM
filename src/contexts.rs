@@ -564,12 +564,12 @@ impl<'a> WmCtx<'a> {
         }
     }
 
-    pub fn current_mode(&self) -> &str {
-        self.core().behavior().current_mode.as_str()
+    pub fn current_mode(&self) -> &crate::core_state::ActiveWmMode {
+        &self.core().behavior().current_mode
     }
 
-    pub fn set_current_mode(&mut self, mode: impl Into<String>) {
-        let next_mode = crate::core_state::ActiveWmMode::from_name(mode);
+    pub fn set_current_mode(&mut self, mode: impl Into<crate::core_state::ActiveWmMode>) {
+        let next_mode = mode.into();
         self.transition_current_mode(next_mode, crate::overview::ExitMode::RestorePrevious);
     }
 
