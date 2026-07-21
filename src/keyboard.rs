@@ -258,10 +258,58 @@ mod tests {
     }
 
     #[test]
+    fn resolve_key_action_overview_ignores_configured_overview_mode() {
+        // A user-configured mode whose name collides with the built-in overview.
+        // It must NOT be consulted while the WM is in Overview mode.
+        let overview_mode_key = Key {
+            mod_mask: 1,
+            keysym: 42,
+            action: KeyAction::named(NamedAction::FocusPrev),
+        };
+        let global_key = Key {
+            mod_mask: 1,
+            keysym: 42,
+            action: KeyAction::named(NamedAction::FocusNext),
+        };
+        let mut modes = HashMap::new();
+        modes.insert(
+            crate::overview::OVERVIEW_MODE_NAME.to_string(),
+            ModeConfig {
+                description: None,
+                transient: false,
+                keybinds: vec![overview_mode_key],
+            },
+        );
+
+        // The global binding wins; the configured "overview" mode is ignored.
+        let resolved = resolve_key_action(
+            &[global_key],
+            &[],
+            &modes,
+            None,
+            &ActiveWmMode::Overview,
+            42,
+            1,
+            0,
+        )
+        .expect("expected global action in overview");
+        match resolved.action {
+            KeyAction::Named { action, .. } => assert_eq!(action, NamedAction::FocusNext),
+            _ => panic!("unexpected action kind"),
+        }
+        assert!(!resolved.transient);
+    }
+
+    #[test]
     fn desktop_bindings_enabled_in_non_default_mode_even_with_selection() {
         assert!(desktop_bindings_enabled(
             Some(WindowId(1)),
             &ActiveWmMode::Named("resize".to_string())
+        ));
+        // Overview is a built-in non-default mode: desktop bindings stay enabled.
+        assert!(desktop_bindings_enabled(
+            Some(WindowId(1)),
+            &ActiveWmMode::Overview
         ));
         assert!(!desktop_bindings_enabled(
             Some(WindowId(1)),
