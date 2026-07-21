@@ -49,8 +49,10 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | SHIFT, XK_H => KeyAction::named(NamedAction::KeyMoveLeft)),
         key!(MODKEY, XK_I => KeyAction::named_args(NamedAction::IncMasterCount, &["1"])),
         key!(MODKEY, XK_D => KeyAction::named(NamedAction::DecMasterCount)),
-        key!(MODKEY, XK_H => KeyAction::named(NamedAction::MasterFactorShrink)),
-        key!(MODKEY, XK_L => KeyAction::named(NamedAction::MasterFactorGrow)),
+        key!(MODKEY, XK_H => KeyAction::named(NamedAction::FocusLeft)),
+        key!(MODKEY, XK_J => KeyAction::named(NamedAction::FocusDown)),
+        key!(MODKEY, XK_K => KeyAction::named(NamedAction::FocusUp)),
+        key!(MODKEY, XK_L => KeyAction::named(NamedAction::FocusRight)),
         key!(MODKEY, XK_T => KeyAction::named(NamedAction::EdgeScratchpadToggle)),
         key!(MODKEY, XK_C => KeyAction::named(NamedAction::LayoutGrid)),
         key!(MODKEY, XK_F => KeyAction::named(NamedAction::LayoutFloat)),
@@ -58,8 +60,6 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_P => KeyAction::named(NamedAction::ToggleLayout)),
         key!(MODKEY | CONTROL, XK_COMMA => KeyAction::named(NamedAction::CycleLayoutPrev)),
         key!(MODKEY | CONTROL, XK_PERIOD => KeyAction::named(NamedAction::CycleLayoutNext)),
-        key!(MODKEY, XK_J => KeyAction::named(NamedAction::FocusNext)),
-        key!(MODKEY, XK_K => KeyAction::named(NamedAction::FocusPrev)),
         key!(MODKEY, XK_LEFT => KeyAction::named(NamedAction::FocusLeft)),
         key!(MODKEY, XK_RIGHT => KeyAction::named(NamedAction::FocusRight)),
         key!(MODKEY, XK_UP => KeyAction::named(NamedAction::FocusUp)),
@@ -253,6 +253,19 @@ mod tests {
             Some(NamedAction::ToggleTilingMaximized)
         );
         assert_eq!(default_named_action(MODKEY | CONTROL, XK_M), None);
+    }
+
+    #[test]
+    fn vim_and_arrow_focus_bindings_are_equivalent() {
+        for (vim, arrow, action) in [
+            (XK_H, XK_LEFT, NamedAction::FocusLeft),
+            (XK_J, XK_DOWN, NamedAction::FocusDown),
+            (XK_K, XK_UP, NamedAction::FocusUp),
+            (XK_L, XK_RIGHT, NamedAction::FocusRight),
+        ] {
+            assert_eq!(default_named_action(MODKEY, vim), Some(action));
+            assert_eq!(default_named_action(MODKEY, arrow), Some(action));
+        }
     }
 
     #[test]

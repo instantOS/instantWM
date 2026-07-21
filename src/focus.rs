@@ -659,9 +659,17 @@ fn get_stack_focus_target(
     Some(stack[next_idx])
 }
 
-pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) {
+/// Focus the best visible window in `direction`.
+///
+/// Returns whether focus moved.  Keeping the result explicit lets higher-level
+/// navigation commands provide a boundary action (such as changing tags)
+/// without having to repeat the candidate-selection logic.
+pub fn direction_focus(ctx: &mut WmCtx, direction: Direction) -> bool {
     if let Some(target) = get_direction_focus_candidate(ctx.core().model(), direction) {
         focus(ctx, Some(target));
+        true
+    } else {
+        false
     }
 }
 

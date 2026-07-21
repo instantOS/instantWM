@@ -72,6 +72,40 @@ macro_rules! define_named_actions {
     };
 }
 
+fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    let side = match direction {
+        HorizontalDirection::Left => Side::Left,
+        HorizontalDirection::Right => Side::Right,
+    };
+    if !focus_tree_neighbor(ctx, side) && !direction_focus(ctx, direction.into()) {
+        crate::animation::scroll_view_with_slide(ctx, direction);
+    }
+}
+
+fn focus_vertical(ctx: &mut WmCtx<'_>, direction: VerticalDirection) {
+    if ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_maximized_layout()
+    {
+        let stack_direction = match direction {
+            VerticalDirection::Up => StackDirection::Previous,
+            VerticalDirection::Down => StackDirection::Next,
+        };
+        focus_stack(ctx, stack_direction);
+        return;
+    }
+
+    let side = match direction {
+        VerticalDirection::Up => Side::Top,
+        VerticalDirection::Down => Side::Bottom,
+    };
+    if !focus_tree_neighbor(ctx, side) {
+        direction_focus(ctx, direction.into());
+    }
+}
+
 define_named_actions!(
     Zoom => { name: "zoom", arg_example: None, doc: "zoom client into master area", run: |ctx, _args| { zoom(ctx); } },
     None => { name: "none", arg_example: None, doc: "explicitly unbind/ignore this key combination", run: |_ctx, _args| {} },
@@ -81,10 +115,10 @@ define_named_actions!(
     FocusNext => { name: "focus_next", arg_example: None, doc: "focus next window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Next); } },
     FocusPrev => { name: "focus_prev", arg_example: None, doc: "focus previous window in stack", run: |ctx, _args| { focus_stack(ctx, StackDirection::Previous); } },
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
-    FocusUp => { name: "focus_up", arg_example: None, doc: "focus the topology-first window above", run: |ctx, _args| { if !focus_tree_neighbor(ctx, Side::Top) { direction_focus(ctx, VerticalDirection::Up.into()); } } },
-    FocusDown => { name: "focus_down", arg_example: None, doc: "focus the topology-first window below", run: |ctx, _args| { if !focus_tree_neighbor(ctx, Side::Bottom) { direction_focus(ctx, VerticalDirection::Down.into()); } } },
-    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus the topology-first window to the left", run: |ctx, _args| { if !focus_tree_neighbor(ctx, Side::Left) { direction_focus(ctx, HorizontalDirection::Left.into()); } } },
-    FocusRight => { name: "focus_right", arg_example: None, doc: "focus the topology-first window to the right", run: |ctx, _args| { if !focus_tree_neighbor(ctx, Side::Right) { direction_focus(ctx, HorizontalDirection::Right.into()); } } },
+    FocusUp => { name: "focus_up", arg_example: None, doc: "focus above, or cycle backward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
+    FocusDown => { name: "focus_down", arg_example: None, doc: "focus below, or cycle forward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
+    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, switching to the previous tag at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
+    FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, switching to the next tag at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
     ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
