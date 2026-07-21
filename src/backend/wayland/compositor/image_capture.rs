@@ -97,6 +97,10 @@ impl ImageCopyCaptureHandler for WaylandState {
             frame.fail(CaptureFailureReason::Stopped);
             return;
         };
+        if !self.output_can_render(&output) {
+            frame.fail(CaptureFailureReason::Stopped);
+            return;
+        }
 
         self.runtime
             .pending_image_captures
@@ -179,6 +183,22 @@ pub fn drain_pending_image_captures(
     }
     *pending = remaining;
     matched
+}
+
+/// Fail and remove requests for an output that can no longer be rendered.
+pub fn fail_pending_image_captures_for_output(
+    pending: &mut Vec<PendingImageCapture>,
+    output: &Output,
+) {
+    let mut remaining = Vec::with_capacity(pending.len());
+    for capture in pending.drain(..) {
+        if capture.output == *output {
+            capture.frame.fail(CaptureFailureReason::Stopped);
+        } else {
+            remaining.push(capture);
+        }
+    }
+    *pending = remaining;
 }
 
 pub fn submit_image_captures(

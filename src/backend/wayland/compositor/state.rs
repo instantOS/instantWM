@@ -693,6 +693,29 @@ impl WaylandState {
         self.request_output_name_render(output.name());
     }
 
+    pub(super) fn output_can_render(&self, output: &smithay::output::Output) -> bool {
+        self.space.outputs().any(|active| active == output)
+            && self
+                .runtime
+                .output_enabled
+                .get(&output.name())
+                .copied()
+                .unwrap_or(true)
+    }
+
+    /// Drop capture work that can never complete once an output is disabled
+    /// or removed. Keeping it would make every later render scan stale work.
+    pub fn fail_pending_captures_for_output(&mut self, output: &smithay::output::Output) {
+        super::screencopy::fail_pending_screencopies_for_output(
+            &mut self.runtime.pending_screencopies,
+            output,
+        );
+        super::image_capture::fail_pending_image_captures_for_output(
+            &mut self.runtime.pending_image_captures,
+            output,
+        );
+    }
+
     /// Request redraws for the outputs Smithay currently associates with a
     /// mapped window.
     ///

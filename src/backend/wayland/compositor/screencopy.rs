@@ -34,6 +34,7 @@ use smithay::reexports::wayland_protocols_wlr::screencopy::v1::server::{
     zwlr_screencopy_frame_v1::{self, ZwlrScreencopyFrameV1},
     zwlr_screencopy_manager_v1::{self, ZwlrScreencopyManagerV1},
 };
+use smithay::reexports::wayland_server::backend::ClientId;
 use smithay::reexports::wayland_server::protocol::wl_shm;
 use smithay::reexports::wayland_server::{
     Client, DataInit, Dispatch, DisplayHandle, GlobalDispatch, New, Resource,
@@ -316,6 +317,11 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
             return;
         }
 
+        if !state.output_can_render(output) {
+            frame.failed();
+            return;
+        }
+
         state.runtime.pending_screencopies.push(PendingScreencopy {
             output: output.clone(),
             buffer_region: *buffer_region,
@@ -330,6 +336,30 @@ impl Dispatch<ZwlrScreencopyFrameV1, ScreencopyFrameState> for WaylandState {
         // copied region as damaged for `copy_with_damage` requests.
         state.request_output_render(output);
     }
+
+    fn destroyed(
+        state: &mut Self,
+        _client: ClientId,
+        frame: &ZwlrScreencopyFrameV1,
+        _data: &ScreencopyFrameState,
+    ) {
+        state
+            .runtime
+            .pending_screencopies
+            .retain(|pending| &pending.frame != frame);
+    }
+}
+
+/// Fail and remove requests for an output that can no longer be rendered.
+pub fn fail_pending_screencopies_for_output(pending: &mut Vec<PendingScreencopy>, output: &Output) {
+    pending.retain(|copy| {
+        if copy.output == *output {
+            copy.frame.failed();
+            false
+        } else {
+            true
+        }
+    });
 }
 
 /// Fulfil pending screencopy requests for one output and one cursor mode.

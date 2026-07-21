@@ -673,6 +673,9 @@ fn sync_output_enabled_from_state(
         if let Some(&enabled) = state.runtime.output_enabled.get(&output_name)
             && entry.enabled != enabled
         {
+            if !enabled {
+                state.fail_pending_captures_for_output(&entry.output);
+            }
             entry.enabled = enabled;
             log::info!("Output {}: enabled set to {}", output_name, entry.enabled);
             changed = true;

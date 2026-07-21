@@ -6,6 +6,10 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+const MAX_PENDING_CLIENTS: usize = 128;
+const PENDING_CLIENT_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub mod config;
 pub mod general;
@@ -29,6 +33,12 @@ pub struct IpcServer {
 struct PendingClient {
     stream: UnixStream,
     buffer: Vec<u8>,
+    last_activity: Instant,
+}
+
+fn prune_idle_clients(clients: &mut Vec<PendingClient>, now: Instant) {
+    clients
+        .retain(|client| now.duration_since(client.last_activity) <= PENDING_CLIENT_IDLE_TIMEOUT);
 }
 
 impl IpcServer {
@@ -50,14 +60,20 @@ impl IpcServer {
     /// Process all pending IPC connections and data. Returns `true` when at least one
     /// command was handled (callers can use this to decide whether to re-render).
     pub fn process_pending(&mut self, wm: &mut Wm) -> bool {
+        let now = Instant::now();
+        prune_idle_clients(&mut self.clients, now);
+
         // 1. Accept new connections
         loop {
             match self.listener.accept() {
                 Ok((stream, _)) => {
-                    if let Ok(()) = stream.set_nonblocking(true) {
+                    if self.clients.len() < MAX_PENDING_CLIENTS
+                        && let Ok(()) = stream.set_nonblocking(true)
+                    {
                         self.clients.push(PendingClient {
                             stream,
                             buffer: Vec::new(),
+                            last_activity: now,
                         });
                     }
                 }
@@ -82,6 +98,7 @@ impl IpcServer {
                     // Don't increment i, as we removed the current element.
                 }
                 Ok(n) => {
+                    client.last_activity = Instant::now();
                     client.buffer.extend_from_slice(&chunk[..n]);
                     // Limit buffer size to prevent memory exhaustion (e.g. 1MB)
                     if client.buffer.len() > 1024 * 1024 {
@@ -230,5 +247,34 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
             wm.quit();
             Response::ok()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn idle_pending_clients_are_pruned_without_dropping_active_clients() {
+        let now = Instant::now();
+        let (stale_stream, _stale_peer) = UnixStream::pair().unwrap();
+        let (active_stream, _active_peer) = UnixStream::pair().unwrap();
+        let mut clients = vec![
+            PendingClient {
+                stream: stale_stream,
+                buffer: Vec::new(),
+                last_activity: now - PENDING_CLIENT_IDLE_TIMEOUT - Duration::from_millis(1),
+            },
+            PendingClient {
+                stream: active_stream,
+                buffer: Vec::new(),
+                last_activity: now,
+            },
+        ];
+
+        prune_idle_clients(&mut clients, now);
+
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].last_activity, now);
     }
 }
