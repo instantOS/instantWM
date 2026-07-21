@@ -572,6 +572,21 @@ impl<'a> WmCtx<'a> {
         self.pointer_backend().warp_pointer(target_x, target_y);
     }
 
+    /// Warp unconditionally to the center of a client's current geometry.
+    ///
+    /// Unlike [`Self::warp_cursor_to_client`], this must not use geometry-only
+    /// containment as an early return: after changing tags, the same screen
+    /// coordinates may belong to an entirely different visible window.
+    pub fn warp_cursor_to_client_center(&mut self, win: WindowId) {
+        let Some(rect) = self.core().model().client(win).map(|client| client.geo) else {
+            return;
+        };
+        self.pointer_backend().warp_pointer(
+            f64::from(rect.x + rect.w / 2),
+            f64::from(rect.y + rect.h / 2),
+        );
+    }
+
     /// Returns true when running under Wayland.
     pub fn is_wayland(&self) -> bool {
         matches!(self, WmCtx::Wayland(_))
