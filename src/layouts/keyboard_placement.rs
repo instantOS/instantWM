@@ -49,11 +49,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
             tiled_count,
         )
         .work_rect();
-        let targets = tree.placement_targets(
-            source,
-            layout_rect,
-            ctx.core().config().layout.pointer_edge_fraction,
-        );
+        let targets = super::manager::constrained_tree_placement_targets(ctx, source);
         let source_center = tree
             .bounds(layout_rect)
             .get(&source)
@@ -96,19 +92,7 @@ fn tree_placement_preview_rect(
     source: WindowId,
     target: crate::layouts::tree::PlacementTarget,
 ) -> Option<Rect> {
-    let monitor = ctx.core().model().selected_monitor();
-    let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
-    let placement = LayoutPlacement::new(
-        &ctx.core().config().layout,
-        monitor,
-        PresentationMode::Tiled,
-        tiled_count,
-    );
-    let slot = monitor.per_tag()?.layout_tree.preview_placement_target(
-        source,
-        target,
-        placement.work_rect(),
-    )?;
+    let (placement, slot) = super::manager::preview_constrained_tree_target(ctx, source, target)?;
     tree_slot_outer_rect(ctx, source, placement, slot)
 }
 
@@ -118,8 +102,21 @@ pub(super) fn tree_slot_outer_rect(
     placement: LayoutPlacement,
     slot: Rect,
 ) -> Option<Rect> {
-    let border = ctx.core().model().client(source)?.border_width.max(0);
-    let content = placement.client_rect(slot, border);
+    let client = ctx.core().model().client(source)?;
+    let border = client.border_width.max(0);
+    let mut content = placement.client_rect(slot, border);
+    content.enforce_minimum(
+        ctx.core().config().derived.bar_height,
+        ctx.core().config().derived.bar_height,
+    );
+    if ctx.core().config().window.resize_hints {
+        let constrained =
+            client
+                .size_hints
+                .constrain_size(content.size(), client.min_aspect, client.max_aspect);
+        content.w = constrained.w.min(content.w).max(1);
+        content.h = constrained.h.min(content.h).max(1);
+    }
     Some(Rect::new(
         content.x,
         content.y,
@@ -243,22 +240,7 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
         let Some(state) = ctx.current_mode().tree_placement() else {
             return;
         };
-        let monitor = ctx.core().model().selected_monitor();
-        let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
-        let layout_rect = LayoutPlacement::new(
-            &ctx.core().config().layout,
-            monitor,
-            PresentationMode::Tiled,
-            tiled_count,
-        )
-        .work_rect();
-        monitor.per_tag().map_or_else(Vec::new, |tag| {
-            tag.layout_tree.placement_targets(
-                state.source,
-                layout_rect,
-                ctx.core().config().layout.pointer_edge_fraction,
-            )
-        })
+        super::manager::constrained_tree_placement_targets(ctx, state.source)
     };
     if targets.is_empty() {
         let _ = finish_keyboard_tree_placement(ctx, false);
@@ -333,13 +315,11 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
     let context_is_current = state.is_current_for(ctx.core().model());
     let changed = context_is_current
         && apply
-        && ctx
-            .core_mut()
-            .model_mut()
-            .selected_monitor_mut()
-            .per_tag_state()
-            .layout_tree
-            .apply_placement_target(state.source, state.selected_target());
+        && super::manager::apply_constrained_tree_target(
+            ctx,
+            state.source,
+            state.selected_target(),
+        );
     if context_is_current {
         crate::focus::focus(ctx, Some(state.source));
     }
@@ -446,5 +426,51 @@ mod tests {
             crate::core_state::ActiveWmMode::Default
         ));
         assert_eq!(wm.core.layout_preview, None);
+    }
+
+    #[test]
+    fn keyboard_placement_omits_targets_that_cannot_satisfy_minimum_sizes() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 300, 100),
+            available_rect: Rect::new(0, 0, 300, 100),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let source = WindowId(1);
+        let peer = WindowId(2);
+        for win in [source, peer] {
+            let mut client = Client {
+                win,
+                monitor_id,
+                tags,
+                mode: ClientMode::Tiling,
+                ..Client::default()
+            };
+            client.size_hints.minw = 140;
+            client.size_hints.minh = 60;
+            wm.core.model.insert_client(client);
+        }
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        monitor.clients = vec![source, peer];
+        monitor.selected = Some(source);
+        monitor.per_tag_state().layout_tree.apply_preset(
+            Preset::MasterStack,
+            &[source, peer],
+            Some(source),
+            1,
+            0.5,
+        );
+
+        let targets =
+            crate::layouts::manager::constrained_tree_placement_targets(&wm.ctx(), source);
+
+        assert!(!targets.is_empty());
+        assert!(targets.iter().all(|target| !matches!(
+            target.side,
+            Some(crate::layouts::tree::Side::Top | crate::layouts::tree::Side::Bottom)
+        )));
     }
 }

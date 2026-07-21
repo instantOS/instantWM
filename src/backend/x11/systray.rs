@@ -115,7 +115,7 @@ pub fn update_systray_icon_geom(
         &mut rect,
         false,
     );
-    if outcome.should_apply_icccm {
+    if outcome.should_apply_client_hints {
         crate::backend::x11::geometry::apply_icccm_size_hints(
             &mut state.model,
             x11,

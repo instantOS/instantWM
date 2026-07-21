@@ -9,6 +9,7 @@ pub fn window_properties_from_x11_surface(surface: &X11Surface) -> WindowPropert
         class: surface.class(),
         instance: surface.instance(),
         title: surface.title(),
+        size_hints: None,
     }
 }
 

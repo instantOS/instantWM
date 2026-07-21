@@ -53,6 +53,16 @@ geometry. Equivalent descriptions of one seam—such as “right of A” and “
 of B”—therefore appear as one target, and pointer drops on either side resolve
 to the same canonical result.
 
+When tiled size hints are enabled, placement candidates are also checked
+against every affected client's minimum outer size before they are shown.
+Feasible trees redistribute split space to meet those minima; an impossible
+candidate is omitted, so its preview can never commit overlapping or
+off-monitor tiled geometry. Maximum sizes, aspect constraints, and resize
+increments are applied inside the reserved slot. If the current tree itself
+becomes impossible to satisfy (for example after moving it to a smaller
+monitor), containment wins: instantWM keeps gapless bounded slots and ignores
+the contradictory hints for that arrange pass.
+
 Keyboard placement is the built-in `placement` WM mode, not a separate input
 state. It is visible in the bar and `instantwmctl mode list`; changing modes by
 IPC or a binding cancels placement and removes its preview. IPC cannot enter
@@ -106,6 +116,13 @@ The gesture is implemented once in the backend-neutral layout layer. X11's
 synchronous drag and Wayland's asynchronous pointer interaction call the same
 drop command. Floating windows retain direct movement, and screen-edge/tag-bar
 drops retain their existing meanings.
+
+`Super+right-drag` on a tiled window resizes the tree seam nearest the grabbed
+edge. Space is transferred only between the two branches sharing that seam;
+the window's opposite edge and unrelated siblings stay fixed. The seam stops
+at either branch's minimum-size constraint. Floating windows retain ordinary
+free resizing, while a lone tiled window or maximized presentation still
+falls back to floating resize behavior.
 
 ## Configuration
 

@@ -182,6 +182,7 @@ pub struct WaylandState {
     /// Mutations must go through the command_queue.
     wm: Option<NonNull<Wm>>,
     pub(super) last_configured_size: HashMap<WindowId, (i32, i32)>,
+    pub(super) native_size_hints: HashMap<WindowId, crate::types::SizeHints>,
     pub(super) active_resizes: HashSet<WindowId>,
     /// O(1) window lookup index containing all known windows (mapped and hidden).
     pub(super) window_index: HashMap<WindowId, Window>,
@@ -514,6 +515,7 @@ impl WaylandState {
             next_window_id: 1,
             wm: None,
             last_configured_size: HashMap::new(),
+            native_size_hints: HashMap::new(),
             active_resizes: HashSet::new(),
             window_index: HashMap::new(),
             window_animations: crate::animation::WindowAnimations::new(),

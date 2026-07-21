@@ -534,6 +534,9 @@ fn handle_map_window(
     let mut client = crate::types::Client::default();
     client.win = win;
     client.name = properties.title.clone();
+    if let Some(size_hints) = properties.size_hints {
+        client.size_hints = size_hints;
+    }
     client.border_width = g.config.window.border_width_px;
     client.old_border_width = g.config.window.border_width_px;
 

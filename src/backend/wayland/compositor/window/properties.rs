@@ -106,7 +106,35 @@ impl WaylandState {
             class: self.window_app_id(window).unwrap_or_default(),
             instance: String::new(), // Wayland doesn't really have instance vs class
             title: self.window_title(window).unwrap_or_default(),
+            size_hints: self.native_size_hints(window),
         }
+    }
+
+    fn native_size_hints(&self, window: WindowId) -> Option<crate::types::SizeHints> {
+        let element = self.window_index.get(&window)?;
+        if element.x11_surface().is_some() {
+            return None;
+        }
+        let surface = element.wl_surface()?;
+        smithay::wayland::compositor::with_states(&surface, |states| {
+            use smithay::wayland::shell::xdg::SurfaceCachedState;
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let current = *guard.current();
+            Some(crate::types::SizeHints {
+                minw: current.min_size.w.max(0),
+                minh: current.min_size.h.max(0),
+                maxw: current.max_size.w.max(0),
+                maxh: current.max_size.h.max(0),
+                ..Default::default()
+            })
+        })
+    }
+
+    pub(crate) fn native_size_hints_changed(&mut self, window: WindowId) -> bool {
+        let Some(current) = self.native_size_hints(window) else {
+            return false;
+        };
+        self.native_size_hints.insert(window, current) != Some(current)
     }
 
     /// Get the window ID for a toplevel surface.

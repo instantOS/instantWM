@@ -7,14 +7,16 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::types::{Point, Rect, WindowId};
+use crate::types::{Point, Rect, Size, WindowId};
 
 const EPSILON: f64 = 1.0e-9;
 
+mod constraints;
 mod placement_ops;
 mod presets;
 mod resize_ops;
 mod types;
+use constraints::*;
 use placement_ops::*;
 #[cfg(test)]
 use presets::equal_run;
@@ -502,6 +504,31 @@ impl LayoutTree {
             .collect()
     }
 
+    /// Resolve tree slots while enforcing each leaf's minimum outer size.
+    ///
+    /// Returns `None` when the tree cannot fit all requirements in `rect`.
+    /// Callers can therefore reject a placement or resize atomically instead
+    /// of asking a backend to realize overlapping geometry.
+    pub fn constrained_bounds(
+        &self,
+        rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) -> Option<HashMap<WindowId, Rect>> {
+        let root = self.root.as_ref()?;
+        let required = required_size(root, minimums);
+        if required.w > rect.w || required.h > rect.h {
+            return None;
+        }
+        let mut output = HashMap::new();
+        constrained_node_bounds(root, FRect::from_rect(rect), minimums, &mut output)?;
+        Some(
+            output
+                .into_iter()
+                .map(|(window, bounds)| (window, bounds.to_rect()))
+                .collect(),
+        )
+    }
+
     fn float_bounds(&self) -> HashMap<WindowId, FRect> {
         let mut output = HashMap::new();
         if let Some(root) = &self.root {
@@ -659,9 +686,56 @@ impl LayoutTree {
         changed
     }
 
+    /// Move only the grabbed seam, keeping the source's opposite edge fixed.
+    ///
+    /// Unlike keyboard growth, pointer resizing transfers space solely
+    /// between the source branch and the adjacent branch on `side`.
+    pub fn resize_edge_by_pixels(
+        &mut self,
+        source: WindowId,
+        side: Side,
+        pixels: i32,
+        layout_rect: Rect,
+        minimum_weight: f64,
+    ) -> bool {
+        if pixels == 0 {
+            return false;
+        }
+        let axis = side.axis();
+        let Some(normalized_span) = self.resize_edge_span(source, side) else {
+            return false;
+        };
+        let layout_span = match axis {
+            Axis::Vertical => layout_rect.w,
+            Axis::Horizontal => layout_rect.h,
+        };
+        let physical_span = normalized_span * f64::from(layout_span.max(1));
+        if physical_span <= EPSILON {
+            return false;
+        }
+        let edge_delta = f64::from(pixels) / physical_span;
+        let source_delta = if side.is_leading() {
+            -edge_delta
+        } else {
+            edge_delta
+        };
+        let Some(root) = self.root.take() else {
+            return false;
+        };
+        let (root, changed) =
+            resize_deepest_edge_by(root, source, side, source_delta, minimum_weight);
+        self.root = Some(root);
+        changed
+    }
+
     /// Whether `source` belongs to a split that can be resized on `axis`.
     pub fn can_resize_axis(&self, source: WindowId, axis: Axis) -> bool {
         self.resize_span(source, axis).is_some()
+    }
+
+    /// Whether the physical edge is backed by an adjustable tree seam.
+    pub fn can_resize_side(&self, source: WindowId, side: Side) -> bool {
+        self.resize_edge_span(source, side).is_some()
     }
 
     fn resize_span(&self, source: WindowId, axis: Axis) -> Option<f64> {
@@ -670,6 +744,14 @@ impl LayoutTree {
         let bounds = self.all_float_bounds();
         let rect = bounds.get(&NodeKey::Split(split))?;
         Some(rect.axis_size(axis))
+    }
+
+    fn resize_edge_span(&self, source: WindowId, side: Side) -> Option<f64> {
+        let root = self.root.as_ref()?;
+        let split = deepest_resize_edge_split(root, source, side)?;
+        let bounds = self.all_float_bounds();
+        let rect = bounds.get(&NodeKey::Split(split))?;
+        Some(rect.axis_size(side.axis()))
     }
 
     pub fn resize_smart(&mut self, source: WindowId, grow: bool) -> bool {

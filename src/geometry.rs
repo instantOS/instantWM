@@ -218,7 +218,7 @@ fn apply_resize_policies(
                 &mut adjusted,
                 interact,
             );
-            if outcome.should_apply_icccm {
+            if outcome.should_apply_client_hints {
                 crate::backend::x11::geometry::apply_icccm_size_hints(
                     x11_ctx.core.model_mut(),
                     &x11_ctx.x11,
@@ -236,7 +236,17 @@ fn apply_resize_policies(
                 &mut adjusted,
                 interact,
             );
-            outcome.changed
+            if outcome.should_apply_client_hints
+                && let Some(client) = wl_ctx.core.model().client(win)
+            {
+                let constrained = client.size_hints.constrain_size(
+                    adjusted.size(),
+                    client.min_aspect,
+                    client.max_aspect,
+                );
+                adjusted = adjusted.with_size(constrained);
+            }
+            crate::client::geometry::size_hints_changed(wl_ctx.core.model(), win, &adjusted)
         }
     };
 
@@ -334,8 +344,11 @@ pub(crate) fn move_resize(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
     use crate::model::WmModel;
     use crate::types::{Client, Monitor};
+    use crate::wm::Wm;
 
     #[test]
     fn client_geometry_uses_assigned_monitor_not_virtual_layout_extent() {
@@ -395,5 +408,37 @@ mod tests {
         });
 
         assert!(client_geometry(&model, win).is_none());
+    }
+
+    #[test]
+    fn wayland_hinted_resize_applies_stored_protocol_maximum() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 500, 400),
+            available_rect: Rect::new(0, 0, 500, 400),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let win = WindowId(14);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo: Rect::new(0, 0, 50, 50),
+            ..Client::default()
+        };
+        client.size_hints.maxw = 120;
+        client.size_hints.maxh = 90;
+        wm.core.model.insert_client(client);
+
+        wm.ctx().move_resize(
+            win,
+            Rect::new(0, 0, 300, 200),
+            MoveResizeOptions::hinted_immediate(false),
+        );
+
+        assert_eq!(
+            wm.core.model.client(win).unwrap().geo,
+            Rect::new(0, 0, 120, 90)
+        );
     }
 }

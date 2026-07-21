@@ -33,7 +33,9 @@ fn pointer_resize_falls_back_to_an_axis_present_in_the_tree() {
     assert_eq!(
         available_tree_resize_direction(
             ResizeDirection::Top,
+            false,
             true,
+            false,
             false,
             Point::new(80, 20),
             Size::new(100, 100),
@@ -43,6 +45,8 @@ fn pointer_resize_falls_back_to_an_axis_present_in_the_tree() {
     assert_eq!(
         available_tree_resize_direction(
             ResizeDirection::Left,
+            false,
+            false,
             false,
             true,
             Point::new(20, 80),
@@ -57,6 +61,8 @@ fn pointer_resize_keeps_requested_corner_when_both_axes_exist() {
     assert_eq!(
         available_tree_resize_direction(
             ResizeDirection::TopLeft,
+            true,
+            true,
             true,
             true,
             Point::new(5, 5),
@@ -152,14 +158,14 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         .layout_tree
         .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
 
-    let first = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let first = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     assert!(
         monitor
             .per_tag_state()
             .layout_tree
             .resize(WindowId(1), Side::Right)
     );
-    let second = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let second = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
 
     let first_rect = first
         .client_moves
@@ -174,6 +180,55 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
         .unwrap()
         .rect;
     assert_ne!(first_rect, second_rect);
+}
+
+#[test]
+fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let mut monitor = monitor_with_order(&windows, WindowId(2));
+    monitor.available_rect = Rect::new(10, 20, 300, 100);
+    monitor.monitor_rect = monitor.available_rect;
+    monitor.clients = windows.to_vec();
+    let mut clients = windows
+        .into_iter()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    clients.get_mut(&WindowId(2)).unwrap().size_hints.minw = 160;
+    let selected = monitor.selected;
+    monitor.per_tag_state().layout_tree.apply_preset(
+        Preset::MasterStack,
+        &windows,
+        selected,
+        1,
+        1.0 / 3.0,
+    );
+
+    let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let rects = plan
+        .client_moves
+        .iter()
+        .map(|output| (output.win, output.rect))
+        .collect::<HashMap<_, _>>();
+
+    assert!(rects[&WindowId(2)].w >= 160);
+    for rect in rects.values() {
+        assert!(rect.x >= monitor.available_rect.x);
+        assert!(rect.y >= monitor.available_rect.y);
+        assert!(rect.x + rect.w <= monitor.available_rect.x + monitor.available_rect.w);
+        assert!(rect.y + rect.h <= monitor.available_rect.y + monitor.available_rect.h);
+    }
+    for (index, first) in rects.values().enumerate() {
+        for second in rects.values().skip(index + 1) {
+            let overlaps = first.x < second.x + second.w
+                && second.x < first.x + first.w
+                && first.y < second.y + second.h
+                && second.y < first.y + first.h;
+            assert!(
+                !overlaps,
+                "tiled slots must not overlap: {first:?} {second:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -200,7 +255,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .layouts
         .set_layout(PresentationMode::Maximized);
 
-    let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     assert_eq!(maximized.client_moves.len(), windows.len());
     assert!(
         maximized
@@ -220,7 +275,7 @@ fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
         .per_tag_state()
         .layouts
         .set_layout(PresentationMode::Tiled);
-    let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
     let first_rect = manual.client_moves.first().unwrap().rect;
     assert!(
         manual
@@ -253,12 +308,12 @@ fn maximized_presentation_reconciles_new_tiled_leaves() {
         .copied()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
-    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
 
     monitor.clients.push(WindowId(3));
     monitor.z_order.attach_top(WindowId(3));
     clients.insert(WindowId(3), visible_client(WindowId(3)));
-    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
 
     let leaves = monitor.per_tag_state().layout_tree.leaves();
     assert_eq!(leaves.len(), 3);

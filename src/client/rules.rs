@@ -3,7 +3,9 @@
 use crate::client::LaunchContext;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
-use crate::types::{ClientMode, MonitorRule, Rect, RuleFloat, SpecialNext, TagMask, WindowId};
+use crate::types::{
+    ClientMode, MonitorRule, Rect, RuleFloat, SizeHints, SpecialNext, TagMask, WindowId,
+};
 
 /// Properties used for rule matching.
 #[derive(Debug, Clone, Default)]
@@ -11,6 +13,9 @@ pub struct WindowProperties {
     pub class: String,
     pub instance: String,
     pub title: String,
+    /// Native protocol size constraints. X11/XWayland populate the same
+    /// client field through their richer WM_NORMAL_HINTS path instead.
+    pub size_hints: Option<SizeHints>,
 }
 
 /// Positioning instruction produced by an initial window rule.
@@ -170,6 +175,15 @@ fn apply_rules_impl(
 /// Once a client has been promoted to a scratchpad, later protocol metadata
 /// churn must not retag it back into a normal window.
 fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowProperties) -> bool {
+    let constraints_changed = if let Some(hints) = props.size_hints
+        && let Some(client) = g.model.client_mut(win)
+    {
+        let changed = client.size_hints != hints;
+        client.size_hints = hints;
+        changed
+    } else {
+        false
+    };
     if let Some(c) = g.model.client_mut(win)
         && !props.title.is_empty()
     {
@@ -177,7 +191,7 @@ fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowPropert
     }
 
     if g.model.client(win).is_some_and(|c| c.scratchpad.is_some()) {
-        return false;
+        return constraints_changed;
     }
 
     let existing_context = g.model.client(win).map(|c| LaunchContext {
@@ -186,7 +200,8 @@ fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowPropert
         is_floating: c.mode.is_floating(),
     });
 
-    apply_rules(g, win, props, existing_context)
+    let rules_changed = apply_rules(g, win, props, existing_context);
+    constraints_changed || rules_changed
 }
 
 /// Update backend-provided window metadata and queue all derived WM work.

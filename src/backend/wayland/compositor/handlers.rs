@@ -163,6 +163,19 @@ impl CompositorHandler for WaylandState {
                 .map(|marker| marker.id)
             {
                 self.sync_client_size_from_window(id);
+                // xdg min/max sizes are double-buffered surface state and do
+                // not have a dedicated XdgShellHandler callback. Refresh the
+                // core snapshot on root commits; unchanged properties are
+                // deduplicated by the shared update path.
+                if window.x11_surface().is_none() && self.native_size_hints_changed(id) {
+                    let properties = self.window_properties(id);
+                    self.push_command(
+                        crate::backend::wayland::commands::WmCommand::UpdateProperties {
+                            win: id,
+                            properties,
+                        },
+                    );
+                }
             }
         }
 

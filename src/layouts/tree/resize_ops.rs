@@ -89,6 +89,78 @@ pub(super) fn deepest_resize_split(node: &Node, target: WindowId, axis: Axis) ->
         .or_else(|| (split.axis == axis && split.children.len() >= 2).then_some(split.id))
 }
 
+pub(super) fn deepest_resize_edge_split(
+    node: &Node,
+    target: WindowId,
+    side: Side,
+) -> Option<SplitId> {
+    let Node::Split(split) = node else {
+        return None;
+    };
+    let index = split
+        .children
+        .iter()
+        .position(|child| child.node.contains(target))?;
+    deepest_resize_edge_split(&split.children[index].node, target, side).or_else(|| {
+        let has_neighbor = if side.is_leading() {
+            index > 0
+        } else {
+            index + 1 < split.children.len()
+        };
+        (split.axis == side.axis() && has_neighbor).then_some(split.id)
+    })
+}
+
+pub(super) fn resize_deepest_edge_by(
+    node: Node,
+    target: WindowId,
+    side: Side,
+    delta: f64,
+    minimum_weight: f64,
+) -> (Node, bool) {
+    let Node::Split(mut split) = node else {
+        return (node, false);
+    };
+    let Some(index) = split
+        .children
+        .iter()
+        .position(|child| child.node.contains(target))
+    else {
+        return (Node::Split(split), false);
+    };
+
+    let child = split.children[index].node.clone();
+    let (child, changed) = resize_deepest_edge_by(child, target, side, delta, minimum_weight);
+    split.children[index].node = child;
+    if changed {
+        return (Node::Split(split), true);
+    }
+
+    let neighbor = if split.axis != side.axis() {
+        None
+    } else if side.is_leading() {
+        index.checked_sub(1)
+    } else {
+        (index + 1 < split.children.len()).then_some(index + 1)
+    };
+    let Some(neighbor) = neighbor else {
+        return (Node::Split(split), false);
+    };
+
+    let pair_weight = split.children[index].weight + split.children[neighbor].weight;
+    let minimum =
+        finite_clamp(minimum_weight, 0.001, 0.49, DEFAULT_MINIMUM_WEIGHT).min(pair_weight / 2.0);
+    let current = split.children[index].weight;
+    let requested = current + if delta.is_finite() { delta } else { 0.0 };
+    let target_weight = requested.clamp(minimum, pair_weight - minimum);
+    if (target_weight - current).abs() < EPSILON {
+        return (Node::Split(split), false);
+    }
+    split.children[index].weight = target_weight;
+    split.children[neighbor].weight = pair_weight - target_weight;
+    (Node::Split(split), true)
+}
+
 pub(super) fn redistribute_containing_run(node: Node, target: WindowId, axis: Axis) -> Node {
     let Node::Split(mut split) = node else {
         return node;

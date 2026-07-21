@@ -486,6 +486,75 @@ fn pointer_resize_tracks_the_grabbed_edge_in_pixels() {
 }
 
 #[test]
+fn pointer_resize_moves_only_the_grabbed_seam() {
+    let mut tree = LayoutTree::default();
+    tree.root = equal_run(&windows(3), Axis::Vertical, &mut || tree.allocate());
+    let layout = Rect::new(0, 0, 900, 600);
+    let before = tree.bounds(layout);
+
+    assert!(tree.resize_edge_by_pixels(WindowId(2), Side::Right, 90, layout, 0.15));
+    let after = tree.bounds(layout);
+
+    assert_eq!(after[&WindowId(1)], before[&WindowId(1)]);
+    assert_eq!(after[&WindowId(2)].x, before[&WindowId(2)].x);
+    assert_eq!(after[&WindowId(2)].w - before[&WindowId(2)].w, 90);
+    assert_eq!(after[&WindowId(3)].x - before[&WindowId(3)].x, 90);
+    assert_eq!(
+        after[&WindowId(3)].x + after[&WindowId(3)].w,
+        before[&WindowId(3)].x + before[&WindowId(3)].w
+    );
+}
+
+#[test]
+fn constrained_bounds_reserve_minimums_without_overlap() {
+    let mut tree = LayoutTree::default();
+    tree.root = equal_run(&windows(3), Axis::Vertical, &mut || tree.allocate());
+    let layout = Rect::new(10, 20, 300, 100);
+    let minimums = HashMap::from([
+        (WindowId(1), Size::new(40, 50)),
+        (WindowId(2), Size::new(160, 50)),
+        (WindowId(3), Size::new(40, 50)),
+    ]);
+
+    let bounds = tree.constrained_bounds(layout, &minimums).unwrap();
+
+    assert!(bounds[&WindowId(2)].w >= 160);
+    assert_eq!(
+        bounds[&WindowId(1)].x + bounds[&WindowId(1)].w,
+        bounds[&WindowId(2)].x
+    );
+    assert_eq!(
+        bounds[&WindowId(2)].x + bounds[&WindowId(2)].w,
+        bounds[&WindowId(3)].x
+    );
+    assert_eq!(
+        bounds[&WindowId(3)].x + bounds[&WindowId(3)].w,
+        layout.x + layout.w
+    );
+    assert!(bounds.values().all(|rect| {
+        rect.x >= layout.x
+            && rect.y >= layout.y
+            && rect.x + rect.w <= layout.x + layout.w
+            && rect.y + rect.h <= layout.y + layout.h
+    }));
+}
+
+#[test]
+fn constrained_bounds_reject_impossible_minimums() {
+    let mut tree = LayoutTree::default();
+    tree.root = equal_run(&windows(2), Axis::Vertical, &mut || tree.allocate());
+    let minimums = HashMap::from([
+        (WindowId(1), Size::new(151, 50)),
+        (WindowId(2), Size::new(150, 50)),
+    ]);
+
+    assert!(
+        tree.constrained_bounds(Rect::new(0, 0, 300, 100), &minimums)
+            .is_none()
+    );
+}
+
+#[test]
 fn leading_edge_motion_has_the_opposite_weight_sign() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::MasterStack, &windows(2), None, 1, 0.5);

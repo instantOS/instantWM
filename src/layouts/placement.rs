@@ -7,7 +7,7 @@
 use crate::config::config_toml::LayoutConfig;
 use crate::constants::animation::BORDER_MULTIPLIER;
 use crate::layouts::PresentationMode;
-use crate::types::{Monitor, Rect};
+use crate::types::{Client, Monitor, Rect, Size};
 
 /// Thickness of the hollow manual-placement preview frame in logical pixels.
 /// It is intentionally independent of ordinary client borders: users may
@@ -59,6 +59,11 @@ impl LayoutPlacement {
         self.work_rect
     }
 
+    #[inline]
+    pub(crate) fn inner_gap(self) -> i32 {
+        self.inner_gap
+    }
+
     pub(crate) fn client_rect(self, slot: Rect, border_width: i32) -> Rect {
         let gapped = self.apply_inner_gap(slot);
         Rect {
@@ -67,6 +72,29 @@ impl LayoutPlacement {
             w: (gapped.w - BORDER_MULTIPLIER * border_width).max(1),
             h: (gapped.h - BORDER_MULTIPLIER * border_width).max(1),
         }
+    }
+
+    /// Conservative slot requirement for a client whose content must satisfy
+    /// its declared minimum. Reserving one full inner gap on each axis covers
+    /// both half-gaps at an internal slot; edge slots may simply receive a
+    /// little more room.
+    pub(crate) fn minimum_slot_size(self, client: &Client, respect_hints: bool) -> Size {
+        let min_content = if respect_hints {
+            Size::new(client.size_hints.minw.max(1), client.size_hints.minh.max(1))
+        } else {
+            Size::new(1, 1)
+        };
+        let border = 2 * client.border_width.max(0);
+        Size::new(
+            min_content
+                .w
+                .saturating_add(border)
+                .saturating_add(self.inner_gap),
+            min_content
+                .h
+                .saturating_add(border)
+                .saturating_add(self.inner_gap),
+        )
     }
 
     fn apply_inner_gap(self, slot: Rect) -> Rect {

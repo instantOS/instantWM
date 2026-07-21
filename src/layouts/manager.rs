@@ -9,7 +9,9 @@ use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::query::framecount_for_layout;
 use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, MonitorUpdates, PresentationMode};
-use crate::types::{Client, ClientMode, Monitor, MonitorId, PerTagState, Rect, WindowId};
+use crate::types::{
+    Client, ClientMode, Monitor, MonitorId, PerTagState, Rect, Size, TiledClientInfo, WindowId,
+};
 use std::cmp::max;
 use std::collections::HashMap;
 
@@ -53,11 +55,12 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         let bar_height = globals.config.derived.bar_height;
         let animated = globals.behavior.animated;
         let layout_cfg = globals.config.layout;
+        let resize_hints = globals.config.window.resize_hints;
         let clients = &globals.model.clients;
         let Some(monitor) = globals.model.monitors.get_mut(monitor_id) else {
             return;
         };
-        monitor.compute_arrange(clients, &layout_cfg, bar_height, animated)
+        monitor.compute_arrange(clients, &layout_cfg, resize_hints, bar_height, animated)
     };
 
     plan.apply(ctx, monitor_id);
@@ -134,6 +137,7 @@ impl Monitor {
         &mut self,
         clients: &HashMap<WindowId, Client>,
         layout_cfg: &crate::config::config_toml::LayoutConfig,
+        resize_hints: bool,
         bar_height: i32,
         animated: bool,
     ) -> ArrangePlan {
@@ -165,9 +169,14 @@ impl Monitor {
         } else {
             let layout = self.current_layout();
             let moves = match layout {
-                PresentationMode::Tiled => {
-                    compute_manual_tree(self, &layout_clients, layout_cfg, animated)
-                }
+                PresentationMode::Tiled => compute_manual_tree(
+                    self,
+                    &layout_clients,
+                    layout_cfg,
+                    resize_hints,
+                    bar_height,
+                    animated,
+                ),
                 PresentationMode::Maximized => {
                     reconcile_manual_tree(self, &layout_clients);
                     crate::layouts::algo::maximized(self, &layout_clients, layout_cfg, animated)
@@ -210,6 +219,8 @@ fn compute_manual_tree(
     monitor: &mut Monitor,
     clients: &HashMap<WindowId, Client>,
     layout_cfg: &crate::config::config_toml::LayoutConfig,
+    resize_hints: bool,
+    bar_height: i32,
     animated: bool,
 ) -> Vec<LayoutOutput> {
     let tiled = monitor.collect_tiled(clients);
@@ -221,10 +232,14 @@ fn compute_manual_tree(
         windows.len() as u32,
     );
     let work_rect = placement.work_rect();
-    let slots = {
+    let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
+    let (slots, constraints_fit) = {
         let tree = &mut monitor.per_tag_state().layout_tree;
         tree.reconcile(&windows);
-        tree.bounds(work_rect)
+        match tree.constrained_bounds(work_rect, &minimums) {
+            Some(slots) => (slots, true),
+            None => (tree.bounds(work_rect), false),
+        }
     };
     let frame_count = framecount_for_layout(
         animated,
@@ -241,8 +256,34 @@ fn compute_manual_tree(
             Some(LayoutOutput {
                 win: client.win,
                 rect: placement.client_rect(slot, client.border_width),
-                options: MoveResizeOptions::animate_to(frame_count),
+                options: if resize_hints && constraints_fit {
+                    MoveResizeOptions::animate_to(frame_count)
+                        .with_size_hints()
+                        .with_layout_bounds()
+                } else {
+                    MoveResizeOptions::animate_to(frame_count)
+                },
             })
+        })
+        .collect()
+}
+
+fn tiling_minimum_slots(
+    placement: &LayoutPlacement,
+    tiled: &[TiledClientInfo],
+    clients: &HashMap<WindowId, Client>,
+    resize_hints: bool,
+    bar_height: i32,
+) -> HashMap<WindowId, Size> {
+    tiled
+        .iter()
+        .filter_map(|info| {
+            let client = clients.get(&info.win)?;
+            let mut size = placement.minimum_slot_size(client, resize_hints);
+            let decoration = 2 * client.border_width.max(0) + placement.inner_gap();
+            size.w = size.w.max(bar_height.max(1).saturating_add(decoration));
+            size.h = size.h.max(bar_height.max(1).saturating_add(decoration));
+            Some((client.win, size))
         })
         .collect()
 }
@@ -587,16 +628,18 @@ pub(crate) fn pointer_tree_resize_start(
     window: WindowId,
     point: crate::types::Point,
 ) -> Option<PointerTreeResizeStart> {
-    use crate::layouts::tree::Axis;
-
     let view = ctx.core().model().client_view(window)?;
     let tiled_count = view
         .monitor
         .collect_tiled(&ctx.core().model().clients)
         .len();
     let tree = &view.monitor.per_tag()?.layout_tree;
-    let horizontal = tree.can_resize_axis(window, Axis::Vertical);
-    let vertical = tree.can_resize_axis(window, Axis::Horizontal);
+    let left = tree.can_resize_side(window, crate::layouts::tree::Side::Left);
+    let right = tree.can_resize_side(window, crate::layouts::tree::Side::Right);
+    let top = tree.can_resize_side(window, crate::layouts::tree::Side::Top);
+    let bottom = tree.can_resize_side(window, crate::layouts::tree::Side::Bottom);
+    let horizontal = left || right;
+    let vertical = top || bottom;
     if !pointer_tree_resize_allowed(
         view.monitor.current_layout(),
         view.client.mode.is_tiling(),
@@ -610,8 +653,10 @@ pub(crate) fn pointer_tree_resize_start(
     let requested = crate::types::ResizeDirection::from_hit(view.client.geo.size(), hit);
     let direction = available_tree_resize_direction(
         requested,
-        horizontal,
-        vertical,
+        left,
+        right,
+        top,
+        bottom,
         hit,
         view.client.geo.size(),
     )?;
@@ -636,52 +681,63 @@ fn pointer_tree_resize_allowed(
 
 fn available_tree_resize_direction(
     requested: crate::types::ResizeDirection,
-    horizontal: bool,
-    vertical: bool,
+    can_left: bool,
+    can_right: bool,
+    can_top: bool,
+    can_bottom: bool,
     hit: crate::types::Point,
     size: crate::types::Size,
 ) -> Option<crate::types::ResizeDirection> {
     use crate::types::ResizeDirection;
 
     let (left, right, top, bottom) = requested.affected_edges();
-    let mut horizontal_edge = horizontal
-        .then_some(if left {
-            ResizeDirection::Left
-        } else if right {
-            ResizeDirection::Right
-        } else if hit.x < size.w / 2 {
-            ResizeDirection::Left
-        } else {
-            ResizeDirection::Right
-        })
-        .filter(|_| left || right || !vertical);
-    let mut vertical_edge = vertical
-        .then_some(if top {
-            ResizeDirection::Top
-        } else if bottom {
-            ResizeDirection::Bottom
-        } else if hit.y < size.h / 2 {
-            ResizeDirection::Top
-        } else {
-            ResizeDirection::Bottom
-        })
-        .filter(|_| top || bottom || !horizontal);
+    let mut horizontal_edge = if left && can_left {
+        Some(ResizeDirection::Left)
+    } else if right && can_right {
+        Some(ResizeDirection::Right)
+    } else {
+        None
+    };
+    let mut vertical_edge = if top && can_top {
+        Some(ResizeDirection::Top)
+    } else if bottom && can_bottom {
+        Some(ResizeDirection::Bottom)
+    } else {
+        None
+    };
 
-    // If the requested physical edge has no corresponding tree run, fall
-    // back to the nearest available run so every eligible tiled drag works.
+    // A monitor-edge quadrant may not expose the requested seam. If neither
+    // requested edge is adjustable, use the nearest actual seam; the returned
+    // direction then accurately describes which edge will move.
     if horizontal_edge.is_none() && vertical_edge.is_none() {
-        if horizontal {
-            horizontal_edge = Some(if hit.x < size.w / 2 {
+        horizontal_edge = match (can_left, can_right) {
+            (true, true) => Some(if hit.x < size.w / 2 {
                 ResizeDirection::Left
             } else {
                 ResizeDirection::Right
-            });
-        } else if vertical {
-            vertical_edge = Some(if hit.y < size.h / 2 {
+            }),
+            (true, false) => Some(ResizeDirection::Left),
+            (false, true) => Some(ResizeDirection::Right),
+            (false, false) => None,
+        };
+        vertical_edge = match (can_top, can_bottom) {
+            (true, true) => Some(if hit.y < size.h / 2 {
                 ResizeDirection::Top
             } else {
                 ResizeDirection::Bottom
-            });
+            }),
+            (true, false) => Some(ResizeDirection::Top),
+            (false, true) => Some(ResizeDirection::Bottom),
+            (false, false) => None,
+        };
+        if horizontal_edge.is_some() && vertical_edge.is_some() {
+            let horizontal_distance = hit.x.min((size.w - hit.x).abs());
+            let vertical_distance = hit.y.min((size.h - hit.y).abs());
+            if horizontal_distance <= vertical_distance {
+                vertical_edge = None;
+            } else {
+                horizontal_edge = None;
+            }
         }
     }
 
@@ -712,7 +768,7 @@ pub(crate) fn update_pointer_tree_resize(
 ) -> bool {
     use crate::layouts::tree::Side;
 
-    let (layout_rect, minimum_weight, monitor_id) = {
+    let (layout_rect, minimum_weight, minimums, monitor_id) = {
         let view = match ctx.core().model().client_view(window) {
             Some(view)
                 if view.monitor.current_layout() == PresentationMode::Tiled
@@ -727,15 +783,24 @@ pub(crate) fn update_pointer_tree_resize(
             .monitor
             .collect_tiled(&ctx.core().model().clients)
             .len() as u32;
+        let placement = LayoutPlacement::new(
+            &ctx.core().config().layout,
+            view.monitor,
+            PresentationMode::Tiled,
+            tiled_count,
+        );
+        let tiled = view.monitor.collect_tiled(&ctx.core().model().clients);
+        let minimums = tiling_minimum_slots(
+            &placement,
+            &tiled,
+            &ctx.core().model().clients,
+            ctx.core().config().window.resize_hints,
+            ctx.core().config().derived.bar_height,
+        );
         (
-            LayoutPlacement::new(
-                &ctx.core().config().layout,
-                view.monitor,
-                PresentationMode::Tiled,
-                tiled_count,
-            )
-            .work_rect(),
+            placement.work_rect(),
             ctx.core().config().layout.minimum_weight,
+            minimums,
             view.monitor.id(),
         )
     };
@@ -743,7 +808,7 @@ pub(crate) fn update_pointer_tree_resize(
     let (left, right, top, bottom) = direction.affected_edges();
     if left || right {
         let side = if left { Side::Left } else { Side::Right };
-        let _ = candidate.resize_by_pixels(
+        let _ = candidate.resize_edge_by_pixels(
             window,
             side,
             current.x - start.x,
@@ -753,13 +818,19 @@ pub(crate) fn update_pointer_tree_resize(
     }
     if top || bottom {
         let side = if top { Side::Top } else { Side::Bottom };
-        let _ = candidate.resize_by_pixels(
+        let _ = candidate.resize_edge_by_pixels(
             window,
             side,
             current.y - start.y,
             layout_rect,
             minimum_weight,
         );
+    }
+    if candidate
+        .constrained_bounds(layout_rect, &minimums)
+        .is_none()
+    {
+        return true;
     }
     ctx.core_mut()
         .model_mut()
@@ -778,6 +849,114 @@ pub(crate) fn update_pointer_tree_resize(
     true
 }
 
+fn selected_tiling_constraints(
+    ctx: &WmCtx<'_>,
+) -> Option<(LayoutPlacement, HashMap<WindowId, Size>)> {
+    let monitor = ctx.core().model().selected_monitor();
+    let tiled = monitor.collect_tiled(&ctx.core().model().clients);
+    let placement = LayoutPlacement::new(
+        &ctx.core().config().layout,
+        monitor,
+        PresentationMode::Tiled,
+        tiled.len() as u32,
+    );
+    let minimums = tiling_minimum_slots(
+        &placement,
+        &tiled,
+        &ctx.core().model().clients,
+        ctx.core().config().window.resize_hints,
+        ctx.core().config().derived.bar_height,
+    );
+    Some((placement, minimums))
+}
+
+pub(crate) fn constrained_tree_placement_targets(
+    ctx: &WmCtx<'_>,
+    source: WindowId,
+) -> Vec<crate::layouts::tree::PlacementTarget> {
+    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
+        return Vec::new();
+    };
+    let Some(tree) = ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .per_tag()
+        .map(|state| &state.layout_tree)
+    else {
+        return Vec::new();
+    };
+    tree.placement_targets(
+        source,
+        placement.work_rect(),
+        ctx.core().config().layout.pointer_edge_fraction,
+    )
+    .into_iter()
+    .filter(|target| {
+        let mut candidate = tree.clone();
+        candidate.apply_placement_target(source, *target)
+            && candidate
+                .constrained_bounds(placement.work_rect(), &minimums)
+                .is_some()
+    })
+    .collect()
+}
+
+pub(crate) fn preview_constrained_tree_target(
+    ctx: &WmCtx<'_>,
+    source: WindowId,
+    target: crate::layouts::tree::PlacementTarget,
+) -> Option<(LayoutPlacement, Rect)> {
+    let (placement, minimums) = selected_tiling_constraints(ctx)?;
+    let mut candidate = ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .per_tag()?
+        .layout_tree
+        .clone();
+    if !candidate.apply_placement_target(source, target) {
+        return None;
+    }
+    let slot = candidate
+        .constrained_bounds(placement.work_rect(), &minimums)?
+        .get(&source)
+        .copied()?;
+    Some((placement, slot))
+}
+
+pub(crate) fn apply_constrained_tree_target(
+    ctx: &mut WmCtx<'_>,
+    source: WindowId,
+    target: crate::layouts::tree::PlacementTarget,
+) -> bool {
+    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
+        return false;
+    };
+    let Some(mut candidate) = ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .per_tag()
+        .map(|state| state.layout_tree.clone())
+    else {
+        return false;
+    };
+    if !candidate.apply_placement_target(source, target)
+        || candidate
+            .constrained_bounds(placement.work_rect(), &minimums)
+            .is_none()
+    {
+        return false;
+    }
+    ctx.core_mut()
+        .model_mut()
+        .selected_monitor_mut()
+        .per_tag_state()
+        .layout_tree = candidate;
+    true
+}
+
 pub fn place_tree_at_point(
     ctx: &mut WmCtx<'_>,
     window: WindowId,
@@ -786,26 +965,29 @@ pub fn place_tree_at_point(
     if !ctx.core().model().selected_monitor().is_tiling_layout() {
         return false;
     }
-    let layout_rect = {
-        let monitor = ctx.core().model().selected_monitor();
-        let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
-        LayoutPlacement::new(
-            &ctx.core().config().layout,
-            monitor,
-            PresentationMode::Tiled,
-            tiled_count,
-        )
-        .work_rect()
+    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
+        return false;
     };
     let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
-    let changed = ctx
-        .core_mut()
-        .model_mut()
-        .selected_monitor_mut()
-        .per_tag_state()
-        .layout_tree
-        .place_at_point(window, point, layout_rect, edge_fraction);
+    let Some(mut candidate) = ctx
+        .core()
+        .model()
+        .selected_monitor()
+        .per_tag()
+        .map(|state| state.layout_tree.clone())
+    else {
+        return false;
+    };
+    let changed = candidate.place_at_point(window, point, placement.work_rect(), edge_fraction)
+        && candidate
+            .constrained_bounds(placement.work_rect(), &minimums)
+            .is_some();
     if changed {
+        ctx.core_mut()
+            .model_mut()
+            .selected_monitor_mut()
+            .per_tag_state()
+            .layout_tree = candidate;
         finish_layout_change(ctx);
     }
     changed
@@ -828,19 +1010,33 @@ pub fn preview_tree_at_point(
     {
         return None;
     }
-    let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
+    let tiled = monitor.collect_tiled(&ctx.core().model().clients);
     let placement = LayoutPlacement::new(
         &ctx.core().config().layout,
         monitor,
         PresentationMode::Tiled,
-        tiled_count,
+        tiled.len() as u32,
     );
-    let slot = monitor.per_tag()?.layout_tree.preview_placement_at_point(
+    let minimums = tiling_minimum_slots(
+        &placement,
+        &tiled,
+        &ctx.core().model().clients,
+        ctx.core().config().window.resize_hints,
+        ctx.core().config().derived.bar_height,
+    );
+    let mut candidate = monitor.per_tag()?.layout_tree.clone();
+    if !candidate.place_at_point(
         window,
         point,
         placement.work_rect(),
         ctx.core().config().layout.pointer_edge_fraction,
-    )?;
+    ) {
+        return None;
+    }
+    let slot = candidate
+        .constrained_bounds(placement.work_rect(), &minimums)?
+        .get(&window)
+        .copied()?;
     super::keyboard_placement::tree_slot_outer_rect(ctx, window, placement, slot)
 }
 

@@ -166,15 +166,10 @@ fn normalize_spawn_axis(
     }
 }
 
-/// Apply size hints to the given rect and return whether it changed.
-///
-/// Returns `true` if the resulting geometry differs from the client's current
-/// stored geometry (i.e. an actual change would occur).
-/// Result of [`apply_size_hints`] indicating whether ICCCM hints should also
-/// be applied (X11 only — the caller is responsible for actually doing so).
+/// Result of [`apply_size_hints`] indicating whether backend/protocol client
+/// constraints should also be applied to the dimensions.
 pub(crate) struct SizeHintsOutcome {
-    pub changed: bool,
-    pub should_apply_icccm: bool,
+    pub should_apply_client_hints: bool,
 }
 
 pub fn apply_size_hints(
@@ -188,8 +183,7 @@ pub fn apply_size_hints(
         Some(view) => view,
         None => {
             return SizeHintsOutcome {
-                changed: false,
-                should_apply_icccm: false,
+                should_apply_client_hints: false,
             };
         }
     };
@@ -220,8 +214,7 @@ pub fn apply_size_hints(
     rect.enforce_minimum(bar_height, bar_height);
 
     SizeHintsOutcome {
-        changed: rect.differs_from(&old_geo),
-        should_apply_icccm: should_apply_hints,
+        should_apply_client_hints: should_apply_hints,
     }
 }
 

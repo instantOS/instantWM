@@ -300,6 +300,7 @@ pub fn window_properties(
         class: String::from_utf8_lossy(&class_bytes).into_owned(),
         instance: String::from_utf8_lossy(&instance_bytes).into_owned(),
         title,
+        size_hints: None,
     }
 }
 
