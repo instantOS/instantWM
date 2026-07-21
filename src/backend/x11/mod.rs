@@ -46,6 +46,8 @@ pub struct X11RuntimeConfig {
     pub cursors: [Option<Cursor>; 10],
     /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
     pub last_x11_cursor: Option<crate::types::AltCursor>,
+    /// Reused override-redirect windows forming the manual-layout preview.
+    pub layout_preview_windows: Option<[Window; 4]>,
     /// Active non-blocking window animations, keyed by window id.
     pub window_animations: crate::animation::WindowAnimations,
     /// Border widths to restore when X11 windows leave WM management.
@@ -68,6 +70,7 @@ impl Default for X11RuntimeConfig {
             status_scheme: StatusScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor: None,
+            layout_preview_windows: None,
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
         }

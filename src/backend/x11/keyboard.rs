@@ -125,6 +125,81 @@ pub fn ungrab_modal_keyboard(x11: &X11BackendRef) {
     let _ = x11.conn.flush();
 }
 
+/// Show or hide the hollow manual-tree placement preview.
+pub fn update_layout_preview(
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    rect: Option<crate::types::Rect>,
+) {
+    let conn = x11.conn;
+    if rect.is_some() && x11_runtime.layout_preview_windows.is_none() {
+        let ids: [Option<Window>; 4] = std::array::from_fn(|_| conn.generate_id().ok());
+        let Some(ids) = ids.into_iter().collect::<Option<Vec<_>>>() else {
+            return;
+        };
+        let windows: [Window; 4] = ids.try_into().expect("exactly four preview windows");
+        let color = x11_runtime.border_scheme.snap.bg.pixel();
+        let aux = CreateWindowAux::new()
+            .override_redirect(1)
+            .background_pixel(color);
+        for window in windows {
+            if conn
+                .create_window(
+                    x11rb::COPY_FROM_PARENT as u8,
+                    window,
+                    x11_runtime.root,
+                    0,
+                    0,
+                    1,
+                    1,
+                    0,
+                    WindowClass::INPUT_OUTPUT,
+                    x11rb::COPY_FROM_PARENT,
+                    &aux,
+                )
+                .is_err()
+            {
+                for created in windows {
+                    let _ = conn.destroy_window(created);
+                }
+                return;
+            }
+        }
+        x11_runtime.layout_preview_windows = Some(windows);
+    }
+
+    let Some(windows) = x11_runtime.layout_preview_windows else {
+        return;
+    };
+    if let Some(rect) = rect {
+        let color = x11_runtime.border_scheme.snap.bg.pixel();
+        for (window, side) in windows
+            .into_iter()
+            .zip(crate::layouts::placement::outline_rectangles(rect, 6))
+        {
+            let _ = conn.change_window_attributes(
+                window,
+                &ChangeWindowAttributesAux::new().background_pixel(color),
+            );
+            let _ = conn.configure_window(
+                window,
+                &ConfigureWindowAux::new()
+                    .x(side.x)
+                    .y(side.y)
+                    .width(side.w.max(1) as u32)
+                    .height(side.h.max(1) as u32)
+                    .stack_mode(StackMode::ABOVE),
+            );
+            let _ = conn.map_window(window);
+        }
+    } else {
+        for window in windows {
+            let _ = conn.unmap_window(window);
+        }
+    }
+    let _ = conn.flush();
+}
+
 /// Update the cached numlock modifier mask from the X11 server.
 pub fn update_num_lock_mask(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     let new_numlockmask = {

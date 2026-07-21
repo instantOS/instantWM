@@ -226,6 +226,8 @@ pub struct KeyboardTreePlacement {
     pub tags: TagMask,
     pub targets: Vec<crate::layouts::tree::PlacementTarget>,
     pub selected: usize,
+    /// Exact final outer rectangle for the currently selected target.
+    pub preview_rect: Rect,
 }
 
 impl CoreState {

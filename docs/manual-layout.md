@@ -36,10 +36,11 @@ The default Super bindings use the tree whenever the focused window is tiled:
   `Super+Alt+H/J/K/L` is retained as an alternative.
 - `Super++` and `Super+-` grow or shrink along the most local split.
 - `Super+M` enters keyboard placement. The compositor cursor starts at
-  the nearest semantic pointer target. Arrow moves geometrically, Tab/Shift+Tab
-  visits every candidate, Space selects the current window's centre swap,
-  Enter applies, and Escape cancels. This deliberately uses Super to enter the
-  mode; the browser prototype could not reserve that modifier.
+  the nearest semantic pointer target. A thick hollow frame previews the exact
+  final window rectangle on both Wayland and X11. Arrow moves geometrically,
+  Tab/Shift+Tab visits every candidate, Space selects the current window's
+  centre swap, Enter applies, and Escape cancels. This deliberately uses Super
+  to enter the mode; the browser prototype could not reserve that modifier.
 
 The former `Super+M` focused/monocle command is now `Super+Ctrl+M` and remains
 available as `layout_monocle`. Bindings displaced from the arrow keys remain

@@ -430,6 +430,18 @@ impl<'a> WmCtx<'a> {
         }
     }
 
+    /// Refresh the backend-native visualization of a pending tree placement.
+    pub fn update_layout_preview(&mut self, rect: Option<Rect>) {
+        match self {
+            WmCtx::X11(ctx) => crate::backend::x11::keyboard::update_layout_preview(
+                &ctx.x11,
+                ctx.x11_runtime,
+                rect,
+            ),
+            WmCtx::Wayland(ctx) => ctx.wayland.request_render(),
+        }
+    }
+
     /// Request backend-specific space/compositor sync after authoritative WM
     /// geometry changes.
     pub fn request_space_sync(&self) {

@@ -948,6 +948,21 @@ impl LayoutTree {
         self.move_to_scope(source, target.target, side, candidate.scope.clone())
     }
 
+    /// Return the source slot produced by a semantic target without mutating
+    /// the authoritative tree.
+    pub fn preview_placement_target(
+        &self,
+        source: WindowId,
+        target: PlacementTarget,
+        layout_rect: Rect,
+    ) -> Option<Rect> {
+        let mut preview = self.clone();
+        preview
+            .apply_placement_target(source, target)
+            .then(|| preview.bounds(layout_rect).get(&source).copied())
+            .flatten()
+    }
+
     fn move_to_scope(
         &mut self,
         source: WindowId,
@@ -2063,6 +2078,28 @@ mod tests {
         assert!(keyboard.apply_placement_target(WindowId(1), target));
         assert!(pointer.place_at_point(WindowId(1), target.position, rect, 0.34));
         assert_eq!(keyboard.bounds(rect), pointer.bounds(rect));
+    }
+
+    #[test]
+    fn placement_preview_is_exact_and_does_not_mutate_the_tree() {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(Preset::Grid, &windows(4), None, 1, 0.55);
+        let rect = Rect::new(0, 0, 400, 300);
+        let before = tree.bounds(rect);
+        let target = tree
+            .placement_targets(WindowId(1), rect, 0.34)
+            .into_iter()
+            .find(|target| target.target == WindowId(4) && target.side == Some(Side::Left))
+            .unwrap();
+
+        let preview = tree
+            .preview_placement_target(WindowId(1), target, rect)
+            .unwrap();
+        assert_eq!(tree.bounds(rect), before);
+
+        let mut applied = tree.clone();
+        assert!(applied.apply_placement_target(WindowId(1), target));
+        assert_eq!(applied.bounds(rect)[&WindowId(1)], preview);
     }
 
     #[test]

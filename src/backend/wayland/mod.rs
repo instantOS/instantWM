@@ -140,6 +140,10 @@ impl WaylandBackend {
         let _ = self.with_state(|state: &mut WaylandState| state.request_space_sync());
     }
 
+    pub fn request_render(&self) {
+        let _ = self.with_state(|state: &mut WaylandState| state.request_render());
+    }
+
     pub fn is_keyboard_focused_on(&self, window: WindowId) -> bool {
         self.with_state(|state: &mut WaylandState| state.is_seat_focused_on(window))
             .unwrap_or(false)

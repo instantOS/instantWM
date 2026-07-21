@@ -123,9 +123,25 @@ fn inset_rect_saturating(rect: Rect, left: i32, top: i32, right: i32, bottom: i3
     }
 }
 
+/// Four non-overlapping rectangles forming a hollow frame inside `rect`.
+/// Used by both backends for the manual-tree placement preview.
+pub(crate) fn outline_rectangles(rect: Rect, requested_width: i32) -> [Rect; 4] {
+    let width = requested_width
+        .max(1)
+        .min((rect.w.max(1) + 1) / 2)
+        .min((rect.h.max(1) + 1) / 2);
+    let inner_height = (rect.h - 2 * width).max(0);
+    [
+        Rect::new(rect.x, rect.y, rect.w.max(1), width),
+        Rect::new(rect.x, rect.y + rect.h - width, rect.w.max(1), width),
+        Rect::new(rect.x, rect.y + width, width, inner_height),
+        Rect::new(rect.x + rect.w - width, rect.y + width, width, inner_height),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{LayoutPlacement, inset_rect_saturating};
+    use super::{LayoutPlacement, inset_rect_saturating, outline_rectangles};
     use crate::config::config_toml::LayoutConfig;
     use crate::layouts::LayoutKind;
     use crate::types::{Monitor, Rect};
@@ -210,6 +226,19 @@ mod tests {
         assert_eq!(
             inset_rect_saturating(Rect::new(0, 0, 4, 3), 8, 8, 8, 8),
             Rect::new(3, 2, 1, 1)
+        );
+    }
+
+    #[test]
+    fn outline_is_hollow_and_keeps_all_sides_inside_the_rect() {
+        assert_eq!(
+            outline_rectangles(Rect::new(10, 20, 100, 80), 6),
+            [
+                Rect::new(10, 20, 100, 6),
+                Rect::new(10, 94, 100, 6),
+                Rect::new(10, 26, 6, 68),
+                Rect::new(104, 26, 6, 68),
+            ]
         );
     }
 }

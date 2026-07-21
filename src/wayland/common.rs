@@ -524,7 +524,13 @@ pub struct FixedSceneElements {
 /// Build the shared scene pieces that do not depend on the target output.
 pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<FixedSceneElements> {
     let bar_seq = wm.bar.update_seq();
-    let borders_hash = crate::wayland::render::borders::get_borders_hash(&wm.core.model, state);
+    let layout_preview = wm
+        .core
+        .tree_placement
+        .as_ref()
+        .map(|placement| placement.preview_rect);
+    let borders_hash =
+        crate::wayland::render::borders::get_borders_hash(&wm.core.model, state, layout_preview);
 
     if !wm.bar.needs_redraw()
         && let Some((cached_bar, cached_borders, ref elements)) = state.runtime.fixed_scene_cache
@@ -540,6 +546,7 @@ pub fn build_fixed_scene_elements(wm: &mut Wm, state: &mut WaylandState) -> Rc<F
             &wm.core.model,
             &wm.core.config.colors.border,
             state,
+            layout_preview,
         ),
     });
 
