@@ -408,6 +408,12 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn popup_destroyed(&mut self, _surface: PopupSurface) {
+        // Smithay keeps popup grabs in PopupManager until it is explicitly
+        // cleaned.  Restore focus only after removing dead popup entries;
+        // otherwise KeyboardHandle::is_grabbed() remains true and suppresses
+        // compositor keybindings after the popup has closed.
+        self.popups.cleanup();
+
         if let Some(old_id) = self.focused_window() {
             if self.window_index.contains_key(&old_id) {
                 self.set_focus(old_id);
