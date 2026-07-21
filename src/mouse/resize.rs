@@ -236,14 +236,14 @@ fn begin_wayland_super_resize(
     // of where the cursor started — but warping gives immediate visual feedback
     // and prevents the cursor sitting in the middle of the window while a corner
     // is moving.
-    let Some(bw) = wl.core.state().model.client(win).map(|c| c.border_width) else {
-        return;
+    let root = {
+        let mut wmctx = WmCtx::Wayland(wl.reborrow());
+        match super::warp::warp_to_resize_corner(&mut wmctx, win, dir) {
+            Some(p) => p,
+            None => return,
+        }
     };
-    let offset = dir.warp_offset(geo.size(), bw);
-    let warp_x = geo.x + offset.x;
-    let warp_y = geo.y + offset.y;
 
-    let root = Point::new(warp_x, warp_y);
     if begin_resize(
         wl.core.drag_state_mut(),
         wl.wayland,
@@ -259,7 +259,6 @@ fn begin_wayland_super_resize(
     {
         return;
     }
-    wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
     set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
     crate::focus::focus(&mut WmCtx::Wayland(wl.reborrow()), Some(win));
     let mut wmctx = WmCtx::Wayland(wl.reborrow());

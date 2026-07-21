@@ -24,8 +24,8 @@ use crate::types::{AltCursor, MouseButton, Point, Rect, ResizeDirection, Size, W
 
 use super::constants::{KEYCODE_ESCAPE, RESIZE_BORDER_ZONE};
 use super::cursor::set_cursor_style;
-
 use super::resize::resize_mouse_directional;
+use super::warp;
 
 // ── Hover offer helpers ──────────────────────────────────────────────────────
 //
@@ -140,18 +140,6 @@ fn resize_target_for_window(
 fn pointer_in_bar(model: &WmModel, root_y: i32) -> bool {
     let mon = model.expect_selected_monitor();
     mon.bar_contains_y(&model.clients, root_y)
-}
-
-// ── Cursor helpers ───────────────────────────────────────────────────────────
-
-/// Warp the pointer to the edge/corner of `win` described by `dir`.
-fn warp_pointer_resize(ctx: &mut WmCtx, win: WindowId, dir: ResizeDirection) {
-    let Some(c) = ctx.core().model().client(win) else {
-        return;
-    };
-    let offset = dir.warp_offset(c.geo.size(), c.border_width);
-    ctx.pointer_backend()
-        .warp_pointer((c.geo.x + offset.x) as f64, (c.geo.y + offset.y) as f64);
 }
 
 // ── Border detection ─────────────────────────────────────────────────────────
@@ -443,7 +431,7 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
                                     Size::new(w, h),
                                     Point::new(win_x, win_y),
                                 );
-                                warp_pointer_resize(&mut wm_ctx, win, dir);
+                                let _ = warp::warp_to_resize_corner(&mut wm_ctx, win, dir);
                                 resize_mouse_directional(ctx, Some(dir), btn);
                             }
                         }

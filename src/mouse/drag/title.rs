@@ -86,7 +86,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             // Bar-title resizing retains its established bottom-right handle;
             // Super+right-drag uses the pointer's quadrant instead.
             if !suppress_click_action {
-                warp_to_resize_direction(ctx, win, ResizeDirection::BottomRight);
+                let _ = warp::warp_to_resize_corner(ctx, win, ResizeDirection::BottomRight);
             }
             // Tree resize owns an initial tree snapshot, so replace the armed
             // click with the authoritative resize interaction after the drag
@@ -109,14 +109,9 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             ResizeDirection::BottomRight
         };
 
-        let bw = match ctx.core().model().client(win) {
-            Some(c) => c.border_width,
-            None => return true,
+        let Some(warp_point) = warp::warp_to_resize_corner(ctx, win, dir) else {
+            return true;
         };
-        let offset = dir.warp_offset(current_geo.size(), bw);
-        let warp_x = current_geo.x + offset.x;
-        let warp_y = current_geo.y + offset.y;
-        let warp_point = Point::new(warp_x, warp_y);
 
         if let WmCtx::Wayland(wl) = ctx {
             if activate_armed_resize(
@@ -130,7 +125,6 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             {
                 return false;
             }
-            wl.wayland.warp_pointer(warp_x as f64, warp_y as f64);
             set_cursor_style(&mut WmCtx::Wayland(wl.reborrow()), AltCursor::Resize(dir));
         }
         return true;
@@ -224,7 +218,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     if is_right_click {
         if crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win) {
             if !armed.suppress_click_action() {
-                warp_to_resize_direction(ctx, win, ResizeDirection::BottomRight);
+                let _ = warp::warp_to_resize_corner(ctx, win, ResizeDirection::BottomRight);
             }
             resize_mouse_from_cursor(ctx, btn);
             return true;
@@ -246,13 +240,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         let Some((current_geo, _)) = promote_to_floating(ctx, win, None) else {
             return false;
         };
-        if let Some(c) = ctx.core().model().client(win) {
-            let offset = direction.warp_offset(current_geo.size(), c.border_width);
-            ctx.pointer_backend().warp_pointer(
-                (current_geo.x + offset.x) as f64,
-                (current_geo.y + offset.y) as f64,
-            );
-        }
+        let _ = warp::warp_to_resize_corner(ctx, win, direction);
         if let WmCtx::X11(x11) = ctx {
             resize_mouse_directional(x11, Some(direction), btn);
         }
@@ -271,20 +259,6 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         }
     }
     true
-}
-
-fn warp_to_resize_direction(ctx: &mut WmCtx, win: WindowId, direction: ResizeDirection) {
-    let Some((geo, border_width)) = ctx
-        .core()
-        .model()
-        .client(win)
-        .map(|client| (client.geo, client.border_width))
-    else {
-        return;
-    };
-    let offset = direction.warp_offset(geo.size(), border_width);
-    ctx.pointer_backend()
-        .warp_pointer((geo.x + offset.x) as f64, (geo.y + offset.y) as f64);
 }
 
 /// Finish a title drag interaction (button release without exceeding the

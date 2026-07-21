@@ -7,6 +7,7 @@
 //! | [`WmCtx::warp_cursor_to_client`]   | Warp to a client only if the cursor is outside it      |
 //! | [`warp_into`]                      | Clamp cursor into window bounds (before a drag/resize) |
 //! | [`warp_to_focus`]                  | Keybinding handler – warp to the selected window       |
+//! | [`warp_to_resize_corner`]          | Warp to the edge/corner for a resize direction         |
 //! | [`WmCtx::set_cursor_style`]        | Restore the normal (arrow) root cursor                 |
 //!
 //! [`WmCtx::warp_cursor_to_client`]: crate::contexts::WmCtx::warp_cursor_to_client
@@ -59,4 +60,28 @@ pub fn warp_to_focus(ctx: &mut WmCtx) {
     if let Some(win) = ctx.core().model().selected_win() {
         ctx.warp_cursor_to_client(win);
     }
+}
+
+/// Warp the pointer to the edge or corner of `win` described by `direction`,
+/// and return that absolute target point.
+///
+/// The point is computed from `win`'s current geometry and border width via
+/// [`ResizeDirection::warp_offset`].  Use the returned `Point` as the resize
+/// `start` anchor for [`begin_resize`] / [`activate_armed_resize`] so the
+/// drag math matches the warped cursor position.
+///
+/// [`begin_resize`]: crate::mouse::drag::lifecycle::begin_resize
+/// [`activate_armed_resize`]: crate::mouse::drag::lifecycle::activate_armed_resize
+///
+/// Returns `None` if `win` is unknown to the model.
+pub fn warp_to_resize_corner(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    direction: ResizeDirection,
+) -> Option<Point> {
+    let c = ctx.core().model().client(win)?;
+    let offset = direction.warp_offset(c.geo.size(), c.border_width);
+    let target = Point::new(c.geo.x + offset.x, c.geo.y + offset.y);
+    ctx.pointer_backend().warp_pointer(target.x as f64, target.y as f64);
+    Some(target)
 }
