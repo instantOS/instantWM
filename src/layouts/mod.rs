@@ -1,15 +1,17 @@
 //! Persistent manual window-layout system.
 //!
 //! This module is the single public face of the layout subsystem.  It is
-//! split into four focused sub-modules so that each concern stays small and
+//! split into focused sub-modules so that each concern stays small and
 //! easy to navigate:
 //!
-//! | Sub-module    | Responsibility                                              |
-//! |---------------|-------------------------------------------------------------|
-//! | [`tree`]      | Canonical weighted tree and semantic transformations       |
-//! | [`algo`]      | Legacy preset geometry kept for compatibility tests         |
-//! | [`query`]     | Stateless reads: client counts, layout index resolution     |
-//! | [`manager`]   | Stateful operations: arrange, sync_monitor_z_order, set/cycle layout, …  |
+//! | Sub-module | Responsibility |
+//! |------------|----------------|
+//! | [`tree`] | Canonical weighted tree and private transformation algorithms |
+//! | [`algo`] | Legacy preset geometry kept for compatibility tests |
+//! | [`query`] | Stateless client-count and animation queries |
+//! | `placement` | Gap, border, and preview geometry |
+//! | `keyboard_placement` | Keyboard placement-session orchestration |
+//! | [`manager`] | Arrange application, z-order, pointer interaction, and layout commands |
 //!
 //! ## Layout commands and presentation state
 //!
@@ -33,6 +35,7 @@
 //! that callers only ever need `use crate::layouts::…`.
 
 pub mod algo;
+mod keyboard_placement;
 pub mod manager;
 pub(crate) mod placement;
 pub mod query;
@@ -297,13 +300,16 @@ impl FromStr for LayoutCommand {
 }
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
+pub use keyboard_placement::{
+    begin_keyboard_tree_placement, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
+    finish_keyboard_tree_placement, resize_keyboard_tree_placement, step_keyboard_tree_placement,
+    swap_keyboard_tree_placement,
+};
 pub use manager::{
-    apply_tree_preset, arrange, begin_keyboard_tree_placement, center_keyboard_tree_placement,
-    cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
-    focus_tree_neighbor, inc_master_count_by, place_tree_at_point, preview_tree_at_point,
-    promote_tree, resize_keyboard_tree_placement, resize_tree, resize_tree_smart, set_layout,
-    set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
-    swap_tree_neighbor, sync_monitor_z_order, toggle_layout, toggle_maximized_layout,
+    apply_tree_preset, arrange, cycle_layout_direction, focus_tree_neighbor, inc_master_count_by,
+    place_tree_at_point, preview_tree_at_point, promote_tree, resize_tree, resize_tree_smart,
+    set_layout, set_master_factor, swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
+    toggle_maximized_layout,
 };
 
 #[cfg(test)]

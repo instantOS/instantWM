@@ -453,148 +453,293 @@ pub struct Cli {
     pub command: CommandKind,
 }
 
+fn parse_dpms_state(state: &str) -> bool {
+    match state.to_ascii_lowercase().as_str() {
+        "on" | "enable" | "enabled" => true,
+        "off" | "disable" | "disabled" => false,
+        _ => {
+            eprintln!("instantwmctl: invalid dpms state (expected on/off)");
+            process::exit(1);
+        }
+    }
+}
+
+fn dpms_command(identifier: String, state: &str) -> MonitorCommand {
+    MonitorCommand::Set {
+        identifier,
+        resolution: None,
+        refresh_rate: None,
+        position: None,
+        scale: None,
+        transform: None,
+        enable: Some(parse_dpms_state(state)),
+        vrr: None,
+    }
+}
+
+impl From<MonitorAction> for MonitorCommand {
+    fn from(action: MonitorAction) -> Self {
+        match action {
+            MonitorAction::List { .. } => Self::List,
+            MonitorAction::Switch { index } => Self::Switch { index },
+            MonitorAction::Next { count } => Self::Next { count },
+            MonitorAction::Prev { count } => Self::Prev { count },
+            MonitorAction::Set {
+                identifier,
+                res,
+                rate,
+                pos,
+                scale,
+                transform,
+                vrr,
+                enable,
+                disable,
+            } => Self::Set {
+                identifier,
+                resolution: res,
+                refresh_rate: rate,
+                position: pos,
+                scale,
+                transform,
+                enable: if enable {
+                    Some(true)
+                } else if disable {
+                    Some(false)
+                } else {
+                    None
+                },
+                vrr,
+            },
+            MonitorAction::Modes { identifier } => Self::Modes {
+                identifier: Some(identifier),
+            },
+            MonitorAction::Dpms { state } => dpms_command("focused".to_string(), &state),
+        }
+    }
+}
+
+impl From<WindowAction> for WindowCommand {
+    fn from(action: WindowAction) -> Self {
+        match action {
+            WindowAction::List { window_id } => Self::List(window_id),
+            WindowAction::Info { window_id } => Self::Info(window_id),
+            WindowAction::Resize {
+                window_id,
+                monitor,
+                x,
+                y,
+                width,
+                height,
+            } => Self::Resize {
+                window_id,
+                monitor,
+                x,
+                y,
+                width,
+                height,
+            },
+            WindowAction::Close { window_id } => Self::Close(window_id),
+        }
+    }
+}
+
+impl From<TagAction> for TagCommand {
+    fn from(action: TagAction) -> Self {
+        match action {
+            TagAction::View { number } => Self::View(number.unwrap_or(2)),
+            TagAction::Name { name } => Self::Name(name),
+            TagAction::Reset => Self::ResetNames,
+        }
+    }
+}
+
+impl From<ToggleCliAction> for ToggleCommand {
+    fn from(action: ToggleCliAction) -> Self {
+        match action {
+            ToggleCliAction::Animated { action } => Self::Animated(action.unwrap_or_default()),
+            ToggleCliAction::FocusFollowsMouse { action } => {
+                Self::FocusFollowsMouse(action.unwrap_or_default())
+            }
+            ToggleCliAction::FocusFollowsFloatMouse { action } => {
+                Self::FocusFollowsFloatMouse(action.unwrap_or_default())
+            }
+            ToggleCliAction::AltTag { action } => Self::AltTag(action.unwrap_or_default()),
+            ToggleCliAction::HideTags { action } => Self::HideTags(action.unwrap_or_default()),
+        }
+    }
+}
+
+impl From<KeyboardAction> for KeyboardCommand {
+    fn from(action: KeyboardAction) -> Self {
+        match action {
+            KeyboardAction::List { all } => {
+                if all {
+                    Self::ListAll
+                } else {
+                    Self::List
+                }
+            }
+            KeyboardAction::Status => Self::Status,
+            KeyboardAction::Next => Self::Next,
+            KeyboardAction::Prev => Self::Prev,
+            KeyboardAction::Set { layouts } => Self::Set(
+                layouts
+                    .into_iter()
+                    .map(KeyboardLayoutArg::from)
+                    .map(KeyboardLayout::from)
+                    .collect(),
+            ),
+            KeyboardAction::Add { name } => Self::Add(KeyboardLayoutArg::from(name).into()),
+            KeyboardAction::Remove { layout } => Self::Remove(layout),
+            KeyboardAction::SwapEscape { enabled } => Self::SwapEscape(enabled),
+        }
+    }
+}
+
+impl From<ScratchpadAction> for ScratchpadCommand {
+    fn from(action: ScratchpadAction) -> Self {
+        match action {
+            ScratchpadAction::List { .. } => Self::List,
+            ScratchpadAction::Status { name } => Self::Status(name),
+            ScratchpadAction::Show { name, all } => {
+                if all {
+                    Self::ShowAll
+                } else {
+                    Self::Show(Some(
+                        name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                    ))
+                }
+            }
+            ScratchpadAction::Hide { name, all } => {
+                if all {
+                    Self::HideAll
+                } else {
+                    Self::Hide(Some(
+                        name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
+                    ))
+                }
+            }
+            ScratchpadAction::Toggle { name } => Self::Toggle(name),
+            ScratchpadAction::Create {
+                name,
+                window_id,
+                status,
+                direction,
+            } => Self::Create {
+                name,
+                window_id,
+                status,
+                direction,
+            },
+            ScratchpadAction::Delete { window_id } => Self::Delete { window_id },
+        }
+    }
+}
+
+impl From<InputAction> for InputCommand {
+    fn from(action: InputAction) -> Self {
+        match action {
+            InputAction::List { identifier } => Self::List(identifier),
+            InputAction::Devices => Self::Devices,
+            InputAction::Speed { identifier, value } => Self::PointerAccel { identifier, value },
+            InputAction::AccelProfile {
+                identifier,
+                profile,
+            } => Self::AccelProfile {
+                identifier,
+                profile,
+            },
+            InputAction::Tap { identifier, state } => Self::Tap {
+                identifier,
+                enabled: state == "enabled" || state == "on",
+            },
+            InputAction::NaturalScroll { identifier, state } => Self::NaturalScroll {
+                identifier,
+                enabled: state == "enabled" || state == "on",
+            },
+            InputAction::ScrollFactor { identifier, value } => {
+                Self::ScrollFactor { identifier, value }
+            }
+            InputAction::LeftHanded { identifier, state } => Self::LeftHanded {
+                identifier,
+                enabled: state == "enabled" || state == "on",
+            },
+        }
+    }
+}
+
+impl From<ModeAction> for ModeCommand {
+    fn from(action: ModeAction) -> Self {
+        match action {
+            ModeAction::List => Self::List,
+            ModeAction::Set { name } => Self::Set(name),
+            ModeAction::Toggle { name } => Self::Toggle(name),
+        }
+    }
+}
+
+fn test_command(action: TestAction) -> TestCommand {
+    match action {
+        TestAction::Pointer {
+            action: TestPointerAction::Move { x, y, normalized },
+        } => TestCommand::PointerMove { x, y, normalized },
+        TestAction::Pointer {
+            action: TestPointerAction::Path { .. },
+        } => unreachable!("pointer paths are executed by instantwmctl"),
+        TestAction::Window { action } => match action {
+            TestWindowAction::Focus { window_id } => TestCommand::FocusWindow(window_id),
+            TestWindowAction::Tag { window_id, tag } => TestCommand::TagWindow { window_id, tag },
+            TestWindowAction::Mode { window_id, mode } => TestCommand::SetWindowFloating {
+                window_id,
+                floating: matches!(mode, TestWindowMode::Floating),
+            },
+        },
+        TestAction::Wait { .. } => {
+            unreachable!("wait conditions are executed by instantwmctl")
+        }
+    }
+}
+
+impl From<ConfigAction> for ConfigCommand {
+    fn from(action: ConfigAction) -> Self {
+        match action {
+            ConfigAction::Default => unreachable!("config default is handled locally"),
+            ConfigAction::Get { key } => Self::Get { key },
+            ConfigAction::Set { key, value } => Self::Set { key, value },
+            ConfigAction::List { .. } => Self::List,
+        }
+    }
+}
+
 impl From<CommandKind> for IpcCommand {
     fn from(command: CommandKind) -> Self {
         match command {
-            CommandKind::Action {
-                name,
+            CommandKind::Action { name, args, .. } => Self::RunAction {
+                name: name.expect("action name required (use --list to see available actions)"),
                 args,
-                list: _,
-            } => {
-                let name =
-                    name.expect("action name required (use --list to see available actions)");
-                IpcCommand::RunAction { name, args }
-            }
-            CommandKind::Status => IpcCommand::Status,
-            CommandKind::Reload => IpcCommand::Reload,
-            CommandKind::Monitor { action } => {
-                let cmd = match action {
-                    MonitorAction::List { window_id: _ } => MonitorCommand::List,
-                    MonitorAction::Switch { index } => MonitorCommand::Switch { index },
-                    MonitorAction::Next { count } => MonitorCommand::Next { count },
-                    MonitorAction::Prev { count } => MonitorCommand::Prev { count },
-                    MonitorAction::Set {
-                        identifier,
-                        res,
-                        rate,
-                        pos,
-                        scale,
-                        transform,
-                        vrr,
-                        enable,
-                        disable,
-                    } => {
-                        let enable_val = if enable {
-                            Some(true)
-                        } else if disable {
-                            Some(false)
-                        } else {
-                            None
-                        };
-                        MonitorCommand::Set {
-                            identifier,
-                            resolution: res,
-                            refresh_rate: rate,
-                            position: pos,
-                            scale,
-                            transform,
-                            enable: enable_val,
-                            vrr,
-                        }
-                    }
-                    MonitorAction::Modes { identifier } => MonitorCommand::Modes {
-                        identifier: Some(identifier),
-                    },
-                    MonitorAction::Dpms { state } => {
-                        let enable = match state.to_lowercase().as_str() {
-                            "on" | "enable" | "enabled" => true,
-                            "off" | "disable" | "disabled" => false,
-                            _ => {
-                                eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-                                process::exit(1);
-                            }
-                        };
-                        MonitorCommand::Set {
-                            identifier: "focused".to_string(),
-                            resolution: None,
-                            refresh_rate: None,
-                            position: None,
-                            scale: None,
-                            transform: None,
-                            enable: Some(enable),
-                            vrr: None,
-                        }
-                    }
-                };
-                IpcCommand::Monitor(cmd)
-            }
-            CommandKind::Window { action } => {
-                let cmd = match action {
-                    WindowAction::List { window_id } => WindowCommand::List(window_id),
-                    WindowAction::Info { window_id } => WindowCommand::Info(window_id),
-                    WindowAction::Resize {
-                        window_id,
-                        monitor,
-                        x,
-                        y,
-                        width,
-                        height,
-                    } => WindowCommand::Resize {
-                        window_id,
-                        monitor,
-                        x,
-                        y,
-                        width,
-                        height,
-                    },
-                    WindowAction::Close { window_id } => WindowCommand::Close(window_id),
-                };
-                IpcCommand::Window(cmd)
-            }
-            CommandKind::Tag { action } => {
-                let cmd = match action {
-                    TagAction::View { number } => TagCommand::View(number.unwrap_or(2)),
-                    TagAction::Name { name } => TagCommand::Name(name),
-                    TagAction::Reset => TagCommand::ResetNames,
-                };
-                IpcCommand::Tag(cmd)
-            }
-            CommandKind::Toggle { action } => {
-                let cmd = match action {
-                    ToggleCliAction::Animated { action } => {
-                        ToggleCommand::Animated(action.unwrap_or_default())
-                    }
-                    ToggleCliAction::FocusFollowsMouse { action } => {
-                        ToggleCommand::FocusFollowsMouse(action.unwrap_or_default())
-                    }
-                    ToggleCliAction::FocusFollowsFloatMouse { action } => {
-                        ToggleCommand::FocusFollowsFloatMouse(action.unwrap_or_default())
-                    }
-                    ToggleCliAction::AltTag { action } => {
-                        ToggleCommand::AltTag(action.unwrap_or_default())
-                    }
-                    ToggleCliAction::HideTags { action } => {
-                        ToggleCommand::HideTags(action.unwrap_or_default())
-                    }
-                };
-                IpcCommand::Toggle(cmd)
-            }
-            CommandKind::Spawn { command } => IpcCommand::Spawn(command.join(" ")),
-            CommandKind::WarpFocus => IpcCommand::WarpFocus,
-            CommandKind::TagMon { direction } => IpcCommand::TagMon(direction),
-            CommandKind::FollowMon { direction } => IpcCommand::FollowMon(direction),
-            CommandKind::Layout { name } => {
-                let name = name.expect("layout name required (use 'layout list' to see layouts)");
-                let layout = LayoutCommand::from_str(&name)
-                    .expect("invalid layout name (use 'layout list' to see layouts)");
-                IpcCommand::Layout(layout)
-            }
+            },
+            CommandKind::Status => Self::Status,
+            CommandKind::Reload => Self::Reload,
+            CommandKind::Monitor { action } => Self::Monitor(action.into()),
+            CommandKind::Window { action } => Self::Window(action.into()),
+            CommandKind::Tag { action } => Self::Tag(action.into()),
+            CommandKind::Toggle { action } => Self::Toggle(action.into()),
+            CommandKind::Spawn { command } => Self::Spawn(command.join(" ")),
+            CommandKind::WarpFocus => Self::WarpFocus,
+            CommandKind::TagMon { direction } => Self::TagMon(direction),
+            CommandKind::FollowMon { direction } => Self::FollowMon(direction),
+            CommandKind::Layout { name } => Self::Layout(
+                LayoutCommand::from_str(
+                    &name.expect("layout name required (use 'layout list' to see layouts)"),
+                )
+                .expect("invalid layout name (use 'layout list' to see layouts)"),
+            ),
             CommandKind::Theme { name, list } => {
                 if list {
-                    IpcCommand::ListThemes
+                    Self::ListThemes
                 } else if let Some(name) = name {
                     match name.parse() {
-                        Ok(theme) => IpcCommand::SetTheme(theme),
+                        Ok(theme) => Self::SetTheme(theme),
                         Err(_) => {
                             eprintln!(
                                 "invalid theme name '{name}' \
@@ -604,175 +749,23 @@ impl From<CommandKind> for IpcCommand {
                         }
                     }
                 } else {
-                    IpcCommand::GetTheme
+                    Self::GetTheme
                 }
             }
-            CommandKind::Border { width } => IpcCommand::Border(width),
-            CommandKind::SpecialNext { mode } => IpcCommand::SpecialNext(mode),
-            CommandKind::Keyboard { action } => {
-                let cmd = match action {
-                    KeyboardAction::List { all } => {
-                        if all {
-                            KeyboardCommand::ListAll
-                        } else {
-                            KeyboardCommand::List
-                        }
-                    }
-                    KeyboardAction::Status => KeyboardCommand::Status,
-                    KeyboardAction::Next => KeyboardCommand::Next,
-                    KeyboardAction::Prev => KeyboardCommand::Prev,
-                    KeyboardAction::Set { layouts } => {
-                        let keyboard_layouts: Vec<KeyboardLayout> = layouts
-                            .into_iter()
-                            .map(KeyboardLayoutArg::from)
-                            .map(KeyboardLayout::from)
-                            .collect();
-                        KeyboardCommand::Set(keyboard_layouts)
-                    }
-                    KeyboardAction::Add { name } => {
-                        let arg = KeyboardLayoutArg::from(name);
-                        KeyboardCommand::Add(KeyboardLayout::from(arg))
-                    }
-                    KeyboardAction::Remove { layout } => KeyboardCommand::Remove(layout),
-                    KeyboardAction::SwapEscape { enabled } => KeyboardCommand::SwapEscape(enabled),
-                };
-                IpcCommand::Keyboard(cmd)
-            }
-            CommandKind::Scratchpad { action } => {
-                let cmd = match action {
-                    ScratchpadAction::List { window_id: _ } => ScratchpadCommand::List,
-                    ScratchpadAction::Status { name } => ScratchpadCommand::Status(name),
-                    ScratchpadAction::Show { name, all } => {
-                        if all {
-                            ScratchpadCommand::ShowAll
-                        } else {
-                            ScratchpadCommand::Show(Some(
-                                name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
-                            ))
-                        }
-                    }
-                    ScratchpadAction::Hide { name, all } => {
-                        if all {
-                            ScratchpadCommand::HideAll
-                        } else {
-                            ScratchpadCommand::Hide(Some(
-                                name.unwrap_or_else(|| DEFAULT_SCRATCHPAD_NAME.to_string()),
-                            ))
-                        }
-                    }
-                    ScratchpadAction::Toggle { name } => ScratchpadCommand::Toggle(name),
-                    ScratchpadAction::Create {
-                        name,
-                        window_id,
-                        status,
-                        direction,
-                    } => ScratchpadCommand::Create {
-                        name,
-                        window_id,
-                        status,
-                        direction,
-                    },
-                    ScratchpadAction::Delete { window_id } => {
-                        ScratchpadCommand::Delete { window_id }
-                    }
-                };
-                IpcCommand::Scratchpad(cmd)
-            }
-            CommandKind::Mouse { action } => {
-                let cmd = match action {
-                    InputAction::List { identifier } => InputCommand::List(identifier),
-                    InputAction::Devices => InputCommand::Devices,
-                    InputAction::Speed { identifier, value } => {
-                        InputCommand::PointerAccel { identifier, value }
-                    }
-                    InputAction::AccelProfile {
-                        identifier,
-                        profile,
-                    } => InputCommand::AccelProfile {
-                        identifier,
-                        profile,
-                    },
-                    InputAction::Tap { identifier, state } => InputCommand::Tap {
-                        identifier,
-                        enabled: state == "enabled" || state == "on",
-                    },
-                    InputAction::NaturalScroll { identifier, state } => {
-                        InputCommand::NaturalScroll {
-                            identifier,
-                            enabled: state == "enabled" || state == "on",
-                        }
-                    }
-                    InputAction::ScrollFactor { identifier, value } => {
-                        InputCommand::ScrollFactor { identifier, value }
-                    }
-                    InputAction::LeftHanded { identifier, state } => InputCommand::LeftHanded {
-                        identifier,
-                        enabled: state == "enabled" || state == "on",
-                    },
-                };
-                IpcCommand::Input(cmd)
-            }
-            CommandKind::Mode { action } => {
-                let cmd = match action {
-                    ModeAction::List => ModeCommand::List,
-                    ModeAction::Set { name } => ModeCommand::Set(name),
-                    ModeAction::Toggle { name } => ModeCommand::Toggle(name),
-                };
-                IpcCommand::Mode(cmd)
-            }
-            CommandKind::Wallpaper { path } => IpcCommand::Wallpaper(path),
+            CommandKind::Border { width } => Self::Border(width),
+            CommandKind::SpecialNext { mode } => Self::SpecialNext(mode),
+            CommandKind::Keyboard { action } => Self::Keyboard(action.into()),
+            CommandKind::Scratchpad { action } => Self::Scratchpad(action.into()),
+            CommandKind::Mouse { action } => Self::Input(action.into()),
+            CommandKind::Mode { action } => Self::Mode(action.into()),
+            CommandKind::Wallpaper { path } => Self::Wallpaper(path),
             CommandKind::Dpms { identifier, state } => {
-                let enable = match state.to_lowercase().as_str() {
-                    "on" | "enable" | "enabled" => true,
-                    "off" | "disable" | "disabled" => false,
-                    _ => {
-                        eprintln!("instantwmctl: invalid dpms state (expected on/off)");
-                        process::exit(1);
-                    }
-                };
-                IpcCommand::Monitor(MonitorCommand::Set {
-                    identifier,
-                    resolution: None,
-                    refresh_rate: None,
-                    position: None,
-                    scale: None,
-                    transform: None,
-                    enable: Some(enable),
-                    vrr: None,
-                })
+                Self::Monitor(dpms_command(identifier, &state))
             }
-            CommandKind::UpdateStatus { text } => IpcCommand::UpdateStatus(text),
-            CommandKind::Config { action } => IpcCommand::Config(match action {
-                ConfigAction::Default => unreachable!("config default is handled locally"),
-                ConfigAction::Get { key } => ConfigCommand::Get { key },
-                ConfigAction::Set { key, value } => ConfigCommand::Set { key, value },
-                // The prefix is filtered client-side, so it never reaches the WM.
-                ConfigAction::List { prefix: _ } => ConfigCommand::List,
-            }),
-            CommandKind::Test { action } => IpcCommand::Test(match action {
-                TestAction::Pointer { action } => match action {
-                    TestPointerAction::Move { x, y, normalized } => {
-                        TestCommand::PointerMove { x, y, normalized }
-                    }
-                    TestPointerAction::Path { .. } => {
-                        unreachable!("pointer paths are executed by instantwmctl")
-                    }
-                },
-                TestAction::Window { action } => match action {
-                    TestWindowAction::Focus { window_id } => TestCommand::FocusWindow(window_id),
-                    TestWindowAction::Tag { window_id, tag } => {
-                        TestCommand::TagWindow { window_id, tag }
-                    }
-                    TestWindowAction::Mode { window_id, mode } => TestCommand::SetWindowFloating {
-                        window_id,
-                        floating: matches!(mode, TestWindowMode::Floating),
-                    },
-                },
-                TestAction::Wait { .. } => {
-                    unreachable!("wait conditions are executed by instantwmctl")
-                }
-            }),
-            CommandKind::Quit => IpcCommand::Quit,
+            CommandKind::UpdateStatus { text } => Self::UpdateStatus(text),
+            CommandKind::Config { action } => Self::Config(action.into()),
+            CommandKind::Test { action } => Self::Test(test_command(action)),
+            CommandKind::Quit => Self::Quit,
         }
     }
 }

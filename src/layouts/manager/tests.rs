@@ -1,0 +1,318 @@
+use super::{
+    available_tree_resize_direction, clients_with_planned_borders, compute_monitor_z_order,
+    pointer_tree_resize_allowed,
+};
+use crate::config::config_toml::LayoutConfig;
+use crate::layouts::PresentationMode;
+use crate::layouts::tree::{Preset, Side};
+use crate::types::{Client, Monitor, Point, Rect, ResizeDirection, Size, TagMask, WindowId};
+use std::collections::HashMap;
+
+fn visible_client(win: WindowId) -> Client {
+    let mut client = Client {
+        win,
+        ..Client::default()
+    };
+    client.set_tag_mask(TagMask::single(1).unwrap());
+    client
+}
+
+fn monitor_with_order(order: &[WindowId], selected: WindowId) -> Monitor {
+    let mut monitor = Monitor::default();
+    monitor.set_selected_tags(TagMask::single(1).unwrap());
+    monitor.selected = Some(selected);
+    monitor.bar_win = WindowId(99);
+    for &win in order {
+        monitor.z_order.attach_top(win);
+    }
+    monitor
+}
+
+#[test]
+fn pointer_resize_falls_back_to_an_axis_present_in_the_tree() {
+    assert_eq!(
+        available_tree_resize_direction(
+            ResizeDirection::Top,
+            true,
+            false,
+            Point::new(80, 20),
+            Size::new(100, 100),
+        ),
+        Some(ResizeDirection::Right)
+    );
+    assert_eq!(
+        available_tree_resize_direction(
+            ResizeDirection::Left,
+            false,
+            true,
+            Point::new(20, 80),
+            Size::new(100, 100),
+        ),
+        Some(ResizeDirection::Bottom)
+    );
+}
+
+#[test]
+fn pointer_resize_keeps_requested_corner_when_both_axes_exist() {
+    assert_eq!(
+        available_tree_resize_direction(
+            ResizeDirection::TopLeft,
+            true,
+            true,
+            Point::new(5, 5),
+            Size::new(100, 100),
+        ),
+        Some(ResizeDirection::TopLeft)
+    );
+}
+
+#[test]
+fn pointer_tree_resize_preserves_the_requested_floating_fallbacks() {
+    assert!(!pointer_tree_resize_allowed(
+        PresentationMode::Tiled,
+        true,
+        1,
+        true,
+        false,
+    ));
+    assert!(!pointer_tree_resize_allowed(
+        PresentationMode::Maximized,
+        true,
+        3,
+        true,
+        true,
+    ));
+    assert!(!pointer_tree_resize_allowed(
+        PresentationMode::Tiled,
+        false,
+        3,
+        true,
+        true,
+    ));
+    assert!(pointer_tree_resize_allowed(
+        PresentationMode::Tiled,
+        true,
+        3,
+        true,
+        false,
+    ));
+}
+
+#[test]
+fn planned_border_is_used_without_waiting_for_next_arrange() {
+    let win = WindowId(1);
+    let mut client = visible_client(win);
+    client.border_width = 2;
+    let clients = HashMap::from([(win, client)]);
+
+    let planned = clients_with_planned_borders(&clients, &[(win, 0)]);
+
+    assert_eq!(planned[&win].border_width, 0);
+    assert_eq!(clients[&win].border_width, 2);
+}
+
+#[test]
+fn projected_z_order_promotes_focused_tiled_without_mutating_persistent_order() {
+    let monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| (win, visible_client(win)))
+        .collect::<HashMap<_, _>>();
+
+    let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+    assert_eq!(
+        projected,
+        vec![WindowId(1), WindowId(3), WindowId(2), WindowId(99)]
+    );
+    assert_eq!(
+        monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+}
+
+#[test]
+fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
+    let mut monitor = monitor_with_order(
+        &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
+        WindowId(1),
+    );
+    monitor.available_rect = crate::types::Rect::new(0, 0, 100, 100);
+    monitor.clients = vec![WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let clients = monitor
+        .clients
+        .iter()
+        .copied()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    let windows = monitor.clients.clone();
+    let selected = monitor.selected;
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
+
+    let first = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    assert!(
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .resize(WindowId(1), Side::Right)
+    );
+    let second = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+
+    let first_rect = first
+        .client_moves
+        .iter()
+        .find(|output| output.win == WindowId(1))
+        .unwrap()
+        .rect;
+    let second_rect = second
+        .client_moves
+        .iter()
+        .find(|output| output.win == WindowId(1))
+        .unwrap()
+        .rect;
+    assert_ne!(first_rect, second_rect);
+}
+
+#[test]
+fn maximized_presentation_overlaps_tiled_clients_without_rewriting_tree() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)];
+    let mut monitor = monitor_with_order(&windows, WindowId(3));
+    monitor.available_rect = Rect::new(0, 0, 400, 300);
+    monitor.clients = windows.to_vec();
+    let clients = windows
+        .into_iter()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    let selected = monitor.selected;
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &windows, selected, 1, 0.55);
+    let tree_before = monitor
+        .per_tag_state()
+        .layout_tree
+        .bounds(Rect::new(0, 0, 400, 300));
+    monitor
+        .per_tag_state()
+        .layouts
+        .set_layout(PresentationMode::Maximized);
+
+    let maximized = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    assert_eq!(maximized.client_moves.len(), windows.len());
+    assert!(
+        maximized
+            .client_moves
+            .iter()
+            .all(|output| output.rect == Rect::new(0, 0, 400, 300))
+    );
+    assert_eq!(
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .bounds(Rect::new(0, 0, 400, 300)),
+        tree_before
+    );
+
+    monitor
+        .per_tag_state()
+        .layouts
+        .set_layout(PresentationMode::Tiled);
+    let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+    let first_rect = manual.client_moves.first().unwrap().rect;
+    assert!(
+        manual
+            .client_moves
+            .iter()
+            .skip(1)
+            .any(|output| output.rect != first_rect)
+    );
+    assert_eq!(
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .bounds(Rect::new(0, 0, 400, 300)),
+        tree_before
+    );
+}
+
+#[test]
+fn maximized_presentation_reconciles_new_tiled_leaves() {
+    let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2)], WindowId(1));
+    monitor.available_rect = Rect::new(0, 0, 300, 200);
+    monitor.clients = vec![WindowId(1), WindowId(2)];
+    monitor
+        .per_tag_state()
+        .layouts
+        .set_layout(PresentationMode::Maximized);
+    let mut clients = monitor
+        .clients
+        .iter()
+        .copied()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+
+    monitor.clients.push(WindowId(3));
+    monitor.z_order.attach_top(WindowId(3));
+    clients.insert(WindowId(3), visible_client(WindowId(3)));
+    let _ = monitor.compute_arrange(&clients, &LayoutConfig::default(), 0, false);
+
+    let leaves = monitor.per_tag_state().layout_tree.leaves();
+    assert_eq!(leaves.len(), 3);
+    assert!(leaves.contains(&WindowId(3)));
+}
+
+#[test]
+fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() {
+    let monitor = monitor_with_order(
+        &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
+        WindowId(2),
+    );
+    let mut clients = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)]
+        .into_iter()
+        .map(|win| (win, visible_client(win)))
+        .collect::<HashMap<_, _>>();
+    clients.get_mut(&WindowId(3)).unwrap().mode = crate::types::ClientMode::Floating;
+    let fullscreen = clients.get_mut(&WindowId(4)).unwrap();
+    fullscreen.mode = fullscreen.mode.as_fullscreen();
+
+    let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+    assert_eq!(
+        projected,
+        vec![
+            WindowId(1),
+            WindowId(2),
+            WindowId(99),
+            WindowId(3),
+            WindowId(4)
+        ]
+    );
+}
+
+#[test]
+fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
+    let mut monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
+    monitor
+        .tag_tiled_focus_history
+        .insert(monitor.selected_tags(), WindowId(1));
+    let mut clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| (win, visible_client(win)))
+        .collect::<HashMap<_, _>>();
+    clients.get_mut(&WindowId(2)).unwrap().mode = crate::types::ClientMode::Floating;
+
+    let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+    assert_eq!(
+        projected,
+        vec![WindowId(3), WindowId(1), WindowId(99), WindowId(2)]
+    );
+    assert_eq!(
+        monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
+        vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+}

@@ -89,180 +89,207 @@ impl ExtWorkspaceManagerState {
     }
 }
 
-pub fn refresh(state: &mut WaylandState) {
-    // Performance Optimization: Zero-Allocation Fast-Path Early-Return if nothing changed.
-    let mut changed = false;
-    {
-        let protocol_state = &state.ext_workspace_state;
-        let outputs_count = state.space.outputs().count();
+#[derive(Clone)]
+struct WorkspaceMonitorSnapshot {
+    output: Output,
+    output_name: String,
+    selected_tags: crate::types::TagMask,
+    urgent_tags: crate::types::TagMask,
+    occupied_tags: crate::types::TagMask,
+    tag_names: Vec<String>,
+}
 
-        if outputs_count != protocol_state.last_output_names.len() {
-            changed = true;
-        } else {
-            // Check if any output name differs
-            for (i, output) in state.space.outputs().enumerate() {
-                if output.name() != protocol_state.last_output_names[i] {
-                    changed = true;
-                    break;
-                }
-            }
-        }
+struct WorkspaceSnapshot {
+    monitors: Vec<WorkspaceMonitorSnapshot>,
+}
 
-        if !changed {
-            if let Some(globals) = state.globals() {
-                for output in state.space.outputs() {
-                    let output_name = output.name();
-                    let last_tag = protocol_state.last_tags.get(&output_name).copied();
-                    let last_urgent = protocol_state.last_urgent_tags.get(&output_name).copied();
-                    let last_occupied =
-                        protocol_state.last_occupied_tags.get(&output_name).copied();
-
-                    if let Some(mon) = globals
+impl WorkspaceSnapshot {
+    fn capture(state: &WaylandState) -> Self {
+        let globals = state.globals();
+        let monitors = state
+            .space
+            .outputs()
+            .cloned()
+            .map(|output| {
+                let output_name = output.name();
+                let monitor = globals.and_then(|globals| {
+                    globals
                         .model
                         .monitors
                         .iter_all()
-                        .find(|m| m.name == output_name)
-                    {
-                        // Compute urgent_mask for this monitor
-                        let mut urgent_mask = crate::types::TagMask::EMPTY;
-                        for &win in &mon.clients {
-                            if let Some(c) = globals.model.client(win)
-                                && c.is_urgent
-                            {
-                                urgent_mask = urgent_mask | c.tags;
-                            }
-                        }
-
-                        let occupied_mask = mon.occupied_tags(&globals.model.clients);
-
-                        if Some(mon.selected_tags()) != last_tag
-                            || Some(urgent_mask) != last_urgent
-                            || Some(occupied_mask) != last_occupied
-                        {
-                            changed = true;
-                            break;
-                        }
-                    } else {
-                        changed = true;
-                        break;
-                    }
+                        .find(|monitor| monitor.name == output_name)
+                });
+                let selected_tags = monitor.map_or(
+                    crate::types::TagMask::EMPTY,
+                    crate::types::Monitor::selected_tags,
+                );
+                let urgent_tags = monitor.map_or(crate::types::TagMask::EMPTY, |monitor| {
+                    monitor
+                        .clients
+                        .iter()
+                        .fold(crate::types::TagMask::EMPTY, |urgent, window| {
+                            let client = globals.and_then(|globals| globals.model.client(*window));
+                            client
+                                .filter(|client| client.is_urgent)
+                                .map_or(urgent, |client| urgent | client.tags)
+                        })
+                });
+                let occupied_tags = monitor.map_or(crate::types::TagMask::EMPTY, |monitor| {
+                    globals.map_or(crate::types::TagMask::EMPTY, |globals| {
+                        monitor.occupied_tags(&globals.model.clients)
+                    })
+                });
+                let tag_names = monitor.map_or_else(
+                    || (1..=9).map(|index| index.to_string()).collect(),
+                    |monitor| monitor.tags.iter().map(|tag| tag.name.clone()).collect(),
+                );
+                WorkspaceMonitorSnapshot {
+                    output,
+                    output_name,
+                    selected_tags,
+                    urgent_tags,
+                    occupied_tags,
+                    tag_names,
                 }
-            } else {
-                changed = true;
-            }
-        }
-        if !changed {
-            for group_data in protocol_state.workspace_groups.values() {
-                for group in &group_data.instances {
-                    if let Some(client) = group.client()
-                        && let Some(ud) = group.data::<ExtWorkspaceGroupUserData>()
-                        && let Some(output) =
-                            state.space.outputs().find(|o| o.name() == ud.output_name)
-                    {
-                        for wl_output in output.client_outputs(&client) {
-                            let already_sent =
-                                ud.sent_outputs.lock().unwrap().contains(&wl_output.id());
-                            if !already_sent {
-                                changed = true;
-                                break;
-                            }
-                        }
-                    }
-                    if changed {
-                        break;
-                    }
-                }
-                if changed {
-                    break;
-                }
-            }
-        }
+            })
+            .collect();
+        Self { monitors }
     }
 
-    if !changed {
+    fn output_names(&self) -> Vec<String> {
+        self.monitors
+            .iter()
+            .map(|monitor| monitor.output_name.clone())
+            .collect()
+    }
+
+    fn update_cache(&self, protocol: &mut ExtWorkspaceManagerState) {
+        protocol.last_output_names = self.output_names();
+        protocol.last_tags = self
+            .monitors
+            .iter()
+            .map(|monitor| (monitor.output_name.clone(), monitor.selected_tags))
+            .collect();
+        protocol.last_urgent_tags = self
+            .monitors
+            .iter()
+            .map(|monitor| (monitor.output_name.clone(), monitor.urgent_tags))
+            .collect();
+        protocol.last_occupied_tags = self
+            .monitors
+            .iter()
+            .map(|monitor| (monitor.output_name.clone(), monitor.occupied_tags))
+            .collect();
+    }
+}
+
+pub fn refresh(state: &mut WaylandState) {
+    if !refresh_needed(state) {
         return;
     }
+    let snapshot = WorkspaceSnapshot::capture(state);
+    let protocol = &mut state.ext_workspace_state;
+    snapshot.update_cache(protocol);
+    let mut changed = remove_stale_outputs(protocol, &snapshot.output_names());
+    for monitor in &snapshot.monitors {
+        changed |= reconcile_workspaces(protocol, monitor);
+        changed |= reconcile_workspace_group(protocol, monitor);
+        changed |= announce_client_outputs(protocol, monitor);
+    }
 
-    // Now that we know a change occurred, gather all physical monitors and construct caches
-    let active_outputs: Vec<Output> = state.space.outputs().cloned().collect();
-    let active_output_names: Vec<String> = active_outputs.iter().map(|o| o.name()).collect();
+    if changed {
+        protocol.instances.keys().for_each(|manager| manager.done());
+    }
+}
 
-    let mut current_tags = HashMap::new();
-    let mut current_urgent_tags = HashMap::new();
-    let mut current_occupied_tags = HashMap::new();
-
-    if let Some(globals) = state.globals() {
-        for output_name in &active_output_names {
-            if let Some(mon) = globals
-                .model
-                .monitors
-                .iter_all()
-                .find(|m| m.name == *output_name)
-            {
-                current_tags.insert(output_name.clone(), mon.selected_tags());
-
-                // Urgency mapping: A tag is urgent if any client placed on it has is_urgent == true.
-                let mut urgent_mask = crate::types::TagMask::EMPTY;
-                for &win in &mon.clients {
-                    if let Some(c) = globals.model.client(win)
-                        && c.is_urgent
-                    {
-                        urgent_mask = urgent_mask | c.tags;
-                    }
-                }
-                current_urgent_tags.insert(output_name.clone(), urgent_mask);
-
-                // Occupied tags mapping
-                let occupied = mon.occupied_tags(&globals.model.clients);
-                current_occupied_tags.insert(output_name.clone(), occupied);
-            }
+fn refresh_needed(state: &WaylandState) -> bool {
+    let protocol = &state.ext_workspace_state;
+    if state.space.outputs().count() != protocol.last_output_names.len()
+        || state
+            .space
+            .outputs()
+            .enumerate()
+            .any(|(index, output)| protocol.last_output_names.get(index) != Some(&output.name()))
+    {
+        return true;
+    }
+    let Some(globals) = state.globals() else {
+        return true;
+    };
+    for output in state.space.outputs() {
+        let output_name = output.name();
+        let Some(monitor) = globals
+            .model
+            .monitors
+            .iter_all()
+            .find(|monitor| monitor.name == output_name)
+        else {
+            return true;
+        };
+        let urgent_tags =
+            monitor
+                .clients
+                .iter()
+                .fold(crate::types::TagMask::EMPTY, |urgent, window| {
+                    globals
+                        .model
+                        .client(*window)
+                        .filter(|client| client.is_urgent)
+                        .map_or(urgent, |client| urgent | client.tags)
+                });
+        if protocol.last_tags.get(&output_name) != Some(&monitor.selected_tags())
+            || protocol.last_urgent_tags.get(&output_name) != Some(&urgent_tags)
+            || protocol.last_occupied_tags.get(&output_name)
+                != Some(&monitor.occupied_tags(&globals.model.clients))
+        {
+            return true;
         }
     }
 
-    // Now that we know a change occurred, build monitors_info to update protocol resources
-    let mut monitors_info = HashMap::new();
-    if let Some(globals) = state.globals() {
-        for output_name in &active_output_names {
-            if let Some(mon) = globals
-                .model
-                .monitors
-                .iter_all()
-                .find(|m| m.name == *output_name)
-            {
-                let selected_tags = mon.selected_tags();
-                let tag_names: Vec<String> = mon.tags.iter().map(|t| t.name.clone()).collect();
-                monitors_info.insert(output_name.clone(), (selected_tags, tag_names));
-            }
-        }
-    }
+    protocol.workspace_groups.values().any(|group_data| {
+        group_data.instances.iter().any(|group| {
+            let Some(client) = group.client() else {
+                return false;
+            };
+            let Some(user_data) = group.data::<ExtWorkspaceGroupUserData>() else {
+                return false;
+            };
+            let Some(output) = state
+                .space
+                .outputs()
+                .find(|output| output.name() == user_data.output_name)
+            else {
+                return false;
+            };
+            output.client_outputs(&client).any(|output| {
+                !user_data
+                    .sent_outputs
+                    .lock()
+                    .unwrap()
+                    .contains(&output.id())
+            })
+        })
+    })
+}
 
-    let protocol_state = &mut state.ext_workspace_state;
-
-    // Cache current state for the next tick
-    protocol_state.last_output_names = active_output_names.clone();
-    protocol_state.last_tags = current_tags.clone();
-    protocol_state.last_urgent_tags = current_urgent_tags.clone();
-    protocol_state.last_occupied_tags = current_occupied_tags.clone();
-
+fn remove_stale_outputs(
+    protocol: &mut ExtWorkspaceManagerState,
+    active_output_names: &[String],
+) -> bool {
+    let active = active_output_names.iter().collect::<HashSet<_>>();
     let mut changed = false;
-
-    // 2. Remove workspace groups for outputs that no longer exist.
-    // NOTE: This assumes protocol_state.workspace_groups and protocol_state.workspaces
-    // are stored as separate disjoint fields in ExtWorkspaceManagerState, allowing us to
-    // read workspaces while performing a retain on workspace_groups.
-    protocol_state.workspace_groups.retain(|output_name, data| {
-        if active_output_names.contains(output_name) {
+    protocol.workspace_groups.retain(|output_name, data| {
+        if active.contains(output_name) {
             return true;
         }
         for group in &data.instances {
             if let Some(manager) = group.data::<ExtWorkspaceManagerV1>() {
-                // Send workspace_leave for all workspaces in this group
-                for ((ws_output, _), ws) in &protocol_state.workspaces {
-                    if ws_output == output_name {
-                        for workspace in &ws.instances {
+                for ((workspace_output, _), workspace_data) in &protocol.workspaces {
+                    if workspace_output == output_name {
+                        for workspace in &workspace_data.instances {
                             if workspace
                                 .data::<ExtWorkspaceUserData>()
-                                .map(|ud| &ud.manager)
+                                .map(|data| &data.manager)
                                 == Some(manager)
                             {
                                 group.workspace_leave(workspace);
@@ -276,189 +303,187 @@ pub fn refresh(state: &mut WaylandState) {
         changed = true;
         false
     });
-
-    // 3. Remove workspaces for outputs that no longer exist
-    protocol_state.workspaces.retain(|(output_name, _), ws| {
-        if active_output_names.contains(output_name) {
+    protocol.workspaces.retain(|(output_name, _), workspace| {
+        if active.contains(output_name) {
             return true;
         }
-        for workspace in &ws.instances {
-            workspace.removed();
-        }
+        workspace
+            .instances
+            .iter()
+            .for_each(|instance| instance.removed());
         changed = true;
         false
     });
+    changed
+}
 
-    // 4. For each active monitor, update workspaces and workspace groups
-    for output in active_outputs {
-        let output_name = output.name();
+fn workspace_state(
+    monitor: &WorkspaceMonitorSnapshot,
+    tag_index: usize,
+) -> ext_workspace_handle_v1::State {
+    let tag_number = tag_index + 1;
+    let active = monitor.selected_tags.contains(tag_number);
+    let mut state = ext_workspace_handle_v1::State::empty();
+    if active {
+        state |= ext_workspace_handle_v1::State::Active;
+    }
+    if monitor.urgent_tags.contains(tag_number) {
+        state |= ext_workspace_handle_v1::State::Urgent;
+    }
+    if !active && !monitor.occupied_tags.contains(tag_number) {
+        state |= ext_workspace_handle_v1::State::Hidden;
+    }
+    state
+}
 
-        let (selected_tags, tag_names) =
-            monitors_info.get(&output_name).cloned().unwrap_or_else(|| {
-                (
-                    crate::types::TagMask::EMPTY,
-                    (1..=9).map(|i| i.to_string()).collect(),
-                )
-            });
-
-        let urgent_tags = current_urgent_tags
-            .get(&output_name)
-            .cloned()
-            .unwrap_or(crate::types::TagMask::EMPTY);
-
-        let occupied_tags = current_occupied_tags
-            .get(&output_name)
-            .cloned()
-            .unwrap_or(crate::types::TagMask::EMPTY);
-
-        // Add/Refresh workspaces for this output
-        for (tag_idx, name) in tag_names.into_iter().enumerate() {
-            let is_active = selected_tags.contains(tag_idx + 1);
-            let is_urgent = urgent_tags.contains(tag_idx + 1);
-            let is_occupied = occupied_tags.contains(tag_idx + 1);
-
-            let mut ws_state = ext_workspace_handle_v1::State::empty();
-            if is_active {
-                ws_state |= ext_workspace_handle_v1::State::Active;
-            }
-            if is_urgent {
-                ws_state |= ext_workspace_handle_v1::State::Urgent;
-            }
-            if !is_active && !is_occupied {
-                ws_state |= ext_workspace_handle_v1::State::Hidden;
-            }
-
-            let key = (output_name.clone(), tag_idx);
-            match protocol_state.workspaces.entry(key) {
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
-                    let ws_data = entry.get_mut();
-                    let mut name_changed = false;
-                    if ws_data.name != name {
-                        ws_data.name = name.clone();
-                        name_changed = true;
-                    }
-                    let mut state_changed = false;
-                    if ws_data.state != ws_state {
-                        ws_data.state = ws_state;
-                        state_changed = true;
-                    }
-
-                    if name_changed || state_changed {
-                        for instance in &ws_data.instances {
-                            if name_changed {
-                                instance.name(ws_data.name.clone());
-                            }
-                            if state_changed {
-                                instance.state(ws_data.state);
-                            }
-                        }
-                        changed = true;
-                    }
+fn reconcile_workspaces(
+    protocol: &mut ExtWorkspaceManagerState,
+    monitor: &WorkspaceMonitorSnapshot,
+) -> bool {
+    let mut changed = false;
+    for (tag_index, name) in monitor.tag_names.iter().cloned().enumerate() {
+        let state = workspace_state(monitor, tag_index);
+        let key = (monitor.output_name.clone(), tag_index);
+        match protocol.workspaces.entry(key) {
+            std::collections::hash_map::Entry::Occupied(mut entry) => {
+                let workspace = entry.get_mut();
+                let name_changed = workspace.name != name;
+                let state_changed = workspace.state != state;
+                if name_changed {
+                    workspace.name = name;
                 }
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    let mut ws_data = ExtWorkspaceData {
-                        name,
-                        coordinates: [0, tag_idx as u32],
-                        state: ws_state,
-                        instances: Vec::new(),
-                    };
-                    for manager in protocol_state.instances.keys() {
-                        if let Some(client) = manager.client() {
-                            ws_data.add_instance(
-                                &protocol_state.display,
-                                &client,
-                                manager,
-                                &output_name,
-                                tag_idx,
-                            );
+                if state_changed {
+                    workspace.state = state;
+                }
+                if name_changed || state_changed {
+                    for instance in &workspace.instances {
+                        if name_changed {
+                            instance.name(workspace.name.clone());
+                        }
+                        if state_changed {
+                            instance.state(workspace.state);
                         }
                     }
-                    if let Some(group_data) = protocol_state.workspace_groups.get(&output_name) {
-                        for group in &group_data.instances {
-                            if let Some(manager) = group.data::<ExtWorkspaceManagerV1>() {
-                                for workspace in &ws_data.instances {
-                                    if workspace
-                                        .data::<ExtWorkspaceUserData>()
-                                        .map(|ud| &ud.manager)
-                                        == Some(manager)
-                                    {
-                                        group.workspace_enter(workspace);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    entry.insert(ws_data);
                     changed = true;
                 }
             }
-        }
-
-        // Add/Refresh workspace group for this output
-        if !protocol_state.workspace_groups.contains_key(&output_name) {
-            let mut group_data = ExtWorkspaceGroupData {
-                instances: Vec::new(),
-            };
-            for manager in protocol_state.instances.keys() {
-                if let Some(client) = manager.client() {
-                    group_data.add_instance(&protocol_state.display, &client, manager, &output);
-                }
-            }
-            for group in &group_data.instances {
-                if let Some(manager) = group.data::<ExtWorkspaceManagerV1>() {
-                    for ((ws_output, _), ws) in &protocol_state.workspaces {
-                        if ws_output == &output_name {
-                            for workspace in &ws.instances {
-                                if workspace
-                                    .data::<ExtWorkspaceUserData>()
-                                    .map(|ud| &ud.manager)
-                                    == Some(manager)
-                                {
-                                    group.workspace_enter(workspace);
-                                }
-                            }
-                        }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                let mut workspace = ExtWorkspaceData {
+                    name,
+                    coordinates: [0, tag_index as u32],
+                    state,
+                    instances: Vec::new(),
+                };
+                for manager in protocol.instances.keys() {
+                    if let Some(client) = manager.client() {
+                        workspace.add_instance(
+                            &protocol.display,
+                            &client,
+                            manager,
+                            &monitor.output_name,
+                            tag_index,
+                        );
                     }
                 }
+                enter_workspace_in_matching_groups(
+                    protocol.workspace_groups.get(&monitor.output_name),
+                    &workspace,
+                );
+                entry.insert(workspace);
+                changed = true;
             }
-            protocol_state
-                .workspace_groups
-                .insert(output_name.clone(), group_data);
-            changed = true;
         }
+    }
+    changed
+}
 
-        if let Some(group_data) = protocol_state.workspace_groups.get_mut(&output_name) {
-            for group in &group_data.instances {
-                if let Some(client) = group.client() {
-                    let mut group_changed = false;
-                    for wl_output in output.client_outputs(&client) {
-                        let already_sent =
-                            if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
-                                ud.sent_outputs.lock().unwrap().contains(&wl_output.id())
-                            } else {
-                                false
-                            };
-                        if !already_sent {
-                            group.output_enter(&wl_output);
-                            if let Some(ud) = group.data::<ExtWorkspaceGroupUserData>() {
-                                ud.sent_outputs.lock().unwrap().insert(wl_output.id());
-                            }
-                            group_changed = true;
-                        }
-                    }
-                    if group_changed {
-                        changed = true;
+fn enter_workspace_in_matching_groups(
+    group_data: Option<&ExtWorkspaceGroupData>,
+    workspace: &ExtWorkspaceData,
+) {
+    let Some(group_data) = group_data else {
+        return;
+    };
+    for group in &group_data.instances {
+        let Some(manager) = group.data::<ExtWorkspaceManagerV1>() else {
+            continue;
+        };
+        for instance in &workspace.instances {
+            if instance
+                .data::<ExtWorkspaceUserData>()
+                .map(|data| &data.manager)
+                == Some(manager)
+            {
+                group.workspace_enter(instance);
+            }
+        }
+    }
+}
+
+fn reconcile_workspace_group(
+    protocol: &mut ExtWorkspaceManagerState,
+    monitor: &WorkspaceMonitorSnapshot,
+) -> bool {
+    if protocol.workspace_groups.contains_key(&monitor.output_name) {
+        return false;
+    }
+
+    let mut group_data = ExtWorkspaceGroupData {
+        instances: Vec::new(),
+    };
+    for manager in protocol.instances.keys() {
+        if let Some(client) = manager.client() {
+            group_data.add_instance(&protocol.display, &client, manager, &monitor.output);
+        }
+    }
+    for group in &group_data.instances {
+        let Some(manager) = group.data::<ExtWorkspaceManagerV1>() else {
+            continue;
+        };
+        for ((output_name, _), workspace) in &protocol.workspaces {
+            if output_name == &monitor.output_name {
+                for instance in &workspace.instances {
+                    if instance
+                        .data::<ExtWorkspaceUserData>()
+                        .map(|data| &data.manager)
+                        == Some(manager)
+                    {
+                        group.workspace_enter(instance);
                     }
                 }
             }
         }
     }
+    protocol
+        .workspace_groups
+        .insert(monitor.output_name.clone(), group_data);
+    true
+}
 
-    if changed {
-        for manager in protocol_state.instances.keys() {
-            manager.done();
+fn announce_client_outputs(
+    protocol: &mut ExtWorkspaceManagerState,
+    monitor: &WorkspaceMonitorSnapshot,
+) -> bool {
+    let Some(group_data) = protocol.workspace_groups.get_mut(&monitor.output_name) else {
+        return false;
+    };
+    let mut changed = false;
+    for group in &group_data.instances {
+        let Some(client) = group.client() else {
+            continue;
+        };
+        let Some(user_data) = group.data::<ExtWorkspaceGroupUserData>() else {
+            continue;
+        };
+        for output in monitor.output.client_outputs(&client) {
+            let mut sent_outputs = user_data.sent_outputs.lock().unwrap();
+            if sent_outputs.insert(output.id()) {
+                group.output_enter(&output);
+                changed = true;
+            }
         }
     }
+    changed
 }
 
 impl ExtWorkspaceGroupData {
