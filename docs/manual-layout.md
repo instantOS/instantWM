@@ -109,6 +109,12 @@ The existing action names (`focus_left`, `key_move_left`, `key_resize_left`,
 and their other directions) work in custom TOML bindings. The direction-free
 names are `tree_grow` and `tree_shrink`.
 
+While maximized, horizontal focus deliberately ignores the hidden tree
+geometry. `Super+H/Left` and `Super+L/Right` walk backward and forward through
+the stable tiled title order shown in the bar. Reaching the outer title
+continues to the adjacent tag, just as reaching a spatial edge does while
+tiled.
+
 ## Pointer placement
 
 Dragging a tiled window no longer converts it to floating. The source stays in

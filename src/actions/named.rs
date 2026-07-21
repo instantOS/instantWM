@@ -7,7 +7,7 @@ use crate::floating::{
     key_resize, moveresize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
     scratchpad_toggle, set_scratchpad_direction, toggle_floating,
 };
-use crate::focus::{direction_focus, focus_last_client, focus_stack};
+use crate::focus::{direction_focus, focus_last_client, focus_stack, focus_stack_neighbor};
 use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::tree::Side;
@@ -73,6 +73,22 @@ macro_rules! define_named_actions {
 }
 
 fn focus_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
+    if ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .is_maximized_layout()
+    {
+        let stack_direction = match direction {
+            HorizontalDirection::Left => StackDirection::Previous,
+            HorizontalDirection::Right => StackDirection::Next,
+        };
+        if !focus_stack_neighbor(ctx, stack_direction) {
+            crate::animation::scroll_view_with_slide(ctx, direction);
+        }
+        return;
+    }
+
     let side = match direction {
         HorizontalDirection::Left => Side::Left,
         HorizontalDirection::Right => Side::Right,
@@ -117,8 +133,8 @@ define_named_actions!(
     FocusLast => { name: "focus_last", arg_example: None, doc: "focus last focused window", run: |ctx, _args| { focus_last_client(ctx); } },
     FocusUp => { name: "focus_up", arg_example: None, doc: "focus above, or cycle backward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Up); } },
     FocusDown => { name: "focus_down", arg_example: None, doc: "focus below, or cycle forward in maximized presentation", run: |ctx, _args| { focus_vertical(ctx, VerticalDirection::Down); } },
-    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, switching to the previous tag at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
-    FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, switching to the next tag at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
+    FocusLeft => { name: "focus_left", arg_example: None, doc: "focus left, or move backward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Left); } },
+    FocusRight => { name: "focus_right", arg_example: None, doc: "focus right, or move forward through bar order in maximized presentation; switch tags at the boundary", run: |ctx, _args| { focus_horizontal(ctx, HorizontalDirection::Right); } },
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
     ToggleLayout => { name: "toggle_layout", arg_example: None, doc: "toggle layout", run: |ctx, _args| { toggle_layout(ctx); } },
