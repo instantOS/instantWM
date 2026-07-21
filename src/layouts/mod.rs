@@ -260,6 +260,7 @@ pub use manager::{
     apply_tree_preset, arrange, begin_keyboard_tree_placement, center_keyboard_tree_placement,
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
     focus_tree_neighbor, inc_master_count_by, place_tree_at_point, preview_tree_at_point,
-    promote_tree, resize_tree, resize_tree_smart, set_layout, set_master_factor,
-    step_keyboard_tree_placement, swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
+    promote_tree, resize_keyboard_tree_placement, resize_tree, resize_tree_smart, set_layout,
+    set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
+    swap_tree_neighbor, sync_monitor_z_order, toggle_layout,
 };

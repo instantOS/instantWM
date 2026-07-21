@@ -26,6 +26,15 @@ pub const XK_PAGE_DOWN: u32 = 0xFF56;
 pub const XK_END: u32 = 0xFF57;
 pub const XK_INSERT: u32 = 0xFF63;
 
+// Modifier keysyms used by modal input handlers. Pressing a modifier is itself
+// a key event before the modified command arrives.
+pub const XK_SHIFT_L: u32 = 0xFFE1;
+pub const XK_SHIFT_R: u32 = 0xFFE2;
+pub const XK_CONTROL_L: u32 = 0xFFE3;
+pub const XK_CONTROL_R: u32 = 0xFFE4;
+pub const XK_SUPER_L: u32 = 0xFFEB;
+pub const XK_SUPER_R: u32 = 0xFFEC;
+
 // ---------------------------------------------------------------------------
 // Function keys
 // ---------------------------------------------------------------------------
