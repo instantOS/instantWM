@@ -60,9 +60,8 @@ pub use cursor::set_cursor_style;
 // ── drag ──────────────────────────────────────────────────────────────────────
 
 pub use drag::{
-    begin_keyboard_move, drag_tag, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture,
-    sidebar_gesture_begin, title_drag_finish, title_drag_motion, update_sidebar_gesture,
-    window_title_mouse_handler,
+    drag_tag, drag_tag_finish, drag_tag_motion, finish_sidebar_gesture, sidebar_gesture_begin,
+    title_drag_finish, title_drag_motion, update_sidebar_gesture, window_title_mouse_handler,
 };
 
 // ── hover ─────────────────────────────────────────────────────────────────────

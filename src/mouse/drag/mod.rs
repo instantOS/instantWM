@@ -11,7 +11,6 @@
 //!
 //! | Function                            | Description                                               |
 //! |-------------------------------------|-----------------------------------------------------------|
-//! | [`begin_keyboard_move`]             | Keyboard-initiated window drag (works on X11 and Wayland) |
 //! | [`crate::backend::x11::mouse::move_mouse`] | Drag the focused window to a new position (X11 only) |
 //! | [`sidebar_gesture_begin`]           | Vertical-swipe gesture recogniser on the sidebar edge     |
 //! | [`drag_tag`]                        | Drag across the tag bar to switch/move tags               |
@@ -50,67 +49,6 @@ pub mod lifecycle;
 pub mod move_drop;
 pub mod tag;
 pub mod title;
-
-/// Keyboard-initiated window move — works on both X11 and Wayland.
-///
-/// On **X11** this is identical to calling [`crate::backend::x11::mouse::move_mouse`]
-/// directly: the pointer is grabbed and a synchronous event loop drives the drag
-/// until the button is released.
-///
-/// On **Wayland** a synchronous grab loop is not possible (no `XGrabPointer`
-/// equivalent in the protocol).  Instead we arm the `DragInteraction`
-/// machinery in move mode at the current pointer
-/// position.  Subsequent `MotionNotify` events delivered through calloop then
-/// drive the drag, and `hover_resize_drag_finish` (called on button
-/// release inside `handle_pointer_button`) performs the drop logic via the
-/// shared `complete_move_drop` helper.
-///
-/// The button used to end the drag defaults to `MouseButton::Left` on Wayland
-/// (matching the most common keyboard-move UX on other compositors).
-pub fn begin_keyboard_move(ctx: &mut WmCtx) {
-    if crate::layouts::begin_keyboard_tree_placement(ctx) {
-        return;
-    }
-    // Pre-flight checks are shared: exit maximized state, un-snap, etc.
-    let Some(win) = prepare_drag_target(ctx) else {
-        return;
-    };
-
-    match ctx {
-        WmCtx::X11(x11) => {
-            // X11: synchronous grab loop, unchanged behaviour.
-            crate::backend::x11::mouse::move_mouse(x11, MouseButton::Left, None);
-        }
-        WmCtx::Wayland(wl) => {
-            // Wayland: arm the hover-resize state in move mode so that calloop
-            // motion/release events drive the drag asynchronously.
-            let Some(root) = wl.wayland.pointer_location() else {
-                return;
-            };
-            let geo = match wl.core.model().client(win) {
-                Some(c) => c.geo,
-                None => return,
-            };
-
-            // Tiled windows use the same armed pointer placement gesture as a
-            // title drag; floating windows still move directly.
-
-            if wl
-                .core
-                .drag_state_mut()
-                .begin_move(win, MouseButton::Left, root, geo)
-                .is_err()
-            {
-                return;
-            }
-            crate::mouse::set_cursor_style(
-                &mut crate::contexts::WmCtx::Wayland(wl.reborrow()),
-                crate::types::AltCursor::Move,
-            );
-            crate::contexts::WmCtx::Wayland(wl.reborrow()).raise_client(win);
-        }
-    }
-}
 
 /// Shared post-move-drag teardown used by both X11 and Wayland backends.
 ///

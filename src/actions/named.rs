@@ -12,14 +12,14 @@ use crate::ipc_types::ScratchpadInitialStatus;
 use crate::keyboard::{down_key, up_key};
 use crate::layouts::tree::Side;
 use crate::layouts::{
-    LayoutCommand, center_keyboard_tree_placement, cycle_keyboard_tree_placement,
-    cycle_layout_direction, finish_keyboard_tree_placement, focus_tree_neighbor,
-    inc_master_count_by, resize_keyboard_tree_placement, resize_tree, resize_tree_smart,
-    set_layout, set_master_factor, step_keyboard_tree_placement, swap_keyboard_tree_placement,
-    swap_tree_neighbor, toggle_layout, toggle_maximized_layout,
+    LayoutCommand, begin_tree_placement, center_keyboard_tree_placement,
+    cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
+    focus_tree_neighbor, inc_master_count_by, resize_keyboard_tree_placement, resize_tree,
+    resize_tree_smart, set_layout, set_master_factor, step_keyboard_tree_placement,
+    swap_keyboard_tree_placement, swap_tree_neighbor, toggle_layout, toggle_maximized_layout,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
-use crate::mouse::{begin_keyboard_move, draw_window};
+use crate::mouse::draw_window;
 use crate::tags::{
     cancel_overview, follow_view, last_view, move_client_follow_view, quit, shift_tag, shift_view,
     toggle_overview, win_view,
@@ -172,7 +172,7 @@ define_named_actions!(
     Hide => { name: "hide", arg_example: None, doc: "minimize focused window or hide the visible scratchpad", run: |ctx, _args| { if let Some(win) = ctx.core().model().selected_win() { crate::client::hide_for_user(ctx, win); } } },
     ToggleFakeFullscreen => { name: "toggle_fake_fullscreen", arg_example: None, doc: "toggle fake fullscreen", run: |ctx, _args| { toggle_fake_fullscreen(ctx); } },
     DrawWindow => { name: "draw_window", arg_example: None, doc: "start dragging/resizing window", run: |ctx, _args| { draw_window(ctx); } },
-    BeginKeyboardMove => { name: "begin_keyboard_move", arg_example: None, doc: "move window with keyboard", run: |ctx, _args| { begin_keyboard_move(ctx); } },
+    BeginTreePlacement => { name: "begin_tree_placement", arg_example: None, doc: "place the focused tiled window within its layout tree", run: |ctx, _args| { let _ = begin_tree_placement(ctx); } },
     PlacementLeft => { name: "placement_left", arg_example: None, doc: "select the placement target to the left", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Left); } },
     PlacementRight => { name: "placement_right", arg_example: None, doc: "select the placement target to the right", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Right); } },
     PlacementUp => { name: "placement_up", arg_example: None, doc: "select the placement target above", run: |ctx, _args| { step_keyboard_tree_placement(ctx, Side::Top); } },
@@ -270,5 +270,14 @@ mod tests {
         );
         assert_eq!(parse_named_action("overlay_toggle"), None);
         assert_eq!(parse_named_action("overlay_direction_left"), None);
+    }
+
+    #[test]
+    fn tree_placement_action_does_not_alias_legacy_pointer_move() {
+        assert_eq!(
+            parse_named_action("begin_tree_placement"),
+            Some(NamedAction::BeginTreePlacement)
+        );
+        assert_eq!(parse_named_action("begin_keyboard_move"), None);
     }
 }

@@ -37,9 +37,10 @@ The default Super bindings use the tree whenever the focused window is tiled:
 - `Super+Ctrl+Arrow` resizes an axis run while preserving peer ratios.
   `Super+Alt+H/J/K/L` is retained as an alternative.
 - `Super++` and `Super+-` grow or shrink along the most local split.
-- `Super+M` enters keyboard placement. The compositor cursor starts at
-  the nearest semantic pointer target. A thick hollow frame previews the exact
-  final window rectangle on both Wayland and X11. Arrow or Vim `h/j/k/l` moves
+- `Super+M` enters keyboard placement for a tiled window when its tree has at
+  least one other destination. The physical pointer and window focus remain
+  unchanged; a thick hollow frame previews the exact final window rectangle on
+  both Wayland and X11. Arrow or Vim `h/j/k/l` moves
   geometrically; Shift plus a direction swaps the armed window with its visual
   neighbour, and Ctrl plus a direction resizes it. Tab/Shift+Tab visits every
   candidate, Space selects the current window's centre swap, and Enter applies.
@@ -51,10 +52,12 @@ Keyboard placement is the built-in `placement` WM mode, not a separate input
 state. It is visible in the bar and `instantwmctl mode list`; changing modes by
 IPC or a binding cancels placement and removes its preview. IPC cannot enter
 `placement` directly because entry needs a validated source window and target
-set; use the `begin_keyboard_move` action. Its commands are normal named
-actions (`placement_left`, `placement_swap_left`, `placement_resize_left`,
-`placement_next`, `placement_center`, `placement_apply`, `placement_cancel`,
-and their directional variants), so defaults can be replaced in TOML:
+set; use the `begin_tree_placement` action. Floating, maximized, and lone tiled
+windows decline the action without starting a pointer drag. Its commands are
+normal named actions (`placement_left`, `placement_swap_left`,
+`placement_resize_left`, `placement_next`, `placement_center`,
+`placement_apply`, `placement_cancel`, and their directional variants), so
+defaults can be replaced in TOML:
 
 ```toml
 [modes.placement]

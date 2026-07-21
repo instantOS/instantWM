@@ -32,7 +32,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
         ModeCommand::Set(name) => {
             if name == crate::core_state::TREE_PLACEMENT_MODE_NAME {
                 return Response::err(
-                    "Mode 'placement' can only be entered by begin_keyboard_move".to_string(),
+                    "Mode 'placement' can only be entered by begin_tree_placement".to_string(),
                 );
             }
             if !wm.core.config.bindings.modes.contains_key(&name)
@@ -60,7 +60,7 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
                 && wm.core.behavior.current_mode.as_str() != name
             {
                 return Response::err(
-                    "Mode 'placement' can only be entered by begin_keyboard_move".to_string(),
+                    "Mode 'placement' can only be entered by begin_tree_placement".to_string(),
                 );
             }
             if !wm.core.config.bindings.modes.contains_key(&name)
@@ -115,7 +115,7 @@ mod tests {
         );
 
         assert!(
-            matches!(response, Response::Err(message) if message.contains("begin_keyboard_move"))
+            matches!(response, Response::Err(message) if message.contains("begin_tree_placement"))
         );
         assert_eq!(wm.core.behavior.current_mode, ActiveWmMode::Default);
     }

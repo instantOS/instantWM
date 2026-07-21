@@ -93,7 +93,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY | CONTROL, XK_D => KeyAction::named(NamedAction::DistributeClients)),
         key!(MODKEY | SHIFT, XK_D => KeyAction::named(NamedAction::DrawWindow)),
         key!(MODKEY | MOD1, XK_W => KeyAction::named(NamedAction::CenterWindow)),
-        key!(MODKEY, XK_M => KeyAction::named(NamedAction::BeginKeyboardMove)),
+        key!(MODKEY, XK_M => KeyAction::named(NamedAction::BeginTreePlacement)),
         key!(MODKEY, XK_E => KeyAction::named(NamedAction::ToggleOverview)),
         key!(MODKEY | SHIFT, XK_E => KeyAction::named(NamedAction::CancelOverview)),
         key!(MODKEY, XK_W => KeyAction::named(NamedAction::EdgeScratchpadToggle)),

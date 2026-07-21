@@ -5,16 +5,29 @@ use crate::layouts::PresentationMode;
 use crate::layouts::placement::LayoutPlacement;
 use crate::types::{Rect, WindowId};
 
-pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreePlacementStart {
+    Started,
+    /// The selected window belongs to the manual tiled layout, but that tree
+    /// currently has nowhere meaningful to move it.
+    NoTargets,
+    /// Tree placement was applicable but its backend-owned modal interaction
+    /// could not be established safely.
+    Unavailable,
+    /// The selected window is not eligible for tree placement.
+    NotApplicable,
+}
+
+pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
     match ctx.current_mode() {
-        crate::core_state::ActiveWmMode::TreePlacement(_) => return true,
+        crate::core_state::ActiveWmMode::TreePlacement(_) => return TreePlacementStart::Started,
         crate::core_state::ActiveWmMode::Overview => ctx.reset_mode(),
         crate::core_state::ActiveWmMode::Default | crate::core_state::ActiveWmMode::Named(_) => {}
     }
     let (source, monitor_id, tags, targets, source_center) = {
         let monitor = ctx.core().model().selected_monitor();
         let Some(source) = monitor.selected else {
-            return false;
+            return TreePlacementStart::NotApplicable;
         };
         if !monitor.is_tiling_layout()
             || !ctx
@@ -23,10 +36,10 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
                 .client(source)
                 .is_some_and(|client| client.mode.is_tiling())
         {
-            return false;
+            return TreePlacementStart::NotApplicable;
         }
         let Some(tree) = monitor.per_tag().map(|state| &state.layout_tree) else {
-            return false;
+            return TreePlacementStart::Unavailable;
         };
         let tiled_count = monitor.collect_tiled(&ctx.core().model().clients).len() as u32;
         let layout_rect = LayoutPlacement::new(
@@ -54,7 +67,7 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         )
     };
     if targets.is_empty() {
-        return false;
+        return TreePlacementStart::NoTargets;
     }
     let Some(state) = crate::core_state::KeyboardTreePlacement::new_nearest(
         source,
@@ -63,19 +76,19 @@ pub fn begin_keyboard_tree_placement(ctx: &mut WmCtx<'_>) -> bool {
         targets,
         source_center,
     ) else {
-        return false;
+        return TreePlacementStart::Unavailable;
     };
     if !ctx.begin_modal_keyboard() {
-        return false;
+        return TreePlacementStart::Unavailable;
     }
     let selected_target = state.selected_target();
     let Some(preview_rect) = tree_placement_preview_rect(ctx, source, selected_target) else {
         ctx.end_modal_keyboard();
-        return false;
+        return TreePlacementStart::Unavailable;
     };
     ctx.set_current_mode(crate::core_state::ActiveWmMode::TreePlacement(state));
     ctx.update_layout_preview(Some(preview_rect));
-    true
+    TreePlacementStart::Started
 }
 
 fn tree_placement_preview_rect(
@@ -378,7 +391,10 @@ mod tests {
             0.5,
         );
 
-        assert!(begin_keyboard_tree_placement(&mut wm.ctx()));
+        assert_eq!(
+            begin_tree_placement(&mut wm.ctx()),
+            TreePlacementStart::Started
+        );
         assert_eq!(wm.core.model.selected_win(), Some(source));
 
         assert!(cycle_keyboard_tree_placement(&mut wm.ctx(), false));
@@ -389,5 +405,46 @@ mod tests {
             crate::layouts::tree::Side::Right,
         ));
         assert_eq!(wm.core.model.selected_win(), Some(source));
+    }
+
+    #[test]
+    fn single_tiled_window_has_no_tree_placement_targets() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let source = WindowId(1);
+        wm.core.model.insert_client(Client {
+            win: source,
+            monitor_id,
+            tags,
+            mode: ClientMode::Tiling,
+            ..Client::default()
+        });
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        monitor.clients = vec![source];
+        monitor.selected = Some(source);
+        monitor.per_tag_state().layout_tree.apply_preset(
+            Preset::MasterStack,
+            &[source],
+            Some(source),
+            1,
+            0.5,
+        );
+
+        assert_eq!(
+            begin_tree_placement(&mut wm.ctx()),
+            TreePlacementStart::NoTargets
+        );
+        assert!(matches!(
+            wm.core.behavior.current_mode,
+            crate::core_state::ActiveWmMode::Default
+        ));
+        assert_eq!(wm.core.layout_preview, None);
     }
 }

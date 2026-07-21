@@ -36,9 +36,9 @@ pub fn set_x11_root_cursor(
 
 /// X11-only synchronous window move implementation.
 ///
-/// Grab → event loop → release handling. This is the X11-specific synchronous
-/// implementation. For the backend-agnostic keyboard shortcut, use
-/// [`crate::mouse::drag::begin_keyboard_move`] instead.
+/// Grab → event loop → release handling. This is deliberately reachable only
+/// from pointer-driven actions; keyboard tree placement is a separate modal
+/// interaction shared by both backends.
 pub fn move_mouse(ctx: &mut WmCtxX11, btn: MouseButton, float_restore_geo: Option<Rect>) {
     let Some(win) = ({
         let mut wm_ctx = crate::contexts::WmCtx::X11(ctx.reborrow());
