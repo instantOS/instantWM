@@ -110,6 +110,48 @@ fn active_card_gets_the_largest_grid_territory() {
 }
 
 #[test]
+fn every_card_uses_one_duration_even_in_a_dense_overview() {
+    let tags = TagMask::single(1).unwrap();
+    let windows = (1..=12).map(WindowId).collect::<Vec<_>>();
+    let mut monitor = Monitor {
+        monitor_rect: Rect::new(0, 0, 1200, 700),
+        available_rect: Rect::new(0, 0, 1200, 700),
+        clients: windows.clone(),
+        overview_state: Some(OverviewState::new(
+            tags,
+            windows.clone(),
+            HashMap::new(),
+            windows.first().copied(),
+        )),
+        ..Monitor::default()
+    };
+    monitor.set_selected_tags(tags);
+    let clients = windows
+        .iter()
+        .copied()
+        .map(|win| {
+            (
+                win,
+                Client {
+                    win,
+                    tags,
+                    geo: Rect::new(100, 100, 700, 500),
+                    ..Client::default()
+                },
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let layout = compute(&mut monitor, &clients);
+
+    assert_eq!(layout.moves.len(), windows.len());
+    assert!(layout.moves.iter().all(|output| {
+        output.options.mode == crate::geometry::MoveResizeMode::AnimateTo
+            && output.options.frames == crate::constants::animation::DEFAULT_FRAME_COUNT
+    }));
+}
+
+#[test]
 fn keyboard_navigation_matches_the_visual_grid() {
     let work = Rect::new(0, 0, 1200, 700);
     let windows = (1..=8).map(WindowId).collect::<Vec<_>>();

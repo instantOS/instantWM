@@ -221,10 +221,6 @@ impl WaylandState {
         );
     }
 
-    pub fn active_window_animation_count(&self) -> usize {
-        self.window_animations.len()
-    }
-
     /// Cancel a single window's in-flight animation.
     ///
     /// If the window is currently mapped (has a location in the space), it is

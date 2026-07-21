@@ -7,7 +7,6 @@
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
-use crate::layouts::query::framecount_for_layout;
 use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, PresentationMode};
 use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
 use std::collections::HashMap;
@@ -137,14 +136,9 @@ impl Monitor {
         } else {
             let layout = self.current_layout();
             let moves = match layout {
-                PresentationMode::Tiled => compute_manual_tree(
-                    self,
-                    &layout_clients,
-                    layout_cfg,
-                    resize_hints,
-                    bar_height,
-                    animated,
-                ),
+                PresentationMode::Tiled => {
+                    compute_manual_tree(self, &layout_clients, layout_cfg, resize_hints, bar_height)
+                }
                 PresentationMode::Maximized => {
                     reconcile_manual_tree(self, &layout_clients);
                     crate::layouts::algo::maximized(self, &layout_clients, layout_cfg, animated)
@@ -189,7 +183,6 @@ fn compute_manual_tree(
     layout_cfg: &crate::config::config_toml::LayoutConfig,
     resize_hints: bool,
     bar_height: i32,
-    animated: bool,
 ) -> Vec<LayoutOutput> {
     let tiled = monitor.collect_tiled(clients);
     let windows: Vec<_> = tiled.iter().map(|client| client.win).collect();
@@ -209,14 +202,6 @@ fn compute_manual_tree(
             None => (tree.bounds(work_rect), false),
         }
     };
-    let frame_count = framecount_for_layout(
-        animated,
-        windows.len(),
-        crate::constants::animation::FAST_ANIM_THRESHOLD,
-        crate::constants::animation::FAST_FRAME_COUNT,
-        crate::constants::animation::DEFAULT_FRAME_COUNT,
-    );
-
     tiled
         .into_iter()
         .filter_map(|client| {
@@ -225,11 +210,11 @@ fn compute_manual_tree(
                 win: client.win,
                 rect: placement.client_rect(slot, client.border_width),
                 options: if resize_hints && constraints_fit {
-                    MoveResizeOptions::animate_to(frame_count)
+                    MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_FRAME_COUNT)
                         .with_size_hints()
                         .with_layout_bounds()
                 } else {
-                    MoveResizeOptions::animate_to(frame_count)
+                    MoveResizeOptions::animate_to(crate::constants::animation::DEFAULT_FRAME_COUNT)
                 },
             })
         })

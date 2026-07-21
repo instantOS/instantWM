@@ -255,6 +255,32 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
 }
 
 #[test]
+fn dense_manual_layout_uses_one_animation_duration_for_every_window() {
+    let windows = (1..=12).map(WindowId).collect::<Vec<_>>();
+    let mut monitor = monitor_with_order(&windows, windows[0]);
+    monitor.available_rect = Rect::new(0, 0, 1200, 700);
+    monitor.monitor_rect = monitor.available_rect;
+    monitor.clients = windows.clone();
+    let clients = windows
+        .iter()
+        .copied()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &windows, 1);
+
+    let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, true);
+
+    assert_eq!(plan.client_moves.len(), windows.len());
+    assert!(plan.client_moves.iter().all(|output| {
+        output.options.mode == crate::geometry::MoveResizeMode::AnimateTo
+            && output.options.frames == crate::constants::animation::DEFAULT_FRAME_COUNT
+    }));
+}
+
+#[test]
 fn overview_treats_true_fullscreen_as_an_ordinary_card() {
     let tags = TagMask::single(1).unwrap();
     let win = WindowId(1);

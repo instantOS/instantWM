@@ -8,7 +8,6 @@
 //! |------------|----------------|
 //! | [`tree`] | Canonical weighted tree and private transformation algorithms |
 //! | [`algo`] | Non-tree floating and maximized presentations |
-//! | [`query`] | Stateless client-count and animation queries |
 //! | `placement` | Gap, border, and preview geometry |
 //! | `keyboard_placement` | Keyboard placement-session orchestration |
 //! | [`manager`] | Arrange application, z-order, pointer interaction, and layout commands |
@@ -37,7 +36,6 @@ pub mod algo;
 mod keyboard_placement;
 pub mod manager;
 pub(crate) mod placement;
-pub mod query;
 pub mod tree;
 
 use std::str::FromStr;

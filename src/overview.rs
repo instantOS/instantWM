@@ -424,18 +424,15 @@ pub fn compute(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) -> Ov
         })
         .unwrap_or(0);
     let rects = card_field_rects(work_rect, &sizes, active_index);
-    let frame_count = if client_info.len() > crate::constants::animation::FAST_ANIM_THRESHOLD {
-        crate::constants::animation::FAST_FRAME_COUNT
-    } else {
-        crate::constants::animation::DEFAULT_FRAME_COUNT
-    };
     let moves = client_info
         .iter()
         .zip(rects)
         .map(|(&(win, _), rect)| LayoutOutput {
             win,
             rect,
-            options: MoveResizeOptions::animate_to(frame_count),
+            options: MoveResizeOptions::animate_to(
+                crate::constants::animation::DEFAULT_FRAME_COUNT,
+            ),
         })
         .collect();
 

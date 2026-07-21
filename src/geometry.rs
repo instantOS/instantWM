@@ -1,9 +1,7 @@
 use std::time::{Duration, Instant};
 
 use crate::animation::WindowAnimation;
-use crate::constants::animation::{
-    DISTANCE_THRESHOLD, FRAME_SLEEP_MICROS, X11_ANIM_FULL_THRESHOLD, X11_ANIM_REDUCE_THRESHOLD,
-};
+use crate::constants::animation::{DISTANCE_THRESHOLD, FRAME_SLEEP_MICROS};
 use crate::contexts::WmCtx;
 use crate::types::{Rect, WindowId};
 
@@ -121,26 +119,6 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
 
 fn animation_duration(frames: i32) -> Duration {
     Duration::from_micros(FRAME_SLEEP_MICROS * frames.max(0) as u64)
-}
-
-fn effective_animation_frames(active_count: usize, frames: i32) -> i32 {
-    if active_count >= X11_ANIM_REDUCE_THRESHOLD {
-        0
-    } else if active_count >= X11_ANIM_FULL_THRESHOLD {
-        (frames / 2).max(2)
-    } else {
-        frames
-    }
-}
-
-fn active_animation_count(ctx: &WmCtx<'_>) -> usize {
-    match ctx {
-        WmCtx::X11(x11) => x11.x11_runtime.window_animations.len(),
-        WmCtx::Wayland(wl) => wl
-            .wayland
-            .with_state(|state| state.active_window_animation_count())
-            .unwrap_or(0),
-    }
 }
 
 fn enqueue_window_animation(ctx: &mut WmCtx<'_>, win: WindowId, from: Rect, to: Rect, frames: i32) {
@@ -319,10 +297,8 @@ pub(crate) fn move_resize(
             }
 
             let animated = ctx.core().behavior().animated;
-            let effective_frames =
-                effective_animation_frames(active_animation_count(ctx), options.frames);
 
-            if !animated || effective_frames <= 0 {
+            if !animated || options.frames <= 0 {
                 ctx.set_geometry_impl(win, final_rect, GeometryApplyMode::Logical);
                 return;
             }
@@ -340,7 +316,7 @@ pub(crate) fn move_resize(
                 crate::client::sync_client_geometry(ctx.core_mut().model_mut(), win, final_rect);
             }
 
-            enqueue_window_animation(ctx, win, from, final_rect, effective_frames);
+            enqueue_window_animation(ctx, win, from, final_rect, options.frames);
         }
     }
 }
