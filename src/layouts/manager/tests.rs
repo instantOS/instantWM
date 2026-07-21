@@ -5,7 +5,10 @@ use super::{
 use crate::config::config_toml::LayoutConfig;
 use crate::layouts::PresentationMode;
 use crate::layouts::tree::{Preset, Side};
-use crate::types::{Client, Monitor, Point, Rect, ResizeDirection, Size, TagMask, WindowId};
+use crate::types::{
+    BaseClientMode, Client, ClientMode, Monitor, Point, Rect, ResizeDirection, Size, TagMask,
+    WindowId,
+};
 use std::collections::HashMap;
 
 fn visible_client(win: WindowId) -> Client {
@@ -233,6 +236,43 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
             );
         }
     }
+}
+
+#[test]
+fn overview_treats_true_fullscreen_as_an_ordinary_card() {
+    let tags = TagMask::single(1).unwrap();
+    let win = WindowId(1);
+    let original = Rect::new(0, 0, 1200, 800);
+    let mut monitor = Monitor {
+        monitor_rect: original,
+        available_rect: original,
+        clients: vec![win],
+        overview_state: Some(crate::overview::OverviewState::new(
+            tags,
+            vec![win],
+            HashMap::from([(win, original)]),
+        )),
+        ..Monitor::default()
+    };
+    monitor.set_selected_tags(tags);
+    let clients = HashMap::from([(
+        win,
+        Client {
+            win,
+            tags,
+            geo: original,
+            mode: ClientMode::TrueFullscreen {
+                restore: BaseClientMode::Tiling,
+            },
+            ..Client::default()
+        },
+    )]);
+
+    let plan = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+
+    assert_eq!(plan.client_moves.len(), 1);
+    assert!(plan.fullscreen_moves.is_empty());
+    assert_eq!(plan.z_order, Some(vec![win]));
 }
 
 #[test]

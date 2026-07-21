@@ -6,7 +6,7 @@
 //! - [`state`]   — save/restore float geometry & border width; set_window_mode;
 //!   toggle/set/change floating state; internal client-maximize transitions
 //! - [`movement`] — keyboard move, resize, center window, scale client
-//! - [`batch`]   — save/restore all floating positions, distribute clients
+//! - [`batch`]   — distribute floating clients
 //! - [`helpers`] — visible_client, has_tiling_layout, apply_size
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
 //!   with optional edge-anchored positioning
@@ -29,7 +29,7 @@ pub use movement::{center_window, key_resize, moveresize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
-pub use batch::{distribute_clients, restore_all_floating, save_all_floating};
+pub use batch::distribute_clients;
 
 // ── state ────────────────────────────────────────────────────────────────────
 

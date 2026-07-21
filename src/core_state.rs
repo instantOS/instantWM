@@ -307,42 +307,51 @@ impl KeyboardTreePlacement {
     }
 
     /// Select the best candidate lying visually in `side` from the current
-    /// candidate. Returns false when there is no candidate in that direction.
+    /// candidate. At a visual edge, wrap to the opposite edge and use
+    /// cross-axis alignment to break ties. This keeps a
+    /// directional key productive without requiring users to understand the
+    /// exact placement-target topology.
     pub fn select_direction(&mut self, side: crate::layouts::tree::Side) -> bool {
         let current = self.selected_target().position;
-        let next =
+        let selected = self.selected;
+        let candidates = || {
             self.targets
                 .iter()
                 .enumerate()
-                .filter_map(|(index, target)| {
-                    if index == self.selected {
-                        return None;
-                    }
-                    let dx = target.position.x - current.x;
-                    let dy = target.position.y - current.y;
-                    let primary = match side {
-                        crate::layouts::tree::Side::Left => -dx,
-                        crate::layouts::tree::Side::Right => dx,
-                        crate::layouts::tree::Side::Top => -dy,
-                        crate::layouts::tree::Side::Bottom => dy,
-                    };
-                    if primary <= 0 {
-                        return None;
-                    }
-                    let cross =
-                        match side {
-                            crate::layouts::tree::Side::Left
-                            | crate::layouts::tree::Side::Right => dy.abs(),
-                            crate::layouts::tree::Side::Top
-                            | crate::layouts::tree::Side::Bottom => dx.abs(),
-                        };
-                    let score = i64::from(primary)
-                        + i64::from(cross) * 2
-                        + i64::from(cross) * i64::from(cross) / i64::from(primary + 1);
-                    Some((index, score))
-                })
-                .min_by_key(|(index, score)| (*score, *index))
-                .map(|(index, _)| index);
+                .filter(move |(index, _)| *index != selected)
+        };
+        let next = candidates()
+            .filter_map(|(index, target)| {
+                let (primary, cross) = directional_distances(current, target.position, side);
+                if primary <= 0 {
+                    return None;
+                }
+                let score = primary
+                    .saturating_add(cross.saturating_mul(2))
+                    .saturating_add(cross.saturating_mul(cross) / (primary + 1));
+                Some((index, score))
+            })
+            .min_by_key(|(index, score)| (*score, *index))
+            .map(|(index, _)| index)
+            .or_else(|| {
+                // No target lies farther in the requested direction. Treat
+                // that as an edge and wrap to the far side. Candidates on the
+                // opposite edge are preferred first, then the one closest to
+                // the current cross-axis lane, so repeated presses traverse
+                // the complete spatial ordering instead of getting trapped.
+                let opposite_edge = candidates()
+                    .map(|(_, target)| directional_coordinate(target.position, side))
+                    .min()?;
+                candidates()
+                    .map(|(index, target)| {
+                        let coordinate = directional_coordinate(target.position, side);
+                        let cross = cross_axis_distance(current, target.position, side);
+                        let depth = coordinate - opposite_edge;
+                        (index, cross, depth)
+                    })
+                    .min_by_key(|(index, cross, depth)| (*depth, *cross, *index))
+                    .map(|(index, _, _)| index)
+            });
         next.is_some_and(|index| self.select(index))
     }
 
@@ -395,6 +404,41 @@ impl KeyboardTreePlacement {
     ) -> bool {
         let selected = Self::nearest_target_index(&targets, point);
         self.replace_targets(targets, selected)
+    }
+}
+
+fn directional_distances(
+    current: Point,
+    candidate: Point,
+    side: crate::layouts::tree::Side,
+) -> (i64, i64) {
+    let dx = i64::from(candidate.x) - i64::from(current.x);
+    let dy = i64::from(candidate.y) - i64::from(current.y);
+    match side {
+        crate::layouts::tree::Side::Left => (-dx, dy.abs()),
+        crate::layouts::tree::Side::Right => (dx, dy.abs()),
+        crate::layouts::tree::Side::Top => (-dy, dx.abs()),
+        crate::layouts::tree::Side::Bottom => (dy, dx.abs()),
+    }
+}
+
+fn directional_coordinate(point: Point, side: crate::layouts::tree::Side) -> i64 {
+    match side {
+        crate::layouts::tree::Side::Left => -i64::from(point.x),
+        crate::layouts::tree::Side::Right => i64::from(point.x),
+        crate::layouts::tree::Side::Top => -i64::from(point.y),
+        crate::layouts::tree::Side::Bottom => i64::from(point.y),
+    }
+}
+
+fn cross_axis_distance(current: Point, candidate: Point, side: crate::layouts::tree::Side) -> i64 {
+    match side {
+        crate::layouts::tree::Side::Left | crate::layouts::tree::Side::Right => {
+            (i64::from(candidate.y) - i64::from(current.y)).abs()
+        }
+        crate::layouts::tree::Side::Top | crate::layouts::tree::Side::Bottom => {
+            (i64::from(candidate.x) - i64::from(current.x)).abs()
+        }
     }
 }
 

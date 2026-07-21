@@ -7,88 +7,11 @@
 //!
 //! | Function               | Purpose                                                  |
 //! |------------------------|----------------------------------------------------------|
-//! | `save_all_floating`    | Snapshot geometry of every non-snapped floating client   |
-//! | `restore_all_floating` | Restore geometry of every non-snapped floating client    |
 //! | `distribute_clients`   | Arrange all visible floating windows in an even grid     |
-//!
-//! `save_all_floating` / `restore_all_floating` are called around overview
-//! mode (see `tags.rs`) so that window positions survive the overview layout
-//! and are correctly restored when the user switches back.
 
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::types::*;
-
-// ── Save / restore all floating ───────────────────────────────────────────────
-
-/// Snapshot the geometry of every non-snapped floating client on `monitor_id`.
-///
-/// Only clients whose tag belongs to a tag that currently has **no** tiling
-/// layout (i.e. a pure floating tag) are included.  Snapped windows are
-/// excluded because their geometry is managed by the snap system, not by free
-/// floating.
-///
-/// Pair with [`restore_all_floating`] to round-trip positions across a layout
-/// change (e.g. entering / leaving overview mode).
-pub fn save_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
-    let Some(mon_id) = monitor_id else { return };
-
-    let wins_to_save = collect_floating_wins(ctx.core().model(), mon_id);
-    for win in wins_to_save {
-        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-            client.save_floating_geometry();
-        }
-    }
-}
-
-/// Restore the geometry of every non-snapped floating client on `monitor_id`.
-///
-/// Counterpart to [`save_all_floating`]: resizes each window back to the rect
-/// that was captured by the most recent `save_all_floating` call.
-pub fn restore_all_floating(ctx: &mut WmCtx, monitor_id: Option<MonitorId>) {
-    let Some(mid) = monitor_id else { return };
-
-    let wins_to_restore = collect_floating_wins(ctx.core().model(), mid);
-    for win in wins_to_restore {
-        super::state::restore_floating_geometry(ctx, win);
-    }
-}
-
-/// Walk `monitor_id`'s client list and return all windows that are:
-/// - on a tag that has no tiling layout active, and
-/// - not currently snapped.
-///
-/// This is the shared selection logic for both save and restore.
-fn collect_floating_wins(model: &crate::model::WmModel, mid: MonitorId) -> Vec<WindowId> {
-    let Some(mon) = model.monitor(mid) else {
-        return Vec::new();
-    };
-
-    let num_tags = mon.tags.len();
-    let mut wins = Vec::new();
-
-    for tag_idx in 0..num_tags {
-        // Skip tags that have a tiling layout — only purely-floating tags matter.
-        let tag_mask = crate::types::TagMask::from_bits(1u32 << tag_idx);
-        let tag_is_floating = mon
-            .per_tag
-            .get(&tag_mask)
-            .map(|state| !state.presentation.is_tiling())
-            .unwrap_or(false);
-
-        if !tag_is_floating {
-            continue;
-        }
-
-        for (c_win, c) in mon.iter_clients(&model.clients) {
-            if c.tags.intersects(tag_mask) && c.snap_status == SnapPosition::None {
-                wins.push(c_win);
-            }
-        }
-    }
-
-    wins
-}
 
 // ── Distribute ────────────────────────────────────────────────────────────────
 

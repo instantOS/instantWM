@@ -65,24 +65,17 @@ pub fn arrange_monitor(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
 
 impl ArrangePlan {
     fn apply(self, ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
-        // 1. Save floating geometry for overview mode
-        for &win in &self.save_geo {
-            if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-                client.save_floating_geometry();
-            }
-        }
-
-        // 2. Apply border widths
+        // 1. Apply border widths
         for (win, border) in &self.borders {
             ctx.set_border(*win, *border);
         }
 
-        // 3. Apply monitor updates
+        // 2. Apply monitor updates
         if let Some(m) = ctx.core_mut().model_mut().monitor_mut(monitor_id) {
             m.bar_height = self.bar_height;
         }
 
-        // 4. In maximized presentation, raise the selected window before animated moves
+        // 3. In maximized presentation, raise the selected window before animated moves
         //    so it doesn't briefly render beneath siblings during animation.
         if let Some(selected) = ctx
             .core()
@@ -95,23 +88,21 @@ impl ArrangePlan {
             ctx.window_backend().flush();
         }
 
-        // 5. Apply client moves (layout placements)
+        // 4. Apply client moves (layout placements)
         for output in &self.client_moves {
             ctx.move_resize(output.win, output.rect, output.options);
         }
 
-        // 6. Apply fullscreen moves last — fullscreen overrides layout geometry
+        // 5. Apply fullscreen moves last — fullscreen overrides layout geometry
         for output in &self.fullscreen_moves {
             ctx.move_resize(output.win, output.rect, output.options);
         }
 
-        // 7. Raise selected window in overview mode
-        if self.is_overview
-            && let Some(monitor) = ctx.core().model().monitor(monitor_id)
-            && let Some(selected) = monitor.selected
-            && self.client_moves.iter().any(|o| o.win == selected)
-        {
-            ctx.window_backend().raise_window_visual_only(selected);
+        // 6. Overlapping layouts own their complete visual order. In overview,
+        // raising only the selected card could cover another card's exposed
+        // hit region, so reapply the stable hand order as one operation.
+        if let Some(z_order) = &self.z_order {
+            ctx.window_backend().apply_z_order(z_order);
             ctx.window_backend().flush();
         }
     }
@@ -138,11 +129,11 @@ impl Monitor {
         // client) leaves a border-sized strip until the next arrange.
         let layout_clients = clients_with_planned_borders(clients, &borders);
 
-        // Compute layout moves and save_geo
+        // Compute layout moves and any explicit overlapping order.
         let is_overview = self.overview_state.is_some();
-        let (client_moves, save_geo) = if is_overview {
-            let (moves, save_geo) = crate::overview::compute(self, &layout_clients);
-            (moves, save_geo)
+        let (client_moves, z_order) = if is_overview {
+            let overview = crate::overview::compute(self, &layout_clients);
+            (overview.moves, Some(overview.z_order))
         } else {
             let layout = self.current_layout();
             let moves = match layout {
@@ -162,19 +153,23 @@ impl Monitor {
                     crate::layouts::algo::floating(self, &layout_clients, animated)
                 }
             };
-            (moves, Vec::new())
+            (moves, None)
         };
 
-        // Compute fullscreen moves
-        let fullscreen_moves = compute_fullscreen_moves(self, clients);
+        // Fullscreen participates as an ordinary card in overview. Reapplying
+        // fullscreen geometry here would cover the complete hand.
+        let fullscreen_moves = if is_overview {
+            Vec::new()
+        } else {
+            compute_fullscreen_moves(self, clients)
+        };
 
         ArrangePlan {
             bar_height: self.bar_height,
             borders,
             client_moves,
             fullscreen_moves,
-            save_geo,
-            is_overview,
+            z_order,
         }
     }
 }

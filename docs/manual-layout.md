@@ -91,6 +91,25 @@ to remain held after Super+M. Other modifiers remain meaningful. An explicit
 `none` action can make an otherwise unrelated key a consumed no-op; an unbound
 non-modifier cancels placement.
 
+Directional candidate navigation wraps intelligently when it reaches a visual
+edge. The opposite edge is chosen first and alignment on the other axis breaks
+ties, so another arrow or Vim-key press always advances when more than one
+candidate exists; Tab remains available for strict candidate-list traversal.
+
+## Overview
+
+Overview preserves each client's current size and arranges windows as a stable
+overlapping card hand. Card origins and backend z-order advance together, which
+guarantees every non-topmost window an exposed pointer hit strip. The order is
+captured on entry, grouped by first tag and then stable monitor order, so focus
+changes do not reshuffle the hand. Portrait monitors use a vertical hand.
+
+True-fullscreen clients participate as ordinary cards while overview is active.
+All original geometries are snapshotted once in the overview session—including
+for windows mapped while it is open—and restored before the normal per-tag
+layout is arranged on exit. Overview therefore neither repeatedly resizes
+clients into small grid cells nor corrupts floating restore geometry.
+
 `Super+W` (`toggle_tiling_maximized`) toggles maximized presentation. Pressing
 it again returns to the unchanged manual tree. `Super+J/K` cycles tiled windows
 in stable tree-leaf order while maximized. The bar presents those tiled titles

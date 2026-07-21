@@ -104,11 +104,8 @@ pub struct ArrangePlan {
     pub borders: Vec<(WindowId, i32)>,
     pub client_moves: Vec<LayoutOutput>,
     pub fullscreen_moves: Vec<LayoutOutput>,
-    /// Windows whose geometry should be saved before applying moves
-    /// (used by overview mode to preserve floating positions).
-    pub save_geo: Vec<WindowId>,
-    /// True when the plan was computed for overview mode.
-    pub is_overview: bool,
+    /// Explicit bottom-to-top order used by overlapping presentations.
+    pub z_order: Option<Vec<WindowId>>,
 }
 
 /// Layout command accepted by configuration and IPC.
