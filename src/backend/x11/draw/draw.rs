@@ -439,18 +439,13 @@ impl DrawContext {
 // ── Font / fontset management ─────────────────────────────────────────────────
 
 impl DrawContext {
-    /// Replace the active fontset.
-    pub fn set_fontset(&mut self, font: Option<Vec<Fnt>>) {
-        self.fonts = font;
-    }
-
     /// Load a fontset from an ordered list of font name strings.
     ///
     /// Fonts are stored in the order given; the first font is tried first when
-    /// rendering each glyph.  Returns a clone of `self.fonts` for convenience.
-    pub fn fontset_create(&mut self, font_names: &[&str]) -> Result<Option<Vec<Fnt>>, String> {
+    /// rendering each glyph. Success guarantees a non-empty active fontset.
+    pub fn fontset_create(&mut self, font_names: &[&str]) -> Result<(), String> {
         if self.display.is_null() {
-            return Ok(None);
+            return Err("cannot load fonts without an X11 display".to_string());
         }
         let mut fonts = Vec::new();
         for &name in font_names {
@@ -459,10 +454,10 @@ impl DrawContext {
             }
         }
         if fonts.is_empty() {
-            return Ok(None);
+            return Err("none of the configured fonts could be loaded".to_string());
         }
         self.fonts = Some(fonts);
-        Ok(self.fonts.clone())
+        Ok(())
     }
 
     /// Load a single font by name string, returning a [`Fnt`].

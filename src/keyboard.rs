@@ -97,6 +97,42 @@ pub(crate) fn desktop_bindings_enabled(
     !matches!(mode, ActiveWmMode::Default) || selected_client.is_none()
 }
 
+/// Bindings that a backend with passive/global grabs must currently own.
+///
+/// This deliberately mirrors [`resolve_key_action`]. A backend must not grab
+/// bindings from inactive modes: unlike a compositor, X11 cannot forward an
+/// unmatched passively-grabbed key to the focused client after the fact.
+pub(crate) fn passive_bindings<'a>(
+    keys: &'a [Key],
+    desktop_keybinds: &'a [Key],
+    modes: &'a HashMap<String, ModeConfig>,
+    selected_client: Option<WindowId>,
+    mode: &ActiveWmMode,
+) -> Vec<&'a Key> {
+    let mut bindings = Vec::new();
+    match mode {
+        ActiveWmMode::TreePlacement(_) => {
+            if let Some(mode) = modes.get(crate::core_state::TREE_PLACEMENT_MODE_NAME) {
+                bindings.extend(&mode.keybinds);
+            }
+        }
+        ActiveWmMode::Named(name) => {
+            if let Some(mode) = modes.get(name) {
+                bindings.extend(&mode.keybinds);
+            }
+            bindings.extend(keys);
+            bindings.extend(desktop_keybinds);
+        }
+        _ => {
+            bindings.extend(keys);
+            if desktop_bindings_enabled(selected_client, mode) {
+                bindings.extend(desktop_keybinds);
+            }
+        }
+    }
+    bindings
+}
+
 fn find_matching_action(
     keys: &[Key],
     keysym: u32,
@@ -430,5 +466,89 @@ mod tests {
             &ActiveWmMode::Default
         ));
         assert!(desktop_bindings_enabled(None, &ActiveWmMode::Default));
+    }
+
+    #[test]
+    fn passive_grabs_match_only_bindings_the_dispatcher_can_use() {
+        let global = Key {
+            mod_mask: crate::config::keybindings::MODKEY,
+            keysym: 1,
+            action: KeyAction::named(NamedAction::FocusNext),
+        };
+        let desktop = Key {
+            mod_mask: 0,
+            keysym: crate::config::keysyms::XK_L,
+            action: KeyAction::named(NamedAction::ScrollRight),
+        };
+        let inactive_mode = Key {
+            mod_mask: 0,
+            keysym: crate::config::keysyms::XK_SPACE,
+            action: KeyAction::named(NamedAction::PlacementCenter),
+        };
+        let mut modes = HashMap::new();
+        modes.insert(
+            crate::core_state::TREE_PLACEMENT_MODE_NAME.to_string(),
+            ModeConfig {
+                keybinds: vec![inactive_mode],
+                ..ModeConfig::default()
+            },
+        );
+
+        let grabbed = passive_bindings(
+            std::slice::from_ref(&global),
+            std::slice::from_ref(&desktop),
+            &modes,
+            Some(WindowId(1)),
+            &ActiveWmMode::Default,
+        );
+
+        assert_eq!(grabbed.len(), 1);
+        assert_eq!(grabbed[0].keysym, global.keysym);
+        assert!(grabbed.iter().all(|key| key.keysym != desktop.keysym));
+        assert!(
+            grabbed
+                .iter()
+                .all(|key| key.keysym != crate::config::keysyms::XK_SPACE)
+        );
+    }
+
+    #[test]
+    fn active_named_mode_passively_grabs_its_complete_resolution_scope() {
+        let global = Key {
+            mod_mask: 1,
+            keysym: 1,
+            action: KeyAction::named(NamedAction::FocusNext),
+        };
+        let desktop = Key {
+            mod_mask: 0,
+            keysym: 2,
+            action: KeyAction::named(NamedAction::ScrollRight),
+        };
+        let mode_key = Key {
+            mod_mask: 0,
+            keysym: 3,
+            action: KeyAction::named(NamedAction::FocusPrev),
+        };
+        let mut modes = HashMap::new();
+        modes.insert(
+            "resize".to_string(),
+            ModeConfig {
+                keybinds: vec![mode_key],
+                ..ModeConfig::default()
+            },
+        );
+
+        let global = [global];
+        let desktop = [desktop];
+        let grabbed = passive_bindings(
+            &global,
+            &desktop,
+            &modes,
+            Some(WindowId(1)),
+            &ActiveWmMode::Named("resize".to_string()),
+        );
+        let keysyms = grabbed.iter().map(|key| key.keysym).collect::<Vec<_>>();
+
+        assert_eq!(keysyms, [3, 1, 2]);
     }
 }

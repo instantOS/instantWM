@@ -681,6 +681,9 @@ impl<'a> WmCtx<'a> {
             self.end_modal_keyboard();
         }
         self.request_bar_update();
+        if let WmCtx::X11(ctx) = self {
+            crate::backend::x11::keyboard::grab_keys(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
+        }
         previous_mode
     }
 

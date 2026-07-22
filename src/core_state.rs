@@ -114,6 +114,12 @@ pub struct FontConfig {
     pub config_font: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BarMetrics {
+    pub height: i32,
+    pub horizontal_padding: i32,
+}
+
 impl FontConfig {
     /// Extract the first positive `size=N` value, falling back to 14 pixels.
     pub fn size(&self) -> f32 {
@@ -152,6 +158,81 @@ impl FontConfig {
     pub fn line_height(&self) -> i32 {
         let size = self.size();
         ((size * 1.3).ceil() as i32).max(size.ceil() as i32 + 2)
+    }
+
+    /// Resolve backend-independent bar geometry from the configured font.
+    pub fn bar_metrics(&self, configured_height: i32) -> BarMetrics {
+        let font_height = self.line_height();
+        let min_height = crate::types::CLOSE_BUTTON_WIDTH + crate::types::CLOSE_BUTTON_DETAIL + 2;
+        let height = if configured_height > 0 {
+            configured_height.max(min_height)
+        } else {
+            (font_height + 12).max(min_height)
+        };
+        BarMetrics {
+            height,
+            horizontal_padding: font_height,
+        }
+    }
+
+    /// Xft interprets `size` as points, whereas the shared config defines it
+    /// in pixels. Convert only the size property and preserve every other
+    /// Fontconfig pattern fragment.
+    pub fn xft_pixel_patterns(&self) -> Vec<String> {
+        self.fonts
+            .iter()
+            .map(|font| {
+                font.split(':')
+                    .map(|part| {
+                        part.strip_prefix("size=")
+                            .map_or_else(|| part.to_string(), |size| format!("pixelsize={size}"))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(":")
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod font_config_tests {
+    use super::FontConfig;
+
+    #[test]
+    fn bar_metrics_are_shared_and_respect_the_visual_minimum() {
+        let fonts = FontConfig {
+            fonts: vec!["Inter-Regular:size=12".to_string()],
+            ..FontConfig::default()
+        };
+
+        let automatic = fonts.bar_metrics(0);
+        assert_eq!(automatic.horizontal_padding, fonts.line_height());
+        assert_eq!(automatic.height, fonts.line_height() + 12);
+
+        let too_small = fonts.bar_metrics(1);
+        assert_eq!(
+            too_small.height,
+            crate::types::CLOSE_BUTTON_WIDTH + crate::types::CLOSE_BUTTON_DETAIL + 2
+        );
+    }
+
+    #[test]
+    fn xft_patterns_preserve_pixel_sized_shared_font_semantics() {
+        let fonts = FontConfig {
+            fonts: vec![
+                "Inter-Regular:size=12:style=Bold".to_string(),
+                "Symbols Nerd Font:pixelsize=15".to_string(),
+            ],
+            ..FontConfig::default()
+        };
+
+        assert_eq!(
+            fonts.xft_pixel_patterns(),
+            [
+                "Inter-Regular:pixelsize=12:style=Bold",
+                "Symbols Nerd Font:pixelsize=15"
+            ]
+        );
     }
 }
 

@@ -51,7 +51,6 @@ use crate::backend::{Backend, WaylandBackendData};
 use crate::config::init_config;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
-use crate::types::{CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_WIDTH};
 use crate::wm::Wm;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -209,23 +208,13 @@ mod tests {
 pub fn apply_bar_metrics(g: &mut CoreState, data: &mut WaylandBackendData) {
     let font_size = g.config.fonts.size();
     let font_families = g.config.fonts.families();
-    let font_height = g.config.fonts.line_height();
+    let metrics = g.config.fonts.bar_metrics(g.config.bar.height);
 
     data.bar_painter.set_font_size(font_size);
     data.bar_painter.set_font_families(&font_families);
 
-    // CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL is the button's visual content;
-    // the +2 adds a 1-pixel padding on each side so the button is never flush
-    // against the bar edges.
-    let min_bar_height = CLOSE_BUTTON_WIDTH + CLOSE_BUTTON_DETAIL + 2;
-    // 12 px is a comfortable default vertical padding (≈ 1 line-height * 0.3
-    // rounded up) when the user has not explicitly set bar_height in config.
-    g.config.derived.bar_height = if g.config.bar.height > 0 {
-        g.config.bar.height.max(min_bar_height)
-    } else {
-        (font_height + 12).max(min_bar_height)
-    };
-    g.config.derived.bar_horizontal_padding = font_height;
+    g.config.derived.bar_height = metrics.height;
+    g.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
 pub fn init_globals(g: &mut CoreState, wayland: &mut WaylandBackendData) {

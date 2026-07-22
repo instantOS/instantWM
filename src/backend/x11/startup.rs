@@ -217,32 +217,14 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
         Err(_) => panic!("instantwm: cannot create drawing context"),
     };
 
-    let fonts: Vec<&str> = wm
-        .core
-        .config
-        .fonts
-        .fonts
-        .iter()
-        .map(|f| f.as_str())
-        .collect();
-    if drw.fontset_create(&fonts).is_err() {
-        panic!("no fonts could be loaded.");
-    }
+    let font_patterns = wm.core.config.fonts.xft_pixel_patterns();
+    let fonts: Vec<&str> = font_patterns.iter().map(String::as_str).collect();
+    drw.fontset_create(&fonts)
+        .unwrap_or_else(|error| panic!("instantwm: {error}"));
 
-    let font_height = drw
-        .fonts
-        .as_ref()
-        .and_then(|f| f.first())
-        .map(|font| font.h)
-        .unwrap_or(12);
-    let bar_height_cfg = wm.core.config.bar.height;
+    let metrics = wm.core.config.fonts.bar_metrics(wm.core.config.bar.height);
     let bordercolors = wm.core.config.colors.border;
     let statusbarcolors = wm.core.config.colors.status_bar;
-    let bar_height = if bar_height_cfg > 0 {
-        bar_height_cfg as u32
-    } else {
-        font_height + 12
-    };
 
     init_cursors(&mut data.x11_runtime, &mut drw);
     init_schemes(
@@ -254,8 +236,8 @@ pub fn init_drw_and_schemes(wm: &mut Wm) {
 
     data.x11_runtime.xlibdisplay = XlibDisplay(drw.display());
     data.x11_runtime.draw = Some(drw);
-    wm.core.config.derived.bar_height = bar_height as i32;
-    wm.core.config.derived.bar_horizontal_padding = font_height as i32;
+    wm.core.config.derived.bar_height = metrics.height;
+    wm.core.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
 fn init_cursors(x11_runtime: &mut X11RuntimeConfig, drw: &mut DrawContext) {

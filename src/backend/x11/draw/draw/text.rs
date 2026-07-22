@@ -152,7 +152,8 @@ impl DrawContext {
 
         let (x, w) = self.text_run_loop(
             d,
-            WmRect::new(x, y, w as i32, h as i32),
+            WmRect::new(x, y, 0, h as i32),
+            w,
             text,
             invert,
             detail_height,
@@ -174,6 +175,7 @@ impl DrawContext {
         &mut self,
         d: *mut XftDraw,
         bounds: WmRect,
+        available_width: u32,
         text: &str,
         invert: bool,
         detail_height: i32,
@@ -183,7 +185,10 @@ impl DrawContext {
     ) -> (i32, u32) {
         let mut x = bounds.x;
         let y = bounds.y;
-        let mut w = bounds.w.max(0) as u32;
+        // Keep the width unsigned all the way into the run loop. Measure-only
+        // calls use `u32::MAX` as an unbounded width; storing that sentinel in
+        // `Rect::w` used to wrap it to -1 and collapse every measurement to 0.
+        let mut w = available_width;
         let h = bounds.h.max(0) as u32;
         if self.display.is_null() {
             return (x, w);

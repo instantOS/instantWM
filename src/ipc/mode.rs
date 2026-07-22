@@ -1,4 +1,3 @@
-use crate::contexts::WmCtx;
 use crate::core_state::ActiveWmMode;
 use crate::ipc_types::{ModeCommand, ModeInfo, Response};
 use crate::wm::Wm;
@@ -45,14 +44,6 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
             }
             apply_mode_change(wm, ActiveWmMode::from_name(&name));
 
-            if let WmCtx::X11(x11) = &mut wm.ctx() {
-                crate::backend::x11::keyboard::grab_keys(
-                    x11.core.state(),
-                    &x11.x11,
-                    x11.x11_runtime,
-                );
-            }
-
             Response::Message(format!("Switched to mode '{}'", name))
         }
         ModeCommand::Toggle(name) => {
@@ -80,14 +71,6 @@ pub fn handle_mode_command(wm: &mut Wm, cmd: ModeCommand) -> Response {
 
             let mode_name = new_mode.as_str().to_string();
             apply_mode_change(wm, new_mode);
-
-            if let WmCtx::X11(x11) = &mut wm.ctx() {
-                crate::backend::x11::keyboard::grab_keys(
-                    x11.core.state(),
-                    &x11.x11,
-                    x11.x11_runtime,
-                );
-            }
 
             Response::Message(format!("Toggled mode, now in '{}'", mode_name))
         }

@@ -35,9 +35,13 @@ pub fn grab_keys(
     let conn = x11.conn;
     let root = x11_runtime.root;
     let numlockmask = x11_runtime.numlockmask;
-    let keys = globals.config.bindings.keys.as_slice();
-    let desktop_keybinds = globals.config.bindings.desktop_keybinds.as_slice();
-    let modes = &globals.config.bindings.modes;
+    let bindings = crate::keyboard::passive_bindings(
+        globals.config.bindings.keys.as_slice(),
+        globals.config.bindings.desktop_keybinds.as_slice(),
+        &globals.config.bindings.modes,
+        globals.selected_win(),
+        &globals.behavior.current_mode,
+    );
 
     let _ = ungrab_key(conn, 0, root, ModMask::ANY);
 
@@ -74,30 +78,9 @@ pub fn grab_keys(
             continue;
         }
 
-        for key in keys {
+        for key in &bindings {
             if keysym == key.keysym {
                 grab_keys_for_key(conn, root, &modifiers, key, keycode);
-            }
-        }
-
-        for mode in modes.values() {
-            for key in &mode.keybinds {
-                if keysym == key.keysym {
-                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
-                }
-            }
-        }
-
-        let desktop_bindings_enabled = crate::keyboard::desktop_bindings_enabled(
-            globals.selected_win(),
-            &globals.behavior.current_mode,
-        );
-
-        if desktop_bindings_enabled {
-            for key in desktop_keybinds {
-                if keysym == key.keysym {
-                    grab_keys_for_key(conn, root, &modifiers, key, keycode);
-                }
             }
         }
     }
