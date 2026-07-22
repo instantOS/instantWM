@@ -569,14 +569,46 @@ mod tests {
     #[test]
     fn alt_resize_cursor_uses_resize_direction_mapping() {
         for (direction, expected_x11, expected_wayland) in [
-            (ResizeDirection::TopLeft, 8, smithay::input::pointer::CursorIcon::NwResize),
-            (ResizeDirection::Top, 4, smithay::input::pointer::CursorIcon::NResize),
-            (ResizeDirection::TopRight, 9, smithay::input::pointer::CursorIcon::NeResize),
-            (ResizeDirection::Right, 5, smithay::input::pointer::CursorIcon::EResize),
-            (ResizeDirection::BottomRight, 7, smithay::input::pointer::CursorIcon::SeResize),
-            (ResizeDirection::Bottom, 4, smithay::input::pointer::CursorIcon::SResize),
-            (ResizeDirection::BottomLeft, 6, smithay::input::pointer::CursorIcon::SwResize),
-            (ResizeDirection::Left, 5, smithay::input::pointer::CursorIcon::WResize),
+            (
+                ResizeDirection::TopLeft,
+                8,
+                smithay::input::pointer::CursorIcon::NwResize,
+            ),
+            (
+                ResizeDirection::Top,
+                4,
+                smithay::input::pointer::CursorIcon::NResize,
+            ),
+            (
+                ResizeDirection::TopRight,
+                9,
+                smithay::input::pointer::CursorIcon::NeResize,
+            ),
+            (
+                ResizeDirection::Right,
+                5,
+                smithay::input::pointer::CursorIcon::EResize,
+            ),
+            (
+                ResizeDirection::BottomRight,
+                7,
+                smithay::input::pointer::CursorIcon::SeResize,
+            ),
+            (
+                ResizeDirection::Bottom,
+                4,
+                smithay::input::pointer::CursorIcon::SResize,
+            ),
+            (
+                ResizeDirection::BottomLeft,
+                6,
+                smithay::input::pointer::CursorIcon::SwResize,
+            ),
+            (
+                ResizeDirection::Left,
+                5,
+                smithay::input::pointer::CursorIcon::WResize,
+            ),
         ] {
             let alt: AltCursor = direction.into();
             assert_eq!(alt.to_x11_index(), expected_x11);

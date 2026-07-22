@@ -2,7 +2,108 @@ use smithay::xwayland::{X11Surface, xwm::WmWindowType};
 use x11rb::properties::{WmHints, WmSizeHints};
 
 use crate::client::rules::WindowProperties;
-use crate::types::Client;
+use crate::model::WmModel;
+use crate::types::{Client, ClientMode, MonitorId, SizeHints, WindowId};
+
+/// Complete XWayland policy snapshot delivered by the backend.
+pub(crate) struct XWaylandPolicyUpdate {
+    pub hints: Option<WmHints>,
+    pub size_hints: Option<WmSizeHints>,
+    pub is_fullscreen: bool,
+    pub is_hidden: bool,
+    pub is_above: bool,
+}
+
+/// Owned scheduling information produced by one authoritative policy commit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "the outcome reports required layout and bar invalidation"]
+pub(crate) struct XWaylandPolicyOutcome {
+    monitor_id: MonitorId,
+    layout_changed: bool,
+    bar_changed: bool,
+}
+
+impl XWaylandPolicyOutcome {
+    pub(crate) fn monitor_id(self) -> MonitorId {
+        self.monitor_id
+    }
+
+    pub(crate) fn layout_changed(self) -> bool {
+        self.layout_changed
+    }
+
+    pub(crate) fn bar_changed(self) -> bool {
+        self.bar_changed
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct PolicyState {
+    mode: ClientMode,
+    hidden: bool,
+    urgent: bool,
+    fixed_size: bool,
+    size_hints: SizeHints,
+    min_aspect: f32,
+    max_aspect: f32,
+}
+
+impl PolicyState {
+    fn capture(client: &Client) -> Self {
+        Self {
+            mode: client.mode(),
+            hidden: client.is_hidden,
+            urgent: client.is_urgent,
+            fixed_size: client.is_fixed_size,
+            size_hints: client.size_hints,
+            min_aspect: client.min_aspect,
+            max_aspect: client.max_aspect,
+        }
+    }
+}
+
+/// Reconcile a complete XWayland policy update with one client lookup.
+///
+/// The returned value owns everything the runtime needs after the model borrow
+/// ends. This prevents partially applied policy and makes forgotten layout/bar
+/// scheduling visible in the transaction's API.
+pub(crate) fn apply_xwayland_policy(
+    model: &mut WmModel,
+    win: WindowId,
+    update: XWaylandPolicyUpdate,
+) -> Option<XWaylandPolicyOutcome> {
+    let clients = &mut model.clients;
+    let monitors = &model.monitors;
+    let client = clients.get_mut(&win)?;
+    monitors.get(client.monitor_id)?;
+    let before = PolicyState::capture(client);
+
+    apply_wm_hints_to_client(client, update.hints);
+    apply_size_hints_to_client(client, update.size_hints);
+    crate::client::mode::set_client_fullscreen(client, update.is_fullscreen);
+    client.is_hidden = update.is_hidden;
+
+    if update.is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
+        client.float_geo = client.geo;
+        client.set_base_mode(crate::types::BaseClientMode::Floating);
+    }
+
+    let after = PolicyState::capture(client);
+    let layout_changed = before.mode != after.mode
+        || before.hidden != after.hidden
+        || before.fixed_size != after.fixed_size
+        || before.size_hints != after.size_hints
+        || before.min_aspect != after.min_aspect
+        || before.max_aspect != after.max_aspect;
+    let bar_changed =
+        before.mode != after.mode || before.hidden != after.hidden || before.urgent != after.urgent;
+
+    Some(XWaylandPolicyOutcome {
+        monitor_id: client.monitor_id,
+        layout_changed,
+        bar_changed,
+    })
+}
 
 pub fn window_properties_from_x11_surface(surface: &X11Surface) -> WindowProperties {
     WindowProperties {

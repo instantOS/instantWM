@@ -189,13 +189,20 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
     };
     let Some(win) = win else { return };
 
-    let outcome = crate::client::mode::set_maximized(ctx.core_mut().model_mut(), win, enter);
+    let Some(transition) = ctx.core_mut().model_mut().set_maximized(win, enter) else {
+        return;
+    };
+    let entered = transition.entered();
 
-    if let Some(crate::client::mode::MaximizedOutcome::Exited { base }) = outcome
-        && (base == BaseClientMode::Floating
+    if transition.exited()
+        && (transition.restore_base() == BaseClientMode::Floating
             || !super::helpers::has_tiling_layout(ctx.core().model()))
     {
-        restore_floating_geometry(ctx, win);
+        ctx.move_resize(
+            win,
+            transition.restore_rect(),
+            MoveResizeOptions::hinted_immediate(false),
+        );
         if let WmCtx::X11(x11) = ctx {
             super::helpers::apply_size(x11, win);
         }
@@ -203,23 +210,17 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
 
     // Run the layout pass.  Disable animations temporarily so the
     // maximize/restore is instantaneous rather than sliding.
-    let selmon_id = ctx.core().model().selected_monitor_id();
+    let monitor_id = transition.monitor_id();
     if animated {
         ctx.core_mut().behavior_mut().animated = false;
-        arrange(ctx, Some(selmon_id));
+        arrange(ctx, Some(monitor_id));
         ctx.core_mut().behavior_mut().animated = true;
     } else {
-        arrange(ctx, Some(selmon_id));
+        arrange(ctx, Some(monitor_id));
     }
 
     // Raise the newly maximized window above everything else.
-    if ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .maximized_client(&ctx.core().model().clients)
-        == Some(win)
-    {
+    if entered {
         ctx.window_backend().raise_window_visual_only(win);
     }
 }

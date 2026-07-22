@@ -40,20 +40,14 @@ use crate::types::WindowId;
 /// For the Wayland backend the compositor owns the fullscreen geometry and
 /// stacking, so this function just updates the mode and queues a layout.
 pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
-    let Some((mode, monitor_id, old_geo, monitor_rect)) =
-        ctx.core().model().client_view(win).map(|view| {
-            (
-                view.client.mode(),
-                view.client.monitor_id,
-                view.client.old_geo,
-                view.monitor.monitor_rect,
-            )
-        })
-    else {
+    let Some(transition) = ctx.core_mut().model_mut().set_fullscreen(win, fullscreen) else {
         return;
     };
+    if !transition.changed() {
+        return;
+    }
 
-    if fullscreen && !mode.is_fullscreen() {
+    if transition.entered() {
         // ---- Enter fullscreen -----------------------------------------------
 
         // Signal the application (X11-specific atom write).
@@ -66,16 +60,11 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             );
         }
 
-        // Shared: save border width, flip client mode.
-        let outcome = crate::client::mode::set_fullscreen(ctx.core_mut().model_mut(), win, true);
-
-        if let Some(crate::client::mode::FullscreenOutcome::Entered { was_floating }) = outcome
-            && !mode.is_fake_fullscreen()
-        {
-            if !was_floating {
+        if !transition.was_fake_fullscreen() {
+            if !transition.was_floating() {
                 ctx.move_resize(
                     win,
-                    monitor_rect,
+                    transition.monitor_rect(),
                     MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
                 );
             }
@@ -83,14 +72,16 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             // Backend-specific: remove border, enforce geometry, raise.
             if let WmCtx::X11(ctx_x11) = ctx {
                 crate::backend::x11::fullscreen::remove_border(&ctx_x11.x11, win);
-                ctx_x11.x11.configure_window_geometry(win, monitor_rect);
+                ctx_x11
+                    .x11
+                    .configure_window_geometry(win, transition.monitor_rect());
                 ctx_x11.x11.raise_window_visual_only(win);
             }
         }
 
         // Shared: raise the fullscreened window in the monitor z-order.
-        sync_monitor_z_order(ctx, monitor_id);
-    } else if !fullscreen && mode.is_fullscreen() {
+        sync_monitor_z_order(ctx, transition.monitor_id());
+    } else if transition.exited() {
         // ---- Exit fullscreen ------------------------------------------------
 
         // Backend-specific: clear the fullscreen signal and restore border.
@@ -108,14 +99,12 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
             );
         }
 
-        crate::client::mode::set_fullscreen(ctx.core_mut().model_mut(), win, false);
-
         // Shared: restore old geometry and re-layout.
-        if !mode.is_fake_fullscreen() {
-            ctx.move_resize(win, old_geo, MoveResizeOptions::immediate());
-            arrange(ctx, Some(monitor_id));
+        if !transition.was_fake_fullscreen() {
+            ctx.move_resize(win, transition.old_geo(), MoveResizeOptions::immediate());
+            arrange(ctx, Some(transition.monitor_id()));
         } else {
-            sync_monitor_z_order(ctx, monitor_id);
+            sync_monitor_z_order(ctx, transition.monitor_id());
         }
     }
 }

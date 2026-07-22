@@ -51,7 +51,12 @@ pub fn apply_initial_rules(
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
 ) -> InitialRuleOutcome {
-    apply_rules_impl(g, win, props, launch_context, RuleApplication::Initial)
+    let before = rule_state_snapshot(g, win);
+    let placement = apply_rules_impl(g, win, props, launch_context, RuleApplication::Initial);
+    InitialRuleOutcome {
+        changed: before != rule_state_snapshot(g, win),
+        placement,
+    }
 }
 
 fn apply_rules_impl(
@@ -60,8 +65,7 @@ fn apply_rules_impl(
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
     application: RuleApplication,
-) -> InitialRuleOutcome {
-    let before = rule_state_snapshot(g, win);
+) -> InitialRulePlacement {
     let mut placement = InitialRulePlacement::Default;
 
     // Title and an already-established runtime role survive rule refreshes.
@@ -75,7 +79,7 @@ fn apply_rules_impl(
         // not let those rule refreshes retag an existing scratchpad back into
         // a normal window.
         if c.scratchpad.is_some() {
-            return InitialRuleOutcome::default();
+            return InitialRulePlacement::Default;
         }
     }
 
@@ -100,10 +104,7 @@ fn apply_rules_impl(
         {
             client.apply_scratchpad_state(&name, None, restore_tags, monitor_width, monitor_height);
             client.show_as_scratchpad(restore_tags, None);
-            return InitialRuleOutcome {
-                changed: before != rule_state_snapshot(g, win),
-                placement: InitialRulePlacement::Center,
-            };
+            return InitialRulePlacement::Center;
         }
     }
 
@@ -179,10 +180,7 @@ fn apply_rules_impl(
     // --- Clamp tags to the valid tag mask ------------------------------------
     clamp_client_tags(g, win, tag_mask, launch_context);
 
-    InitialRuleOutcome {
-        changed: before != rule_state_snapshot(g, win),
-        placement,
-    }
+    placement
 }
 
 /// Refresh rule-derived metadata after a backend property update.
@@ -193,42 +191,38 @@ fn apply_rules_impl(
 ///
 /// Once a client has been promoted to a scratchpad, later protocol metadata
 /// churn must not retag it back into a normal window.
-fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowProperties) -> bool {
-    let constraints_changed = if let Some(hints) = props.size_hints
-        && let Some(client) = g.model.client_mut(win)
-    {
-        let changed = client.size_hints != hints;
-        client.size_hints = hints;
-        client.size_hints_valid = true;
-        changed
-    } else {
-        false
+fn apply_property_change(
+    g: &mut CoreState,
+    win: WindowId,
+    props: &WindowProperties,
+) -> Option<PropertyUpdateOutcome> {
+    let (before, existing_context) = {
+        let client = g.model.client_mut(win)?;
+        let before = PropertyStateSnapshot::capture(client);
+        if let Some(hints) = props.size_hints {
+            client.size_hints = hints;
+            client.size_hints_valid = true;
+        }
+        (
+            before,
+            LaunchContext {
+                monitor_id: client.monitor_id,
+                tags: client.tags,
+                is_floating: client.base_mode() == BaseClientMode::Floating,
+            },
+        )
     };
-    if let Some(c) = g.model.client_mut(win)
-        && !props.title.is_empty()
-    {
-        c.name = props.title.clone();
-    }
 
-    if g.model.client(win).is_some_and(|c| c.scratchpad.is_some()) {
-        return constraints_changed;
-    }
-
-    let existing_context = g.model.client(win).map(|c| LaunchContext {
-        monitor_id: c.monitor_id,
-        tags: c.tags,
-        is_floating: c.base_mode() == BaseClientMode::Floating,
-    });
-
-    let rules_changed = apply_rules_impl(
+    apply_rules_impl(
         g,
         win,
         props,
-        existing_context,
+        Some(existing_context),
         RuleApplication::PropertyRefresh,
-    )
-    .changed;
-    constraints_changed || rules_changed
+    );
+
+    let after = g.model.client(win).map(PropertyStateSnapshot::capture)?;
+    Some(PropertyUpdateOutcome::between(before, after))
 }
 
 /// Update backend-provided window metadata and queue all derived WM work.
@@ -236,27 +230,15 @@ fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowPropert
 /// Backends should use this entry point rather than applying rules and
 /// remembering layout/bar invalidation independently.
 pub fn update_window_properties(core: &mut CoreCtx<'_>, win: WindowId, props: &WindowProperties) {
-    let previous = core
-        .model()
-        .client(win)
-        .map(|client| (client.name.clone(), client.monitor_id));
-    let layout_changed = apply_property_change(core.state_mut(), win, props);
-    let current = core
-        .model()
-        .client(win)
-        .map(|client| (client.name.clone(), client.monitor_id));
-    let title_changed =
-        previous.as_ref().map(|(title, _)| title) != current.as_ref().map(|(title, _)| title);
+    let Some(outcome) = apply_property_change(core.state_mut(), win, props) else {
+        return;
+    };
 
-    if layout_changed {
-        if let Some((_, monitor_id)) = previous {
-            core.queue_layout_for_monitor(monitor_id);
-        }
-        if let Some((_, monitor_id)) = current {
-            core.queue_layout_for_monitor(monitor_id);
-        }
+    if outcome.layout_changed {
+        core.queue_layout_for_monitor(outcome.previous_monitor);
+        core.queue_layout_for_monitor(outcome.current_monitor);
     }
-    if title_changed || layout_changed {
+    if outcome.bar_changed {
         core.bar.mark_dirty();
     }
 }
@@ -325,6 +307,54 @@ struct RuleStateSnapshot {
     geo: Rect,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+struct PropertyStateSnapshot {
+    rule: RuleStateSnapshot,
+    title: String,
+    size_hints: SizeHints,
+    size_hints_valid: bool,
+}
+
+impl PropertyStateSnapshot {
+    fn capture(c: &crate::types::Client) -> Self {
+        Self {
+            rule: RuleStateSnapshot {
+                mode: c.mode(),
+                is_sticky: c.is_sticky,
+                monitor_id: c.monitor_id,
+                tags: c.tags,
+                geo: c.geo,
+            },
+            title: c.name.clone(),
+            size_hints: c.size_hints,
+            size_hints_valid: c.size_hints_valid,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "the outcome reports required layout and bar invalidation"]
+struct PropertyUpdateOutcome {
+    previous_monitor: crate::types::MonitorId,
+    current_monitor: crate::types::MonitorId,
+    layout_changed: bool,
+    bar_changed: bool,
+}
+
+impl PropertyUpdateOutcome {
+    fn between(before: PropertyStateSnapshot, after: PropertyStateSnapshot) -> Self {
+        let layout_changed = before.rule != after.rule
+            || before.size_hints != after.size_hints
+            || before.size_hints_valid != after.size_hints_valid;
+        Self {
+            previous_monitor: before.rule.monitor_id,
+            current_monitor: after.rule.monitor_id,
+            layout_changed,
+            bar_changed: before.title != after.title || layout_changed,
+        }
+    }
+}
+
 fn rule_state_snapshot(g: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
     let c = g.model.client(win)?;
     Some(RuleStateSnapshot {
@@ -373,8 +403,7 @@ mod tests {
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::{CoreState, LayoutWorkTargets};
     use crate::types::{
-        Client, ClientMode, EdgeDirection, Monitor, MonitorId, Rect, SpecialNext, TagMask,
-        WindowId,
+        Client, ClientMode, EdgeDirection, Monitor, MonitorId, Rect, SpecialNext, TagMask, WindowId,
     };
     use crate::wm::Wm;
 
@@ -404,6 +433,36 @@ mod tests {
 
         assert!(!wm.work.layout.is_pending());
         assert_ne!(wm.bar.update_seq(), bar_seq);
+    }
+
+    #[test]
+    fn first_native_constraint_snapshot_queues_layout_even_when_values_are_default() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(47);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            size_hints_valid: false,
+            ..Default::default()
+        });
+        wm.work.layout.clear();
+
+        let mut ctx = wm.ctx();
+        update_window_properties(
+            ctx.core_mut(),
+            win,
+            &WindowProperties {
+                size_hints: Some(Default::default()),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            wm.work.layout.take_targets(),
+            Some(LayoutWorkTargets::Monitors(vec![monitor_id]))
+        );
+        assert!(wm.core.model.client(win).unwrap().size_hints_valid);
     }
 
     #[test]

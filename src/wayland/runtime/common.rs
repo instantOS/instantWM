@@ -655,11 +655,15 @@ fn handle_map_window(
     let attached = g.model.attach_client(win);
     debug_assert!(attached, "managed Wayland client must have a valid monitor");
 
-    let should_focus = g
-        .model
-        .client_view(win)
-        .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
-    ctx.core_mut().queue_layout_for_client(win);
+    let Some((monitor_id, should_focus)) = g.model.client_view(win).map(|view| {
+        (
+            view.client.monitor_id,
+            view.client.is_visible(view.monitor.selected_tags()),
+        )
+    }) else {
+        return;
+    };
+    ctx.core_mut().queue_layout_for_monitor(monitor_id);
 
     if should_focus {
         state.activate_and_raise_window(win);
@@ -760,59 +764,46 @@ fn handle_update_xwayland_policy(
     is_above: bool,
 ) {
     let mut ctx = wm.ctx();
-    let g = ctx.core_mut().state_mut();
-    if let Some(client) = g.model.client_mut(win) {
-        crate::backend::x11::policy::apply_wm_hints_to_client(client, hints);
-        crate::backend::x11::policy::apply_size_hints_to_client(client, size_hints);
-    }
-
-    crate::client::mode::set_fullscreen(&mut g.model, win, is_fullscreen);
-
-    let layout_changed = if let Some(client) = g.model.client_mut(win) {
-        client.is_hidden = is_hidden;
-
-        if is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
-            client.float_geo = client.geo;
-            client.set_base_mode(crate::types::BaseClientMode::Floating);
-            true
-        } else {
-            false
+    let outcome = crate::backend::x11::policy::apply_xwayland_policy(
+        ctx.core_mut().model_mut(),
+        win,
+        crate::backend::x11::policy::XWaylandPolicyUpdate {
+            hints,
+            size_hints,
+            is_fullscreen,
+            is_hidden,
+            is_above,
+        },
+    );
+    if let Some(outcome) = outcome {
+        if outcome.layout_changed() {
+            ctx.core_mut()
+                .queue_layout_for_monitor(outcome.monitor_id());
         }
-    } else {
-        false
-    };
-    if layout_changed {
-        ctx.core_mut().queue_layout_for_client(win);
+        if outcome.bar_changed() {
+            ctx.request_bar_update();
+        }
     }
 }
 
 fn handle_set_maximized(wm: &mut Wm, win: crate::types::WindowId, maximized: bool) {
     let mut ctx = wm.ctx();
     if let crate::contexts::WmCtx::Wayland(ctx_wayland) = &mut ctx {
-        let work_rect = ctx_wayland
-            .core
-            .model()
-            .client_view(win)
-            .map(|view| view.monitor.work_rect());
-        let outcome =
-            crate::client::mode::set_maximized(ctx_wayland.core.model_mut(), win, maximized);
-        if maximized {
-            if let Some(work_rect) = work_rect {
+        let outcome = ctx_wayland.core.model_mut().set_maximized(win, maximized);
+        if let Some(transition) = outcome {
+            if transition.entered() {
                 crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
                     win,
-                    work_rect,
+                    transition.work_rect(),
+                    crate::geometry::MoveResizeOptions::hinted_immediate(false),
+                );
+            } else if transition.exited() {
+                crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
+                    win,
+                    transition.restore_rect(),
                     crate::geometry::MoveResizeOptions::hinted_immediate(false),
                 );
             }
-        } else if let (Some(crate::client::mode::MaximizedOutcome::Exited { .. }), Some(client)) =
-            (outcome, ctx_wayland.core.model().client(win))
-        {
-            let restore_rect = client.float_geo;
-            crate::contexts::WmCtx::Wayland(ctx_wayland.reborrow()).move_resize(
-                win,
-                restore_rect,
-                crate::geometry::MoveResizeOptions::hinted_immediate(false),
-            );
         }
     }
 }
@@ -858,6 +849,8 @@ mod tests {
             mode: ClientMode::Tiling,
             ..Client::default()
         });
+        wm.work.layout.clear();
+        let bar_seq = wm.bar.update_seq();
 
         handle_update_xwayland_policy(&mut wm, win, None, None, true, false, true);
 
@@ -866,5 +859,13 @@ mod tests {
         assert_eq!(client.base_mode(), BaseClientMode::Floating);
         assert_eq!(client.mode().restored(), ClientMode::Floating);
         assert_eq!(client.float_geo, geo);
+        assert!(wm.work.layout.is_pending());
+        assert_ne!(wm.bar.update_seq(), bar_seq);
+
+        wm.work.layout.clear();
+        let bar_seq = wm.bar.update_seq();
+        handle_update_xwayland_policy(&mut wm, win, None, None, true, false, true);
+        assert!(!wm.work.layout.is_pending());
+        assert_eq!(wm.bar.update_seq(), bar_seq);
     }
 }

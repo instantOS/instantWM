@@ -287,7 +287,8 @@ impl PointerOps for WaylandBackend {
 
 impl crate::backend::CursorOps for crate::contexts::WmCtxWayland<'_> {
     fn apply_cursor_style(&mut self, style: crate::types::AltCursor) {
-        self.wayland.set_cursor_icon_override(style.to_wayland_icon());
+        self.wayland
+            .set_cursor_icon_override(style.to_wayland_icon());
     }
 }
 
