@@ -1,8 +1,8 @@
 [Desktop Entry]
-Encoding=UTF-8
 Name=instantWM (Wayland Debug)
 Comment=instantOS window manager (Wayland) with verbose logging to ~/.instantwm.log
 Exec=instantwm-debug
+TryExec=instantwm-debug
 DesktopNames=instantwm
 Icon=instantwm
 Type=Application

@@ -1,4 +1,5 @@
 use std::env;
+use std::io::ErrorKind;
 use std::process::Command;
 
 pub fn run_autostart() {
@@ -6,22 +7,12 @@ pub fn run_autostart() {
         return;
     }
 
-    // Check if ins exists, warn if not
-    let check = Command::new("command").arg("-v").arg("ins").output();
-
-    if let Ok(output) = check {
-        if !output.status.success() {
-            eprintln!("instantwm: 'ins' command not found, please install instantutils");
-            return;
-        }
-    } else {
-        eprintln!("instantwm: failed to check for 'ins' command");
-        return;
-    }
-
     // Run ins autostart in the background
     match Command::new("ins").arg("autostart").spawn() {
         Ok(_) => {}
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            eprintln!("instantwm: 'ins' command not found, please install ins from instantCLI");
+        }
         Err(e) => {
             eprintln!("instantwm: failed to run ins autostart: {}", e);
         }

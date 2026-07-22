@@ -67,11 +67,11 @@ package() {
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
     # X11 session
+    install -Dm755 scripts/startinstantos "$pkgdir/usr/bin/startinstantos"
     install -Dm644 utils/instantwm-x11.desktop "$pkgdir/usr/share/xsessions/instantwm.desktop"
 
     # Wayland session
     install -Dm644 utils/instantwm-wayland.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-wayland.desktop"
-    install -Dm755 scripts/instantwm-wayland.sh "$pkgdir/usr/bin/instantwm-wayland"
 
     # Wayland debug session
     install -Dm644 utils/instantwm-wayland-debug.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-debug.desktop"

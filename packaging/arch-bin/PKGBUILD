@@ -57,9 +57,9 @@ package() {
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 
+    install -Dm755 scripts/startinstantos "$pkgdir/usr/bin/startinstantos"
     install -Dm644 utils/instantwm-x11.desktop "$pkgdir/usr/share/xsessions/instantwm.desktop"
     install -Dm644 utils/instantwm-wayland.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-wayland.desktop"
-    install -Dm755 scripts/instantwm-wayland.sh "$pkgdir/usr/bin/instantwm-wayland"
 
     install -Dm644 utils/instantwm-wayland-debug.desktop "$pkgdir/usr/share/wayland-sessions/instantwm-debug.desktop"
     install -Dm755 scripts/instantwm-debug.sh "$pkgdir/usr/bin/instantwm-debug"

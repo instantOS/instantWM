@@ -64,15 +64,12 @@ if [ -f "$INSTANTWMCTL_BIN" ]; then
     $SUPERTOOL install -m 755 "$INSTANTWMCTL_BIN" "${DESTDIR}${PREFIX}/bin/instantwmctl"
 fi
 
-# startinstantos session script
-$SUPERTOOL install -m 755 "$SCRIPT_DIR/startinstantos" "${DESTDIR}${PREFIX}/bin/startinstantos"
-
 # X11 display manager session
+$SUPERTOOL install -m 755 "$SCRIPT_DIR/startinstantos" "${DESTDIR}${PREFIX}/bin/startinstantos"
 $SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-x11.desktop" "${DESTDIR}/usr/share/xsessions/instantwm.desktop"
 
 # Wayland display manager session
-$SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
-$SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-wayland.sh" "${DESTDIR}${PREFIX}/bin/instantwm-wayland"
+$SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland.desktop" "${DESTDIR}/usr/share/wayland-sessions/instantwm-wayland.desktop"
 
 # Wayland debug session (logs to ~/.instantwm.log)
 $SUPERTOOL install -m 755 "$SCRIPT_DIR/instantwm-debug.sh" "${DESTDIR}${PREFIX}/bin/instantwm-debug"
@@ -83,6 +80,6 @@ $SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-portals.conf" "${DES
 
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
-echo "Wayland session: ${DESTDIR}/usr/share/wayland-sessions/instantwm.desktop"
+echo "Wayland session: ${DESTDIR}/usr/share/wayland-sessions/instantwm-wayland.desktop"
 echo "Wayland debug:   ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 echo "Portal config:   ${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
