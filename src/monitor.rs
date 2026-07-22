@@ -534,7 +534,10 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
     }
 
     let template = ctx.core().config().tag_template.clone();
-    let (show_bar, top_bar) = (ctx.core().config().bar.show, ctx.core().config().bar.top);
+    let (show_bar, bar_position) = (
+        ctx.core().config().bar.show,
+        ctx.core().config().bar.position,
+    );
 
     let layout_size = output_layout_extent(&outputs);
     let mut changed = sync_runtime_screen_size(ctx.core_mut().config_mut(), layout_size);
@@ -570,7 +573,7 @@ fn sync_monitors_from_outputs(ctx: &mut WmCtx, outputs: Vec<BackendOutputInfo>) 
             None => {
                 changed = true;
                 let id = ctx.core_mut().state_mut().model.monitors.allocate_id();
-                let mut m = Monitor::new_with_values(show_bar, top_bar);
+                let mut m = Monitor::new_with_values(show_bar, bar_position);
                 m.monitor_id = id;
                 m.init_tags(&template);
                 apply_output_to_monitor(&mut m, i, output, bh, hp, sm);
@@ -679,7 +682,7 @@ fn init_single_monitor(ctx: &mut WmCtx, sw: i32, h: i32) -> bool {
     let template = ctx.core_mut().config_mut().tag_template.clone();
     let mut mon = Monitor::new_with_values(
         ctx.core_mut().config_mut().bar.show,
-        ctx.core_mut().config_mut().bar.top,
+        ctx.core_mut().config_mut().bar.position,
     );
     mon.init_tags(&template);
     let id = ctx.core_mut().model_mut().monitors.push(mon);

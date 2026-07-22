@@ -33,7 +33,7 @@ pub mod keysyms;
 pub mod rules;
 
 // Re-export modifier key constants (used by wayland/common.rs via crate::config::*).
-pub use crate::types::{SchemeClose, SchemeHover, SchemeTag, SchemeWin};
+pub use crate::types::{EdgeDirection, SchemeClose, SchemeHover, SchemeTag, SchemeWin};
 pub use keybindings::{CONTROL, MOD1, MODKEY, SHIFT};
 
 use commands::{ExternalCommands, default_commands};
@@ -142,9 +142,8 @@ pub struct Config {
     pub show_systray: bool,
     /// Whether to show the bar by default.
     pub show_bar: bool,
-    /// `true` = bar at top, `false` = bar at bottom.
-    /// TODO: this should probably be bar_position and have an enum with Top and Bottom variants
-    pub top_bar: bool,
+    /// Position of the status bar (top, bottom, left, right).
+    pub bar_position: EdgeDirection,
     /// Override bar height (0 = derive from font metrics).
     pub bar_height: i32,
 
@@ -317,7 +316,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         systray_pinning_fail_first: true,
         show_systray: true,
         show_bar: true,
-        top_bar: true,
+        bar_position: EdgeDirection::Top,
         bar_height: theme.bar_height as i32,
 
         // --- Tiling ---

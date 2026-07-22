@@ -118,7 +118,7 @@ fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
         available_rect: Rect::new(100, 50, 800, 600),
         bar_height: 30,
         show_bar: true,
-        top_bar: true,
+        bar_position: EdgeDirection::Top,
         ..Monitor::default()
     };
     monitor.set_selected_tags(tags);
@@ -129,7 +129,7 @@ fn visible_content_rect_tracks_bar_edge_and_fullscreen_visibility() {
         Rect::new(100, 80, 800, 570)
     );
 
-    monitor.top_bar = false;
+    monitor.bar_position = EdgeDirection::Bottom;
     assert_eq!(
         monitor.visible_content_rect(&clients),
         Rect::new(100, 50, 800, 570)
@@ -157,7 +157,7 @@ fn visible_content_rect_preserves_external_exclusive_area() {
         available_rect: Rect::new(100, 90, 800, 560),
         bar_height: 30,
         show_bar: true,
-        top_bar: true,
+        bar_position: EdgeDirection::Top,
         ..Monitor::default()
     };
 

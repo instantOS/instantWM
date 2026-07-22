@@ -369,10 +369,10 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
 
 fn sync_bar_config_to_monitors(wm: &mut Wm) {
     let show_bar = wm.core.config.bar.show;
-    let top_bar = wm.core.config.bar.top;
+    let bar_position = wm.core.config.bar.position;
     for monitor in wm.core.monitors_iter_all_mut() {
         monitor.show_bar = show_bar;
-        monitor.top_bar = top_bar;
+        monitor.bar_position = bar_position;
         for state in monitor.per_tag.values_mut() {
             state.show_bar = show_bar;
         }
@@ -658,8 +658,9 @@ mod tests {
 
     #[test]
     fn bar_set_recomputes_monitor_bar_geometry() {
+        use crate::types::EdgeDirection;
         let mut wm = test_wm();
-        let mut monitor = Monitor::new_with_values(true, true);
+        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
@@ -677,8 +678,9 @@ mod tests {
 
     #[test]
     fn bar_show_and_top_apply_to_existing_monitor() {
+        use crate::types::EdgeDirection;
         let mut wm = test_wm();
-        let mut monitor = Monitor::new_with_values(true, true);
+        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
         monitor.monitor_rect = Rect::new(0, 0, 800, 600);
         monitor.available_rect = monitor.monitor_rect;
         wm.core.model.monitors.push(monitor);
@@ -693,13 +695,16 @@ mod tests {
         assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 600));
 
         assert!(matches!(do_set(&mut wm, "bar.show", "true"), Response::Ok));
-        assert!(matches!(do_set(&mut wm, "bar.top", "false"), Response::Ok));
+        assert!(matches!(
+            do_set(&mut wm, "bar.position", "bottom"),
+            Response::Ok
+        ));
         let monitor = wm
             .core
             .monitor(wm.core.model.monitors.first().unwrap())
             .unwrap();
         assert!(monitor.show_bar);
-        assert!(!monitor.top_bar);
+        assert_eq!(monitor.bar_position, EdgeDirection::Bottom);
         assert_eq!(monitor.bar_y(), 568);
         assert_eq!(monitor.work_rect(), Rect::new(0, 0, 800, 568));
     }

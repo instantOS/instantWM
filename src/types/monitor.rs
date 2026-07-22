@@ -10,7 +10,7 @@ use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::client::{Client, ClientListIter, ClientStackIter, TiledClientInfo};
 use crate::types::geometry::{Point, Rect};
-use crate::types::input::StackDirection;
+use crate::types::input::{EdgeDirection, StackDirection};
 
 mod tag_state;
 mod z_order;
@@ -55,8 +55,8 @@ pub struct Monitor {
     pub titleoffset: u32,
     /// Whether to show the bar.
     pub show_bar: bool,
-    /// Whether the bar is at the top.
-    pub top_bar: bool,
+    /// Position of the status bar on this monitor.
+    pub bar_position: EdgeDirection,
     /// Bar window handle.
     pub bar_win: WindowId,
     /// Whether to hide empty inactive tags from the bar.
@@ -104,7 +104,7 @@ impl Default for Monitor {
             activeoffset: 0,
             titleoffset: 0,
             show_bar: true,
-            top_bar: true,
+            bar_position: EdgeDirection::Top,
             bar_win: WindowId::default(),
             showtags: false,
             prev_tag: None,
@@ -157,10 +157,10 @@ impl Monitor {
     /// Create a new monitor with specific configuration values.
     ///
     /// Note: tags must be initialized separately via `init_tags()`.
-    pub fn new_with_values(show_bar: bool, top_bar: bool) -> Self {
+    pub fn new_with_values(show_bar: bool, bar_position: EdgeDirection) -> Self {
         Self {
             show_bar,
-            top_bar,
+            bar_position,
             per_tag: HashMap::new(),
             tag_set: [TagMask::single(1).unwrap(), TagMask::single(1).unwrap()],
             prev_tag: Some(1),
@@ -510,7 +510,7 @@ impl Monitor {
     /// Returns true when an exclusive layer-shell surface reserves space on the
     /// same edge where instantWM would place its own bar.
     pub fn has_external_bar_on_internal_bar_edge(&self) -> bool {
-        if self.top_bar {
+        if self.bar_position == EdgeDirection::Top {
             self.available_rect.y > self.monitor_rect.y
         } else {
             self.available_rect.y + self.available_rect.h
@@ -590,12 +590,12 @@ impl Monitor {
     pub fn bar_y(&self) -> i32 {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
         if self.shows_bar() {
-            if self.top_bar {
+            if self.bar_position == EdgeDirection::Top {
                 self.available_rect.y
             } else {
                 self.available_rect.y + self.available_rect.h - safe_bh
             }
-        } else if self.top_bar {
+        } else if self.bar_position == EdgeDirection::Top {
             self.available_rect.y - safe_bh
         } else {
             self.available_rect.y + self.available_rect.h
@@ -624,7 +624,7 @@ impl Monitor {
         let safe_bh = self.bar_height.min(self.available_rect.h.max(0));
         let mut rect = Rect::new(self.available_rect.x, 0, self.available_rect.w.max(1), 0);
         if bar_visible {
-            rect.y = if self.top_bar {
+            rect.y = if self.bar_position == EdgeDirection::Top {
                 self.available_rect.y + safe_bh
             } else {
                 self.available_rect.y

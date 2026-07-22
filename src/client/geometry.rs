@@ -283,12 +283,12 @@ fn calculate_scaled_geometry(
 mod tests {
     use super::{FloatingPlacementKind, resolve_floating_placement, sane_floating_spawn_rect};
     use crate::core_state::CoreState;
-    use crate::types::{Client, Monitor, MonitorId, Rect, TagMask, WindowId};
+    use crate::types::{Client, EdgeDirection, Monitor, MonitorId, Rect, TagMask, WindowId};
 
     fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> CoreState {
         let mut globals = CoreState::default();
 
-        let mut monitor = Monitor::new_with_values(true, true);
+        let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
         monitor.monitor_rect = Rect::new(work_rect.x, work_rect.y, work_rect.w, work_rect.h);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
