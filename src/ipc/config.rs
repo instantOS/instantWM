@@ -355,10 +355,11 @@ fn apply_side_effects(wm: &mut Wm, section: RuntimeConfigSection) {
             crate::layouts::manager::arrange(&mut ctx, None);
         }
         RuntimeConfigSection::Colors | RuntimeConfigSection::Fonts => recolor(wm),
-        // TODO: cursor.size/theme needs the Wayland CursorManager to be
-        // rebuilt before it takes effect. Until that lands, treat it as a
-        // bar-only refresh and rely on the next reload for the real change.
-        RuntimeConfigSection::Systray | RuntimeConfigSection::Cursor => {
+        RuntimeConfigSection::Cursor => {
+            wm.work.queue_cursor_config_apply();
+            wm.bar.mark_dirty();
+        }
+        RuntimeConfigSection::Systray => {
             wm.bar.mark_dirty();
         }
         RuntimeConfigSection::Input
@@ -460,6 +461,7 @@ mod tests {
             Response::Ok
         ));
         assert_eq!(wm.core.config.cursor.theme, "my-cursor");
+        assert!(wm.work.cursor_config);
 
         match do_get(&mut wm, "layout.inner_gap") {
             Response::ConfigValue(v) => assert_eq!(v, "42"),

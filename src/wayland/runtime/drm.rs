@@ -152,7 +152,7 @@ pub fn run() -> ! {
     );
     state.attach_wm(&mut wm);
 
-    let cursor_manager = init_cursor_manager(&state.cursor_config);
+    let mut cursor_manager = init_cursor_manager(&state.cursor_config);
     let output_manager = Arc::new(Mutex::new(create_output_manager(
         drm_device,
         &renderer,
@@ -281,7 +281,7 @@ pub fn run() -> ! {
         &mut loop_state,
         &mut output_surfaces,
         &mut renderer,
-        &cursor_manager,
+        &mut cursor_manager,
         &mut ipc_server,
         &mut render_failures,
         start_time,
@@ -295,11 +295,27 @@ pub fn run() -> ! {
 /// Initialize cursor manager from environment or defaults.
 fn init_cursor_manager(config: &CursorConfig) -> CursorManager {
     let cursor_theme = env::var("XCURSOR_THEME").unwrap_or_else(|_| config.theme.clone());
-    let cursor_size = env::var("XCURSOR_SIZE")
+    let configured_size = env::var("XCURSOR_SIZE")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(config.size);
-    CursorManager::new(&cursor_theme, cursor_size as u8)
+    CursorManager::new(&cursor_theme, cursor_size(configured_size))
+}
+
+fn cursor_size(size: u32) -> u8 {
+    size.clamp(1, u8::MAX as u32) as u8
+}
+
+#[cfg(test)]
+mod cursor_config_tests {
+    use super::cursor_size;
+
+    #[test]
+    fn cursor_size_stays_in_xcursor_range() {
+        assert_eq!(cursor_size(0), 1);
+        assert_eq!(cursor_size(24), 24);
+        assert_eq!(cursor_size(512), u8::MAX);
+    }
 }
 
 /// Compute total screen dimensions from output surfaces.
@@ -409,7 +425,7 @@ fn run_event_loop(
     loop_state: &mut DrmLoopState,
     output_surfaces: &mut [OutputSurfaceEntry],
     renderer: &mut GlesRenderer,
-    cursor_manager: &CursorManager,
+    cursor_manager: &mut CursorManager,
     ipc_server: &mut Option<crate::ipc::IpcServer>,
     render_failures: &mut HashMap<crtc::Handle, u32>,
     start_time: Instant,
@@ -464,6 +480,14 @@ fn run_event_loop(
                     &mut state.runtime.tracked_devices,
                     &wm.core.config.input,
                 );
+            }
+
+            if wm.work.cursor_config {
+                wm.work.cursor_config = false;
+                let cursor = &wm.core.config.cursor;
+                cursor_manager.reload(&cursor.theme, cursor_size(cursor.size));
+                state.cursor_config = cursor.clone();
+                loop_state.mark_all_dirty();
             }
 
             while let Ok(led_state) = led_state_rx.try_recv() {

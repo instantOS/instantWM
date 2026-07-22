@@ -722,6 +722,8 @@ pub struct PendingWork {
     pub input_config: bool,
     /// Whether monitor configuration has changed and needs to be re-applied.
     pub monitor_config: bool,
+    /// Whether the Wayland cursor theme or size needs to be reloaded.
+    pub cursor_config: bool,
     /// Pending layout work.
     pub layout: PendingLayoutWork,
 }
@@ -733,6 +735,7 @@ impl Default for PendingWork {
         Self {
             input_config: false,
             monitor_config: false,
+            cursor_config: false,
             layout,
         }
     }
@@ -747,6 +750,11 @@ impl PendingWork {
     /// Queue applying the input configuration.
     pub fn queue_input_config_apply(&mut self) {
         self.input_config = true;
+    }
+
+    /// Queue reloading the Wayland cursor theme and size.
+    pub fn queue_cursor_config_apply(&mut self) {
+        self.cursor_config = true;
     }
 }
 

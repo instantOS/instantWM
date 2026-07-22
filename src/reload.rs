@@ -11,6 +11,7 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     wm.core.normalize_current_mode();
     wm.work.queue_monitor_config_apply();
     wm.work.queue_input_config_apply();
+    wm.work.queue_cursor_config_apply();
     wm.bar.mark_dirty();
 
     crate::runtime::init_keyboard_layout(wm);
@@ -80,6 +81,7 @@ mod tests {
 
         assert!(wm.work.monitor_config);
         assert!(wm.work.input_config);
+        assert!(wm.work.cursor_config);
     }
 
     #[test]
