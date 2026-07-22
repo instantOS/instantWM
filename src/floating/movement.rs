@@ -9,7 +9,7 @@ use crate::types::*;
 ///
 /// Returns whether its geometry changed. A `false` horizontal result lets the
 /// key dispatcher continue the same movement onto an adjacent tag.
-pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
+pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
     let Some(view) = ctx.core().model().client_view(win) else {
         return false;
     };

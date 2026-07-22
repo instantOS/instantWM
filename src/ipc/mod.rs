@@ -36,6 +36,41 @@ struct PendingClient {
     last_activity: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PendingRead {
+    Pending,
+    Complete,
+    RequestTooLarge,
+    Failed,
+}
+
+/// Drain every byte currently available from one nonblocking IPC client.
+///
+/// `instantwmctl` writes the complete request and closes its write half before
+/// waiting for a response. Reading through EOF in one event-loop tick is
+/// therefore part of the IPC scheduling contract: stopping after the first
+/// successful `read` would require an unrelated display event to wake the loop
+/// again, which is especially visible on an otherwise-idle X11 session.
+fn drain_pending_client(client: &mut PendingClient) -> PendingRead {
+    let mut chunk = [0u8; 1024];
+    loop {
+        match client.stream.read(&mut chunk) {
+            Ok(0) => return PendingRead::Complete,
+            Ok(n) => {
+                client.last_activity = Instant::now();
+                client.buffer.extend_from_slice(&chunk[..n]);
+                if client.buffer.len() > 1024 * 1024 {
+                    return PendingRead::RequestTooLarge;
+                }
+            }
+            Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
+                return PendingRead::Pending;
+            }
+            Err(_) => return PendingRead::Failed,
+        }
+    }
+}
+
 fn prune_idle_clients(clients: &mut Vec<PendingClient>, now: Instant) {
     clients
         .retain(|client| now.duration_since(client.last_activity) <= PENDING_CLIENT_IDLE_TIMEOUT);
@@ -86,10 +121,8 @@ impl IpcServer {
         let mut handled = false;
         let mut i = 0;
         while i < self.clients.len() {
-            let client = &mut self.clients[i];
-            let mut chunk = [0u8; 1024];
-            match client.stream.read(&mut chunk) {
-                Ok(0) => {
+            match drain_pending_client(&mut self.clients[i]) {
+                PendingRead::Complete => {
                     // Client closed their write half (EOF). Process the request.
                     let client = self.clients.remove(i);
                     if self.process_client_request(client, wm) {
@@ -97,22 +130,12 @@ impl IpcServer {
                     }
                     // Don't increment i, as we removed the current element.
                 }
-                Ok(n) => {
-                    client.last_activity = Instant::now();
-                    client.buffer.extend_from_slice(&chunk[..n]);
-                    // Limit buffer size to prevent memory exhaustion (e.g. 1MB)
-                    if client.buffer.len() > 1024 * 1024 {
-                        let mut client = self.clients.remove(i);
-                        let _ =
-                            send_response(&mut client.stream, &Response::err("request too large"));
-                    } else {
-                        i += 1;
-                    }
+                PendingRead::Pending => i += 1,
+                PendingRead::RequestTooLarge => {
+                    let mut client = self.clients.remove(i);
+                    let _ = send_response(&mut client.stream, &Response::err("request too large"));
                 }
-                Err(err) if err.kind() == io::ErrorKind::WouldBlock => {
-                    i += 1;
-                }
-                Err(_) => {
+                PendingRead::Failed => {
                     self.clients.remove(i);
                 }
             }
@@ -253,6 +276,11 @@ fn handle_command(wm: &mut Wm, cmd: IpcCommand) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use std::io::Write;
+    use std::net::Shutdown;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     #[test]
     fn idle_pending_clients_are_pruned_without_dropping_active_clients() {
@@ -276,5 +304,48 @@ mod tests {
 
         assert_eq!(clients.len(), 1);
         assert_eq!(clients[0].last_activity, now);
+    }
+
+    #[test]
+    fn complete_client_request_is_drained_through_eof_in_one_tick() {
+        let (server_stream, mut client_stream) = UnixStream::pair().unwrap();
+        server_stream.set_nonblocking(true).unwrap();
+        let request = vec![0x5a; 4096];
+        client_stream.write_all(&request).unwrap();
+        client_stream.shutdown(Shutdown::Write).unwrap();
+        let mut client = PendingClient {
+            stream: server_stream,
+            buffer: Vec::new(),
+            last_activity: Instant::now(),
+        };
+
+        assert_eq!(drain_pending_client(&mut client), PendingRead::Complete);
+        assert_eq!(client.buffer, request);
+    }
+
+    #[test]
+    fn one_server_tick_accepts_and_handles_a_complete_request() {
+        static NEXT_SOCKET: AtomicU64 = AtomicU64::new(0);
+        let socket_path = std::env::temp_dir().join(format!(
+            "instantwm-ipc-test-{}-{}.sock",
+            std::process::id(),
+            NEXT_SOCKET.fetch_add(1, Ordering::Relaxed)
+        ));
+        let listener = UnixListener::bind(&socket_path).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut server = IpcServer {
+            listener,
+            path: socket_path,
+            clients: Vec::new(),
+        };
+        let mut stream = UnixStream::connect(&server.path).unwrap();
+        let request = IpcRequest::new(IpcCommand::GetTheme);
+        let bytes = bincode::encode_to_vec(&request, bincode::config::standard()).unwrap();
+        stream.write_all(&bytes).unwrap();
+        stream.shutdown(Shutdown::Write).unwrap();
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+
+        assert!(server.process_pending(&mut wm));
+        assert!(server.clients.is_empty());
     }
 }

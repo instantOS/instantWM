@@ -4,7 +4,7 @@ use crate::client::{kill_client, shut_kill, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    key_resize, moveresize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    key_resize, key_move, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
     scratchpad_toggle, set_scratchpad_direction, toggle_floating,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack, focus_stack_neighbor};
@@ -145,7 +145,7 @@ fn move_horizontal(ctx: &mut WmCtx<'_>, direction: HorizontalDirection) {
     let Some(win) = ctx.core().model().selected_win() else {
         return;
     };
-    if !moveresize(ctx, win, direction.into()) {
+    if !key_move(ctx, win, direction.into()) {
         let _ = move_client_follow_view(ctx, direction);
     }
 }
@@ -183,8 +183,8 @@ define_named_actions!(
     KeyResizeDown => { name: "key_resize_down", arg_example: None, doc: "shrink a tiled window vertically or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, VerticalDirection::Down.into()); } } },
     KeyResizeLeft => { name: "key_resize_left", arg_example: None, doc: "shrink a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Left) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Left.into()); } } },
     KeyResizeRight => { name: "key_resize_right", arg_example: None, doc: "grow a tiled window horizontally or resize a floating window", run: |ctx, _args| { if !resize_tree(ctx, Side::Right) && let Some(win) = ctx.core().model().selected_win() { key_resize(ctx, win, HorizontalDirection::Right.into()); } } },
-    KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "swap a tiled window upward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Up.into()); } } },
-    KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "swap a tiled window downward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { moveresize(ctx, win, VerticalDirection::Down.into()); } } },
+    KeyMoveUp => { name: "key_move_up", arg_example: None, doc: "swap a tiled window upward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Top) && let Some(win) = ctx.core().model().selected_win() { key_move(ctx, win, VerticalDirection::Up.into()); } } },
+    KeyMoveDown => { name: "key_move_down", arg_example: None, doc: "swap a tiled window downward or move a floating window", run: |ctx, _args| { if !swap_tree_neighbor(ctx, Side::Bottom) && let Some(win) = ctx.core().model().selected_win() { key_move(ctx, win, VerticalDirection::Down.into()); } } },
     KeyMoveLeft => { name: "key_move_left", arg_example: None, doc: "move a window left, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Left); } },
     KeyMoveRight => { name: "key_move_right", arg_example: None, doc: "move a window right, carrying it to the adjacent tag at the screen edge", run: |ctx, _args| { move_horizontal(ctx, HorizontalDirection::Right); } },
     TreeGrow => { name: "tree_grow", arg_example: None, doc: "grow the focused window along its most local split", run: |ctx, _args| { resize_tree_smart(ctx, true); } },
