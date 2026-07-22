@@ -46,6 +46,9 @@ pub struct X11RuntimeConfig {
     pub cursors: [Option<Cursor>; 10],
     /// Last cursor style applied to the X11 root cursor (caching to avoid redundant requests).
     pub last_x11_cursor: Option<crate::types::AltCursor>,
+    /// Cursor and event mask owned by the current active pointer grab.
+    /// `None` means root-window cursor updates are sufficient.
+    pub(crate) active_pointer_grab: Option<ActivePointerGrab>,
     /// Reused override-redirect windows forming the manual-layout preview.
     pub layout_preview_windows: Option<[Window; 4]>,
     /// Current visual rectangle and optional transition for those windows.
@@ -72,12 +75,19 @@ impl Default for X11RuntimeConfig {
             status_scheme: StatusScheme::default(),
             cursors: [const { None }; 10],
             last_x11_cursor: None,
+            active_pointer_grab: None,
             layout_preview_windows: None,
             layout_preview_animation: crate::animation::LayoutPreviewAnimation::default(),
             window_animations: crate::animation::WindowAnimations::new(),
             original_border_widths: HashMap::new(),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ActivePointerGrab {
+    pub event_mask: x11rb::protocol::xproto::EventMask,
+    pub cursor: crate::types::AltCursor,
 }
 
 impl X11RuntimeConfig {

@@ -17,7 +17,7 @@
 //!         _                => {}
 //!     }
 //! }
-//! ungrab_ctx(ctx);
+//! ungrab(&x11, x11_runtime);
 //! ```
 
 use crate::backend::BackendEvent;
@@ -39,26 +39,15 @@ use x11rb::protocol::xproto::*;
 /// mode on the root window with no event-window confinement.
 ///
 /// After a successful grab, use [`wait_event`] to poll events inside the
-/// loop and [`ungrab_ctx`] to release the grab when done.
+/// loop and [`ungrab`] to release the grab when done.
 pub fn grab_pointer(
     x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
+    x11_runtime: &mut X11RuntimeConfig,
     cursor: AltCursor,
 ) -> bool {
-    let cursor_index = cursor.to_x11_index();
-    let xcursor = x11_runtime
-        .cursors
-        .get(cursor_index)
-        .and_then(|c| c.as_ref())
-        .map(|c| c.cursor as u32)
-        .unwrap_or(x11rb::NONE);
-
-    grab_pointer_impl(
-        x11.conn,
-        x11_runtime.root,
-        xcursor,
-        EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION,
-    )
+    let event_mask =
+        EventMask::BUTTON_PRESS | EventMask::BUTTON_RELEASE | EventMask::POINTER_MOTION;
+    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask)
 }
 
 /// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
@@ -67,8 +56,21 @@ pub fn grab_pointer(
 /// Escape can abort the hover-resize wait before the user clicks.
 pub fn grab_pointer_with_keys(
     x11: &X11BackendRef,
-    x11_runtime: &X11RuntimeConfig,
+    x11_runtime: &mut X11RuntimeConfig,
     cursor: AltCursor,
+) -> bool {
+    let event_mask = EventMask::BUTTON_PRESS
+        | EventMask::BUTTON_RELEASE
+        | EventMask::POINTER_MOTION
+        | EventMask::KEY_PRESS;
+    grab_pointer_with_mask(x11, x11_runtime, cursor, event_mask)
+}
+
+fn grab_pointer_with_mask(
+    x11: &X11BackendRef,
+    x11_runtime: &mut X11RuntimeConfig,
+    cursor: AltCursor,
+    event_mask: EventMask,
 ) -> bool {
     let cursor_index = cursor.to_x11_index();
     let xcursor = x11_runtime
@@ -78,15 +80,12 @@ pub fn grab_pointer_with_keys(
         .map(|c| c.cursor as u32)
         .unwrap_or(x11rb::NONE);
 
-    grab_pointer_impl(
-        x11.conn,
-        x11_runtime.root,
-        xcursor,
-        EventMask::BUTTON_PRESS
-            | EventMask::BUTTON_RELEASE
-            | EventMask::POINTER_MOTION
-            | EventMask::KEY_PRESS,
-    )
+    let grabbed = grab_pointer_impl(x11.conn, x11_runtime.root, xcursor, event_mask);
+    if grabbed {
+        x11_runtime.active_pointer_grab =
+            Some(crate::backend::x11::ActivePointerGrab { event_mask, cursor });
+    }
+    grabbed
 }
 
 fn grab_pointer_impl<C: Connection>(
@@ -125,14 +124,15 @@ pub fn wait_event(x11: &X11BackendRef) -> Option<x11rb::protocol::Event> {
     }
 }
 
-/// Release an active pointer grab via context.
+/// Release an active pointer grab and clear its runtime-owned cursor state.
 ///
 /// Always call this when a drag/resize loop ends, even on early returns,
 /// to avoid leaving the pointer permanently grabbed.
 #[inline]
-pub fn ungrab(x11: &X11BackendRef) {
+pub fn ungrab(x11: &X11BackendRef, x11_runtime: &mut X11RuntimeConfig) {
     let _ = ungrab_pointer(x11.conn, CURRENT_TIME);
     let _ = x11.conn.flush();
+    x11_runtime.active_pointer_grab = None;
 }
 
 fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
@@ -248,7 +248,7 @@ where
                             // the compressed motion *now*, then process this next_evt.
                             if !call_on_event(&mut on_event, ctx, &event) {
                                 pump_deferred_work(ctx);
-                                ungrab(&ctx.x11);
+                                ungrab(&ctx.x11, ctx.x11_runtime);
                                 return None;
                             }
                             pump_deferred_work(ctx);
@@ -258,12 +258,12 @@ where
                                 && br.detail == btn.to_x11_detail()
                             {
                                 pump_deferred_work(ctx);
-                                ungrab(&ctx.x11);
+                                ungrab(&ctx.x11, ctx.x11_runtime);
                                 return Some(u16::from(br.state) as u32);
                             }
                             if !call_on_event(&mut on_event, ctx, &next_evt) {
                                 pump_deferred_work(ctx);
-                                ungrab(&ctx.x11);
+                                ungrab(&ctx.x11, ctx.x11_runtime);
                                 return None;
                             }
                             pump_deferred_work(ctx);
@@ -301,6 +301,6 @@ where
     }
 
     pump_deferred_work(ctx);
-    ungrab(&ctx.x11);
+    ungrab(&ctx.x11, ctx.x11_runtime);
     release_modifiers
 }
