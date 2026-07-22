@@ -218,8 +218,16 @@ pub struct Client {
     pub tags: TagMask,
     /// Whether the window has fixed size.
     pub is_fixed_size: bool,
-    /// Mutually exclusive placement mode.
-    pub mode: ClientMode,
+    /// Combined persistent placement and temporary presentation state.
+    ///
+    /// Kept private so callers cannot accidentally discard fullscreen or
+    /// maximized state while changing the tiled/floating placement policy.
+    #[cfg(not(test))]
+    mode: ClientMode,
+    /// Unit tests may construct exact state-machine positions as fixtures.
+    /// Production builds keep the same field private.
+    #[cfg(test)]
+    pub(crate) mode: ClientMode,
     /// Whether the window has urgency hint.
     pub is_urgent: bool,
     /// Whether the window should never receive focus.
@@ -241,6 +249,73 @@ pub struct Client {
 }
 
 impl Client {
+    /// Create a client with the default tiled placement.
+    ///
+    /// Construction is centralized because mode is an invariant-bearing state
+    /// machine rather than an independently assignable data field.
+    pub fn new(win: WindowId) -> Self {
+        Self {
+            win,
+            ..Self::default()
+        }
+    }
+
+    /// Current placement/presentation state.
+    #[inline]
+    pub fn mode(&self) -> ClientMode {
+        self.mode
+    }
+
+    /// Persistent placement policy, independent of temporary presentation.
+    #[inline]
+    pub fn base_mode(&self) -> BaseClientMode {
+        self.mode.base_mode()
+    }
+
+    /// Change the persistent tiled/floating policy while preserving any
+    /// temporary fullscreen or maximized presentation.
+    #[inline]
+    pub fn set_base_mode(&mut self, base: BaseClientMode) {
+        self.mode = self.mode.with_base_mode(base);
+    }
+
+    /// Enter floating placement, explicitly leaving any presentation mode.
+    #[inline]
+    pub fn enter_floating(&mut self) {
+        self.mode = ClientMode::Floating;
+    }
+
+    /// Enter true fullscreen while remembering the current base placement.
+    #[inline]
+    pub fn enter_fullscreen(&mut self) {
+        self.mode = self.mode().as_fullscreen();
+    }
+
+    /// Enter fake fullscreen while remembering the current base placement.
+    #[inline]
+    pub fn enter_fake_fullscreen(&mut self) {
+        self.mode = self.mode().as_fake_fullscreen();
+    }
+
+    /// Enter maximized presentation while remembering the current base placement.
+    #[inline]
+    pub fn enter_maximized(&mut self) {
+        self.mode = self.mode().as_maximized();
+    }
+
+    /// Leave a temporary presentation mode and restore its base placement.
+    #[inline]
+    pub fn restore_mode(&mut self) {
+        self.mode = self.mode().restored();
+    }
+
+    /// Construct otherwise unreachable states in unit tests without exposing a
+    /// production escape hatch around the transition API.
+    #[cfg(test)]
+    pub(crate) fn set_mode_for_test(&mut self, mode: ClientMode) {
+        self.mode = mode;
+    }
+
     /// Calculate total width including borders.
     pub fn total_width(&self) -> i32 {
         self.geo.total_width(self.border_width)
@@ -378,7 +453,7 @@ impl Client {
     /// Check if this client should be included in tiling calculations.
     #[inline]
     pub fn is_tiled(&self, selected_tags: TagMask) -> bool {
-        self.mode.is_tiling() && self.is_visible(selected_tags)
+        self.mode().is_tiling() && self.is_visible(selected_tags)
     }
 
     /// Clear the urgency flag for this client.
@@ -404,7 +479,7 @@ impl Client {
     /// If the window is already floating, returns current geometry.
     /// Otherwise returns effective float geometry (saved float dims or current tiled dims).
     pub fn restore_geo_for_float(&self) -> Rect {
-        if self.mode.is_floating() {
+        if self.mode().is_floating() {
             self.geo
         } else {
             self.effective_float_geo()
@@ -418,7 +493,7 @@ impl Client {
     pub fn update_geometry(&mut self, rect: Rect) {
         self.old_geo = self.geo;
         self.geo = rect;
-        if self.mode.is_floating() {
+        if self.mode().is_floating() {
             self.float_geo = rect;
         }
     }
@@ -473,7 +548,7 @@ impl Client {
         });
         self.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
         self.is_sticky = false;
-        if !self.mode.is_floating() {
+        if !self.mode().is_floating() {
             self.mode = ClientMode::Floating;
         }
         if let Some(dir) = direction {
@@ -554,38 +629,38 @@ mod tests {
     fn fullscreen_restores_previous_tiling_mode() {
         let mut client = Client::default();
 
-        client.mode = client.mode.as_fullscreen();
-        assert!(client.mode.is_true_fullscreen());
-        assert!(!client.mode.is_tiling());
+        client.enter_fullscreen();
+        assert!(client.mode().is_true_fullscreen());
+        assert!(!client.mode().is_tiling());
 
-        client.mode = client.mode.restored();
-        assert_eq!(client.mode, ClientMode::Tiling);
+        client.restore_mode();
+        assert_eq!(client.mode(), ClientMode::Tiling);
     }
 
     #[test]
     fn fullscreen_restores_previous_floating_mode() {
         let mut client = Client::default();
-        client.mode = crate::types::ClientMode::Floating;
+        client.enter_floating();
 
-        client.mode = client.mode.as_fullscreen();
-        assert!(client.mode.is_true_fullscreen());
-        assert!(!client.mode.is_floating());
+        client.enter_fullscreen();
+        assert!(client.mode().is_true_fullscreen());
+        assert!(!client.mode().is_floating());
 
-        client.mode = client.mode.restored();
-        assert_eq!(client.mode, ClientMode::Floating);
+        client.restore_mode();
+        assert_eq!(client.mode(), ClientMode::Floating);
     }
 
     #[test]
     fn maximized_restores_previous_regular_mode() {
         let mut client = Client::default();
-        client.mode = crate::types::ClientMode::Floating;
+        client.enter_floating();
 
-        client.mode = client.mode.as_maximized();
-        assert!(client.mode.is_maximized());
-        assert!(!client.mode.is_floating());
+        client.enter_maximized();
+        assert!(client.mode().is_maximized());
+        assert!(!client.mode().is_floating());
 
-        client.mode = client.mode.restored();
-        assert_eq!(client.mode, ClientMode::Floating);
+        client.restore_mode();
+        assert_eq!(client.mode(), ClientMode::Floating);
     }
 
     #[test]

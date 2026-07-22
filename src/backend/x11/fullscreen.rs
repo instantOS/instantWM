@@ -64,7 +64,7 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
         .state()
         .model
         .client(win)
-        .map(|c| (c.mode, c.monitor_id, c.old_border_width))
+        .map(|c| (c.mode(), c.monitor_id, c.old_border_width))
     else {
         return;
     };
@@ -102,12 +102,12 @@ pub fn toggle_fake_fullscreen(ctx_x11: &mut WmCtxX11<'_>) {
     // the fullscreen state (real fullscreen removes the border, so we need to
     // put it back before the layout re-runs).
     if let Some(client) = ctx_x11.core.model_mut().client_mut(win) {
-        match client.mode {
-            ClientMode::FakeFullscreen { .. } => client.mode = client.mode.as_fullscreen(),
-            ClientMode::TrueFullscreen { .. } => client.mode = client.mode.as_fake_fullscreen(),
-            _ => client.mode = client.mode.as_fake_fullscreen(),
+        match client.mode() {
+            ClientMode::FakeFullscreen { .. } => client.enter_fullscreen(),
+            ClientMode::TrueFullscreen { .. } => client.enter_fake_fullscreen(),
+            _ => client.enter_fake_fullscreen(),
         }
-        client.border_width = if client.mode.is_true_fullscreen() {
+        client.border_width = if client.mode().is_true_fullscreen() {
             0
         } else {
             old_border_width

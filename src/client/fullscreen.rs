@@ -43,7 +43,7 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
     let Some((mode, monitor_id, old_geo, monitor_rect)) =
         ctx.core().model().client_view(win).map(|view| {
             (
-                view.client.mode,
+                view.client.mode(),
                 view.client.monitor_id,
                 view.client.old_geo,
                 view.monitor.monitor_rect,
@@ -130,10 +130,10 @@ pub fn toggle_fake_fullscreen(ctx: &mut WmCtx) {
         WmCtx::Wayland(_) => {
             if let Some(win) = ctx.core().model().selected_win() {
                 if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-                    if client.mode.is_fake_fullscreen() {
-                        client.mode = client.mode.restored();
+                    if client.mode().is_fake_fullscreen() {
+                        client.restore_mode();
                     } else {
-                        client.mode = client.mode.as_fake_fullscreen();
+                        client.enter_fake_fullscreen();
                     }
                 }
                 let selmon_id = ctx.core().model().selected_monitor_id();

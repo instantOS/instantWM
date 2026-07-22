@@ -13,7 +13,7 @@ use crate::client::rules::WindowProperties;
 use crate::client::set_fullscreen;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::geometry::MoveResizeOptions;
-use crate::types::{ClientMode, MonitorId, Rect, WindowId};
+use crate::types::{MonitorId, Rect, WindowId};
 use x11rb::connection::Connection;
 use x11rb::properties::WmHints;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -320,13 +320,15 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
     if wtype.contains(&atom_dialog)
         && let Some(client) = ctx_x11.core.model_mut().client_mut(win)
     {
-        client.mode = if crate::backend::x11::policy::should_float_for_x11_type(Some(
-            smithay::xwayland::xwm::WmWindowType::Dialog,
-        )) {
-            ClientMode::Floating
-        } else {
-            ClientMode::Tiling
-        };
+        client.set_base_mode(
+            if crate::backend::x11::policy::should_float_for_x11_type(Some(
+                smithay::xwayland::xwm::WmWindowType::Dialog,
+            )) {
+                crate::types::BaseClientMode::Floating
+            } else {
+                crate::types::BaseClientMode::Tiling
+            },
+        );
     }
 }
 

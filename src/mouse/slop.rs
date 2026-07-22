@@ -84,7 +84,7 @@ pub fn apply_window_resize(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         .state()
         .model
         .client(c_win)
-        .map(|c| c.mode.is_floating())
+        .map(|c| c.mode().is_floating())
         .unwrap_or(false);
 
     if !is_floating {

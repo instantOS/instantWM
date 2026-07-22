@@ -116,7 +116,7 @@ impl ScratchpadInfo {
             y: Some(c.geo.y),
             width: Some(c.geo.w),
             height: Some(c.geo.h),
-            mode: c.mode,
+            mode: c.mode(),
             direction: sp.direction.map(|d| d.as_str().to_string()),
         })
     }
@@ -614,7 +614,7 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
         .state()
         .model
         .client(selected)
-        .is_some_and(|c| c.mode.is_true_fullscreen());
+        .is_some_and(|c| c.mode().is_true_fullscreen());
     if is_fullscreen {
         crate::floating::toggle_client_maximized(ctx);
     }

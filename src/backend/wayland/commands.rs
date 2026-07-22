@@ -25,7 +25,7 @@ pub(crate) fn apply_fullscreen_request(
     let Some((monitor_id, is_fullscreen)) = core
         .model
         .client(win)
-        .map(|client| (client.monitor_id, client.mode.is_fullscreen()))
+        .map(|client| (client.monitor_id, client.mode().is_fullscreen()))
     else {
         return false;
     };
@@ -201,7 +201,7 @@ mod tests {
             &mut core, &mut work, &mut bar, win, true
         ));
 
-        assert!(core.model.client(win).unwrap().mode.is_true_fullscreen());
+        assert!(core.model.client(win).unwrap().mode().is_true_fullscreen());
         assert!(work.layout.is_pending());
         assert!(work.layout.is_urgent());
         assert!(bar.needs_redraw());

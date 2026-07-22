@@ -43,7 +43,7 @@ fn plan_send_to_monitor(
 
     let strategy = if model
         .client(win)
-        .is_some_and(|client| client.mode.is_floating())
+        .is_some_and(|client| client.mode().is_floating())
     {
         SendToMonitorStrategy::FloatingProportional
     } else {

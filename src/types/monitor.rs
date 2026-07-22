@@ -144,8 +144,9 @@ impl Monitor {
     /// Check whether the monitor has a client in true fullscreen mode.
     pub fn has_real_fullscreen(&self, clients: &HashMap<WindowId, Client>) -> bool {
         let selected_tags = self.selected_tags();
-        self.iter_clients(clients)
-            .any(|(_, client)| client.mode.is_true_fullscreen() && client.is_visible(selected_tags))
+        self.iter_clients(clients).any(|(_, client)| {
+            client.mode().is_true_fullscreen() && client.is_visible(selected_tags)
+        })
     }
 
     /// Check whether the bar is visible on this monitor and `root_y` falls within it.
@@ -392,7 +393,7 @@ impl Monitor {
         // Check if client exists and is tiled
         let is_floating = clients
             .get(&win)
-            .map(|c| c.mode.is_floating())
+            .map(|c| c.mode().is_floating())
             .unwrap_or(false);
         if is_floating {
             return false;
@@ -483,7 +484,7 @@ impl Monitor {
 
         for &win in self.clients.iter().skip(iter_start) {
             if let Some(c) = clients.get(&win)
-                && c.mode.is_tiling()
+                && c.mode().is_tiling()
                 && c.is_visible(selected)
             {
                 return Some(win);
@@ -644,7 +645,7 @@ impl Monitor {
         self.clients.iter().find_map(|&win| {
             clients
                 .get(&win)
-                .filter(|c| c.mode.is_maximized())
+                .filter(|c| c.mode().is_maximized())
                 .map(|_| win)
         })
     }

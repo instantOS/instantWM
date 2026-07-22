@@ -42,7 +42,7 @@ use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 // focus() is used via focus_soft() in this module
 use crate::focus::focus;
 use crate::layouts::arrange;
-use crate::types::{Client, ClientMode, Rect, TagMask, WindowId};
+use crate::types::{BaseClientMode, Client, Rect, TagMask, WindowId};
 use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
@@ -151,8 +151,7 @@ fn build_initial_client(
     window: WindowId,
     initial_geometry: Rect,
 ) -> Client {
-    let mut client = Client::default();
-    client.win = window;
+    let mut client = Client::new(window);
     client.geo = initial_geometry;
     client.old_geo = client.geo;
     client.name = crate::backend::x11::properties::read_window_title(x11, x11_runtime, window);
@@ -175,11 +174,11 @@ fn assign_initial_monitor_and_tags(
     {
         client.monitor_id = launch_context.monitor_id;
         client.set_tag_mask(launch_context.tags);
-        client.mode = if launch_context.is_floating {
-            ClientMode::Floating
+        client.set_base_mode(if launch_context.is_floating {
+            BaseClientMode::Floating
         } else {
-            ClientMode::Tiling
-        };
+            BaseClientMode::Tiling
+        });
         return true;
     }
     let Some(selected_monitor) = state.model.selected_monitor() else {
@@ -324,7 +323,7 @@ fn configure_client_border(
         return;
     };
 
-    let border_width = if client.mode.is_tiling()
+    let border_width = if client.mode().is_tiling()
         && is_maximized
         && client.geo.w > monitor_rect.w - 30
         && client.geo.h > monitor_rect.h - 30 - bar_height
@@ -404,14 +403,14 @@ fn initialize_floating_state(
     has_transient_parent: bool,
 ) -> bool {
     if let Some(client) = model.client_mut(window) {
-        if !client.mode.is_floating() {
-            client.mode = if has_transient_parent || client.is_fixed_size {
-                ClientMode::Floating
+        if client.base_mode() != BaseClientMode::Floating {
+            client.set_base_mode(if has_transient_parent || client.is_fixed_size {
+                BaseClientMode::Floating
             } else {
-                ClientMode::Tiling
-            };
+                BaseClientMode::Tiling
+            });
         }
-        client.mode.is_floating()
+        client.base_mode() == BaseClientMode::Floating
     } else {
         false
     }
@@ -512,7 +511,7 @@ fn run_manage_animation(
     monitor_rect: Rect,
     animated: bool,
 ) {
-    if !animated || client.mode.is_fullscreen() {
+    if !animated || client.mode().is_fullscreen() {
         return;
     }
 

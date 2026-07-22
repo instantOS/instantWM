@@ -214,7 +214,7 @@ fn tiled_client_count_matches_collected_tiled_clients() {
         win: WindowId(2),
         ..Client::default()
     };
-    fullscreen.mode = fullscreen.mode.as_fullscreen();
+    fullscreen.enter_fullscreen();
     fullscreen.set_tag_mask(TagMask::single(1).unwrap());
 
     let mut floating = Client {
@@ -264,7 +264,7 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
                 ..Client::default()
             };
             if matches!(win, WindowId(2) | WindowId(4)) {
-                client.mode = crate::types::ClientMode::Floating;
+                client.enter_floating();
             }
             (win, client)
         })

@@ -77,7 +77,7 @@ fn collect_window_info(model: &WmModel, state: &WaylandState) -> Vec<WindowBorde
             border_width: c.border_width.max(0),
             is_visible,
             is_hidden: c.is_hidden,
-            is_floating: c.mode.is_floating(),
+            is_floating: c.mode().is_floating(),
             is_tiling_layout,
         });
     }
@@ -216,7 +216,7 @@ pub fn get_borders_hash(model: &WmModel, state: &WaylandState) -> u64 {
                 c.geo.y.hash(&mut hasher);
                 c.border_width.hash(&mut hasher);
                 c.is_hidden.hash(&mut hasher);
-                c.mode.is_floating().hash(&mut hasher);
+                c.mode().is_floating().hash(&mut hasher);
             }
             let size = window.geometry().size;
             size.w.hash(&mut hasher);

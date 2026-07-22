@@ -120,7 +120,7 @@ fn resize_target_for_window(
     if !c.is_visible(selected_tags) {
         return None;
     }
-    if !c.mode.is_floating() && has_tiling {
+    if !c.mode().is_floating() && has_tiling {
         return None;
     }
     if !c.geo.contains_resize_border_point(root, RESIZE_BORDER_ZONE) {
@@ -185,7 +185,7 @@ fn find_tiled_win_at_point(
         if Some(w) == skip_win {
             continue;
         }
-        if !c.is_visible(selected) || c.mode.is_floating() {
+        if !c.is_visible(selected) || c.mode().is_floating() {
             continue;
         }
         // Check if the cursor is within the window's geometry (including border).
@@ -209,7 +209,7 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
     has_tiling
         && mon
             .iter_clients(&model.clients)
-            .any(|(_, c)| c.is_visible(selected) && !c.mode.is_floating())
+            .any(|(_, c)| c.is_visible(selected) && !c.mode().is_floating())
 }
 
 // ── Motion-notify hook ───────────────────────────────────────────────────────
@@ -470,7 +470,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             .expect_selected_monitor()
             .is_tiling_layout();
         let sel_geo = match wm_ctx.core().model().client(selected_window) {
-            Some(c) if c.mode.is_floating() || !is_tiling_layout => c.geo,
+            Some(c) if c.mode().is_floating() || !is_tiling_layout => c.geo,
             _ => return false,
         };
 
@@ -492,7 +492,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
             .state()
             .model
             .client(hovered_win)
-            .map(|c| !c.mode.is_floating())
+            .map(|c| !c.mode().is_floating())
             .unwrap_or(false);
         if !hovered_is_tiled {
             return false;

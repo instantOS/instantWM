@@ -137,9 +137,9 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         mon.selected?
     };
     let c = ctx.core().model().client(sel)?;
-    let is_true_fullscreen = c.mode.is_true_fullscreen();
+    let is_true_fullscreen = c.mode().is_true_fullscreen();
     let is_edge_scratchpad = c.is_edge_scratchpad();
-    let is_maximized = c.mode.is_maximized();
+    let is_maximized = c.mode().is_maximized();
 
     if is_true_fullscreen {
         return None;
@@ -361,7 +361,7 @@ pub fn handle_bar_drop(
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct float_geo afterwards.
     let was_floating = match ctx.core().model().client(win) {
-        Some(c) => c.mode.is_floating(),
+        Some(c) => c.mode().is_floating(),
         None => return,
     };
 
@@ -386,7 +386,7 @@ pub fn handle_bar_drop(
             .state()
             .model
             .client(win)
-            .is_some_and(|c| c.mode.is_true_fullscreen())
+            .is_some_and(|c| c.mode().is_true_fullscreen())
         {
             let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);
         }
@@ -470,7 +470,7 @@ pub fn apply_edge_drop(
         }
 
         if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
-            c.mode = ClientMode::Tiling;
+            c.enter_tiling();
         }
         let selmon_id = ctx.core().model().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
@@ -513,7 +513,7 @@ pub fn complete_move_drop(
                     .core()
                     .model()
                     .client(win)
-                    .is_some_and(|client| client.mode.is_tiling())
+                    .is_some_and(|client| client.mode().is_tiling())
                 && crate::layouts::place_tree_at_point(ctx, win, root)
         });
         if handled_tree {
@@ -536,7 +536,7 @@ pub fn promote_to_floating(
         .state()
         .model
         .client(win)
-        .map(|c| (c.mode.is_floating(), c.geo))?;
+        .map(|c| (c.mode().is_floating(), c.geo))?;
 
     if is_floating {
         return Some((geo, false));

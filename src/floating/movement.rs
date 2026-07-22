@@ -13,7 +13,7 @@ pub fn moveresize(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
     let Some(view) = ctx.core().model().client_view(win) else {
         return false;
     };
-    let is_floating = view.client.mode.is_floating();
+    let is_floating = view.client.mode().is_floating();
     let geo = view.client.geo;
     let border_width = view.client.border_width;
     let mon_rect = view.monitor.monitor_rect;
@@ -59,7 +59,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
     let Some(view) = ctx.core().model().client_view(win) else {
         return;
     };
-    let is_floating = view.client.mode.is_floating();
+    let is_floating = view.client.mode().is_floating();
     let geo = view.client.geo;
     let has_tiling = view.monitor.is_tiling_layout();
 
@@ -96,7 +96,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
         return;
     }
     let geo = view.client.geo;
-    let is_floating = view.client.mode.is_floating();
+    let is_floating = view.client.mode().is_floating();
     let work_rect = view.monitor.work_rect();
     let mon_rect = view.monitor.monitor_rect;
     let bar_height = view.monitor.bar_height;

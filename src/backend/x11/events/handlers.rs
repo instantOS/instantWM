@@ -6,8 +6,7 @@ use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
-    BarPosition, ButtonTarget, Client, ClientMode, Gesture, MouseButton, Point, Rect, TagMask,
-    WindowId,
+    BarPosition, ButtonTarget, Client, Gesture, MouseButton, Point, Rect, TagMask, WindowId,
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -302,7 +301,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     let is_floating_sel = {
         let is_floating = selected_window
             .and_then(|w| ctx.core.model().client(w))
-            .map(|c| c.mode.is_floating())
+            .map(|c| c.mode().is_floating())
             .unwrap_or(false);
         let has_tiling = selected_monitor.is_tiling_layout();
         is_floating || !has_tiling
@@ -656,17 +655,14 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
             ))
     };
 
-    let client = Client {
-        win: icon_win,
-        geo,
-        old_geo: geo,
-        old_border_width: border_width,
-        border_width: 0,
-        mode: ClientMode::Floating,
-        tags: crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY),
-        monitor_id: selmon_id,
-        ..Default::default()
-    };
+    let mut client = Client::new(icon_win);
+    client.geo = geo;
+    client.old_geo = geo;
+    client.old_border_width = border_width;
+    client.border_width = 0;
+    client.enter_floating();
+    client.set_tag_mask(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY));
+    client.monitor_id = selmon_id;
 
     {
         if !ctx.core.model_mut().insert_client(client) {
@@ -790,7 +786,7 @@ fn handle_net_wm_state(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Wind
         .g
         .model
         .client(win)
-        .map(|c| c.mode.is_fullscreen())
+        .map(|c| c.mode().is_fullscreen())
         .unwrap_or(false);
 
     match action {

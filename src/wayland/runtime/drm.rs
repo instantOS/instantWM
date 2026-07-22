@@ -717,7 +717,7 @@ fn auto_vrr_content_is_suitable(wm: &Wm, output_name: &str) -> bool {
         return false;
     }
 
-    first_client.mode.is_true_fullscreen()
+    first_client.mode().is_true_fullscreen()
 }
 
 fn compute_output_vrr_target(wm: &Wm, state: &WaylandState, entry: &OutputSurfaceEntry) -> bool {

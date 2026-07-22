@@ -407,9 +407,9 @@ fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() 
         .into_iter()
         .map(|win| (win, visible_client(win)))
         .collect::<HashMap<_, _>>();
-    clients.get_mut(&WindowId(3)).unwrap().mode = crate::types::ClientMode::Floating;
+    clients.get_mut(&WindowId(3)).unwrap().enter_floating();
     let fullscreen = clients.get_mut(&WindowId(4)).unwrap();
-    fullscreen.mode = fullscreen.mode.as_fullscreen();
+    fullscreen.enter_fullscreen();
 
     let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
 
@@ -435,7 +435,7 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
         .into_iter()
         .map(|win| (win, visible_client(win)))
         .collect::<HashMap<_, _>>();
-    clients.get_mut(&WindowId(2)).unwrap().mode = crate::types::ClientMode::Floating;
+    clients.get_mut(&WindowId(2)).unwrap().enter_floating();
 
     let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
 

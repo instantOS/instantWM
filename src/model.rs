@@ -403,7 +403,7 @@ impl WmModel {
         }
         let needs_arrange = self
             .client(win)
-            .is_some_and(|client| !client.mode.is_floating());
+            .is_some_and(|client| !client.mode().is_floating());
         let reassigned = self.reassign_client_monitor(win, target_mon);
         debug_assert!(reassigned, "validated transfer must succeed");
         Some(ClientTransferOutcome {

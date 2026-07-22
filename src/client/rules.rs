@@ -37,25 +37,10 @@ pub struct InitialRuleOutcome {
     pub placement: InitialRulePlacement,
 }
 
-/// Apply the configured window rules to `win`.
-///
-/// Rules are matched against the window's properties (class, instance, title).
-/// Matching rules can set:
-///
-/// * `isfloating` / layout override (`RuleFloat` variant).
-/// * Tag mask (`tags` field).
-/// * Target monitor (`monitor` field).
-///
-/// After rule matching, the final tag mask is clamped to the current tag set.
-/// If no rule matches (and `SpecialNext` is `None`), the window inherits its
-/// monitor's currently active tags.
-pub fn apply_rules(
-    g: &mut CoreState,
-    win: WindowId,
-    props: &WindowProperties,
-    launch_context: Option<LaunchContext>,
-) -> bool {
-    apply_rules_impl(g, win, props, launch_context).changed
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuleApplication {
+    Initial,
+    PropertyRefresh,
 }
 
 /// Apply rules while retaining the spawn-position instruction needed during
@@ -66,7 +51,7 @@ pub fn apply_initial_rules(
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
 ) -> InitialRuleOutcome {
-    apply_rules_impl(g, win, props, launch_context)
+    apply_rules_impl(g, win, props, launch_context, RuleApplication::Initial)
 }
 
 fn apply_rules_impl(
@@ -74,6 +59,7 @@ fn apply_rules_impl(
     win: WindowId,
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
+    application: RuleApplication,
 ) -> InitialRuleOutcome {
     let before = rule_state_snapshot(g, win);
     let mut placement = InitialRulePlacement::Default;
@@ -128,7 +114,7 @@ fn apply_rules_impl(
         } else {
             BaseClientMode::Tiling
         };
-        c.mode = c.mode.with_base_mode(base_mode);
+        c.set_base_mode(base_mode);
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
@@ -138,11 +124,11 @@ fn apply_rules_impl(
     let bar_height = g.config.derived.bar_height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
-    if special_next != SpecialNext::None {
+    if application == RuleApplication::Initial && special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next
             && let Some(c) = g.model.client_mut(win)
         {
-            c.mode = c.mode.with_base_mode(BaseClientMode::Floating);
+            c.set_base_mode(BaseClientMode::Floating);
         }
         g.behavior.specialnext = SpecialNext::None;
     } else {
@@ -231,10 +217,17 @@ fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowPropert
     let existing_context = g.model.client(win).map(|c| LaunchContext {
         monitor_id: c.monitor_id,
         tags: c.tags,
-        is_floating: c.mode.base_mode() == BaseClientMode::Floating,
+        is_floating: c.base_mode() == BaseClientMode::Floating,
     });
 
-    let rules_changed = apply_rules(g, win, props, existing_context);
+    let rules_changed = apply_rules_impl(
+        g,
+        win,
+        props,
+        existing_context,
+        RuleApplication::PropertyRefresh,
+    )
+    .changed;
     constraints_changed || rules_changed
 }
 
@@ -280,10 +273,10 @@ fn apply_float_rule(
 
     match float_rule {
         RuleFloat::FloatCenter => {
-            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
+            client.set_base_mode(BaseClientMode::Floating);
         }
         RuleFloat::FloatFullscreen => {
-            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
+            client.set_base_mode(BaseClientMode::Floating);
             client.geo.w = monitor_rect.w;
             client.geo.h = work_rect.h;
             client.geo.x = monitor_rect.x;
@@ -292,16 +285,16 @@ fn apply_float_rule(
             }
         }
         RuleFloat::Scratchpad => {
-            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
+            client.set_base_mode(BaseClientMode::Floating);
         }
         RuleFloat::Float => {
-            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
+            client.set_base_mode(BaseClientMode::Floating);
             if show_bar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }
         RuleFloat::Tiled => {
-            client.mode = client.mode.with_base_mode(BaseClientMode::Tiling);
+            client.set_base_mode(BaseClientMode::Tiling);
         }
     }
 }
@@ -335,7 +328,7 @@ struct RuleStateSnapshot {
 fn rule_state_snapshot(g: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
     let c = g.model.client(win)?;
     Some(RuleStateSnapshot {
-        mode: c.mode,
+        mode: c.mode(),
         is_sticky: c.is_sticky,
         monitor_id: c.monitor_id,
         tags: c.tags,
@@ -379,7 +372,9 @@ mod tests {
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::core_state::{CoreState, LayoutWorkTargets};
-    use crate::types::{Client, ClientMode, Monitor, MonitorId, TagMask, WindowId};
+    use crate::types::{
+        Client, ClientMode, Monitor, MonitorId, Rect, SpecialNext, TagMask, WindowId,
+    };
     use crate::wm::Wm;
 
     #[test]
@@ -455,7 +450,7 @@ mod tests {
             wm.work.layout.take_targets(),
             Some(LayoutWorkTargets::Monitors(vec![old_monitor, new_monitor]))
         );
-        assert!(!wm.core.model.client(win).unwrap().mode.is_floating());
+        assert!(!wm.core.model.client(win).unwrap().mode().is_floating());
         assert_eq!(wm.core.model.client(win).unwrap().monitor_id, new_monitor);
     }
 
@@ -512,7 +507,7 @@ mod tests {
         );
 
         let client = g.model.client(win).expect("client should still exist");
-        assert!(client.mode.is_floating());
+        assert!(client.mode().is_floating());
     }
 
     #[test]
@@ -535,12 +530,75 @@ mod tests {
         );
 
         let client = g.model.client(win).expect("client should still exist");
-        assert!(client.mode.is_true_fullscreen());
+        assert!(client.mode().is_true_fullscreen());
         assert_eq!(
-            client.mode.base_mode(),
+            client.mode().base_mode(),
             crate::types::BaseClientMode::Floating
         );
         assert_eq!(client.name, "YouTube — Full Screen");
+    }
+
+    #[test]
+    fn fullscreen_survives_property_refresh_and_remains_a_fullscreen_layout_target() {
+        let mut g = CoreState::default();
+        let tags = TagMask::single(1).unwrap();
+        let mut monitor = Monitor::default();
+        monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
+        monitor.available_rect = monitor.monitor_rect;
+        monitor.set_selected_tags(tags);
+        let monitor_id = g.model.monitors.push(monitor);
+        let win = WindowId(45);
+        g.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::Tiling.as_fullscreen(),
+            ..Client::default()
+        });
+        assert!(g.model.attach_client(win));
+
+        apply_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                title: "YouTube — Full Screen".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let layout_cfg = g.config.layout;
+        let plan = {
+            let clients = &g.model.clients;
+            g.model
+                .monitors
+                .get_mut(monitor_id)
+                .unwrap()
+                .compute_arrange(clients, &layout_cfg, false, 0, false)
+        };
+        assert!(plan.client_moves.iter().all(|output| output.win != win));
+        assert_eq!(plan.fullscreen_moves.len(), 1);
+        assert_eq!(plan.fullscreen_moves[0].win, win);
+        assert_eq!(plan.fullscreen_moves[0].rect, Rect::new(0, 0, 1920, 1080));
+    }
+
+    #[test]
+    fn property_refresh_does_not_consume_one_shot_creation_policy() {
+        let mut g = CoreState::default();
+        let win = WindowId(46);
+        g.model.insert_client(Client::new(win));
+        g.behavior.specialnext = SpecialNext::Float;
+
+        apply_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                title: "renamed".to_string(),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(g.behavior.specialnext, SpecialNext::Float);
+        assert!(g.model.client(win).unwrap().mode().is_tiling());
     }
 
     #[test]
@@ -575,7 +633,7 @@ mod tests {
             },
         );
 
-        let mode = g.model.client(win).unwrap().mode;
+        let mode = g.model.client(win).unwrap().mode();
         assert!(mode.is_true_fullscreen());
         assert_eq!(mode.base_mode(), crate::types::BaseClientMode::Tiling);
         assert_eq!(mode.restored(), ClientMode::Tiling);
@@ -618,7 +676,7 @@ mod tests {
         );
 
         let client = g.model.client(win).expect("client should still exist");
-        assert!(!client.mode.is_floating()); // Should be tiling now
+        assert!(!client.mode().is_floating()); // Should be tiling now
     }
 
     #[test]
@@ -658,7 +716,7 @@ mod tests {
         );
 
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
-        assert!(g.model.client(win).unwrap().mode.is_floating());
+        assert!(g.model.client(win).unwrap().mode().is_floating());
     }
 
     #[test]
@@ -696,7 +754,7 @@ mod tests {
         let client = g.model.client(win).unwrap();
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
         assert!(outcome.changed);
-        assert!(client.mode.is_floating());
+        assert!(client.mode().is_floating());
         assert!(client.is_sticky);
         assert_eq!(client.tags, selected_tags);
         let scratchpad = client.scratchpad.as_ref().unwrap();

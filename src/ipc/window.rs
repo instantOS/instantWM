@@ -96,7 +96,7 @@ fn resize_window(
     };
 
     let (current_monitor_id, is_floating) = match wm.core.model.client(win) {
-        Some(c) => (c.monitor_id, c.mode.is_floating()),
+        Some(c) => (c.monitor_id, c.mode().is_floating()),
         None => return Response::err("window not found"),
     };
     let target_monitor_id =

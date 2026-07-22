@@ -70,7 +70,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         return;
     };
     let is_blocked = match ctx.core().model().client(win) {
-        Some(c) => c.mode.is_true_fullscreen(),
+        Some(c) => c.mode().is_true_fullscreen(),
         None => return,
     };
     if is_blocked {
@@ -86,7 +86,7 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
         .state()
         .model
         .client(win)
-        .map(|c| (c.geo, c.mode.is_floating()))
+        .map(|c| (c.geo, c.mode().is_floating()))
     else {
         return;
     };
@@ -279,7 +279,7 @@ pub fn resize_mouse_directional(
     let (is_blocked, orig_left, orig_top, orig_right, orig_bottom, border_width) =
         match ctx.core.model().client(win) {
             Some(c) => (
-                c.mode.is_true_fullscreen(),
+                c.mode().is_true_fullscreen(),
                 c.geo.x,
                 c.geo.y,
                 c.geo.right(),
@@ -360,7 +360,7 @@ pub fn resize_mouse_directional(
                         .expect_selected_monitor()
                         .is_tiling_layout();
 
-                    !client.mode.is_floating()
+                    !client.mode().is_floating()
                         && has_tiling
                         && ((new_w - client.geo.w).abs() > snap
                             || (new_h - client.geo.h).abs() > snap)
@@ -372,7 +372,7 @@ pub fn resize_mouse_directional(
                     with_wm_ctx_x11(ctx, toggle_floating);
                 } else {
                     let is_floating = match ctx.core.model().client(win) {
-                        Some(c) => c.mode.is_floating(),
+                        Some(c) => c.mode().is_floating(),
                         None => return false,
                     };
                     let has_tiling = ctx
@@ -441,7 +441,7 @@ pub fn resize_aspect_mouse(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
 
 pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButton) {
     let (is_fullscreen, orig_geo) = match ctx.core.model().client(win) {
-        Some(c) => (c.mode.is_fullscreen(), c.geo),
+        Some(c) => (c.mode().is_fullscreen(), c.geo),
         None => return,
     };
     if is_fullscreen {

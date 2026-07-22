@@ -37,7 +37,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             // Save geometry before entering snap for the first time.
             let new_snap = status.next(direction);
 
-            if status == SnapPosition::None && client.mode.is_floating() {
+            if status == SnapPosition::None && client.mode().is_floating() {
                 client.float_geo = client.geo;
             }
             client.snap_status = new_snap;
@@ -129,7 +129,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     let (is_floating, snap_status) = match ctx.core().model().client(win) {
-        Some(c) => (c.mode.is_floating(), c.snap_status),
+        Some(c) => (c.mode().is_floating(), c.snap_status),
         None => return,
     };
 

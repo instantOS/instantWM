@@ -46,7 +46,7 @@ pub(crate) struct WindowModePlan {
 pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> WindowModePlan {
     match mode {
         BaseClientMode::Floating => {
-            client.mode = ClientMode::Floating;
+            client.enter_floating();
             client.restore_border_width();
             let border_width = client.border_width;
             let restore_geometry = Some(client.effective_float_geo());
@@ -112,7 +112,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
                 .is_some_and(|c| c.is_edge_scratchpad()) =>
         {
             if let Some(c) = ctx.core().model().client(sel)
-                && c.mode.is_true_fullscreen()
+                && c.mode().is_true_fullscreen()
             {
                 return;
             }
@@ -128,7 +128,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
         .state()
         .model
         .client(win)
-        .map(|c| (c.mode.is_floating(), c.is_fixed_size))
+        .map(|c| (c.mode().is_floating(), c.is_fixed_size))
     else {
         return;
     };
@@ -278,7 +278,7 @@ mod tests {
         );
 
         // Check model state
-        assert_eq!(client.mode, ClientMode::Floating);
+        assert_eq!(client.mode(), ClientMode::Floating);
         assert_eq!(client.border_width, 4);
     }
 
@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(p.border_width, 2);
 
         // Check model state
-        assert_eq!(client.mode, ClientMode::Tiling);
+        assert_eq!(client.mode(), ClientMode::Tiling);
         assert_eq!(
             client.float_geo,
             Rect {
@@ -324,7 +324,7 @@ mod tests {
             }
         );
 
-        assert_eq!(client.mode, ClientMode::Floating);
+        assert_eq!(client.mode(), ClientMode::Floating);
     }
 
     #[test]

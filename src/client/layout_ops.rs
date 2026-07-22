@@ -42,7 +42,7 @@ pub fn zoom(ctx: &mut WmCtx) {
     };
 
     // Only meaningful in a tiling layout with a non-floating window.
-    if !view.monitor.is_tiling_layout() || !view.client.mode.is_tiling() {
+    if !view.monitor.is_tiling_layout() || !view.client.mode().is_tiling() {
         return;
     }
 

@@ -602,7 +602,7 @@ fn update_hover_resize_state(
             wm.core
                 .model
                 .client(win)
-                .map(|c| (win, c.mode.is_floating()))
+                .map(|c| (win, c.mode().is_floating()))
         })
         .is_some_and(|(_, is_floating)| is_floating);
     let hovered_is_selected = hovered_win.is_some_and(|win| Some(win) == wm.core.selected_win());

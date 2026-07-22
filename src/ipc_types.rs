@@ -352,7 +352,7 @@ pub struct WindowState {
 impl From<&crate::types::client::Client> for WindowState {
     fn from(c: &crate::types::client::Client) -> Self {
         Self {
-            mode: c.mode,
+            mode: c.mode(),
             sticky: c.is_sticky,
             hidden: c.is_hidden,
             urgent: c.is_urgent,

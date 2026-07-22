@@ -24,7 +24,7 @@ pub(crate) fn visibility_plan(model: &WmModel) -> Vec<VisibilityEntry> {
                 win,
                 rect: client.geo,
                 border_width: client.border_width,
-                mode: client.mode,
+                mode: client.mode(),
                 visible: client.is_visible(selected_tags),
             });
         }
@@ -288,7 +288,7 @@ mod tests {
         let mut client = make_client(win, tag, MonitorId::from_raw(0), false, false);
         client.geo = rect;
         client.border_width = 2;
-        client.mode = ClientMode::Floating;
+        client.enter_floating();
 
         let clients = vec![client];
         let mon = make_monitor(0, tag, vec![win]);

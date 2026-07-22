@@ -53,7 +53,7 @@ pub fn resolve_floating_placement(
         return requested;
     };
     let client = view.client;
-    if !client.mode.is_floating() {
+    if !client.mode().is_floating() {
         return requested;
     }
 
@@ -131,7 +131,7 @@ pub fn sane_floating_spawn_rect(
     position_is_explicit: bool,
 ) -> Option<Rect> {
     let client = model.client(win)?;
-    if !client.mode.is_floating() {
+    if !client.mode().is_floating() {
         return None;
     }
 
@@ -192,7 +192,7 @@ pub fn apply_size_hints(
     let old_geo = client.geo;
     let border_width = client.border_width;
     let should_apply_hints = config.window.resize_hints
-        || client.mode.is_floating()
+        || client.mode().is_floating()
         || is_floating_layout(model, view.monitor);
 
     // Phase 1: Ensure positive dimensions.
@@ -298,7 +298,7 @@ mod tests {
         client.win = WindowId::from(1_u32);
         client.monitor_id = MonitorId::default();
         client.set_tag_mask(TagMask::single(1).unwrap());
-        client.mode = crate::types::ClientMode::Floating;
+        client.enter_floating();
         client.border_width = border_width;
         client.geo = rect;
         client.float_geo = rect;

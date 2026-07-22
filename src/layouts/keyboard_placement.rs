@@ -34,7 +34,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
                 .core()
                 .model()
                 .client(source)
-                .is_some_and(|client| client.mode.is_tiling())
+                .is_some_and(|client| client.mode().is_tiling())
         {
             return TreePlacementStart::NotApplicable;
         }

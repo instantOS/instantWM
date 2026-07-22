@@ -74,7 +74,7 @@ fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<
 
     let target_is_tiled = target
         .and_then(|win| model.client(win))
-        .is_some_and(|client| !client.mode.is_floating());
+        .is_some_and(|client| !client.mode().is_floating());
 
     if let Some(mon) = model.monitor_mut(sel_mon_id) {
         mon.selected = target;
@@ -377,7 +377,7 @@ fn should_hover_focus(
     // Respect the "don't focus floating windows on hover" setting.
     let hovered_is_floating = model
         .client(win)
-        .map(|c| c.mode.is_floating())
+        .map(|c| c.mode().is_floating())
         .unwrap_or(false);
     let has_tiling = model.expect_selected_monitor().is_tiling_layout();
     if !behavior.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
@@ -817,7 +817,7 @@ mod tests {
                     ..Client::default()
                 };
                 if win == WindowId(2) {
-                    client.mode = crate::types::ClientMode::Floating;
+                    client.enter_floating();
                 }
                 (win, client)
             })

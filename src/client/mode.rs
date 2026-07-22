@@ -38,22 +38,22 @@ pub fn set_maximized(model: &mut WmModel, win: WindowId, enter: bool) -> Option<
 
 fn set_maximized_enter(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
     let client = model.client_mut(win)?;
-    let base = client.mode.base_mode();
+    let base = client.mode().base_mode();
 
     // Save float geo if not already floating.
-    if !client.mode.is_floating() {
+    if !client.mode().is_floating() {
         client.float_geo = client.geo;
     }
 
-    client.mode = client.mode.as_maximized();
+    client.enter_maximized();
 
     Some(MaximizedOutcome::Entered { base })
 }
 
 fn set_maximized_exit(model: &mut WmModel, win: WindowId) -> Option<MaximizedOutcome> {
     let client = model.client_mut(win)?;
-    let base = client.mode.base_mode();
-    client.mode = client.mode.restored();
+    let base = client.mode().base_mode();
+    client.restore_mode();
     Some(MaximizedOutcome::Exited { base })
 }
 
@@ -75,8 +75,8 @@ pub fn set_fullscreen(
 
 fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
     let client = model.client_mut(win)?;
-    let was_floating = client.mode.is_floating();
-    client.mode = client.mode.as_fullscreen();
+    let was_floating = client.mode().is_floating();
+    client.enter_fullscreen();
     client.save_border_width();
     client.border_width = 0;
     Some(FullscreenOutcome::Entered { was_floating })
@@ -84,7 +84,7 @@ fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<Fullscreen
 
 fn set_fullscreen_exit(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
     let client = model.client_mut(win)?;
-    client.mode = client.mode.restored();
+    client.restore_mode();
     client.restore_border_width();
     Some(FullscreenOutcome::Exited)
 }
@@ -103,7 +103,7 @@ mod tests {
             old_border_width: 2,
             ..Client::default()
         };
-        client.mode = mode;
+        client.set_mode_for_test(mode);
         g.insert_client(client);
         g
     }
@@ -117,7 +117,7 @@ mod tests {
             MaximizedOutcome::Entered { base } => assert_eq!(base, BaseClientMode::Tiling),
             _ => panic!("expected Entered"),
         }
-        assert!(g.client(win).unwrap().mode.is_maximized());
+        assert!(g.client(win).unwrap().mode().is_maximized());
     }
 
     #[test]
@@ -130,7 +130,7 @@ mod tests {
             MaximizedOutcome::Exited { base } => assert_eq!(base, BaseClientMode::Tiling),
             _ => panic!("expected Exited"),
         }
-        assert!(g.client(win).unwrap().mode.is_tiling());
+        assert!(g.client(win).unwrap().mode().is_tiling());
     }
 
     #[test]
@@ -138,13 +138,13 @@ mod tests {
         let mut g = test_globals_with_client(ClientMode::Floating);
         let win = WindowId(1);
         set_maximized(&mut g, win, true);
-        assert!(g.client(win).unwrap().mode.is_maximized());
+        assert!(g.client(win).unwrap().mode().is_maximized());
         let outcome = set_maximized(&mut g, win, false).unwrap();
         match outcome {
             MaximizedOutcome::Exited { base } => assert_eq!(base, BaseClientMode::Floating),
             _ => panic!("expected Exited"),
         }
-        assert!(g.client(win).unwrap().mode.is_floating());
+        assert!(g.client(win).unwrap().mode().is_floating());
     }
 
     #[test]
@@ -157,7 +157,7 @@ mod tests {
             _ => panic!("expected Entered"),
         }
         let c = g.client(win).unwrap();
-        assert!(c.mode.is_true_fullscreen());
+        assert!(c.mode().is_true_fullscreen());
         assert_eq!(c.border_width, 0);
         assert_eq!(c.old_border_width, 2);
     }
@@ -170,7 +170,7 @@ mod tests {
         let outcome = set_fullscreen(&mut g, win, false).unwrap();
         assert!(matches!(outcome, FullscreenOutcome::Exited));
         let c = g.client(win).unwrap();
-        assert!(c.mode.is_tiling());
+        assert!(c.mode().is_tiling());
         assert_eq!(c.border_width, 2);
     }
 }

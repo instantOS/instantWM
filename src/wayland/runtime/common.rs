@@ -416,7 +416,7 @@ fn handle_update_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32, h
         // particular, a native Wayland client may commit a stale startup
         // buffer after layout selected its final size; copying that size back
         // here would overwrite the layout target.
-        && client.mode.is_floating()
+        && client.mode().is_floating()
         && (client.geo.w != w || client.geo.h != h)
     {
         let rect = crate::types::Rect {
@@ -534,8 +534,7 @@ fn handle_map_window(
         })
     });
 
-    let mut client = crate::types::Client::default();
-    client.win = win;
+    let mut client = crate::types::Client::new(win);
     client.name = properties.title.clone();
     if let Some(size_hints) = properties.size_hints {
         client.size_hints = size_hints;
@@ -548,7 +547,7 @@ fn handle_map_window(
         client.monitor_id = lc.monitor_id;
         client.set_tag_mask(lc.tags);
         if lc.is_floating {
-            client.mode = crate::types::ClientMode::Floating;
+            client.enter_floating();
         }
     } else {
         let Some(selected_monitor) = g.model.selected_monitor() else {
@@ -624,10 +623,10 @@ fn handle_map_window(
 
     if should_float {
         if let Some(c) = g.model.client_mut(win)
-            && !c.mode.is_floating()
+            && c.base_mode() != crate::types::BaseClientMode::Floating
         {
             c.float_geo = c.geo;
-            c.mode = crate::types::ClientMode::Floating;
+            c.set_base_mode(crate::types::BaseClientMode::Floating);
         }
         g.raise_client_in_z_order(win);
     }
@@ -772,9 +771,9 @@ fn handle_update_xwayland_policy(
     let layout_changed = if let Some(client) = g.model.client_mut(win) {
         client.is_hidden = is_hidden;
 
-        if is_above && !client.mode.is_floating() {
+        if is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
             client.float_geo = client.geo;
-            client.mode = crate::types::ClientMode::Floating;
+            client.set_base_mode(crate::types::BaseClientMode::Floating);
             true
         } else {
             false

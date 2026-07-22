@@ -364,7 +364,7 @@ impl KeyboardTreePlacement {
         monitor.selected_tags() == self.tags
             && model.client_view(self.source).is_some_and(|view| {
                 view.monitor.id() == self.monitor_id
-                    && view.client.mode.is_tiling()
+                    && view.client.mode().is_tiling()
                     && view.client.is_visible(self.tags)
             })
             && monitor
