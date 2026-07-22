@@ -33,8 +33,8 @@ use crate::backend::x11::X11BackendRef;
 use crate::backend::x11::constants::{WM_STATE_ICONIC, WM_STATE_NORMAL, WM_STATE_WITHDRAWN};
 use crate::backend::x11::focus::grab_buttons;
 use crate::backend::x11::{
-    X11RuntimeConfig, set_client_state, set_client_tag_prop, update_client_list,
-    update_motif_hints, update_window_type, update_wm_hints,
+    X11RuntimeConfig, set_client_state, set_client_tag_prop, update_motif_hints,
+    update_window_type, update_wm_hints,
 };
 use crate::constants::animation::DEFAULT_FRAME_COUNT;
 use crate::contexts::{CoreCtx, WmCtx, WmCtxX11};
@@ -71,14 +71,16 @@ pub fn manage(
     ) {
         return;
     }
-    let rule_placement = insert_client_and_apply_rules(
+    let Some(rule_placement) = insert_client_and_apply_rules(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
         window,
         client,
         launch_context,
-    );
+    ) else {
+        return;
+    };
     ctx.x11_runtime
         .original_border_widths
         .insert(window, original_border_width);
@@ -123,8 +125,8 @@ pub fn manage(
         ctx.x11.flush();
     }
 
-    ctx.core.model_mut().attach(window);
-    ctx.core.model_mut().attach_z_order_top(window);
+    let attached = ctx.core.model_mut().attach_client(window);
+    debug_assert!(attached, "managed X11 client must have a valid monitor");
 
     register_client_root(&ctx.x11, ctx.x11_runtime, window);
 
@@ -195,18 +197,20 @@ fn insert_client_and_apply_rules(
     window: WindowId,
     mut client: Client,
     launch_context: Option<crate::client::LaunchContext>,
-) -> crate::client::InitialRulePlacement {
+) -> Option<crate::client::InitialRulePlacement> {
     client.is_hidden =
         crate::backend::x11::visibility::get_state(x11, x11_runtime.wmatom.state, window)
             == crate::backend::x11::constants::WM_STATE_ICONIC;
-    core.model_mut().insert_client(client);
+    if !core.model_mut().insert_client(client) {
+        return None;
+    }
     let properties = crate::backend::x11::window_properties(x11, x11_runtime, window);
     let outcome =
         crate::client::apply_initial_rules(core.state_mut(), window, &properties, launch_context);
     if outcome.changed {
         core.queue_layout_for_client(window);
     }
-    outcome.placement
+    Some(outcome.placement)
 }
 
 fn read_launch_context(
@@ -553,11 +557,6 @@ fn run_manage_animation(
 /// the event mask / WM_STATE.
 ///
 pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
-    let monitor_id = ctx
-        .core
-        .model()
-        .client(window)
-        .map(|client| client.monitor_id);
     let original_border_width = ctx.x11_runtime.original_border_widths.remove(&window);
 
     if !destroyed {
@@ -587,19 +586,8 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
         }
     }
 
-    // Atomically remove the client and all monitor-owned references.
-    ctx.core.model_mut().remove_client(window);
-
-    {
-        let tmp = ctx.reborrow();
-        crate::focus::refresh_focus(&mut WmCtx::X11(tmp), None);
-    }
-    update_client_list(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
-
-    if let Some(monitor_id) = monitor_id {
-        let mut tmp = WmCtx::X11(ctx.reborrow());
-        arrange(&mut tmp, Some(monitor_id));
-    }
+    let mut tmp = WmCtx::X11(ctx.reborrow());
+    crate::client::lifecycle::remove_managed_client(&mut tmp, window);
 }
 
 // ---------------------------------------------------------------------------

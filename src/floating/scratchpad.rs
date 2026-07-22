@@ -127,15 +127,8 @@ fn selected_or_explicit_window(model: &WmModel, window_id: Option<WindowId>) -> 
 }
 
 fn attach_client_to_monitor_top(model: &mut WmModel, win: WindowId, monitor_id: MonitorId) {
-    model.detach(win);
-    model.detach_z_order(win);
-
-    if let Some(client) = model.client_mut(win) {
-        client.monitor_id = monitor_id;
-    }
-
-    model.attach(win);
-    model.attach_z_order_top(win);
+    let reassigned = model.reassign_client_monitor(win, monitor_id);
+    debug_assert!(reassigned, "scratchpad target must be a managed monitor");
 }
 
 fn prepare_scratchpad_for_show(
@@ -210,7 +203,7 @@ fn find_live_scratchpad(ctx: &mut WmCtx<'_>, name: &str) -> Result<WindowId, Str
         return Ok(win);
     }
 
-    crate::client::lifecycle::forget_stale_client(ctx, win);
+    crate::client::lifecycle::remove_managed_client(ctx, win);
     Err(format!("scratchpad '{}' no longer exists", name))
 }
 

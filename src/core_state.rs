@@ -560,18 +560,6 @@ impl CoreState {
     pub fn monitors_iter_all_mut(&mut self) -> impl Iterator<Item = &mut Monitor> {
         self.model.monitors_iter_all_mut()
     }
-    pub fn attach(&mut self, win: WindowId) {
-        self.model.attach(win);
-    }
-    pub fn detach(&mut self, win: WindowId) {
-        self.model.detach(win);
-    }
-    pub fn attach_z_order_top(&mut self, win: WindowId) {
-        self.model.attach_z_order_top(win);
-    }
-    pub fn detach_z_order(&mut self, win: WindowId) {
-        self.model.detach_z_order(win);
-    }
     pub fn raise_client_in_z_order(&mut self, win: WindowId) {
         self.model.raise_client_in_z_order(win);
     }

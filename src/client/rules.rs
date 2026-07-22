@@ -156,6 +156,8 @@ fn apply_rules_impl(
                 c.is_sticky = true;
             }
 
+            apply_monitor_rule(g, win, rule);
+
             // Look up monitor geometry for FloatFullscreen / Float rules.
             let mon_geo = {
                 let view = match g.model.client_view(win) {
@@ -182,8 +184,6 @@ fn apply_rules_impl(
                 }
                 c.update_tag_mask(|tags| tags | rule.tags);
             }
-
-            apply_monitor_rule(g, win, rule);
             break;
         }
     }
@@ -315,10 +315,9 @@ fn apply_monitor_rule(g: &mut CoreState, win: WindowId, rule: &crate::types::Rul
         .find(|(_i, m)| m.num == target_num as i32)
         .map(|(i, _)| i);
 
-    if let Some(mid) = target_mid
-        && let Some(c) = g.model.client_mut(win)
-    {
-        c.monitor_id = mid;
+    if let Some(mid) = target_mid {
+        let reassigned = g.model.reassign_client_monitor(win, mid);
+        debug_assert!(reassigned, "rule target must be a valid managed monitor");
     }
 }
 

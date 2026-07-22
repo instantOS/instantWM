@@ -669,7 +669,9 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     };
 
     {
-        ctx.core.model_mut().insert_client(client);
+        if !ctx.core.model_mut().insert_client(client) {
+            return;
+        }
         if let Some(ref mut systray) = ctx.xembed_tray {
             systray.icons.insert(0, icon_win);
         }
@@ -838,18 +840,15 @@ fn handle_wm_desktop(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent, win: Window
     let old_mon = ctx.core.model().client(win).map(|client| client.monitor_id);
     {
         let globals = &mut ctx.core.g;
-        globals.detach(win);
-        globals.detach_z_order(win);
         if let Some(client) = globals.model.client_mut(win) {
-            client.monitor_id = target_mon;
             client.is_sticky = false;
             client.clear_sticky_if_scratchpad();
             client.set_tag_mask(target_tags);
         } else {
             return;
         }
-        globals.attach(win);
-        globals.attach_z_order_top(win);
+        let reassigned = globals.model.reassign_client_monitor(win, target_mon);
+        debug_assert!(reassigned, "validated EWMH monitor transfer must succeed");
     }
 
     crate::backend::x11::set_client_tag_prop(ctx.core.g, &ctx.x11, ctx.x11_runtime, win);

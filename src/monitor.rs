@@ -517,13 +517,8 @@ fn rehome_orphaned_clients(model: &mut crate::model::WmModel, survivor: MonitorI
         .collect();
 
     for win in stale_wins {
-        model.detach(win);
-        model.detach_z_order(win);
-        if let Some(client) = model.client_mut(win) {
-            client.monitor_id = survivor;
-        }
-        model.attach(win);
-        model.attach_z_order_top(win);
+        let reassigned = model.reassign_client_monitor(win, survivor);
+        debug_assert!(reassigned, "orphaned managed client must be re-homeable");
     }
 }
 

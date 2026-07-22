@@ -588,7 +588,9 @@ fn handle_map_window(
         client.float_geo = client.geo;
     }
 
-    g.model.insert_client(client);
+    if !g.model.insert_client(client) {
+        return;
+    }
     let rule_outcome = crate::client::apply_initial_rules(g, win, &properties, launch_context);
     initial_position_is_explicit = match rule_outcome.placement {
         crate::client::InitialRulePlacement::Default => initial_position_is_explicit,
@@ -648,8 +650,8 @@ fn handle_map_window(
         }
     }
 
-    g.attach(win);
-    g.attach_z_order_top(win);
+    let attached = g.model.attach_client(win);
+    debug_assert!(attached, "managed Wayland client must have a valid monitor");
 
     let should_focus = g
         .model
@@ -681,8 +683,7 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
         ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
-    ctx.core_mut().model_mut().remove_client(win);
-    crate::focus::refresh_focus(&mut ctx, None);
+    crate::client::lifecycle::remove_managed_client(&mut ctx, win);
 }
 
 fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelReason) {

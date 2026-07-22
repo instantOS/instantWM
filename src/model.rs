@@ -55,9 +55,16 @@ impl WmModel {
         self.clients.get_mut(&win)
     }
 
-    /// Add or replace a managed client.
-    pub(crate) fn insert_client(&mut self, client: Client) -> Option<Client> {
-        self.clients.insert(client.win, client)
+    /// Add a new client without allowing an existing graph node to be replaced.
+    pub(crate) fn insert_client(&mut self, client: Client) -> bool {
+        use std::collections::hash_map::Entry;
+        match self.clients.entry(client.win) {
+            Entry::Vacant(entry) => {
+                entry.insert(client);
+                true
+            }
+            Entry::Occupied(_) => false,
+        }
     }
 
     /// Remove a managed client and every monitor-owned reference to it.
@@ -66,10 +73,18 @@ impl WmModel {
     /// metadata. Once this returns, the model cannot contain a partial client.
     pub(crate) fn remove_client(&mut self, win: WindowId) -> Option<Client> {
         let client = self.clients.remove(&win)?;
+        self.remove_monitor_references(win);
+        self.debug_assert_client_graph();
+        Some(client)
+    }
+
+    fn remove_monitor_references(&mut self, win: WindowId) -> bool {
+        let mut was_selected = false;
         for monitor in self.monitors.iter_all_mut() {
             monitor.clients.retain(|candidate| *candidate != win);
             monitor.z_order.remove(win);
             if monitor.selected == Some(win) {
+                was_selected = true;
                 monitor.selected = None;
             }
             monitor
@@ -79,7 +94,7 @@ impl WmModel {
                 .tag_tiled_focus_history
                 .retain(|_, candidate| *candidate != win);
         }
-        Some(client)
+        was_selected
     }
 
     /// Resolve a managed client and its assigned monitor as one coherent view.
@@ -201,66 +216,133 @@ impl WmModel {
     }
 
     // -------------------------------------------------------------------------
-    // Client List Management (Attach/Detach)
+    // Client graph mutations
     // -------------------------------------------------------------------------
 
-    /// Attach `win` to its assigned monitor's focus list.
-    pub fn attach(&mut self, win: WindowId) {
-        if let Some(mid) = self.client(win).map(|client| client.monitor_id)
-            && let Some(mon) = self.monitors.get_mut(mid)
-        {
-            mon.clients.insert(0, win);
+    /// Attach a stored client to both ordered monitor collections.
+    ///
+    /// Existing references are removed first, making this safe for initial
+    /// adoption as well as defensive graph reconciliation.
+    pub(crate) fn attach_client(&mut self, win: WindowId) -> bool {
+        let Some(monitor_id) = self.client(win).map(|client| client.monitor_id) else {
+            return false;
+        };
+        if self.monitor(monitor_id).is_none() {
+            return false;
         }
+
+        let was_selected = self.remove_monitor_references(win);
+        let monitor = self
+            .monitor_mut(monitor_id)
+            .expect("validated client monitor must remain present");
+        monitor.clients.insert(0, win);
+        monitor.z_order.attach_top(win);
+        if was_selected {
+            monitor.selected = Some(win);
+        }
+        self.debug_assert_client_graph();
+        true
     }
 
-    /// Detach `win` from its assigned monitor's focus list.
-    pub fn detach(&mut self, win: WindowId) {
-        let monitor_id = self.client(win).map(|client| client.monitor_id);
-        if let Some(mid) = monitor_id
-            && let Some(mon) = self.monitors.get_mut(mid)
-            && mon.clients.contains(&win)
-        {
-            mon.clients.retain(|&w| w != win);
-            return;
+    /// Change client ownership and rebuild every monitor-owned reference as one
+    /// model transaction.
+    pub(crate) fn reassign_client_monitor(
+        &mut self,
+        win: WindowId,
+        target_monitor: MonitorId,
+    ) -> bool {
+        if self.client(win).is_none() || self.monitor(target_monitor).is_none() {
+            return false;
         }
 
-        // Fallback: search all monitors if not found on the assigned one.
-        for mon in self.monitors.iter_all_mut() {
-            if mon.clients.contains(&win) {
-                mon.clients.retain(|&w| w != win);
+        let was_selected = self.remove_monitor_references(win);
+        self.client_mut(win)
+            .expect("validated client must remain present")
+            .monitor_id = target_monitor;
+        let monitor = self
+            .monitor_mut(target_monitor)
+            .expect("validated target monitor must remain present");
+        monitor.clients.insert(0, win);
+        monitor.z_order.attach_top(win);
+        if was_selected {
+            monitor.selected = Some(win);
+        }
+        self.debug_assert_client_graph();
+        true
+    }
+
+    #[cfg(debug_assertions)]
+    fn debug_assert_client_graph(&self) {
+        let mut memberships = std::collections::HashMap::<WindowId, MonitorId>::new();
+        for monitor in self.monitors.iter_all() {
+            let monitor_id = monitor.id();
+            for win in monitor.clients.iter().copied() {
+                let client = self
+                    .client(win)
+                    .unwrap_or_else(|| panic!("monitor {monitor_id:?} references missing {win:?}"));
+                assert_eq!(
+                    client.monitor_id, monitor_id,
+                    "monitor {monitor_id:?} contains client {win:?} owned by {:?}",
+                    client.monitor_id
+                );
+                assert_eq!(
+                    memberships.insert(win, monitor_id),
+                    None,
+                    "client {win:?} belongs to multiple monitor focus lists"
+                );
+            }
+
+            for win in monitor.z_order.iter_bottom_to_top() {
+                let client = self.client(win).unwrap_or_else(|| {
+                    panic!("monitor {monitor_id:?} z-order references missing {win:?}")
+                });
+                assert_eq!(
+                    client.monitor_id, monitor_id,
+                    "monitor {monitor_id:?} z-order contains client {win:?} owned by {:?}",
+                    client.monitor_id
+                );
+                assert!(
+                    monitor.clients.contains(&win),
+                    "monitor {monitor_id:?} z-order client {win:?} is absent from its focus list"
+                );
+            }
+
+            for (source, win) in std::iter::once(("selection", monitor.selected))
+                .chain(
+                    monitor
+                        .tag_focus_history
+                        .values()
+                        .copied()
+                        .map(|win| ("focus history", Some(win))),
+                )
+                .chain(
+                    monitor
+                        .tag_tiled_focus_history
+                        .values()
+                        .copied()
+                        .map(|win| ("tiled focus history", Some(win))),
+                )
+            {
+                let Some(win) = win else { continue };
+                let client = self.client(win).unwrap_or_else(|| {
+                    panic!("monitor {monitor_id:?} {source} references missing {win:?}")
+                });
+                assert_eq!(
+                    client.monitor_id, monitor_id,
+                    "monitor {monitor_id:?} {source} references client {win:?} owned by {:?}",
+                    client.monitor_id
+                );
+                assert!(
+                    monitor.clients.contains(&win),
+                    "monitor {monitor_id:?} {source} client {win:?} is absent from its focus list"
+                );
             }
         }
     }
 
-    /// Attach `win` to the top of its assigned monitor's persistent z-order.
-    pub fn attach_z_order_top(&mut self, win: WindowId) {
-        if let Some(mid) = self.client(win).map(|client| client.monitor_id)
-            && let Some(mon) = self.monitors.get_mut(mid)
-        {
-            mon.z_order.attach_top(win);
-        }
-    }
-
-    /// Detach `win` from its assigned monitor's persistent z-order.
-    pub fn detach_z_order(&mut self, win: WindowId) {
-        let monitor_id = self.client(win).map(|client| client.monitor_id);
-
-        let handle_monitor = |mon: &mut crate::types::Monitor| -> bool { mon.z_order.remove(win) };
-
-        if let Some(mid) = monitor_id
-            && let Some(mon) = self.monitors.get_mut(mid)
-            && handle_monitor(mon)
-        {
-            return;
-        }
-
-        // Fallback: search all monitors if not found on the assigned one.
-        for mon in self.monitors.iter_all_mut() {
-            if handle_monitor(mon) {
-                return;
-            }
-        }
-    }
+    #[cfg(not(debug_assertions))]
+    #[inline]
+    fn debug_assert_client_graph(&self) {}
 
     /// Move `win` to the top of its monitor's persistent z-order.
     pub fn raise_client_in_z_order(&mut self, win: WindowId) {
@@ -312,17 +394,18 @@ impl WmModel {
         };
         let target_tag_idx = target_monitor.current_tag_number();
 
-        self.detach(win);
-        self.detach_z_order(win);
-        let client = self.client_mut(win)?;
-        client.monitor_id = target_mon;
-        if !is_scratchpad {
-            client.set_tag_mask(target_tags);
-            client.reset_sticky(target_tag_idx);
+        {
+            let client = self.client_mut(win)?;
+            if !is_scratchpad {
+                client.set_tag_mask(target_tags);
+                client.reset_sticky(target_tag_idx);
+            }
         }
-        let needs_arrange = !client.mode.is_floating();
-        self.attach(win);
-        self.attach_z_order_top(win);
+        let needs_arrange = self
+            .client(win)
+            .is_some_and(|client| !client.mode.is_floating());
+        let reassigned = self.reassign_client_monitor(win, target_mon);
+        debug_assert!(reassigned, "validated transfer must succeed");
         Some(ClientTransferOutcome {
             is_scratchpad,
             needs_arrange,
@@ -451,6 +534,12 @@ mod tests {
             tags,
             ..Client::default()
         });
+        model.insert_client(Client {
+            win: other,
+            monitor_id,
+            tags,
+            ..Client::default()
+        });
 
         let monitor = model.monitor_mut(monitor_id).unwrap();
         monitor.clients = vec![other, win];
@@ -479,6 +568,86 @@ mod tests {
                 .tag_tiled_focus_history
                 .values()
                 .any(|candidate| *candidate == win)
+        );
+    }
+
+    #[test]
+    fn attaching_client_updates_focus_order_and_z_order_together() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor::default());
+        let win = WindowId(12);
+        model.insert_client(Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        });
+
+        assert!(model.attach_client(win));
+        assert!(model.attach_client(win));
+
+        let monitor = model.monitor(monitor_id).unwrap();
+        assert_eq!(monitor.clients, vec![win]);
+        assert_eq!(monitor.z_order.as_slice(), &[win]);
+    }
+
+    #[test]
+    fn inserting_duplicate_client_cannot_replace_existing_state() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor::default());
+        let win = WindowId(14);
+        assert!(model.insert_client(Client {
+            win,
+            monitor_id,
+            name: "original".to_string(),
+            ..Client::default()
+        }));
+
+        assert!(!model.insert_client(Client {
+            win,
+            monitor_id,
+            name: "replacement".to_string(),
+            ..Client::default()
+        }));
+        assert_eq!(
+            model.client(win).map(|client| client.name.as_str()),
+            Some("original")
+        );
+    }
+
+    #[test]
+    fn reassigning_client_clears_source_references_and_attaches_target() {
+        let mut model = WmModel::new();
+        let source = model.monitors.push(Monitor::default());
+        let target = model.monitors.push(Monitor::default());
+        let win = WindowId(13);
+        let tags = TagMask::single(1).unwrap();
+        model.insert_client(Client {
+            win,
+            monitor_id: source,
+            tags,
+            ..Client::default()
+        });
+        assert!(model.attach_client(win));
+        let source_monitor = model.monitor_mut(source).unwrap();
+        source_monitor.selected = Some(win);
+        source_monitor.tag_focus_history.insert(tags, win);
+        source_monitor.tag_tiled_focus_history.insert(tags, win);
+
+        assert!(model.reassign_client_monitor(win, target));
+
+        let source_monitor = model.monitor(source).unwrap();
+        assert!(source_monitor.clients.is_empty());
+        assert!(source_monitor.z_order.as_slice().is_empty());
+        assert_eq!(source_monitor.selected, None);
+        assert!(source_monitor.tag_focus_history.is_empty());
+        assert!(source_monitor.tag_tiled_focus_history.is_empty());
+        let target_monitor = model.monitor(target).unwrap();
+        assert_eq!(target_monitor.clients, vec![win]);
+        assert_eq!(target_monitor.z_order.as_slice(), &[win]);
+        assert_eq!(target_monitor.selected, Some(win));
+        assert_eq!(
+            model.client(win).map(|client| client.monitor_id),
+            Some(target)
         );
     }
 }

@@ -10,25 +10,20 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const PENDING_LAUNCH_TTL: Duration = Duration::from_secs(30);
 const MAX_PENDING_LAUNCHES: usize = 128;
 
-/// Forget a client whose backend object is already known to be gone.
+/// Remove a managed client and reconcile every shared consumer of that state.
 ///
-/// Normal destruction notifications should take the backend lifecycle path.
-/// This is the defensive reconciliation path for a missed notification: model
-/// removal is atomic, then focus, layout, bar, and X11 EWMH state are repaired.
-pub(crate) fn forget_stale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: WindowId) -> bool {
-    let monitor_id = ctx
-        .core()
-        .model()
-        .client(win)
-        .map(|client| client.monitor_id);
-    if ctx.core_mut().model_mut().remove_client(win).is_none() {
-        return false;
-    }
+/// Backends perform protocol-specific teardown before entering this function.
+/// Normal destruction and defensive stale-window recovery deliberately converge
+/// here so focus, layout, bars, and EWMH state cannot drift between backends.
+pub(crate) fn remove_managed_client(
+    ctx: &mut crate::contexts::WmCtx<'_>,
+    win: WindowId,
+) -> Option<crate::types::Client> {
+    let removed = ctx.core_mut().model_mut().remove_client(win)?;
+    let monitor_id = removed.monitor_id;
 
     crate::focus::refresh_focus(ctx, None);
-    if let Some(monitor_id) = monitor_id {
-        ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
-    }
+    crate::layouts::arrange(ctx, Some(monitor_id));
     ctx.request_bar_update();
 
     if let crate::contexts::WmCtx::X11(x11) = ctx {
@@ -38,7 +33,7 @@ pub(crate) fn forget_stale_client(ctx: &mut crate::contexts::WmCtx<'_>, win: Win
             x11.x11_runtime,
         );
     }
-    true
+    Some(removed)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

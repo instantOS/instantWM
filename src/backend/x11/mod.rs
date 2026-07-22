@@ -134,8 +134,8 @@ pub mod visibility;
 
 pub use client::update_size_hints;
 pub use properties::{
-    set_client_state, set_client_tag_prop, update_client_list, update_ewmh_desktop_props,
-    update_motif_hints, update_window_type, update_wm_hints, window_properties,
+    set_client_state, set_client_tag_prop, update_ewmh_desktop_props, update_motif_hints,
+    update_window_type, update_wm_hints, window_properties,
 };
 
 /// Borrowed view of the X11 backend.
