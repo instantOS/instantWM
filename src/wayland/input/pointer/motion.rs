@@ -639,7 +639,7 @@ fn update_pointer_focus(
 ) {
     if wm.core.model.is_overview_active() {
         let mut ctx = wm.ctx();
-        crate::focus::hover_focus_target(&mut ctx, hovered_win, false, Some(root));
+        crate::focus::apply_hover_focus(&mut ctx, hovered_win, false, Some(root));
         return;
     }
     if let Some(lock_win) = active_drag_window {
@@ -659,7 +659,7 @@ fn update_pointer_focus(
             return;
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
-        crate::focus::hover_focus_target(&mut wm_ctx, hovered_win, false, Some(root));
+        crate::focus::apply_hover_focus(&mut wm_ctx, hovered_win, false, Some(root));
     }
 }
 

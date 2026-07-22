@@ -278,7 +278,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
             ctx.x11.conn,
             ctx.x11_runtime.root,
         );
-        crate::focus::hover_focus_target(
+        crate::focus::apply_hover_focus(
             &mut WmCtx::X11(ctx.reborrow()),
             hovered,
             false,
@@ -353,7 +353,7 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     );
 
     // 5. Handle focus switching based on shared policy.
-    crate::focus::hover_focus_target(
+    crate::focus::apply_hover_focus(
         &mut WmCtx::X11(ctx.reborrow()),
         topmost_win_under_cursor,
         entering_root,

@@ -146,13 +146,27 @@ pub(crate) struct FocusOutcome {
     monitor_id: MonitorId,
 }
 
+/// Whether `focus_generic` must re-apply backend focus state even when the
+/// model selection did not change.
+///
+/// `IfNeeded` touches the backend only when the selection actually moved or the
+/// backend reports its own focus as stale. `Force` re-applies seat focus and
+/// desktop bindings unconditionally — used after client removal or monitor
+/// switches, where `mon.selected` can no longer be trusted to mirror prior
+/// backend state.
+pub(crate) enum BackendRefresh {
+    IfNeeded,
+    Force,
+}
+
 /// Generic focus implementation shared between X11 and Wayland.
 pub(crate) fn focus_generic(
     core: &mut CoreCtx,
     win: Option<WindowId>,
     backend: &mut dyn FocusBackendOps,
-    force_backend_refresh: bool,
+    refresh: BackendRefresh,
 ) -> anyhow::Result<FocusOutcome> {
+    let force_backend_refresh = matches!(refresh, BackendRefresh::Force);
     let result = match resolve_focus_target(core.model(), win) {
         Some(r) => r,
         None => {
@@ -168,14 +182,13 @@ pub(crate) fn focus_generic(
     let desktop_bindings_before =
         crate::keyboard::desktop_bindings_enabled(current_sel, &core.behavior().current_mode);
     let target = update_focus_state(core.model_mut(), result);
+    let focus_changed = current_sel != target;
     let desktop_bindings_after =
         crate::keyboard::desktop_bindings_enabled(target, &core.behavior().current_mode);
 
     // Track the previously focused window for focus-last-client.
     // This is done in the shared path so both backends behave identically.
-    if current_sel != target
-        && let Some(cur_win) = current_sel
-    {
+    if focus_changed && let Some(cur_win) = current_sel {
         core.focus.last_client = cur_win;
         backend.unfocus_current(core.state(), cur_win);
     }
@@ -184,7 +197,6 @@ pub(crate) fn focus_generic(
         backend.on_desktop_binding_state_changed(core.state());
     }
 
-    let focus_changed = current_sel != target;
     let needs_refocus = backend.needs_focus_refresh(target);
 
     if let Some(w) = target {
@@ -210,7 +222,7 @@ pub(crate) fn focus_generic(
 /// This is critical for overlapping layouts (maximized stack, floating) where the
 /// focused window must be visually on top.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
-    focus_impl(ctx, win, false);
+    focus_impl(ctx, win, BackendRefresh::IfNeeded);
     crate::overview::follow_focus(ctx);
 }
 
@@ -221,15 +233,11 @@ pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
 /// explicit operation keeps that invariant without leaving keyboard grabs or
 /// seat focus stale.
 pub(crate) fn refresh_focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
-    focus_impl(ctx, win, true);
+    focus_impl(ctx, win, BackendRefresh::Force);
     crate::overview::follow_focus(ctx);
 }
 
-fn focus_impl(
-    ctx: &mut crate::contexts::WmCtx,
-    win: Option<WindowId>,
-    force_backend_refresh: bool,
-) {
+fn focus_impl(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>, refresh: BackendRefresh) {
     use crate::contexts::WmCtx::*;
     let outcome = match ctx {
         X11(x11_ctx) => {
@@ -237,7 +245,7 @@ fn focus_impl(
                 x11: &x11_ctx.x11,
                 x11_runtime: x11_ctx.x11_runtime,
             };
-            match focus_generic(&mut x11_ctx.core, win, &mut backend, force_backend_refresh) {
+            match focus_generic(&mut x11_ctx.core, win, &mut backend, refresh) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("focus X11({:?}) failed: {}", win, e);
@@ -249,12 +257,7 @@ fn focus_impl(
             let mut backend = WaylandFocusBackend {
                 wayland: wayland_ctx.wayland,
             };
-            match focus_generic(
-                &mut wayland_ctx.core,
-                win,
-                &mut backend,
-                force_backend_refresh,
-            ) {
+            match focus_generic(&mut wayland_ctx.core, win, &mut backend, refresh) {
                 Ok(o) => o,
                 Err(e) => {
                     log::warn!("focus Wayland({:?}) failed: {}", win, e);
@@ -305,7 +308,7 @@ pub fn unfocus_win(ctx: &mut crate::contexts::WmCtx, win: WindowId, redirect_to_
 ///
 /// Checks focus-follows-mouse guards, then delegates to `focus_soft` which
 /// handles `mon.selected`, backend seat focus, and z-order sync in one place.
-pub fn hover_focus_target(
+pub fn apply_hover_focus(
     ctx: &mut crate::contexts::WmCtx,
     hovered_win: Option<WindowId>,
     entering_root: bool,
@@ -405,7 +408,7 @@ pub fn select_monitor(ctx: &mut crate::contexts::WmCtx, monitor_id: MonitorId) -
     ctx.update_ewmh_desktop_props();
     // Destination monitors remember their selected client. Force the backend
     // transaction even when that model selection itself does not change.
-    focus_impl(ctx, None, true);
+    focus_impl(ctx, None, BackendRefresh::Force);
     true
 }
 
@@ -732,7 +735,9 @@ pub fn focus_stack_neighbor(ctx: &mut WmCtx, direction: StackDirection) -> bool 
 
 #[cfg(test)]
 mod tests {
-    use super::{FocusBackendOps, focus_generic, get_visible_stack, stack_focus_target};
+    use super::{
+        BackendRefresh, FocusBackendOps, focus_generic, get_visible_stack, stack_focus_target,
+    };
     use crate::bar::BarState;
     use crate::client::focus::FocusState;
     use crate::contexts::CoreCtx;
@@ -787,11 +792,11 @@ mod tests {
         let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
         let mut backend = RecordingBackend::default();
 
-        focus_generic(&mut core, None, &mut backend, false).unwrap();
+        focus_generic(&mut core, None, &mut backend, BackendRefresh::IfNeeded).unwrap();
         assert_eq!(backend.focused.get(), 0);
         assert_eq!(backend.binding_refreshes.get(), 0);
 
-        focus_generic(&mut core, None, &mut backend, true).unwrap();
+        focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
         assert_eq!(backend.focused.get(), 1);
         assert_eq!(backend.binding_refreshes.get(), 1);
     }
