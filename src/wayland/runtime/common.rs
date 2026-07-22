@@ -435,12 +435,15 @@ fn handle_set_fullscreen(
     win: crate::types::WindowId,
     fullscreen: bool,
 ) {
-    {
-        let mut ctx = wm.ctx();
-        crate::client::mode::set_fullscreen(ctx.core_mut().model_mut(), win, fullscreen);
-        ctx.core_mut().queue_layout_for_client(win);
+    if !crate::backend::wayland::commands::apply_fullscreen_request(
+        &mut wm.core,
+        &mut wm.work,
+        &mut wm.bar,
+        win,
+        fullscreen,
+    ) {
+        return;
     }
-    wm.bar.mark_dirty();
     state.request_space_sync();
     state.request_render();
 }

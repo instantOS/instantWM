@@ -1,11 +1,42 @@
 //! Command queue for the Wayland backend.
 //!
 //! This module defines the [`WmCommand`] enum, which represents window
-//! manager intents requested by the Wayland compositor. These commands
-//! are processed asynchronously during the event loop tick, ensuring
-//! unidirectional data flow and avoiding deadlocks.
+//! manager intents requested by the Wayland compositor. Most commands are
+//! processed asynchronously during the event loop tick. Protocol state that a
+//! configure immediately advertises must first be committed synchronously via
+//! the transaction helpers in this module, so the model remains the sole
+//! authority for every configure generated in the meantime.
 
 use crate::types::WindowId;
+
+/// Commit a fullscreen protocol request to authoritative WM state.
+///
+/// Returning `true` means the window is managed and the compositor may
+/// acknowledge the requested state in an XDG/XWayland configure. Layout is
+/// urgent because delaying it behind an existing animation would leave the
+/// protocol state and fullscreen geometry out of sync.
+pub(crate) fn apply_fullscreen_request(
+    core: &mut crate::core_state::CoreState,
+    work: &mut crate::core_state::PendingWork,
+    bar: &mut crate::bar::BarState,
+    win: WindowId,
+    fullscreen: bool,
+) -> bool {
+    let Some((monitor_id, is_fullscreen)) = core
+        .model
+        .client(win)
+        .map(|client| (client.monitor_id, client.mode.is_fullscreen()))
+    else {
+        return false;
+    };
+
+    if is_fullscreen != fullscreen {
+        crate::client::mode::set_fullscreen(&mut core.model, win, fullscreen);
+        work.layout.mark_monitor_urgent(monitor_id);
+        bar.mark_dirty();
+    }
+    true
+}
 
 /// Pointer motion data queued from backend input sources.
 ///
@@ -143,4 +174,54 @@ pub enum WmCommand {
         monitor_name: String,
         tag_index: usize,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::apply_fullscreen_request;
+    use crate::bar::BarState;
+    use crate::core_state::{CoreState, PendingWork};
+    use crate::types::{Client, Monitor, WindowId};
+
+    #[test]
+    fn fullscreen_request_updates_authoritative_state_before_acknowledgement() {
+        let mut core = CoreState::default();
+        let monitor_id = core.model.monitors.push(Monitor::default());
+        let win = WindowId(40);
+        core.model.insert_client(Client {
+            win,
+            monitor_id,
+            ..Client::default()
+        });
+        let mut work = PendingWork::default();
+        work.layout.clear();
+        let mut bar = BarState::default();
+
+        assert!(apply_fullscreen_request(
+            &mut core, &mut work, &mut bar, win, true
+        ));
+
+        assert!(core.model.client(win).unwrap().mode.is_true_fullscreen());
+        assert!(work.layout.is_pending());
+        assert!(work.layout.is_urgent());
+        assert!(bar.needs_redraw());
+    }
+
+    #[test]
+    fn fullscreen_request_rejects_unknown_window_without_side_effects() {
+        let mut core = CoreState::default();
+        let mut work = PendingWork::default();
+        work.layout.clear();
+        let mut bar = BarState::default();
+
+        assert!(!apply_fullscreen_request(
+            &mut core,
+            &mut work,
+            &mut bar,
+            WindowId(404),
+            true
+        ));
+        assert!(!work.layout.is_pending());
+        assert!(!bar.needs_redraw());
+    }
 }

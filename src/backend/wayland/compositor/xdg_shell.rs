@@ -103,6 +103,34 @@ impl WaylandState {
         self.update_foreign_toplevel(win);
     }
 
+    /// Commit native XDG state before acknowledging it to the client.
+    ///
+    /// A queued model update is too late here: activation and resize paths can
+    /// emit another configure before the next WM tick. Those configures derive
+    /// their states from the model and would otherwise advertise the old state,
+    /// making the client treat its fullscreen request as rejected.
+    fn commit_native_fullscreen_request(
+        &mut self,
+        win: crate::types::WindowId,
+        fullscreen: bool,
+    ) -> bool {
+        // SAFETY: XDG handlers run synchronously inside calloop's Wayland
+        // display-source dispatch. The event-loop body's `&mut Wm` borrow is
+        // not active until dispatch returns; this is the same access window as
+        // synchronous keyboard handling.
+        let Some(wm_ptr) = (unsafe { self.wm_mut_ptr() }) else {
+            return false;
+        };
+        let wm = unsafe { &mut *wm_ptr };
+        crate::backend::wayland::commands::apply_fullscreen_request(
+            &mut wm.core,
+            &mut wm.work,
+            &mut wm.bar,
+            win,
+            fullscreen,
+        )
+    }
+
     pub(crate) fn xdg_toplevel_wants_floating(&self, surface: &ToplevelSurface) -> bool {
         xdg_toplevel_policy_wants_floating(
             surface.parent().is_some(),
@@ -522,29 +550,33 @@ impl XdgShellHandler for WaylandState {
         surface: ToplevelSurface,
         mut _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
     ) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.push_command(super::super::commands::WmCommand::SetFullscreen {
-                win,
-                fullscreen: true,
-            });
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        if !self.commit_native_fullscreen_request(win, true) {
+            return;
         }
         surface.with_pending_state(|state| {
             state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
         });
         surface.send_configure();
+        self.request_space_sync();
+        self.request_render();
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
-        if let Some(win) = self.window_id_for_toplevel(&surface) {
-            self.push_command(super::super::commands::WmCommand::SetFullscreen {
-                win,
-                fullscreen: false,
-            });
+        let Some(win) = self.window_id_for_toplevel(&surface) else {
+            return;
+        };
+        if !self.commit_native_fullscreen_request(win, false) {
+            return;
         }
         surface.with_pending_state(|state| {
             state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
         });
         surface.send_configure();
+        self.request_space_sync();
+        self.request_render();
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
