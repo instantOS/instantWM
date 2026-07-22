@@ -4,7 +4,8 @@ use crate::client::LaunchContext;
 use crate::contexts::CoreCtx;
 use crate::core_state::CoreState;
 use crate::types::{
-    ClientMode, MonitorRule, Rect, RuleFloat, SizeHints, SpecialNext, TagMask, WindowId,
+    BaseClientMode, ClientMode, MonitorRule, Rect, RuleFloat, SizeHints, SpecialNext, TagMask,
+    WindowId,
 };
 
 /// Properties used for rule matching.
@@ -122,11 +123,12 @@ fn apply_rules_impl(
 
     // --- Initialise fields we are about to set -------------------------------
     if let Some(c) = g.model.client_mut(win) {
-        c.mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
-            ClientMode::Floating
+        let base_mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
+            BaseClientMode::Floating
         } else {
-            ClientMode::Tiling
+            BaseClientMode::Tiling
         };
+        c.mode = c.mode.with_base_mode(base_mode);
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
@@ -140,7 +142,7 @@ fn apply_rules_impl(
         if let SpecialNext::Float = special_next
             && let Some(c) = g.model.client_mut(win)
         {
-            c.mode = ClientMode::Floating;
+            c.mode = c.mode.with_base_mode(BaseClientMode::Floating);
         }
         g.behavior.specialnext = SpecialNext::None;
     } else {
@@ -229,7 +231,7 @@ fn apply_property_change(g: &mut CoreState, win: WindowId, props: &WindowPropert
     let existing_context = g.model.client(win).map(|c| LaunchContext {
         monitor_id: c.monitor_id,
         tags: c.tags,
-        is_floating: c.mode.is_floating(),
+        is_floating: c.mode.base_mode() == BaseClientMode::Floating,
     });
 
     let rules_changed = apply_rules(g, win, props, existing_context);
@@ -278,10 +280,10 @@ fn apply_float_rule(
 
     match float_rule {
         RuleFloat::FloatCenter => {
-            client.mode = ClientMode::Floating;
+            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
         }
         RuleFloat::FloatFullscreen => {
-            client.mode = ClientMode::Floating;
+            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
             client.geo.w = monitor_rect.w;
             client.geo.h = work_rect.h;
             client.geo.x = monitor_rect.x;
@@ -290,16 +292,16 @@ fn apply_float_rule(
             }
         }
         RuleFloat::Scratchpad => {
-            client.mode = ClientMode::Floating;
+            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
         }
         RuleFloat::Float => {
-            client.mode = ClientMode::Floating;
+            client.mode = client.mode.with_base_mode(BaseClientMode::Floating);
             if show_bar {
                 client.geo.y = monitor_rect.y + bar_height;
             }
         }
         RuleFloat::Tiled => {
-            client.mode = ClientMode::Tiling;
+            client.mode = client.mode.with_base_mode(BaseClientMode::Tiling);
         }
     }
 }
@@ -323,7 +325,7 @@ fn apply_monitor_rule(g: &mut CoreState, win: WindowId, rule: &crate::types::Rul
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct RuleStateSnapshot {
-    is_floating: bool,
+    mode: ClientMode,
     is_sticky: bool,
     monitor_id: crate::types::MonitorId,
     tags: TagMask,
@@ -333,7 +335,7 @@ struct RuleStateSnapshot {
 fn rule_state_snapshot(g: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
     let c = g.model.client(win)?;
     Some(RuleStateSnapshot {
-        is_floating: c.mode.is_floating(),
+        mode: c.mode,
         is_sticky: c.is_sticky,
         monitor_id: c.monitor_id,
         tags: c.tags,
@@ -511,6 +513,72 @@ mod tests {
 
         let client = g.model.client(win).expect("client should still exist");
         assert!(client.mode.is_floating());
+    }
+
+    #[test]
+    fn property_change_preserves_fullscreen_and_its_restore_mode() {
+        let mut g = CoreState::default();
+        let win = WindowId(43);
+        g.model.insert_client(Client {
+            win,
+            mode: ClientMode::Floating.as_fullscreen(),
+            ..Default::default()
+        });
+
+        apply_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                title: "YouTube — Full Screen".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let client = g.model.client(win).expect("client should still exist");
+        assert!(client.mode.is_true_fullscreen());
+        assert_eq!(
+            client.mode.base_mode(),
+            crate::types::BaseClientMode::Floating
+        );
+        assert_eq!(client.name, "YouTube — Full Screen");
+    }
+
+    #[test]
+    fn property_rule_changes_restore_mode_without_exiting_fullscreen() {
+        use crate::types::{MonitorRule, Rule, RuleFloat};
+        use std::borrow::Cow;
+
+        let mut g = CoreState::default();
+        g.model.monitors.push(Monitor::new_with_values(true, true));
+        g.config.bindings.rules = vec![Rule {
+            class: Some(Cow::Borrowed("tile-when-renamed")),
+            instance: None,
+            title: None,
+            tags: TagMask::EMPTY,
+            is_floating: Some(RuleFloat::Tiled),
+            monitor: MonitorRule::Any,
+        }];
+        let win = WindowId(44);
+        g.model.insert_client(Client {
+            win,
+            monitor_id: MonitorId::default(),
+            mode: ClientMode::Floating.as_fullscreen(),
+            ..Default::default()
+        });
+
+        apply_property_change(
+            &mut g,
+            win,
+            &WindowProperties {
+                class: "tile-when-renamed".to_string(),
+                ..Default::default()
+            },
+        );
+
+        let mode = g.model.client(win).unwrap().mode;
+        assert!(mode.is_true_fullscreen());
+        assert_eq!(mode.base_mode(), crate::types::BaseClientMode::Tiling);
+        assert_eq!(mode.restored(), ClientMode::Tiling);
     }
 
     #[test]

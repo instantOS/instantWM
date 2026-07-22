@@ -117,6 +117,24 @@ impl ClientMode {
         }
     }
 
+    /// Replace the persistent placement mode without discarding a temporary
+    /// presentation mode.
+    ///
+    /// Rules and policy refreshes may change whether a client should restore
+    /// to tiling or floating, but they do not own fullscreen/maximized state.
+    #[inline]
+    pub fn with_base_mode(self, base: BaseClientMode) -> Self {
+        match self {
+            Self::TrueFullscreen { .. } => Self::TrueFullscreen { restore: base },
+            Self::FakeFullscreen { .. } => Self::FakeFullscreen { restore: base },
+            Self::Maximized { .. } => Self::Maximized { restore: base },
+            Self::Tiling | Self::Floating => match base {
+                BaseClientMode::Tiling => Self::Tiling,
+                BaseClientMode::Floating => Self::Floating,
+            },
+        }
+    }
+
     #[inline]
     pub fn as_fullscreen(self) -> Self {
         Self::TrueFullscreen {
@@ -529,7 +547,7 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use super::{Client, ClientMode, ScratchpadData};
+    use super::{BaseClientMode, Client, ClientMode, ScratchpadData};
     use crate::types::{SCRATCHPAD_MASK, TagMask};
 
     #[test]
@@ -568,6 +586,22 @@ mod tests {
 
         client.mode = client.mode.restored();
         assert_eq!(client.mode, ClientMode::Floating);
+    }
+
+    #[test]
+    fn changing_base_mode_preserves_temporary_presentation() {
+        for mode in [
+            ClientMode::Tiling.as_fullscreen(),
+            ClientMode::Tiling.as_fake_fullscreen(),
+            ClientMode::Tiling.as_maximized(),
+        ] {
+            let changed = mode.with_base_mode(BaseClientMode::Floating);
+            assert_eq!(
+                std::mem::discriminant(&changed),
+                std::mem::discriminant(&mode)
+            );
+            assert_eq!(changed.restored(), ClientMode::Floating);
+        }
     }
 
     fn sp_data(name: &str, restore_tags: TagMask) -> ScratchpadData {
