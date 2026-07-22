@@ -4,7 +4,7 @@ use crate::client::{kill_client, shut_kill, zoom};
 use crate::contexts::WmCtx;
 use crate::floating::{
     DEFAULT_EDGE_SCRATCHPAD_NAME, center_window, distribute_clients, edge_scratchpad_create,
-    key_resize, key_move, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
+    key_move, key_resize, scratchpad_hide_name, scratchpad_make, scratchpad_show_name,
     scratchpad_toggle, set_scratchpad_direction, toggle_floating,
 };
 use crate::focus::{direction_focus, focus_last_client, focus_stack, focus_stack_neighbor};
