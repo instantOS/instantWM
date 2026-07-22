@@ -42,7 +42,7 @@ impl Wm {
                 core,
                 x11: crate::backend::x11::X11BackendRef::new(&data.conn, data.screen_num),
                 x11_runtime: &mut data.x11_runtime,
-                xembed_tray: data.xembed_tray.as_mut(),
+                xembed_tray: &mut data.xembed_tray,
             }),
             Backend::Wayland(data) => WmCtx::Wayland(WmCtxWayland {
                 core,

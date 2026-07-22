@@ -15,28 +15,57 @@ const XEMBED_WINDOW_ACTIVATE: u32 = 1;
 const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct XEmbedInfo {
+    _version: u32,
+    flags: u32,
+}
+
+impl XEmbedInfo {
+    fn parse(values: impl IntoIterator<Item = u32>) -> Option<Self> {
+        let mut values = values.into_iter();
+        Some(Self {
+            _version: values.next()?,
+            flags: values.next()?,
+        })
+    }
+
+    fn is_mapped(self) -> bool {
+        self.flags & XEMBED_MAPPED != 0
+    }
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 struct XEmbedLayout {
     width: u32,
-    icon_offsets: Vec<u32>,
+    cells: Vec<XEmbedCell>,
 }
 
-fn layout_xembed_icons(icon_widths: impl IntoIterator<Item = i32>, spacing: i32) -> XEmbedLayout {
-    let spacing = spacing.max(0) as u32;
+#[derive(Debug, Default, PartialEq, Eq)]
+struct XEmbedCell {
+    offset: u32,
+    width: u32,
+}
+
+fn layout_xembed_icons(
+    icon_widths: impl IntoIterator<Item = i32>,
+    bar_height: i32,
+    configured_padding: i32,
+) -> XEmbedLayout {
+    let padding = crate::systray::visual_padding(bar_height, configured_padding);
     let mut cursor = 0u32;
-    let mut offsets = Vec::new();
-    for width in icon_widths.into_iter().filter(|width| *width > 0) {
-        cursor = cursor.saturating_add(spacing);
-        offsets.push(cursor);
-        cursor = cursor.saturating_add(width as u32);
+    let mut cells = Vec::new();
+    for icon_width in icon_widths.into_iter().filter(|width| *width > 0) {
+        let width = crate::systray::cell_width(icon_width, bar_height, padding) as u32;
+        cells.push(XEmbedCell {
+            offset: cursor,
+            width,
+        });
+        cursor = cursor.saturating_add(width);
     }
     XEmbedLayout {
-        width: if offsets.is_empty() {
-            1
-        } else {
-            cursor.saturating_add(spacing)
-        },
-        icon_offsets: offsets,
+        width: cursor,
+        cells,
     }
 }
 
@@ -45,7 +74,7 @@ pub fn get_systray_width(
     systray: Option<&XEmbedTray>,
 ) -> u32 {
     if !globals.config.systray.show {
-        return 1;
+        return 0;
     }
 
     layout_xembed_icons(
@@ -58,6 +87,7 @@ pub fn get_systray_width(
                     .map(|client| client.geo.w)
             })
         }),
+        globals.config.derived.bar_height,
         globals.config.systray.spacing,
     )
     .width
@@ -162,11 +192,9 @@ pub fn update_systray_icon_state(
 
     let x11_icon_win: Window = icon_win.into();
 
-    let flags = get_atom_prop(x11, icon_win, xembed_info_atom);
-
-    if flags == 0 {
+    let Some(xembed_info) = read_xembed_info(x11, icon_win, xembed_info_atom) else {
         return;
-    }
+    };
 
     let (current_tags, _has_systray) = {
         if let Some(client) = core.model_mut().client_mut(icon_win) {
@@ -176,7 +204,7 @@ pub fn update_systray_icon_state(
         }
     };
 
-    if (flags & XEMBED_MAPPED) != 0 && current_tags.is_empty() {
+    if xembed_info.is_mapped() && current_tags.is_empty() {
         if let Some(client) = core.model_mut().client_mut(icon_win) {
             client.tags = crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY);
         }
@@ -200,7 +228,7 @@ pub fn update_systray_icon_state(
             XEMBED_EMBEDDED_VERSION as i64,
         );
         set_client_state(x11, x11_runtime, icon_win, 1);
-    } else if (flags & XEMBED_MAPPED) == 0 && !current_tags.is_empty() {
+    } else if !xembed_info.is_mapped() && !current_tags.is_empty() {
         if let Some(client) = core.model_mut().client_mut(icon_win) {
             client.tags = crate::types::TagMask::EMPTY;
         }
@@ -228,7 +256,7 @@ pub fn update_systray(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
-    mut systray: Option<&mut XEmbedTray>,
+    systray: &mut Option<XEmbedTray>,
 ) {
     if !core.config().systray.show {
         return;
@@ -243,26 +271,24 @@ pub fn update_systray(
         crate::backend::x11::draw::XFlush(x11_runtime.xlibdisplay.0);
     }
 
-    let (x, bar_y, _show_bar, bar_win) = {
+    let (tray_right, bar_x, full_bar_width, bar_y, bar_win) = {
         let m = systray_to_mon(core.model(), &core.config().systray, None);
         let mon = match core.model().monitor(m) {
             Some(mon) => mon,
             None => return,
         };
-        let mask = mon.selected_tags();
         (
             mon.monitor_rect.x + mon.monitor_rect.w,
+            mon.work_rect().x,
+            mon.work_rect().w,
             mon.bar_y(),
-            mon.show_bar_for_mask(mask),
             mon.bar_win,
         )
     };
 
-    let mut w: u32 = 1;
+    const MIN_MANAGER_WINDOW_WIDTH: u32 = 1;
 
-    let systray_exists = systray.is_some();
-
-    if !systray_exists {
+    if systray.is_none() {
         let root = x11_runtime.root;
         let bar_height = core.config().derived.bar_height;
         let net_system_tray = x11_runtime.netatom.system_tray;
@@ -277,9 +303,9 @@ pub fn update_systray(
                 x11rb::COPY_FROM_PARENT as u8,
                 systray_win,
                 root,
-                x as i16,
+                tray_right as i16,
                 bar_y as i16,
-                w as u16,
+                MIN_MANAGER_WINDOW_WIDTH as u16,
                 bar_height as u16,
                 0,
                 WindowClass::INPUT_OUTPUT,
@@ -341,20 +367,16 @@ pub fn update_systray(
             return;
         };
 
-        let new_systray = XEmbedTray {
+        *systray = Some(XEmbedTray {
             win: WindowId::from(systray_win),
             icons: Vec::new(),
-        };
-
-        if let Some(ref mut s) = systray {
-            **s = new_systray;
-        }
+        });
     }
 
-    let (systray_win, icons) = match systray {
-        Some(ref s) => (s.win, s.icons.clone()),
-        None => return,
-    };
+    let tray = systray
+        .as_ref()
+        .expect("tray manager creation must initialize owned XEmbed state");
+    let (systray_win, icons) = (tray.win, tray.icons.clone());
 
     let bar_height = core.config().derived.bar_height;
     let bg_pixel = x11_runtime.status_scheme.bg.color.pixel as u32;
@@ -373,12 +395,13 @@ pub fn update_systray(
 
     let layout = layout_xembed_icons(
         icon_layout.iter().map(|(_, icon_size)| icon_size.w),
+        bar_height,
         core.config().systray.spacing,
     );
 
     {
         let conn = x11.conn;
-        for ((icon_win, icon_size), offset) in icon_layout.into_iter().zip(&layout.icon_offsets) {
+        for ((icon_win, _icon_size), cell) in icon_layout.into_iter().zip(&layout.cells) {
             let x11_icon_win: Window = icon_win.into();
             let _ = conn.change_window_attributes(
                 x11_icon_win,
@@ -389,10 +412,10 @@ pub fn update_systray(
             let _ = conn.configure_window(
                 x11_icon_win,
                 &ConfigureWindowAux::new()
-                    .x(*offset as i32)
+                    .x(cell.offset as i32)
                     .y(0)
-                    .width(icon_size.w as u32)
-                    .height(icon_size.h as u32),
+                    .width(cell.width)
+                    .height(bar_height as u32),
             );
         }
     }
@@ -400,17 +423,22 @@ pub fn update_systray(
     let x11_systray_win: Window = systray_win.into();
     let x11_bar_win: Window = bar_win.into();
 
-    w = layout.width;
-    let x = x - w as i32;
+    let reserved_width = layout.width;
+    let manager_width = reserved_width.max(MIN_MANAGER_WINDOW_WIDTH);
+    let tray_x = tray_right - manager_width as i32;
+    let bar_width = full_bar_width.saturating_sub(reserved_width as i32).max(1) as u32;
+
+    core.bar.runtime.systray_width = reserved_width as i32;
+    core.bar.mark_dirty();
 
     let conn = x11.conn;
 
     let _ = conn.configure_window(
         x11_systray_win,
         &ConfigureWindowAux::new()
-            .x(x)
+            .x(tray_x)
             .y(bar_y)
-            .width(w)
+            .width(manager_width)
             .height(bar_height as u32),
     );
 
@@ -419,6 +447,15 @@ pub fn update_systray(
         &ConfigureWindowAux::new()
             .stack_mode(StackMode::ABOVE)
             .sibling(x11_bar_win),
+    );
+
+    let _ = conn.configure_window(
+        x11_bar_win,
+        &ConfigureWindowAux::new()
+            .x(bar_x)
+            .y(bar_y)
+            .width(bar_width)
+            .height(bar_height as u32),
     );
 
     let _ = conn.map_window(x11_systray_win);
@@ -482,16 +519,15 @@ pub fn systray_to_mon(
 }
 
 /// Get atom property using dependency injection.
-fn get_atom_prop(x11: &X11BackendRef, win: WindowId, atom: u32) -> u32 {
+fn read_xembed_info(x11: &X11BackendRef, win: WindowId, atom: u32) -> Option<XEmbedInfo> {
     let conn = x11.conn;
     let x11_win: Window = win.into();
-    if let Ok(cookie) = conn.get_property(false, x11_win, atom, AtomEnum::CARDINAL, 0, 2)
-        && let Ok(reply) = cookie.reply()
-        && let Some(val) = reply.value32().and_then(|mut v| v.next())
-    {
-        return val;
-    }
-    0
+    let reply = conn
+        .get_property(false, x11_win, atom, AtomEnum::ANY, 0, 2)
+        .ok()?
+        .reply()
+        .ok()?;
+    XEmbedInfo::parse(reply.value32()?)
 }
 
 /// Send X event using dependency injection.
@@ -520,15 +556,24 @@ fn send_event(
 
 #[cfg(test)]
 mod tests {
-    use super::{XEmbedLayout, layout_xembed_icons};
+    use super::{XEmbedCell, XEmbedInfo, XEmbedLayout, layout_xembed_icons};
 
     #[test]
-    fn xembed_layout_preserves_legacy_spacing_and_offsets() {
+    fn xembed_layout_uses_contiguous_full_hitbox_cells() {
         assert_eq!(
-            layout_xembed_icons([16, 24], 2),
+            layout_xembed_icons([16, 24], 30, 2),
             XEmbedLayout {
-                width: 46,
-                icon_offsets: vec![2, 20],
+                width: 60,
+                cells: vec![
+                    XEmbedCell {
+                        offset: 0,
+                        width: 30
+                    },
+                    XEmbedCell {
+                        offset: 30,
+                        width: 30
+                    },
+                ],
             }
         );
     }
@@ -536,12 +581,25 @@ mod tests {
     #[test]
     fn xembed_layout_rejects_invalid_widths_and_negative_spacing() {
         assert_eq!(
-            layout_xembed_icons([0, -4, 16], -10),
+            layout_xembed_icons([0, -4, 16], 30, -10),
             XEmbedLayout {
-                width: 16,
-                icon_offsets: vec![0],
+                width: 30,
+                cells: vec![XEmbedCell {
+                    offset: 0,
+                    width: 30
+                }],
             }
         );
-        assert_eq!(layout_xembed_icons([], 2).width, 1);
+        assert_eq!(layout_xembed_icons([], 30, 2).width, 0);
+    }
+
+    #[test]
+    fn xembed_info_reads_flags_after_the_version_word() {
+        let mapped = XEmbedInfo::parse([0, 1]).unwrap();
+        assert!(mapped.is_mapped());
+
+        let unmapped = XEmbedInfo::parse([1, 0]).unwrap();
+        assert!(!unmapped.is_mapped());
+        assert!(XEmbedInfo::parse([0]).is_none());
     }
 }

@@ -133,8 +133,8 @@ pub struct Config {
     pub startmenu_size: i32,
     /// Index of monitor to pin the systray to (0 = primary).
     pub systray_pinning: usize,
-    /// Desired breathing room around tray icons. StatusNotifier items use visual
-    /// padding inside contiguous input cells; legacy XEmbed uses literal spacing.
+    /// Desired breathing room around tray icons, kept inside contiguous input
+    /// cells so padding never creates dead click regions.
     pub systray_spacing: i32,
     /// If systray pinning fails, place it on the first monitor.
     pub systray_pinning_fail_first: bool,

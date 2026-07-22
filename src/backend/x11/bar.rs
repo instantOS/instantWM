@@ -11,7 +11,7 @@ pub fn update_status(
     core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
-    systray: Option<&mut crate::types::XEmbedTray>,
+    systray: &mut Option<crate::types::XEmbedTray>,
 ) {
     let selmon_idx = core.model().selected_monitor_id();
 

@@ -331,7 +331,9 @@ pub struct WmCtxX11<'a> {
     pub core: CoreCtx<'a>,
     pub x11: X11BackendRef<'a>,
     pub x11_runtime: &'a mut X11RuntimeConfig,
-    pub xembed_tray: Option<&'a mut XEmbedTray>,
+    /// Owned optional tray state. Keep the outer `Option` available so the X11
+    /// backend can create the manager window during initialization.
+    pub xembed_tray: &'a mut Option<XEmbedTray>,
 }
 
 impl<'a> WmCtxX11<'a> {
@@ -340,7 +342,7 @@ impl<'a> WmCtxX11<'a> {
             core: self.core.reborrow(),
             x11: X11BackendRef::new(self.x11.conn, self.x11.screen_num),
             x11_runtime: self.x11_runtime,
-            xembed_tray: self.xembed_tray.as_deref_mut(),
+            xembed_tray: &mut *self.xembed_tray,
         }
     }
 

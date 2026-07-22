@@ -140,7 +140,7 @@ fn pump_deferred_work(ctx: &mut WmCtxX11<'_>) {
         crate::backend::x11::bar::draw_bars(
             &mut ctx.core,
             ctx.x11_runtime,
-            ctx.xembed_tray.as_deref(),
+            ctx.xembed_tray.as_ref(),
         );
     }
 }

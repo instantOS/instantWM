@@ -165,6 +165,23 @@ pub(crate) struct TrayLayout {
     pub menu_cells: Vec<crate::bar::SystrayHitSlot>,
 }
 
+/// Resolve configured tray padding once for every backend. Padding is visual
+/// breathing room inside a contiguous input cell, never dead space between
+/// independently clickable cells.
+pub(crate) fn visual_padding(bar_height: i32, configured_padding: i32) -> i32 {
+    let bar_height = bar_height.max(1);
+    configured_padding
+        .max(MIN_VISUAL_PADDING)
+        .min((bar_height - 1) / 2)
+}
+
+/// Width of a tray input cell containing an icon of `icon_width`.
+pub(crate) fn cell_width(icon_width: i32, bar_height: i32, padding: i32) -> i32 {
+    bar_height
+        .max(1)
+        .max(icon_width.max(1) + 2 * padding.max(0))
+}
+
 pub(crate) fn layout(
     tray: &StatusNotifierTray,
     menu: Option<&MenuView>,
@@ -173,9 +190,7 @@ pub(crate) fn layout(
     configured_padding: i32,
 ) -> TrayLayout {
     let bar_height = bar_height.max(1);
-    let padding = configured_padding
-        .max(MIN_VISUAL_PADDING)
-        .min((bar_height - 1) / 2);
+    let padding = visual_padding(bar_height, configured_padding);
     let max_icon_height = (bar_height - 2 * padding).max(1);
 
     let dimensions: Vec<(i32, Size)> = tray
@@ -183,7 +198,7 @@ pub(crate) fn layout(
         .iter()
         .map(|item| {
             let icon_size = fit_icon_size(item.icon_size, max_icon_height, IconScale::DownOnly);
-            let cell_width = bar_height.max(icon_size.w + 2 * padding);
+            let cell_width = cell_width(icon_size.w, bar_height, padding);
             (cell_width, icon_size)
         })
         .collect();

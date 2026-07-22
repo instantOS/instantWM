@@ -128,7 +128,7 @@ pub fn toggle_bar(ctx: &mut WmCtx) {
                     x11.core.state(),
                     &x11.x11,
                     &*x11.x11_runtime,
-                    x11.xembed_tray.as_deref(),
+                    x11.xembed_tray.as_ref(),
                     &m,
                 );
             }

@@ -218,39 +218,27 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.model().client(event_win).is_some() {
-        let mut tmp = ctx.reborrow();
-        unmanage(&mut tmp, event_win, true);
-    } else if let Some(icon) = crate::backend::x11::systray::win_to_systray_icon(
+    if let Some(icon) = crate::backend::x11::systray::win_to_systray_icon(
         ctx.core.config().systray.show,
-        ctx.xembed_tray.as_deref(),
+        ctx.xembed_tray.as_ref(),
         event_win,
     ) {
-        // Remove the icon from the systray list and client map, then resize
-        // the bar and redraw the systray — matching the C code's sequence of
-        // removesystrayicon(c) → resizebar_win(selmon) → updatesystray().
+        // Removing the model entry before the tray transaction ensures its
+        // paired tray/bar geometry no longer reserves this icon's cell.
         crate::backend::x11::systray::remove_systray_icon(
             ctx.core.g,
-            ctx.xembed_tray.as_deref_mut(),
+            ctx.xembed_tray.as_mut(),
             icon,
         );
-        // Get monitor reference for resize_bar_win
-        let selmon_idx = ctx.core.model().selected_monitor_id();
-        if let Some(mon) = ctx.core.model().monitor(selmon_idx).cloned() {
-            crate::backend::x11::bar::resize_bar_win(
-                ctx.core.g,
-                &ctx.x11,
-                ctx.x11_runtime,
-                ctx.xembed_tray.as_deref(),
-                &mon,
-            );
-        }
         crate::backend::x11::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.xembed_tray.as_deref_mut(),
+            ctx.xembed_tray,
         );
+    } else if ctx.core.model().client(event_win).is_some() {
+        let mut tmp = ctx.reborrow();
+        unmanage(&mut tmp, event_win, true);
     };
 }
 
@@ -407,14 +395,14 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
         ctx.core.config().systray.show,
-        ctx.xembed_tray.as_deref(),
+        ctx.xembed_tray.as_ref(),
         event_win,
     ) {
         crate::backend::x11::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.xembed_tray.as_deref_mut(),
+            ctx.xembed_tray,
         );
         return;
     };
@@ -515,7 +503,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
         ctx.core.config().systray.show,
-        ctx.xembed_tray.as_deref(),
+        ctx.xembed_tray.as_ref(),
         event_win,
     ) {
         if e.atom == ctx.x11_runtime.xatom.xembed_info {
@@ -523,7 +511,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                 &mut ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
-                ctx.xembed_tray.as_deref(),
+                ctx.xembed_tray.as_ref(),
                 event_win,
                 Some(e),
             );
@@ -532,7 +520,7 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.xembed_tray.as_deref_mut(),
+            ctx.xembed_tray,
         );
         return;
     };
@@ -567,21 +555,36 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
     if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
         ctx.core.config().systray.show,
-        ctx.xembed_tray.as_deref(),
+        ctx.xembed_tray.as_ref(),
         event_win,
     ) {
         crate::backend::x11::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
             ctx.x11_runtime,
-            ctx.xembed_tray.as_deref_mut(),
+            ctx.xembed_tray,
         );
     };
 }
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.model().client(event_win).is_some() {
+    if crate::backend::x11::systray::win_to_systray_icon(
+        ctx.core.config().systray.show,
+        ctx.xembed_tray.as_ref(),
+        event_win,
+    )
+    .is_some()
+    {
+        // XEmbed icons remain owned by the tray while unmapped. Recompute the
+        // paired tray/bar geometry; mapped state comes from _XEMBED_INFO.
+        crate::backend::x11::systray::update_systray(
+            &mut ctx.core,
+            &ctx.x11,
+            ctx.x11_runtime,
+            ctx.xembed_tray,
+        );
+    } else if ctx.core.model().client(event_win).is_some() {
         if e.response_type & 0x80 != 0 {
             crate::backend::x11::set_client_state(
                 &ctx.x11,
@@ -593,18 +596,6 @@ pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
             let mut tmp = ctx.reborrow();
             unmanage(&mut tmp, event_win, false);
         }
-    } else if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
-        ctx.core.config().systray.show,
-        ctx.xembed_tray.as_deref(),
-        event_win,
-    ) {
-        // XEmbed tray icons sometimes unmap without destroying; re-map them.
-        crate::backend::x11::systray::update_systray(
-            &mut ctx.core,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray.as_deref_mut(),
-        );
     };
 }
 
@@ -668,7 +659,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         if !ctx.core.model_mut().insert_client(client) {
             return;
         }
-        if let Some(ref mut systray) = ctx.xembed_tray {
+        if let Some(systray) = ctx.xembed_tray.as_mut() {
             systray.icons.insert(0, icon_win);
         }
     };
@@ -736,21 +727,11 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         XEMBED_EMBEDDED_VERSION as i64,
     );
 
-    if let Some(mon) = ctx.core.model().monitor(selmon_id).cloned() {
-        crate::backend::x11::bar::resize_bar_win(
-            ctx.core.g,
-            &ctx.x11,
-            ctx.x11_runtime,
-            ctx.xembed_tray.as_deref(),
-            &mon,
-        );
-    };
-
     crate::backend::x11::systray::update_systray_icon_state(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
-        ctx.xembed_tray.as_deref(),
+        ctx.xembed_tray.as_ref(),
         icon_win,
         None,
     );
@@ -758,7 +739,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
-        ctx.xembed_tray.as_deref_mut(),
+        ctx.xembed_tray,
     );
     let is_mapped = ctx
         .core
