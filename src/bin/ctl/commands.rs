@@ -1,9 +1,9 @@
 use clap::{ArgAction, Parser, Subcommand};
 use instantwm::ipc_types::{
-    ConfigCommand, InputCommand, IpcCommand, KeyboardCommand, KeyboardLayout, LayoutCommand,
-    ModeCommand, MonitorCommand, MonitorDirection, ScratchpadCommand, ScratchpadInitialStatus,
-    SpecialNext, TagCommand, TestCommand, ToggleAction, ToggleCommand, Transform, VrrMode,
-    WindowCommand,
+    ConfigCommand, FocusFollowsMouseMode, InputCommand, IpcCommand, KeyboardCommand,
+    KeyboardLayout, LayoutCommand, ModeCommand, MonitorCommand, MonitorDirection,
+    ScratchpadCommand, ScratchpadInitialStatus, SpecialNext, TagCommand, TestCommand, ToggleAction,
+    ToggleCommand, Transform, VrrMode, WindowCommand,
 };
 use std::process;
 use std::str::FromStr;
@@ -256,10 +256,10 @@ pub enum ToggleCliAction {
         /// What to do (default: toggle)
         action: Option<ToggleAction>,
     },
-    /// Toggle focus-follows-mouse
+    /// Set focus-follows-mouse behavior
     FocusFollowsMouse {
-        /// What to do (default: toggle)
-        action: Option<ToggleAction>,
+        /// off: disabled; normal: pointer motion only; force: include scene changes
+        mode: FocusFollowsMouseMode,
     },
     /// Toggle focus-follows-mouse for floating windows
     FocusFollowsFloatMouse {
@@ -557,9 +557,7 @@ impl From<ToggleCliAction> for ToggleCommand {
     fn from(action: ToggleCliAction) -> Self {
         match action {
             ToggleCliAction::Animated { action } => Self::Animated(action.unwrap_or_default()),
-            ToggleCliAction::FocusFollowsMouse { action } => {
-                Self::FocusFollowsMouse(action.unwrap_or_default())
-            }
+            ToggleCliAction::FocusFollowsMouse { mode } => Self::FocusFollowsMouse(mode),
             ToggleCliAction::FocusFollowsFloatMouse { action } => {
                 Self::FocusFollowsFloatMouse(action.unwrap_or_default())
             }

@@ -25,8 +25,3 @@ pub const OVERLAY_ZONE_WIDTH: i32 = 50;
 /// Tolerance added around the monitor boundary when validating slop-selected
 /// rectangles in [`crate::mouse::slop::is_valid_window_size`].
 pub const SLOP_MARGIN: i32 = 40;
-
-// ── X11 keycodes ─────────────────────────────────────────────────────────────
-
-/// X11 hardware keycode for the Escape key, used to abort hover-resize.
-pub const KEYCODE_ESCAPE: u8 = 9;

@@ -1,3 +1,4 @@
+use crate::backend::PointerOps;
 use crate::backend::x11::lifecycle::unmanage;
 use crate::backend::x11::systray::XEmbedMessage;
 use crate::contexts::{WmCtx, WmCtxX11};
@@ -17,7 +18,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let numlockmask = ctx.x11_runtime().numlockmask;
     let buttons_clone = ctx.core.config().bindings.buttons.clone();
     let mut selmon_id = ctx.core.model().selected_monitor_id();
-    let focusfollowsmouse = ctx.core.behavior().focus_follows_mouse;
+    let focusfollowsmouse = ctx.core.behavior().focus_follows_mouse.is_enabled();
 
     if let Some(clicked_mon) = ctx
         .core
@@ -30,7 +31,7 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     {
         selmon_id = clicked_mon;
         crate::focus::select_monitor(&mut WmCtx::X11(ctx.reborrow()), clicked_mon);
-    };
+    }
 
     let target_window = ctx
         .core
@@ -40,16 +41,12 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         .contains_key(&event_win)
         .then_some(event_win);
 
-    if target_window.is_some() {
-        // Only focus on button press if it's NOT a simple left/middle/right click
-        // (e.g., for scroll wheel or other buttons). Simple clicks should not
-        // change focus or raise windows - the user explicitly wants to interact
-        // with the window without changing stacking order.
-        // For focus-follows-mouse mode, we still focus since that's the expected behavior.
-        if focusfollowsmouse && e.detail > 3 {
-            crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
-        }
-    };
+    // Click-to-focus is independent of focus-follows-mouse. Passive grabs on
+    // unfocused clients let the WM focus first, then replay the click to the
+    // application below.
+    if target_window.is_some() && ctx.core.model().selected_win() != target_window {
+        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), target_window);
+    }
 
     let root = Point::new(e.root_x as i32, e.root_y as i32);
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
@@ -240,110 +237,25 @@ pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     };
 }
 
-/// Handle EnterNotify events for focus-follows-mouse behavior.
-///
-/// This is the Rust equivalent of the C code's `enternotify` and `handle_floating_focus`.
-/// The key insight is that when floating windows overlap, we must use `cursor_client_win`
-/// (which calls XQueryPointer) to get the actual topmost window under the cursor,
-/// rather than just using the event window which could be a hidden window below.
+/// Crossing events represent scene changes rather than physical pointer
+/// motion. They therefore affect focus only in `force` mode.
 pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
-    if ctx.core.behavior().current_mode.tree_placement().is_some() {
-        return;
-    }
-    if ctx.core.model().is_overview_active() {
-        let hovered = crate::backend::x11::mouse::cursor_client_win(
-            ctx.core.g,
-            ctx.x11.conn,
-            ctx.x11_runtime.root,
-        );
-        crate::focus::apply_hover_focus(
-            &mut WmCtx::X11(ctx.reborrow()),
-            hovered,
-            false,
-            Some(Point::new(e.root_x as i32, e.root_y as i32)),
-        );
-        return;
-    }
-    let focusfollowsfloatmouse = ctx.core.behavior().focus_follows_float_mouse;
-    let event_win = WindowId::from(e.event);
-    let entering_root = event_win == WindowId::from(ctx.x11_runtime.root);
-
-    // 1. Filter out invalid crossing events (grab/ungrab, inferior notify)
+    let entering_root = e.event == ctx.x11_runtime.root;
     if (e.mode != NotifyMode::NORMAL || e.detail == NotifyDetail::INFERIOR) && !entering_root {
         return;
     }
-
-    // 2. Snapshot selection state before any changes
-    let selected_monitor = ctx.core.model().expect_selected_monitor();
-    let selected_window = selected_monitor.selected;
-    let has_tiling_layout = selected_monitor.is_tiling_layout();
-    let selected_floating = selected_window.and_then(|win| {
-        ctx.core
-            .model()
-            .client(win)
-            .filter(|client| client.mode().is_floating())
-            .map(|client| (win, client.geo))
-    });
-    let is_floating_sel = selected_floating.is_some() || !has_tiling_layout;
-    let entering_client = ctx.core.model().client(event_win).is_some();
-
-    // 3. Handle floating focus (matches C handle_floating_focus)
-    //    When the selected window is floating and we enter a different window
-    //    (root or client), offer the resize cursor via the hover-offer loop.
-    if is_floating_sel {
-        // Special case: transitioning from a floating selection to a tiled
-        // client under the cursor should activate the resize offer on the
-        // floating window until the user commits (clicks) or moves away.
-        // This avoids the "nothing happens" feel when hovering onto a tiled
-        // window while a floating window is selected.
-        if let Some((floating_win, floating_geo)) = selected_floating
-            && has_tiling_layout
-            && crate::mouse::handle_x11_floating_to_tiled_hover_offer(
-                ctx,
-                floating_win,
-                floating_geo,
-            )
-        {
-            return;
-        }
-        // Case 1: Entering root while sel is floating
-        if entering_root {
-            if crate::mouse::run_x11_hover_resize_offer_loop(ctx).consumed_event() {
-                return;
-            }
-        // Case 2: Entering a different client while sel is floating
-        } else if entering_client && Some(event_win) != selected_window {
-            let resize_offer_result = crate::mouse::run_x11_hover_resize_offer_loop(ctx);
-            if focusfollowsfloatmouse {
-                if resize_offer_result.consumed_event() {
-                    return;
-                }
-                if let Some(newc) = crate::backend::x11::mouse::cursor_client_win(
-                    ctx.core.g,
-                    ctx.x11.conn,
-                    ctx.x11_runtime.root,
-                ) && Some(newc) != selected_window
-                {
-                    crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(newc));
-                }
-            }
-            return;
-        }
-    }
-
-    // 4. Determine what's actually under the cursor
-    let topmost_win_under_cursor = crate::backend::x11::mouse::cursor_client_win(
+    let root = Point::new(e.root_x as i32, e.root_y as i32);
+    let hovered = crate::backend::x11::mouse::cursor_client_win(
         ctx.core.g,
         ctx.x11.conn,
         ctx.x11_runtime.root,
     );
-
-    // 5. Handle focus switching based on shared policy.
     crate::focus::apply_hover_focus(
         &mut WmCtx::X11(ctx.reborrow()),
-        topmost_win_under_cursor,
+        hovered,
         entering_root,
-        Some(Point::new(e.root_x as i32, e.root_y as i32)),
+        Some(root),
+        crate::types::HoverFocusTrigger::SceneChange,
     );
 }
 
@@ -419,38 +331,31 @@ pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     };
 }
 
-/// Handle mouse motion events for bar gesture detection and focus-follows-mouse.
+/// Core-motion fallback for X servers without XI2 raw motion support.
 pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let event_win = WindowId::from(e.event);
     let root_win = WindowId::from(ctx.x11_runtime.root);
     if event_win != root_win {
-        let root_y = e.root_y as i32;
-        let mon = {
-            let selected_monitor = ctx.core.model().expect_selected_monitor();
-            selected_monitor.monitor_id
-        };
-        let gesture = ctx.core.bar.hover.gesture_on(mon);
-        let show_bar = {
-            let selected_monitor = ctx.core.model_mut().expect_selected_monitor_mut();
-            selected_monitor.per_tag_state().show_bar
-        };
-        let in_bar = show_bar
-            && ctx
-                .core
-                .g
-                .monitor(mon)
-                .is_some_and(|mon| mon.y_in_bar(root_y));
-        if !in_bar && gesture != Gesture::None {
-            crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
-        }
         return;
     }
 
-    let root = Point::new(e.root_x as i32, e.root_y as i32);
+    physical_pointer_motion(ctx, Point::new(e.root_x as i32, e.root_y as i32));
+}
 
+/// XI2 raw motion is the authoritative physical-motion signal on X11.
+/// Querying the root position here converts the device-independent signal into
+/// the same coordinates consumed by the backend-neutral hover policy.
+pub fn raw_motion_notify(ctx: &mut WmCtxX11<'_>) {
+    let Some(root) = ctx.x11.pointer_location() else {
+        return;
+    };
+    physical_pointer_motion(ctx, root);
+}
+
+fn physical_pointer_motion(ctx: &mut WmCtxX11<'_>, root: Point) {
     // Handle focus-follows-mouse monitor switching
     if ctx.core.behavior().current_mode.tree_placement().is_none()
-        && ctx.core.behavior().focus_follows_mouse
+        && ctx.core.behavior().focus_follows_mouse.is_enabled()
         && crate::focus::select_monitor_at_pointer(&mut WmCtx::X11(ctx.reborrow()), root)
     {
         return;
@@ -472,11 +377,7 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
     let current_gesture = ctx.core.bar.hover.gesture_on(monitor_id);
 
     if root.y >= monitor_y + bar_height {
-        if crate::mouse::update_floating_resize_offer_at(
-            &mut WmCtx::X11(ctx.reborrow()),
-            root,
-            true,
-        ) {
+        if crate::mouse::update_floating_resize_offer_at(&mut WmCtx::X11(ctx.reborrow()), root) {
             return;
         }
         if crate::mouse::update_sidebar_offer_at(&mut WmCtx::X11(ctx.reborrow()), root)
@@ -485,6 +386,18 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
             return;
         }
         crate::bar::clear_hover(&mut WmCtx::X11(ctx.reborrow()));
+        let hovered = crate::backend::x11::mouse::cursor_client_win(
+            ctx.core.g,
+            ctx.x11.conn,
+            ctx.x11_runtime.root,
+        );
+        crate::focus::apply_hover_focus(
+            &mut WmCtx::X11(ctx.reborrow()),
+            hovered,
+            false,
+            Some(root),
+            crate::types::HoverFocusTrigger::PointerMotion,
+        );
         return;
     };
 

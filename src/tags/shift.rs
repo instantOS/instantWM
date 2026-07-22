@@ -45,7 +45,7 @@ pub fn move_client_follow_view(ctx: &mut WmCtx, dir: HorizontalDirection) -> boo
     // Cursor placement must use destination geometry, not the stale rectangle
     // from the tag we just left.
     crate::layouts::arrange(ctx, Some(monitor_id));
-    if ctx.core().behavior().focus_follows_mouse {
+    if ctx.core().behavior().focus_follows_mouse.is_enabled() {
         ctx.warp_cursor_to_client_center(win);
     }
     true

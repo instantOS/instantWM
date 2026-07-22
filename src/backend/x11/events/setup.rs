@@ -1,6 +1,9 @@
 use crate::backend::Backend;
 use crate::wm::Wm;
 use x11rb::connection::Connection;
+use x11rb::protocol::xinput::{
+    ConnectionExt as XInputConnectionExt, EventMask as XInputEventMask, XIEventMask,
+};
 use x11rb::protocol::xproto::*;
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
@@ -52,10 +55,11 @@ pub fn setup_root(wm: &mut Wm) {
         netatom.wm_desktop,
     ];
 
-    let mask = EventMask::SUBSTRUCTURE_REDIRECT
+    let conn = &data.conn;
+    let raw_pointer_motion = select_raw_pointer_motion(conn, root);
+    let mut mask = EventMask::SUBSTRUCTURE_REDIRECT
         | EventMask::SUBSTRUCTURE_NOTIFY
         | EventMask::BUTTON_PRESS
-        | EventMask::POINTER_MOTION
         | EventMask::ENTER_WINDOW
         | EventMask::LEAVE_WINDOW
         | EventMask::STRUCTURE_NOTIFY
@@ -63,7 +67,14 @@ pub fn setup_root(wm: &mut Wm) {
         | EventMask::KEY_PRESS
         | EventMask::KEY_RELEASE;
 
-    let conn = &data.conn;
+    // XI2 raw motion is delivered independently of the event masks selected
+    // by applications. Core motion on the root is only a compatibility
+    // fallback: applications may stop its propagation by selecting motion on
+    // their own windows.
+    if !raw_pointer_motion {
+        mask |= EventMask::POINTER_MOTION;
+    }
+
     let _ = conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
     let _ = conn.flush();
 
@@ -141,4 +152,25 @@ pub fn setup_root(wm: &mut Wm) {
         crate::contexts::WmCtx::X11(x11_ctx.reborrow())
             .set_cursor_style(crate::types::AltCursor::Default);
     }
+}
+
+fn select_raw_pointer_motion(conn: &RustConnection, root: Window) -> bool {
+    let Ok(version) = conn.xinput_xi_query_version(2, 0) else {
+        return false;
+    };
+    if version.reply().is_err() {
+        return false;
+    }
+
+    let Ok(selection) = conn.xinput_xi_select_events(
+        root,
+        &[XInputEventMask {
+            // XIAllMasterDevices. Raw events require an all-devices selector.
+            deviceid: 1,
+            mask: vec![XIEventMask::RAW_MOTION],
+        }],
+    ) else {
+        return false;
+    };
+    selection.check().is_ok()
 }

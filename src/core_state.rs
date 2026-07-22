@@ -603,7 +603,7 @@ impl Clone for RuntimeConfig {
 #[derive(Debug, Clone)]
 pub struct WmBehavior {
     pub animated: bool,
-    pub focus_follows_mouse: bool,
+    pub focus_follows_mouse: FocusFollowsMouseMode,
     pub focus_follows_float_mouse: bool,
     /// Last WM-owned cursor presentation requested through `set_cursor_style`.
     ///
@@ -621,7 +621,7 @@ impl Default for WmBehavior {
     fn default() -> Self {
         Self {
             animated: true,
-            focus_follows_mouse: true,
+            focus_follows_mouse: FocusFollowsMouseMode::Normal,
             focus_follows_float_mouse: true,
             requested_cursor: AltCursor::Default,
             specialnext: SpecialNext::None,
@@ -639,8 +639,8 @@ impl WmBehavior {
         self.specialnext = value;
     }
 
-    pub fn toggle_focus_follows_mouse(&mut self, action: ToggleAction) {
-        action.apply(&mut self.focus_follows_mouse);
+    pub fn set_focus_follows_mouse(&mut self, mode: FocusFollowsMouseMode) {
+        self.focus_follows_mouse = mode;
     }
 
     pub fn toggle_focus_follows_float_mouse(&mut self, action: ToggleAction) {

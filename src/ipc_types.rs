@@ -1,7 +1,9 @@
 pub use crate::backend::WindowProtocol;
 pub use crate::config::config_toml::VrrMode;
 pub use crate::layouts::LayoutCommand;
-pub use crate::types::{KeyboardLayout, MonitorDirection, SpecialNext, TagMask, ToggleAction};
+pub use crate::types::{
+    FocusFollowsMouseMode, KeyboardLayout, MonitorDirection, SpecialNext, TagMask, ToggleAction,
+};
 use bincode::{Decode, Encode};
 
 pub const IPC_PROTOCOL_VERSION: &str = env!("IPC_PROTOCOL_VERSION");
@@ -249,7 +251,7 @@ pub enum TestCommand {
 #[derive(Debug, Clone, Decode, Encode, serde::Serialize, serde::Deserialize)]
 pub enum ToggleCommand {
     Animated(ToggleAction),
-    FocusFollowsMouse(ToggleAction),
+    FocusFollowsMouse(FocusFollowsMouseMode),
     FocusFollowsFloatMouse(ToggleAction),
     AltTag(ToggleAction),
     HideTags(ToggleAction),

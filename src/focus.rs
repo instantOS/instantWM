@@ -313,7 +313,11 @@ pub fn apply_hover_focus(
     hovered_win: Option<WindowId>,
     entering_root: bool,
     pointer_pos: Option<Point>,
+    trigger: crate::types::HoverFocusTrigger,
 ) {
+    if !ctx.core().behavior().focus_follows_mouse.allows(trigger) {
+        return;
+    }
     // Overview owns a pending selection rather than immediately sending
     // keyboard input to each hovered application. Handling it here keeps both
     // backends on one focus-follows-mouse path; confirming overview commits the
@@ -327,10 +331,6 @@ pub fn apply_hover_focus(
     if ctx.current_mode().tree_placement().is_some() {
         return;
     }
-    if !ctx.core().behavior().focus_follows_mouse {
-        return;
-    }
-
     if let Some(win) = hovered_win
         && let Some(mid) = ctx
             .core()
@@ -370,9 +370,6 @@ fn should_hover_focus(
     let Some(win) = hovered_win else {
         return false;
     };
-    if !behavior.focus_follows_mouse {
-        return false;
-    }
     // Already focused — nothing to do.
     if model.selected_win() == Some(win) {
         return false;

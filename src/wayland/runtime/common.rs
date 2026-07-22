@@ -204,6 +204,21 @@ pub(crate) fn event_loop_tick_and_request_render(
             animations_active: state.has_active_window_animations(),
         },
     );
+    // Moving surfaces under a stationary pointer must update Wayland pointer
+    // protocol focus in every mode. The synthetic source is kept distinct so
+    // only `force` may turn that protocol refresh into keyboard focus.
+    if tick.layout_applied
+        && let (Some(pointer), Some(keyboard)) =
+            (state.seat.get_pointer(), state.seat.get_keyboard())
+    {
+        crate::wayland::input::pointer::motion::process_pointer_motion_command(
+            wm,
+            state,
+            &pointer,
+            &keyboard,
+            crate::backend::wayland::commands::PointerMotionCommand::Refresh { time_msec: 0 },
+        );
+    }
     dismiss_invalid_native_systray_menu(wm, state);
     if tick.ipc_handled || tick.monitor_config_applied || tick.layout_applied {
         state.request_render();

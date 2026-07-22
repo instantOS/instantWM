@@ -72,7 +72,8 @@ impl MotionEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::MotionEvent;
+    use super::{MotionEvent, PointerMotionSource};
+    use crate::types::HoverFocusTrigger;
     use smithay::utils::Point;
 
     #[test]
@@ -103,6 +104,18 @@ mod tests {
         assert_eq!(
             event.compute_location(Point::from((0.0, 0.0)), 1920, 1080),
             Point::from((1920.0, 1080.0))
+        );
+    }
+
+    #[test]
+    fn motion_sources_preserve_why_focus_was_recomputed() {
+        assert_eq!(
+            PointerMotionSource::Device.hover_focus_trigger(),
+            HoverFocusTrigger::PointerMotion
+        );
+        assert_eq!(
+            PointerMotionSource::Synthetic.hover_focus_trigger(),
+            HoverFocusTrigger::SceneChange
         );
     }
 }
@@ -137,15 +150,26 @@ pub fn process_pointer_motion_command(
                 time_msec,
                 time_usec,
             },
+            PointerMotionSource::Device,
         ),
-        PointerMotionCommand::Absolute { x, y, time_msec }
-        | PointerMotionCommand::Warp { x, y, time_msec } => {
+        PointerMotionCommand::Absolute { x, y, time_msec } => {
             handle_pointer_motion(
                 wm,
                 state,
                 pointer_handle,
                 keyboard_handle,
                 MotionEvent::Absolute { x, y, time_msec },
+                PointerMotionSource::Device,
+            );
+        }
+        PointerMotionCommand::Warp { x, y, time_msec } => {
+            handle_pointer_motion(
+                wm,
+                state,
+                pointer_handle,
+                keyboard_handle,
+                MotionEvent::Absolute { x, y, time_msec },
+                PointerMotionSource::Synthetic,
             );
         }
         PointerMotionCommand::Refresh { time_msec } => {
@@ -160,7 +184,23 @@ pub fn process_pointer_motion_command(
                     y: location.y,
                     time_msec,
                 },
+                PointerMotionSource::Synthetic,
             );
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PointerMotionSource {
+    Device,
+    Synthetic,
+}
+
+impl PointerMotionSource {
+    fn hover_focus_trigger(self) -> crate::types::HoverFocusTrigger {
+        match self {
+            Self::Device => crate::types::HoverFocusTrigger::PointerMotion,
+            Self::Synthetic => crate::types::HoverFocusTrigger::SceneChange,
         }
     }
 }
@@ -243,12 +283,13 @@ fn activate_pointer_constraint_under(
     });
 }
 
-pub fn handle_pointer_motion(
+fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     event: MotionEvent,
+    source: PointerMotionSource,
 ) {
     let output_width = wm.core.config.derived.display.width;
     let output_height = wm.core.config.derived.display.height;
@@ -320,7 +361,7 @@ pub fn handle_pointer_motion(
     // before the final hit test so this motion is dispatched against the
     // newly shown or hidden overlay. Session-locked input must never trigger
     // WM UI.
-    if !state.is_locked() {
+    if source == PointerMotionSource::Device && !state.is_locked() {
         let root = RootPoint::from_f64_round(final_location.x, final_location.y);
         let mut ctx = wm.ctx();
         crate::mouse::update_overlay_hot_corner(&mut ctx, root);
@@ -338,17 +379,19 @@ pub fn handle_pointer_motion(
         keyboard_handle,
         final_hit,
         event.time_msec(),
+        source.hover_focus_trigger(),
     );
 }
 
 /// Unified pointer motion: update WM hover focus, propagate to clients, handle drags.
-pub fn dispatch_pointer_motion(
+fn dispatch_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
     hit_test: PointerContents,
     time_msec: u32,
+    hover_focus_trigger: crate::types::HoverFocusTrigger,
 ) {
     let pointer_location = state.runtime.pointer_location;
     let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
@@ -430,10 +473,13 @@ pub fn dispatch_pointer_motion(
         hovered_win,
         suppress_hover_focus,
         root,
+        hover_focus_trigger,
     );
 
     // Phase 7: Handle tag/title drag motion
-    handle_wm_drag_motion(wm, keyboard_handle, root);
+    if hover_focus_trigger == crate::types::HoverFocusTrigger::PointerMotion {
+        handle_wm_drag_motion(wm, keyboard_handle, root);
+    }
 
     // Phase 8: Dispatch final motion event to Smithay
     let focus =
@@ -636,10 +682,11 @@ fn update_pointer_focus(
     hovered_win: Option<crate::types::WindowId>,
     suppress_hover_focus: bool,
     root: RootPoint,
+    trigger: crate::types::HoverFocusTrigger,
 ) {
     if wm.core.model.is_overview_active() {
         let mut ctx = wm.ctx();
-        crate::focus::apply_hover_focus(&mut ctx, hovered_win, false, Some(root));
+        crate::focus::apply_hover_focus(&mut ctx, hovered_win, false, Some(root), trigger);
         return;
     }
     if let Some(lock_win) = active_drag_window {
@@ -659,7 +706,7 @@ fn update_pointer_focus(
             return;
         };
         let mut wm_ctx = crate::contexts::WmCtx::Wayland(ctx);
-        crate::focus::apply_hover_focus(&mut wm_ctx, hovered_win, false, Some(root));
+        crate::focus::apply_hover_focus(&mut wm_ctx, hovered_win, false, Some(root), trigger);
     }
 }
 

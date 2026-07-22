@@ -304,7 +304,7 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
     let options = ScratchpadShowOptions {
         monitor_id: ctx.core().model().selected_monitor_id(),
         focus: true,
-        warp_pointer: ctx.core().behavior().focus_follows_mouse,
+        warp_pointer: ctx.core().behavior().focus_follows_mouse.is_enabled(),
     };
     scratchpad_show_name_with_options(ctx, name, options)
 }

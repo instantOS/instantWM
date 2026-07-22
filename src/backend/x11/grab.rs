@@ -51,9 +51,6 @@ pub fn grab_pointer(
 }
 
 /// Like [`grab_pointer`] but additionally listens for `KeyPress` events.
-///
-/// Used by [`crate::mouse::hover::run_x11_hover_resize_offer_loop`] so that pressing
-/// Escape can abort the hover-resize wait before the user clicks.
 pub fn grab_pointer_with_keys(
     x11: &X11BackendRef,
     x11_runtime: &mut X11RuntimeConfig,
