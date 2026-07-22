@@ -136,54 +136,77 @@ pub fn hide(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let x11_win: Window = win.into();
 
     let _grab = crate::backend::x11::ServerGrab::new(ctx.x11.conn);
-    suppress_unmap_events(ctx.x11.conn, root, x11_win);
+    let _event_suppression = UnmapEventSuppression::new(ctx.x11.conn, root, x11_win);
 
     let _ = ctx.x11.conn.unmap_window(x11_win);
     let _ = ctx.x11.conn.flush();
     set_client_state(&ctx.x11, ctx.x11_runtime, win, WM_STATE_ICONIC);
-
-    restore_event_masks(ctx.x11.conn, root, x11_win);
 }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-fn suppress_unmap_events(conn: &x11rb::rust_connection::RustConnection, root: Window, win: Window) {
-    if let Ok(cookie) = conn.get_window_attributes(root)
-        && let Ok(ra) = cookie.reply()
-    {
-        let mask =
-            EventMask::from(ra.your_event_mask.bits() & !EventMask::SUBSTRUCTURE_NOTIFY.bits());
-        let _ =
-            conn.change_window_attributes(root, &ChangeWindowAttributesAux::new().event_mask(mask));
-    }
+struct UnmapEventSuppression<'a> {
+    conn: &'a x11rb::rust_connection::RustConnection,
+    root: Window,
+    win: Window,
+    root_mask: Option<EventMask>,
+    window_mask: Option<EventMask>,
+}
 
-    if let Ok(cookie) = conn.get_window_attributes(win)
-        && let Ok(ca) = cookie.reply()
-    {
-        let mask = EventMask::from(ca.your_event_mask.bits() & !EventMask::STRUCTURE_NOTIFY.bits());
-        let _ =
-            conn.change_window_attributes(win, &ChangeWindowAttributesAux::new().event_mask(mask));
+impl<'a> UnmapEventSuppression<'a> {
+    fn new(conn: &'a x11rb::rust_connection::RustConnection, root: Window, win: Window) -> Self {
+        let root_mask = conn
+            .get_window_attributes(root)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|attrs| attrs.your_event_mask);
+        let window_mask = conn
+            .get_window_attributes(win)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|attrs| attrs.your_event_mask);
+
+        if let Some(mask) = root_mask {
+            let suppressed = EventMask::from(mask.bits() & !EventMask::SUBSTRUCTURE_NOTIFY.bits());
+            let _ = conn.change_window_attributes(
+                root,
+                &ChangeWindowAttributesAux::new().event_mask(suppressed),
+            );
+        }
+        if let Some(mask) = window_mask {
+            let suppressed = EventMask::from(mask.bits() & !EventMask::STRUCTURE_NOTIFY.bits());
+            let _ = conn.change_window_attributes(
+                win,
+                &ChangeWindowAttributesAux::new().event_mask(suppressed),
+            );
+        }
+
+        Self {
+            conn,
+            root,
+            win,
+            root_mask,
+            window_mask,
+        }
     }
 }
 
-fn restore_event_masks(conn: &x11rb::rust_connection::RustConnection, root: Window, win: Window) {
-    if let Ok(cookie) = conn.get_window_attributes(root)
-        && let Ok(ra) = cookie.reply()
-    {
-        let _ = conn.change_window_attributes(
-            root,
-            &ChangeWindowAttributesAux::new().event_mask(ra.your_event_mask),
-        );
-    }
-
-    if let Ok(cookie) = conn.get_window_attributes(win)
-        && let Ok(ca) = cookie.reply()
-    {
-        let _ = conn.change_window_attributes(
-            win,
-            &ChangeWindowAttributesAux::new().event_mask(ca.your_event_mask),
-        );
+impl Drop for UnmapEventSuppression<'_> {
+    fn drop(&mut self) {
+        if let Some(mask) = self.root_mask {
+            let _ = self.conn.change_window_attributes(
+                self.root,
+                &ChangeWindowAttributesAux::new().event_mask(mask),
+            );
+        }
+        if let Some(mask) = self.window_mask {
+            let _ = self.conn.change_window_attributes(
+                self.win,
+                &ChangeWindowAttributesAux::new().event_mask(mask),
+            );
+        }
+        let _ = self.conn.flush();
     }
 }

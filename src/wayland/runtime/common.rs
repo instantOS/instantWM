@@ -681,11 +681,8 @@ fn handle_unmanage_window(wm: &mut Wm, win: crate::types::WindowId) {
         ctx.update_layout_preview(None);
         crate::mouse::drag::clear_bar_hover(&mut ctx);
     }
-    let g = ctx.core_mut().state_mut();
-    g.detach(win);
-    g.detach_z_order(win);
-    g.model.remove_client(win);
-    crate::focus::focus(&mut ctx, None);
+    ctx.core_mut().model_mut().remove_client(win);
+    crate::focus::refresh_focus(&mut ctx, None);
 }
 
 fn cancel_interactive_drag(wm: &mut Wm, reason: crate::core_state::DragCancelReason) {

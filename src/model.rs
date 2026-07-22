@@ -60,12 +60,26 @@ impl WmModel {
         self.clients.insert(client.win, client)
     }
 
-    /// Remove a managed client from client storage.
+    /// Remove a managed client and every monitor-owned reference to it.
     ///
-    /// Monitor-list cleanup remains explicit because teardown paths need to
-    /// perform backend work between detaching and dropping client state.
+    /// Backend teardown must happen before this call when it needs client
+    /// metadata. Once this returns, the model cannot contain a partial client.
     pub(crate) fn remove_client(&mut self, win: WindowId) -> Option<Client> {
-        self.clients.remove(&win)
+        let client = self.clients.remove(&win)?;
+        for monitor in self.monitors.iter_all_mut() {
+            monitor.clients.retain(|candidate| *candidate != win);
+            monitor.z_order.remove(win);
+            if monitor.selected == Some(win) {
+                monitor.selected = None;
+            }
+            monitor
+                .tag_focus_history
+                .retain(|_, candidate| *candidate != win);
+            monitor
+                .tag_tiled_focus_history
+                .retain(|_, candidate| *candidate != win);
+        }
+        Some(client)
     }
 
     /// Resolve a managed client and its assigned monitor as one coherent view.
@@ -421,6 +435,50 @@ mod tests {
         assert_eq!(
             model.client(win).map(|client| client.monitor_id),
             Some(source)
+        );
+    }
+
+    #[test]
+    fn removing_client_clears_every_monitor_owned_reference() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor::default());
+        let win = WindowId(10);
+        let other = WindowId(11);
+        let tags = TagMask::single(1).unwrap();
+        model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            ..Client::default()
+        });
+
+        let monitor = model.monitor_mut(monitor_id).unwrap();
+        monitor.clients = vec![other, win];
+        monitor.z_order.attach_top(other);
+        monitor.z_order.attach_top(win);
+        monitor.selected = Some(win);
+        monitor.tag_focus_history.insert(tags, win);
+        monitor.tag_tiled_focus_history.insert(tags, win);
+
+        let removed = model.remove_client(win);
+
+        assert_eq!(removed.map(|client| client.win), Some(win));
+        assert!(model.client(win).is_none());
+        let monitor = model.monitor(monitor_id).unwrap();
+        assert_eq!(monitor.clients, vec![other]);
+        assert_eq!(monitor.z_order.as_slice(), &[other]);
+        assert_eq!(monitor.selected, None);
+        assert!(
+            !monitor
+                .tag_focus_history
+                .values()
+                .any(|candidate| *candidate == win)
+        );
+        assert!(
+            !monitor
+                .tag_tiled_focus_history
+                .values()
+                .any(|candidate| *candidate == win)
         );
     }
 }

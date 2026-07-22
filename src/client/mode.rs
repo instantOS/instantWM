@@ -76,6 +76,7 @@ pub fn set_fullscreen(
 fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
     let client = model.client_mut(win)?;
     let was_floating = client.mode.is_floating();
+    eprintln!("[FS-DBG] set_fullscreen_enter win={win:?} from_mode={:?}", client.mode);
     client.mode = client.mode.as_fullscreen();
     client.save_border_width();
     client.border_width = 0;
@@ -84,6 +85,7 @@ fn set_fullscreen_enter(model: &mut WmModel, win: WindowId) -> Option<Fullscreen
 
 fn set_fullscreen_exit(model: &mut WmModel, win: WindowId) -> Option<FullscreenOutcome> {
     let client = model.client_mut(win)?;
+    eprintln!("[FS-DBG] set_fullscreen_exit win={win:?} from_mode={:?}", client.mode);
     client.mode = client.mode.restored();
     client.restore_border_width();
     Some(FullscreenOutcome::Exited)

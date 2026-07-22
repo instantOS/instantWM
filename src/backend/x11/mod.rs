@@ -289,7 +289,11 @@ impl WindowOps for X11BackendRef<'_> {
 
     fn window_exists(&self, window: WindowId) -> bool {
         let x11_win: Window = window.into();
-        self.conn.get_window_attributes(x11_win).is_ok()
+        self.conn
+            .get_window_attributes(x11_win)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .is_some()
     }
 
     fn flush(&self) {

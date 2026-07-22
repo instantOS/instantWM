@@ -197,6 +197,23 @@ fn scratchpad_names(model: &WmModel, visible: bool) -> Vec<String> {
         .collect()
 }
 
+/// Resolve a scratchpad only while its backend window still exists.
+///
+/// Destruction events are the primary cleanup path. This check is deliberately
+/// shared by every scratchpad action so a missed backend event cannot leave a
+/// model-only scratchpad that can be toggled forever.
+fn find_live_scratchpad(ctx: &mut WmCtx<'_>, name: &str) -> Result<WindowId, String> {
+    let Some(win) = ctx.core().model().scratchpad_find(name) else {
+        return Err(format!("scratchpad '{}' not found", name));
+    };
+    if ctx.window_backend().window_exists(win) {
+        return Ok(win);
+    }
+
+    crate::client::lifecycle::forget_stale_client(ctx, win);
+    Err(format!("scratchpad '{}' no longer exists", name))
+}
+
 pub fn scratchpad_make(
     ctx: &mut WmCtx,
     name: &str,
@@ -213,7 +230,7 @@ pub fn scratchpad_make(
         return;
     };
 
-    if ctx.core().model().scratchpad_find(name).is_some() {
+    if find_live_scratchpad(ctx, name).is_ok() {
         return;
     }
 
@@ -310,9 +327,7 @@ pub(crate) fn scratchpad_show_name_with_options(
             options.monitor_id
         ));
     }
-    let Some(found) = ctx.core().model().scratchpad_find(name) else {
-        return Err(format!("scratchpad '{}' not found", name));
-    };
+    let found = find_live_scratchpad(ctx, name)?;
 
     let Some((was_sticky, direction)) = ctx.core().state().model.client(found).map(|c| {
         (
@@ -332,9 +347,6 @@ pub(crate) fn scratchpad_show_name_with_options(
 
     if let Some(dir) = direction {
         let (content_rect, client_size) = {
-            if !ctx.window_backend().window_exists(found) {
-                return Err(format!("scratchpad '{}' no longer exists", name));
-            }
             let mon = ctx
                 .core()
                 .model()
@@ -429,7 +441,7 @@ pub fn scratchpad_hide_all(ctx: &mut WmCtx) -> Option<String> {
 }
 
 pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
-    let Some(found) = ctx.core().model().scratchpad_find(name) else {
+    let Ok(found) = find_live_scratchpad(ctx, name) else {
         return;
     };
 
@@ -486,9 +498,9 @@ pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {
         return;
     }
 
-    let found = match ctx.core().model().scratchpad_find(name) {
-        Some(w) => w,
-        None => return,
+    let found = match find_live_scratchpad(ctx, name) {
+        Ok(w) => w,
+        Err(_) => return,
     };
 
     let Some(client) = ctx.core().model().client(found) else {
@@ -515,7 +527,7 @@ pub(crate) fn scratchpad_toggle_from_hot_corner(
     if ctx.core().model().is_overview_active() {
         return;
     }
-    let Some(found) = ctx.core().model().scratchpad_find(name) else {
+    let Ok(found) = find_live_scratchpad(ctx, name) else {
         return;
     };
     let Some(is_visible) = ctx
@@ -596,11 +608,7 @@ pub fn set_scratchpad_direction(ctx: &mut WmCtx, win: WindowId, direction: EdgeD
 }
 
 pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
-    if let Some(existing) = ctx
-        .core()
-        .model()
-        .scratchpad_find(DEFAULT_EDGE_SCRATCHPAD_NAME)
-    {
+    if let Ok(existing) = find_live_scratchpad(ctx, DEFAULT_EDGE_SCRATCHPAD_NAME) {
         scratchpad_unmake(ctx, Some(existing));
     }
 

@@ -560,12 +560,6 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
         .map(|client| client.monitor_id);
     let original_border_width = ctx.x11_runtime.original_border_widths.remove(&window);
 
-    {
-        let state = &mut ctx.core.state_mut();
-        state.detach(window);
-        state.detach_z_order(window);
-    }
-
     if !destroyed {
         let x11_window: Window = window.into();
         {
@@ -593,12 +587,12 @@ pub fn unmanage(ctx: &mut WmCtxX11, window: WindowId, destroyed: bool) {
         }
     }
 
-    // Remove from the global map.
+    // Atomically remove the client and all monitor-owned references.
     ctx.core.model_mut().remove_client(window);
 
     {
         let tmp = ctx.reborrow();
-        focus(&mut WmCtx::X11(tmp), None);
+        crate::focus::refresh_focus(&mut WmCtx::X11(tmp), None);
     }
     update_client_list(ctx.core.state(), &ctx.x11, ctx.x11_runtime);
 

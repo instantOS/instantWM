@@ -180,7 +180,7 @@ pub(crate) fn focus_generic(
         backend.unfocus_current(core.state(), cur_win);
     }
 
-    if desktop_bindings_before != desktop_bindings_after {
+    if desktop_bindings_before != desktop_bindings_after || force_backend_refresh {
         backend.on_desktop_binding_state_changed(core.state());
     }
 
@@ -211,6 +211,17 @@ pub(crate) fn focus_generic(
 /// focused window must be visually on top.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     focus_impl(ctx, win, false);
+    crate::overview::follow_focus(ctx);
+}
+
+/// Re-resolve focus and reapply all backend focus/input state.
+///
+/// Client removal clears model references atomically, so lifecycle paths cannot
+/// infer the previous backend focus from `Monitor::selected` afterwards. This
+/// explicit operation keeps that invariant without leaving keyboard grabs or
+/// seat focus stale.
+pub(crate) fn refresh_focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
+    focus_impl(ctx, win, true);
     crate::overview::follow_focus(ctx);
 }
 
@@ -732,6 +743,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingBackend {
         focused: Cell<usize>,
+        binding_refreshes: Cell<usize>,
     }
 
     impl FocusBackendOps for RecordingBackend {
@@ -740,7 +752,9 @@ mod tests {
             self.focused.set(self.focused.get() + 1);
         }
         fn focus_none(&self) {}
-        fn on_desktop_binding_state_changed(&self, _: &CoreState) {}
+        fn on_desktop_binding_state_changed(&self, _: &CoreState) {
+            self.binding_refreshes.set(self.binding_refreshes.get() + 1);
+        }
     }
 
     fn core_with_selected_client() -> (CoreState, PendingWork, bool, BarState, FocusState) {
@@ -775,9 +789,11 @@ mod tests {
 
         focus_generic(&mut core, None, &mut backend, false).unwrap();
         assert_eq!(backend.focused.get(), 0);
+        assert_eq!(backend.binding_refreshes.get(), 0);
 
         focus_generic(&mut core, None, &mut backend, true).unwrap();
         assert_eq!(backend.focused.get(), 1);
+        assert_eq!(backend.binding_refreshes.get(), 1);
     }
 
     #[test]
