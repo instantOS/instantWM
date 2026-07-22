@@ -1,12 +1,8 @@
-use crate::backend::x11::events::setup::XEMBED_EMBEDDED_NOTIFY;
-use crate::backend::x11::events::setup::XEMBED_EMBEDDED_VERSION;
-use crate::backend::x11::events::setup::XEMBED_FOCUS_IN;
-use crate::backend::x11::events::setup::XEMBED_MODALITY_ON;
-use crate::backend::x11::events::setup::XEMBED_WINDOW_ACTIVATE;
 use crate::backend::x11::lifecycle::unmanage;
+use crate::backend::x11::systray::XEmbedMessage;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::types::{
-    BarPosition, ButtonTarget, Client, Gesture, MouseButton, Point, Rect, TagMask, WindowId,
+    BarPosition, ButtonTarget, Gesture, MouseButton, Point, Rect, TagMask, WindowId,
 };
 use x11rb::CURRENT_TIME;
 use x11rb::connection::Connection;
@@ -15,30 +11,6 @@ use x11rb::protocol::xproto::*;
 use super::is_override_redirect;
 use super::query_initial_window_geometry;
 use super::setup::SYSTEM_TRAY_REQUEST_DOCK;
-
-fn send_xembed_event(
-    ctx: &mut WmCtxX11<'_>,
-    icon_win: WindowId,
-    systray_win: WindowId,
-    msg: u32,
-    a: i64,
-    b: i64,
-) {
-    let xembed_atom = ctx.x11_runtime.xatom.xembed;
-    let structure_notify_mask = EventMask::STRUCTURE_NOTIFY.bits();
-    crate::backend::x11::focus::send_event(
-        &ctx.x11,
-        ctx.x11_runtime,
-        icon_win,
-        xembed_atom,
-        structure_notify_mask,
-        CURRENT_TIME as i64,
-        msg as i64,
-        a,
-        u32::from(systray_win) as i64,
-        b,
-    );
-}
 
 pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     let event_win = WindowId::from(e.event);
@@ -197,7 +169,37 @@ pub fn configure_notify(ctx: &mut WmCtxX11<'_>, e: &ConfigureNotifyEvent) {
 
 pub fn configure_request(ctx: &mut WmCtxX11<'_>, e: &ConfigureRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if ctx.core.model().client(event_win).is_some() {
+    if let Some(current_size) = ctx
+        .xembed_tray
+        .as_ref()
+        .and_then(|tray| tray.icon(event_win))
+        .map(|icon| icon.size)
+    {
+        let requested_size = crate::types::Size::new(
+            if e.value_mask.contains(ConfigWindow::WIDTH) {
+                e.width as i32
+            } else {
+                current_size.w
+            },
+            if e.value_mask.contains(ConfigWindow::HEIGHT) {
+                e.height as i32
+            } else {
+                current_size.h
+            },
+        );
+        crate::backend::x11::systray::update_systray_icon_geom(
+            ctx.core.config().derived.bar_height,
+            ctx.xembed_tray.as_mut(),
+            event_win,
+            requested_size,
+        );
+        crate::backend::x11::systray::update_systray(
+            &mut ctx.core,
+            &ctx.x11,
+            ctx.x11_runtime,
+            ctx.xembed_tray,
+        );
+    } else if ctx.core.model().client(event_win).is_some() {
         crate::backend::x11::focus::configure(ctx.core.g, &ctx.x11, event_win);
     } else {
         let conn = ctx.x11.conn;
@@ -218,18 +220,14 @@ pub fn create_notify(_e: &CreateNotifyEvent) {}
 
 pub fn destroy_notify(ctx: &mut WmCtxX11<'_>, e: &DestroyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(icon) = crate::backend::x11::systray::win_to_systray_icon(
+    if crate::backend::x11::systray::is_systray_icon(
         ctx.core.config().systray.show,
         ctx.xembed_tray.as_ref(),
         event_win,
     ) {
-        // Removing the model entry before the tray transaction ensures its
-        // paired tray/bar geometry no longer reserves this icon's cell.
-        crate::backend::x11::systray::remove_systray_icon(
-            ctx.core.g,
-            ctx.xembed_tray.as_mut(),
-            icon,
-        );
+        // Remove tray-owned state before recomputing the paired tray/bar
+        // geometry so the destroyed icon no longer reserves a cell.
+        crate::backend::x11::systray::remove_systray_icon(ctx.xembed_tray.as_mut(), event_win);
         crate::backend::x11::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
@@ -393,7 +391,7 @@ pub fn mapping_notify(ctx: &mut WmCtxX11<'_>, _e: &MappingNotifyEvent) {
 
 pub fn map_request(ctx: &mut WmCtxX11<'_>, e: &MapRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
+    if crate::backend::x11::systray::is_systray_icon(
         ctx.core.config().systray.show,
         ctx.xembed_tray.as_ref(),
         event_win,
@@ -501,17 +499,16 @@ pub fn motion_notify(ctx: &mut WmCtxX11<'_>, e: &MotionNotifyEvent) {
 
 pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
+    if crate::backend::x11::systray::is_systray_icon(
         ctx.core.config().systray.show,
         ctx.xembed_tray.as_ref(),
         event_win,
     ) {
         if e.atom == ctx.x11_runtime.xatom.xembed_info {
             crate::backend::x11::systray::update_systray_icon_state(
-                &mut ctx.core,
                 &ctx.x11,
                 ctx.x11_runtime,
-                ctx.xembed_tray.as_ref(),
+                ctx.xembed_tray.as_mut(),
                 event_win,
                 Some(e),
             );
@@ -553,11 +550,17 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
 
 pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
     let event_win = WindowId::from(e.window);
-    if let Some(_icon) = crate::backend::x11::systray::win_to_systray_icon(
+    if crate::backend::x11::systray::is_systray_icon(
         ctx.core.config().systray.show,
         ctx.xembed_tray.as_ref(),
         event_win,
     ) {
+        crate::backend::x11::systray::update_systray_icon_geom(
+            ctx.core.config().derived.bar_height,
+            ctx.xembed_tray.as_mut(),
+            event_win,
+            crate::types::Size::new(e.width as i32, e.height as i32),
+        );
         crate::backend::x11::systray::update_systray(
             &mut ctx.core,
             &ctx.x11,
@@ -569,13 +572,11 @@ pub fn resize_request(ctx: &mut WmCtxX11<'_>, e: &ResizeRequestEvent) {
 
 pub fn unmap_notify(ctx: &mut WmCtxX11<'_>, e: &UnmapNotifyEvent) {
     let event_win = WindowId::from(e.window);
-    if crate::backend::x11::systray::win_to_systray_icon(
+    if crate::backend::x11::systray::is_systray_icon(
         ctx.core.config().systray.show,
         ctx.xembed_tray.as_ref(),
         event_win,
-    )
-    .is_some()
-    {
+    ) {
         // XEmbed icons remain owned by the tray while unmapped. Recompute the
         // paired tray/bar geometry; mapped state comes from _XEMBED_INFO.
         crate::backend::x11::systray::update_systray(
@@ -610,7 +611,6 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
-    let selmon_id = ctx.core.model().selected_monitor_id();
     let systray_win_opt = ctx.xembed_tray.as_ref().map(|s| s.win);
     let statusescheme_bg_pixel = ctx.x11_runtime.status_scheme.bg.color.pixel as u32;
 
@@ -618,56 +618,46 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
         return;
     };
 
-    let (geo, border_width) = {
+    let geo = {
         let conn = ctx.x11.conn;
         let x11_icon_win: Window = icon_win.into();
         conn.get_geometry(x11_icon_win)
             .ok()
             .and_then(|cookie| cookie.reply().ok())
-            .map(|wa| {
-                (
-                    Rect {
-                        x: 0,
-                        y: 0,
-                        w: wa.width as i32,
-                        h: wa.height as i32,
-                    },
-                    wa.border_width as i32,
-                )
+            .map(|wa| Rect {
+                x: 0,
+                y: 0,
+                w: wa.width as i32,
+                h: wa.height as i32,
             })
-            .unwrap_or((
-                Rect {
-                    x: 0,
-                    y: 0,
-                    w: 1,
-                    h: 1,
-                },
-                0,
-            ))
+            .unwrap_or(Rect {
+                x: 0,
+                y: 0,
+                w: 1,
+                h: 1,
+            })
     };
 
-    let mut client = Client::new(icon_win);
-    client.geo = geo;
-    client.old_geo = geo;
-    client.old_border_width = border_width;
-    client.border_width = 0;
-    client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
-    client.set_tag_mask(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY));
-    client.monitor_id = selmon_id;
-
-    {
-        if !ctx.core.model_mut().insert_client(client) {
-            return;
-        }
-        if let Some(systray) = ctx.xembed_tray.as_mut() {
-            systray.icons.insert(0, icon_win);
-        }
+    let mapped =
+        crate::backend::x11::systray::xembed_wants_mapped(&ctx.x11, ctx.x11_runtime, icon_win);
+    let Some(systray) = ctx.xembed_tray.as_mut() else {
+        return;
     };
+    if systray.icon(icon_win).is_some() {
+        return;
+    }
+    systray.icons.insert(
+        0,
+        crate::types::XEmbedIcon {
+            win: icon_win,
+            size: geo.size(),
+            mapped,
+        },
+    );
 
-    let _ = crate::backend::x11::update_size_hints(ctx.core.model_mut(), &ctx.x11, icon_win);
     crate::backend::x11::systray::update_systray_icon_geom(
-        ctx.core.g,
-        &ctx.x11,
+        ctx.core.config().derived.bar_height,
+        ctx.xembed_tray.as_mut(),
         icon_win,
         geo.size(),
     );
@@ -677,6 +667,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     let x11_systray_win: Window = systray_win.into();
 
     let _ = conn.change_save_set(SetMode::INSERT, x11_icon_win);
+    let _ = conn.configure_window(x11_icon_win, &ConfigureWindowAux::new().border_width(0));
 
     let mask =
         EventMask::STRUCTURE_NOTIFY | EventMask::PROPERTY_CHANGE | EventMask::RESIZE_REDIRECT;
@@ -694,60 +685,27 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
 
     let _ = conn.flush();
 
-    send_xembed_event(
-        ctx,
-        icon_win,
-        systray_win,
-        XEMBED_EMBEDDED_NOTIFY,
-        0,
-        XEMBED_EMBEDDED_VERSION as i64,
-    );
-    send_xembed_event(
-        ctx,
-        icon_win,
-        systray_win,
-        XEMBED_FOCUS_IN,
-        0,
-        XEMBED_EMBEDDED_VERSION as i64,
-    );
-    send_xembed_event(
-        ctx,
-        icon_win,
-        systray_win,
-        XEMBED_WINDOW_ACTIVATE,
-        0,
-        XEMBED_EMBEDDED_VERSION as i64,
-    );
-    send_xembed_event(
-        ctx,
-        icon_win,
-        systray_win,
-        XEMBED_MODALITY_ON,
-        0,
-        XEMBED_EMBEDDED_VERSION as i64,
-    );
-
-    crate::backend::x11::systray::update_systray_icon_state(
-        &mut ctx.core,
-        &ctx.x11,
-        ctx.x11_runtime,
-        ctx.xembed_tray.as_ref(),
-        icon_win,
-        None,
-    );
     crate::backend::x11::systray::update_systray(
         &mut ctx.core,
         &ctx.x11,
         ctx.x11_runtime,
         ctx.xembed_tray,
     );
-    let is_mapped = ctx
-        .core
-        .model()
-        .client(icon_win)
-        .map(|c| !c.tags.is_empty())
-        .unwrap_or(false);
-    if is_mapped {
+    crate::backend::x11::systray::send_xembed_message(
+        &ctx.x11,
+        ctx.x11_runtime,
+        icon_win,
+        XEmbedMessage::EmbeddedNotify {
+            embedder: systray_win,
+        },
+    );
+    if mapped {
+        crate::backend::x11::systray::send_xembed_message(
+            &ctx.x11,
+            ctx.x11_runtime,
+            icon_win,
+            XEmbedMessage::WindowActivate,
+        );
         crate::backend::x11::set_client_state(&ctx.x11, ctx.x11_runtime, icon_win, 1);
     }
 }

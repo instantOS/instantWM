@@ -117,6 +117,10 @@ pub(crate) struct MonitorBarSnapshot {
     pub monitor_rect_x: i32,
     pub presentation: BarPresentation,
     pub systray: Option<SystraySnapshot>,
+    /// Right-edge width occupied by content rendered outside this scene.
+    /// XEmbed children use this reservation; compositor-rendered tray items
+    /// remain represented by `systray` above.
+    pub external_right_width: i32,
 }
 
 pub(crate) struct MonitorRenderOutput {
@@ -135,6 +139,7 @@ pub(crate) fn build_monitor_snapshots(
     status_notifier_tray: Option<&crate::systray::StatusNotifierTray>,
     tray_menu: Option<&crate::systray::TrayMenuPresentation>,
     include_status_items: bool,
+    external_right_width: i32,
 ) -> Vec<MonitorBarSnapshot> {
     let selected_monitor_num = core.model().expect_selected_monitor().num;
     let show_systray = core.config().systray.show;
@@ -325,6 +330,11 @@ pub(crate) fn build_monitor_snapshots(
             monitor_rect_x: mon.monitor_rect.x,
             presentation,
             systray,
+            external_right_width: if show_systray && is_selected_monitor {
+                external_right_width.max(0)
+            } else {
+                0
+            },
         });
     }
 
@@ -459,7 +469,7 @@ fn render_monitor_snapshot_base(
         )
     });
     let systray_width = if snapshot.is_selected_monitor {
-        tray_layout.as_ref().map(|l| l.total_width).unwrap_or(0)
+        tray_layout.as_ref().map(|l| l.total_width).unwrap_or(0) + snapshot.external_right_width
     } else {
         0
     };

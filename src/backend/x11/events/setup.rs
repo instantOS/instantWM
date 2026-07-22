@@ -7,12 +7,6 @@ use x11rb::wrapper::ConnectionExt as WrapperConnectionExt;
 
 pub const SYSTEM_TRAY_REQUEST_DOCK: u32 = 0;
 
-pub const XEMBED_EMBEDDED_NOTIFY: u32 = 0;
-pub const XEMBED_FOCUS_IN: u32 = 4;
-pub const XEMBED_WINDOW_ACTIVATE: u32 = 5;
-pub const XEMBED_MODALITY_ON: u32 = 10;
-pub const XEMBED_EMBEDDED_VERSION: u32 = 0;
-
 pub fn check_other_wm(conn: &RustConnection, root: Window) {
     let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
     let result =

@@ -3,8 +3,8 @@
 //! Types for keyboard bindings, mouse buttons, and X commands.
 
 use crate::actions::{ButtonAction, KeyAction};
-use crate::types::Point;
 use crate::types::input::{BarPosition, MouseButton};
+use crate::types::{Point, Size};
 use std::fmt::{self, Debug, Formatter};
 use std::mem;
 
@@ -167,6 +167,30 @@ mod tests {
 pub struct XEmbedTray {
     /// Tray window handle.
     pub win: WindowId,
-    /// List of tray icon windows.
-    pub icons: Vec<WindowId>,
+    /// Embedded icon state. XEmbed children deliberately do not enter the
+    /// normal managed-client model: they have different focus, input, and
+    /// lifecycle semantics.
+    pub icons: Vec<XEmbedIcon>,
+}
+
+impl XEmbedTray {
+    pub fn icon(&self, win: WindowId) -> Option<&XEmbedIcon> {
+        self.icons.iter().find(|icon| icon.win == win)
+    }
+
+    pub fn icon_mut(&mut self, win: WindowId) -> Option<&mut XEmbedIcon> {
+        self.icons.iter_mut().find(|icon| icon.win == win)
+    }
+
+    pub fn remove_icon(&mut self, win: WindowId) -> Option<XEmbedIcon> {
+        let index = self.icons.iter().position(|icon| icon.win == win)?;
+        Some(self.icons.remove(index))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct XEmbedIcon {
+    pub win: WindowId,
+    pub size: Size,
+    pub mapped: bool,
 }

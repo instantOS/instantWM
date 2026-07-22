@@ -15,9 +15,8 @@ pub fn update_status(
 ) {
     let selmon_idx = core.model().selected_monitor_id();
 
-    draw_bar(core, x11_runtime, None, selmon_idx);
-
     crate::backend::x11::systray::update_systray(core, x11, x11_runtime, systray);
+    draw_bar(core, x11_runtime, systray.as_ref(), selmon_idx);
 }
 
 pub fn draw_bar(
@@ -56,7 +55,13 @@ pub fn draw_bar(
     };
 
     let mut painter = crate::backend::x11::bar_painter::X11BarPainter::new(drw);
-    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None, None, true);
+    let snapshots = crate::bar::scene::build_monitor_snapshots(
+        core,
+        None,
+        None,
+        true,
+        core.bar.runtime.systray_width,
+    );
     let Some(snapshot) = snapshots
         .iter()
         .find(|snapshot| snapshot.monitor_id == mon_idx)
@@ -74,7 +79,18 @@ pub fn draw_bars(
     systray: Option<&XEmbedTray>,
 ) {
     let monitor_ids: Vec<MonitorId> = core.model().monitors_iter().map(|(i, _)| i).collect();
-    let snapshots = crate::bar::scene::build_monitor_snapshots(core, None, None, true);
+    core.bar.runtime.systray_width = if core.config().systray.show {
+        crate::backend::x11::systray::get_systray_width(core.state(), systray) as i32
+    } else {
+        0
+    };
+    let snapshots = crate::bar::scene::build_monitor_snapshots(
+        core,
+        None,
+        None,
+        true,
+        core.bar.runtime.systray_width,
+    );
     let snapshot_by_monitor_id: HashMap<MonitorId, &crate::bar::scene::MonitorBarSnapshot> =
         snapshots
             .iter()
@@ -96,11 +112,6 @@ pub fn draw_bars(
         let bar_height = core.config().derived.bar_height;
         if work_rect_w <= 0 || bar_height <= 0 {
             continue;
-        }
-
-        if core.config().systray.show {
-            core.bar.runtime.systray_width =
-                crate::backend::x11::systray::get_systray_width(core.state(), systray) as i32;
         }
 
         let drw = {

@@ -225,7 +225,7 @@ pub fn render_bar_buffers(
     tray_menu: Option<&crate::systray::TrayMenuPresentation>,
 ) -> Vec<(MemoryRenderBuffer, Point)> {
     let snapshots =
-        scene::build_monitor_snapshots(core, Some(status_notifier_tray), tray_menu, false);
+        scene::build_monitor_snapshots(core, Some(status_notifier_tray), tray_menu, false, 0);
     // Cache the systray width so status bar layout can account for it.
     core.bar.runtime.systray_width = if core.config().systray.show {
         crate::systray::layout(

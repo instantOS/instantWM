@@ -16,6 +16,46 @@ const XEMBED_WINDOW_DEACTIVATE: u32 = 2;
 const XEMBED_EMBEDDED_VERSION: u32 = 0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum XEmbedMessage {
+    EmbeddedNotify { embedder: WindowId },
+    WindowActivate,
+    WindowDeactivate,
+}
+
+impl XEmbedMessage {
+    fn payload(self) -> [u32; 5] {
+        match self {
+            Self::EmbeddedNotify { embedder } => {
+                [CURRENT_TIME, 0, 0, embedder.into(), XEMBED_EMBEDDED_VERSION]
+            }
+            Self::WindowActivate => [CURRENT_TIME, XEMBED_WINDOW_ACTIVATE, 0, 0, 0],
+            Self::WindowDeactivate => [CURRENT_TIME, XEMBED_WINDOW_DEACTIVATE, 0, 0, 0],
+        }
+    }
+}
+
+pub(crate) fn send_xembed_message(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
+    target: WindowId,
+    message: XEmbedMessage,
+) {
+    let event = ClientMessageEvent {
+        response_type: CLIENT_MESSAGE_EVENT,
+        format: 32,
+        sequence: 0,
+        window: target.into(),
+        type_: x11_runtime.xatom.xembed,
+        data: ClientMessageData::from(message.payload()),
+    };
+    // XEmbed messages target the client directly; the protocol explicitly
+    // requires no event-mask filtering and no propagation.
+    let _ = x11
+        .conn
+        .send_event(false, Window::from(target), EventMask::NO_EVENT, event);
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct XEmbedInfo {
     _version: u32,
     flags: u32,
@@ -79,13 +119,10 @@ pub fn get_systray_width(
 
     layout_xembed_icons(
         systray.into_iter().flat_map(|tray| {
-            tray.icons.iter().filter_map(|icon_win| {
-                globals
-                    .model
-                    .client(*icon_win)
-                    .filter(|client| !client.tags.is_empty())
-                    .map(|client| client.geo.w)
-            })
+            tray.icons
+                .iter()
+                .filter(|icon| icon.mapped)
+                .map(|icon| icon.size.w)
         }),
         globals.config.derived.bar_height,
         globals.config.systray.spacing,
@@ -94,39 +131,19 @@ pub fn get_systray_width(
 }
 
 /// Remove systray icon using dependency injection.
-pub fn remove_systray_icon(
-    globals: &mut crate::core_state::CoreState,
-    systray: Option<&mut XEmbedTray>,
-    icon_win: WindowId,
-) {
-    if !globals.config.systray.show {
-        return;
-    }
-
+pub fn remove_systray_icon(systray: Option<&mut XEmbedTray>, icon_win: WindowId) {
     if let Some(systray) = systray {
-        systray.icons.retain(|&w| w != icon_win);
+        systray.remove_icon(icon_win);
     }
-
-    globals.model.remove_client(icon_win);
 }
 
 /// Update systray icon geometry using dependency injection.
 pub fn update_systray_icon_geom(
-    state: &mut crate::core_state::CoreState,
-    x11: &X11BackendRef,
+    bar_height: i32,
+    systray: Option<&mut XEmbedTray>,
     icon_window: WindowId,
     requested_size: Size,
 ) {
-    let bar_height = state.config.derived.bar_height;
-
-    let Some(position) = state
-        .model
-        .client(icon_window)
-        .map(|client| client.geo.position())
-    else {
-        return;
-    };
-
     let new_size = crate::systray::fit_icon_size(
         requested_size,
         bar_height,
@@ -135,54 +152,19 @@ pub fn update_systray_icon_geom(
     if !new_size.is_positive() {
         return;
     }
-
-    let mut rect = Rect::from_position_and_size(position, new_size);
-
-    let outcome = crate::client::geometry::apply_size_hints(
-        &state.model,
-        &state.config,
-        icon_window,
-        &mut rect,
-        false,
-    );
-    if outcome.should_apply_client_hints {
-        crate::backend::x11::geometry::apply_icccm_size_hints(
-            &mut state.model,
-            x11,
-            icon_window,
-            &mut rect,
-        );
-    }
-
-    // Now update the client with the computed values
-    if let Some(client) = state.model.client_mut(icon_window) {
-        client.geo = rect;
-
-        if client.geo.h > bar_height {
-            if client.geo.w == client.geo.h {
-                client.geo.w = bar_height;
-            } else {
-                client.geo.w =
-                    (bar_height as f32 * (client.geo.w as f32 / client.geo.h as f32)) as i32;
-            }
-            client.geo.h = bar_height;
-        }
+    if let Some(icon) = systray.and_then(|tray| tray.icon_mut(icon_window)) {
+        icon.size = new_size;
     }
 }
 
 /// Update systray icon state using dependency injection.
 pub fn update_systray_icon_state(
-    core: &mut CoreCtx,
     x11: &X11BackendRef,
     x11_runtime: &X11RuntimeConfig,
-    systray: Option<&XEmbedTray>,
+    systray: Option<&mut XEmbedTray>,
     icon_win: WindowId,
     ev: Option<&PropertyNotifyEvent>,
 ) {
-    if !core.config().systray.show {
-        return;
-    }
-
     let xembed_info_atom = x11_runtime.xatom.xembed_info;
     if let Some(ev) = ev
         && ev.atom != xembed_info_atom
@@ -196,57 +178,28 @@ pub fn update_systray_icon_state(
         return;
     };
 
-    let (current_tags, _has_systray) = {
-        if let Some(client) = core.model_mut().client_mut(icon_win) {
-            (client.tags, systray.is_some())
-        } else {
-            return;
-        }
+    let Some(icon) = systray.and_then(|tray| tray.icon_mut(icon_win)) else {
+        return;
     };
+    let mapped = xembed_info.is_mapped();
+    if mapped == icon.mapped {
+        return;
+    }
+    icon.mapped = mapped;
 
-    if xembed_info.is_mapped() && current_tags.is_empty() {
-        if let Some(client) = core.model_mut().client_mut(icon_win) {
-            client.tags = crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY);
-        }
-
-        let systray_win = systray.as_ref().map(|s| s.win).unwrap_or_default();
+    if mapped {
         let conn = x11.conn;
         let _ = conn.map_window(x11_icon_win);
         let _ = conn.configure_window(
             x11_icon_win,
             &ConfigureWindowAux::new().stack_mode(StackMode::ABOVE),
         );
-        send_event(
-            conn,
-            icon_win,
-            xembed_info_atom,
-            xembed_info_atom,
-            CURRENT_TIME as i64,
-            XEMBED_WINDOW_ACTIVATE as i64,
-            0,
-            u32::from(systray_win) as i64,
-            XEMBED_EMBEDDED_VERSION as i64,
-        );
+        send_xembed_message(x11, x11_runtime, icon_win, XEmbedMessage::WindowActivate);
         set_client_state(x11, x11_runtime, icon_win, 1);
-    } else if !xembed_info.is_mapped() && !current_tags.is_empty() {
-        if let Some(client) = core.model_mut().client_mut(icon_win) {
-            client.tags = crate::types::TagMask::EMPTY;
-        }
-
-        let systray_win = systray.as_ref().map(|s| s.win).unwrap_or_default();
+    } else {
         let conn = x11.conn;
         let _ = conn.unmap_window(x11_icon_win);
-        send_event(
-            conn,
-            icon_win,
-            xembed_info_atom,
-            xembed_info_atom,
-            CURRENT_TIME as i64,
-            XEMBED_WINDOW_DEACTIVATE as i64,
-            0,
-            u32::from(systray_win) as i64,
-            XEMBED_EMBEDDED_VERSION as i64,
-        );
+        send_xembed_message(x11, x11_runtime, icon_win, XEmbedMessage::WindowDeactivate);
         set_client_state(x11, x11_runtime, icon_win, 0);
     }
 }
@@ -383,14 +336,8 @@ pub fn update_systray(
 
     let icon_layout: Vec<(WindowId, Size)> = icons
         .iter()
-        .filter_map(|icon_win| {
-            core.state()
-                .model
-                .clients
-                .get(icon_win)
-                .filter(|client| !client.tags.is_empty() && client.geo.w > 0 && client.geo.h > 0)
-                .map(|client| (*icon_win, client.geo.size()))
-        })
+        .filter(|icon| icon.mapped && icon.size.is_positive())
+        .map(|icon| (icon.win, icon.size))
         .collect();
 
     let layout = layout_xembed_icons(
@@ -463,24 +410,12 @@ pub fn update_systray(
     let _ = conn.flush();
 }
 
-/// Convert window to systray icon using dependency injection.
-pub fn win_to_systray_icon(
-    systray_show: bool,
-    systray: Option<&XEmbedTray>,
-    win: WindowId,
-) -> Option<WindowId> {
+pub fn is_systray_icon(systray_show: bool, systray: Option<&XEmbedTray>, win: WindowId) -> bool {
     if !systray_show {
-        return None;
+        return false;
     }
 
-    if let Some(systray) = systray {
-        for &icon_win in &systray.icons {
-            if icon_win == win {
-                return Some(win);
-            }
-        }
-    }
-    None
+    systray.is_some_and(|tray| tray.icon(win).is_some())
 }
 
 /// Get monitor for systray using dependency injection.
@@ -530,33 +465,17 @@ fn read_xembed_info(x11: &X11BackendRef, win: WindowId, atom: u32) -> Option<XEm
     XEmbedInfo::parse(reply.value32()?)
 }
 
-/// Send X event using dependency injection.
-fn send_event(
-    conn: &impl Connection,
+pub(crate) fn xembed_wants_mapped(
+    x11: &X11BackendRef,
+    x11_runtime: &X11RuntimeConfig,
     win: WindowId,
-    proto: u32,
-    mask: u32,
-    d0: i64,
-    d1: i64,
-    d2: i64,
-    d3: i64,
-    d4: i64,
-) {
-    let x11_win: Window = win.into();
-    let event = ClientMessageEvent {
-        response_type: CLIENT_MESSAGE_EVENT,
-        format: 32,
-        sequence: 0,
-        window: x11_win,
-        type_: proto,
-        data: ClientMessageData::from([d0 as u32, d1 as u32, d2 as u32, d3 as u32, d4 as u32]),
-    };
-    let _ = conn.send_event(false, x11_win, EventMask::from(mask), event);
+) -> bool {
+    read_xembed_info(x11, win, x11_runtime.xatom.xembed_info).is_some_and(XEmbedInfo::is_mapped)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{XEmbedCell, XEmbedInfo, XEmbedLayout, layout_xembed_icons};
+    use super::*;
 
     #[test]
     fn xembed_layout_uses_contiguous_full_hitbox_cells() {
@@ -601,5 +520,24 @@ mod tests {
         let unmapped = XEmbedInfo::parse([1, 0]).unwrap();
         assert!(!unmapped.is_mapped());
         assert!(XEmbedInfo::parse([0]).is_none());
+    }
+
+    #[test]
+    fn xembed_messages_encode_only_message_specific_data() {
+        assert_eq!(
+            XEmbedMessage::EmbeddedNotify {
+                embedder: WindowId::from(42)
+            }
+            .payload(),
+            [CURRENT_TIME, 0, 0, 42, XEMBED_EMBEDDED_VERSION]
+        );
+        assert_eq!(
+            XEmbedMessage::WindowActivate.payload(),
+            [CURRENT_TIME, XEMBED_WINDOW_ACTIVATE, 0, 0, 0]
+        );
+        assert_eq!(
+            XEmbedMessage::WindowDeactivate.payload(),
+            [CURRENT_TIME, XEMBED_WINDOW_DEACTIVATE, 0, 0, 0]
+        );
     }
 }
