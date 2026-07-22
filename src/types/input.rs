@@ -76,13 +76,46 @@ pub enum AltCursor {
     Resize(ResizeDirection),
 }
 
+impl From<ResizeDirection> for AltCursor {
+    fn from(dir: ResizeDirection) -> Self {
+        AltCursor::Resize(dir)
+    }
+}
+
 impl AltCursor {
     /// Convert cursor type to X11 cursor index (for cfg.cursors array).
     pub fn to_x11_index(self) -> usize {
         match self {
             AltCursor::Default => 0,
             AltCursor::Move => 2,
-            AltCursor::Resize(dir) => dir.cursor_index(),
+            AltCursor::Resize(dir) => match dir {
+                ResizeDirection::TopLeft => 8,
+                ResizeDirection::Top => 4,
+                ResizeDirection::TopRight => 9,
+                ResizeDirection::Right => 5,
+                ResizeDirection::BottomRight => 7,
+                ResizeDirection::Bottom => 4,
+                ResizeDirection::BottomLeft => 6,
+                ResizeDirection::Left => 5,
+            },
+        }
+    }
+
+    /// Convert cursor type to Wayland cursor icon (if an override is active).
+    pub fn to_wayland_icon(self) -> Option<smithay::input::pointer::CursorIcon> {
+        match self {
+            AltCursor::Default => None,
+            AltCursor::Move => Some(smithay::input::pointer::CursorIcon::Grabbing),
+            AltCursor::Resize(dir) => Some(match dir {
+                ResizeDirection::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
+                ResizeDirection::Top => smithay::input::pointer::CursorIcon::NResize,
+                ResizeDirection::TopRight => smithay::input::pointer::CursorIcon::NeResize,
+                ResizeDirection::Right => smithay::input::pointer::CursorIcon::EResize,
+                ResizeDirection::BottomRight => smithay::input::pointer::CursorIcon::SeResize,
+                ResizeDirection::Bottom => smithay::input::pointer::CursorIcon::SResize,
+                ResizeDirection::BottomLeft => smithay::input::pointer::CursorIcon::SwResize,
+                ResizeDirection::Left => smithay::input::pointer::CursorIcon::WResize,
+            }),
         }
     }
 }
@@ -305,20 +338,6 @@ pub enum ResizeDirection {
 }
 
 impl ResizeDirection {
-    /// Get the cursor index for this resize direction.
-    pub fn cursor_index(self) -> usize {
-        match self {
-            Self::TopLeft => 8,
-            Self::Top => 4,
-            Self::TopRight => 9,
-            Self::Right => 5,
-            Self::BottomRight => 7,
-            Self::Bottom => 4,
-            Self::BottomLeft => 6,
-            Self::Left => 5,
-        }
-    }
-
     /// Get which edges are affected by this resize direction.
     ///
     /// Returns a tuple of (left, right, top, bottom) booleans.
@@ -350,20 +369,6 @@ impl ResizeDirection {
             Self::Bottom => Point::new((w + bw - 1) / 2, h + bw - 1),
             Self::BottomLeft => Point::new(-bw, h + bw - 1),
             Self::Left => Point::new(-bw, (h + bw - 1) / 2),
-        }
-    }
-
-    /// Convert to Wayland cursor icon.
-    pub fn to_wayland_icon(self) -> smithay::input::pointer::CursorIcon {
-        match self {
-            Self::TopLeft => smithay::input::pointer::CursorIcon::NwResize,
-            Self::Top => smithay::input::pointer::CursorIcon::NResize,
-            Self::TopRight => smithay::input::pointer::CursorIcon::NeResize,
-            Self::Right => smithay::input::pointer::CursorIcon::EResize,
-            Self::BottomRight => smithay::input::pointer::CursorIcon::SeResize,
-            Self::Bottom => smithay::input::pointer::CursorIcon::SResize,
-            Self::BottomLeft => smithay::input::pointer::CursorIcon::SwResize,
-            Self::Left => smithay::input::pointer::CursorIcon::WResize,
         }
     }
 
@@ -562,20 +567,19 @@ mod tests {
 
     #[test]
     fn alt_resize_cursor_uses_resize_direction_mapping() {
-        for direction in [
-            ResizeDirection::TopLeft,
-            ResizeDirection::Top,
-            ResizeDirection::TopRight,
-            ResizeDirection::Right,
-            ResizeDirection::BottomRight,
-            ResizeDirection::Bottom,
-            ResizeDirection::BottomLeft,
-            ResizeDirection::Left,
+        for (direction, expected_x11, expected_wayland) in [
+            (ResizeDirection::TopLeft, 8, smithay::input::pointer::CursorIcon::NwResize),
+            (ResizeDirection::Top, 4, smithay::input::pointer::CursorIcon::NResize),
+            (ResizeDirection::TopRight, 9, smithay::input::pointer::CursorIcon::NeResize),
+            (ResizeDirection::Right, 5, smithay::input::pointer::CursorIcon::EResize),
+            (ResizeDirection::BottomRight, 7, smithay::input::pointer::CursorIcon::SeResize),
+            (ResizeDirection::Bottom, 4, smithay::input::pointer::CursorIcon::SResize),
+            (ResizeDirection::BottomLeft, 6, smithay::input::pointer::CursorIcon::SwResize),
+            (ResizeDirection::Left, 5, smithay::input::pointer::CursorIcon::WResize),
         ] {
-            assert_eq!(
-                AltCursor::Resize(direction).to_x11_index(),
-                direction.cursor_index()
-            );
+            let alt: AltCursor = direction.into();
+            assert_eq!(alt.to_x11_index(), expected_x11);
+            assert_eq!(alt.to_wayland_icon(), Some(expected_wayland));
         }
     }
 
