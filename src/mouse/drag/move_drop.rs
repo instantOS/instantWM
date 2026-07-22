@@ -469,8 +469,8 @@ pub fn apply_edge_drop(
             shift_tag(ctx, HorizontalDirection::Right.into(), 1);
         }
 
-        if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
-            c.enter_tiling();
+        if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+            finish_tiling_edge_drop(client);
         }
         let selmon_id = ctx.core().model().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
@@ -484,6 +484,14 @@ pub fn apply_edge_drop(
     }
 
     true
+}
+
+/// Tile after an edge drop without replacing the pre-drag floating restore rectangle.
+fn finish_tiling_edge_drop(client: &mut Client) {
+    // The drag has already moved `geo` to the edge. Unlike the ordinary
+    // tiled-mode command, snapshotting it here would destroy the position
+    // restored by a later float toggle.
+    client.replace_mode_with_base(BaseClientMode::Tiling);
 }
 
 /// Shared post-release drop handling for move-like drags.
@@ -571,4 +579,26 @@ pub fn promote_to_floating(
     };
     ctx.move_resize(win, new_geo, MoveResizeOptions::hinted_immediate(true));
     Some((new_geo, true))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::finish_tiling_edge_drop;
+    use crate::types::{BaseClientMode, Client, ClientMode, Rect};
+
+    #[test]
+    fn edge_drop_keeps_the_pre_drag_floating_restore_rectangle() {
+        let saved = Rect::new(300, 200, 700, 500);
+        let mut client = Client {
+            geo: Rect::new(0, 200, 700, 500),
+            float_geo: saved,
+            ..Client::default()
+        };
+        client.replace_mode_with_base(BaseClientMode::Floating);
+
+        finish_tiling_edge_drop(&mut client);
+
+        assert_eq!(client.mode(), ClientMode::Tiling);
+        assert_eq!(client.float_geo, saved);
+    }
 }

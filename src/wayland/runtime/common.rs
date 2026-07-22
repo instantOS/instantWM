@@ -547,7 +547,7 @@ fn handle_map_window(
         client.monitor_id = lc.monitor_id;
         client.set_tag_mask(lc.tags);
         if lc.is_floating {
-            client.enter_floating();
+            client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
         }
     } else {
         let Some(selected_monitor) = g.model.selected_monitor() else {
@@ -834,5 +834,37 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
     // affect arbitrary windows, so it remains conservatively global.
     if space_synced {
         state.request_render();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::handle_update_xwayland_policy;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::types::{BaseClientMode, Client, ClientMode, Monitor, Rect, WindowId};
+    use crate::wm::Wm;
+
+    #[test]
+    fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(70);
+        let geo = Rect::new(20, 30, 800, 600);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            geo,
+            mode: ClientMode::Tiling,
+            ..Client::default()
+        });
+
+        handle_update_xwayland_policy(&mut wm, win, None, None, true, false, true);
+
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.mode().is_true_fullscreen());
+        assert_eq!(client.base_mode(), BaseClientMode::Floating);
+        assert_eq!(client.mode().restored(), ClientMode::Floating);
+        assert_eq!(client.float_geo, geo);
     }
 }

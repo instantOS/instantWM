@@ -46,7 +46,7 @@ pub(crate) struct WindowModePlan {
 pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> WindowModePlan {
     match mode {
         BaseClientMode::Floating => {
-            client.enter_floating();
+            client.replace_mode_with_base(BaseClientMode::Floating);
             client.restore_border_width();
             let border_width = client.border_width;
             let restore_geometry = Some(client.effective_float_geo());
@@ -59,7 +59,8 @@ pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> W
             }
         }
         BaseClientMode::Tiling => {
-            client.enter_tiling();
+            client.save_floating_geometry();
+            client.replace_mode_with_base(BaseClientMode::Tiling);
             WindowModePlan {
                 change: WindowModeChange::ChangedToTiling,
                 border_width: client.border_width,

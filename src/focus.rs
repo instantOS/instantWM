@@ -817,7 +817,7 @@ mod tests {
                     ..Client::default()
                 };
                 if win == WindowId(2) {
-                    client.enter_floating();
+                    client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
                 }
                 (win, client)
             })

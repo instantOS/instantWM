@@ -274,15 +274,25 @@ impl Client {
 
     /// Change the persistent tiled/floating policy while preserving any
     /// temporary fullscreen or maximized presentation.
+    ///
+    /// Use [`Self::replace_mode_with_base`] only when an explicit user action
+    /// should also leave the current presentation mode.
     #[inline]
     pub fn set_base_mode(&mut self, base: BaseClientMode) {
         self.mode = self.mode.with_base_mode(base);
     }
 
-    /// Enter floating placement, explicitly leaving any presentation mode.
+    /// Replace the complete mode with a base tiled/floating mode.
+    ///
+    /// This deliberately exits fullscreen/maximized presentation and does not
+    /// modify saved floating geometry. Policy refreshes should normally use
+    /// [`Self::set_base_mode`] instead.
     #[inline]
-    pub fn enter_floating(&mut self) {
-        self.mode = ClientMode::Floating;
+    pub fn replace_mode_with_base(&mut self, base: BaseClientMode) {
+        self.mode = match base {
+            BaseClientMode::Tiling => ClientMode::Tiling,
+            BaseClientMode::Floating => ClientMode::Floating,
+        };
     }
 
     /// Enter true fullscreen while remembering the current base placement.
@@ -511,20 +521,6 @@ impl Client {
     }
 
     // -------------------------------------------------------------------------
-    // Mode transitions
-    // -------------------------------------------------------------------------
-
-    /// Apply all client-local state changes required when a window enters tiling mode.
-    ///
-    /// Sets the mode to `Tiling`, saves the current geometry into `float_geo` so it
-    /// can be restored on the next float. Border policy belongs to the layout
-    /// manager, which knows the visible tiled client count and active layout.
-    pub fn enter_tiling(&mut self) {
-        self.mode = ClientMode::Tiling;
-        self.float_geo = self.geo;
-    }
-
-    // -------------------------------------------------------------------------
     // Scratchpad state transitions
     // -------------------------------------------------------------------------
 
@@ -623,7 +619,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::{BaseClientMode, Client, ClientMode, ScratchpadData};
-    use crate::types::{SCRATCHPAD_MASK, TagMask};
+    use crate::types::{Rect, SCRATCHPAD_MASK, TagMask};
 
     #[test]
     fn fullscreen_restores_previous_tiling_mode() {
@@ -640,7 +636,7 @@ mod tests {
     #[test]
     fn fullscreen_restores_previous_floating_mode() {
         let mut client = Client::default();
-        client.enter_floating();
+        client.replace_mode_with_base(BaseClientMode::Floating);
 
         client.enter_fullscreen();
         assert!(client.mode().is_true_fullscreen());
@@ -653,7 +649,7 @@ mod tests {
     #[test]
     fn maximized_restores_previous_regular_mode() {
         let mut client = Client::default();
-        client.enter_floating();
+        client.replace_mode_with_base(BaseClientMode::Floating);
 
         client.enter_maximized();
         assert!(client.mode().is_maximized());
@@ -677,6 +673,21 @@ mod tests {
             );
             assert_eq!(changed.restored(), ClientMode::Floating);
         }
+    }
+
+    #[test]
+    fn replacing_mode_does_not_implicitly_replace_saved_floating_geometry() {
+        let saved = Rect::new(100, 120, 640, 480);
+        let mut client = Client {
+            geo: Rect::new(0, 0, 1920, 1080),
+            float_geo: saved,
+            ..Client::default()
+        };
+
+        client.replace_mode_with_base(BaseClientMode::Tiling);
+
+        assert_eq!(client.mode(), ClientMode::Tiling);
+        assert_eq!(client.float_geo, saved);
     }
 
     fn sp_data(name: &str, restore_tags: TagMask) -> ScratchpadData {

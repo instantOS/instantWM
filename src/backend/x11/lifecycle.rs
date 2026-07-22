@@ -773,3 +773,26 @@ pub fn is_window_iconic(
         .map(|state| state as i32 == WM_STATE_ICONIC)
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::initialize_floating_state;
+    use crate::model::WmModel;
+    use crate::types::{BaseClientMode, Client, ClientMode, WindowId};
+
+    #[test]
+    fn transient_policy_changes_fullscreen_restore_mode_without_exiting() {
+        let mut model = WmModel::default();
+        let win = WindowId(71);
+        let mut client = Client::new(win);
+        client.enter_fullscreen();
+        model.insert_client(client);
+
+        assert!(initialize_floating_state(&mut model, win, true));
+
+        let client = model.client(win).unwrap();
+        assert!(client.mode().is_true_fullscreen());
+        assert_eq!(client.base_mode(), BaseClientMode::Floating);
+        assert_eq!(client.mode().restored(), ClientMode::Floating);
+    }
+}

@@ -298,7 +298,7 @@ mod tests {
         client.win = WindowId::from(1_u32);
         client.monitor_id = MonitorId::default();
         client.set_tag_mask(TagMask::single(1).unwrap());
-        client.enter_floating();
+        client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
         client.border_width = border_width;
         client.geo = rect;
         client.float_geo = rect;

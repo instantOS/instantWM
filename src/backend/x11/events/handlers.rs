@@ -660,7 +660,7 @@ fn handle_systray_dock_request(ctx: &mut WmCtxX11<'_>, e: &ClientMessageEvent) {
     client.old_geo = geo;
     client.old_border_width = border_width;
     client.border_width = 0;
-    client.enter_floating();
+    client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
     client.set_tag_mask(crate::types::TagMask::single(1).unwrap_or(crate::types::TagMask::EMPTY));
     client.monitor_id = selmon_id;
 
