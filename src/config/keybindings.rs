@@ -125,6 +125,8 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_DEAD_CIRCUMFLEX => KeyAction::named_args(NamedAction::Spawn, ROFI_WINDOW_SWITCH)),
         key!(MODKEY | CONTROL, XK_L => KeyAction::named_args(NamedAction::Spawn, defaults::LOCKSCREEN)),
         key!(MODKEY | CONTROL, XK_C => KeyAction::named_args(NamedAction::Spawn, defaults::SETTINGS)),
+        key!(MODKEY | CONTROL, XK_Q => KeyAction::named_args(NamedAction::Spawn, &["instantshutdown"])),
+        key!(MODKEY | MOD1, XK_F => KeyAction::named_args(NamedAction::Spawn, &["instantsearch"])),
         key!(MODKEY | SHIFT, XK_ESCAPE => KeyAction::named_args(NamedAction::Spawn, defaults::SYSTEMMONITOR)),
         key!(MODKEY, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::AREA)),
         key!(MODKEY | SHIFT, XK_PRINT => KeyAction::named_args(NamedAction::Spawn, screenshot::FULL)),
