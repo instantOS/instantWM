@@ -1,7 +1,7 @@
 use crate::backend::WindowOps;
 use crate::ipc_types::{Response, WindowCommand, WindowInfo};
 use crate::layouts::arrange;
-use crate::monitor::transfer_client;
+use crate::monitor::{TransferFocus, transfer_client};
 use crate::mouse::slop::is_valid_window_size;
 use crate::types::{Rect, WindowId};
 use crate::wm::Wm;
@@ -128,7 +128,14 @@ fn resize_window(
         arrange(&mut ctx, Some(current_monitor_id));
     }
 
-    transfer_window_to_monitor(&mut ctx, win, current_monitor_id, target_monitor_id);
+    if !ctx.is_wayland() {
+        let _ = transfer_client(
+            &mut ctx,
+            win,
+            target_monitor_id,
+            TransferFocus::FollowWindow,
+        );
+    }
     ctx.move_resize(
         win,
         rect,
@@ -156,21 +163,4 @@ fn resolve_resize_monitor(
                 .ok_or_else(|| format!("monitor {pos} not found"))
         }
     }
-}
-
-fn transfer_window_to_monitor(
-    ctx: &mut crate::contexts::WmCtx<'_>,
-    win: WindowId,
-    current_monitor: crate::types::MonitorId,
-    target_monitor: crate::types::MonitorId,
-) {
-    if current_monitor == target_monitor || ctx.is_wayland() {
-        return;
-    }
-
-    transfer_client(ctx, win, target_monitor);
-    ctx.core_mut()
-        .state_mut()
-        .set_selected_monitor(target_monitor);
-    crate::focus::focus(ctx, Some(win));
 }

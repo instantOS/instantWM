@@ -65,29 +65,19 @@ pub(crate) fn compute_axis_resize(
     }
 }
 
-pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, btn: MouseButton) {
-    let Some(win) = ctx.core().model().selected_win() else {
+/// Begin resizing `win` using the pointer's current quadrant.
+///
+/// The fullscreen check intentionally remains here even though title-drag
+/// arming performs the same eligibility check: Wayland can change window mode
+/// between the button press and the later drag-threshold event.
+pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
+    let Some((geo, is_floating)) = ctx.core().model().client(win).and_then(|client| {
+        (!client.mode().is_true_fullscreen()).then_some((client.geo, client.mode().is_floating()))
+    }) else {
         return;
     };
-    let is_blocked = match ctx.core().model().client(win) {
-        Some(c) => c.mode().is_true_fullscreen(),
-        None => return,
-    };
-    if is_blocked {
-        return;
-    }
 
     let Some(ptr) = ctx.pointer_backend().pointer_location() else {
-        return;
-    };
-
-    let Some((geo, is_floating)) = ctx
-        .core()
-        .state()
-        .model
-        .client(win)
-        .map(|c| (c.geo, c.mode().is_floating()))
-    else {
         return;
     };
 

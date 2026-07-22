@@ -76,14 +76,6 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
         // For focus-follows-mouse mode, we still focus since that's the expected behavior.
         if focusfollowsmouse && e.detail > 3 {
             crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(event_win));
-            if let Some(monitor_id) = ctx
-                .core
-                .model()
-                .client(event_win)
-                .map(|client| client.monitor_id)
-            {
-                crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
-            }
         }
     };
 
@@ -298,14 +290,15 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
     // 2. Snapshot selection state before any changes
     let selected_monitor = ctx.core.model().expect_selected_monitor();
     let selected_window = selected_monitor.selected;
-    let is_floating_sel = {
-        let is_floating = selected_window
-            .and_then(|w| ctx.core.model().client(w))
-            .map(|c| c.mode().is_floating())
-            .unwrap_or(false);
-        let has_tiling = selected_monitor.is_tiling_layout();
-        is_floating || !has_tiling
-    };
+    let has_tiling_layout = selected_monitor.is_tiling_layout();
+    let selected_floating = selected_window.and_then(|win| {
+        ctx.core
+            .model()
+            .client(win)
+            .filter(|client| client.mode().is_floating())
+            .map(|client| (win, client.geo))
+    });
+    let is_floating_sel = selected_floating.is_some() || !has_tiling_layout;
     let entering_client = ctx.core.model().client(event_win).is_some();
 
     // 3. Handle floating focus (matches C handle_floating_focus)
@@ -317,7 +310,14 @@ pub fn enter_notify(ctx: &mut WmCtxX11<'_>, e: &EnterNotifyEvent) {
         // floating window until the user commits (clicks) or moves away.
         // This avoids the "nothing happens" feel when hovering onto a tiled
         // window while a floating window is selected.
-        if crate::mouse::handle_x11_floating_to_tiled_hover_offer(ctx) {
+        if let Some((floating_win, floating_geo)) = selected_floating
+            && has_tiling_layout
+            && crate::mouse::handle_x11_floating_to_tiled_hover_offer(
+                ctx,
+                floating_win,
+                floating_geo,
+            )
+        {
             return;
         }
         // Case 1: Entering root while sel is floating
@@ -867,10 +867,5 @@ fn handle_active_window(ctx: &mut WmCtxX11<'_>, win: WindowId) {
         crate::client::show_window(&mut WmCtx::X11(ctx.reborrow()), win);
     };
 
-    if let Some(c) = ctx.core.model().client(win) {
-        let monitor_id = c.monitor_id;
-        crate::focus::select_monitor_for_client(&mut WmCtx::X11(ctx.reborrow()), win);
-        crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), Some(win));
-        crate::layouts::sync_monitor_z_order(&mut WmCtx::X11(ctx.reborrow()), monitor_id);
-    };
+    let _ = crate::focus::activate_client(&mut WmCtx::X11(ctx.reborrow()), win);
 }

@@ -21,18 +21,16 @@ pub fn restore_floating_geometry(ctx: &mut WmCtx, win: WindowId) {
 #[must_use]
 pub enum WindowModeChange {
     MissingClient,
-    ChangedToFloating { restored_geometry: bool },
+    ChangedToFloating { restored_geometry: Rect },
     ChangedToTiling,
 }
 
 impl WindowModeChange {
-    pub fn should_animate_float_restore(self) -> bool {
-        matches!(
-            self,
-            WindowModeChange::ChangedToFloating {
-                restored_geometry: true
-            }
-        )
+    pub fn restored_geometry(self) -> Option<Rect> {
+        match self {
+            WindowModeChange::ChangedToFloating { restored_geometry } => Some(restored_geometry),
+            WindowModeChange::MissingClient | WindowModeChange::ChangedToTiling => None,
+        }
     }
 }
 
@@ -40,7 +38,6 @@ impl WindowModeChange {
 pub(crate) struct WindowModePlan {
     pub(crate) change: WindowModeChange,
     pub(crate) border_width: i32,
-    pub(crate) restore_geometry: Option<Rect>,
 }
 
 pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> WindowModePlan {
@@ -49,13 +46,10 @@ pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> W
             client.replace_mode_with_base(BaseClientMode::Floating);
             client.restore_border_width();
             let border_width = client.border_width;
-            let restore_geometry = Some(client.effective_float_geo());
+            let restored_geometry = client.effective_float_geo();
             WindowModePlan {
-                change: WindowModeChange::ChangedToFloating {
-                    restored_geometry: restore_geometry.is_some(),
-                },
+                change: WindowModeChange::ChangedToFloating { restored_geometry },
                 border_width,
-                restore_geometry,
             }
         }
         BaseClientMode::Tiling => {
@@ -64,7 +58,6 @@ pub(crate) fn update_window_mode(client: &mut Client, mode: BaseClientMode) -> W
             WindowModePlan {
                 change: WindowModeChange::ChangedToTiling,
                 border_width: client.border_width,
-                restore_geometry: None,
             }
         }
     }
@@ -79,8 +72,8 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
     };
     let plan = update_window_mode(client, mode);
 
-    match mode {
-        BaseClientMode::Floating => {
+    match plan.change {
+        WindowModeChange::ChangedToFloating { restored_geometry } => {
             if let WmCtx::X11(x11) = ctx {
                 x11.x11.set_border_width(win, 0);
                 x11.x11.set_border_width(win, plan.border_width);
@@ -91,13 +84,17 @@ pub fn set_window_mode(ctx: &mut WmCtx, win: WindowId, mode: BaseClientMode) -> 
                 );
             }
 
-            // Apply saved float geometry
-            if let Some(saved_geo) = plan.restore_geometry {
-                ctx.move_resize(win, saved_geo, MoveResizeOptions::hinted_immediate(false));
-            }
+            ctx.move_resize(
+                win,
+                restored_geometry,
+                MoveResizeOptions::hinted_immediate(false),
+            );
             plan.change
         }
-        BaseClientMode::Tiling => plan.change,
+        WindowModeChange::ChangedToTiling => plan.change,
+        WindowModeChange::MissingClient => {
+            unreachable!("an existing client produced a missing transition")
+        }
     }
 }
 
@@ -141,13 +138,7 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let mode_change = set_window_mode(ctx, win, target_mode);
 
     // Animate when going to floating mode
-    if mode_change.should_animate_float_restore()
-        && let Some(saved_geo) = ctx
-            .core()
-            .model()
-            .client(win)
-            .map(Client::effective_float_geo)
-    {
+    if let Some(saved_geo) = mode_change.restored_geometry() {
         ctx.move_resize(
             win,
             saved_geo,
@@ -265,19 +256,15 @@ mod tests {
         assert_eq!(
             p.change,
             WindowModeChange::ChangedToFloating {
-                restored_geometry: true
+                restored_geometry: Rect {
+                    x: 10,
+                    y: 10,
+                    w: 200,
+                    h: 200
+                }
             }
         );
         assert_eq!(p.border_width, 4); // restored from old_border_width
-        assert_eq!(
-            p.restore_geometry,
-            Some(Rect {
-                x: 10,
-                y: 10,
-                w: 200,
-                h: 200
-            })
-        );
 
         // Check model state
         assert_eq!(client.mode(), ClientMode::Floating);
@@ -322,7 +309,12 @@ mod tests {
         assert_eq!(
             p.change,
             WindowModeChange::ChangedToFloating {
-                restored_geometry: true
+                restored_geometry: Rect {
+                    x: 20,
+                    y: 20,
+                    w: 300,
+                    h: 300
+                }
             }
         );
 
@@ -340,17 +332,13 @@ mod tests {
         assert_eq!(
             p.change,
             WindowModeChange::ChangedToFloating {
-                restored_geometry: true
+                restored_geometry: Rect {
+                    x: 0,
+                    y: 0,
+                    w: 100,
+                    h: 100
+                }
             }
-        );
-        assert_eq!(
-            p.restore_geometry,
-            Some(Rect {
-                x: 0,
-                y: 0,
-                w: 100,
-                h: 100
-            })
         );
     }
 

@@ -12,13 +12,13 @@
 //!             └─► reads client.geo
 //!                   └─► handle_monitor_switch(win, &rect)
 //!                             ├─► MonitorManager lookup → target monitor id
-//!                             ├─► transfer_client   → reassigns client
-//!                             └─► focus(None)       → re-focus on new monitor
+//!                             └─► transfer_client(FollowWindow)
+//!                                   ├─► reassigns client
+//!                                   └─► focuses it on the new monitor
 //! ```
 
 use crate::contexts::WmCtx;
-use crate::focus::unfocus_win;
-use crate::monitor::transfer_client;
+use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::*;
 
 /// Check whether `rect` lies on a different monitor than the currently
@@ -45,20 +45,7 @@ pub fn handle_monitor_switch(ctx: &mut WmCtx, c_win: WindowId, rect: &Rect) {
         return;
     }
 
-    // Unfocus the window on the old monitor before moving it.
-    if let Some(cur_sel) = ctx
-        .core()
-        .model()
-        .monitor(current_mon)
-        .and_then(|m| m.selected)
-    {
-        unfocus_win(ctx, cur_sel, false);
-    }
-
-    transfer_client(ctx, c_win, target);
-
-    ctx.core_mut().model_mut().set_selected_monitor(target);
-    crate::focus::focus(ctx, None);
+    let _ = transfer_client(ctx, c_win, target, TransferFocus::FollowWindow);
 }
 
 /// Convenience wrapper that reads the client's current geometry and delegates

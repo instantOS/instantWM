@@ -42,7 +42,8 @@ pub enum FloatingPlacementKind {
 /// dialogs restored from a previous monitor setup.  Keep the app-provided size
 /// but ensure the position is usable on the target monitor.  Parent-relative
 /// placement is preferred for new transients without a usable position.
-pub fn resolve_floating_placement(
+#[cfg(test)]
+fn resolve_floating_placement(
     model: &WmModel,
     win: WindowId,
     requested: Rect,
@@ -130,7 +131,8 @@ pub fn sane_floating_spawn_rect(
     parent: Option<WindowId>,
     position_is_explicit: bool,
 ) -> Option<Rect> {
-    let client = model.client(win)?;
+    let view = model.client_view(win)?;
+    let client = view.client;
     if !client.mode().is_floating() {
         return None;
     }
@@ -140,7 +142,14 @@ pub fn sane_floating_spawn_rect(
     } else {
         FloatingPlacementKind::NewAutomatic
     };
-    let rect = resolve_floating_placement(model, win, client.geo, kind, parent);
+    let parent_rect = parent.and_then(|parent| model.client(parent).map(|client| client.geo));
+    let rect = resolve_floating_placement_for_client(
+        client,
+        view.monitor.work_rect(),
+        client.geo,
+        kind,
+        parent_rect,
+    );
 
     rect.differs_from(&client.geo).then_some(rect)
 }

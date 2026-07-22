@@ -12,7 +12,7 @@
 //! care of placement.
 
 use crate::contexts::WmCtx;
-use crate::monitor::transfer_client;
+use crate::monitor::{TransferFocus, transfer_client};
 use crate::types::{MonitorDirection, MonitorId, WindowId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +69,9 @@ pub fn send_to_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
 
     match plan.strategy {
         SendToMonitorStrategy::FloatingProportional => move_floating(ctx, plan.win, plan.target_id),
-        SendToMonitorStrategy::DirectTransfer => transfer_client(ctx, plan.win, plan.target_id),
+        SendToMonitorStrategy::DirectTransfer => {
+            let _ = transfer_client(ctx, plan.win, plan.target_id, TransferFocus::Preserve);
+        }
     }
 }
 
@@ -114,7 +116,9 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
 
     // Transfer the client to the target monitor.
     {
-        transfer_client(ctx, win, target_id);
+        if transfer_client(ctx, win, target_id, TransferFocus::Preserve).is_none() {
+            return;
+        }
     }
 
     // Apply proportional position on the new monitor.

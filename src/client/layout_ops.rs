@@ -32,19 +32,5 @@ pub fn zoom(ctx: &mut WmCtx) {
         return;
     };
 
-    // Raise the window immediately so it appears on top while the layout
-    // catches up on the next arrange pass.
-    ctx.window_backend().raise_window_visual_only(win);
-    ctx.window_backend().flush();
-
-    let Some(view) = ctx.core().model().client_view(win) else {
-        return;
-    };
-
-    // Only meaningful in a tiling layout with a non-floating window.
-    if !view.monitor.is_tiling_layout() || !view.client.mode().is_tiling() {
-        return;
-    }
-
-    crate::layouts::promote_tree(ctx, win);
+    let _ = crate::layouts::promote_tree(ctx, win);
 }

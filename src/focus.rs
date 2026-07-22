@@ -448,7 +448,10 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
         crate::tags::view::view_tags(ctx, target_tags);
     }
 
-    focus(ctx, Some(win));
+    // Activation is an explicit request to surface the window even when the
+    // model already names it as selected. Force the backend refresh and z-order
+    // sync instead of making callers repair an otherwise unchanged focus.
+    refresh_focus(ctx, Some(win));
     true
 }
 

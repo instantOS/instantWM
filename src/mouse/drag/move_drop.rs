@@ -550,20 +550,19 @@ pub fn promote_to_floating(
         return Some((geo, false));
     }
 
-    let _ = set_window_mode(ctx, win, BaseClientMode::Floating);
+    let restored_geometry = match set_window_mode(ctx, win, BaseClientMode::Floating) {
+        crate::floating::WindowModeChange::ChangedToFloating { restored_geometry } => {
+            restored_geometry
+        }
+        crate::floating::WindowModeChange::MissingClient => return None,
+        crate::floating::WindowModeChange::ChangedToTiling => {
+            unreachable!("requesting floating mode produced a tiling transition")
+        }
+    };
     let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
     arrange(ctx, Some(selmon_id));
 
-    let (target_w, target_h) = ctx
-        .core()
-        .state()
-        .model
-        .client(win)
-        .map(|c| {
-            let eff = c.effective_float_geo();
-            (eff.w, eff.h)
-        })
-        .expect("set_window_mode preserves the client");
+    let (target_w, target_h) = (restored_geometry.w, restored_geometry.h);
 
     let (target_x, target_y) = if let Some(root) = center_under_ptr {
         (root.x - target_w / 2, root.y)

@@ -25,7 +25,7 @@ pub use snap::{change_snap, reset_snap};
 // ── movement ─────────────────────────────────────────────────────────────────
 
 /// Keyboard-driven move, resize, centering, and uniform scaling.
-pub use movement::{center_window, key_resize, key_move};
+pub use movement::{center_window, key_move, key_resize};
 
 // ── batch ────────────────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ pub use batch::distribute_clients;
 // ── state ────────────────────────────────────────────────────────────────────
 
 pub(crate) use state::toggle_client_maximized;
-pub use state::{set_window_mode, toggle_floating};
+pub use state::{WindowModeChange, set_window_mode, toggle_floating};
 
 // ── scratchpad ────────────────────────────────────────────────────────────────
 

@@ -1041,14 +1041,20 @@ pub fn preview_tree_at_point(
 }
 
 pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
-    if !ctx
-        .core()
-        .model()
-        .expect_selected_monitor()
-        .is_tiling_layout()
-    {
+    let eligible = ctx.core().model().client_view(window).is_some_and(|view| {
+        view.monitor.id() == ctx.core().model().selected_monitor_id()
+            && view.monitor.is_tiling_layout()
+            && view.client.mode().is_tiling()
+    });
+    if !eligible {
         return false;
     }
+
+    // Raise immediately so the promoted window appears on top while the
+    // resulting layout pass is applied.
+    ctx.window_backend().raise_window_visual_only(window);
+    ctx.window_backend().flush();
+
     let changed = ctx
         .core_mut()
         .model_mut()

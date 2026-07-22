@@ -454,39 +454,20 @@ fn run_x11_hover_offer_grab_loop(ctx: &mut WmCtxX11) -> bool {
 /// focused immediately.
 ///
 /// Returns `true` if the transition was handled.
-pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
+pub fn handle_x11_floating_to_tiled_hover_offer(
+    ctx: &mut WmCtxX11,
+    selected_window: WindowId,
+    selected_geometry: Rect,
+) -> bool {
     // Pre-loop: do all checks and setup while we have wm_ctx
     {
         let mut wm_ctx = WmCtx::X11(ctx.reborrow());
-
-        // Selected window must be floating in a tiling layout
-        let selected_window = match wm_ctx.core().model().selected_win() {
-            Some(w) => w,
-            None => return false,
-        };
-        let is_tiling_layout = wm_ctx
-            .core()
-            .model()
-            .expect_selected_monitor()
-            .is_tiling_layout();
-        let sel_geo = match wm_ctx.core().model().client(selected_window) {
-            Some(c) if c.mode().is_floating() || !is_tiling_layout => c.geo,
-            _ => return false,
-        };
 
         // Must have a different, tiled window under the cursor
         let hovered_win = match cursor_client_win(&mut wm_ctx) {
             Some(w) if w != selected_window => w,
             _ => return false,
         };
-        let has_tiling = wm_ctx
-            .core()
-            .model()
-            .expect_selected_monitor()
-            .is_tiling_layout();
-        if !has_tiling {
-            return false;
-        }
         let hovered_is_tiled = wm_ctx
             .core()
             .state()
@@ -503,7 +484,7 @@ pub fn handle_x11_floating_to_tiled_hover_offer(ctx: &mut WmCtxX11) -> bool {
         };
 
         // If cursor is already outside the resize border, just focus the tiled window
-        if !sel_geo.contains_resize_border_point(ptr, RESIZE_BORDER_ZONE) {
+        if !selected_geometry.contains_resize_border_point(ptr, RESIZE_BORDER_ZONE) {
             crate::focus::focus(&mut wm_ctx, Some(hovered_win));
             return true;
         }

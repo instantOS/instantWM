@@ -5,7 +5,6 @@
 
 use crate::backend::BackendEvent;
 use crate::contexts::WmCtx;
-use crate::layouts::sync_monitor_z_order;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
 use crate::mouse::drag::move_drop::promote_to_floating;
@@ -91,7 +90,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
             // click with the authoritative resize interaction after the drag
             // threshold has been crossed.
             let _ = ctx.core_mut().drag_state_mut().finish_armed();
-            resize_mouse_from_cursor(ctx, btn);
+            resize_mouse_from_cursor(ctx, win, btn);
             return true;
         }
 
@@ -217,7 +216,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
             if !armed.suppress_click_action() {
                 let _ = warp::warp_to_resize_corner(ctx, win, ResizeDirection::BottomRight);
             }
-            resize_mouse_from_cursor(ctx, btn);
+            resize_mouse_from_cursor(ctx, win, btn);
             return true;
         }
 
@@ -286,8 +285,6 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
             crate::client::show_window(ctx, win);
         }
         crate::focus::focus(ctx, Some(win));
-        let selmon_id = ctx.core().model().selected_monitor_id();
-        sync_monitor_z_order(ctx, selmon_id);
     }
 }
 

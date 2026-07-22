@@ -6,7 +6,7 @@
 use crate::backend::BackendOutputInfo;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::core_state::RuntimeConfig;
-use crate::focus::{focus, unfocus_win};
+use crate::focus::{focus, refresh_focus, unfocus_win};
 use crate::types::*;
 use std::collections::HashMap;
 
@@ -245,48 +245,127 @@ impl MonitorManager {
 // Orchestration Logic (Free functions that coordinate multiple managers)
 // -----------------------------------------------------------------------------
 
-pub fn transfer_client(ctx: &mut WmCtx, win: WindowId, target_mon: MonitorId) {
-    let Some(current_mon) = ctx
-        .core()
-        .model()
-        .client_view(win)
-        .map(|view| view.monitor.id())
-    else {
-        return;
-    };
-    if current_mon == target_mon || ctx.core().model().monitor(target_mon).is_none() {
-        return;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TransferFocus {
+    /// Keep keyboard focus on the currently selected monitor. If the moved
+    /// client was focused, select and focus a replacement there.
+    Preserve,
+    /// Select the destination monitor and focus the transferred client.
+    FollowWindow,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TransferFocusEffect {
+    None,
+    FocusSourceReplacement {
+        moved_window: WindowId,
+    },
+    FocusTransferredWindow {
+        previous_focus: Option<WindowId>,
+        target_monitor: MonitorId,
+        moved_window: WindowId,
+    },
+}
+
+fn transfer_focus_effect(
+    policy: TransferFocus,
+    selected_monitor_before: MonitorId,
+    focused_before: Option<WindowId>,
+    outcome: crate::model::ClientTransferOutcome,
+    moved_window: WindowId,
+) -> TransferFocusEffect {
+    match policy {
+        TransferFocus::Preserve
+            if selected_monitor_before == outcome.source_monitor && outcome.was_selected =>
+        {
+            TransferFocusEffect::FocusSourceReplacement { moved_window }
+        }
+        TransferFocus::Preserve => TransferFocusEffect::None,
+        TransferFocus::FollowWindow => TransferFocusEffect::FocusTransferredWindow {
+            previous_focus: focused_before,
+            target_monitor: outcome.target_monitor,
+            moved_window,
+        },
     }
+}
 
-    unfocus_win(ctx, win, true);
-
-    let Some(outcome) = ctx
+/// Transfer a managed client and complete all related focus and layout work as
+/// one transaction.
+///
+/// Callers choose the focus policy up front instead of repairing focus after
+/// the transfer. This is important on X11, where mutating the model before a
+/// normal `focus()` call can make the requested window appear already focused
+/// even though the backend still points at the old window.
+pub fn transfer_client(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    target_mon: MonitorId,
+    focus_policy: TransferFocus,
+) -> Option<crate::model::ClientTransferOutcome> {
+    let selected_monitor_before = ctx.core().model().selected_monitor_id();
+    let focused_before = ctx.core().model().selected_win();
+    let outcome = ctx
         .core_mut()
         .model_mut()
-        .move_client_to_monitor(win, target_mon)
-    else {
-        return;
-    };
+        .move_client_to_monitor(win, target_mon)?;
+
     if let WmCtx::X11(x11) = ctx {
         crate::backend::x11::set_client_tag_prop(x11.core.state(), &x11.x11, x11.x11_runtime, win);
     }
 
-    focus(ctx, None);
+    match transfer_focus_effect(
+        focus_policy,
+        selected_monitor_before,
+        focused_before,
+        outcome,
+        win,
+    ) {
+        TransferFocusEffect::None => {}
+        TransferFocusEffect::FocusSourceReplacement { moved_window } => {
+            unfocus_win(ctx, moved_window, true);
+            refresh_focus(ctx, None);
+        }
+        TransferFocusEffect::FocusTransferredWindow {
+            previous_focus,
+            target_monitor,
+            moved_window,
+        } => {
+            if let Some(previously_focused) = previous_focus {
+                unfocus_win(ctx, previously_focused, false);
+            }
+            let model = ctx.core_mut().model_mut();
+            model.set_selected_monitor(target_monitor);
+            model
+                .monitor_mut(target_monitor)
+                .expect("a completed transfer must retain its target monitor")
+                .set_selected(Some(moved_window));
+            ctx.update_ewmh_desktop_props();
+            // Preselecting the transaction's target prevents `focus_generic`
+            // from treating the destination monitor's remembered selection as
+            // the previously focused window. `previous_focus` above is the
+            // actual backend focus and remains the authoritative history entry.
+            refresh_focus(ctx, Some(moved_window));
+        }
+    }
 
     // Refresh the two monitors whose client sets changed. Floating transfers do
     // not arrange (`move_client_to_monitor` sets `needs_arrange = false`), so
     // this unconditional refresh is what actually updates the bar/geometry for
     // moved floating clients; callers must not assume the queue below covers it.
-    ctx.core_mut().queue_layout_for_monitor_urgent(current_mon);
-    ctx.core_mut().queue_layout_for_monitor_urgent(target_mon);
+    ctx.core_mut()
+        .queue_layout_for_monitor_urgent(outcome.source_monitor);
+    ctx.core_mut()
+        .queue_layout_for_monitor_urgent(outcome.target_monitor);
 
     if outcome.needs_arrange {
         ctx.core_mut().queue_layout_for_all_monitors_urgent();
     }
 
     if outcome.is_scratchpad {
-        handle_scratchpad_transfer(ctx, win, target_mon);
+        handle_scratchpad_transfer(ctx, win, outcome.target_monitor);
     }
+
+    Some(outcome)
 }
 
 pub fn focus_monitor(ctx: &mut WmCtx, direction: MonitorDirection) {
@@ -746,4 +825,85 @@ fn update_from_xinerama(x11: &mut WmCtxX11) -> Option<bool> {
         &mut WmCtx::X11(x11.reborrow()),
         outputs,
     ))
+}
+
+#[cfg(test)]
+mod transfer_focus_tests {
+    use super::*;
+
+    fn outcome(
+        source: MonitorId,
+        target: MonitorId,
+        was_selected: bool,
+    ) -> crate::model::ClientTransferOutcome {
+        crate::model::ClientTransferOutcome {
+            source_monitor: source,
+            target_monitor: target,
+            was_selected,
+            is_scratchpad: false,
+            needs_arrange: false,
+        }
+    }
+
+    #[test]
+    fn preserving_focus_does_not_unfocus_an_unselected_transfer() {
+        let source = MonitorId::from_raw(1);
+        let target = MonitorId::from_raw(2);
+        let focused = WindowId(10);
+        let moved = WindowId(11);
+
+        assert_eq!(
+            transfer_focus_effect(
+                TransferFocus::Preserve,
+                source,
+                Some(focused),
+                outcome(source, target, false),
+                moved,
+            ),
+            TransferFocusEffect::None
+        );
+    }
+
+    #[test]
+    fn preserving_focus_replaces_a_transferred_focused_window() {
+        let source = MonitorId::from_raw(1);
+        let target = MonitorId::from_raw(2);
+        let moved = WindowId(11);
+
+        assert_eq!(
+            transfer_focus_effect(
+                TransferFocus::Preserve,
+                source,
+                Some(moved),
+                outcome(source, target, true),
+                moved,
+            ),
+            TransferFocusEffect::FocusSourceReplacement {
+                moved_window: moved
+            }
+        );
+    }
+
+    #[test]
+    fn following_a_transfer_carries_the_previous_backend_focus() {
+        let source = MonitorId::from_raw(1);
+        let target = MonitorId::from_raw(2);
+        let focused = WindowId(10);
+        let moved = WindowId(11);
+
+        assert_eq!(
+            transfer_focus_effect(
+                TransferFocus::FollowWindow,
+                source,
+                Some(focused),
+                outcome(source, target, false),
+                moved,
+            ),
+            TransferFocusEffect::FocusTransferredWindow {
+                previous_focus: Some(focused),
+                target_monitor: target,
+                moved_window: moved,
+            }
+        );
+    }
 }
