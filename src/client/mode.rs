@@ -188,8 +188,8 @@ impl WmModel {
 
         if changed {
             if maximized {
-                if !previous_mode.is_floating() {
-                    client.float_geo = client.geo;
+                if previous_mode.is_floating() {
+                    client.save_floating_placement(client.geo, monitor.work_rect());
                 }
                 client.enter_maximized();
             } else {
@@ -206,7 +206,7 @@ impl WmModel {
             monitor_id: client.monitor_id,
             work_rect: monitor.work_rect(),
             previous_mode,
-            restore_rect: client.float_geo,
+            restore_rect: client.saved_floating_rect().unwrap_or(client.geo),
             kind,
         })
     }

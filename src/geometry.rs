@@ -23,6 +23,8 @@ pub enum BoundsPolicy {
     Unchanged,
     Layout,
     Interactive,
+    /// Fully contain a newly resolved floating rectangle in the work area.
+    FloatingTransition,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -76,6 +78,17 @@ impl MoveResizeOptions {
         self
     }
 
+    pub fn for_floating_transition() -> Self {
+        Self::immediate()
+            .with_size_hints()
+            .with_floating_transition_bounds()
+    }
+
+    fn with_floating_transition_bounds(mut self) -> Self {
+        self.bounds = BoundsPolicy::FloatingTransition;
+        self
+    }
+
     pub fn hinted_immediate(interactive: bool) -> Self {
         let options = Self::immediate().with_size_hints();
         if interactive {
@@ -96,6 +109,8 @@ pub(crate) enum GeometryApplyMode {
 struct ClientGeometry {
     current_rect: Rect,
     monitor_rect: Rect,
+    work_rect: Rect,
+    border_width: i32,
 }
 
 /// Snapshot the client and assigned-monitor geometry needed by a resize.
@@ -114,6 +129,8 @@ fn client_geometry(model: &crate::model::WmModel, win: WindowId) -> Option<Clien
     Some(ClientGeometry {
         current_rect,
         monitor_rect: view.monitor.monitor_rect,
+        work_rect: view.monitor.work_rect(),
+        border_width: view.client.border_width,
     })
 }
 
@@ -229,7 +246,7 @@ fn apply_resize_policies(
     };
 
     let client_count = ctx.core().model().clients.len();
-    if changed || client_count == 1 {
+    if changed || client_count == 1 || options.bounds == BoundsPolicy::FloatingTransition {
         Some(adjusted)
     } else {
         None
@@ -246,7 +263,7 @@ pub(crate) fn move_resize(
         return;
     }
 
-    let Some(target) = apply_resize_policies(ctx, win, target, options) else {
+    let Some(mut target) = apply_resize_policies(ctx, win, target, options) else {
         return;
     };
     if !target.is_valid() {
@@ -256,6 +273,13 @@ pub(crate) fn move_resize(
     let Some(client_geometry) = client_geometry(ctx.core().model(), win) else {
         return;
     };
+    if options.bounds == BoundsPolicy::FloatingTransition {
+        target = crate::client::geometry::contain_floating_rect(
+            target,
+            client_geometry.work_rect,
+            client_geometry.border_width,
+        );
+    }
     let final_rect = target.clamped_to_monitor(
         client_geometry.monitor_rect.w,
         client_geometry.monitor_rect.h,

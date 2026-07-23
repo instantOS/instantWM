@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::types::TagMask;
 use crate::types::WindowId;
 use crate::types::core::MonitorId;
-use crate::types::geometry::{Rect, SizeHints};
+use crate::types::geometry::{Rect, Size, SizeHints};
 use crate::types::input::{EdgeDirection, SnapPosition};
 
 /// Base mode to restore after temporary modes such as fullscreen or maximized.
@@ -187,6 +187,28 @@ impl ScratchpadData {
     }
 }
 
+/// A real floating placement previously chosen or accepted by the WM.
+///
+/// The reference work area makes the placement portable across output
+/// resolution, scale, position, and bar/exclusive-zone changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SavedFloatingPlacement {
+    pub rect: Rect,
+    pub reference_work_area: Rect,
+}
+
+/// Geometry state which exists independently of the client's current mode.
+///
+/// `saved` is deliberately optional: a tiled window that has never floated is
+/// different from one whose previous floating rectangle happened to resemble
+/// its tiled slot. `preferred_size` captures useful pre-layout client size
+/// without pretending that the client supplied a meaningful floating position.
+#[derive(Debug, Clone, Default)]
+pub struct FloatingGeometryState {
+    saved: Option<SavedFloatingPlacement>,
+    preferred_size: Option<Size>,
+}
+
 /// Represents a managed client window in the window manager.
 ///
 /// This struct contains all state for a window managed by instantWM,
@@ -201,8 +223,12 @@ pub struct Client {
     pub max_aspect: f32,
     /// Current geometry.
     pub geo: Rect,
-    /// Geometry when floating.
-    pub float_geo: Rect,
+    /// Saved and preferred floating geometry, distinct from current tiled geometry.
+    #[cfg(not(test))]
+    floating_geometry: FloatingGeometryState,
+    /// Unit tests may construct clients with struct update syntax.
+    #[cfg(test)]
+    pub(crate) floating_geometry: FloatingGeometryState,
     /// Previous geometry (for restoring).
     pub old_geo: Rect,
     /// Size hints from WM_NORMAL_HINTS property.
@@ -477,41 +503,47 @@ impl Client {
         self.is_urgent = false;
     }
 
-    /// Returns the floating geometry if valid, otherwise falls back to current geometry.
-    ///
-    /// When a window has never been floated, `float_geo` is zeroed. This method
-    /// provides the correct dimensions to use for floating: saved float dimensions
-    /// if available, otherwise the current tiled dimensions.
-    pub fn effective_float_geo(&self) -> Rect {
-        if self.float_geo.is_valid() {
-            self.float_geo
-        } else {
-            self.geo
+    pub fn saved_floating_placement(&self) -> Option<SavedFloatingPlacement> {
+        self.floating_geometry.saved
+    }
+
+    pub fn saved_floating_rect(&self) -> Option<Rect> {
+        self.saved_floating_placement()
+            .map(|placement| placement.rect)
+    }
+
+    pub fn preferred_floating_size(&self) -> Option<Size> {
+        self.floating_geometry.preferred_size
+    }
+
+    pub fn set_preferred_floating_size(&mut self, size: Size) {
+        if size.is_positive() {
+            self.floating_geometry.preferred_size = Some(size);
         }
     }
 
-    /// Returns the geometry to use when restoring a window from tiled to floating.
-    ///
-    /// If the window is already floating, returns current geometry.
-    /// Otherwise returns effective float geometry (saved float dims or current tiled dims).
-    pub fn restore_geo_for_float(&self) -> Rect {
-        if self.mode().is_floating() {
-            self.geo
-        } else {
-            self.effective_float_geo()
+    pub fn save_floating_placement(&mut self, rect: Rect, reference_work_area: Rect) {
+        if rect.is_valid() && reference_work_area.is_valid() {
+            self.floating_geometry.saved = Some(SavedFloatingPlacement {
+                rect,
+                reference_work_area,
+            });
         }
     }
 
-    pub fn save_floating_geometry(&mut self) {
-        self.float_geo = self.geo;
+    pub fn update_saved_floating_size(&mut self, size: Size) {
+        if !size.is_positive() {
+            return;
+        }
+        if let Some(placement) = self.floating_geometry.saved.as_mut() {
+            placement.rect.w = size.w;
+            placement.rect.h = size.h;
+        }
     }
 
     pub fn update_geometry(&mut self, rect: Rect) {
         self.old_geo = self.geo;
         self.geo = rect;
-        if self.mode().is_floating() {
-            self.float_geo = rect;
-        }
     }
 
     pub fn save_border_width(&mut self) {
@@ -686,14 +718,14 @@ mod tests {
         let saved = Rect::new(100, 120, 640, 480);
         let mut client = Client {
             geo: Rect::new(0, 0, 1920, 1080),
-            float_geo: saved,
             ..Client::default()
         };
+        client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
 
         client.replace_mode_with_base(BaseClientMode::Tiling);
 
         assert_eq!(client.mode(), ClientMode::Tiling);
-        assert_eq!(client.float_geo, saved);
+        assert_eq!(client.saved_floating_rect(), Some(saved));
     }
 
     fn sp_data(name: &str, restore_tags: TagMask) -> ScratchpadData {

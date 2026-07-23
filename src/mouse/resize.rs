@@ -18,6 +18,7 @@
 //! any cursor warp or anchor chaos.
 
 use crate::backend::{BackendEvent, PointerOps};
+use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::{WmCtx, WmCtxX11};
 use crate::floating::toggle_floating;
 use crate::geometry::MoveResizeOptions;
@@ -100,7 +101,11 @@ pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton
         .expect_selected_monitor()
         .is_tiling_layout();
     if !is_floating && has_tiling {
-        let Some((new_geo, _)) = promote_to_floating(ctx, win, None) else {
+        let Some((new_geo, _)) = promote_to_floating(
+            ctx,
+            win,
+            FloatingPlacementIntent::PreservePointerAnchor(ptr),
+        ) else {
             return;
         };
 

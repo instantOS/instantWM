@@ -72,10 +72,9 @@ pub(crate) fn apply_xwayland_policy(
     win: WindowId,
     update: XWaylandPolicyUpdate,
 ) -> Option<XWaylandPolicyOutcome> {
-    let clients = &mut model.clients;
-    let monitors = &model.monitors;
-    let client = clients.get_mut(&win)?;
-    monitors.get(client.monitor_id)?;
+    let monitor_id = model.client(win)?.monitor_id;
+    let work_area = model.monitor(monitor_id)?.work_rect();
+    let client = model.client_mut(win)?;
     let before = PolicyState::capture(client);
 
     apply_wm_hints_to_client(client, update.hints);
@@ -84,7 +83,7 @@ pub(crate) fn apply_xwayland_policy(
     client.is_hidden = update.is_hidden;
 
     if update.is_above && client.base_mode() != crate::types::BaseClientMode::Floating {
-        client.float_geo = client.geo;
+        client.save_floating_placement(client.geo, work_area);
         client.set_base_mode(crate::types::BaseClientMode::Floating);
     }
 
@@ -99,7 +98,7 @@ pub(crate) fn apply_xwayland_policy(
         before.mode != after.mode || before.hidden != after.hidden || before.urgent != after.urgent;
 
     Some(XWaylandPolicyOutcome {
-        monitor_id: client.monitor_id,
+        monitor_id,
         layout_changed,
         bar_changed,
     })

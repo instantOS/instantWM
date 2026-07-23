@@ -3,7 +3,7 @@
 use crate::backend::PointerOps;
 use crate::ipc_types::{Response, TestCommand};
 use crate::layouts::arrange;
-use crate::types::{BaseClientMode, TagMask, WindowId};
+use crate::types::{TagMask, WindowId};
 use crate::wm::Wm;
 
 pub fn handle_test_command(wm: &mut Wm, command: TestCommand) -> Response {
@@ -66,12 +66,14 @@ fn set_window_floating(wm: &mut Wm, win: WindowId, floating: bool) -> Response {
     let Some(monitor_id) = wm.core.model.client(win).map(|client| client.monitor_id) else {
         return Response::err(format!("window {} not found", win.0));
     };
-    let mode = if floating {
-        BaseClientMode::Floating
+    let request = if floating {
+        crate::floating::WindowModeRequest::Floating(
+            crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+        )
     } else {
-        BaseClientMode::Tiling
+        crate::floating::WindowModeRequest::Tiling
     };
-    let _ = crate::floating::set_window_mode(&mut wm.ctx(), win, mode);
+    let _ = crate::floating::set_window_mode(&mut wm.ctx(), win, request);
     arrange(&mut wm.ctx(), Some(monitor_id));
     Response::ok()
 }

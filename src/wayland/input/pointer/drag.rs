@@ -137,10 +137,6 @@ pub fn hover_resize_drag_motion(ctx: &mut WmCtxWayland<'_>, root: Point) -> bool
                 },
                 MoveResizeOptions::hinted_immediate(true),
             );
-            if let Some(client) = wm_ctx.core_mut().model_mut().client_mut(drag.win()) {
-                client.float_geo.x = new_pos.x;
-                client.float_geo.y = new_pos.y;
-            }
             true
         }
         crate::core_state::DragOperationRef::TreeResize { direction, origin } => {

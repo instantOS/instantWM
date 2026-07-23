@@ -14,18 +14,165 @@
 
 use crate::geometry::MoveResizeOptions;
 use crate::model::WmModel;
-use crate::types::{Client, Monitor, Rect, WindowId};
+use crate::types::{Client, Monitor, Point, Rect, Size, SnapPosition, WindowId};
 
 /// Record the resolved geometry of a managed client.
 ///
 /// Backends may request a resize optimistically, but this helper is called only
 /// once the WM knows the geometry that actually applies to the window right
 /// now. Shared state lives here so backend callbacks do not each reinvent the
-/// `geo` / `old_geo` / `float_geo` update contract.
+/// current and saved-floating geometry update contract.
 pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
+    let work_area = model.client_view(win).map(|view| view.monitor.work_rect());
     if let Some(client) = model.client_mut(win) {
         client.update_geometry(rect);
+        if client.mode().is_floating()
+            && client.snap_status == SnapPosition::None
+            && let Some(work_area) = work_area
+        {
+            client.save_floating_placement(rect, work_area);
+        }
     }
+}
+
+/// Why a tiled client is acquiring floating geometry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FloatingPlacementIntent {
+    /// A non-pointer action such as a key binding, IPC command, or mode toggle.
+    RestoreOrCenter,
+    /// A pointer gesture must keep the same point under the cursor as the
+    /// tiled window changes size.
+    PreservePointerAnchor(Point),
+}
+
+const FIRST_FLOAT_MAX_NUMERATOR: i32 = 3;
+const FIRST_FLOAT_MAX_DENOMINATOR: i32 = 4;
+
+/// Resolve the authoritative rectangle for a tiled-to-floating transition.
+///
+/// Previous real floating placements are restored and rebased from their
+/// reference work area. First-time transitions use the client's pre-layout
+/// preferred size when available, otherwise its tiled size, capped to 75% of
+/// the work area. Every result is fully contained inside the current work area.
+pub fn resolve_floating_transition(
+    client: &Client,
+    work_area: Rect,
+    intent: FloatingPlacementIntent,
+) -> Rect {
+    if !work_area.is_valid() {
+        return client.geo;
+    }
+
+    let border = client.border_width.max(0);
+    let saved = client.saved_floating_placement();
+    let mut size = saved
+        .map(|placement| placement.rect.size())
+        .or_else(|| client.preferred_floating_size())
+        .unwrap_or_else(|| client.geo.size());
+
+    let maximum = if saved.is_some() {
+        Size::new(work_area.w, work_area.h)
+    } else {
+        Size::new(
+            work_area.w * FIRST_FLOAT_MAX_NUMERATOR / FIRST_FLOAT_MAX_DENOMINATOR,
+            work_area.h * FIRST_FLOAT_MAX_NUMERATOR / FIRST_FLOAT_MAX_DENOMINATOR,
+        )
+    };
+    size.w = size.w.max(1).min((maximum.w - 2 * border).max(1));
+    size.h = size.h.max(1).min((maximum.h - 2 * border).max(1));
+
+    let total_w = size.w + 2 * border;
+    let total_h = size.h + 2 * border;
+    let position = match intent {
+        FloatingPlacementIntent::PreservePointerAnchor(pointer) => {
+            let current_total_w = client.total_width().max(1);
+            let current_total_h = client.total_height().max(1);
+            let anchor_x =
+                ((pointer.x - client.geo.x) as f64 / current_total_w as f64).clamp(0.0, 1.0);
+            let anchor_y =
+                ((pointer.y - client.geo.y) as f64 / current_total_h as f64).clamp(0.0, 1.0);
+            Point::new(
+                pointer.x - (anchor_x * total_w as f64).round() as i32,
+                pointer.y - (anchor_y * total_h as f64).round() as i32,
+            )
+        }
+        FloatingPlacementIntent::RestoreOrCenter => saved
+            .map(|placement| rebase_saved_position(placement, work_area, total_w, total_h))
+            .unwrap_or_else(|| {
+                Point::new(
+                    work_area.x + (work_area.w - total_w) / 2,
+                    work_area.y + (work_area.h - total_h) / 2,
+                )
+            }),
+    };
+
+    contain_floating_rect(
+        Rect::new(position.x, position.y, size.w, size.h),
+        work_area,
+        border,
+    )
+}
+
+fn rebase_saved_position(
+    placement: crate::types::SavedFloatingPlacement,
+    work_area: Rect,
+    total_w: i32,
+    total_h: i32,
+) -> Point {
+    fn axis(
+        old_pos: i32,
+        old_start: i32,
+        old_len: i32,
+        new_start: i32,
+        new_len: i32,
+        total: i32,
+    ) -> i32 {
+        let old_travel = (old_len - total).max(0);
+        let new_travel = (new_len - total).max(0);
+        if old_travel == 0 {
+            return new_start + new_travel / 2;
+        }
+        let fraction = ((old_pos - old_start) as f64 / old_travel as f64).clamp(0.0, 1.0);
+        new_start + (fraction * new_travel as f64).round() as i32
+    }
+
+    Point::new(
+        axis(
+            placement.rect.x,
+            placement.reference_work_area.x,
+            placement.reference_work_area.w,
+            work_area.x,
+            work_area.w,
+            total_w,
+        ),
+        axis(
+            placement.rect.y,
+            placement.reference_work_area.y,
+            placement.reference_work_area.h,
+            work_area.y,
+            work_area.h,
+            total_h,
+        ),
+    )
+}
+
+pub(crate) fn contain_floating_rect(mut rect: Rect, work_area: Rect, border: i32) -> Rect {
+    let border = border.max(0);
+    rect.w = rect.w.max(1).min((work_area.w - 2 * border).max(1));
+    rect.h = rect.h.max(1).min((work_area.h - 2 * border).max(1));
+    let total_w = rect.w + 2 * border;
+    let total_h = rect.h + 2 * border;
+    rect.x = if total_w >= work_area.w {
+        work_area.x
+    } else {
+        rect.x.clamp(work_area.x, work_area.right() - total_w)
+    };
+    rect.y = if total_h >= work_area.h {
+        work_area.y
+    } else {
+        rect.y.clamp(work_area.y, work_area.bottom() - total_h)
+    };
+    rect
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -290,9 +437,25 @@ fn calculate_scaled_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::{FloatingPlacementKind, resolve_floating_placement, sane_floating_spawn_rect};
+    use super::{
+        FloatingPlacementIntent, FloatingPlacementKind, resolve_floating_placement,
+        resolve_floating_transition, sane_floating_spawn_rect, sync_client_geometry,
+    };
     use crate::core_state::CoreState;
-    use crate::types::{Client, EdgeDirection, Monitor, MonitorId, Rect, TagMask, WindowId};
+    use crate::model::WmModel;
+    use crate::types::{
+        Client, EdgeDirection, Monitor, MonitorId, Point, Rect, Size, SnapPosition, TagMask,
+        WindowId,
+    };
+
+    fn outer_rect(rect: Rect, border: i32) -> Rect {
+        Rect::new(
+            rect.x,
+            rect.y,
+            rect.total_width(border),
+            rect.total_height(border),
+        )
+    }
 
     fn globals_with_floating_client(rect: Rect, border_width: i32, work_rect: Rect) -> CoreState {
         let mut globals = CoreState::default();
@@ -310,11 +473,144 @@ mod tests {
         client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
         client.border_width = border_width;
         client.geo = rect;
-        client.float_geo = rect;
+        client.save_floating_placement(rect, work_rect);
         client.old_geo = rect;
         globals.model.insert_client(client);
 
         globals
+    }
+
+    fn tiled_client(rect: Rect, border_width: i32) -> Client {
+        Client {
+            geo: rect,
+            border_width,
+            old_border_width: border_width,
+            ..Client::default()
+        }
+    }
+
+    #[test]
+    fn first_float_from_a_full_work_area_tile_is_bounded_and_centered_below_bar() {
+        let work = Rect::new(1920, 32, 1600, 868);
+        let client = tiled_client(Rect::new(1920, 32, 1600, 868), 2);
+
+        let resolved =
+            resolve_floating_transition(&client, work, FloatingPlacementIntent::RestoreOrCenter);
+
+        assert_eq!(resolved.size(), Size::new(1196, 647));
+        let center = outer_rect(resolved, 2).center();
+        assert!((center.x - work.center().x).abs() <= 1);
+        assert!((center.y - work.center().y).abs() <= 1);
+        assert!(resolved.y >= work.y);
+        assert!(outer_rect(resolved, 2).bottom() <= work.bottom());
+    }
+
+    #[test]
+    fn first_float_prefers_the_pre_layout_client_size() {
+        let work = Rect::new(0, 30, 1920, 1050);
+        let mut client = tiled_client(work, 1);
+        client.set_preferred_floating_size(Size::new(800, 600));
+
+        let resolved =
+            resolve_floating_transition(&client, work, FloatingPlacementIntent::RestoreOrCenter);
+
+        assert_eq!(resolved.size(), Size::new(800, 600));
+        assert_eq!(outer_rect(resolved, 1).center(), work.center());
+    }
+
+    #[test]
+    fn saved_float_is_rebased_between_different_work_areas() {
+        let old_work = Rect::new(0, 30, 1920, 1050);
+        let new_work = Rect::new(1920, 0, 1280, 1024);
+        let saved = Rect::new(1116, 476, 800, 600);
+        let mut client = tiled_client(Rect::new(1920, 0, 1280, 1024), 2);
+        client.save_floating_placement(saved, old_work);
+
+        let resolved = resolve_floating_transition(
+            &client,
+            new_work,
+            FloatingPlacementIntent::RestoreOrCenter,
+        );
+
+        assert_eq!(resolved.size(), saved.size());
+        assert_eq!(outer_rect(resolved, 2).right(), new_work.right());
+        assert_eq!(outer_rect(resolved, 2).bottom(), new_work.bottom());
+    }
+
+    #[test]
+    fn oversized_saved_float_is_shrunk_and_fully_contained() {
+        let work = Rect::new(100, 50, 800, 600);
+        let mut client = tiled_client(work, 3);
+        client.save_floating_placement(
+            Rect::new(-500, -400, 2000, 1600),
+            Rect::new(0, 0, 2560, 1440),
+        );
+
+        let resolved =
+            resolve_floating_transition(&client, work, FloatingPlacementIntent::RestoreOrCenter);
+
+        assert_eq!(resolved, Rect::new(100, 50, 794, 594));
+        assert_eq!(outer_rect(resolved, 3), work);
+    }
+
+    #[test]
+    fn pointer_promotion_preserves_the_pointer_fraction() {
+        let work = Rect::new(0, 30, 1200, 770);
+        let mut client = tiled_client(Rect::new(0, 30, 600, 770), 0);
+        client.set_preferred_floating_size(Size::new(480, 360));
+        let pointer = Point::new(450, 222);
+
+        let resolved = resolve_floating_transition(
+            &client,
+            work,
+            FloatingPlacementIntent::PreservePointerAnchor(pointer),
+        );
+
+        assert_eq!(resolved, Rect::new(90, 132, 480, 360));
+        assert_eq!(pointer.x - resolved.x, 360);
+        assert_eq!(pointer.y - resolved.y, 90);
+    }
+
+    #[test]
+    fn geometry_sync_records_only_real_floating_placements() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1000, 800),
+            available_rect: Rect::new(0, 30, 1000, 770),
+            ..Monitor::default()
+        });
+        let win = WindowId(77);
+        model.insert_client(Client {
+            win,
+            monitor_id,
+            geo: Rect::new(0, 30, 1000, 770),
+            ..Client::default()
+        });
+
+        sync_client_geometry(&mut model, win, Rect::new(10, 40, 900, 700));
+        assert_eq!(model.client(win).unwrap().saved_floating_placement(), None);
+
+        model
+            .client_mut(win)
+            .unwrap()
+            .replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        let floating = Rect::new(100, 100, 700, 500);
+        sync_client_geometry(&mut model, win, floating);
+        let saved = model
+            .client(win)
+            .unwrap()
+            .saved_floating_placement()
+            .unwrap();
+        assert_eq!(saved.rect, floating);
+        assert_eq!(saved.reference_work_area, Rect::new(0, 30, 1000, 770));
+
+        let free_placement = saved;
+        model.client_mut(win).unwrap().snap_status = SnapPosition::Left;
+        sync_client_geometry(&mut model, win, Rect::new(0, 30, 500, 770));
+        assert_eq!(
+            model.client(win).unwrap().saved_floating_placement(),
+            Some(free_placement)
+        );
     }
 
     #[test]

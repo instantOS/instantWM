@@ -356,10 +356,7 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 let _ = crate::floating::scratchpad_show_name(&mut ctx, &name);
             }
             WmCommand::SetWindowGeometry { win, rect } => {
-                if let Some(client) = wm.core.model.client_mut(win) {
-                    client.geo = rect;
-                    client.float_geo = rect;
-                }
+                crate::client::sync_client_geometry(&mut wm.core.model, win, rect);
             }
             WmCommand::RequestSpaceSync => {
                 wm.work.layout.mark_all();
@@ -439,11 +436,22 @@ fn handle_update_transient_for(
     else {
         return;
     };
+    let needs_float = ctx
+        .core()
+        .model()
+        .client(win)
+        .is_some_and(|client| parent.is_some() && !client.mode().is_floating());
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.transient_for = parent;
-        if parent.is_some() {
-            client.set_base_mode(crate::types::BaseClientMode::Floating);
-        }
+    }
+    if needs_float {
+        let _ = crate::floating::set_window_mode(
+            &mut ctx,
+            win,
+            crate::floating::WindowModeRequest::Floating(
+                crate::client::geometry::FloatingPlacementIntent::RestoreOrCenter,
+            ),
+        );
     }
     ctx.core_mut().queue_layout_for_monitor(monitor_id);
     crate::layouts::sync_monitor_z_order(&mut ctx, monitor_id);
@@ -618,7 +626,7 @@ fn handle_map_window(
 
     if let Some(geo) = initial_geo {
         client.geo = geo;
-        client.float_geo = geo;
+        client.set_preferred_floating_size(geo.size());
     } else {
         let Some(monitor_rect) = g.monitor(client.monitor_id).map(|m| m.work_rect()) else {
             return;
@@ -629,7 +637,6 @@ fn handle_map_window(
             monitor_rect.w.max(100),
             monitor_rect.h.max(100),
         );
-        client.float_geo = client.geo;
     }
 
     if !g.model.insert_client(client) {
@@ -667,7 +674,6 @@ fn handle_map_window(
         if let Some(c) = g.model.client_mut(win)
             && c.base_mode() != crate::types::BaseClientMode::Floating
         {
-            c.float_geo = c.geo;
             c.set_base_mode(crate::types::BaseClientMode::Floating);
         }
         g.raise_client_in_z_order(win);
@@ -696,6 +702,15 @@ fn handle_map_window(
 
     let attached = g.model.attach_client(win);
     debug_assert!(attached, "managed Wayland client must have a valid monitor");
+    if g.model
+        .client(win)
+        .is_some_and(|client| client.mode().is_floating())
+    {
+        let current = g.model.client(win).map(|client| client.geo);
+        if let Some(current) = current {
+            crate::client::sync_client_geometry(&mut g.model, win, current);
+        }
+    }
 
     let Some((monitor_id, should_focus)) = g.model.client_view(win).map(|view| {
         (
@@ -900,7 +915,7 @@ mod tests {
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(client.base_mode(), BaseClientMode::Floating);
         assert_eq!(client.mode().restored(), ClientMode::Floating);
-        assert_eq!(client.float_geo, geo);
+        assert_eq!(client.saved_floating_rect(), Some(geo));
         assert!(wm.work.layout.is_pending());
         assert_ne!(wm.bar.update_seq(), bar_seq);
 

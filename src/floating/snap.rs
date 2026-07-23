@@ -30,6 +30,11 @@ use crate::types::*;
 /// If the window is not currently snapped, its current geometry is saved first
 /// so that [`reset_snap`] can restore it later.
 pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
+    let work_area = ctx
+        .core()
+        .model()
+        .client_view(win)
+        .map(|view| view.monitor.work_rect());
     let (monitor_id, _snap_status) =
         if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             let status = client.snap_status;
@@ -37,8 +42,11 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             // Save geometry before entering snap for the first time.
             let new_snap = status.next(direction);
 
-            if status == SnapPosition::None && client.mode().is_floating() {
-                client.float_geo = client.geo;
+            if status == SnapPosition::None
+                && client.mode().is_floating()
+                && let Some(work_area) = work_area
+            {
+                client.save_floating_placement(client.geo, work_area);
             }
             client.snap_status = new_snap;
             (client.monitor_id, status)
@@ -77,7 +85,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
 fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) -> Option<Rect> {
     let (snap_status, saved_geo) = {
         let c = ctx.core.model().client(win)?;
-        (c.snap_status, c.float_geo)
+        (c.snap_status, c.saved_floating_rect().unwrap_or(c.geo))
     };
 
     if snap_status == SnapPosition::None {

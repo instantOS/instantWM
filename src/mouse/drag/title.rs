@@ -4,6 +4,7 @@
 //! supporting both left-click (move) and right-click (resize/zoom) actions.
 
 use crate::backend::BackendEvent;
+use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::mouse::constants::DRAG_THRESHOLD;
 use crate::mouse::drag::lifecycle::activate_armed_resize;
@@ -39,7 +40,7 @@ pub fn title_drag_begin(
     let sel = ctx.core().model().selected_win();
     let (win_start_geo, drop_restore_geo) = match ctx.core().model().client(win) {
         Some(c) => {
-            let restore = c.restore_geo_for_float();
+            let restore = c.saved_floating_rect().unwrap_or(c.geo);
             (c.geo, restore)
         }
         None => return false,
@@ -95,7 +96,11 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         }
 
         // Right-click: promote to floating, set up resize mode, warp cursor.
-        let Some((current_geo, _)) = promote_to_floating(ctx, win, None) else {
+        let Some((current_geo, _)) = promote_to_floating(
+            ctx,
+            win,
+            FloatingPlacementIntent::PreservePointerAnchor(start_point),
+        ) else {
             return false;
         };
 
@@ -136,7 +141,12 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         };
         (geo, false)
     } else {
-        let Some(result) = promote_to_floating(ctx, win, Some(root)) else {
+        let intent = if suppress_click_action {
+            FloatingPlacementIntent::PreservePointerAnchor(root)
+        } else {
+            FloatingPlacementIntent::RestoreOrCenter
+        };
+        let Some(result) = promote_to_floating(ctx, win, intent) else {
             return false;
         };
         result
@@ -230,7 +240,11 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
         } else {
             ResizeDirection::BottomRight
         };
-        let Some((_current_geo, _)) = promote_to_floating(ctx, win, None) else {
+        let Some((_current_geo, _)) = promote_to_floating(
+            ctx,
+            win,
+            FloatingPlacementIntent::PreservePointerAnchor(armed.start_point()),
+        ) else {
             return false;
         };
         let _ = warp::warp_to_resize_corner(ctx, win, direction);
@@ -240,7 +254,16 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     } else {
         let float_restore_geo = armed.drop_restore_geo();
         if !crate::layouts::manager::uses_manual_tree_pointer_interaction(ctx, win)
-            && promote_to_floating(ctx, win, Some(root)).is_none()
+            && promote_to_floating(
+                ctx,
+                win,
+                if armed.suppress_click_action() {
+                    FloatingPlacementIntent::PreservePointerAnchor(root)
+                } else {
+                    FloatingPlacementIntent::RestoreOrCenter
+                },
+            )
+            .is_none()
         {
             return false;
         }

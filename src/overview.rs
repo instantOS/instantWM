@@ -20,7 +20,7 @@ pub struct OverviewState {
     /// Stable bottom-to-top card order captured on entry. Focus changes update
     /// the normal model stack, but must not reshuffle or obscure overview cards.
     window_order: Vec<WindowId>,
-    /// Geometry before overview first moved each window. `Client::float_geo`
+    /// Geometry before overview first moved each window. Saved floating geometry
     /// cannot serve as the undo log because logical overview moves update it.
     restore_geometry: HashMap<WindowId, Rect>,
     /// The card selected by the overview. Pointer hover may change this without

@@ -4,9 +4,10 @@
 //! This module contains the core logic for moving windows with the mouse,
 //! including bar hover handling, edge snapping, and drop completion.
 
+use crate::client::geometry::FloatingPlacementIntent;
 use crate::contexts::WmCtx;
 use crate::core_state::CoreState;
-use crate::floating::{change_snap, reset_snap, set_window_mode};
+use crate::floating::{WindowModeRequest, change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::arrange;
 use crate::tags::{move_client_follow_view, shift_tag};
@@ -184,7 +185,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
                     && c.geo.w >= mon.monitor_rect.w - MAX_UNMAXIMIZE_OFFSET
                     && c.geo.h >= mon.monitor_rect.h - MAX_UNMAXIMIZE_OFFSET;
                 if nearly_maximized {
-                    Some(c.float_geo)
+                    c.saved_floating_rect()
                 } else {
                     None
                 }
@@ -298,7 +299,11 @@ pub fn on_motion(ctx: &mut WmCtx, win: WindowId, event: Point, root: Point, stat
     // Thresholding is owned by the shared client/title drag state machine.
     // Once motion reaches this function, any tiled client that cannot perform
     // a meaningful tree edit becomes an ordinary floating move.
-    let Some((drag_geo, _)) = promote_to_floating(ctx, win, None) else {
+    let Some((drag_geo, _)) = promote_to_floating(
+        ctx,
+        win,
+        FloatingPlacementIntent::PreservePointerAnchor(root),
+    ) else {
         return;
     };
     ctx.update_layout_preview(None);
@@ -336,7 +341,8 @@ pub fn clear_bar_hover(ctx: &mut WmCtx) {
 /// # `grab_start_rect`
 ///
 /// The window geometry at the moment the drag started.  When the window was
-/// floating, this is the true pre-drag origin; we save it into `float_geo`
+/// floating, this is the true pre-drag origin; we preserve its size in the
+/// saved floating placement
 /// so un-tiling later restores the original floating position.
 pub fn handle_bar_drop(
     ctx: &mut WmCtx,
@@ -359,7 +365,7 @@ pub fn handle_bar_drop(
     };
 
     // Remember whether the window was floating *before* any state change so
-    // we know whether to correct float_geo afterwards.
+    // we know whether to correct the saved floating placement afterwards.
     let was_floating = match ctx.core().model().client(win) {
         Some(c) => c.mode().is_floating(),
         None => return,
@@ -371,7 +377,7 @@ pub fn handle_bar_drop(
         // Old order: tag() → arrange() [window still floating, layout skips
         // it] → set_window_mode() → arrange() again.  That's two arrange passes.
         //
-        // New order: set_window_mode(should_arrange=false) saves float_geo from the
+        // New order: set_window_mode saves the floating placement from the
         // current floating geometry *before* tag() calls arrange().  Then
         // tag() calls arrange() exactly once with the window already marked
         // tiled, so the layout places it correctly in a single pass.
@@ -388,7 +394,7 @@ pub fn handle_bar_drop(
             .client(win)
             .is_some_and(|c| c.mode().is_true_fullscreen())
         {
-            let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);
+            let _ = set_window_mode(ctx, win, WindowModeRequest::Tiling);
         }
         crate::mouse::drag::tag::apply_window_tag_drop(
             ctx,
@@ -401,7 +407,7 @@ pub fn handle_bar_drop(
         // Use set_window_mode directly instead of toggle_floating() which
         // operates on mon.sel — a value that could theoretically diverge from
         // the window we actually dragged.
-        let _ = set_window_mode(ctx, win, BaseClientMode::Tiling);
+        let _ = set_window_mode(ctx, win, WindowModeRequest::Tiling);
         let selmon_id = ctx.core().model().selected_monitor_id();
         arrange(ctx, Some(selmon_id));
     } else {
@@ -409,13 +415,12 @@ pub fn handle_bar_drop(
         return;
     }
 
-    // ── Correct float_geo using pre-drag dimensions ───────────────────────
+    // ── Correct the saved placement using pre-drag dimensions ─────────────
     //
     // Keep the drop position (x/y from set_window_mode's saved client.geo), but
     // preserve the pre-drag floating size so un-tiling restores dimensions.
     if was_floating && let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-        client.float_geo.w = grab_start_rect.w;
-        client.float_geo.h = grab_start_rect.h;
+        client.update_saved_floating_size(grab_start_rect.size());
     }
 }
 
@@ -537,20 +542,20 @@ pub fn complete_move_drop(
 pub fn promote_to_floating(
     ctx: &mut WmCtx,
     win: WindowId,
-    center_under_ptr: Option<Point>,
+    intent: FloatingPlacementIntent,
 ) -> Option<(Rect, bool)> {
-    let (is_floating, geo) = ctx
+    let (is_floating, geo, monitor_id) = ctx
         .core()
         .state()
         .model
         .client(win)
-        .map(|c| (c.mode().is_floating(), c.geo))?;
+        .map(|c| (c.mode().is_floating(), c.geo, c.monitor_id))?;
 
     if is_floating {
         return Some((geo, false));
     }
 
-    let restored_geometry = match set_window_mode(ctx, win, BaseClientMode::Floating) {
+    let restored_geometry = match set_window_mode(ctx, win, WindowModeRequest::Floating(intent)) {
         crate::floating::WindowModeChange::ChangedToFloating { restored_geometry } => {
             restored_geometry
         }
@@ -559,25 +564,8 @@ pub fn promote_to_floating(
             unreachable!("requesting floating mode produced a tiling transition")
         }
     };
-    let selmon_id = ctx.core_mut().model_mut().selected_monitor_id();
-    arrange(ctx, Some(selmon_id));
-
-    let (target_w, target_h) = (restored_geometry.w, restored_geometry.h);
-
-    let (target_x, target_y) = if let Some(root) = center_under_ptr {
-        (root.x - target_w / 2, root.y)
-    } else {
-        (geo.x, geo.y)
-    };
-
-    let new_geo = Rect {
-        x: target_x,
-        y: target_y,
-        w: target_w,
-        h: target_h,
-    };
-    ctx.move_resize(win, new_geo, MoveResizeOptions::hinted_immediate(true));
-    Some((new_geo, true))
+    arrange(ctx, Some(monitor_id));
+    Some((restored_geometry, true))
 }
 
 #[cfg(test)]
@@ -590,14 +578,14 @@ mod tests {
         let saved = Rect::new(300, 200, 700, 500);
         let mut client = Client {
             geo: Rect::new(0, 200, 700, 500),
-            float_geo: saved,
             ..Client::default()
         };
+        client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
         client.replace_mode_with_base(BaseClientMode::Floating);
 
         finish_tiling_edge_drop(&mut client);
 
         assert_eq!(client.mode(), ClientMode::Tiling);
-        assert_eq!(client.float_geo, saved);
+        assert_eq!(client.saved_floating_rect(), Some(saved));
     }
 }

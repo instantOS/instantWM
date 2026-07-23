@@ -109,7 +109,6 @@ pub fn manage(
         crate::client::InitialRulePlacement::Center => false,
         crate::client::InitialRulePlacement::Preserve => true,
     };
-    snapshot_float_geo(ctx.core.model_mut(), window, monitor_rect);
     subscribe_manage_events(&ctx.x11, window);
     grab_buttons(ctx.core.state(), &ctx.x11, ctx.x11_runtime, window, false);
 
@@ -155,6 +154,7 @@ fn build_initial_client(
     let mut client = Client::new(window);
     client.geo = initial_geometry;
     client.old_geo = client.geo;
+    client.set_preferred_floating_size(initial_geometry.size());
     client.name = crate::backend::x11::properties::read_window_title(x11, x11_runtime, window);
     client
 }
@@ -371,19 +371,6 @@ fn apply_manage_hints(ctx_x11: &mut WmCtxX11<'_>, window: WindowId) -> bool {
     );
     update_motif_hints(ctx_x11, window);
     size_hints.is_some_and(|hints| hints.position.is_some())
-}
-
-fn snapshot_float_geo(model: &mut crate::model::WmModel, window: WindowId, monitor_rect: Rect) {
-    if let Some(client) = model.client_mut(window) {
-        client.float_geo.x = client.geo.x;
-        client.float_geo.y = if client.geo.y >= monitor_rect.y {
-            client.geo.y
-        } else {
-            client.geo.y + monitor_rect.y
-        };
-        client.float_geo.w = client.geo.w;
-        client.float_geo.h = client.geo.h;
-    }
 }
 
 fn subscribe_manage_events(x11: &X11BackendRef, window: WindowId) {

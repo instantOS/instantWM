@@ -13,7 +13,7 @@
 
 use crate::contexts::WmCtx;
 use crate::monitor::{TransferFocus, transfer_client};
-use crate::types::{MonitorDirection, MonitorId, WindowId};
+use crate::types::{MonitorDirection, MonitorId, Rect, WindowId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SendToMonitorStrategy {
@@ -122,9 +122,12 @@ fn move_floating(ctx: &mut WmCtx, win: WindowId, target_id: crate::types::Monito
     }
 
     // Apply proportional position on the new monitor.
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-        client.geo.x = tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32;
-        client.geo.y = tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32;
+    if let Some(rect) = ctx.core().model().client(win).map(|client| Rect {
+        x: tgt_monitor_x + (tgt_work_area_width as f32 * xfact) as i32,
+        y: tgt_monitor_y + (tgt_work_area_height as f32 * yfact) as i32,
+        ..client.geo
+    }) {
+        crate::client::sync_client_geometry(ctx.core_mut().model_mut(), win, rect);
     }
 
     // Raise so the window is immediately visible on the new monitor. The layout
