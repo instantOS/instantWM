@@ -805,6 +805,7 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
         keyboard_resize_step: finite_clamp(cfg.layout.keyboard_resize_step, 0.001, 0.5, 0.05),
         minimum_weight: finite_clamp(cfg.layout.minimum_weight, 0.001, 0.49, 0.15),
         pointer_edge_fraction: finite_clamp(cfg.layout.pointer_edge_fraction, 0.05, 0.49, 0.34),
+        new_window_placement: cfg.layout.new_window_placement,
     };
 
     next.colors.window = cfg.window_colors.clone();

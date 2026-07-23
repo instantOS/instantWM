@@ -470,6 +470,27 @@ mod tests {
     }
 
     #[test]
+    fn placement_policy_roundtrips_through_runtime_config_ipc() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "layout.new_window_placement", "force"),
+            Response::Ok
+        ));
+        assert_eq!(
+            wm.core.config.layout.new_window_placement,
+            crate::config::config_toml::NewWindowPlacement::Force
+        );
+        assert!(matches!(
+            do_get(&mut wm, "layout.new_window_placement"),
+            Response::ConfigValue(value) if value == "force"
+        ));
+        assert!(matches!(
+            do_set(&mut wm, "layout.new_window_placement", "not-a-policy"),
+            Response::Err(_)
+        ));
+    }
+
+    #[test]
     fn set_rejects_bad_inputs() {
         let mut wm = test_wm();
         // Type mismatch (serde rejects).

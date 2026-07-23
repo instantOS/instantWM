@@ -85,8 +85,8 @@ pub(super) fn build_grid(
         } else {
             windows
                 .iter()
-                .skip(group)
-                .step_by(columns)
+                .skip(group * rows)
+                .take(rows)
                 .copied()
                 .collect()
         };

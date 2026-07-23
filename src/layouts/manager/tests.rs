@@ -261,6 +261,61 @@ fn arrange_consumes_persistent_tree_instead_of_reapplying_grid() {
 }
 
 #[test]
+fn second_tiled_window_is_placed_in_the_left_half() {
+    let mut monitor = monitor_with_order(&[WindowId(1)], WindowId(1));
+    monitor.available_rect = Rect::new(0, 0, 1600, 900);
+    monitor.monitor_rect = monitor.available_rect;
+    monitor.clients = vec![WindowId(1)];
+    let mut clients = HashMap::from([(WindowId(1), visible_client(WindowId(1)))]);
+    let config = LayoutConfig::default();
+    let _ = monitor.compute_arrange(&clients, &config, true, 0, false);
+
+    monitor.clients.push(WindowId(2));
+    monitor.z_order.attach_top(WindowId(2));
+    clients.insert(WindowId(2), visible_client(WindowId(2)));
+    let plan = monitor.compute_arrange(&clients, &config, true, 0, false);
+    let rects = plan
+        .client_moves
+        .iter()
+        .map(|output| (output.win, output.rect))
+        .collect::<HashMap<_, _>>();
+
+    assert_eq!(rects[&WindowId(2)], Rect::new(0, 0, 800, 900));
+    assert_eq!(rects[&WindowId(1)], Rect::new(800, 0, 800, 900));
+}
+
+#[test]
+fn changing_new_window_policy_does_not_rewrite_an_existing_tree() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let mut monitor = monitor_with_order(&windows, WindowId(3));
+    monitor.available_rect = Rect::new(0, 0, 1200, 800);
+    monitor.monitor_rect = monitor.available_rect;
+    monitor.clients = windows.to_vec();
+    let clients = windows
+        .into_iter()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    let auto = LayoutConfig {
+        new_window_placement: crate::config::config_toml::NewWindowPlacement::Auto,
+        ..LayoutConfig::default()
+    };
+    let before = monitor.compute_arrange(&clients, &auto, true, 0, false);
+    let force = LayoutConfig {
+        new_window_placement: crate::config::config_toml::NewWindowPlacement::Force,
+        ..auto
+    };
+    let after = monitor.compute_arrange(&clients, &force, true, 0, false);
+
+    let rectangles = |plan: crate::layouts::ArrangePlan| {
+        plan.client_moves
+            .into_iter()
+            .map(|output| (output.win, output.rect))
+            .collect::<HashMap<_, _>>()
+    };
+    assert_eq!(rectangles(before), rectangles(after));
+}
+
+#[test]
 fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
     let windows = [WindowId(1), WindowId(2), WindowId(3)];
     let mut monitor = monitor_with_order(&windows, WindowId(2));

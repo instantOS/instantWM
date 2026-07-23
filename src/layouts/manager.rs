@@ -140,7 +140,13 @@ impl Monitor {
                     compute_manual_tree(self, &layout_clients, layout_cfg, resize_hints, bar_height)
                 }
                 PresentationMode::Maximized => {
-                    reconcile_manual_tree(self, &layout_clients);
+                    reconcile_manual_tree(
+                        self,
+                        &layout_clients,
+                        layout_cfg,
+                        resize_hints,
+                        bar_height,
+                    );
                     crate::layouts::algo::maximized(self, &layout_clients, layout_cfg, animated)
                 }
                 PresentationMode::Floating => {
@@ -168,13 +174,28 @@ impl Monitor {
     }
 }
 
-fn reconcile_manual_tree(monitor: &mut Monitor, clients: &HashMap<WindowId, Client>) {
-    let windows = monitor
-        .collect_tiled(clients)
-        .into_iter()
-        .map(|client| client.win)
-        .collect::<Vec<_>>();
-    monitor.per_tag_state().layout_tree.reconcile(&windows);
+fn reconcile_manual_tree(
+    monitor: &mut Monitor,
+    clients: &HashMap<WindowId, Client>,
+    layout_cfg: &crate::config::config_toml::LayoutConfig,
+    resize_hints: bool,
+    bar_height: i32,
+) {
+    let tiled = monitor.collect_tiled(clients);
+    let windows = tiled.iter().map(|client| client.win).collect::<Vec<_>>();
+    let placement = LayoutPlacement::new(
+        layout_cfg,
+        monitor,
+        PresentationMode::Tiled,
+        windows.len() as u32,
+    );
+    let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
+    monitor.per_tag_state().layout_tree.reconcile_for_layout(
+        &windows,
+        layout_cfg.new_window_placement,
+        placement.work_rect(),
+        &minimums,
+    );
 }
 
 fn compute_manual_tree(
@@ -196,7 +217,12 @@ fn compute_manual_tree(
     let minimums = tiling_minimum_slots(&placement, &tiled, clients, resize_hints, bar_height);
     let (slots, constraints_fit) = {
         let tree = &mut monitor.per_tag_state().layout_tree;
-        tree.reconcile(&windows);
+        tree.reconcile_for_layout(
+            &windows,
+            layout_cfg.new_window_placement,
+            work_rect,
+            &minimums,
+        );
         match tree.constrained_bounds(work_rect, &minimums) {
             Some(slots) => (slots, true),
             None => (tree.bounds(work_rect), false),

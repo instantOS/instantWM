@@ -7,9 +7,15 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::config::config_toml::NewWindowPlacement;
 use crate::types::{Point, Rect, Size, WindowId};
 
 const EPSILON: f64 = 1.0e-9;
+const IDEAL_TILED_ASPECT_RATIO: f64 = 4.0 / 3.0;
+const MIN_HEALTHY_ASPECT_RATIO: f64 = 0.5;
+const MAX_HEALTHY_ASPECT_RATIO: f64 = 2.5;
+const MIN_HEALTHY_WORK_FRACTION: i32 = 4;
+const AUTO_RESIZE_NEW_ROOT_WEIGHT: f64 = 0.4;
 
 mod constraints;
 mod placement_ops;
@@ -250,6 +256,38 @@ struct EdgeCandidate {
     scope_depth: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct AutomaticInsertion {
+    score: f64,
+    target: WindowId,
+    axis: Axis,
+    newcomer_slot: Rect,
+    target_slot: Rect,
+    fits_constraints: bool,
+}
+
+impl AutomaticInsertion {
+    fn is_healthy(self, work_rect: Rect) -> bool {
+        let aspect =
+            f64::from(self.newcomer_slot.w.max(1)) / f64::from(self.newcomer_slot.h.max(1));
+        let target_aspect =
+            f64::from(self.target_slot.w.max(1)) / f64::from(self.target_slot.h.max(1));
+        self.fits_constraints
+            && self
+                .newcomer_slot
+                .w
+                .saturating_mul(MIN_HEALTHY_WORK_FRACTION)
+                >= work_rect.w
+            && self
+                .newcomer_slot
+                .h
+                .saturating_mul(MIN_HEALTHY_WORK_FRACTION)
+                >= work_rect.h
+            && (MIN_HEALTHY_ASPECT_RATIO..=MAX_HEALTHY_ASPECT_RATIO).contains(&aspect)
+            && (MIN_HEALTHY_ASPECT_RATIO..=MAX_HEALTHY_ASPECT_RATIO).contains(&target_aspect)
+    }
+}
+
 /// Minimum overlap between two source-window previews for them to represent
 /// the same user-visible destination. Placement candidates may reach the same
 /// slot through different structural scopes, which can redistribute space
@@ -389,7 +427,6 @@ impl FRect {
 pub struct LayoutTree {
     root: Option<Node>,
     next_split_id: u64,
-    next_axis: Axis,
 }
 
 impl Default for LayoutTree {
@@ -397,7 +434,6 @@ impl Default for LayoutTree {
         Self {
             root: None,
             next_split_id: 1,
-            next_axis: Axis::Vertical,
         }
     }
 }
@@ -428,10 +464,18 @@ impl LayoutTree {
         leaves
     }
 
-    /// Make the leaf set exactly match `visible`, retaining all surviving
-    /// topology. New windows split the least-populated branch and alternate
-    /// axes, matching the prototype's balanced spawn policy.
-    pub fn reconcile(&mut self, visible: &[WindowId]) {
+    /// Reconcile visible tiled windows using an explicit new-window policy.
+    ///
+    /// Existing leaves retain their topology and weights. The policy is
+    /// consulted only for genuinely absent leaves, so changing configuration
+    /// never rewrites an established manual layout.
+    pub fn reconcile_for_layout(
+        &mut self,
+        visible: &[WindowId],
+        policy: NewWindowPlacement,
+        work_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) {
         let wanted: HashSet<_> = visible.iter().copied().collect();
         for stale in self
             .leaves()
@@ -444,7 +488,7 @@ impl LayoutTree {
 
         for &window in visible {
             if !self.root.as_ref().is_some_and(|root| root.contains(window)) {
-                self.insert_balanced(window);
+                self.insert_new(window, policy, work_rect, minimums);
             }
         }
     }
@@ -461,21 +505,130 @@ impl LayoutTree {
         true
     }
 
-    fn deepest_balanced(node: &Node) -> WindowId {
-        match node {
-            Node::Window(window) => *window,
-            Node::Split(split) => {
-                let child = split
-                    .children
-                    .iter()
-                    .min_by_key(|child| child.node.leaf_count())
-                    .expect("canonical split has children");
-                Self::deepest_balanced(&child.node)
-            }
+    fn split_leaf(root: Node, target: WindowId, window: WindowId, axis: Axis, id: SplitId) -> Node {
+        let split = make_split(
+            id,
+            axis,
+            vec![
+                WeightedNode {
+                    node: Node::Window(window),
+                    weight: 1.0,
+                },
+                WeightedNode {
+                    node: Node::Window(target),
+                    weight: 1.0,
+                },
+            ],
+        )
+        .expect("two leaves create a split");
+        root.replace_window(target, split)
+    }
+
+    fn root_split(
+        root: Node,
+        window: WindowId,
+        axis: Axis,
+        newcomer_weight: f64,
+        id: SplitId,
+    ) -> Node {
+        make_split(
+            id,
+            axis,
+            vec![
+                WeightedNode {
+                    node: Node::Window(window),
+                    weight: newcomer_weight,
+                },
+                WeightedNode {
+                    node: root,
+                    weight: 1.0 - newcomer_weight,
+                },
+            ],
+        )
+        .expect("a newcomer and an existing root create a split")
+    }
+
+    fn preferred_axis(rect: Rect, leading_fraction: f64) -> Axis {
+        let quality = |axis| {
+            let (width, height) = match axis {
+                Axis::Vertical => (f64::from(rect.w) * leading_fraction, f64::from(rect.h)),
+                Axis::Horizontal => (f64::from(rect.w), f64::from(rect.h) * leading_fraction),
+            };
+            ((width.max(1.0) / height.max(1.0)) / IDEAL_TILED_ASPECT_RATIO)
+                .ln()
+                .abs()
+        };
+        if quality(Axis::Vertical) <= quality(Axis::Horizontal) {
+            Axis::Vertical
+        } else {
+            Axis::Horizontal
         }
     }
 
-    pub fn insert_balanced(&mut self, window: WindowId) {
+    fn automatic_insertion(
+        root: &Node,
+        window: WindowId,
+        work_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) -> Option<AutomaticInsertion> {
+        let work_area = f64::from(work_rect.w.max(1)) * f64::from(work_rect.h.max(1));
+        let mut best: Option<AutomaticInsertion> = None;
+
+        let mut leaves = Vec::new();
+        root.leaves(&mut leaves);
+        for target in leaves {
+            for axis in [Axis::Vertical, Axis::Horizontal] {
+                let candidate = Self::split_leaf(root.clone(), target, window, axis, SplitId(0));
+                let tree = Self {
+                    root: Some(candidate),
+                    next_split_id: 1,
+                };
+                let constrained = tree.constrained_bounds(work_rect, minimums);
+                let fits_constraints = constrained.is_some();
+                let slots = constrained.unwrap_or_else(|| tree.bounds(work_rect));
+                let Some(slot) = slots.get(&window).copied() else {
+                    continue;
+                };
+                let Some(target_slot) = slots.get(&target).copied() else {
+                    continue;
+                };
+                let aspect = f64::from(slot.w.max(1)) / f64::from(slot.h.max(1));
+                let target_aspect =
+                    f64::from(target_slot.w.max(1)) / f64::from(target_slot.h.max(1));
+                let aspect_penalty = (aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
+                let target_aspect_penalty = (target_aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
+                let area_fraction = (f64::from(slot.w.max(1)) * f64::from(slot.h.max(1))
+                    / work_area)
+                    .clamp(EPSILON, 1.0);
+                let area_penalty = -area_fraction.ln() * 0.25;
+                let constraint_penalty = if fits_constraints { 0.0 } else { 1000.0 };
+                let score =
+                    constraint_penalty + aspect_penalty + target_aspect_penalty + area_penalty;
+
+                let candidate = AutomaticInsertion {
+                    score,
+                    target,
+                    axis,
+                    newcomer_slot: slot,
+                    target_slot,
+                    fits_constraints,
+                };
+                if best.is_none_or(|best| candidate.score < best.score) {
+                    best = Some(candidate);
+                }
+            }
+        }
+
+        best
+    }
+
+    fn insert_new(
+        &mut self,
+        window: WindowId,
+        policy: NewWindowPlacement,
+        work_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+    ) {
         let Some(root) = self.root.take() else {
             self.root = Some(Node::Window(window));
             return;
@@ -485,27 +638,41 @@ impl LayoutTree {
             return;
         }
 
-        let target = Self::deepest_balanced(&root);
-        let axis = self.next_axis;
-        self.next_axis = axis.other();
         let id = self.allocate();
-        let split = make_split(
-            id,
-            axis,
-            vec![
-                WeightedNode {
-                    node: Node::Window(target),
-                    weight: 1.0,
-                },
-                WeightedNode {
-                    node: Node::Window(window),
-                    weight: 1.0,
-                },
-            ],
-        )
-        .expect("two leaves create a split");
-        self.root = Some(root.replace_window(target, split));
-        self.redistribute_axis(window, axis);
+        self.root = Some(match policy {
+            NewWindowPlacement::Force => Self::root_split(root, window, Axis::Vertical, 0.5, id),
+            NewWindowPlacement::Auto | NewWindowPlacement::AutoResize => {
+                let Some(candidate) = Self::automatic_insertion(&root, window, work_rect, minimums)
+                else {
+                    self.root = Some(root);
+                    return;
+                };
+                if policy == NewWindowPlacement::AutoResize && !candidate.is_healthy(work_rect) {
+                    let assisted_axis =
+                        Self::preferred_axis(work_rect, AUTO_RESIZE_NEW_ROOT_WEIGHT);
+                    let assisted = Self::root_split(
+                        root.clone(),
+                        window,
+                        assisted_axis,
+                        AUTO_RESIZE_NEW_ROOT_WEIGHT,
+                        id,
+                    );
+                    let assisted_fits_constraints = Self {
+                        root: Some(assisted.clone()),
+                        next_split_id: self.next_split_id,
+                    }
+                    .constrained_bounds(work_rect, minimums)
+                    .is_some();
+                    if assisted_fits_constraints || !candidate.fits_constraints {
+                        assisted
+                    } else {
+                        Self::split_leaf(root, candidate.target, window, candidate.axis, id)
+                    }
+                } else {
+                    Self::split_leaf(root, candidate.target, window, candidate.axis, id)
+                }
+            }
+        });
     }
 
     pub fn bounds(&self, rect: Rect) -> HashMap<WindowId, Rect> {
@@ -589,8 +756,21 @@ impl LayoutTree {
             }
             Preset::Grid | Preset::HorizontalGrid => 0.5,
         };
-        self.reconcile(ordered_windows);
-        let windows = self.leaves();
+        let wanted = ordered_windows.iter().copied().collect::<HashSet<_>>();
+        for stale in self
+            .leaves()
+            .into_iter()
+            .filter(|window| !wanted.contains(window))
+            .collect::<Vec<_>>()
+        {
+            self.remove(stale);
+        }
+        let mut windows = self.leaves();
+        for &window in ordered_windows {
+            if !windows.contains(&window) {
+                windows.push(window);
+            }
+        }
         if windows.is_empty() {
             return;
         }
@@ -810,13 +990,6 @@ impl LayoutTree {
             (Axis::Horizontal, false) => Side::Bottom,
         };
         self.resize_with_config(source, side, config)
-    }
-
-    fn redistribute_axis(&mut self, target: WindowId, axis: Axis) {
-        let Some(root) = self.root.take() else {
-            return;
-        };
-        self.root = Some(redistribute_containing_run(root, target, axis));
     }
 
     /// Move `source` beside `target`. The requested side selects the split axis;

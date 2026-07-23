@@ -4,6 +4,15 @@ fn windows(count: u32) -> Vec<WindowId> {
     (1..=count).map(WindowId).collect()
 }
 
+fn reconcile(tree: &mut LayoutTree, visible: &[WindowId]) {
+    tree.reconcile_for_layout(
+        visible,
+        NewWindowPlacement::default(),
+        Rect::new(0, 0, 1600, 900),
+        &HashMap::new(),
+    );
+}
+
 fn assert_canonical(tree: &LayoutTree) {
     fn visit(node: &Node, leaves: &mut HashSet<WindowId>, splits: &mut HashSet<SplitId>) {
         match node {
@@ -33,12 +42,149 @@ fn assert_canonical(tree: &LayoutTree) {
 }
 
 #[test]
+fn automatic_second_window_is_the_left_half_even_after_tree_collapse() {
+    let area = Rect::new(0, 0, 1600, 900);
+    let mut tree = LayoutTree::default();
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2)],
+        NewWindowPlacement::Auto,
+        area,
+        &HashMap::new(),
+    );
+    let first = tree.bounds(area);
+    assert_eq!(first[&WindowId(2)], Rect::new(0, 0, 800, 900));
+    assert_eq!(first[&WindowId(1)], Rect::new(800, 0, 800, 900));
+
+    tree.reconcile_for_layout(
+        &[WindowId(1)],
+        NewWindowPlacement::Auto,
+        area,
+        &HashMap::new(),
+    );
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(3)],
+        NewWindowPlacement::Auto,
+        area,
+        &HashMap::new(),
+    );
+    let second = tree.bounds(area);
+    assert_eq!(second[&WindowId(3)], Rect::new(0, 0, 800, 900));
+    assert_eq!(second[&WindowId(1)], Rect::new(800, 0, 800, 900));
+}
+
+#[test]
+fn automatic_axis_follows_the_work_area_shape() {
+    let area = Rect::new(0, 0, 900, 1600);
+    let mut tree = LayoutTree::default();
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2)],
+        NewWindowPlacement::Auto,
+        area,
+        &HashMap::new(),
+    );
+
+    let rects = tree.bounds(area);
+    assert_eq!(rects[&WindowId(2)], Rect::new(0, 0, 900, 800));
+    assert_eq!(rects[&WindowId(1)], Rect::new(0, 800, 900, 800));
+}
+
+#[test]
+fn automatic_placement_splits_one_leaf_without_rebalancing_unrelated_space() {
+    let area = Rect::new(0, 0, 1600, 900);
+    let mut tree = LayoutTree::default();
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2)],
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+    let before = tree.bounds(area)[&WindowId(1)];
+
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        NewWindowPlacement::Auto,
+        area,
+        &HashMap::new(),
+    );
+
+    assert_eq!(tree.bounds(area)[&WindowId(1)], before);
+}
+
+#[test]
+fn auto_resize_uses_a_root_region_when_local_insertion_is_cramped() {
+    let area = Rect::new(0, 0, 1600, 900);
+    let existing = windows(8);
+    let mut tree = LayoutTree::default();
+    tree.root = equal_run(&existing, Axis::Vertical, &mut || tree.allocate());
+    let mut visible = existing;
+    visible.push(WindowId(9));
+
+    tree.reconcile_for_layout(
+        &visible,
+        NewWindowPlacement::AutoResize,
+        area,
+        &HashMap::new(),
+    );
+
+    let rects = tree.bounds(area);
+    assert_eq!(rects[&WindowId(9)], Rect::new(0, 0, 640, 900));
+    assert!(visible[..8].iter().all(|window| rects[window].x >= 640));
+    assert_canonical(&tree);
+}
+
+#[test]
+fn auto_resize_considers_minimum_sizes_before_accepting_a_local_split() {
+    let area = Rect::new(0, 0, 1200, 770);
+    let mut tree = LayoutTree::default();
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2)],
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+    let minimums = HashMap::from([
+        (WindowId(1), Size::new(200, 500)),
+        (WindowId(2), Size::new(200, 500)),
+        (WindowId(3), Size::new(300, 500)),
+    ]);
+
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2), WindowId(3)],
+        NewWindowPlacement::AutoResize,
+        area,
+        &minimums,
+    );
+
+    let rects = tree.constrained_bounds(area, &minimums).unwrap();
+    assert_eq!(rects[&WindowId(3)].x, 0);
+    assert_eq!(rects[&WindowId(3)].h, area.h);
+}
+
+#[test]
+fn force_always_gives_the_new_window_the_left_half() {
+    let area = Rect::new(0, 0, 1000, 700);
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::Grid, &windows(4), 1);
+    tree.reconcile_for_layout(
+        &windows(5),
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+
+    let rects = tree.bounds(area);
+    assert_eq!(rects[&WindowId(5)], Rect::new(0, 0, 500, 700));
+    assert!(windows(4).iter().all(|window| rects[window].x >= 500));
+    assert_canonical(&tree);
+}
+
+#[test]
 fn reconciliation_retains_surviving_topology_and_collapses_parents() {
     let mut tree = LayoutTree::default();
-    tree.reconcile(&windows(4));
+    reconcile(&mut tree, &windows(4));
     let before = tree.bounds(Rect::new(0, 0, 100, 100));
     assert_eq!(tree.len(), 4);
-    tree.reconcile(&[WindowId(1), WindowId(3), WindowId(4)]);
+    reconcile(&mut tree, &[WindowId(1), WindowId(3), WindowId(4)]);
     assert_eq!(tree.len(), 3);
     assert!(!tree.leaves().contains(&WindowId(2)));
     assert!(before.contains_key(&WindowId(1)));
@@ -764,7 +910,10 @@ fn every_public_mutation_preserves_canonical_invariants() {
         if let Some(target) = target {
             assert!(tree.apply_placement_target(WindowId(7), target));
         }
-        tree.reconcile(&[WindowId(1), WindowId(3), WindowId(4), WindowId(8)]);
+        reconcile(
+            &mut tree,
+            &[WindowId(1), WindowId(3), WindowId(4), WindowId(8)],
+        );
         assert_canonical(&tree);
         let leaves = tree.leaves().into_iter().collect::<HashSet<_>>();
         assert_eq!(
@@ -784,7 +933,10 @@ fn verify_redistribute_bug_demo() {
     let master_w_before = before[&WindowId(1)].w;
     eprintln!("master width before insert: {}", master_w_before);
 
-    tree.reconcile(&[WindowId(1), WindowId(2), WindowId(3), WindowId(4)]);
+    reconcile(
+        &mut tree,
+        &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],
+    );
     let after = tree.bounds(Rect::new(0, 0, 1000, 1000));
     let master_w_after = after[&WindowId(1)].w;
     eprintln!(

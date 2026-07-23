@@ -212,34 +212,6 @@ pub(super) fn resize_deepest_edge_by(
     (Node::Split(split), changed)
 }
 
-pub(super) fn redistribute_containing_run(node: Node, target: WindowId, axis: Axis) -> Node {
-    let Node::Split(mut split) = node else {
-        return node;
-    };
-    let Some(index) = split
-        .children
-        .iter()
-        .position(|child| child.node.contains(target))
-    else {
-        return Node::Split(split);
-    };
-    if split.axis == axis {
-        let total: usize = split
-            .children
-            .iter()
-            .map(|child| child.node.leaf_count())
-            .sum();
-        for child in &mut split.children {
-            child.weight = child.node.leaf_count() as f64 / total as f64;
-        }
-        Node::Split(split)
-    } else {
-        let child = split.children[index].node.clone();
-        split.children[index].node = redistribute_containing_run(child, target, axis);
-        Node::Split(split)
-    }
-}
-
 pub(super) fn visual_neighbor_in(
     node: &Node,
     source: WindowId,

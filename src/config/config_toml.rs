@@ -164,6 +164,7 @@ impl std::str::FromStr for ColorTheme {
 /// keyboard_resize_step = 0.05
 /// minimum_weight = 0.15
 /// pointer_edge_fraction = 0.34
+/// new_window_placement = "auto-resize"
 /// ```
 #[derive(Debug, Deserialize, Clone, Copy, Serialize)]
 #[serde(default)]
@@ -182,6 +183,8 @@ pub struct LayoutConfig {
     pub minimum_weight: f64,
     /// Fraction of a target window occupied by pointer edge-placement bands.
     pub pointer_edge_fraction: f64,
+    /// How newly tiled windows are inserted into the persistent layout tree.
+    pub new_window_placement: NewWindowPlacement,
 }
 
 impl Default for LayoutConfig {
@@ -194,8 +197,25 @@ impl Default for LayoutConfig {
             keyboard_resize_step: 0.05,
             minimum_weight: 0.15,
             pointer_edge_fraction: 0.34,
+            new_window_placement: NewWindowPlacement::default(),
         }
     }
+}
+
+/// Policy for inserting a window which is not yet represented in a tag's
+/// persistent tiling tree.
+#[derive(Debug, Default, Deserialize, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NewWindowPlacement {
+    /// Split the best existing leaf without deliberately rebalancing unrelated
+    /// branches.
+    Auto,
+    /// Use automatic placement, but give a cramped newcomer a larger root-level
+    /// region and proportionally resize the existing tree.
+    #[default]
+    AutoResize,
+    /// Always make the newcomer the leading half of a new vertical root split.
+    Force,
 }
 
 /// Cursor configuration for Wayland.
@@ -594,6 +614,22 @@ mod theme_tests {
     fn floating_click_raise_is_an_explicit_opt_in() {
         assert!(!parse("").raise_floating_on_click);
         assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
+    }
+
+    #[test]
+    fn new_window_placement_defaults_to_auto_resize_and_accepts_all_policies() {
+        assert_eq!(
+            parse("").layout.new_window_placement,
+            NewWindowPlacement::AutoResize
+        );
+        for (name, expected) in [
+            ("auto", NewWindowPlacement::Auto),
+            ("auto-resize", NewWindowPlacement::AutoResize),
+            ("force", NewWindowPlacement::Force),
+        ] {
+            let config = parse(&format!("[layout]\nnew_window_placement = {name:?}"));
+            assert_eq!(config.layout.new_window_placement, expected);
+        }
     }
 
     #[test]
