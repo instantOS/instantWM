@@ -29,6 +29,11 @@ pub struct WindowConfig {
     pub snap_threshold: i32,
     pub resize_hints: bool,
     pub decor_hints: bool,
+    /// Raise a floating window when its client area is left-clicked.
+    ///
+    /// Focus and stacking are otherwise independent; move/resize and bar-title
+    /// interactions always raise explicitly.
+    pub raise_floating_on_click: bool,
 }
 
 impl Default for WindowConfig {
@@ -38,6 +43,7 @@ impl Default for WindowConfig {
             snap_threshold: 32,
             resize_hints: true,
             decor_hints: false,
+            raise_floating_on_click: false,
         }
     }
 }
@@ -790,6 +796,7 @@ pub fn apply_config(state: &mut CoreState, cfg: &crate::config::Config) {
     next.bar.height = cfg.bar_height;
     next.window.resize_hints = cfg.resize_hints;
     next.window.decor_hints = cfg.decor_hints;
+    next.window.raise_floating_on_click = cfg.raise_floating_on_click;
     next.layout = crate::config::config_toml::LayoutConfig {
         inner_gap: cfg.layout.inner_gap.max(0),
         outer_gap: cfg.layout.outer_gap.max(0),

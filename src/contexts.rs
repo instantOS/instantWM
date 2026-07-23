@@ -507,16 +507,19 @@ impl<'a> WmCtx<'a> {
     /// Use this for interactive operations (move/resize drags) so later
     /// z-order syncs do not drop the dragged floating window behind others.
     pub fn raise_client(&mut self, win: WindowId) {
-        if let Some(mid) = self
+        let monitor_id = self
             .core()
             .model()
             .client(win)
-            .map(|client| client.monitor_id)
-            && let Some(mon) = self.core_mut().model_mut().monitor_mut(mid)
-        {
-            mon.z_order.raise(win);
-        }
-        self.window_backend().raise_window_visual_only(win);
+            .map(|client| client.monitor_id);
+        let Some(monitor_id) = monitor_id else {
+            return;
+        };
+        self.core_mut().model_mut().raise_client_in_z_order(win);
+        // Reapply the complete policy projection rather than visually raising
+        // just this surface, which could place an ordinary window over a
+        // protected transient dialog until the next layout pass.
+        crate::layouts::sync_monitor_z_order(self, monitor_id);
     }
 
     pub(crate) fn set_geometry_impl(

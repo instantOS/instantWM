@@ -82,7 +82,7 @@ pub(super) fn xdg_resize_edge_to_direction(
 /// event will exceed the threshold and promote it to an actual drag via
 /// the existing title-drag motion handler.
 pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
-    state.activate_and_raise_window(win);
+    state.request_window_focus(win);
     state.push_command(super::super::commands::WmCommand::BeginMove(win));
 }
 
@@ -95,7 +95,7 @@ pub(super) fn begin_app_move_drag(state: &mut WaylandState, win: WindowId) {
 /// [`crate::wayland::input::pointer::drag::hover_resize_drag_motion`]
 /// handler then drives the resize from subsequent pointer motion events.
 pub(super) fn begin_app_resize_drag(state: &mut WaylandState, win: WindowId, dir: ResizeDirection) {
-    state.activate_and_raise_window(win);
+    state.request_window_focus(win);
     state.push_command(super::super::commands::WmCommand::BeginResize { win, dir });
 }
 
@@ -194,7 +194,7 @@ impl XwmHandler for WaylandState {
             sync_surface_metadata(self, win, &window);
             apply_surface_policy(self, win, &window);
             self.map_window(win);
-            self.activate_and_raise_window(win);
+            self.request_window_focus(win);
             return;
         }
 
@@ -237,7 +237,7 @@ impl XwmHandler for WaylandState {
         ));
 
         self.create_foreign_toplevel(win);
-        self.activate_and_raise_window(win);
+        self.request_window_focus(win);
     }
 
     fn mapped_override_redirect_window(
@@ -581,7 +581,7 @@ impl XwmHandler for WaylandState {
         _parent: Option<smithay::xwayland::X11Surface>,
     ) {
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.activate_and_raise_window(win);
+            self.request_window_focus(win);
         }
     }
 

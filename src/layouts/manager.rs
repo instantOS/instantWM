@@ -330,20 +330,6 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
         return;
     }
 
-    let selected_window = match monitor.selected {
-        Some(win) => win,
-        None => return,
-    };
-    let layout = monitor.current_layout();
-    let is_tiling = layout.is_tiling();
-
-    if !is_tiling {
-        ctx.window_backend()
-            .raise_window_visual_only(selected_window);
-        ctx.window_backend().flush();
-        return;
-    }
-
     let clients = &ctx.core().model().clients;
     let Some(stack) = compute_monitor_z_order(monitor, clients) else {
         return;
@@ -352,13 +338,36 @@ pub fn sync_monitor_z_order(ctx: &mut WmCtx<'_>, monitor_id: MonitorId) {
     ctx.window_backend().flush();
 }
 
+/// Number of managed transient ancestors for `win`.
+///
+/// Unknown parents still count as one relationship so a dialog does not lose
+/// its protected layer during parent teardown. Cycles are malformed protocol
+/// input; stopping at the first repeated window keeps ordering deterministic.
+fn transient_depth(win: WindowId, clients: &HashMap<WindowId, Client>) -> usize {
+    let mut depth = 0;
+    let mut current = win;
+    let mut visited = std::collections::HashSet::new();
+    while visited.insert(current) {
+        let Some(parent) = clients
+            .get(&current)
+            .and_then(|client| client.transient_for)
+        else {
+            break;
+        };
+        depth += 1;
+        current = parent;
+    }
+    depth
+}
+
 pub(crate) fn compute_monitor_z_order(
     monitor: &Monitor,
     clients: &HashMap<WindowId, Client>,
 ) -> Option<Vec<WindowId>> {
-    let selected_window = monitor.selected?;
+    let selected_window = monitor.selected;
     let selected_tags = monitor.selected_tags();
     let bar_win = monitor.bar_win;
+    let layout = monitor.current_layout();
     let tiled_focus = monitor
         .tag_tiled_focus_history
         .get(&selected_tags)
@@ -372,44 +381,53 @@ pub(crate) fn compute_monitor_z_order(
     let mut tiled_stack = Vec::new();
     let mut floating_stack = Vec::new();
     let mut fullscreen_stack = Vec::new();
+    let mut transient_stack = Vec::new();
     for win in monitor.z_order.iter_bottom_to_top() {
         if let Some(c) = clients.get(&win)
             && c.is_visible(selected_tags)
         {
+            let depth = transient_depth(win, clients);
+            if depth > 0 {
+                transient_stack.push((depth, win));
+                continue;
+            }
             match c.mode() {
                 ClientMode::TrueFullscreen { .. } => fullscreen_stack.push(win),
-                ClientMode::Floating | ClientMode::Maximized { .. } => floating_stack.push(win),
-                ClientMode::Tiling => tiled_stack.push(win),
+                ClientMode::Floating | ClientMode::Maximized { .. } => {
+                    floating_stack.push(win);
+                }
+                ClientMode::Tiling if layout.is_tiling() => tiled_stack.push(win),
+                ClientMode::Tiling => floating_stack.push(win),
                 ClientMode::FakeFullscreen { .. } => {}
             }
         }
     }
 
-    let selected_is_fullscreen = fullscreen_stack.contains(&selected_window);
-    let selected_is_floating = floating_stack.contains(&selected_window);
+    // Stable depth ordering keeps children above their transient ancestors,
+    // while persistent z-order remains authoritative between siblings.
+    transient_stack.sort_by_key(|(depth, _)| *depth);
 
     if let Some(tiled_focus) = tiled_focus
-        && selected_window != tiled_focus
-        && (selected_is_floating || selected_is_fullscreen)
+        && selected_window != Some(tiled_focus)
+        && (selected_window.is_some_and(|win| floating_stack.contains(&win))
+            || selected_window.is_some_and(|win| fullscreen_stack.contains(&win))
+            || transient_stack
+                .iter()
+                .any(|(_, win)| Some(*win) == selected_window))
         && let Some(idx) = tiled_stack.iter().position(|&win| win == tiled_focus)
     {
         let selected = tiled_stack.remove(idx);
         tiled_stack.push(selected);
     }
 
-    if let Some(idx) = fullscreen_stack
-        .iter()
-        .position(|&win| win == selected_window)
+    if let Some(idx) = selected_window
+        .and_then(|selected| fullscreen_stack.iter().position(|&win| win == selected))
     {
         let selected = fullscreen_stack.remove(idx);
         fullscreen_stack.push(selected);
-    } else if let Some(idx) = floating_stack
-        .iter()
-        .position(|&win| win == selected_window)
+    } else if layout.is_maximized()
+        && let Some(selected_window) = selected_window
     {
-        let selected = floating_stack.remove(idx);
-        floating_stack.push(selected);
-    } else {
         // In maximized presentation, the focused tiled
         // client must be projected to the top of the tiled layer without
         // mutating persistent z-order.
@@ -419,15 +437,16 @@ pub(crate) fn compute_monitor_z_order(
         }
     }
 
-    // Final z-order: tiled clients, then the bar, then floating clients,
-    // and finally fullscreen clients.
-    // This keeps every floating window above tiled content while still
-    // keeping the selected window topmost within its own class, and guarantees
-    // fullscreen windows sit above everything else.
+    // Final z-order: tiled clients, bar, ordinary floating clients,
+    // fullscreen clients, then transient dialogs. Focus never changes the
+    // order within the floating layer. Keeping transients in the protected top
+    // layer prevents a modal dialog from disappearing while its parent remains
+    // blocked waiting for a response.
     let mut stack = tiled_stack;
     stack.push(bar_win);
     stack.extend(floating_stack);
     stack.extend(fullscreen_stack);
+    stack.extend(transient_stack.into_iter().map(|(_, win)| win));
     Some(stack)
 }
 

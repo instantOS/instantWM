@@ -86,9 +86,6 @@ fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<
         }
     }
 
-    if let Some(t) = target {
-        model.raise_client_in_z_order(t);
-    }
     target
 }
 
@@ -218,9 +215,11 @@ pub(crate) fn focus_generic(
 /// Best-effort focus - the single public entry point for `WmCtx` holders.
 ///
 /// Updates `mon.selected`, backend seat focus, and — when the selection actually
-/// changed — syncs the affected monitor z-order so visuals stay in sync.
-/// This is critical for overlapping layouts (maximized stack, floating) where the
-/// focused window must be visually on top.
+/// changed — syncs the affected monitor's projected z-order.
+///
+/// Focus deliberately does not mutate persistent stacking. Overlapping layout
+/// policy may still project a focused tiled window on top (notably maximized
+/// presentation), while floating windows retain their explicit stacking order.
 pub fn focus(ctx: &mut crate::contexts::WmCtx, win: Option<WindowId>) {
     focus_impl(ctx, win, BackendRefresh::IfNeeded);
     crate::overview::follow_focus(ctx);
@@ -358,6 +357,26 @@ pub fn apply_hover_focus(
     }
 }
 
+/// Apply the optional click-to-raise policy after normal client-area focus.
+///
+/// Bar-title and move/resize interactions are explicit stacking operations and
+/// bypass this option. Only a semantic left click is eligible.
+pub fn raise_floating_on_client_click(
+    ctx: &mut crate::contexts::WmCtx,
+    win: WindowId,
+    button: MouseButton,
+) {
+    if button != MouseButton::Left || !ctx.core().config().window.raise_floating_on_click {
+        return;
+    }
+    let should_raise = ctx.core().model().client_view(win).is_some_and(|view| {
+        view.client.mode().is_free_positioned() || !view.monitor.is_tiling_layout()
+    });
+    if should_raise {
+        ctx.raise_client(win);
+    }
+}
+
 /// Common hover-focus guard checks shared by both backends.
 ///
 /// Returns `true` when hover focus should proceed for `hovered_win`.
@@ -446,9 +465,10 @@ pub fn activate_client(ctx: &mut crate::contexts::WmCtx, win: WindowId) -> bool 
     }
 
     // Activation is an explicit request to surface the window even when the
-    // model already names it as selected. Force the backend refresh and z-order
-    // sync instead of making callers repair an otherwise unchanged focus.
+    // model already names it as selected. Unlike ordinary focus, it therefore
+    // raises persistently (within the window's policy layer).
     refresh_focus(ctx, Some(win));
+    ctx.raise_client(win);
     true
 }
 
@@ -799,6 +819,38 @@ mod tests {
         focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
         assert_eq!(backend.focused.get(), 1);
         assert_eq!(backend.binding_refreshes.get(), 1);
+    }
+
+    #[test]
+    fn changing_focus_does_not_change_persistent_z_order() {
+        let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+        let monitor_id = state.model.selected_monitor_id();
+        let tag = TagMask::single(1).unwrap();
+        let upper = WindowId(2);
+        state.model.insert_client(Client {
+            win: upper,
+            monitor_id,
+            tags: tag,
+            ..Client::default()
+        });
+        let monitor = state.model.monitor_mut(monitor_id).unwrap();
+        monitor.z_order.attach_top(upper);
+        monitor.selected = Some(upper);
+
+        let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let mut backend = RecordingBackend::default();
+        focus_generic(
+            &mut core,
+            Some(WindowId(1)),
+            &mut backend,
+            BackendRefresh::IfNeeded,
+        )
+        .unwrap();
+
+        assert_eq!(
+            core.model().expect_selected_monitor().z_order.as_slice(),
+            &[WindowId(1), WindowId(2)]
+        );
     }
 
     #[test]

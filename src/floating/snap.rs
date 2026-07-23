@@ -46,6 +46,8 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             return;
         };
 
+    ctx.raise_client(win);
+
     // Apply snap geometry (generic) and backend-specific extras.
     match ctx {
         WmCtx::X11(ctx_x11) => {
@@ -101,25 +103,15 @@ fn snap_target_rect(ctx: &mut WmCtxX11, win: WindowId, monitor_id: MonitorId) ->
 /// Apply the window's current [`SnapPosition`] by animating it into the
 /// corresponding screen region on monitor `monitor_id`.
 pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
-    let snap_status = match ctx.core.model().client(win) {
-        Some(c) => c.snap_status,
-        None => return,
-    };
+    if ctx.core.model().client(win).is_none() {
+        return;
+    }
 
     WmCtx::X11(ctx.reborrow()).move_resize(
         win,
         *rect,
         MoveResizeOptions::animate_to(DEFAULT_FRAME_COUNT),
     );
-
-    // Raise the window if it is the focused one (Maximized only).
-    if snap_status == SnapPosition::Maximized {
-        let is_sel = ctx.core.model().selected_win() == Some(win);
-        if is_sel {
-            let wm_ctx = WmCtx::X11(ctx.reborrow());
-            wm_ctx.window_backend().raise_window_visual_only(win);
-        }
-    }
 }
 
 /// Cancel the current snap and animate the window back to its saved floating
@@ -140,6 +132,7 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     let tiling = super::helpers::has_tiling_layout(ctx.core().model());
 
     if is_floating || !tiling {
+        ctx.raise_client(win);
         if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
             client.snap_status = SnapPosition::None;
             client.restore_border_width();

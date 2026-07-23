@@ -47,6 +47,9 @@ pub fn button_press(ctx: &mut WmCtxX11<'_>, e: &ButtonPressEvent) {
     if target_window.is_some() && ctx.core.model().selected_win() != target_window {
         crate::focus::focus(&mut WmCtx::X11(ctx.reborrow()), target_window);
     }
+    if let (Some(win), Some(button)) = (target_window, MouseButton::from_x11_detail(e.detail)) {
+        crate::focus::raise_floating_on_client_click(&mut WmCtx::X11(ctx.reborrow()), win, button);
+    }
 
     let root = Point::new(e.root_x as i32, e.root_y as i32);
     let region = crate::mouse::pointer::button_region_at(&mut ctx.core, root, target_window);
@@ -445,6 +448,24 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
             x if x == u32::from(AtomEnum::WM_HINTS) => {
                 crate::backend::x11::update_wm_hints(ctx, event_win);
                 ctx.core.bar.mark_dirty();
+            }
+            x if x == u32::from(AtomEnum::WM_TRANSIENT_FOR) => {
+                let parent =
+                    crate::backend::x11::lifecycle::get_transient_for_hint(&ctx.x11, event_win);
+                let monitor_id = ctx
+                    .core
+                    .model()
+                    .client(event_win)
+                    .map(|client| client.monitor_id);
+                if let Some(client) = ctx.core.model_mut().client_mut(event_win) {
+                    client.transient_for = parent;
+                    if parent.is_some() {
+                        client.set_base_mode(crate::types::BaseClientMode::Floating);
+                    }
+                }
+                if let Some(monitor_id) = monitor_id {
+                    crate::layouts::arrange(&mut WmCtx::X11(ctx.reborrow()), Some(monitor_id));
+                }
             }
             _ => {}
         }

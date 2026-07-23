@@ -244,6 +244,12 @@ pub struct Client {
     pub scratchpad: Option<ScratchpadData>,
     /// Monitor this client is on.
     pub monitor_id: MonitorId,
+    /// Managed toplevel this window is transient for, when advertised by the
+    /// client protocol (`xdg_toplevel.set_parent` / `WM_TRANSIENT_FOR`).
+    ///
+    /// This relationship is backend-neutral because stacking policy needs to
+    /// keep dialogs above ordinary windows regardless of the active backend.
+    pub transient_for: Option<WindowId>,
     /// Window ID.
     pub win: WindowId,
 }

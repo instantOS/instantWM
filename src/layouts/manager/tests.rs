@@ -146,7 +146,7 @@ fn planned_border_is_used_without_waiting_for_next_arrange() {
 }
 
 #[test]
-fn projected_z_order_promotes_focused_tiled_without_mutating_persistent_order() {
+fn tiled_focus_does_not_mutate_or_project_a_different_persistent_order() {
     let monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
     let clients = [WindowId(1), WindowId(2), WindowId(3)]
         .into_iter()
@@ -157,11 +157,62 @@ fn projected_z_order_promotes_focused_tiled_without_mutating_persistent_order() 
 
     assert_eq!(
         projected,
-        vec![WindowId(1), WindowId(3), WindowId(2), WindowId(99)]
+        vec![WindowId(1), WindowId(2), WindowId(3), WindowId(99)]
     );
     assert_eq!(
         monitor.z_order.iter_bottom_to_top().collect::<Vec<_>>(),
         vec![WindowId(1), WindowId(2), WindowId(3)]
+    );
+}
+
+#[test]
+fn floating_focus_does_not_raise_within_the_floating_layer() {
+    let monitor = monitor_with_order(&[WindowId(1), WindowId(2), WindowId(3)], WindowId(2));
+    let clients = [WindowId(1), WindowId(2), WindowId(3)]
+        .into_iter()
+        .map(|win| {
+            let mut client = visible_client(win);
+            client.replace_mode_with_base(BaseClientMode::Floating);
+            (win, client)
+        })
+        .collect::<HashMap<_, _>>();
+
+    let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+    assert_eq!(
+        projected,
+        vec![WindowId(99), WindowId(1), WindowId(2), WindowId(3)]
+    );
+}
+
+#[test]
+fn transient_dialogs_stay_above_ordinary_windows_and_nested_children() {
+    let monitor = monitor_with_order(
+        &[WindowId(1), WindowId(3), WindowId(4), WindowId(2)],
+        WindowId(2),
+    );
+    let mut clients = [WindowId(1), WindowId(2), WindowId(3), WindowId(4)]
+        .into_iter()
+        .map(|win| {
+            let mut client = visible_client(win);
+            client.replace_mode_with_base(BaseClientMode::Floating);
+            (win, client)
+        })
+        .collect::<HashMap<_, _>>();
+    clients.get_mut(&WindowId(3)).unwrap().transient_for = Some(WindowId(1));
+    clients.get_mut(&WindowId(4)).unwrap().transient_for = Some(WindowId(3));
+
+    let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
+
+    assert_eq!(
+        projected,
+        vec![
+            WindowId(99),
+            WindowId(1),
+            WindowId(2),
+            WindowId(3),
+            WindowId(4)
+        ]
     );
 }
 

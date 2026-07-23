@@ -128,6 +128,11 @@ pub enum WmCommand {
         win: WindowId,
         properties: crate::client::WindowProperties,
     },
+    /// Update the backend-neutral transient-parent relationship.
+    UpdateTransientFor {
+        win: WindowId,
+        parent: Option<WindowId>,
+    },
     /// Update XWayland-specific policy (hints, transient_for, etc.).
     UpdateXWaylandPolicy {
         win: WindowId,

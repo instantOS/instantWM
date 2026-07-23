@@ -14,11 +14,11 @@ fn grab_focus_conflicts<T: PartialEq>(grab_focus: Option<&T>, new_focus: &T) -> 
 }
 
 impl WaylandState {
-    /// Request the WM to activate and raise a window.
+    /// Request the WM to focus a window.
     ///
     /// This is an asynchronous request that goes through the WM command queue
     /// to avoid deadlocks from nested lock acquisition during Smithay events.
-    pub(crate) fn activate_and_raise_window(&self, window: WindowId) {
+    pub(crate) fn request_window_focus(&self, window: WindowId) {
         self.push_command(WmCommand::FocusWindow(window));
     }
 

@@ -54,6 +54,11 @@ pub struct ThemeConfig {
     pub cursor: CursorConfig,
     /// Layout geometry configuration.
     pub layout: LayoutConfig,
+    /// Raise a floating window when its client area is left-clicked.
+    ///
+    /// Disabled by default so focus-follows-mouse and click-to-focus do not
+    /// disturb the explicit floating-window stack.
+    pub raise_floating_on_click: bool,
     /// Window rules.
     #[serde(default)]
     pub rules: Vec<Rule>,
@@ -84,6 +89,7 @@ impl Default for ThemeConfig {
             modes: HashMap::new(),
             cursor: CursorConfig::default(),
             layout: LayoutConfig::default(),
+            raise_floating_on_click: false,
             rules: Vec::new(),
             bar_height: 0,
             exec_once: Vec::new(),
@@ -582,6 +588,12 @@ mod theme_tests {
         assert_eq!(config.colors.status.bg, "#123456".parse().unwrap());
         assert_eq!(config.colors.status.fg, "#4c4f69".parse().unwrap());
         assert_eq!(config.colors.border.tile_focus, "#1e66f5".parse().unwrap());
+    }
+
+    #[test]
+    fn floating_click_raise_is_an_explicit_opt_in() {
+        assert!(!parse("").raise_floating_on_click);
+        assert!(parse("raise_floating_on_click = true").raise_floating_on_click);
     }
 
     #[test]

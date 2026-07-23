@@ -46,6 +46,7 @@ pub fn key_move(ctx: &mut WmCtx, win: WindowId, dir: Direction) -> bool {
         return false;
     }
 
+    ctx.raise_client(win);
     ctx.move_resize(
         win,
         target,
@@ -69,6 +70,7 @@ pub fn key_resize(ctx: &mut WmCtx, win: WindowId, dir: Direction) {
         return;
     }
 
+    ctx.raise_client(win);
     const RESIZE_STEP: i32 = 40;
     let (dw, dh) = dir.delta(RESIZE_STEP);
     let nw = geo.w + dw;
@@ -113,6 +115,7 @@ pub fn center_window(ctx: &mut WmCtx, win: WindowId) {
 
     let y_offset = if show_bar { bar_height } else { -bar_height };
 
+    ctx.raise_client(win);
     ctx.move_resize(
         win,
         Rect {

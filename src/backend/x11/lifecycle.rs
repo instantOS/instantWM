@@ -62,6 +62,7 @@ pub fn manage(
     let transient_for = get_transient_for_hint(&ctx.x11, window);
     let x11_runtime = &*ctx.x11_runtime;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, window, initial_geometry);
+    client.transient_for = transient_for;
     let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, window);
     if !assign_initial_monitor_and_tags(
         ctx.core.state_mut(),
@@ -685,7 +686,7 @@ fn read_wm_desktop_hint(
     }
 }
 
-fn get_transient_for_hint(x11: &X11BackendRef, window: WindowId) -> Option<WindowId> {
+pub(crate) fn get_transient_for_hint(x11: &X11BackendRef, window: WindowId) -> Option<WindowId> {
     let x11_window: Window = window.into();
 
     x11.conn

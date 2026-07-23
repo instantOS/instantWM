@@ -322,6 +322,9 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             WmCommand::UpdateProperties { win, properties } => {
                 handle_update_properties(wm, win, &properties);
             }
+            WmCommand::UpdateTransientFor { win, parent } => {
+                handle_update_transient_for(wm, win, parent);
+            }
             WmCommand::UpdateXWaylandPolicy {
                 win,
                 hints,
@@ -397,8 +400,7 @@ fn handle_focus_window(wm: &mut Wm, win: Option<crate::types::WindowId>) {
 
 fn handle_raise_window(wm: &mut Wm, win: crate::types::WindowId) {
     let mut ctx = wm.ctx();
-    ctx.core_mut().model_mut().raise_client_in_z_order(win);
-    ctx.window_backend().raise_window_visual_only(win);
+    ctx.raise_client(win);
 }
 
 fn handle_begin_move(wm: &mut Wm, state: &WaylandState, win: crate::types::WindowId) {
@@ -421,6 +423,30 @@ fn handle_update_properties(
 ) {
     let mut ctx = wm.ctx();
     crate::client::update_window_properties(ctx.core_mut(), win, properties);
+}
+
+fn handle_update_transient_for(
+    wm: &mut Wm,
+    win: crate::types::WindowId,
+    parent: Option<crate::types::WindowId>,
+) {
+    let mut ctx = wm.ctx();
+    let Some(monitor_id) = ctx
+        .core()
+        .model()
+        .client(win)
+        .map(|client| client.monitor_id)
+    else {
+        return;
+    };
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
+        client.transient_for = parent;
+        if parent.is_some() {
+            client.set_base_mode(crate::types::BaseClientMode::Floating);
+        }
+    }
+    ctx.core_mut().queue_layout_for_monitor(monitor_id);
+    crate::layouts::sync_monitor_z_order(&mut ctx, monitor_id);
 }
 
 fn handle_update_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32, h: i32) {
@@ -551,6 +577,7 @@ fn handle_map_window(
 
     let mut client = crate::types::Client::new(win);
     client.name = properties.title.clone();
+    client.transient_for = parent;
     if let Some(size_hints) = properties.size_hints {
         client.size_hints = size_hints;
         client.size_hints_valid = true;
@@ -681,7 +708,7 @@ fn handle_map_window(
     ctx.core_mut().queue_layout_for_monitor(monitor_id);
 
     if should_focus {
-        state.activate_and_raise_window(win);
+        state.request_window_focus(win);
     }
     state.request_space_sync();
 }

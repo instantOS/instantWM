@@ -285,6 +285,9 @@ pub fn title_drag_finish(ctx: &mut WmCtx) {
             crate::client::show_window(ctx, win);
         }
         crate::focus::focus(ctx, Some(win));
+        // A bar title is an explicit stacking handle even when ordinary
+        // client-area click-to-raise is disabled.
+        ctx.raise_client(win);
     }
 }
 

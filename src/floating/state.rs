@@ -212,7 +212,7 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
 
     // Raise the newly maximized window above everything else.
     if entered {
-        ctx.window_backend().raise_window_visual_only(win);
+        ctx.raise_client(win);
     }
 }
 

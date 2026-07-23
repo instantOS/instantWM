@@ -171,7 +171,7 @@ fn handle_button_press(
         return true;
     }
 
-    focus_button_target(wm, clicked_win);
+    focus_button_target(wm, clicked_win, button.wm_button);
 
     let consumed = button.wm_button.is_some_and(|btn| {
         consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers)
@@ -203,11 +203,18 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     }
 }
 
-fn focus_button_target(wm: &mut Wm, clicked_win: Option<crate::types::WindowId>) {
+fn focus_button_target(
+    wm: &mut Wm,
+    clicked_win: Option<crate::types::WindowId>,
+    button: Option<MouseButton>,
+) {
     let mut ctx = wm.ctx();
     if let Some(win) = clicked_win {
         crate::focus::select_monitor_for_client(&mut ctx, win);
         crate::focus::focus(&mut ctx, Some(win));
+        if let Some(button) = button {
+            crate::focus::raise_floating_on_client_click(&mut ctx, win, button);
+        }
     } else {
         crate::focus::focus(&mut ctx, None);
     }

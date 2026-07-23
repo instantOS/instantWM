@@ -152,6 +152,8 @@ pub struct Config {
     pub resize_hints: bool,
     /// Respect decoration hints.
     pub decor_hints: bool,
+    /// Raise a floating window when its client area is left-clicked.
+    pub raise_floating_on_click: bool,
     /// Tiled layout gap configuration.
     pub layout: config_toml::LayoutConfig,
 
@@ -322,6 +324,7 @@ pub fn init_config(backend: crate::backend::BackendKind) -> Config {
         // --- Tiling ---
         resize_hints: true,
         decor_hints: true,
+        raise_floating_on_click: theme.raise_floating_on_click,
         layout: theme.layout,
 
         // --- Tags ---

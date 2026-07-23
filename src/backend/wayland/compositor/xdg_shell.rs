@@ -395,6 +395,15 @@ impl XdgShellHandler for WaylandState {
     }
 
     fn parent_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(win) = self.window_id_for_toplevel(&surface) {
+            let parent = surface
+                .parent()
+                .and_then(|parent| self.window_id_for_surface(&parent));
+            self.push_command(super::super::commands::WmCommand::UpdateTransientFor {
+                win,
+                parent,
+            });
+        }
         self.apply_floating_policy(&surface);
     }
 
@@ -539,7 +548,7 @@ impl XdgShellHandler for WaylandState {
         let Some(dir) = super::xwayland::xdg_resize_edge_to_direction(edges) else {
             // ResizeEdge::None or unknown edge — fall back to focusing the
             // window so the client at least knows we acknowledged it.
-            self.activate_and_raise_window(win);
+            self.request_window_focus(win);
             return;
         };
         super::xwayland::begin_app_resize_drag(self, win, dir);
