@@ -738,6 +738,35 @@ fn keyboard_navigation_skips_duplicate_three_row_previews() {
 }
 
 #[test]
+fn optimized_placement_normalization_matches_the_reference_algorithm() {
+    let rect = Rect::new(0, 0, 1600, 900);
+    for preset in [Preset::Grid, Preset::MasterStack, Preset::BottomStack] {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(preset, &windows(8), 2);
+
+        let mut reference = Vec::<(PlacementTarget, PlacementOutcome)>::new();
+        for target in tree.raw_placement_targets(WindowId(1), rect, 0.34) {
+            let Some(outcome) = tree.placement_outcome(WindowId(1), target) else {
+                continue;
+            };
+            if reference
+                .iter()
+                .any(|(_, existing)| existing.approximately_eq(&outcome))
+            {
+                continue;
+            }
+            reference.push((target, outcome));
+        }
+        let reference = reference
+            .into_iter()
+            .map(|(target, _)| target)
+            .collect::<Vec<_>>();
+
+        assert_eq!(tree.placement_targets(WindowId(1), rect, 0.34), reference);
+    }
+}
+
+#[test]
 fn placement_preview_is_exact_and_does_not_mutate_the_tree() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::Grid, &windows(4), 1);

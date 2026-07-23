@@ -256,6 +256,12 @@ struct EdgeCandidate {
     scope_depth: usize,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedPlacementTarget {
+    target: PlacementTarget,
+    candidate: LayoutTree,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct AutomaticInsertion {
     score: f64,
@@ -307,18 +313,17 @@ impl PlacementOutcome {
         if self.leaves != other.leaves {
             return false;
         }
-
-        let intersection_width = (self.preview.right().min(other.preview.right())
-            - self.preview.x.max(other.preview.x))
-        .max(0.0);
-        let intersection_height = (self.preview.bottom().min(other.preview.bottom())
-            - self.preview.y.max(other.preview.y))
-        .max(0.0);
-        let intersection = intersection_width * intersection_height;
-        let union =
-            self.preview.w * self.preview.h + other.preview.w * other.preview.h - intersection;
-        union > EPSILON && intersection / union + EPSILON >= PLACEMENT_PREVIEW_OVERLAP
+        placement_previews_approximately_eq(self.preview, other.preview)
     }
+}
+
+fn placement_previews_approximately_eq(first: FRect, second: FRect) -> bool {
+    let intersection_width = (first.right().min(second.right()) - first.x.max(second.x)).max(0.0);
+    let intersection_height =
+        (first.bottom().min(second.bottom()) - first.y.max(second.y)).max(0.0);
+    let intersection = intersection_width * intersection_height;
+    let union = first.w * first.h + second.w * second.h - intersection;
+    union > EPSILON && intersection / union + EPSILON >= PLACEMENT_PREVIEW_OVERLAP
 }
 
 fn sane_weight(weight: f64) -> f64 {
@@ -1233,11 +1238,36 @@ impl LayoutTree {
         target: WindowId,
         side: Side,
     ) -> Vec<EdgeCandidate> {
+        let rects = self.all_float_bounds();
+        let leaf_rects = self.float_bounds();
+        self.edge_candidates_with_geometry(source, target, side, &rects, &leaf_rects)
+    }
+
+    fn edge_candidates_with_geometry(
+        &self,
+        source: WindowId,
+        target: WindowId,
+        side: Side,
+        rects: &HashMap<NodeKey, FRect>,
+        leaf_rects: &HashMap<WindowId, FRect>,
+    ) -> Vec<EdgeCandidate> {
+        self.resolved_edge_candidates_with_geometry(source, target, side, rects, leaf_rects)
+            .into_iter()
+            .map(|(candidate, _)| candidate)
+            .collect()
+    }
+
+    fn resolved_edge_candidates_with_geometry(
+        &self,
+        source: WindowId,
+        target: WindowId,
+        side: Side,
+        rects: &HashMap<NodeKey, FRect>,
+        leaf_rects: &HashMap<WindowId, FRect>,
+    ) -> Vec<(EdgeCandidate, LayoutTree)> {
         let Some(root) = self.root.as_ref() else {
             return Vec::new();
         };
-        let rects = self.all_float_bounds();
-        let leaf_rects = self.float_bounds();
         let Some(target_rect) = leaf_rects.get(&target).copied() else {
             return Vec::new();
         };
@@ -1293,11 +1323,12 @@ impl LayoutTree {
             let rect = rects[&scope_key];
             let tolerance = rect.axis_size(axis) * 0.04;
             let target_cross_size = cross_size(target_rect, axis);
-            if cross_size(rect, axis) > target_cross_size + tolerance
+            let parent_cross_size = cross_size(rect, axis);
+            if parent_cross_size > target_cross_size + tolerance
                 && seam > rect.axis_start(axis) + tolerance
                 && seam < rect.axis_start(axis) + rect.axis_size(axis) - tolerance
                 && let Some(before) =
-                    seam_partition(&split.children, seam, axis, &leaf_rects, tolerance)
+                    seam_partition(&split.children, seam, axis, leaf_rects, tolerance)
             {
                 candidates.push(EdgeCandidate {
                     scope: PlacementScope::AlignedNode {
@@ -1310,6 +1341,14 @@ impl LayoutTree {
                         .position(|(candidate, _)| candidate.id == split.id)
                         .map_or(0, |index| path.len() - index),
                 });
+            }
+            // Every contiguous child range is contained by its parent. If the
+            // parent is no wider than the target on the cross axis, no range
+            // can expose an aligned seam either. Avoid the O(k²) range scan
+            // (and its repeated O(k) geometry collection) for common flat
+            // k-window runs.
+            if parent_cross_size <= target_cross_size {
+                continue;
             }
             for first in 0..=*branch_index {
                 for last in *branch_index..split.children.len() {
@@ -1331,7 +1370,7 @@ impl LayoutTree {
                     {
                         continue;
                     }
-                    let Some(before) = seam_partition(children, seam, axis, &leaf_rects, tolerance)
+                    let Some(before) = seam_partition(children, seam, axis, leaf_rects, tolerance)
                     else {
                         continue;
                     };
@@ -1377,7 +1416,7 @@ impl LayoutTree {
                 .collect::<Vec<_>>();
             signature.sort_by_key(|item| item.0);
             if geometries.insert(signature) {
-                distinct.push(candidate);
+                distinct.push((candidate, preview));
             }
         }
         distinct.reverse();
@@ -1393,30 +1432,53 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<PlacementTarget> {
-        self.normalized_placement_targets(source, layout_rect, edge_fraction)
+        self.normalized_placement_candidates(source, layout_rect, edge_fraction)
             .into_iter()
             .map(|(target, _)| target)
             .collect()
     }
 
-    fn normalized_placement_targets(
+    pub(crate) fn constrained_placement_targets(
         &self,
         source: WindowId,
         layout_rect: Rect,
         edge_fraction: f64,
-    ) -> Vec<(PlacementTarget, PlacementOutcome)> {
-        let mut distinct = Vec::<(PlacementTarget, PlacementOutcome)>::new();
-        for target in self.raw_placement_targets(source, layout_rect, edge_fraction) {
-            let Some(outcome) = self.placement_outcome(source, target) else {
+        minimums: &HashMap<WindowId, Size>,
+    ) -> Vec<PlacementTarget> {
+        self.normalized_placement_candidates(source, layout_rect, edge_fraction)
+            .into_iter()
+            .filter_map(|(target, candidate)| {
+                candidate
+                    .constrained_bounds(layout_rect, minimums)
+                    .is_some()
+                    .then_some(target)
+            })
+            .collect()
+    }
+
+    fn normalized_placement_candidates(
+        &self,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> Vec<(PlacementTarget, LayoutTree)> {
+        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
+        let mut distinct = Vec::new();
+        for resolved in self.raw_resolved_placement_targets(source, layout_rect, edge_fraction) {
+            let candidate = resolved.candidate;
+            let Some(preview) = candidate.float_bounds().get(&source).copied() else {
                 continue;
             };
-            if distinct
+            let order = candidate.leaves();
+            let previews = previews_by_order.entry(order).or_default();
+            if previews
                 .iter()
-                .any(|(_, existing)| existing.approximately_eq(&outcome))
+                .any(|existing| placement_previews_approximately_eq(*existing, preview))
             {
                 continue;
             }
-            distinct.push((target, outcome));
+            previews.push(preview);
+            distinct.push((resolved.target, candidate));
         }
         distinct
     }
@@ -1427,23 +1489,51 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<PlacementTarget> {
+        self.raw_resolved_placement_targets(source, layout_rect, edge_fraction)
+            .into_iter()
+            .map(|resolved| resolved.target)
+            .collect()
+    }
+
+    fn raw_resolved_placement_targets(
+        &self,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> Vec<ResolvedPlacementTarget> {
         let bounds = self.bounds(layout_rect);
+        let node_bounds = self.all_float_bounds();
+        let leaf_bounds = self.float_bounds();
         let fraction = finite_clamp(edge_fraction, 0.05, 0.49, 0.34);
         let mut output = Vec::new();
         for target in self.leaves().into_iter().filter(|window| *window != source) {
             let Some(rect) = bounds.get(&target).copied() else {
                 continue;
             };
-            output.push(PlacementTarget {
-                target,
-                side: None,
-                candidate_index: 0,
-                position: rect.center(),
+            output.push(ResolvedPlacementTarget {
+                target: PlacementTarget {
+                    target,
+                    side: None,
+                    candidate_index: 0,
+                    position: rect.center(),
+                },
+                candidate: {
+                    let mut candidate = self.clone();
+                    let _ = candidate.swap_windows(source, target);
+                    candidate
+                },
             });
             for side in [Side::Left, Side::Right, Side::Top, Side::Bottom] {
-                let candidates = self.edge_candidates(source, target, side);
-                for index in 0..candidates.len() {
-                    let band_fraction = fraction * (index as f64 + 0.5) / candidates.len() as f64;
+                let candidates = self.resolved_edge_candidates_with_geometry(
+                    source,
+                    target,
+                    side,
+                    &node_bounds,
+                    &leaf_bounds,
+                );
+                let candidate_count = candidates.len();
+                for (index, (_edge, candidate)) in candidates.into_iter().enumerate() {
+                    let band_fraction = fraction * (index as f64 + 0.5) / candidate_count as f64;
                     let position = match side {
                         Side::Left => Point::new(
                             rect.x + (f64::from(rect.w) * band_fraction).round() as i32,
@@ -1462,11 +1552,14 @@ impl LayoutTree {
                             rect.bottom() - (f64::from(rect.h) * band_fraction).round() as i32,
                         ),
                     };
-                    output.push(PlacementTarget {
-                        target,
-                        side: Some(side),
-                        candidate_index: index,
-                        position,
+                    output.push(ResolvedPlacementTarget {
+                        target: PlacementTarget {
+                            target,
+                            side: Some(side),
+                            candidate_index: index,
+                            position,
+                        },
+                        candidate,
                     });
                 }
             }
@@ -1488,22 +1581,6 @@ impl LayoutTree {
             leaves: preview.leaves(),
             preview: preview_rect,
         })
-    }
-
-    fn canonical_placement_target(
-        &self,
-        source: WindowId,
-        target: PlacementTarget,
-        layout_rect: Rect,
-        edge_fraction: f64,
-    ) -> PlacementTarget {
-        let Some(outcome) = self.placement_outcome(source, target) else {
-            return target;
-        };
-        self.normalized_placement_targets(source, layout_rect, edge_fraction)
-            .into_iter()
-            .find(|(_, candidate_outcome)| candidate_outcome.approximately_eq(&outcome))
-            .map_or(target, |(candidate, _)| candidate)
     }
 
     pub fn apply_placement_target(&mut self, source: WindowId, target: PlacementTarget) -> bool {
@@ -1672,8 +1749,13 @@ impl LayoutTree {
                     candidate_index: index,
                     position: point,
                 };
-                let target =
-                    self.canonical_placement_target(source, target, layout_rect, edge_fraction);
+                // The candidate under the pointer already describes the desired
+                // placement. `placement_targets` normalizes equivalent commands
+                // for keyboard navigation, but doing that global enumeration
+                // here used to rebuild and compare every possible placement on
+                // every pointer-motion event. Besides being unnecessary for a
+                // direct hit test, that work grows polynomially with the number
+                // of leaves and made interactive dragging noticeably laggy.
                 self.apply_placement_target(source, target)
             }
             _ => self.swap_windows(source, target),

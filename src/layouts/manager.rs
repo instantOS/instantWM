@@ -925,20 +925,12 @@ pub(crate) fn constrained_tree_placement_targets(
     else {
         return Vec::new();
     };
-    tree.placement_targets(
+    tree.constrained_placement_targets(
         source,
         placement.work_rect(),
         ctx.core().config().layout.pointer_edge_fraction,
+        &minimums,
     )
-    .into_iter()
-    .filter(|target| {
-        let mut candidate = tree.clone();
-        candidate.apply_placement_target(source, *target)
-            && candidate
-                .constrained_bounds(placement.work_rect(), &minimums)
-                .is_some()
-    })
-    .collect()
 }
 
 pub(crate) fn preview_constrained_tree_target(
