@@ -179,6 +179,103 @@ fn force_always_gives_the_new_window_the_left_half() {
 }
 
 #[test]
+fn consecutive_force_spawns_adapt_before_columns_become_unhealthy() {
+    let area = Rect::new(0, 0, 1600, 900);
+    let mut tree = LayoutTree::default();
+
+    tree.reconcile_for_layout(
+        &windows(3),
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+
+    let three = tree.bounds(area);
+    assert_eq!(three[&WindowId(3)], Rect::new(0, 0, 800, 900));
+    assert_eq!(three[&WindowId(2)], Rect::new(800, 0, 800, 450));
+    assert_eq!(three[&WindowId(1)], Rect::new(800, 450, 800, 450));
+
+    tree.reconcile_for_layout(
+        &windows(6),
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+
+    for rect in tree.bounds(area).values() {
+        let aspect = f64::from(rect.w) / f64::from(rect.h);
+        assert!(
+            (MIN_HEALTHY_ASPECT_RATIO..=MAX_HEALTHY_ASPECT_RATIO).contains(&aspect),
+            "force packing produced an unhealthy {rect:?}"
+        );
+    }
+    assert_canonical(&tree);
+}
+
+#[test]
+fn manual_edit_ends_adaptive_force_sequence() {
+    let area = Rect::new(0, 0, 1600, 900);
+    let mut tree = LayoutTree::default();
+    tree.reconcile_for_layout(
+        &windows(3),
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+    assert!(!tree.untouched_force_windows.is_empty());
+
+    assert!(tree.resize(WindowId(2), Side::Bottom));
+    assert!(tree.untouched_force_windows.is_empty());
+    tree.reconcile_for_layout(
+        &windows(4),
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+
+    let rects = tree.bounds(area);
+    assert_eq!(rects[&WindowId(4)], Rect::new(0, 0, 800, 900));
+    assert!(
+        windows(3)
+            .iter()
+            .all(|window| rects[window].x >= area.w / 2)
+    );
+    assert_eq!(tree.untouched_force_windows, vec![WindowId(4)]);
+}
+
+#[test]
+fn closing_a_force_spawned_window_preserves_adaptive_sequence() {
+    let area = Rect::new(0, 0, 1600, 900);
+    let mut tree = LayoutTree::default();
+    tree.reconcile_for_layout(
+        &windows(4),
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2), WindowId(4)],
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+    tree.reconcile_for_layout(
+        &[WindowId(1), WindowId(2), WindowId(4), WindowId(5)],
+        NewWindowPlacement::Force,
+        area,
+        &HashMap::new(),
+    );
+
+    let newcomer = tree.bounds(area)[&WindowId(5)];
+    assert_eq!(newcomer, Rect::new(0, 0, 800, 450));
+    assert_eq!(
+        tree.untouched_force_windows,
+        vec![WindowId(5), WindowId(4), WindowId(2)]
+    );
+    assert_canonical(&tree);
+}
+
+#[test]
 fn reconciliation_retains_surviving_topology_and_collapses_parents() {
     let mut tree = LayoutTree::default();
     reconcile(&mut tree, &windows(4));

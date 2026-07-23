@@ -214,7 +214,9 @@ pub enum NewWindowPlacement {
     /// region and proportionally resize the existing tree.
     #[default]
     AutoResize,
-    /// Always make the newcomer the leading half of a new vertical root split.
+    /// Make the first newcomer the leading half of a new vertical root split.
+    /// Consecutive untouched force insertions adapt that generated region into
+    /// balanced rows or columns; a manual tree edit starts a new sequence.
     Force,
 }
 
