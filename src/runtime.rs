@@ -152,10 +152,14 @@ pub fn init_keyboard_layout(wm: &mut Wm) {
     crate::keyboard_layout::init_keyboard_layout(&mut ctx);
 }
 
-/// Spawn the configured status bar command, or the built-in default.
+/// Spawn the configured status bar command, the auto-detected
+/// `i3status-rs`, or the built-in default (in that order of
+/// precedence).
 pub fn spawn_status_bar(wm: &Wm) {
     if let Some(ref cmd) = wm.core.config.status_command {
         crate::bar::status::spawn_status_command(cmd);
+    } else if crate::bar::status::is_i3status_rs_available() {
+        crate::bar::status::spawn_status_command("i3status-rs");
     } else {
         crate::bar::status::spawn_default_status();
     }

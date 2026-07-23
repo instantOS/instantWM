@@ -205,6 +205,13 @@ pub(crate) fn spawn_status_command(cmd: &str) {
     });
 }
 
+/// Return `true` when `i3status-rs` is found in `$PATH`.
+pub(crate) fn is_i3status_rs_available() -> bool {
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).any(|dir| dir.join("i3status-rs").is_file()))
+        .unwrap_or(false)
+}
+
 pub(crate) fn reload_status_command(previous: Option<&str>, next: Option<&str>) {
     if previous == next {
         return;
@@ -212,6 +219,8 @@ pub(crate) fn reload_status_command(previous: Option<&str>, next: Option<&str>) 
 
     if let Some(cmd) = next {
         spawn_status_command(cmd);
+    } else if is_i3status_rs_available() {
+        spawn_status_command("i3status-rs");
     } else {
         spawn_default_status();
     }

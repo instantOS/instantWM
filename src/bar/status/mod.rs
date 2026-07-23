@@ -6,7 +6,9 @@ mod parse;
 mod render;
 mod runtime;
 
-pub(crate) use command::{reload_status_command, spawn_default_status, spawn_status_command};
+pub(crate) use command::{
+    is_i3status_rs_available, reload_status_command, spawn_default_status, spawn_status_command,
+};
 pub(crate) use model::{
     I3Align, I3BarHeader, I3Block, I3ClickEvent, I3MinWidth, I3StatusLine, ParsedStatus,
     StatusClickTarget, StatusItem, TEXT_PADDING,

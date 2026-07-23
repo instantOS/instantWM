@@ -1806,6 +1806,7 @@ impl LayoutTree {
             if !self.remove(window) {
                 return None;
             }
+            self.invalidate_force_provenance();
             self.insert_new(window, NewWindowPlacement::Force, work_rect, minimums);
             Some(window)
         } else {
