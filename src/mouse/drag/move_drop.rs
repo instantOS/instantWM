@@ -9,6 +9,7 @@ use crate::contexts::WmCtx;
 use crate::core_state::CoreState;
 use crate::floating::{WindowModeRequest, change_snap, reset_snap, set_window_mode};
 use crate::geometry::MoveResizeOptions;
+use crate::layouts::PresentationMode;
 use crate::layouts::arrange;
 use crate::tags::{move_client_follow_view, shift_tag};
 use crate::types::*;
@@ -555,6 +556,16 @@ pub fn promote_to_floating(
         return Some((geo, false));
     }
 
+    // Floating layout presentation lets tiled windows move freely without
+    // changing their persistent placement mode, so returning to tiling can
+    // restore the manual tree.
+    if let Some(view) = ctx.core().model().client_view(win)
+        && view.monitor.current_layout() == PresentationMode::Floating
+        && view.client.mode().is_tiling()
+    {
+        return Some((view.client.geo, false));
+    }
+
     let restored_geometry = match set_window_mode(ctx, win, WindowModeRequest::Floating(intent)) {
         crate::floating::WindowModeChange::ChangedToFloating { restored_geometry } => {
             restored_geometry
@@ -571,7 +582,13 @@ pub fn promote_to_floating(
 #[cfg(test)]
 mod tests {
     use super::finish_tiling_edge_drop;
-    use crate::types::{BaseClientMode, Client, ClientMode, Rect};
+    use super::promote_to_floating;
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::client::geometry::FloatingPlacementIntent;
+    use crate::layouts::PresentationMode;
+    use crate::types::{BaseClientMode, Client, ClientMode, Monitor, Rect, TagMask, WindowId};
+    use crate::wm::Wm;
 
     #[test]
     fn edge_drop_keeps_the_pre_drag_floating_restore_rectangle() {
@@ -587,5 +604,44 @@ mod tests {
 
         assert_eq!(client.mode(), ClientMode::Tiling);
         assert_eq!(client.saved_floating_rect(), Some(saved));
+    }
+
+    #[test]
+    fn floating_presentation_drag_does_not_change_tiled_base_mode() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: Rect::new(0, 0, 1200, 800),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core
+            .model
+            .monitors
+            .get_mut(monitor_id)
+            .unwrap()
+            .per_tag_state()
+            .presentation = PresentationMode::Floating;
+        let win = WindowId(42);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags: TagMask::single(1).unwrap(),
+            mode: ClientMode::Tiling,
+            geo: Rect::new(100, 100, 400, 300),
+            ..Client::default()
+        });
+
+        let result = promote_to_floating(
+            &mut wm.ctx(),
+            win,
+            FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(200, 200)),
+        );
+
+        assert_eq!(result, Some((Rect::new(100, 100, 400, 300), false)));
+        assert_eq!(
+            wm.core.model.client(win).unwrap().mode(),
+            ClientMode::Tiling
+        );
     }
 }

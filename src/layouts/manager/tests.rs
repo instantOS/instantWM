@@ -517,6 +517,75 @@ fn maximized_presentation_reconciles_new_tiled_leaves() {
 }
 
 #[test]
+fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
+    let windows = [WindowId(1), WindowId(2), WindowId(3)];
+    let mut monitor = monitor_with_order(&windows, WindowId(2));
+    monitor.available_rect = Rect::new(0, 0, 400, 300);
+    monitor.clients = windows.to_vec();
+    let mut clients = windows
+        .into_iter()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    clients
+        .get_mut(&WindowId(3))
+        .unwrap()
+        .replace_mode_with_base(BaseClientMode::Floating);
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &windows[..2], 1);
+    let tree_before = monitor
+        .per_tag_state()
+        .layout_tree
+        .bounds(Rect::new(0, 0, 400, 300));
+    monitor.per_tag_state().presentation = PresentationMode::Floating;
+
+    let floating = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    assert!(floating.client_moves.is_empty());
+    assert_eq!(
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .bounds(Rect::new(0, 0, 400, 300)),
+        tree_before
+    );
+    assert_eq!(
+        clients.get(&WindowId(1)).unwrap().mode(),
+        ClientMode::Tiling
+    );
+    assert_eq!(
+        clients.get(&WindowId(3)).unwrap().mode(),
+        ClientMode::Floating
+    );
+
+    monitor.per_tag_state().presentation = PresentationMode::Tiled;
+    let manual = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let first_rect = manual.client_moves.first().unwrap().rect;
+    assert!(
+        manual
+            .client_moves
+            .iter()
+            .skip(1)
+            .any(|output| output.rect != first_rect)
+    );
+    assert_eq!(
+        monitor
+            .per_tag_state()
+            .layout_tree
+            .bounds(Rect::new(0, 0, 400, 300)),
+        tree_before
+    );
+    assert_eq!(
+        manual
+            .client_moves
+            .iter()
+            .filter(|output| output.win == WindowId(3))
+            .count(),
+        0
+    );
+}
+
+#[test]
 fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() {
     let monitor = monitor_with_order(
         &[WindowId(1), WindowId(2), WindowId(3), WindowId(4)],

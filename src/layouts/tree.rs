@@ -637,6 +637,14 @@ impl LayoutTree {
         }
     }
 
+    /// Score every `(leaf, axis)` insertion by materializing a candidate split
+    /// and solving it.
+    ///
+    /// This is quadratic in the leaf count — each candidate clones and re-solves
+    /// the whole tree — but the leaf count per tag stays small in practice, and
+    /// `make_split`'s same-axis canonicalization means a candidate's real slots
+    /// can only be obtained by rebuilding the tree, not by solving the existing
+    /// layout with a virtual split.
     fn automatic_insertion(
         root: &Node,
         window: WindowId,

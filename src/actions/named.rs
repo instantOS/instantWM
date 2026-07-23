@@ -16,7 +16,7 @@ use crate::layouts::{
     cycle_keyboard_tree_placement, cycle_layout_direction, finish_keyboard_tree_placement,
     focus_tree_neighbor, inc_master_count_by, resize_keyboard_tree_placement, resize_tree,
     resize_tree_smart, set_layout, step_keyboard_tree_placement, swap_keyboard_tree_placement,
-    swap_tree_neighbor, toggle_tiling_maximized,
+    swap_tree_neighbor, toggle_floating_presentation, toggle_tiling_maximized,
 };
 use crate::monitor::{focus_monitor, move_to_monitor_and_follow};
 use crate::mouse::draw_window;
@@ -166,9 +166,9 @@ define_named_actions!(
     DownKey => { name: "down_key", arg_example: None, doc: "alt-tab forward", run: |ctx, _args| { down_key(ctx, StackDirection::Next); } },
     UpKey => { name: "up_key", arg_example: None, doc: "alt-tab backward", run: |ctx, _args| { up_key(ctx, StackDirection::Previous); } },
     LayoutTile => { name: "layout_tile", arg_example: None, doc: "rewrite the manual tree as master-stack", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Tile); } },
-    LayoutFloat => { name: "layout_float", arg_example: None, doc: "set floating layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Floating); } },
+    LayoutFloat => { name: "layout_float", arg_example: None, doc: "toggle floating layout presentation without changing per-window floating state", run: |ctx, _args| { toggle_floating_presentation(ctx); } },
     LayoutMaximized => { name: "layout_maximized", arg_example: None, doc: "set maximized-stack presentation without changing the manual tree", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Maximized); } },
-    ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle between manual tiling and maximized-stack presentation without changing the tree", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
+    ToggleTilingMaximized => { name: "toggle_tiling_maximized", arg_example: None, doc: "toggle maximized-stack presentation, or restore manual tiling from floating layout", run: |ctx, _args| { toggle_tiling_maximized(ctx); } },
     LayoutGrid => { name: "layout_grid", arg_example: None, doc: "rewrite the manual tree as a grid", run: |ctx, _args| { set_layout(ctx, LayoutCommand::Grid); } },
     LayoutBottomStack => { name: "layout_bottom_stack", arg_example: None, doc: "set bottom-stack layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::BottomStack); } },
     LayoutHorizGrid => { name: "layout_horiz_grid", arg_example: None, doc: "set horiz-grid layout", run: |ctx, _args| { set_layout(ctx, LayoutCommand::HorizGrid); } },

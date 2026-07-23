@@ -1113,17 +1113,37 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
 }
 
 /// Toggle maximized-stack presentation without modifying the manual tree.
+///
+/// When the monitor is in floating layout presentation, this restores manual
+/// tiling instead of entering maximized mode.
 pub fn toggle_tiling_maximized(ctx: &mut WmCtx<'_>) {
+    let next = match ctx
+        .core()
+        .model()
+        .expect_selected_monitor()
+        .current_layout()
+    {
+        PresentationMode::Maximized | PresentationMode::Floating => PresentationMode::Tiled,
+        _ => PresentationMode::Maximized,
+    };
+    let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
+    monitor.per_tag_state().presentation = next;
+    finish_layout_change(ctx);
+}
+
+/// Toggle floating layout presentation without modifying the manual tree or
+/// per-window floating state.
+pub fn toggle_floating_presentation(ctx: &mut WmCtx<'_>) {
     let next = if ctx
         .core()
         .model()
         .expect_selected_monitor()
         .current_layout()
-        == PresentationMode::Maximized
+        == PresentationMode::Floating
     {
         PresentationMode::Tiled
     } else {
-        PresentationMode::Maximized
+        PresentationMode::Floating
     };
     let monitor = ctx.core_mut().model_mut().expect_selected_monitor_mut();
     monitor.per_tag_state().presentation = next;
