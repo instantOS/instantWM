@@ -569,16 +569,6 @@ impl CoreState {
     pub fn raise_client_in_z_order(&mut self, win: WindowId) {
         self.model.raise_client_in_z_order(win);
     }
-
-    pub fn normalize_current_mode(&mut self) {
-        let mode_exists = match &self.behavior.current_mode {
-            ActiveWmMode::Named(name) => self.config.bindings.modes.contains_key(name),
-            ActiveWmMode::Default | ActiveWmMode::Overview | ActiveWmMode::TreePlacement(_) => true,
-        };
-        if !mode_exists {
-            self.behavior.current_mode = ActiveWmMode::Default;
-        }
-    }
 }
 
 impl Clone for RuntimeConfig {
@@ -637,6 +627,16 @@ impl Default for WmBehavior {
 }
 
 impl WmBehavior {
+    pub fn normalize_current_mode(&mut self, modes: &HashMap<String, ModeConfig>) {
+        let mode_exists = match &self.current_mode {
+            ActiveWmMode::Named(name) => modes.contains_key(name),
+            ActiveWmMode::Default | ActiveWmMode::Overview | ActiveWmMode::TreePlacement(_) => true,
+        };
+        if !mode_exists {
+            self.current_mode = ActiveWmMode::Default;
+        }
+    }
+
     pub fn toggle_animated(&mut self, action: ToggleAction) {
         action.apply(&mut self.animated);
     }
