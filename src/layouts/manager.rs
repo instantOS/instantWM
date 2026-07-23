@@ -1097,6 +1097,15 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
         return false;
     };
+    let candidate_order = {
+        let model = ctx.core().model();
+        let monitor = model.expect_selected_monitor();
+        monitor
+            .collect_tiled(&model.clients)
+            .into_iter()
+            .map(|client| client.win)
+            .collect::<Vec<_>>()
+    };
 
     // Raise immediately so the promoted window appears on top while the
     // resulting layout pass is applied.
@@ -1109,7 +1118,7 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
-        .promote(window, placement.work_rect(), &minimums);
+        .promote(window, placement.work_rect(), &minimums, &candidate_order);
 
     if let Some(target) = target_focus {
         finish_layout_change(ctx);

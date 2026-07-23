@@ -11,8 +11,9 @@ use crate::contexts::WmCtx;
 
 /// Promote the selected window to the master position.
 ///
-/// In manual tiling the "master" is the first visual leaf. [`zoom`] swaps the
-/// selected window into that leaf without rebuilding the tree.
+/// In manual tiling the "master" is the first visual leaf. [`zoom`] force
+/// inserts a non-master window there. Once the selected window is the master,
+/// the next candidate is swapped into its slot without rebuilding the tree.
 ///
 /// # Edge cases
 ///

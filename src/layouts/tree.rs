@@ -596,31 +596,6 @@ impl LayoutTree {
         root.replace_window(target, split)
     }
 
-    fn split_leaf_after(
-        root: Node,
-        target: WindowId,
-        window: WindowId,
-        axis: Axis,
-        id: SplitId,
-    ) -> Node {
-        let split = make_split(
-            id,
-            axis,
-            vec![
-                WeightedNode {
-                    node: Node::Window(target),
-                    weight: 1.0,
-                },
-                WeightedNode {
-                    node: Node::Window(window),
-                    weight: 1.0,
-                },
-            ],
-        )
-        .expect("two leaves create a split");
-        root.replace_window(target, split)
-    }
-
     fn root_split(
         root: Node,
         window: WindowId,
@@ -1725,10 +1700,10 @@ impl LayoutTree {
     /// removed from its position and re-inserted using force placement,
     /// placing it into the primary slot.
     ///
-    /// If `window` is already the first visual leaf, it is demoted by removing
-    /// it from the primary position and re-inserting it into the remaining tree,
-    /// which automatically promotes the next visual leaf (`leaves[1]`) into the
-    /// primary slot and cycles through all windows on subsequent calls.
+    /// If `window` is already the first visual leaf, it is swapped with the
+    /// next tiled window in `candidate_order`. This changes which window
+    /// occupies the primary slot without changing the tree topology, split
+    /// weights, or slot geometry.
     ///
     /// Returns `Some(promoted_window_id)` if the layout was updated, or `None`
     /// if no promotion was possible (e.g. single window or empty tree).
@@ -1737,6 +1712,7 @@ impl LayoutTree {
         window: WindowId,
         work_rect: Rect,
         minimums: &HashMap<WindowId, Size>,
+        candidate_order: &[WindowId],
     ) -> Option<WindowId> {
         let leaves = self.leaves();
         if leaves.len() <= 1 {
@@ -1751,26 +1727,26 @@ impl LayoutTree {
             self.insert_new(window, NewWindowPlacement::Force, work_rect, minimums);
             Some(window)
         } else {
-            let next_primary = leaves.get(1).copied()?;
-            self.remove(window);
-            let remaining_leaves = self.leaves();
-            if let Some(&last_leaf) = remaining_leaves.last() {
-                if let Some(root) = self.root.take() {
-                    let id = self.allocate();
-                    self.root = Some(Self::split_leaf_after(
-                        root,
-                        last_leaf,
-                        window,
-                        Axis::Vertical,
-                        id,
-                    ));
-                } else {
-                    self.insert_new(window, NewWindowPlacement::Auto, work_rect, minimums);
-                }
-            } else {
-                self.insert_new(window, NewWindowPlacement::Auto, work_rect, minimums);
-            }
-            Some(next_primary)
+            let next_primary = candidate_order
+                .iter()
+                .position(|candidate| *candidate == window)
+                .and_then(|current| {
+                    candidate_order
+                        .iter()
+                        .cycle()
+                        .skip(current + 1)
+                        .take(candidate_order.len().saturating_sub(1))
+                        .find(|candidate| leaves.contains(candidate))
+                        .copied()
+                })
+                .or_else(|| {
+                    leaves
+                        .iter()
+                        .copied()
+                        .find(|candidate| *candidate != window)
+                })?;
+            self.swap_windows(window, next_primary)
+                .then_some(next_primary)
         }
     }
 }

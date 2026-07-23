@@ -1072,31 +1072,69 @@ fn master_count_supports_every_value_through_the_window_count() {
 }
 
 #[test]
-fn promote_force_insertion_and_primary_cycling() {
+fn promote_force_inserts_then_swaps_without_changing_the_layout() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::MasterStack, &windows(3), 1);
     let work_rect = Rect::new(0, 0, 1000, 600);
     let minimums = HashMap::new();
+    let candidate_order = windows(3);
+    let slot_geometry = |bounds: &HashMap<WindowId, Rect>| {
+        let mut slots = bounds
+            .values()
+            .map(|rect| (rect.x, rect.y, rect.w, rect.h))
+            .collect::<Vec<_>>();
+        slots.sort_unstable();
+        slots
+    };
 
     // Initial leaves: [WindowId(1), WindowId(2), WindowId(3)]
     assert_eq!(tree.leaves(), vec![WindowId(1), WindowId(2), WindowId(3)]);
 
-    // Promote non-primary window WindowId(3) -> force-inserted to primary (leaves[0])
-    let promoted = tree.promote(WindowId(3), work_rect, &minimums);
+    // A non-primary window is reinserted with force placement and gets the
+    // left half of the work area.
+    let promoted = tree.promote(WindowId(3), work_rect, &minimums, &candidate_order);
     assert_eq!(promoted, Some(WindowId(3)));
     assert_eq!(tree.leaves()[0], WindowId(3));
+    let before_swap = tree.bounds(work_rect);
+    assert_eq!(before_swap[&WindowId(3)], Rect::new(0, 0, 500, 600));
 
-    // Now WindowId(3) IS primary. Calling promote on WindowId(3) demotes it and cycles next window
-    let cycled_1 = tree.promote(WindowId(3), work_rect, &minimums);
-    assert!(cycled_1.is_some());
-    let primary_1 = tree.leaves()[0];
-    assert_eq!(cycled_1, Some(primary_1));
-    assert_ne!(primary_1, WindowId(3));
+    // Once the desired force layout exists, promoting its primary only swaps
+    // window identities. Every slot keeps exactly the same geometry.
+    let candidate = tree.leaves()[1];
+    let cycled_1 = tree.promote(WindowId(3), work_rect, &minimums, &candidate_order);
+    assert_eq!(cycled_1, Some(candidate));
+    assert_eq!(tree.leaves()[0], candidate);
 
-    // Calling promote on the new primary cycles again
-    let cycled_2 = tree.promote(primary_1, work_rect, &minimums);
-    assert!(cycled_2.is_some());
-    let primary_2 = tree.leaves()[0];
-    assert_eq!(cycled_2, Some(primary_2));
-    assert_ne!(primary_2, primary_1);
+    let after_swap = tree.bounds(work_rect);
+    assert_eq!(after_swap[&candidate], before_swap[&WindowId(3)]);
+    assert_eq!(after_swap[&WindowId(3)], before_swap[&candidate]);
+    for window in tree
+        .leaves()
+        .into_iter()
+        .filter(|window| *window != candidate && *window != WindowId(3))
+    {
+        assert_eq!(after_swap[&window], before_swap[&window]);
+    }
+    assert_canonical(&tree);
+
+    // Candidate selection follows a stable order rather than the mutated leaf
+    // order, so subsequent presses visit every window instead of toggling two.
+    let cycled_2 = tree.promote(candidate, work_rect, &minimums, &candidate_order);
+    assert_eq!(cycled_2, Some(WindowId(2)));
+    assert_eq!(tree.leaves()[0], WindowId(2));
+    let after_second_swap = tree.bounds(work_rect);
+    assert_eq!(
+        slot_geometry(&after_second_swap),
+        slot_geometry(&before_swap)
+    );
+
+    let cycled_3 = tree.promote(WindowId(2), work_rect, &minimums, &candidate_order);
+    assert_eq!(cycled_3, Some(WindowId(3)));
+    assert_eq!(tree.leaves()[0], WindowId(3));
+    let after_third_swap = tree.bounds(work_rect);
+    assert_eq!(
+        slot_geometry(&after_third_swap),
+        slot_geometry(&before_swap)
+    );
+    assert_canonical(&tree);
 }
