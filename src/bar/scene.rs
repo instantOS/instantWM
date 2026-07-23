@@ -1,14 +1,143 @@
 use crate::bar::paint::{BarPainter, BarScheme};
 use crate::contexts::CoreCtx;
 use crate::types::{
-    CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Gesture, MonitorId, Rect,
-    WindowId,
+    CLOSE_BUTTON_DETAIL, CLOSE_BUTTON_HEIGHT, CLOSE_BUTTON_WIDTH, Client, CloseButtonColorConfigs,
+    Gesture, Monitor, MonitorId, Rect, SchemeClose, SchemeHover, SchemeTag, SchemeWin,
+    StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs, WindowId,
 };
 
 const STARTMENU_ICON_SIZE: i32 = 14;
 const STARTMENU_ICON_INNER: i32 = 6;
 const TAG_DETAIL_BAR_HEIGHT_NORMAL: i32 = 4;
 const TAG_DETAIL_BAR_HEIGHT_HOVER: i32 = 8;
+
+fn status_scheme(colors: &StatusColorConfig) -> BarScheme {
+    BarScheme::from(&colors.as_scheme())
+}
+
+fn tag_hover_fill_scheme(colors: &TagColorConfigs) -> BarScheme {
+    colors
+        .colors_for(SchemeHover::Hover, SchemeTag::Filled)
+        .into()
+}
+
+fn tag_scheme(
+    model: &crate::model::WmModel,
+    monitor: &Monitor,
+    tag_index: u32,
+    occupied_tags: TagMask,
+    urgent_tags: TagMask,
+    is_hover: bool,
+) -> BarScheme {
+    let tag_num = tag_index as usize + 1;
+    let tag_role = if urgent_tags.contains(tag_num) {
+        SchemeTag::Urgent
+    } else if occupied_tags.contains(tag_num) {
+        let selected_monitor = model.selected_monitor();
+        let selected_client_has_tag = selected_monitor
+            .and_then(|monitor| monitor.selected)
+            .and_then(|win| model.client(win))
+            .is_some_and(|client| client.tags.contains(tag_num));
+
+        if selected_monitor.is_some_and(|selected| selected.num == monitor.num)
+            && selected_client_has_tag
+        {
+            SchemeTag::Focus
+        } else if monitor.selected_tags().contains(tag_num) {
+            SchemeTag::NoFocus
+        } else if !monitor.showtags {
+            SchemeTag::Filled
+        } else {
+            SchemeTag::Inactive
+        }
+    } else if monitor.selected_tags().contains(tag_num) {
+        SchemeTag::Empty
+    } else {
+        SchemeTag::Inactive
+    };
+
+    model
+        .tags
+        .colors
+        .colors_for(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            tag_role,
+        )
+        .into()
+}
+
+fn window_scheme(
+    model: &crate::model::WmModel,
+    colors: &WindowColorConfigs,
+    client: &Client,
+    is_hover: bool,
+) -> BarScheme {
+    let is_selected = model
+        .selected_monitor()
+        .and_then(|monitor| monitor.selected)
+        == Some(client.win);
+    let is_edge_scratchpad = client.is_edge_scratchpad();
+    let window_role = if is_selected {
+        if is_edge_scratchpad {
+            SchemeWin::EdgeScratchpadFocus
+        } else if client.is_sticky {
+            SchemeWin::StickyFocus
+        } else {
+            SchemeWin::Focus
+        }
+    } else if is_edge_scratchpad {
+        SchemeWin::EdgeScratchpad
+    } else if client.is_sticky {
+        SchemeWin::Sticky
+    } else if client.is_minimized() {
+        SchemeWin::Minimized
+    } else if client.is_urgent {
+        SchemeWin::Urgent
+    } else {
+        SchemeWin::Normal
+    };
+
+    colors
+        .colors_for(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            window_role,
+        )
+        .into()
+}
+
+fn close_button_scheme(
+    colors: &CloseButtonColorConfigs,
+    is_hover: bool,
+    is_locked: bool,
+    is_fullscreen: bool,
+) -> BarScheme {
+    let close_role = if is_locked {
+        SchemeClose::Locked
+    } else if is_fullscreen {
+        SchemeClose::Fullscreen
+    } else {
+        SchemeClose::Normal
+    };
+
+    colors
+        .colors_for(
+            if is_hover {
+                SchemeHover::Hover
+            } else {
+                SchemeHover::NoHover
+            },
+            close_role,
+        )
+        .into()
+}
 
 #[derive(Clone)]
 pub(crate) struct TagCellSnapshot {
@@ -233,7 +362,8 @@ pub(crate) fn build_monitor_snapshots(
         for tag in crate::tags::bar::visible_tags(core.state(), core.bar, mon, stats.occupied_tags)
         {
             let is_hover = gesture == Gesture::Tag(tag.slot);
-            let mut scheme = core.tag_scheme(
+            let mut scheme = tag_scheme(
+                core.model(),
                 mon,
                 tag.tag_index as u32,
                 stats.occupied_tags,
@@ -241,7 +371,7 @@ pub(crate) fn build_monitor_snapshots(
                 is_hover,
             );
             if is_hover && bar_hover.drag_active {
-                scheme = core.tag_hover_fill_scheme();
+                scheme = tag_hover_fill_scheme(&core.model().tags.colors);
             }
             tags.push(TagCellSnapshot {
                 slot: tag.slot,
@@ -259,10 +389,11 @@ pub(crate) fn build_monitor_snapshots(
             };
             stats.visible_clients += 1;
             let is_hover = gesture == Gesture::WinTitle(c.win);
-            let scheme = core.window_scheme(c, is_hover);
+            let scheme = window_scheme(core.model(), &core.config().colors.window, c, is_hover);
             let close_scheme = if is_selected_monitor && mon.selected == Some(c.win) {
                 let is_fullscreen = c.mode().is_fullscreen();
-                Some(core.close_button_scheme(
+                Some(close_button_scheme(
+                    &core.config().colors.close_button,
                     gesture == Gesture::CloseButton,
                     c.is_locked,
                     is_fullscreen,
@@ -295,7 +426,7 @@ pub(crate) fn build_monitor_snapshots(
             status_notifier_tray.map(|items| SystraySnapshot {
                 items: items.clone(),
                 visual_padding: systray_spacing,
-                base_scheme: core.status_scheme(),
+                base_scheme: status_scheme(&core.config().colors.status_bar),
             })
         } else {
             None
@@ -312,7 +443,7 @@ pub(crate) fn build_monitor_snapshots(
             font_size,
             font_families: font_families.clone(),
             is_selected_monitor,
-            status_scheme: core.status_scheme(),
+            status_scheme: status_scheme(&core.config().colors.status_bar),
             status_hover_color: core.config().colors.status_bar.hover,
             startmenu_size: mon.startmenu_size,
             horizontal_padding: mon.horizontal_padding,
@@ -655,4 +786,113 @@ pub(crate) fn render_monitor_snapshot(
     painter: &mut dyn BarPainter,
 ) -> MonitorRenderOutput {
     render_monitor_snapshot_base(snapshot, painter)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bar::color::Rgba;
+    use crate::model::WmModel;
+    use crate::types::{
+        Client, CloseButtonColorConfigs, ColorSchemeRgba, Monitor, SchemeClose, SchemeHover,
+        SchemeTag, SchemeWin, StatusColorConfig, TagColorConfigs, TagMask, WindowColorConfigs,
+        WindowId,
+    };
+
+    fn marker(value: f32) -> ColorSchemeRgba {
+        let color = Rgba::new(value, value, value, 1.0);
+        ColorSchemeRgba::new(color, color, color)
+    }
+
+    #[test]
+    fn status_scheme_uses_status_colors() {
+        let colors = StatusColorConfig {
+            fg: Rgba::new(0.1, 0.1, 0.1, 1.0),
+            bg: Rgba::new(0.2, 0.2, 0.2, 1.0),
+            detail: Rgba::new(0.3, 0.3, 0.3, 1.0),
+            hover: Rgba::ZERO,
+        };
+
+        let scheme = status_scheme(&colors);
+
+        assert_eq!(scheme.foreground, colors.fg);
+        assert_eq!(scheme.background, colors.bg);
+        assert_eq!(scheme.detail, colors.detail);
+    }
+
+    #[test]
+    fn tag_hover_fill_scheme_uses_hover_filled_colors() {
+        let mut colors = TagColorConfigs::default();
+        colors.hover.filled = marker(0.4);
+
+        let scheme = tag_hover_fill_scheme(&colors);
+
+        assert_eq!(scheme.background, colors.hover.filled.bg);
+    }
+
+    #[test]
+    fn tag_scheme_gives_urgent_tags_precedence() {
+        let mut model = WmModel::new();
+        model.tags.colors.no_hover.urgent = marker(0.5);
+        let monitor = Monitor::default();
+
+        let scheme = tag_scheme(
+            &model,
+            &monitor,
+            0,
+            TagMask::single(1).unwrap(),
+            TagMask::single(1).unwrap(),
+            false,
+        );
+
+        assert_eq!(
+            scheme.background,
+            model
+                .tags
+                .colors
+                .colors_for(SchemeHover::NoHover, SchemeTag::Urgent)
+                .bg
+        );
+    }
+
+    #[test]
+    fn window_scheme_uses_focused_sticky_role() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor::default());
+        model.monitors.set_selected(monitor_id);
+        let win = WindowId(42);
+        model.insert_client(Client {
+            win,
+            monitor_id,
+            is_sticky: true,
+            ..Client::default()
+        });
+        model.monitor_mut(monitor_id).unwrap().selected = Some(win);
+        let mut colors = WindowColorConfigs::default();
+        colors.no_hover.sticky_focus = marker(0.6);
+
+        let scheme = window_scheme(&model, &colors, model.client(win).unwrap(), false);
+
+        assert_eq!(
+            scheme.background,
+            colors
+                .colors_for(SchemeHover::NoHover, SchemeWin::StickyFocus)
+                .bg
+        );
+    }
+
+    #[test]
+    fn close_button_scheme_gives_locked_state_precedence() {
+        let mut colors = CloseButtonColorConfigs::default();
+        colors.hover.locked = marker(0.7);
+
+        let scheme = close_button_scheme(&colors, true, true, true);
+
+        assert_eq!(
+            scheme.background,
+            colors
+                .colors_for(SchemeHover::Hover, SchemeClose::Locked)
+                .bg
+        );
+    }
 }

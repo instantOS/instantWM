@@ -8,7 +8,9 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
     let previous_status_command = wm.core.config.status_command.clone();
 
     crate::core_state::apply_config(&mut wm.core, &cfg);
-    wm.core.normalize_current_mode();
+    wm.core
+        .behavior
+        .normalize_current_mode(&wm.core.config.bindings.modes);
     wm.work.queue_monitor_config_apply();
     wm.work.queue_input_config_apply();
     wm.work.queue_cursor_config_apply();
@@ -108,7 +110,9 @@ mod tests {
         wm.core.behavior.current_mode =
             crate::core_state::ActiveWmMode::Named("resize".to_string());
 
-        wm.core.normalize_current_mode();
+        wm.core
+            .behavior
+            .normalize_current_mode(&wm.core.config.bindings.modes);
 
         assert_eq!(
             wm.core.behavior.current_mode,
@@ -127,7 +131,9 @@ mod tests {
             .modes
             .insert("resize".to_string(), ModeConfig::default());
 
-        wm.core.normalize_current_mode();
+        wm.core
+            .behavior
+            .normalize_current_mode(&wm.core.config.bindings.modes);
 
         assert_eq!(
             wm.core.behavior.current_mode,

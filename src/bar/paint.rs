@@ -1,5 +1,5 @@
 use crate::bar::color::Rgba;
-use crate::types::Rect;
+use crate::types::{ColorSchemeRgba, Rect};
 
 #[derive(Clone, Debug)]
 pub struct BarScheme {
@@ -41,6 +41,16 @@ impl BarScheme {
             self.foreground
         };
         (bg, fg)
+    }
+}
+
+impl From<&ColorSchemeRgba> for BarScheme {
+    fn from(colors: &ColorSchemeRgba) -> Self {
+        Self {
+            foreground: colors.fg,
+            background: colors.bg,
+            detail: colors.detail,
+        }
     }
 }
 
