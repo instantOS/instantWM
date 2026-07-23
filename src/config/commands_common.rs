@@ -2,8 +2,13 @@
 
 /// instantOS default application paths.
 pub mod defaults {
+    pub const TERMINAL: &[&str] = &[".config/instantos/default/terminal"];
     pub const FILEMANAGER: &[&str] = &[".config/instantos/default/filemanager"];
-    pub const TERM_FILEMANAGER: &[&str] = &[".config/instantos/default/termfilemanager"];
+    pub const TERM_FILEMANAGER: &[&str] = &[
+        ".config/instantos/default/terminal",
+        "-e",
+        ".config/instantos/default/termfilemanager",
+    ];
     pub const APPMENU: &[&str] = &[".config/instantos/default/appmenu"];
     pub const LOCKSCREEN: &[&str] = &[".config/instantos/default/lockscreen"];
     pub const BROWSER: &[&str] = &[".config/instantos/default/browser"];

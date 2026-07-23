@@ -112,6 +112,11 @@ pub fn resolve_lockscreen_command(backend: BackendKind) -> &'static str {
 }
 
 fn resolve_terminal_command() -> &'static str {
+    let default_script = ".config/instantos/default/terminal";
+    if command_exists(default_script) {
+        return default_script;
+    }
+
     first_installed_command(TERMINAL_CANDIDATES, command_exists).unwrap_or(TERMINAL_CANDIDATES[0])
 }
 
@@ -193,7 +198,7 @@ mod tests {
         let defaults = build_default_keybinds(BackendKind::X11, &theme);
         let args = spawn_args_for(&defaults.keys, MODKEY, XK_RETURN).expect("missing super+enter");
 
-        assert_eq!(args, &["kitty".to_string()]);
+        assert_eq!(args, &[".config/instantos/default/terminal".to_string()]);
     }
 
     #[test]

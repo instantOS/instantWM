@@ -1,6 +1,7 @@
 use clap::{Parser, ValueEnum};
 use std::env;
 pub mod autostart;
+mod default_commands;
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum CliBackend {
@@ -47,6 +48,8 @@ pub fn run() {
         print_actions(false);
         std::process::exit(0);
     }
+
+    default_commands::ensure_default_command_aliases();
 
     match cli.backend {
         CliBackend::X11 => crate::backend::x11::startup::run(),

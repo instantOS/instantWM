@@ -110,7 +110,7 @@ pub fn get_keys() -> Vec<Key> {
         key!(MOD1, XK_F4 => KeyAction::named(NamedAction::Kill)),
         key!(MODKEY | SHIFT | CONTROL, XK_Q => KeyAction::named(NamedAction::Quit)),
         key!(MODKEY, XK_F2 => KeyAction::named(NamedAction::TogglePrefix)),
-        key!(MODKEY, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, &["kitty"])),
+        key!(MODKEY, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, defaults::TERMINAL)),
         key!(MODKEY, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, menu::SMART)),
         key!(MODKEY | CONTROL, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, menu::RUN)),
         key!(MODKEY | SHIFT, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::CLIP)),
@@ -152,7 +152,7 @@ pub fn get_keys() -> Vec<Key> {
 
 pub fn get_desktop_keybinds() -> Vec<Key> {
     vec![
-        key!(0, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, &["kitty"])),
+        key!(0, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, defaults::TERMINAL)),
         key!(0, XK_R => KeyAction::named_args(NamedAction::Spawn, defaults::TERM_FILEMANAGER)),
         key!(0, XK_E => KeyAction::named_args(NamedAction::Spawn, defaults::EDITOR)),
         key!(0, XK_N => KeyAction::named_args(NamedAction::Spawn, defaults::FILEMANAGER)),
@@ -306,6 +306,29 @@ mod tests {
                 "ins".to_string(),
                 "settings".to_string(),
                 "--gui".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn super_r_launches_terminal_file_manager_through_default_aliases() {
+        let spawn_args = get_keys()
+            .into_iter()
+            .find(|key| key.mod_mask == MODKEY && key.keysym == XK_R)
+            .and_then(|key| match key.action {
+                KeyAction::Named {
+                    action: NamedAction::Spawn,
+                    args,
+                } => Some(args),
+                _ => None,
+            });
+
+        assert_eq!(
+            spawn_args,
+            Some(vec![
+                ".config/instantos/default/terminal".to_string(),
+                "-e".to_string(),
+                ".config/instantos/default/termfilemanager".to_string(),
             ])
         );
     }
