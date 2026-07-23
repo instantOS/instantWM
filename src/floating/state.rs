@@ -94,13 +94,13 @@ pub fn set_window_mode(
             WindowModeChange::ChangedToFloating { restored_geometry }
         }
         WindowModeRequest::Tiling => {
-            if current_base_mode == BaseClientMode::Floating {
-                if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
-                    if current_mode.is_floating() {
-                        client.save_floating_placement(current_rect, work_area);
-                    }
-                    client.set_base_mode(BaseClientMode::Tiling);
+            if current_base_mode == BaseClientMode::Floating
+                && let Some(client) = ctx.core_mut().model_mut().client_mut(win)
+            {
+                if current_mode.is_floating() {
+                    client.save_floating_placement(current_rect, work_area);
                 }
+                client.set_base_mode(BaseClientMode::Tiling);
             }
             WindowModeChange::ChangedToTiling
         }

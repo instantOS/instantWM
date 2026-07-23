@@ -19,7 +19,6 @@ pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
     {
         ctx.reset_mode();
     }
-    ctx.set_cursor_style(crate::types::AltCursor::Default);
 
     if let Some(id) = monitor_id {
         crate::client::apply_visibility(ctx);

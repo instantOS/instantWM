@@ -821,7 +821,7 @@ impl LayoutTree {
                         Axis::Horizontal => work_aspect * group_count as f64 / group_size as f64,
                     };
                     let penalty = (aspect / IDEAL_TILED_ASPECT_RATIO).ln().abs();
-                    penalties.extend(std::iter::repeat(penalty).take(group_size));
+                    penalties.extend(std::iter::repeat_n(penalty, group_size));
                 }
                 let worst = penalties.iter().copied().fold(0.0, f64::max);
                 let average = penalties.iter().sum::<f64>() / penalties.len() as f64;
