@@ -66,7 +66,7 @@ pub fn title_drag_begin(
 }
 
 /// Handle the transition from click to drag on Wayland when the threshold is exceeded.
-fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
+fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, direct_position: bool) -> bool {
     let (win, btn, start_point, suppress_click_action) = {
         let Some(drag) = ctx.core().drag_state().armed_interaction() else {
             return false;
@@ -141,7 +141,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
         };
         (geo, false)
     } else {
-        let intent = if suppress_click_action {
+        let intent = if suppress_click_action || direct_position {
             FloatingPlacementIntent::PreservePointerAnchor(root)
         } else {
             FloatingPlacementIntent::RestoreOrCenter
@@ -155,6 +155,8 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
     let start = if uses_tree {
         start_point
     } else if anchor_rebased {
+        root
+    } else if direct_position {
         root
     } else {
         warp::warp_into(ctx, win);
@@ -187,6 +189,15 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point) -> bool {
 /// (move/resize) was initiated — the caller should consider the interaction
 /// consumed.
 pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
+    title_drag_motion_at(ctx, root, false)
+}
+
+/// Process motion from an absolute interaction that is independent of the
+/// compositor pointer, such as a touchscreen sequence captured by the bar.
+///
+/// Unlike pointer motion this preserves the contact point as the window
+/// anchor and does not warp or consult the unrelated mouse cursor.
+pub(crate) fn title_drag_motion_at(ctx: &mut WmCtx, root: Point, direct_position: bool) -> bool {
     let Some(armed) = ctx.core().drag_state().armed_interaction() else {
         return false;
     };
@@ -212,7 +223,7 @@ pub fn title_drag_motion(ctx: &mut WmCtx, root: Point) -> bool {
     ctx.raise_client(win);
 
     if ctx.is_wayland() {
-        return title_drag_start_wayland(ctx, root);
+        return title_drag_start_wayland(ctx, root, direct_position);
     }
 
     // X11 uses a nested synchronous grab loop. Consume the armed click

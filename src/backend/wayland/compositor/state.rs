@@ -280,6 +280,12 @@ pub struct WaylandRuntimeState {
     pub(crate) pending_systray_menu: crate::systray::status_notifier::NativeMenuRequestSlot,
     pub(crate) active_systray_menu: Option<crate::systray::status_notifier::ActiveNativeMenu>,
     pub pointer_location: Point<f64, Logical>,
+    /// Touch slot currently captured by the compositor-rendered bar.
+    ///
+    /// The built-in bar is not a Wayland surface, so a touch sequence that
+    /// starts there must remain compositor-owned until its matching up/cancel.
+    /// Other slots continue through the native `wl_touch` path.
+    pub(crate) bar_touch_slot: Option<smithay::backend::input::TouchSlot>,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
@@ -310,6 +316,7 @@ impl Default for WaylandRuntimeState {
             pending_systray_menu: std::sync::Arc::new(std::sync::Mutex::new(None)),
             active_systray_menu: None,
             pointer_location: Point::from((0.0, 0.0)),
+            bar_touch_slot: None,
             led_state_tx: None,
             dnd_icon: None,
             winit_window_size: smithay::utils::Size::from((0, 0)),
