@@ -1070,3 +1070,33 @@ fn master_count_supports_every_value_through_the_window_count() {
         assert_canonical(&tree);
     }
 }
+
+#[test]
+fn promote_force_insertion_and_primary_cycling() {
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::MasterStack, &windows(3), 1);
+    let work_rect = Rect::new(0, 0, 1000, 600);
+    let minimums = HashMap::new();
+
+    // Initial leaves: [WindowId(1), WindowId(2), WindowId(3)]
+    assert_eq!(tree.leaves(), vec![WindowId(1), WindowId(2), WindowId(3)]);
+
+    // Promote non-primary window WindowId(3) -> force-inserted to primary (leaves[0])
+    let promoted = tree.promote(WindowId(3), work_rect, &minimums);
+    assert_eq!(promoted, Some(WindowId(3)));
+    assert_eq!(tree.leaves()[0], WindowId(3));
+
+    // Now WindowId(3) IS primary. Calling promote on WindowId(3) demotes it and cycles next window
+    let cycled_1 = tree.promote(WindowId(3), work_rect, &minimums);
+    assert!(cycled_1.is_some());
+    let primary_1 = tree.leaves()[0];
+    assert_eq!(cycled_1, Some(primary_1));
+    assert_ne!(primary_1, WindowId(3));
+
+    // Calling promote on the new primary cycles again
+    let cycled_2 = tree.promote(primary_1, work_rect, &minimums);
+    assert!(cycled_2.is_some());
+    let primary_2 = tree.leaves()[0];
+    assert_eq!(cycled_2, Some(primary_2));
+    assert_ne!(primary_2, primary_1);
+}

@@ -1094,22 +1094,32 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
         return false;
     }
 
+    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
+        return false;
+    };
+
     // Raise immediately so the promoted window appears on top while the
     // resulting layout pass is applied.
     ctx.window_backend().raise_window_visual_only(window);
     ctx.window_backend().flush();
 
-    let changed = ctx
+    let target_focus = ctx
         .core_mut()
         .model_mut()
         .expect_selected_monitor_mut()
         .per_tag_state()
         .layout_tree
-        .promote(window);
-    if changed {
+        .promote(window, placement.work_rect(), &minimums);
+
+    if let Some(target) = target_focus {
         finish_layout_change(ctx);
+        if target != window {
+            crate::focus::focus(ctx, Some(target));
+        }
+        true
+    } else {
+        false
     }
-    changed
 }
 
 /// Toggle maximized-stack presentation without modifying the manual tree.
