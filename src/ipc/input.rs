@@ -38,7 +38,7 @@ pub fn handle_input_command(wm: &mut Wm, cmd: InputCommand) -> Response {
 
             if entries.is_empty() {
                 return Response::Message(format!(
-                    "no input configuration found for '{}'\n\nHint: Use 'instantwmctl mouse devices' to see connected physical devices.\n      Common identifiers are 'type:pointer', 'type:touchpad', or '*'.",
+                    "no input configuration found for '{}'\n\nHint: Use 'instantwmctl mouse devices' to see connected physical devices.\n      Common identifiers are 'type:pointer', 'type:touchpad', 'type:touch', or '*'.",
                     identifier.unwrap_or_default()
                 ));
             }

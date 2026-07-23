@@ -16,6 +16,7 @@ use smithay::{
         Seat, SeatState,
         keyboard::{KeyboardHandle, Keycode, XkbConfig},
         pointer::PointerHandle,
+        touch::TouchHandle,
     },
     reexports::{
         calloop::{Interest, LoopHandle, Mode, PostAction, generic::Generic},
@@ -168,6 +169,7 @@ pub struct WaylandState {
     pub seat: Seat<WaylandState>,
     pub keyboard: KeyboardHandle<WaylandState>,
     pub pointer: PointerHandle<WaylandState>,
+    pub touch: TouchHandle<WaylandState>,
     pub cursor_config: CursorConfig,
     pub cursor_image_status: smithay::input::pointer::CursorImageStatus,
     pub cursor_icon_override: Option<smithay::input::pointer::CursorIcon>,
@@ -456,6 +458,7 @@ impl WaylandState {
             .add_keyboard(XkbConfig::default(), 400, 25)
             .expect("Failed to add keyboard to seat");
         let pointer = seat.add_pointer();
+        let touch = seat.add_touch();
 
         WaylandState {
             display_handle: dh,
@@ -507,6 +510,7 @@ impl WaylandState {
             seat,
             keyboard,
             pointer,
+            touch,
             cursor_config: CursorConfig::default(),
             cursor_image_status: smithay::input::pointer::CursorImageStatus::default_named(),
             cursor_icon_override: None,

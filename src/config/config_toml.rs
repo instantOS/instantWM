@@ -316,6 +316,11 @@ pub struct InputConfig {
     pub pointer_accel: Option<f64>,
     pub scroll_factor: Option<f64>,
     pub left_handed: Option<ToggleSetting>,
+    /// Output receiving absolute events from this input device.
+    ///
+    /// Use a connector name such as `eDP-1`. `*` maps the device across the
+    /// complete active output layout.
+    pub map_to_output: Option<String>,
 }
 
 impl Default for InputConfig {
@@ -327,6 +332,7 @@ impl Default for InputConfig {
             pointer_accel: None,
             scroll_factor: None,
             left_handed: None,
+            map_to_output: None,
         }
     }
 }
@@ -338,7 +344,8 @@ impl std::fmt::Display for InputConfig {
         writeln!(f, "accel_profile: {:?}", self.accel_profile)?;
         writeln!(f, "pointer_accel: {:?}", self.pointer_accel)?;
         writeln!(f, "scroll_factor: {:?}", self.scroll_factor)?;
-        write!(f, "left_handed: {:?}", self.left_handed)
+        writeln!(f, "left_handed: {:?}", self.left_handed)?;
+        write!(f, "map_to_output: {:?}", self.map_to_output)
     }
 }
 

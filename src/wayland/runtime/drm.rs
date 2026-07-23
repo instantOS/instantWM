@@ -362,9 +362,10 @@ fn setup_session_handlers(
     let session_output_manager = Arc::clone(&output_manager);
 
     loop_handle
-        .insert_source(notifier, move |event, _, _data| match event {
+        .insert_source(notifier, move |event, _, state| match event {
             SessionEvent::PauseSession => {
                 log::info!("Session paused (VT switch away) - suspending rendering");
+                crate::wayland::input::touch::handle_touch_cancel(state);
                 session_libinput.suspend();
                 session_output_manager.lock().unwrap().pause();
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionPaused);

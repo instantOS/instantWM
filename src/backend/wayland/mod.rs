@@ -190,6 +190,7 @@ impl WaylandBackend {
                 .tracked_devices
                 .iter()
                 .map(|d| {
+                    use smithay::backend::input::Device as InputDevice;
                     use smithay::reexports::input::DeviceCapability;
                     let mut caps = Vec::new();
                     if d.has_capability(DeviceCapability::Keyboard) {
@@ -213,7 +214,12 @@ impl WaylandBackend {
                     if d.has_capability(DeviceCapability::Switch) {
                         caps.push("switch");
                     }
-                    format!("{} (capabilities: {})", d.name(), caps.join(", "))
+                    format!(
+                        "{}: {} (capabilities: {})",
+                        InputDevice::id(d),
+                        d.name(),
+                        caps.join(", ")
+                    )
                 })
                 .collect()
         })

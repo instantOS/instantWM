@@ -27,6 +27,11 @@ impl SessionLockHandler for WaylandState {
             return;
         }
 
+        // A touch sequence keeps the surface selected by its initial down
+        // event. Cancel it before exposing lock surfaces so a pre-lock client
+        // can never retain touch focus while the session is locked.
+        self.touch.clone().cancel(self);
+
         let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();
         self.lock_state = SessionLockState::Locked(lock);
@@ -40,6 +45,9 @@ impl SessionLockHandler for WaylandState {
 
     fn unlock(&mut self) {
         log::info!("session unlocked");
+        // Do not let a sequence focused on the lock client survive after its
+        // surfaces are removed.
+        self.touch.clone().cancel(self);
         self.lock_state = SessionLockState::Unlocked;
         self.lock_surfaces.clear();
         self.restore_focus_after_overlay();

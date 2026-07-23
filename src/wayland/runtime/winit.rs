@@ -5,7 +5,7 @@
 
 use std::process::exit;
 
-use smithay::backend::input::{Event, InputEvent};
+use smithay::backend::input::{AbsolutePositionEvent, Event, InputEvent, TouchEvent};
 use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::LoopSignal;
@@ -15,8 +15,20 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
 use crate::wayland::common::sanitize_size;
+use crate::wayland::input::touch::{
+    NormalizedTouchPosition, TouchMappingTarget, TouchPointEvent, handle_touch_cancel,
+    handle_touch_down, handle_touch_frame, handle_touch_motion, handle_touch_up,
+};
 use crate::wayland::input::{apply_pending_warp, handle_keyboard};
 use crate::wayland::render::winit::render_frame;
+
+fn normalized_winit_touch_position(
+    x: f64,
+    y: f64,
+    size: smithay::utils::Size<i32, smithay::utils::Physical>,
+) -> Option<NormalizedTouchPosition> {
+    NormalizedTouchPosition::new(x / size.w.max(1) as f64, y / size.h.max(1) as f64)
+}
 
 /// Run the winit (nested) Wayland compositor.
 pub fn run() -> ! {
@@ -193,9 +205,7 @@ fn dispatch_winit_input(
     keyboard_handle: &smithay::input::keyboard::KeyboardHandle<WaylandState>,
     event: InputEvent<smithay::backend::winit::WinitInput>,
 ) {
-    use smithay::backend::input::{
-        AbsolutePositionEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
-    };
+    use smithay::backend::input::{PointerAxisEvent, PointerButtonEvent, PointerMotionEvent};
 
     state.notify_activity();
     match event {
@@ -251,6 +261,65 @@ fn dispatch_winit_input(
                 time_msec: axis.time_msec(),
             });
         }
+        InputEvent::TouchDown { event } => {
+            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
+                let wm = unsafe { &mut *wm_ptr };
+                let size = state.runtime.winit_window_size;
+                let position = normalized_winit_touch_position(event.x(), event.y(), size);
+                if let Some(position) = position {
+                    handle_touch_down(
+                        wm,
+                        state,
+                        TouchPointEvent {
+                            slot: event.slot(),
+                            position,
+                            time_msec: event.time_msec(),
+                        },
+                        &TouchMappingTarget::Output("winit".into()),
+                    );
+                    // Winit has no separate touch-frame event.
+                    handle_touch_frame(state);
+                }
+            }
+        }
+        InputEvent::TouchMotion { event } => {
+            let size = state.runtime.winit_window_size;
+            let position = normalized_winit_touch_position(event.x(), event.y(), size);
+            if let Some(position) = position {
+                handle_touch_motion(
+                    state,
+                    TouchPointEvent {
+                        slot: event.slot(),
+                        position,
+                        time_msec: event.time_msec(),
+                    },
+                    &TouchMappingTarget::Output("winit".into()),
+                );
+                handle_touch_frame(state);
+            }
+        }
+        InputEvent::TouchUp { event } => {
+            handle_touch_up(state, event.slot(), event.time_msec());
+            handle_touch_frame(state);
+        }
+        InputEvent::TouchCancel { .. } => {
+            handle_touch_cancel(state);
+        }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod touch_tests {
+    use super::normalized_winit_touch_position;
+    use crate::wayland::input::touch::NormalizedTouchPosition;
+
+    #[test]
+    fn touch_coordinates_use_each_window_dimension() {
+        let size = smithay::utils::Size::from((1200, 800));
+        assert_eq!(
+            normalized_winit_touch_position(300.0, 600.0, size),
+            NormalizedTouchPosition::new(0.25, 0.75)
+        );
     }
 }

@@ -646,6 +646,28 @@ mod tests {
     }
 
     #[test]
+    fn touchscreen_output_mapping_is_runtime_configurable() {
+        let mut wm = test_wm();
+        assert!(matches!(
+            do_set(&mut wm, "input.type:touch.map_to_output", "eDP-1"),
+            Response::Ok
+        ));
+        assert_eq!(
+            wm.core
+                .config
+                .input
+                .get("type:touch")
+                .and_then(|config| config.map_to_output.as_deref()),
+            Some("eDP-1")
+        );
+        assert!(wm.work.input_config);
+        match do_get(&mut wm, "input.type:touch.map_to_output") {
+            Response::ConfigValue(value) => assert_eq!(value, "eDP-1"),
+            other => panic!("expected ConfigValue, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn monitor_set_creates_entry_and_queues_apply() {
         let mut wm = test_wm();
         assert!(matches!(

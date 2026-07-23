@@ -1,8 +1,8 @@
 //! DRM/libinput-specific input handling.
 
 use smithay::backend::input::{
-    AbsolutePositionEvent, Axis, Event, InputEvent, PointerAxisEvent, PointerButtonEvent,
-    PointerMotionEvent,
+    AbsolutePositionEvent, Axis, Device as InputDevice, Event, InputEvent, PointerAxisEvent,
+    PointerButtonEvent, PointerMotionEvent, TouchEvent,
 };
 use smithay::backend::input::{
     GestureBeginEvent as GestureBeginTrait, GestureEndEvent as GestureEndTrait,
@@ -21,6 +21,10 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::InputConfig;
 use crate::config::config_toml::{AccelProfile, ToggleSetting};
 use crate::wayland::input::handle_keyboard;
+use crate::wayland::input::touch::{
+    NormalizedTouchPosition, TouchMappingTarget, TouchPointEvent, handle_touch_cancel,
+    handle_touch_down, handle_touch_frame, handle_touch_motion, handle_touch_up,
+};
 use crate::wm::Wm;
 use std::collections::HashMap;
 
@@ -36,22 +40,9 @@ fn configure_device(
     device: &mut smithay::reexports::input::Device,
     input_config: &HashMap<String, InputConfig>,
 ) {
-    use smithay::reexports::input::DeviceCapability;
-
-    let is_touchpad = device.has_capability(DeviceCapability::Gesture);
-    let is_pointer = device.has_capability(DeviceCapability::Pointer);
-
-    let config_key = if is_touchpad {
-        "type:touchpad"
-    } else if is_pointer {
-        "type:pointer"
-    } else {
-        "type:keyboard"
-    };
-
     let default_config = InputConfig::default();
     let config = input_config
-        .get(config_key)
+        .get(device_type_key(device))
         .or_else(|| input_config.get("*"))
         .unwrap_or(&default_config);
 
@@ -82,6 +73,72 @@ fn configure_device(
 
     // scroll_factor is applied at the compositor level in the axis handler,
     // not via libinput. Nothing to do here for it.
+}
+
+fn device_type_key(device: &smithay::reexports::input::Device) -> &'static str {
+    use smithay::reexports::input::DeviceCapability;
+
+    if device.has_capability(DeviceCapability::Gesture) {
+        "type:touchpad"
+    } else if device.has_capability(DeviceCapability::Touch) {
+        "type:touch"
+    } else if device.has_capability(DeviceCapability::Pointer) {
+        "type:pointer"
+    } else {
+        "type:keyboard"
+    }
+}
+
+fn resolve_touch_output<'a>(
+    device: &smithay::reexports::input::Device,
+    input_config: &'a HashMap<String, InputConfig>,
+) -> Option<&'a str> {
+    // The backend id is the libinput sysname (for example `event12`). Device
+    // names are also accepted because they are more readable in static config.
+    // Type and wildcard selectors provide predictable fallbacks.
+    resolve_touch_output_keys(
+        &InputDevice::id(device),
+        &InputDevice::name(device),
+        device_type_key(device),
+        input_config,
+    )
+}
+
+fn resolve_touch_output_keys<'a>(
+    id: &str,
+    name: &str,
+    type_key: &str,
+    input_config: &'a HashMap<String, InputConfig>,
+) -> Option<&'a str> {
+    [id, name, type_key, "*"].into_iter().find_map(|key| {
+        input_config
+            .get(key)
+            .and_then(|config| config.map_to_output.as_deref())
+    })
+}
+
+fn touch_mapping_for_device(
+    device: &smithay::reexports::input::Device,
+    input_config: &HashMap<String, InputConfig>,
+) -> TouchMappingTarget {
+    if let Some(output) = resolve_touch_output(device, input_config) {
+        return TouchMappingTarget::configured(output);
+    }
+
+    // `LIBINPUT_OUTPUT_NAME` is an optional udev hint. Honour it when the
+    // hardware/administrator provides one; otherwise use the complete layout.
+    device
+        .output_name()
+        .map(|name| TouchMappingTarget::Output(name.into_owned()))
+        .unwrap_or(TouchMappingTarget::Layout)
+}
+
+fn normalized_touch_position<B, E>(event: &E) -> Option<NormalizedTouchPosition>
+where
+    B: smithay::backend::input::InputBackend,
+    E: AbsolutePositionEvent<B>,
+{
+    NormalizedTouchPosition::new(event.x_transformed(1), event.y_transformed(1))
 }
 
 /// Re-apply input configuration to all tracked devices.
@@ -115,11 +172,15 @@ pub fn dispatch_libinput_event(
             use smithay::reexports::input::DeviceCapability;
 
             let removed_pointer = device.has_capability(DeviceCapability::Pointer);
+            let removed_touch = device.has_capability(DeviceCapability::Touch);
             state.runtime.tracked_devices.retain(|d| d != &device);
             if removed_pointer {
                 state.push_command(WmCommand::CancelInteractiveDrag(
                     crate::core_state::DragCancelReason::InputDeviceRemoved,
                 ));
+            }
+            if removed_touch {
+                handle_touch_cancel(state);
             }
             LibinputEventOutcome::Ignored
         }
@@ -250,6 +311,103 @@ pub fn dispatch_libinput_event(
             pointer_handle.frame(state);
             LibinputEventOutcome::Activity
         }
+        InputEvent::TouchDown { event } => {
+            let mapping = touch_mapping_for_device(&event.device(), &wm.core.config.input);
+            let position = normalized_touch_position::<LibinputInputBackend, _>(&event);
+            if let Some(position) = position {
+                handle_touch_down(
+                    wm,
+                    state,
+                    TouchPointEvent {
+                        slot: event.slot(),
+                        position,
+                        time_msec: event.time_msec(),
+                    },
+                    &mapping,
+                );
+            }
+            LibinputEventOutcome::Activity
+        }
+        InputEvent::TouchMotion { event } => {
+            let mapping = touch_mapping_for_device(&event.device(), &wm.core.config.input);
+            let position = normalized_touch_position::<LibinputInputBackend, _>(&event);
+            if let Some(position) = position {
+                handle_touch_motion(
+                    state,
+                    TouchPointEvent {
+                        slot: event.slot(),
+                        position,
+                        time_msec: event.time_msec(),
+                    },
+                    &mapping,
+                );
+            }
+            LibinputEventOutcome::Activity
+        }
+        InputEvent::TouchUp { event } => {
+            handle_touch_up(state, event.slot(), event.time_msec());
+            LibinputEventOutcome::Activity
+        }
+        InputEvent::TouchFrame { .. } => {
+            handle_touch_frame(state);
+            LibinputEventOutcome::Activity
+        }
+        InputEvent::TouchCancel { .. } => {
+            handle_touch_cancel(state);
+            LibinputEventOutcome::Activity
+        }
         _ => LibinputEventOutcome::Ignored,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_touch_output_keys;
+    use crate::config::config_toml::InputConfig;
+    use std::collections::HashMap;
+
+    fn config(output: &str) -> InputConfig {
+        InputConfig {
+            map_to_output: Some(output.into()),
+            ..InputConfig::default()
+        }
+    }
+
+    #[test]
+    fn device_config_precedence_is_id_name_type_then_wildcard() {
+        let configs = HashMap::from([
+            ("*".into(), config("wildcard")),
+            ("type:touch".into(), config("type")),
+            ("Touchscreen".into(), config("name")),
+            ("event12".into(), config("id")),
+        ]);
+
+        let resolved =
+            resolve_touch_output_keys("event12", "Touchscreen", "type:touch", &configs).unwrap();
+        assert_eq!(resolved, "id");
+
+        let resolved =
+            resolve_touch_output_keys("event99", "Touchscreen", "type:touch", &configs).unwrap();
+        assert_eq!(resolved, "name");
+
+        let resolved =
+            resolve_touch_output_keys("event99", "Other", "type:touch", &configs).unwrap();
+        assert_eq!(resolved, "type");
+
+        let resolved =
+            resolve_touch_output_keys("event99", "Other", "type:switch", &configs).unwrap();
+        assert_eq!(resolved, "wildcard");
+    }
+
+    #[test]
+    fn unset_specific_mapping_falls_back_to_type_mapping() {
+        let configs = HashMap::from([
+            ("event12".into(), InputConfig::default()),
+            ("type:touch".into(), config("eDP-1")),
+        ]);
+        assert_eq!(
+            resolve_touch_output_keys("event12", "Touchscreen", "type:touch", &configs),
+            Some("eDP-1")
+        );
     }
 }

@@ -12,6 +12,7 @@ pub mod drm;
 
 pub mod keyboard;
 pub mod pointer;
+pub mod touch;
 
 // Re-export public APIs
 pub use keyboard::handle_keyboard;

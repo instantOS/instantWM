@@ -203,7 +203,7 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     }
 }
 
-fn focus_button_target(
+pub(crate) fn focus_button_target(
     wm: &mut Wm,
     clicked_win: Option<crate::types::WindowId>,
     button: Option<MouseButton>,
