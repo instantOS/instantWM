@@ -43,7 +43,6 @@ use crate::geometry::{GeometryApplyMode, MoveResizeOptions};
 use crate::focus::focus;
 use crate::layouts::arrange;
 use crate::types::{BaseClientMode, Client, Rect, TagMask, WindowId};
-use std::cmp::max;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::ConnectionExt;
 use x11rb::protocol::xproto::*;
@@ -293,14 +292,9 @@ fn clamp_client_to_work_area(
     monitor_work_rect: Rect,
 ) {
     if let Some(client) = model.client_mut(window) {
-        if client.total_rect().right() > monitor_work_rect.right() {
-            client.geo.x = monitor_work_rect.right() - client.total_width();
-        }
-        if client.total_rect().bottom() > monitor_work_rect.bottom() {
-            client.geo.y = monitor_work_rect.bottom() - client.total_height();
-        }
-        client.geo.x = max(client.geo.x, monitor_work_rect.x);
-        client.geo.y = max(client.geo.y, monitor_work_rect.y);
+        client
+            .geo
+            .clamp_position(&monitor_work_rect, client.total_width(), client.total_height());
     }
 }
 
