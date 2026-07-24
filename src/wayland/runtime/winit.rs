@@ -285,8 +285,12 @@ fn dispatch_winit_input(
         InputEvent::TouchMotion { event } => {
             let size = state.runtime.winit_window_size;
             let position = normalized_winit_touch_position(event.x(), event.y(), size);
-            if let Some(position) = position {
+            if let Some(position) = position
+                && let Some(wm_ptr) = unsafe { state.wm_mut_ptr() }
+            {
+                let wm = unsafe { &mut *wm_ptr };
                 handle_touch_motion(
+                    wm,
                     state,
                     TouchPointEvent {
                         slot: event.slot(),
@@ -299,11 +303,17 @@ fn dispatch_winit_input(
             }
         }
         InputEvent::TouchUp { event } => {
-            handle_touch_up(state, event.slot(), event.time_msec());
+            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
+                let wm = unsafe { &mut *wm_ptr };
+                handle_touch_up(wm, state, event.slot(), event.time_msec());
+            }
             handle_touch_frame(state);
         }
         InputEvent::TouchCancel { .. } => {
-            handle_touch_cancel(state);
+            if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
+                let wm = unsafe { &mut *wm_ptr };
+                handle_touch_cancel(wm, state);
+            }
         }
         _ => {}
     }

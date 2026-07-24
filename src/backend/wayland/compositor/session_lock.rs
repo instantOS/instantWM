@@ -31,6 +31,7 @@ impl SessionLockHandler for WaylandState {
         // event. Cancel it before exposing lock surfaces so a pre-lock client
         // can never retain touch focus while the session is locked.
         self.touch.clone().cancel(self);
+        self.runtime.bar_touch_slot = None;
 
         let lock = confirmation.ext_session_lock().clone();
         confirmation.lock();

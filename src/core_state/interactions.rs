@@ -204,6 +204,7 @@ pub enum DragCancelReason {
     WindowDestroyed,
     SessionLocked,
     InputDeviceRemoved,
+    TouchCancelled,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -365,7 +365,10 @@ fn setup_session_handlers(
         .insert_source(notifier, move |event, _, state| match event {
             SessionEvent::PauseSession => {
                 log::info!("Session paused (VT switch away) - suspending rendering");
-                crate::wayland::input::touch::handle_touch_cancel(state);
+                if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {
+                    let wm = unsafe { &mut *wm_ptr };
+                    crate::wayland::input::touch::handle_touch_cancel(wm, state);
+                }
                 session_libinput.suspend();
                 session_output_manager.lock().unwrap().pause();
                 let _ = runtime_event_tx.send(DrmRuntimeEvent::SessionPaused);

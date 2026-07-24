@@ -11,7 +11,10 @@ use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Transform};
 
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
 use crate::types::MouseButton;
+use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wm::Wm;
+
+const TOUCH_BUTTON_CODE: u32 = 0x110;
 
 /// Coordinate space used for an absolute touch device.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +104,27 @@ pub fn handle_touch_down(
                 );
             }
         } else if !state.is_pointer_over_overlay(location) {
+            let root = root_point(location);
+            let bar_position = {
+                let mut ctx = wm.ctx();
+                crate::bar::resolve_bar_position_at_root(ctx.core_mut(), root, true)
+                    .map(|(_, position)| position)
+            };
+            if state.runtime.bar_touch_slot.is_none()
+                && let Some(position) = bar_position
+            {
+                state.runtime.bar_touch_slot = Some(event.slot);
+                let modifiers = clean_modifier_state(state);
+                crate::wayland::input::bar::handle_bar_click(
+                    wm,
+                    state,
+                    position,
+                    TOUCH_BUTTON_CODE,
+                    root,
+                    modifiers,
+                );
+                return;
+            }
             crate::wayland::input::pointer::button::focus_button_target(
                 wm,
                 hit.hovered_window,
@@ -123,6 +147,7 @@ pub fn handle_touch_down(
 
 /// Deliver movement for an existing touch point.
 pub fn handle_touch_motion(
+    wm: &mut Wm,
     state: &mut WaylandState,
     event: TouchPointEvent,
     mapping: &TouchMappingTarget,
@@ -130,6 +155,10 @@ pub fn handle_touch_motion(
     let Some(location) = event_location(state, event.position, mapping) else {
         return;
     };
+    if state.runtime.bar_touch_slot == Some(event.slot) {
+        handle_bar_touch_motion(wm, state, root_point(location));
+        return;
+    }
     let hit = focus_at(state, location);
     state.touch.clone().motion(
         state,
@@ -143,7 +172,12 @@ pub fn handle_touch_motion(
 }
 
 /// Deliver the end of a touch point.
-pub fn handle_touch_up(state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
+pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, time_msec: u32) {
+    if state.runtime.bar_touch_slot == Some(slot) {
+        state.runtime.bar_touch_slot = None;
+        finish_bar_touch(wm, state);
+        return;
+    }
     state.touch.clone().up(
         state,
         &UpEvent {
@@ -160,8 +194,77 @@ pub fn handle_touch_frame(state: &mut WaylandState) {
 }
 
 /// Cancel every active touch point.
-pub fn handle_touch_cancel(state: &mut WaylandState) {
+pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
+    if state.runtime.bar_touch_slot.take().is_some() {
+        cancel_bar_touch(wm, state);
+    }
     state.touch.clone().cancel(state);
+}
+
+fn root_point(location: Point<f64, Logical>) -> crate::types::Point {
+    crate::types::Point::from_f64_round(location.x, location.y)
+}
+
+fn clean_modifier_state(state: &WaylandState) -> u32 {
+    crate::util::clean_mask(modifiers_to_x11_mask(&state.keyboard.modifier_state()), 0)
+}
+
+fn handle_bar_touch_motion(wm: &mut Wm, state: &mut WaylandState, root: crate::types::Point) {
+    let mut ctx = wm.ctx();
+    if ctx.core().drag_state().tag.active && !crate::mouse::drag_tag_motion(&mut ctx, root) {
+        crate::mouse::drag_tag_finish(&mut ctx, clean_modifier_state(state));
+    }
+    if ctx.core().drag_state().armed_interaction().is_some() {
+        crate::mouse::drag::title::title_drag_motion_at(&mut ctx, root, true);
+    }
+    if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx
+        && wayland.core.drag_state().active_interaction().is_some()
+    {
+        crate::wayland::input::pointer::drag::hover_resize_drag_motion(wayland, root);
+    }
+    if ctx.core().drag_state().sidebar_volume_active() {
+        crate::mouse::update_sidebar_gesture(&mut ctx, root.y);
+    }
+}
+
+fn finish_bar_touch(wm: &mut Wm, state: &mut WaylandState) {
+    let modifiers = clean_modifier_state(state);
+    let mut ctx = wm.ctx();
+
+    if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx
+        && crate::wayland::input::pointer::drag::hover_resize_drag_finish(
+            wayland,
+            MouseButton::Left,
+            modifiers,
+        )
+    {
+        return;
+    }
+    if ctx.core().drag_state().tag.active {
+        crate::mouse::drag_tag_finish(&mut ctx, modifiers);
+    }
+    if ctx.core().drag_state().armed_interaction().is_some() {
+        crate::mouse::title_drag_finish(&mut ctx);
+    }
+    if ctx.core().drag_state().sidebar_volume_active() {
+        let _ = crate::mouse::finish_sidebar_gesture(&mut ctx, MouseButton::Left);
+    }
+}
+
+fn cancel_bar_touch(wm: &mut Wm, _state: &mut WaylandState) {
+    let mut ctx = wm.ctx();
+    if let crate::contexts::WmCtx::Wayland(ref mut wayland) = ctx {
+        crate::mouse::drag::lifecycle::cancel(
+            wayland.core.drag_state_mut(),
+            wayland.wayland,
+            crate::core_state::DragCancelReason::TouchCancelled,
+        );
+    }
+    ctx.core_mut().drag_state_mut().tag = Default::default();
+    ctx.core_mut().drag_state_mut().cancel_sidebar_volume();
+    ctx.core_mut().bar.hover.clear();
+    ctx.set_cursor_style(crate::types::AltCursor::Default);
+    ctx.request_bar_update();
 }
 
 fn event_location(

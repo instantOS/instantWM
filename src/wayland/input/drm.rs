@@ -180,7 +180,7 @@ pub fn dispatch_libinput_event(
                 ));
             }
             if removed_touch {
-                handle_touch_cancel(state);
+                handle_touch_cancel(wm, state);
             }
             LibinputEventOutcome::Ignored
         }
@@ -333,6 +333,7 @@ pub fn dispatch_libinput_event(
             let position = normalized_touch_position::<LibinputInputBackend, _>(&event);
             if let Some(position) = position {
                 handle_touch_motion(
+                    wm,
                     state,
                     TouchPointEvent {
                         slot: event.slot(),
@@ -345,7 +346,7 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchUp { event } => {
-            handle_touch_up(state, event.slot(), event.time_msec());
+            handle_touch_up(wm, state, event.slot(), event.time_msec());
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchFrame { .. } => {
@@ -353,7 +354,7 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::Activity
         }
         InputEvent::TouchCancel { .. } => {
-            handle_touch_cancel(state);
+            handle_touch_cancel(wm, state);
             LibinputEventOutcome::Activity
         }
         _ => LibinputEventOutcome::Ignored,
