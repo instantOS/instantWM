@@ -292,9 +292,11 @@ fn clamp_client_to_work_area(
     monitor_work_rect: Rect,
 ) {
     if let Some(client) = model.client_mut(window) {
-        client
-            .geo
-            .clamp_position(&monitor_work_rect, client.total_width(), client.total_height());
+        client.geo.clamp_position(
+            &monitor_work_rect,
+            client.total_width(),
+            client.total_height(),
+        );
     }
 }
 

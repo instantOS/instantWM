@@ -564,5 +564,3 @@ mod tests {
         assert!(state.seat.get_touch().is_some());
     }
 }
-
-
