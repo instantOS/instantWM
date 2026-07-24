@@ -38,6 +38,7 @@ pub fn render_frame(
         &state.cursor_image_status,
         state.cursor_icon_override,
         state.runtime.dnd_icon.as_ref(),
+        state.runtime.cursor_hidden_by_touch,
     );
     apply_cursor_presentation_internal(backend, &cursor_presentation);
     // Backend-specific: get buffer age

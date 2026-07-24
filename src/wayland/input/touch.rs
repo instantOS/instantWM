@@ -87,6 +87,8 @@ pub fn handle_touch_down(
         return;
     };
 
+    state.runtime.cursor_hidden_by_touch = true;
+
     let serial = SERIAL_COUNTER.next_serial();
     let hit = focus_at(state, location);
 
@@ -135,7 +137,7 @@ pub fn handle_touch_down(
 
     state.touch.clone().down(
         state,
-        hit.focus,
+        hit.focus.clone(),
         &DownEvent {
             slot: event.slot,
             location,
@@ -143,6 +145,32 @@ pub fn handle_touch_down(
             time: event.time_msec,
         },
     );
+
+    if state.runtime.pointer_touch_slot.is_none() && !state.touch.has_grab(serial) {
+        state.runtime.pointer_touch_slot = Some(event.slot);
+        state.runtime.pointer_location = location;
+
+        let pointer = state.pointer.clone();
+        pointer.motion(
+            state,
+            hit.focus,
+            &smithay::input::pointer::MotionEvent {
+                location,
+                serial,
+                time: event.time_msec,
+            },
+        );
+        pointer.button(
+            state,
+            &smithay::input::pointer::ButtonEvent {
+                button: TOUCH_BUTTON_CODE,
+                state: smithay::backend::input::ButtonState::Pressed,
+                serial,
+                time: event.time_msec,
+            },
+        );
+        pointer.frame(state);
+    }
 }
 
 /// Deliver movement for an existing touch point.
@@ -157,6 +185,32 @@ pub fn handle_touch_motion(
     };
     if state.runtime.bar_touch_slot == Some(event.slot) {
         handle_bar_touch_motion(wm, state, root_point(location));
+        return;
+    }
+    if state.runtime.pointer_touch_slot == Some(event.slot) {
+        state.runtime.pointer_location = location;
+        let hit = focus_at(state, location);
+        let serial = SERIAL_COUNTER.next_serial();
+        let pointer = state.pointer.clone();
+        pointer.motion(
+            state,
+            hit.focus.clone(),
+            &smithay::input::pointer::MotionEvent {
+                location,
+                serial,
+                time: event.time_msec,
+            },
+        );
+        pointer.frame(state);
+        state.touch.clone().motion(
+            state,
+            hit.focus,
+            &MotionEvent {
+                slot: event.slot,
+                location,
+                time: event.time_msec,
+            },
+        );
         return;
     }
     let hit = focus_at(state, location);
@@ -178,11 +232,26 @@ pub fn handle_touch_up(wm: &mut Wm, state: &mut WaylandState, slot: TouchSlot, t
         finish_bar_touch(wm, state);
         return;
     }
+    let serial = SERIAL_COUNTER.next_serial();
+    if state.runtime.pointer_touch_slot == Some(slot) {
+        state.runtime.pointer_touch_slot = None;
+        let pointer = state.pointer.clone();
+        pointer.button(
+            state,
+            &smithay::input::pointer::ButtonEvent {
+                button: TOUCH_BUTTON_CODE,
+                state: smithay::backend::input::ButtonState::Released,
+                serial,
+                time: time_msec,
+            },
+        );
+        pointer.frame(state);
+    }
     state.touch.clone().up(
         state,
         &UpEvent {
             slot,
-            serial: SERIAL_COUNTER.next_serial(),
+            serial,
             time: time_msec,
         },
     );
@@ -197,6 +266,20 @@ pub fn handle_touch_frame(state: &mut WaylandState) {
 pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
     if state.runtime.bar_touch_slot.take().is_some() {
         cancel_bar_touch(wm, state);
+    }
+    if state.runtime.pointer_touch_slot.take().is_some() {
+        let serial = SERIAL_COUNTER.next_serial();
+        let pointer = state.pointer.clone();
+        pointer.button(
+            state,
+            &smithay::input::pointer::ButtonEvent {
+                button: TOUCH_BUTTON_CODE,
+                state: smithay::backend::input::ButtonState::Released,
+                serial,
+                time: 0,
+            },
+        );
+        pointer.frame(state);
     }
     state.touch.clone().cancel(state);
 }
@@ -481,3 +564,5 @@ mod tests {
         assert!(state.seat.get_touch().is_some());
     }
 }
+
+

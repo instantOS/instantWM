@@ -291,6 +291,8 @@ fn handle_pointer_motion(
     event: MotionEvent,
     source: PointerMotionSource,
 ) {
+    state.runtime.cursor_hidden_by_touch = false;
+
     let output_width = wm.core.config.derived.display.width;
     let output_height = wm.core.config.derived.display.height;
 

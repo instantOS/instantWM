@@ -79,6 +79,7 @@ pub fn modifiers_to_x11_mask(mods: &ModifiersState) -> u32 {
 }
 
 /// Backend-agnostic cursor state after applying WM override policy.
+#[derive(Debug, PartialEq)]
 pub enum CursorPresentation {
     Hidden,
     Named(CursorIcon),
@@ -102,7 +103,11 @@ pub fn resolve_cursor_presentation(
     status: &CursorImageStatus,
     icon_override: Option<CursorIcon>,
     dnd_icon: Option<&WlSurface>,
+    hidden_by_touch: bool,
 ) -> CursorPresentation {
+    if hidden_by_touch {
+        return CursorPresentation::Hidden;
+    }
     let base = match status {
         CursorImageStatus::Hidden => CursorPresentation::Hidden,
         CursorImageStatus::Named(icon) => CursorPresentation::Named(icon_override.unwrap_or(*icon)),
@@ -162,6 +167,7 @@ mod tests {
             &CursorImageStatus::Hidden,
             Some(CursorIcon::Grabbing),
             None,
+            false,
         );
 
         assert!(matches!(presentation, CursorPresentation::Hidden));
@@ -173,12 +179,13 @@ mod tests {
             &CursorImageStatus::Named(CursorIcon::Default),
             Some(CursorIcon::Grabbing),
             None,
+            false,
         );
 
-        assert!(matches!(
+        assert_eq!(
             presentation,
             CursorPresentation::Named(CursorIcon::Grabbing)
-        ));
+        );
     }
 }
 
