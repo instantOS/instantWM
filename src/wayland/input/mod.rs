@@ -9,7 +9,7 @@
 
 pub mod bar;
 pub mod drm;
-
+mod focus;
 pub mod keyboard;
 pub mod pointer;
 pub mod touch;

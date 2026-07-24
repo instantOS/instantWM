@@ -248,6 +248,9 @@ fn dismiss_invalid_native_systray_menu(wm: &Wm, state: &mut WaylandState) {
 
 fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     use crate::backend::wayland::commands::WmCommand;
+    use crate::wayland::input::pointer::axis::{PointerAxisInput, handle_pointer_axis};
+    use crate::wayland::input::pointer::button::{PointerButtonInput, handle_pointer_button};
+
     let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
 
     for command in commands {
@@ -269,48 +272,37 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                     );
                 }
             }
-            WmCommand::PointerButton {
-                button,
-                state: btn_state,
-                time_msec,
-            } => {
+            WmCommand::PointerButton(event) => {
                 if let (Some(pointer), Some(keyboard)) =
                     (state.seat.get_pointer(), state.seat.get_keyboard())
                 {
                     let loc = state.runtime.pointer_location;
-                    crate::wayland::input::pointer::button::handle_pointer_button_raw(
-                        wm, state, &pointer, &keyboard, button, btn_state, time_msec, loc,
-                    );
-                }
-            }
-            WmCommand::PointerAxis {
-                source,
-                horizontal,
-                vertical,
-                horizontal_v120,
-                vertical_v120,
-                horizontal_relative_direction,
-                vertical_relative_direction,
-                time_msec,
-            } => {
-                if let (Some(pointer), Some(keyboard)) =
-                    (state.seat.get_pointer(), state.seat.get_keyboard())
-                {
-                    let loc = state.runtime.pointer_location;
-                    crate::wayland::input::pointer::axis::handle_pointer_axis_raw(
+                    handle_pointer_button(
                         wm,
                         state,
                         &pointer,
                         &keyboard,
-                        source,
-                        horizontal,
-                        vertical,
-                        horizontal_v120,
-                        vertical_v120,
-                        horizontal_relative_direction,
-                        vertical_relative_direction,
-                        time_msec,
-                        loc,
+                        PointerButtonInput {
+                            event,
+                            location: loc,
+                        },
+                    );
+                }
+            }
+            WmCommand::PointerAxis(event) => {
+                if let (Some(pointer), Some(keyboard)) =
+                    (state.seat.get_pointer(), state.seat.get_keyboard())
+                {
+                    let loc = state.runtime.pointer_location;
+                    handle_pointer_axis(
+                        wm,
+                        state,
+                        &pointer,
+                        &keyboard,
+                        PointerAxisInput {
+                            event,
+                            location: loc,
+                        },
                     );
                 }
             }

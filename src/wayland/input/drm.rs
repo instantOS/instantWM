@@ -160,7 +160,9 @@ pub fn dispatch_libinput_event(
 ) -> LibinputEventOutcome {
     let keyboard_handle = state.keyboard.clone();
     let pointer_handle = state.pointer.clone();
-    use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
+    use crate::backend::wayland::commands::{
+        PointerAxis, PointerAxisCommand, PointerButtonCommand, PointerMotionCommand, WmCommand,
+    };
 
     match event {
         InputEvent::DeviceAdded { mut device } => {
@@ -211,24 +213,28 @@ pub fn dispatch_libinput_event(
             LibinputEventOutcome::PointerMoved
         }
         InputEvent::PointerButton { event } => {
-            state.push_command(WmCommand::PointerButton {
-                button: event.button_code(),
+            state.push_command(WmCommand::PointerButton(PointerButtonCommand {
+                code: event.button_code(),
                 state: event.state(),
                 time_msec: event.time_msec(),
-            });
+            }));
             LibinputEventOutcome::Activity
         }
         InputEvent::PointerAxis { event } => {
-            state.push_command(WmCommand::PointerAxis {
+            state.push_command(WmCommand::PointerAxis(PointerAxisCommand {
                 source: event.source(),
-                horizontal: event.amount(Axis::Horizontal),
-                vertical: event.amount(Axis::Vertical),
-                horizontal_v120: event.amount_v120(Axis::Horizontal),
-                vertical_v120: event.amount_v120(Axis::Vertical),
-                horizontal_relative_direction: event.relative_direction(Axis::Horizontal),
-                vertical_relative_direction: event.relative_direction(Axis::Vertical),
+                horizontal: PointerAxis {
+                    amount: event.amount(Axis::Horizontal),
+                    v120: event.amount_v120(Axis::Horizontal),
+                    relative_direction: event.relative_direction(Axis::Horizontal),
+                },
+                vertical: PointerAxis {
+                    amount: event.amount(Axis::Vertical),
+                    v120: event.amount_v120(Axis::Vertical),
+                    relative_direction: event.relative_direction(Axis::Vertical),
+                },
                 time_msec: event.time_msec(),
-            });
+            }));
             LibinputEventOutcome::Activity
         }
         InputEvent::GesturePinchBegin { event } => {

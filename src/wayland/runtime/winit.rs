@@ -10,7 +10,9 @@ use smithay::backend::renderer::gles::GlesRenderer;
 use smithay::backend::winit::{self, WinitEvent};
 use smithay::reexports::calloop::LoopSignal;
 
-use crate::backend::wayland::commands::{PointerMotionCommand, WmCommand};
+use crate::backend::wayland::commands::{
+    PointerAxis, PointerAxisCommand, PointerButtonCommand, PointerMotionCommand, WmCommand,
+};
 use crate::backend::wayland::compositor::WaylandState;
 use crate::monitor::refresh_monitor_layout;
 use crate::types::Size;
@@ -241,25 +243,29 @@ fn dispatch_winit_input(
             }));
         }
         InputEvent::PointerButton { event: btn } => {
-            state.push_command(WmCommand::PointerButton {
-                button: btn.button_code(),
+            state.push_command(WmCommand::PointerButton(PointerButtonCommand {
+                code: btn.button_code(),
                 state: btn.state(),
                 time_msec: btn.time_msec(),
-            });
+            }));
         }
         InputEvent::PointerAxis { event: axis } => {
             let horizontal_axis = smithay::backend::input::Axis::Horizontal;
             let vertical_axis = smithay::backend::input::Axis::Vertical;
-            state.push_command(WmCommand::PointerAxis {
+            state.push_command(WmCommand::PointerAxis(PointerAxisCommand {
                 source: axis.source(),
-                horizontal: axis.amount(horizontal_axis),
-                vertical: axis.amount(vertical_axis),
-                horizontal_v120: axis.amount_v120(horizontal_axis),
-                vertical_v120: axis.amount_v120(vertical_axis),
-                horizontal_relative_direction: axis.relative_direction(horizontal_axis),
-                vertical_relative_direction: axis.relative_direction(vertical_axis),
+                horizontal: PointerAxis {
+                    amount: axis.amount(horizontal_axis),
+                    v120: axis.amount_v120(horizontal_axis),
+                    relative_direction: axis.relative_direction(horizontal_axis),
+                },
+                vertical: PointerAxis {
+                    amount: axis.amount(vertical_axis),
+                    v120: axis.amount_v120(vertical_axis),
+                    relative_direction: axis.relative_direction(vertical_axis),
+                },
                 time_msec: axis.time_msec(),
-            });
+            }));
         }
         InputEvent::TouchDown { event } => {
             if let Some(wm_ptr) = unsafe { state.wm_mut_ptr() } {

@@ -2,12 +2,10 @@
 
 use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::PointerHandle;
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Point, SERIAL_COUNTER};
-use smithay::wayland::compositor::RegionAttributes;
 
 use crate::backend::wayland::commands::PointerMotionCommand;
-use crate::backend::wayland::compositor::window::hit_test::PointerContents;
+use crate::backend::wayland::compositor::window::hit_test::{PointerContents, SurfaceFocus};
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
 use crate::mouse::{clear_hover_offer, update_selected_resize_offer_at, update_sidebar_offer_at};
@@ -16,6 +14,7 @@ use crate::types::Point as RootPoint;
 use crate::types::Rect;
 use crate::wayland::common::modifiers_to_x11_mask;
 use crate::wayland::input::bar::update_bar_hit_state;
+use crate::wayland::input::pointer::constraints::{ActivePointerConstraint, activate_under};
 use crate::wayland::input::pointer::drag::{active_drag_window, hover_resize_drag_motion};
 use crate::wm::Wm;
 
@@ -205,84 +204,6 @@ impl PointerMotionSource {
     }
 }
 
-use smithay::wayland::pointer_constraints::{PointerConstraint, with_pointer_constraint};
-
-type PointerSurfaceFocus = (WlSurface, Point<i32, smithay::utils::Logical>);
-
-#[derive(Default)]
-struct PointerConstraintState {
-    locked: bool,
-    confined: bool,
-    confine_region: Option<RegionAttributes>,
-    surface: Option<PointerSurfaceFocus>,
-}
-
-fn pointer_is_in_constraint_region(
-    constraint: &PointerConstraint,
-    pointer_location: Point<f64, smithay::utils::Logical>,
-    surface_loc: Point<i32, smithay::utils::Logical>,
-) -> bool {
-    constraint.region().is_none_or(|region| {
-        region.contains((pointer_location - surface_loc.to_f64()).to_i32_round())
-    })
-}
-
-fn active_pointer_constraint_under(
-    pointer_handle: &PointerHandle<WaylandState>,
-    current_surface: Option<&PointerSurfaceFocus>,
-    pointer_location: Point<f64, smithay::utils::Logical>,
-) -> PointerConstraintState {
-    let Some((surface, surface_loc)) = current_surface else {
-        return PointerConstraintState::default();
-    };
-    let mut resolved = PointerConstraintState::default();
-    with_pointer_constraint(surface, pointer_handle, |constraint| {
-        let Some(constraint) = constraint else {
-            return;
-        };
-        if !constraint.is_active()
-            || !pointer_is_in_constraint_region(&constraint, pointer_location, *surface_loc)
-        {
-            return;
-        }
-
-        match &*constraint {
-            PointerConstraint::Locked(_) => {
-                resolved.locked = true;
-                resolved.confined = false;
-                resolved.confine_region = None;
-                resolved.surface = Some((surface.clone(), *surface_loc));
-            }
-            PointerConstraint::Confined(confine) => {
-                resolved.confined = true;
-                resolved.confine_region = confine.region().cloned();
-                resolved.surface = Some((surface.clone(), *surface_loc));
-            }
-        }
-    });
-    resolved
-}
-
-fn activate_pointer_constraint_under(
-    pointer_handle: &PointerHandle<WaylandState>,
-    current_surface: Option<&PointerSurfaceFocus>,
-    pointer_location: Point<f64, smithay::utils::Logical>,
-) {
-    let Some((surface, surface_loc)) = current_surface else {
-        return;
-    };
-    with_pointer_constraint(surface, pointer_handle, |constraint| {
-        let Some(constraint) = constraint else {
-            return;
-        };
-        if !constraint.is_active()
-            && pointer_is_in_constraint_region(&constraint, pointer_location, *surface_loc)
-        {
-            constraint.activate();
-        }
-    });
-}
-
 fn handle_pointer_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
@@ -301,7 +222,7 @@ fn handle_pointer_motion(
     let potential_location = event.compute_location(current_location, output_width, output_height);
 
     let current_hit = state.contents_under_pointer(current_location);
-    let constraint = active_pointer_constraint_under(
+    let constraint = ActivePointerConstraint::under(
         pointer_handle,
         current_hit.surface.as_ref(),
         current_location,
@@ -330,7 +251,7 @@ fn handle_pointer_motion(
         pointer_handle.relative_motion(state, focus, &rel_event);
     }
 
-    if constraint.locked {
+    if constraint.is_locked() {
         pointer_handle.frame(state);
         return;
     }
@@ -338,23 +259,9 @@ fn handle_pointer_motion(
     let final_location = potential_location;
     let candidate_hit = state.contents_under_pointer(final_location);
 
-    if constraint.confined
-        && let Some((surface, surface_loc)) = &constraint.surface
-    {
-        if candidate_hit
-            .surface
-            .as_ref()
-            .is_none_or(|(final_surface, _)| final_surface != surface)
-        {
-            pointer_handle.frame(state);
-            return;
-        }
-        if let Some(region) = &constraint.confine_region
-            && !region.contains((final_location - surface_loc.to_f64()).to_i32_round())
-        {
-            pointer_handle.frame(state);
-            return;
-        }
+    if !constraint.allows_motion_to(candidate_hit.surface.as_ref(), final_location) {
+        pointer_handle.frame(state);
+        return;
     }
 
     state.runtime.pointer_location = final_location;
@@ -372,7 +279,7 @@ fn handle_pointer_motion(
     let final_hit = state.contents_under_pointer(final_location);
 
     // Activate any pending constraints BEFORE dispatch so they're active for this event
-    activate_pointer_constraint_under(pointer_handle, final_hit.surface.as_ref(), final_location);
+    activate_under(pointer_handle, final_hit.surface.as_ref(), final_location);
 
     dispatch_pointer_motion(
         wm,
@@ -472,8 +379,7 @@ fn dispatch_pointer_motion(
     // surface (for example slurp) temporarily owns keyboard focus; moving the
     // pointer while it is active must not select/reorder managed windows below
     // the overlay.
-    if !crate::backend::wayland::compositor::layer_shell::exclusive_layer_has_keyboard_focus(state)
-    {
+    if !state.exclusive_layer_has_keyboard_focus() {
         update_pointer_focus(
             wm,
             active_drag_window,
@@ -538,13 +444,7 @@ fn resolve_pointer_focus_from_hit(
     contents: PointerContents,
     in_bar_band: bool,
     in_bar_guard_band: bool,
-) -> (
-    Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, smithay::utils::Logical>,
-    )>,
-    Option<crate::types::WindowId>,
-) {
+) -> (Option<SurfaceFocus>, Option<crate::types::WindowId>) {
     let pointer_location = state.runtime.pointer_location;
 
     // When the session is locked, only the lock surface should receive pointer events.
@@ -567,10 +467,7 @@ fn handle_resize_drag_motion(
     ctx: &mut WmCtxWayland<'_>,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
-    pointer_focus: Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, smithay::utils::Logical>,
-    )>,
+    pointer_focus: Option<SurfaceFocus>,
     time_msec: u32,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
@@ -601,10 +498,7 @@ fn handle_bar_motion(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
-    pointer_focus: Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, smithay::utils::Logical>,
-    )>,
+    pointer_focus: Option<SurfaceFocus>,
     in_bar_band: bool,
     bar_pos: Option<BarPosition>,
     time_msec: u32,

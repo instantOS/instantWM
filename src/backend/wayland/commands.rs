@@ -63,6 +63,28 @@ pub enum PointerMotionCommand {
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct PointerButtonCommand {
+    pub code: u32,
+    pub state: smithay::backend::input::ButtonState,
+    pub time_msec: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PointerAxis {
+    pub amount: Option<f64>,
+    pub v120: Option<f64>,
+    pub relative_direction: smithay::backend::input::AxisRelativeDirection,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct PointerAxisCommand {
+    pub source: smithay::backend::input::AxisSource,
+    pub horizontal: PointerAxis,
+    pub vertical: PointerAxis,
+    pub time_msec: u32,
+}
+
 /// Parameters for mapping a new window into the WM.
 #[derive(Debug)]
 pub struct MapWindowParams {
@@ -98,22 +120,9 @@ pub enum WmCommand {
     /// Pointer motion event.
     PointerMotion(PointerMotionCommand),
     /// Pointer button event.
-    PointerButton {
-        button: u32,
-        state: smithay::backend::input::ButtonState,
-        time_msec: u32,
-    },
+    PointerButton(PointerButtonCommand),
     /// Pointer axis event.
-    PointerAxis {
-        source: smithay::backend::input::AxisSource,
-        horizontal: Option<f64>,
-        vertical: Option<f64>,
-        horizontal_v120: Option<f64>,
-        vertical_v120: Option<f64>,
-        horizontal_relative_direction: smithay::backend::input::AxisRelativeDirection,
-        vertical_relative_direction: smithay::backend::input::AxisRelativeDirection,
-        time_msec: u32,
-    },
+    PointerAxis(PointerAxisCommand),
     /// Request an interactive move drag.
     BeginMove(WindowId),
     /// Request an interactive resize drag.

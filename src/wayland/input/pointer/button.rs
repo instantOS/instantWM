@@ -5,38 +5,43 @@ use smithay::input::keyboard::KeyboardHandle;
 use smithay::input::pointer::{ButtonEvent, MotionEvent, PointerHandle};
 use smithay::utils::{Point, SERIAL_COUNTER};
 
-use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
+use crate::backend::wayland::commands::PointerButtonCommand;
+use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
+use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::mouse::pointer::PointerRegion;
 use crate::types::{MouseButton, Point as RootPoint};
 use crate::wayland::common::modifiers_to_x11_mask;
+use crate::wayland::input::focus::focus_managed_target;
 use crate::wm::Wm;
 
 use crate::wayland::input::bar::handle_bar_click;
 use crate::wayland::input::pointer::drag::{hover_resize_drag_begin, hover_resize_drag_finish};
 
-/// Internal helper for handling pointer button from raw values.
-pub fn handle_pointer_button_raw(
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PointerButtonInput {
+    pub event: PointerButtonCommand,
+    pub location: Point<f64, smithay::utils::Logical>,
+}
+
+pub(crate) fn handle_pointer_button(
     wm: &mut Wm,
     state: &mut WaylandState,
     pointer: &PointerHandle<WaylandState>,
     keyboard: &KeyboardHandle<WaylandState>,
-    button: u32,
-    btn_state: ButtonState,
-    time: u32,
-    pointer_location: Point<f64, smithay::utils::Logical>,
+    input: PointerButtonInput,
 ) {
     let serial = SERIAL_COUNTER.next_serial();
-    let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
-    let wm_button = MouseButton::from_wayland_code(button);
+    let root = RootPoint::from_f64_round(input.location.x, input.location.y);
+    let wm_button = MouseButton::from_wayland_code(input.event.code);
 
     let button = ButtonPress {
         serial,
-        time,
-        button_code: button,
-        state: btn_state,
+        time: input.event.time_msec,
+        button_code: input.event.code,
+        state: input.event.state,
         root,
         wm_button,
-        pointer_location,
+        pointer_location: input.location,
     };
 
     if state.is_locked() {
@@ -107,14 +112,7 @@ fn handle_button_press(
         state.layer_surface_under_pointer(button.pointer_location)
     {
         state.dismiss_native_systray_menu();
-        focus_layer_button_target(
-            state,
-            pointer_handle,
-            keyboard_handle,
-            button,
-            layer_surface,
-            location,
-        );
+        focus_layer_button_target(state, pointer_handle, button, layer_surface, location);
         forward_button(state, pointer_handle, button);
         return false;
     }
@@ -171,7 +169,7 @@ fn handle_button_press(
         return true;
     }
 
-    focus_button_target(wm, clicked_win, button.wm_button);
+    focus_managed_target(wm, clicked_win, button.wm_button);
 
     let consumed = button.wm_button.is_some_and(|btn| {
         consume_pointer_binding(wm, pointer_region, btn, button.root, clean_modifiers)
@@ -203,40 +201,18 @@ fn begin_hover_resize_drag(wm: &mut Wm, button: ButtonPress) -> bool {
     }
 }
 
-pub(crate) fn focus_button_target(
-    wm: &mut Wm,
-    clicked_win: Option<crate::types::WindowId>,
-    button: Option<MouseButton>,
-) {
-    let mut ctx = wm.ctx();
-    if let Some(win) = clicked_win {
-        crate::focus::select_monitor_for_client(&mut ctx, win);
-        crate::focus::focus(&mut ctx, Some(win));
-        if let Some(button) = button {
-            crate::focus::raise_floating_on_client_click(&mut ctx, win, button);
-        }
-    } else {
-        crate::focus::focus(&mut ctx, None);
-    }
-}
-
 fn focus_layer_button_target(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
-    keyboard_handle: &KeyboardHandle<WaylandState>,
     button: ButtonPress,
     layer_surface: smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
     location: Point<i32, smithay::utils::Logical>,
 ) {
-    if crate::backend::wayland::compositor::layer_shell::layer_surface_accepts_keyboard_focus(
+    state.focus_layer_keyboard(
         &layer_surface,
-    ) {
-        keyboard_handle.set_focus(
-            state,
-            Some(KeyboardFocusTarget::WlSurface(layer_surface.clone())),
-            button.serial,
-        );
-    }
+        button.serial,
+        LayerFocusRequest::UserInteraction,
+    );
     let focus = Some((
         PointerFocusTarget::WlSurface(layer_surface),
         location.to_f64(),

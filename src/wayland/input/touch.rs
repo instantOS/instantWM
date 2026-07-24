@@ -9,9 +9,11 @@ use smithay::backend::input::TouchSlot;
 use smithay::input::touch::{DownEvent, MotionEvent, UpEvent};
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Transform};
 
-use crate::backend::wayland::compositor::{KeyboardFocusTarget, PointerFocusTarget, WaylandState};
+use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
+use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::types::MouseButton;
 use crate::wayland::common::modifiers_to_x11_mask;
+use crate::wayland::input::focus::focus_managed_target;
 use crate::wm::Wm;
 
 const TOUCH_BUTTON_CODE: u32 = 0x110;
@@ -94,16 +96,8 @@ pub fn handle_touch_down(
 
     if !state.is_locked() {
         if hit.is_layer {
-            if let Some((PointerFocusTarget::WlSurface(surface), _)) = hit.focus.as_ref()
-                && crate::backend::wayland::compositor::layer_shell::layer_surface_accepts_keyboard_focus(
-                    surface,
-                )
-            {
-                state.keyboard.clone().set_focus(
-                    state,
-                    Some(KeyboardFocusTarget::WlSurface(surface.clone())),
-                    serial,
-                );
+            if let Some((PointerFocusTarget::WlSurface(surface), _)) = hit.focus.as_ref() {
+                state.focus_layer_keyboard(surface, serial, LayerFocusRequest::UserInteraction);
             }
         } else if !state.is_pointer_over_overlay(location) {
             let root = root_point(location);
@@ -127,11 +121,7 @@ pub fn handle_touch_down(
                 );
                 return;
             }
-            crate::wayland::input::pointer::button::focus_button_target(
-                wm,
-                hit.hovered_window,
-                Some(MouseButton::Left),
-            );
+            focus_managed_target(wm, hit.hovered_window, Some(MouseButton::Left));
         }
     }
 

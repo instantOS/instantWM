@@ -5,17 +5,25 @@ use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
 use crate::types::WindowId;
 
+pub(crate) type SurfaceFocus = (
+    smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    Point<i32, Logical>,
+);
+
 /// Result of a single-pass pointer hit test, resolving both the Wayland
 /// surface focus and the WM logical window in one traversal.
-pub struct PointerContents {
+pub(crate) struct PointerContents {
     /// The Wayland surface that should receive pointer events.
-    pub surface: Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, Logical>,
-    )>,
+    pub(crate) surface: Option<SurfaceFocus>,
     /// The WM-logical window under the pointer (uses outer geometry including
     /// borders, so it can differ from the surface hit).
-    pub hovered_win: Option<WindowId>,
+    pub(crate) hovered_win: Option<WindowId>,
+}
+
+struct RankedSurfaceHit {
+    focus: SurfaceFocus,
+    window: Option<WindowId>,
+    rank: usize,
 }
 
 /// Decide whether the actual surface hit is visually above the logical WM hit.
@@ -33,7 +41,7 @@ impl WaylandState {
     ///
     /// Returns both the surface focus and the logical hovered window in one
     /// traversal, avoiding repeated `windows_in_z_order()` allocations.
-    pub fn contents_under_pointer(&self, point: Point<f64, Logical>) -> PointerContents {
+    pub(crate) fn contents_under_pointer(&self, point: Point<f64, Logical>) -> PointerContents {
         // Layer surfaces take priority over all windows.
         if let Some((surface, loc)) = self.layer_surface_under_pointer(point) {
             // Try to resolve a WindowId from the layer surface.
@@ -61,12 +69,7 @@ impl WaylandState {
         let mut logical_win: Option<WindowId> = None;
         let mut logical_rank: Option<usize> = None;
         let mut logical_win_resolved = false;
-        let mut surface_hit: Option<(
-            smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-            Point<i32, Logical>,
-            Option<WindowId>,
-            usize,
-        )> = None;
+        let mut surface_hit: Option<RankedSurfaceHit> = None;
 
         for (rank, (window, typ)) in self.windows_in_z_order().into_iter().enumerate() {
             let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
@@ -104,7 +107,11 @@ impl WaylandState {
                 if let Some(result) =
                     window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
                 {
-                    surface_hit = Some((result.0, result.1 + surface_origin, win_id, rank));
+                    surface_hit = Some(RankedSurfaceHit {
+                        focus: (result.0, result.1 + surface_origin),
+                        window: win_id,
+                        rank,
+                    });
                 }
             }
 
@@ -120,10 +127,8 @@ impl WaylandState {
         // Unmanaged overlays have no WindowId and deliberately suppress hover
         // focus behind them when they are the higher candidate.
         let (surface, hovered_win) = match surface_hit {
-            Some((surface, loc, surface_win, rank))
-                if surface_hit_takes_precedence(logical_rank, rank) =>
-            {
-                (Some((surface, loc)), surface_win)
+            Some(hit) if surface_hit_takes_precedence(logical_rank, hit.rank) => {
+                (Some(hit.focus), hit.window)
             }
             _ => (None, logical_win),
         };
@@ -148,13 +153,10 @@ impl WaylandState {
         })
     }
     /// Get the layer surface under a given point.
-    pub fn layer_surface_under_pointer(
+    pub(crate) fn layer_surface_under_pointer(
         &self,
         point: Point<f64, Logical>,
-    ) -> Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, Logical>,
-    )> {
+    ) -> Option<SurfaceFocus> {
         use smithay::desktop::{WindowSurfaceType, layer_map_for_output};
 
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
@@ -176,26 +178,8 @@ impl WaylandState {
         None
     }
 
-    /// Get the layer surface that should receive keyboard focus.
-    pub fn keyboard_focus_layer_surface(
-        &self,
-    ) -> Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface> {
-        use smithay::desktop::layer_map_for_output;
-
-        let outputs: Vec<_> = self.space.outputs().cloned().collect();
-        for output in outputs.iter().rev() {
-            let map = layer_map_for_output(output);
-            for layer in map.layers().rev() {
-                if layer.can_receive_keyboard_focus() {
-                    return Some(layer.wl_surface().clone());
-                }
-            }
-        }
-        None
-    }
-
     /// Check if the pointer is currently over an overlay, launcher, or unmanaged window.
-    pub fn is_pointer_over_overlay(&self, point: Point<f64, Logical>) -> bool {
+    pub(crate) fn is_pointer_over_overlay(&self, point: Point<f64, Logical>) -> bool {
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
         for (window, typ) in self.windows_in_z_order() {
@@ -208,7 +192,10 @@ impl WaylandState {
 
     /// Find the topmost window containing the given logical point within its core geometry.
     /// Used for WM hit-testing to prevent small surfaces from creating focus holes.
-    pub fn logical_window_under_pointer(&self, point: Point<f64, Logical>) -> Option<WindowId> {
+    pub(crate) fn logical_window_under_pointer(
+        &self,
+        point: Point<f64, Logical>,
+    ) -> Option<WindowId> {
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
         let globals = self.globals()?;
@@ -248,13 +235,10 @@ impl WaylandState {
     }
 
     /// Get the lock surface under a given point (used when session is locked).
-    pub fn lock_surface_under_pointer(
+    pub(crate) fn lock_surface_under_pointer(
         &self,
         point: Point<f64, Logical>,
-    ) -> Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, Logical>,
-    )> {
+    ) -> Option<SurfaceFocus> {
         use smithay::desktop::WindowSurfaceType;
 
         let outputs: Vec<_> = self.space.outputs().cloned().collect();
@@ -276,34 +260,6 @@ impl WaylandState {
                 ) {
                     return Some((surface, loc + output_geo.loc));
                 }
-            }
-        }
-        None
-    }
-
-    /// Get the surface under a given point.
-    pub fn surface_under_pointer(
-        &self,
-        point: Point<f64, Logical>,
-    ) -> Option<(
-        smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-        Point<i32, Logical>,
-    )> {
-        use smithay::desktop::WindowSurfaceType;
-
-        for (window, _) in self.windows_in_z_order() {
-            let Some(loc) = self.space.element_location(window) else {
-                continue;
-            };
-            let geo_offset = window.geometry().loc;
-            let surface_origin = loc - geo_offset;
-
-            // We check ALL surfaces (including children/popups) for all windows
-            // in their respective Z-order.
-            if let Some(result) =
-                window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
-            {
-                return Some((result.0, result.1 + surface_origin));
             }
         }
         None
