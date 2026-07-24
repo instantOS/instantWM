@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/instantOS/instantWM/compare/v0.1.15...v0.1.16) - 2026-07-24
+
+### Changed
+
+- better cursor matching
+
+### Fixed
+
+- animation timing with many clients
+
+### Other
+
+- more sane arrow key/vim key behavior
+- Merge branch 'main' of github.com:instantOS/instantWM
+- unify stuff following
+- fix maximized focus direction
+- remove legacy layouting code
+- fix overview and also suggest more candidates
+- deduplicate stuff
+- better directional moving UX
+- fix maximized drags
+- overview redesign
+- better tree cycling
+- fix scratchpad classifier
+- dedupe helpers
+- fix overview
+- fix sessions
+- Merge branch 'dev'
+- add i3status hover over and proper lock screen support
+- ins settings launcher
+- fix DM sessions
+- fix invalid x11 state
+- fix X11 cursor changes
+- new default binds
+- fix X11 ghost windows
+- do not expose multiple ways of writing stuff
+- fix wayland fullscreen requestss
+- fix wayland firefox fullscreen
+- prevent future client mode regressions
+- address review agent feedback
+- redo bar_position
+- replace redundant lookups
+- clearer names
+- fix X11 IPC lag
+- remove redundant checks with better models
+- fix cursor reloading
+- fix X11 systray
+- fix x11 systray interaction
+- better mouse following focus options
+- fmt
+- better default commands handling
+
 ## [0.1.15](https://github.com/instantOS/instantWM/compare/v0.1.14...v0.1.15) - 2026-07-20
 
 ### Other
