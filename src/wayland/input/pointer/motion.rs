@@ -468,15 +468,21 @@ fn dispatch_pointer_motion(
     let suppress_hover_focus =
         update_hover_resize_state(wm, root, hovered_win, !wm.core.drag.any_drag_active());
 
-    // Phase 6: Update pointer focus based on drag state
-    update_pointer_focus(
-        wm,
-        active_drag_window,
-        hovered_win,
-        suppress_hover_focus,
-        root,
-        hover_focus_trigger,
-    );
+    // Phase 6: Update pointer focus based on drag state. An exclusive layer
+    // surface (for example slurp) temporarily owns keyboard focus; moving the
+    // pointer while it is active must not select/reorder managed windows below
+    // the overlay.
+    if !crate::backend::wayland::compositor::layer_shell::exclusive_layer_has_keyboard_focus(state)
+    {
+        update_pointer_focus(
+            wm,
+            active_drag_window,
+            hovered_win,
+            suppress_hover_focus,
+            root,
+            hover_focus_trigger,
+        );
+    }
 
     // Phase 7: Handle tag/title drag motion
     if hover_focus_trigger == crate::types::HoverFocusTrigger::PointerMotion {

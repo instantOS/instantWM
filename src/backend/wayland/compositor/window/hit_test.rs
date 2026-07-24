@@ -18,6 +18,16 @@ pub struct PointerContents {
     pub hovered_win: Option<WindowId>,
 }
 
+/// Decide whether the actual surface hit is visually above the logical WM hit.
+///
+/// A popup may extend outside its owner's WM rectangle and cover a window
+/// below it. Conversely, a lower window's client surface may be visible to
+/// surface-tree hit testing through the compositor-drawn decoration of a
+/// higher window. The candidate encountered first in compositor z-order wins.
+fn surface_hit_takes_precedence(logical_rank: Option<usize>, surface_rank: usize) -> bool {
+    logical_rank.is_none_or(|logical_rank| surface_rank <= logical_rank)
+}
+
 impl WaylandState {
     /// Single-pass hit test for pointer motion: layers first, then windows.
     ///
@@ -49,14 +59,16 @@ impl WaylandState {
         };
 
         let mut logical_win: Option<WindowId> = None;
+        let mut logical_rank: Option<usize> = None;
         let mut logical_win_resolved = false;
         let mut surface_hit: Option<(
             smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
             Point<i32, Logical>,
             Option<WindowId>,
+            usize,
         )> = None;
 
-        for (window, typ) in self.windows_in_z_order() {
+        for (rank, (window, typ)) in self.windows_in_z_order().into_iter().enumerate() {
             let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
 
             // Logical hit test (WM geometry including borders).
@@ -64,6 +76,7 @@ impl WaylandState {
                 if typ.is_overlay() {
                     if self.overlay_rect_contains(window, root_x, root_y) {
                         logical_win = win_id;
+                        logical_rank = Some(rank);
                         logical_win_resolved = true;
                     }
                 } else if let Some(win_id) = win_id
@@ -72,6 +85,7 @@ impl WaylandState {
                         .contains_point(crate::types::Point::new(root_x, root_y))
                 {
                     logical_win = Some(win_id);
+                    logical_rank = Some(rank);
                     logical_win_resolved = true;
                 }
             }
@@ -90,7 +104,7 @@ impl WaylandState {
                 if let Some(result) =
                     window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
                 {
-                    surface_hit = Some((result.0, result.1 + surface_origin, win_id));
+                    surface_hit = Some((result.0, result.1 + surface_origin, win_id, rank));
                 }
             }
 
@@ -100,16 +114,23 @@ impl WaylandState {
             }
         }
 
-        // If the surface hit belongs to a different window than the logical
-        // hit, suppress the surface focus to prevent event fallthrough.
-        let surface = match (&logical_win, &surface_hit) {
-            (Some(logical), Some((_, _, Some(surface_win)))) if logical != surface_win => None,
-            _ => surface_hit.map(|(s, loc, _)| (s, loc)),
+        // Reconcile the two coordinate models using compositor z-order. A
+        // popup found before the logical rectangle below it wins; a client
+        // surface found behind a higher window's decorations is suppressed.
+        // Unmanaged overlays have no WindowId and deliberately suppress hover
+        // focus behind them when they are the higher candidate.
+        let (surface, hovered_win) = match surface_hit {
+            Some((surface, loc, surface_win, rank))
+                if surface_hit_takes_precedence(logical_rank, rank) =>
+            {
+                (Some((surface, loc)), surface_win)
+            }
+            _ => (None, logical_win),
         };
 
         PointerContents {
             surface,
-            hovered_win: logical_win,
+            hovered_win,
         }
     }
 
@@ -286,5 +307,30 @@ impl WaylandState {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::surface_hit_takes_precedence;
+
+    #[test]
+    fn popup_above_underlying_logical_window_takes_precedence() {
+        assert!(surface_hit_takes_precedence(Some(1), 0));
+    }
+
+    #[test]
+    fn surface_behind_higher_decoration_is_suppressed() {
+        assert!(!surface_hit_takes_precedence(Some(0), 1));
+    }
+
+    #[test]
+    fn surface_wins_when_no_logical_window_was_hit() {
+        assert!(surface_hit_takes_precedence(None, 3));
+    }
+
+    #[test]
+    fn surface_and_logical_hit_from_same_window_stay_focused() {
+        assert!(surface_hit_takes_precedence(Some(2), 2));
     }
 }

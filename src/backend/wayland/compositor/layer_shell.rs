@@ -17,26 +17,93 @@ use crate::types::Rect;
 use crate::wm::Wm;
 use std::collections::HashMap;
 
-/// Whether a layer surface is allowed to receive keyboard focus.
-pub(crate) fn layer_surface_accepts_keyboard_focus(
+fn layer_surface_keyboard_interactivity(
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
-) -> bool {
-    use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, LayerSurfaceCachedState};
+) -> smithay::wayland::shell::wlr_layer::KeyboardInteractivity {
+    use smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState;
     with_states(surface, |states| {
         states
             .cached_state
             .get::<LayerSurfaceCachedState>()
             .current()
             .keyboard_interactivity
-    }) != KeyboardInteractivity::None
+    })
 }
 
-/// Focus a layer surface if it requests keyboard focus.
-fn focus_layer_if_requested(
+fn layer_surface_has_exclusive_keyboard_priority(
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> bool {
+    use smithay::wayland::shell::wlr_layer::LayerSurfaceCachedState;
+
+    with_states(surface, |states| {
+        let mut cached_state = states.cached_state.get::<LayerSurfaceCachedState>();
+        let state = cached_state.current();
+        has_exclusive_keyboard_priority(state.layer, state.keyboard_interactivity)
+    })
+}
+
+fn has_exclusive_keyboard_priority(
+    layer: smithay::wayland::shell::wlr_layer::Layer,
+    interactivity: smithay::wayland::shell::wlr_layer::KeyboardInteractivity,
+) -> bool {
+    use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
+
+    interactivity == KeyboardInteractivity::Exclusive
+        && matches!(layer, Layer::Overlay | Layer::Top)
+}
+
+/// Whether a layer surface is allowed to receive keyboard focus.
+pub(crate) fn layer_surface_accepts_keyboard_focus(
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> bool {
+    use smithay::wayland::shell::wlr_layer::KeyboardInteractivity;
+    layer_surface_keyboard_interactivity(surface) != KeyboardInteractivity::None
+}
+
+/// Whether an exclusive layer surface currently owns the seat keyboard.
+///
+/// While this is true, managed-window focus-follows-mouse must not replace
+/// the temporary layer focus or mutate the WM selection underneath it.
+pub(crate) fn exclusive_layer_has_keyboard_focus(state: &WaylandState) -> bool {
+    state
+        .seat
+        .get_keyboard()
+        .and_then(|keyboard| keyboard.current_focus())
+        .is_some_and(|focus| {
+            let KeyboardFocusTarget::WlSurface(surface) = focus else {
+                return false;
+            };
+            layer_surface_has_exclusive_keyboard_priority(&surface)
+        })
+}
+
+/// Focus the topmost remaining exclusive layer surface, if any.
+fn focus_remaining_exclusive_layer(state: &mut WaylandState) -> bool {
+    use smithay::wayland::shell::wlr_layer::Layer;
+
+    let outputs: Vec<_> = state.space.outputs().cloned().collect();
+    let surface = outputs.iter().rev().find_map(|output| {
+        let map = layer_map_for_output(output);
+        map.layers_on(Layer::Overlay)
+            .rev()
+            .chain(map.layers_on(Layer::Top).rev())
+            .find(|layer| layer_surface_has_exclusive_keyboard_priority(layer.wl_surface()))
+            .map(|layer| layer.wl_surface().clone())
+    });
+    if let Some(surface) = surface {
+        focus_exclusive_layer_if_requested(state, &surface);
+        true
+    } else {
+        false
+    }
+}
+
+/// Automatically focus an upper layer surface requesting exclusive input.
+fn focus_exclusive_layer_if_requested(
     state: &mut WaylandState,
     surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
 ) {
-    if !layer_surface_accepts_keyboard_focus(surface) {
+    if !layer_surface_has_exclusive_keyboard_priority(surface) {
         return;
     }
 
@@ -82,7 +149,7 @@ pub(super) fn handle_layer_commit(
         }
     }
     if let Some(surface) = layer_surface {
-        focus_layer_if_requested(state, &surface);
+        focus_exclusive_layer_if_requested(state, &surface);
         // Exclusive zones may have changed on commit, so re-derive each
         // monitor's `available_rect`.
         state.push_command(WmCommand::SyncLayerExclusiveZones);
@@ -217,17 +284,53 @@ impl WlrLayerShellHandler for WaylandState {
         }
 
         // If the keyboard was focused on this layer surface, clear seat focus
-        // and restore it to the WM's selected window.
+        // before resolving the next valid target.
         if keyboard_focused_on_layer {
             self.clear_seat_focus();
         }
 
-        // Restore seat focus to mon.sel (the WM's selected window).
-        self.restore_focus_after_overlay();
+        // Slurp creates one exclusive layer surface per output. Destroying one
+        // must not restore a managed window while another selector surface is
+        // still alive. Preserve an already-valid layer focus, or move focus to
+        // another exclusive layer before falling back to mon.sel.
+        let layer_focus_is_live = self
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+            .is_some_and(|focus| matches!(focus, KeyboardFocusTarget::WlSurface(_)));
+        if !layer_focus_is_live && !focus_remaining_exclusive_layer(self) {
+            self.restore_focus_after_overlay();
+        }
         // Reclaim the space that this layer surface had exclusively reserved.
         self.push_command(WmCommand::SyncLayerExclusiveZones);
         for output in affected_outputs {
             self.request_output_render(&output);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_exclusive_keyboard_priority;
+    use smithay::wayland::shell::wlr_layer::{KeyboardInteractivity, Layer};
+
+    #[test]
+    fn only_upper_exclusive_layers_get_automatic_keyboard_priority() {
+        for layer in [Layer::Overlay, Layer::Top] {
+            assert!(has_exclusive_keyboard_priority(
+                layer,
+                KeyboardInteractivity::Exclusive
+            ));
+            assert!(!has_exclusive_keyboard_priority(
+                layer,
+                KeyboardInteractivity::OnDemand
+            ));
+        }
+        for layer in [Layer::Bottom, Layer::Background] {
+            assert!(!has_exclusive_keyboard_priority(
+                layer,
+                KeyboardInteractivity::Exclusive
+            ));
         }
     }
 }
