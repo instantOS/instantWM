@@ -156,13 +156,18 @@ pub(crate) struct TrayCell {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct MenuLayout {
+    pub start_x: i32,
+    pub width: i32,
+    pub cells: Vec<crate::bar::SystrayHitSlot>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct TrayLayout {
     pub start_x: i32,
     pub total_width: i32,
     pub cells: Vec<TrayCell>,
-    pub menu_start_x: i32,
-    pub menu_width: i32,
-    pub menu_cells: Vec<crate::bar::SystrayHitSlot>,
+    pub menu: MenuLayout,
 }
 
 /// Resolve configured tray padding once for every backend. Padding is visual
@@ -223,24 +228,23 @@ pub(crate) fn layout(
         })
         .collect();
 
-    let (menu_start_x, menu_width, menu_cells) = menu_layout(menu, start_x);
+    let menu = menu_layout(menu, start_x);
 
     TrayLayout {
         start_x,
         total_width,
         cells,
-        menu_start_x,
-        menu_width,
-        menu_cells,
+        menu,
     }
 }
 
-fn menu_layout(
-    menu: Option<&MenuView>,
-    available_width: i32,
-) -> (i32, i32, Vec<crate::bar::SystrayHitSlot>) {
+fn menu_layout(menu: Option<&MenuView>, available_width: i32) -> MenuLayout {
     let Some(menu) = menu.filter(|menu| !menu.entries.is_empty()) else {
-        return (available_width, 0, Vec::new());
+        return MenuLayout {
+            start_x: available_width,
+            width: 0,
+            cells: Vec::new(),
+        };
     };
     let available_width = available_width.max(0);
     let widths = fit_menu_widths(
@@ -269,7 +273,11 @@ fn menu_layout(
             Some(cell)
         })
         .collect();
-    (menu_start_x, menu_width, cells)
+    MenuLayout {
+        start_x: menu_start_x,
+        width: menu_width,
+        cells,
+    }
 }
 
 fn fit_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
@@ -485,10 +493,10 @@ mod tests {
         };
         let layout = layout(&tray, Some(&menu), 230, 30, 2);
 
-        assert_eq!(layout.menu_start_x, 0);
-        assert_eq!(layout.menu_width, 200);
-        assert_eq!(layout.menu_cells.len(), menu.entries.len());
-        assert_eq!(layout.menu_cells.last().unwrap().end, layout.start_x);
+        assert_eq!(layout.menu.start_x, 0);
+        assert_eq!(layout.menu.width, 200);
+        assert_eq!(layout.menu.cells.len(), menu.entries.len());
+        assert_eq!(layout.menu.cells.last().unwrap().end, layout.start_x);
     }
 
     #[test]
@@ -508,10 +516,10 @@ mod tests {
 
         let layout = layout(&StatusNotifierTray::default(), Some(&menu), 3, 30, 2);
 
-        assert_eq!(layout.menu_start_x, 0);
-        assert_eq!(layout.menu_width, 3);
-        assert_eq!(layout.menu_cells.len(), 3);
-        assert!(layout.menu_cells.iter().all(|cell| cell.start >= 0));
-        assert_eq!(layout.menu_cells.last().unwrap().end, 3);
+        assert_eq!(layout.menu.start_x, 0);
+        assert_eq!(layout.menu.width, 3);
+        assert_eq!(layout.menu.cells.len(), 3);
+        assert!(layout.menu.cells.iter().all(|cell| cell.start >= 0));
+        assert_eq!(layout.menu.cells.last().unwrap().end, 3);
     }
 }

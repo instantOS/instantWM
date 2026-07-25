@@ -765,11 +765,11 @@ fn render_monitor_snapshot_base(
                 end: cell.hit_end,
             })
             .collect();
-        if layout.menu_width > 0 {
+        if layout.menu.width > 0 {
             hit.overlay = Some(crate::bar::BarOverlayHit::TrayMenu {
-                start: layout.menu_start_x,
-                end: layout.menu_start_x + layout.menu_width,
-                slots: layout.menu_cells.clone(),
+                start: layout.menu.start_x,
+                end: layout.menu.start_x + layout.menu.width,
+                slots: layout.menu.cells.clone(),
             });
         }
     }

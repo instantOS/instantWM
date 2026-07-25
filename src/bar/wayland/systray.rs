@@ -19,9 +19,9 @@ pub(super) fn draw_snapshot(
             true,
         );
     }
-    if layout.menu_width > 0 {
+    if layout.menu.width > 0 {
         painter.rect(
-            Rect::new(layout.menu_start_x, 0, layout.menu_width, bar_height),
+            Rect::new(layout.menu.start_x, 0, layout.menu.width, bar_height),
             true,
             true,
         );
@@ -40,7 +40,7 @@ pub(super) fn draw_snapshot(
     crate::systray::render::draw_menu(
         painter,
         &menu.view,
-        &layout.menu_cells,
+        &layout.menu.cells,
         &snapshot.base_scheme,
         bar_height,
     );
