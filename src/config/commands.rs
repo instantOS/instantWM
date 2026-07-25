@@ -225,7 +225,7 @@ impl ExternalCommands {
 pub fn default_commands() -> ExternalCommands {
     ExternalCommands {
         instantmenu: &["instantmenu_run"],
-        clipmenu: &["instantclipmenu"],
+        clipmenu: &["ins", "clip", "--gui"],
         smart: &["instantmenu_smartrun"],
         instantmenu_st: &["instantmenu_run_st"],
         term: &["kitty"],

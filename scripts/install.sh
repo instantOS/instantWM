@@ -55,6 +55,7 @@ $SUPERTOOL install -d "${DESTDIR}${PREFIX}/bin"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/xsessions"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/wayland-sessions"
 $SUPERTOOL install -d "${DESTDIR}/usr/share/xdg-desktop-portal"
+$SUPERTOOL install -d "${DESTDIR}/usr/lib/systemd/user"
 
 # Binary
 $SUPERTOOL install -m 755 "$INSTANTWM_BIN" "${DESTDIR}${PREFIX}/bin/instantwm"
@@ -78,8 +79,15 @@ $SUPERTOOL install -m 644 "$PROJECT_DIR/utils/instantwm-wayland-debug.desktop" "
 # Portal routing for Wayland screen sharing/screenshot support
 $SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-portals.conf" "${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
 
+# Graphical-session lifecycle anchor for Wayland user services
+$SUPERTOOL install -m 644 "$PROJECT_DIR/resources/instantwm-session.target" "${DESTDIR}/usr/lib/systemd/user/instantwm-session.target"
+if [[ -z "$DESTDIR" ]]; then
+    systemctl --user daemon-reload
+fi
+
 echo "Done. instantWM installed to ${DESTDIR}${PREFIX}/bin/instantwm"
 echo "X11 session:      ${DESTDIR}/usr/share/xsessions/instantwm.desktop"
 echo "Wayland session: ${DESTDIR}/usr/share/wayland-sessions/instantwm-wayland.desktop"
 echo "Wayland debug:   ${DESTDIR}/usr/share/wayland-sessions/instantwm-debug.desktop"
 echo "Portal config:   ${DESTDIR}/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+echo "Session target:  ${DESTDIR}/usr/lib/systemd/user/instantwm-session.target"

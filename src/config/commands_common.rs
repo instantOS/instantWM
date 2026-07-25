@@ -71,6 +71,6 @@ pub mod menu {
     pub const RUN: &[&str] = &["instantmenu_run"];
     pub const SMART: &[&str] = &["instantmenu_smartrun"];
     pub const ST: &[&str] = &["instantmenu_run_st"];
-    pub const CLIP: &[&str] = &["instantclipmenu"];
+    pub const CLIP: &[&str] = &["ins", "clip", "--gui"];
     pub const QUICK: &[&str] = &["quickmenu"];
 }

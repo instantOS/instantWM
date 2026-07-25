@@ -113,9 +113,9 @@ pub fn get_keys() -> Vec<Key> {
         key!(MODKEY, XK_RETURN => KeyAction::named_args(NamedAction::Spawn, defaults::TERMINAL)),
         key!(MODKEY, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, menu::SMART)),
         key!(MODKEY | CONTROL, XK_SPACE => KeyAction::named_args(NamedAction::Spawn, menu::RUN)),
-        key!(MODKEY | SHIFT, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::CLIP)),
+        key!(MODKEY, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::CLIP)),
         key!(MODKEY | MOD1, XK_MINUS => KeyAction::named_args(NamedAction::Spawn, menu::ST)),
-        key!(MODKEY, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::QUICK)),
+        key!(MODKEY | SHIFT, XK_V => KeyAction::named_args(NamedAction::Spawn, menu::QUICK)),
         key!(MODKEY, XK_N => KeyAction::named_args(NamedAction::Spawn, defaults::FILEMANAGER)),
         key!(MODKEY, XK_R => KeyAction::named_args(NamedAction::Spawn, defaults::TERM_FILEMANAGER)),
         key!(MODKEY, XK_Y => KeyAction::named_args(NamedAction::Spawn, defaults::APPMENU)),
@@ -307,6 +307,35 @@ mod tests {
                 "settings".to_string(),
                 "--gui".to_string()
             ])
+        );
+    }
+
+    fn default_spawn_args(modifiers: u32, keysym: u32) -> Option<Vec<String>> {
+        get_keys()
+            .into_iter()
+            .find(|key| key.mod_mask == modifiers && key.keysym == keysym)
+            .and_then(|key| match key.action {
+                KeyAction::Named {
+                    action: NamedAction::Spawn,
+                    args,
+                } => Some(args),
+                _ => None,
+            })
+    }
+
+    #[test]
+    fn super_v_launches_clipboard_gui_and_shift_keeps_quickmenu() {
+        assert_eq!(
+            default_spawn_args(MODKEY, XK_V),
+            Some(vec![
+                "ins".to_string(),
+                "clip".to_string(),
+                "--gui".to_string()
+            ])
+        );
+        assert_eq!(
+            default_spawn_args(MODKEY | SHIFT, XK_V),
+            Some(vec!["quickmenu".to_string()])
         );
     }
 
