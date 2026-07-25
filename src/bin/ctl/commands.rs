@@ -132,6 +132,14 @@ pub enum ScratchpadAction {
     Toggle {
         name: Option<String>,
     },
+    Resize {
+        #[arg(default_value = "instantwm_scratchpad")]
+        name: String,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+        width: u32,
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..=100))]
+        height: u32,
+    },
     #[command(alias = "make")]
     Create {
         #[arg(default_value = "instantwm_scratchpad")]
@@ -618,6 +626,15 @@ impl From<ScratchpadAction> for ScratchpadCommand {
                 }
             }
             ScratchpadAction::Toggle { name } => Self::Toggle(name),
+            ScratchpadAction::Resize {
+                name,
+                width,
+                height,
+            } => Self::Resize {
+                name,
+                width_percent: width,
+                height_percent: height,
+            },
             ScratchpadAction::Create {
                 name,
                 window_id,

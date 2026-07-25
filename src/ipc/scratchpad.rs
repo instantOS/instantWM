@@ -1,6 +1,7 @@
 use crate::floating::scratchpad::{
     collect_scratchpad_info, scratchpad_hide_all, scratchpad_hide_name, scratchpad_make,
-    scratchpad_show_all, scratchpad_show_name, scratchpad_toggle, scratchpad_unmake,
+    scratchpad_resize_name, scratchpad_show_all, scratchpad_show_name, scratchpad_toggle,
+    scratchpad_unmake,
 };
 use crate::ipc_types::{Response, ScratchpadCommand};
 use crate::types::WindowId;
@@ -50,6 +51,14 @@ pub fn handle_scratchpad_command(wm: &mut Wm, cmd: ScratchpadCommand) -> Respons
             }
             Response::ScratchpadList(scratchpads)
         }
+        ScratchpadCommand::Resize {
+            name,
+            width_percent,
+            height_percent,
+        } => match scratchpad_resize_name(&mut wm.ctx(), &name, width_percent, height_percent) {
+            Ok(message) => Response::Message(message),
+            Err(error) => Response::err(error),
+        },
         ScratchpadCommand::Create {
             name,
             window_id,

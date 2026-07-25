@@ -10,6 +10,8 @@ use bincode::{Decode, Encode};
 
 const EDGE_MARGIN_X: i32 = 20;
 const EDGE_MARGIN_Y: i32 = 40;
+const DEFAULT_WIDTH_PERCENT: u32 = 50;
+const DEFAULT_HEIGHT_PERCENT: u32 = 60;
 
 pub const DEFAULT_EDGE_SCRATCHPAD_NAME: &str = "instantwm_edge_scratchpad";
 pub(crate) const SCRATCHPAD_IDENTITY_PREFIX: &str = "scratchpad_";
@@ -23,6 +25,54 @@ pub(crate) fn name_from_window_identity<'a>(class: &'a str, instance: &'a str) -
             .strip_prefix(SCRATCHPAD_IDENTITY_PREFIX)
             .filter(|name| !name.is_empty())
     })
+}
+
+/// Resolve a centered regular-scratchpad rectangle inside usable monitor space.
+///
+/// Percentages describe the complete decorated window, matching compositor
+/// integrations such as Sway's `resize set ... ppt`. The returned client
+/// geometry accounts for instantWM's compositor-side border.
+fn regular_scratchpad_rect(
+    content: Rect,
+    border_width: i32,
+    width_percent: u32,
+    height_percent: u32,
+) -> Result<Rect, String> {
+    if !(1..=100).contains(&width_percent) || !(1..=100).contains(&height_percent) {
+        return Err("scratchpad width and height must be between 1 and 100 percent".to_string());
+    }
+    if !content.is_valid() {
+        return Err("scratchpad monitor has no usable content area".to_string());
+    }
+
+    let border = border_width.max(0);
+    let total_width = ((i64::from(content.w) * i64::from(width_percent)) / 100)
+        .max(i64::from(2 * border + 1))
+        .min(i64::from(content.w)) as i32;
+    let total_height = ((i64::from(content.h) * i64::from(height_percent)) / 100)
+        .max(i64::from(2 * border + 1))
+        .min(i64::from(content.h)) as i32;
+    let width = (total_width - 2 * border).max(1);
+    let height = (total_height - 2 * border).max(1);
+
+    Ok(Rect::new(
+        content.x + (content.w - total_width) / 2,
+        content.y + (content.h - total_height) / 2,
+        width,
+        height,
+    ))
+}
+
+pub(crate) fn default_regular_scratchpad_rect(
+    content: Rect,
+    border_width: i32,
+) -> Result<Rect, String> {
+    regular_scratchpad_rect(
+        content,
+        border_width,
+        DEFAULT_WIDTH_PERCENT,
+        DEFAULT_HEIGHT_PERCENT,
+    )
 }
 
 /// Complete geometry for one edge-scratchpad transition.
@@ -307,6 +357,42 @@ pub fn scratchpad_show_name(ctx: &mut WmCtx, name: &str) -> Result<String, Strin
         warp_pointer: ctx.core().behavior().focus_follows_mouse.is_enabled(),
     };
     scratchpad_show_name_with_options(ctx, name, options)
+}
+
+/// Resize and center a regular scratchpad as a percentage of usable monitor space.
+pub fn scratchpad_resize_name(
+    ctx: &mut WmCtx,
+    name: &str,
+    width_percent: u32,
+    height_percent: u32,
+) -> Result<String, String> {
+    let win = find_live_scratchpad(ctx, name)?;
+    let rect = {
+        let view = ctx
+            .core()
+            .model()
+            .client_view(win)
+            .ok_or_else(|| format!("scratchpad '{}' has no assigned monitor", name))?;
+        if view.client.is_edge_scratchpad() {
+            return Err(format!(
+                "scratchpad '{}' is edge-anchored and cannot use percentage sizing",
+                name
+            ));
+        }
+        regular_scratchpad_rect(
+            view.monitor
+                .visible_content_rect(&ctx.core().model().clients),
+            view.client.border_width,
+            width_percent,
+            height_percent,
+        )?
+    };
+
+    ctx.move_resize(win, rect, MoveResizeOptions::immediate());
+    Ok(format!(
+        "resized scratchpad '{}' to {}% x {}%",
+        name, width_percent, height_percent
+    ))
 }
 
 pub(crate) fn scratchpad_show_name_with_options(
@@ -648,7 +734,7 @@ pub fn edge_scratchpad_create(ctx: &mut WmCtx) {
 
 #[cfg(test)]
 mod tests {
-    use super::{EdgeSlideRects, name_from_window_identity};
+    use super::{EdgeSlideRects, name_from_window_identity, regular_scratchpad_rect};
     use crate::types::input::EdgeDirection;
     use crate::types::{Rect, Size};
 
@@ -671,6 +757,26 @@ mod tests {
         );
         assert_eq!(name_from_window_identity("scratchpad_", "kitty"), None);
         assert_eq!(name_from_window_identity("kitty", "kitty"), None);
+    }
+
+    #[test]
+    fn regular_scratchpad_percentages_include_borders_and_center_in_content() {
+        let content = Rect::new(100, 230, 1920, 1050);
+        let rect = regular_scratchpad_rect(content, 2, 50, 60).unwrap();
+
+        assert_eq!(rect, Rect::new(580, 440, 956, 626));
+        assert!(contains(
+            content,
+            Rect::new(rect.x, rect.y, rect.w + 2 * 2, rect.h + 2 * 2)
+        ));
+    }
+
+    #[test]
+    fn regular_scratchpad_rejects_invalid_percentages() {
+        let content = Rect::new(0, 0, 1920, 1080);
+
+        assert!(regular_scratchpad_rect(content, 2, 0, 60).is_err());
+        assert!(regular_scratchpad_rect(content, 2, 50, 101).is_err());
     }
 
     #[test]

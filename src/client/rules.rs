@@ -92,19 +92,26 @@ fn apply_rules_impl(
             .map(str::to_owned)
     {
         let role = g.model.client_view(win).map(|view| {
+            let content = view.monitor.visible_content_rect(&g.model.clients);
             (
                 view.client.tags,
-                view.monitor.work_rect().w,
-                view.monitor.work_rect().h,
+                content,
+                view.client.border_width,
                 view.monitor.selected.filter(|&selected| selected != win),
             )
         });
-        if let Some((restore_tags, monitor_width, monitor_height, restore_focus)) = role
+        if let Some((restore_tags, content, border_width, restore_focus)) = role
             && g.model.scratchpad_find(&name).is_none()
             && let Some(client) = g.model.client_mut(win)
         {
-            client.apply_scratchpad_state(&name, None, restore_tags, monitor_width, monitor_height);
+            client.apply_scratchpad_state(&name, None, restore_tags, content.w, content.h);
             client.show_as_scratchpad(restore_tags, None);
+            if let Ok(rect) =
+                crate::floating::scratchpad::default_regular_scratchpad_rect(content, border_width)
+            {
+                client.geo = rect;
+                client.set_preferred_floating_size(rect.size());
+            }
             if let Some(scratchpad) = client.scratchpad.as_mut() {
                 scratchpad.remember_focus(restore_focus);
             }
@@ -836,6 +843,7 @@ mod tests {
         assert!(client.mode().is_floating());
         assert!(client.is_sticky);
         assert_eq!(client.tags, selected_tags);
+        assert_eq!(client.total_rect(), Rect::new(300, 160, 600, 480));
         let scratchpad = client.scratchpad.as_ref().unwrap();
         assert_eq!(scratchpad.name, "menu");
         assert_eq!(scratchpad.restore_tags, selected_tags);

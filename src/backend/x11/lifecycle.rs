@@ -60,7 +60,10 @@ pub fn manage(
 ) {
     let transient_for = get_transient_for_hint(&ctx.x11, window);
     let x11_runtime = &*ctx.x11_runtime;
+    let border_px = ctx.core.config().window.border_width_px;
     let mut client = build_initial_client(&ctx.x11, x11_runtime, window, initial_geometry);
+    client.border_width = border_px;
+    client.old_border_width = border_px;
     client.transient_for = transient_for;
     let launch_context = read_launch_context(ctx.core.pending_launches_mut(), &ctx.x11, window);
     if !assign_initial_monitor_and_tags(
@@ -85,7 +88,6 @@ pub fn manage(
         .original_border_widths
         .insert(window, original_border_width);
 
-    let border_px = ctx.core.config().window.border_width_px;
     apply_default_border(ctx.core.model_mut(), border_px, window);
     let (monitor_work_rect, monitor_rect) = monitor_rects_for_client(ctx.core.model(), window);
     clamp_client_to_work_area(ctx.core.model_mut(), window, monitor_work_rect);

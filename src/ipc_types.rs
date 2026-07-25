@@ -162,6 +162,11 @@ pub enum ScratchpadCommand {
     Hide(Option<String>),
     HideAll,
     Status(Option<String>),
+    Resize {
+        name: String,
+        width_percent: u32,
+        height_percent: u32,
+    },
     Create {
         name: String,
         window_id: Option<u32>,

@@ -119,6 +119,33 @@ mod tests {
     }
 
     #[test]
+    fn parses_scratchpad_percentage_resize() {
+        let command: IpcCommand = Cli::parse_from([
+            "instantwmctl",
+            "scratchpad",
+            "resize",
+            "menu",
+            "--width",
+            "50",
+            "--height",
+            "60",
+        ])
+        .command
+        .into();
+
+        assert!(matches!(
+            command,
+            IpcCommand::Scratchpad(
+                instantwm::ipc_types::ScratchpadCommand::Resize {
+                    name,
+                    width_percent: 50,
+                    height_percent: 60,
+                }
+            ) if name == "menu"
+        ));
+    }
+
+    #[test]
     fn parses_window_info_command() {
         let cmd: IpcCommand = Cli::parse_from(["instantwmctl", "window", "info", "42"])
             .command
