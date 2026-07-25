@@ -88,8 +88,11 @@ impl WaylandState {
         window_id
     }
 
-    /// Map a window (make it visible).
-    pub fn map_window(&mut self, window: WindowId) {
+    /// Add a tracked window to Smithay Space, making it visible.
+    ///
+    /// This is compositor-space visibility only; it does not begin a new
+    /// Wayland or XWayland protocol lifecycle.
+    pub fn map_window_in_space(&mut self, window: WindowId) {
         // Get the location from the space if the element is already mapped,
         // otherwise use the client's stored geometry to avoid animating from (0,0)
         let is_already_mapped = self
@@ -99,7 +102,7 @@ impl WaylandState {
         // If the window is already mapped, calling `map_element` will unnecessarily
         // pull it to the top of the stack and disrupt the Z-order.
         if is_already_mapped {
-            debug!("map_window({window:?}): no-op, already mapped");
+            debug!("map_window_in_space({window:?}): no-op, already mapped");
             return;
         }
 
@@ -127,19 +130,20 @@ impl WaylandState {
         }
     }
 
-    /// Unmap a window (hide it).
+    /// Remove a tracked window from Smithay Space, hiding it.
     ///
-    /// Clears Smithay seat focus if this window holds it, but does **not**
-    /// touch `mon.sel`. The WM layer will reconcile focus after the
-    /// show/hide pass.
-    pub fn unmap_window(&mut self, window: WindowId) {
+    /// This is compositor-space visibility only; it does not withdraw or
+    /// unmanage the underlying Wayland/XWayland surface. Clears Smithay seat
+    /// focus if this window holds it, but does **not** touch `mon.sel`. The WM
+    /// layer will reconcile focus after the show/hide pass.
+    pub fn unmap_window_from_space(&mut self, window: WindowId) {
         let Some(element) = self.window_index.get(&window).cloned() else {
-            debug!("unmap_window({window:?}): no-op, window not found");
+            debug!("unmap_window_from_space({window:?}): no-op, window not found");
             return;
         };
         let is_mapped = self.space.elements().any(|w| w == &element);
         if !is_mapped {
-            debug!("unmap_window({window:?}): no-op, already unmapped");
+            debug!("unmap_window_from_space({window:?}): no-op, already unmapped");
             return;
         }
 

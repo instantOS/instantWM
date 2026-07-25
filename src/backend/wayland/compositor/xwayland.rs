@@ -193,7 +193,7 @@ impl XwmHandler for WaylandState {
         if let Some(win) = self.window_id_for_x11_surface(&window) {
             sync_surface_metadata(self, win, &window);
             apply_surface_policy(self, win, &window);
-            self.map_window(win);
+            self.map_window_in_space(win);
             self.request_window_focus(win);
             return;
         }
@@ -269,7 +269,13 @@ impl XwmHandler for WaylandState {
         }
 
         if let Some(win) = self.window_id_for_x11_surface(&window) {
-            self.unmap_window(win);
+            // A managed X11 window unmapping itself is a withdrawal from WM
+            // management, not one of instantWM's visibility-only Space
+            // unmaps. Remove backend tracking now and let the normal
+            // backend-neutral unmanage path reconcile model, focus, layout,
+            // bar state, and decorations.
+            self.remove_window_tracking(win);
+            self.push_command(super::super::commands::WmCommand::UnmanageWindow(win));
         } else {
             let element = self
                 .space

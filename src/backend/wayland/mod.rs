@@ -260,11 +260,11 @@ impl WindowOps for WaylandBackend {
     }
 
     fn map_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.map_window(window));
+        let _ = self.with_state(|state: &mut WaylandState| state.map_window_in_space(window));
     }
 
     fn unmap_window(&self, window: WindowId) {
-        let _ = self.with_state(|state: &mut WaylandState| state.unmap_window(window));
+        let _ = self.with_state(|state: &mut WaylandState| state.unmap_window_from_space(window));
     }
 
     fn window_exists(&self, window: WindowId) -> bool {
