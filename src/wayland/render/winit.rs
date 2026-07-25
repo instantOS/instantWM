@@ -172,7 +172,9 @@ fn apply_cursor_presentation_internal(
         }
         CursorPresentation::Named(icon) => {
             backend.window().set_cursor_visible(true);
-            backend.window().set_cursor(*icon);
+            backend
+                .window()
+                .set_cursor(smithay::reexports::winit::cursor::Cursor::Icon(*icon));
         }
         CursorPresentation::Surface { .. } => {
             // Client-provided surface cursor. Winit cannot set surface as cursor,

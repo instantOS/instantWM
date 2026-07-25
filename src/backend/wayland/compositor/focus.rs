@@ -712,10 +712,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
         event: &smithay::input::touch::DownEvent,
-        seq: Serial,
     ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::down(surface, seat, data, event, seq)
+            smithay::input::touch::TouchTarget::down(surface, seat, data, event)
         });
     }
 
@@ -724,10 +723,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
         event: &smithay::input::touch::UpEvent,
-        seq: Serial,
     ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::up(surface, seat, data, event, seq)
+            smithay::input::touch::TouchTarget::up(surface, seat, data, event)
         });
     }
 
@@ -736,22 +734,31 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
         event: &smithay::input::touch::MotionEvent,
-        seq: Serial,
     ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::motion(surface, seat, data, event, seq)
+            smithay::input::touch::TouchTarget::motion(surface, seat, data, event)
         });
     }
 
-    fn frame(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
+    fn frame(
+        &self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+        marker: smithay::input::touch::FrameMarker,
+    ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::frame(surface, seat, data, seq)
+            smithay::input::touch::TouchTarget::frame(surface, seat, data, marker)
         });
     }
 
-    fn cancel(&self, seat: &Seat<WaylandState>, data: &mut WaylandState, seq: Serial) {
+    fn cancel(
+        &self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+        marker: smithay::input::touch::FrameMarker,
+    ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::cancel(surface, seat, data, seq)
+            smithay::input::touch::TouchTarget::cancel(surface, seat, data, marker)
         });
     }
 
@@ -760,10 +767,9 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
         event: &smithay::input::touch::ShapeEvent,
-        seq: Serial,
     ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::shape(surface, seat, data, event, seq)
+            smithay::input::touch::TouchTarget::shape(surface, seat, data, event)
         });
     }
 
@@ -772,10 +778,18 @@ impl smithay::input::touch::TouchTarget<WaylandState> for PointerFocusTarget {
         seat: &Seat<WaylandState>,
         data: &mut WaylandState,
         event: &smithay::input::touch::OrientationEvent,
-        seq: Serial,
     ) {
         self.with_surface(|surface| {
-            smithay::input::touch::TouchTarget::orientation(surface, seat, data, event, seq)
+            smithay::input::touch::TouchTarget::orientation(surface, seat, data, event)
         });
+    }
+
+    fn last_frame(
+        &self,
+        seat: &Seat<WaylandState>,
+        data: &mut WaylandState,
+    ) -> Option<smithay::input::touch::FrameMarker> {
+        let surface = self.wl_surface()?;
+        smithay::input::touch::TouchTarget::last_frame(surface.as_ref(), seat, data)
     }
 }

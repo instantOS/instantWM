@@ -309,8 +309,6 @@ impl smithay::wayland::foreign_toplevel_list::ForeignToplevelListHandler for Way
     }
 }
 
-smithay::delegate_foreign_toplevel_list!(WaylandState);
-
 impl XWaylandShellHandler for WaylandState {
     fn xwayland_shell_state(
         &mut self,
@@ -445,5 +443,12 @@ impl PointerConstraintsHandler for WaylandState {
         let target = origin + location;
         pointer.set_location(target);
         self.runtime.pointer_location = target;
+    }
+
+    fn remove_constraint(
+        &mut self,
+        _surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+        _pointer: &smithay::input::pointer::PointerHandle<Self>,
+    ) {
     }
 }

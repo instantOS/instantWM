@@ -7,7 +7,9 @@
 
 use smithay::backend::input::TouchSlot;
 use smithay::input::touch::{DownEvent, MotionEvent, UpEvent};
+use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle, SERIAL_COUNTER, Transform};
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::backend::wayland::compositor::layer_shell::LayerFocusRequest;
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
@@ -125,6 +127,12 @@ pub fn handle_touch_down(
         }
     }
 
+    let emulate_pointer = hit
+        .focus
+        .as_ref()
+        .is_some_and(|(target, _)| !supports_native_touch(state, target));
+    let touch_was_grabbed = state.touch.is_grabbed();
+
     state.touch.clone().down(
         state,
         hit.focus.clone(),
@@ -136,7 +144,11 @@ pub fn handle_touch_down(
         },
     );
 
-    if state.runtime.pointer_touch_slot.is_none() && !state.touch.has_grab(serial) {
+    if should_emulate_pointer(
+        emulate_pointer,
+        state.runtime.pointer_touch_slot.is_some(),
+        touch_was_grabbed,
+    ) {
         state.runtime.pointer_touch_slot = Some(event.slot);
         state.runtime.pointer_location = location;
 
@@ -257,21 +269,43 @@ pub fn handle_touch_cancel(wm: &mut Wm, state: &mut WaylandState) {
     if state.runtime.bar_touch_slot.take().is_some() {
         cancel_bar_touch(wm, state);
     }
-    if state.runtime.pointer_touch_slot.take().is_some() {
-        let serial = SERIAL_COUNTER.next_serial();
-        let pointer = state.pointer.clone();
-        pointer.button(
-            state,
-            &smithay::input::pointer::ButtonEvent {
-                button: TOUCH_BUTTON_CODE,
-                state: smithay::backend::input::ButtonState::Released,
-                serial,
-                time: 0,
-            },
-        );
-        pointer.frame(state);
-    }
+    cancel_pointer_emulation(state, 0);
     state.touch.clone().cancel(state);
+}
+
+pub(crate) fn cancel_pointer_emulation(state: &mut WaylandState, time_msec: u32) {
+    if state.runtime.pointer_touch_slot.take().is_none() {
+        return;
+    }
+    let pointer = state.pointer.clone();
+    pointer.button(
+        state,
+        &smithay::input::pointer::ButtonEvent {
+            button: TOUCH_BUTTON_CODE,
+            state: smithay::backend::input::ButtonState::Released,
+            serial: SERIAL_COUNTER.next_serial(),
+            time: time_msec,
+        },
+    );
+    pointer.frame(state);
+}
+
+fn supports_native_touch(state: &WaylandState, target: &PointerFocusTarget) -> bool {
+    let Some(surface) = target.wl_surface() else {
+        return false;
+    };
+    let Some(client) = surface.client() else {
+        return false;
+    };
+    state.touch.client_touch(&client).next().is_some()
+}
+
+fn should_emulate_pointer(
+    client_needs_emulation: bool,
+    pointer_touch_active: bool,
+    touch_was_grabbed: bool,
+) -> bool {
+    client_needs_emulation && !pointer_touch_active && !touch_was_grabbed
 }
 
 fn root_point(location: Point<f64, Logical>) -> crate::types::Point {
@@ -485,6 +519,14 @@ mod tests {
             NormalizedTouchPosition::new(-0.25, 1.25),
             Some(NormalizedTouchPosition { x: 0.0, y: 1.0 })
         );
+    }
+
+    #[test]
+    fn pointer_fallback_is_only_used_for_unhandled_first_touch() {
+        assert!(should_emulate_pointer(true, false, false));
+        assert!(!should_emulate_pointer(false, false, false));
+        assert!(!should_emulate_pointer(true, true, false));
+        assert!(!should_emulate_pointer(true, false, true));
     }
 
     #[test]

@@ -20,11 +20,11 @@
 //!
 //! 1. **State struct** — stored as a field on `WaylandState`.
 //! 2. **Handler trait** — implemented on `WaylandState`.
-//! 3. **delegate macro** — generates `wayland_server::Dispatch` impls.
+//! 3. **dispatch delegation** — `delegate_dispatch2!` generates the protocol
+//!    `wayland_server::Dispatch` impls from those handler traits.
 //!
-//! The `delegate_*!` macros MUST be called at the module level (not inside
-//! an `impl` block).  They wire Smithay's internal message routing to the
-//! handler trait implementation.
+//! The delegation macro MUST be called at module level (not inside an `impl`
+//! block). It wires Smithay's internal message routing to the handler traits.
 
 mod focus;
 mod handlers;
@@ -43,55 +43,10 @@ pub use focus::{KeyboardFocusTarget, PointerFocusTarget};
 pub(crate) use state::PendingRenderTargets;
 pub use state::{PendingLaunchContextMarker, WaylandClientState, WaylandState, WindowIdMarker};
 
-use smithay::{
-    delegate_alpha_modifier, delegate_compositor, delegate_content_type, delegate_cursor_shape,
-    delegate_data_control, delegate_data_device, delegate_dmabuf, delegate_ext_data_control,
-    delegate_fixes, delegate_fractional_scale, delegate_idle_inhibit, delegate_idle_notify,
-    delegate_image_capture_source, delegate_image_copy_capture, delegate_layer_shell,
-    delegate_output, delegate_output_capture_source, delegate_pointer_constraints,
-    delegate_pointer_gestures, delegate_presentation, delegate_primary_selection,
-    delegate_relative_pointer, delegate_seat, delegate_session_lock, delegate_shm,
-    delegate_single_pixel_buffer, delegate_viewporter, delegate_virtual_keyboard_manager,
-    delegate_xdg_activation, delegate_xdg_decoration, delegate_xdg_dialog, delegate_xdg_foreign,
-    delegate_xdg_shell, delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
-};
+use smithay::delegate_dispatch2;
 
 // ---------------------------------------------------------------------------
-// Delegate macros — these MUST be at module level
+// Dispatch delegation — this MUST be at module level
 // ---------------------------------------------------------------------------
 
-delegate_alpha_modifier!(WaylandState);
-delegate_compositor!(WaylandState);
-delegate_content_type!(WaylandState);
-delegate_cursor_shape!(WaylandState);
-delegate_data_control!(WaylandState);
-delegate_data_device!(WaylandState);
-delegate_dmabuf!(WaylandState);
-delegate_ext_data_control!(WaylandState);
-delegate_fixes!(WaylandState);
-delegate_fractional_scale!(WaylandState);
-delegate_idle_inhibit!(WaylandState);
-delegate_idle_notify!(WaylandState);
-delegate_image_capture_source!(WaylandState);
-delegate_output_capture_source!(WaylandState);
-delegate_image_copy_capture!(WaylandState);
-delegate_layer_shell!(WaylandState);
-delegate_output!(WaylandState);
-delegate_pointer_constraints!(WaylandState);
-delegate_pointer_gestures!(WaylandState);
-delegate_presentation!(WaylandState);
-delegate_primary_selection!(WaylandState);
-delegate_relative_pointer!(WaylandState);
-delegate_seat!(WaylandState);
-delegate_shm!(WaylandState);
-delegate_single_pixel_buffer!(WaylandState);
-delegate_viewporter!(WaylandState);
-delegate_virtual_keyboard_manager!(WaylandState);
-delegate_xdg_activation!(WaylandState);
-delegate_xdg_decoration!(WaylandState);
-delegate_xdg_dialog!(WaylandState);
-delegate_xdg_foreign!(WaylandState);
-delegate_xdg_shell!(WaylandState);
-delegate_session_lock!(WaylandState);
-delegate_xwayland_keyboard_grab!(WaylandState);
-delegate_xwayland_shell!(WaylandState);
+delegate_dispatch2!(WaylandState);

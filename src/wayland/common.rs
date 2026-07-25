@@ -435,6 +435,7 @@ pub fn spawn_xwayland(state: &WaylandState, loop_handle: &LoopHandle<'static, Wa
         &state.display_handle,
         None,
         std::iter::empty::<(String, String)>(),
+        std::iter::empty::<String>(),
         true,
         Stdio::null(),
         Stdio::null(),

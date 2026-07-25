@@ -448,7 +448,8 @@ impl XwmHandler for WaylandState {
             | WmWindowProperty::StartupId
             | WmWindowProperty::Pid
             | WmWindowProperty::Protocols
-            | WmWindowProperty::Opacity => {
+            | WmWindowProperty::Opacity
+            | WmWindowProperty::FrameExtents => {
                 apply_surface_policy(self, win, &window);
                 if matches!(
                     property,

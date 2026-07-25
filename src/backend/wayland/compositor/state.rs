@@ -286,6 +286,7 @@ pub struct WaylandRuntimeState {
     /// starts there must remain compositor-owned until its matching up/cancel.
     /// Other slots continue through the native `wl_touch` path.
     pub(crate) bar_touch_slot: Option<smithay::backend::input::TouchSlot>,
+    /// Touch slot emulating a pointer for a client without a `wl_touch` binding.
     pub(crate) pointer_touch_slot: Option<smithay::backend::input::TouchSlot>,
     pub cursor_hidden_by_touch: bool,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,

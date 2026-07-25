@@ -6,7 +6,7 @@
 /// dmenu/instantmenu) at map time so we can cache the result and avoid
 /// repeated string scans on every raise.
 pub(crate) fn is_unmanaged_x11_overlay(x11: &smithay::xwayland::X11Surface) -> bool {
-    if x11.is_override_redirect() || x11.is_popup() {
+    if x11.is_override_redirect() || x11.is_modal() {
         return true;
     }
     if matches!(

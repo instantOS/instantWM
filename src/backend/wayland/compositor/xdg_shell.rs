@@ -9,6 +9,7 @@ use smithay::{
         SeatHandler,
         dnd::{DnDGrab, GrabType, Source},
         pointer::Focus,
+        tablet::TabletSeatHandler,
     },
     reexports::wayland_server::{Resource, protocol::wl_seat},
     wayland::{
@@ -34,7 +35,6 @@ use smithay::{
             decoration::XdgDecorationHandler,
             dialog::{ToplevelDialogHint, XdgDialogHandler},
         },
-        tablet_manager::TabletSeatHandler,
         xdg_foreign::{XdgForeignHandler, XdgForeignState},
     },
 };
@@ -225,7 +225,9 @@ impl SeatHandler for WaylandState {
     }
 }
 
-impl TabletSeatHandler for WaylandState {}
+impl TabletSeatHandler for WaylandState {
+    type ToolFocus = smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+}
 
 impl XdgForeignHandler for WaylandState {
     fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
