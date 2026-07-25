@@ -373,7 +373,7 @@ fn dispatch_pointer_motion(
 
     // Phase 5: Update hover resize state for floating windows
     let suppress_hover_focus =
-        update_hover_resize_state(wm, root, hovered_win, !wm.core.drag.any_drag_active());
+        update_hover_resize_state(wm, root, hovered_win, wm.core.drag.any_drag_active());
 
     // Phase 6: Update pointer focus based on drag state. An exclusive layer
     // surface (for example slurp) temporarily owns keyboard focus; moving the
@@ -532,14 +532,14 @@ fn update_hover_resize_state(
     wm: &mut Wm,
     root: RootPoint,
     hovered_win: Option<crate::types::WindowId>,
-    no_active_drag: bool,
+    drag_active: bool,
 ) -> bool {
     if wm.core.model.is_overview_active() {
         let mut ctx = wm.ctx();
         clear_hover_offer(&mut ctx);
         return false;
     }
-    if !no_active_drag {
+    if drag_active {
         return false;
     }
 
