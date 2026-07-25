@@ -53,6 +53,22 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusT
             target = Some(hist_win);
         }
 
+        // Maximized presentation projects the last focused tiled client
+        // directly beneath floating windows without mutating persistent
+        // z-order. If that floating window disappears, restore the client
+        // which was actually visible beneath it before falling back to the
+        // persistent stack.
+        if target.is_none()
+            && mon.current_layout().is_maximized()
+            && let Some(&tiled_win) = mon.tag_tiled_focus_history.get(&selected)
+            && model.client(tiled_win).is_some_and(|client| {
+                client.mode().is_tiling()
+                    && is_focusable_on_monitor(model, sel_mon_id, selected, tiled_win)
+            })
+        {
+            target = Some(tiled_win);
+        }
+
         // Fallback to top of stack.
         if target.is_none() {
             target = mon.first_visible_client(&model.clients);
@@ -850,6 +866,65 @@ mod tests {
         assert_eq!(
             core.model().expect_selected_monitor().z_order.as_slice(),
             &[WindowId(1), WindowId(2)]
+        );
+    }
+
+    #[test]
+    fn closing_floating_window_in_maximized_presentation_restores_tiled_focus() {
+        let (mut state, mut work, mut running, mut bar, mut focus) = core_with_selected_client();
+        let monitor_id = state.model.selected_monitor_id();
+        let tag = TagMask::single(1).unwrap();
+        let previously_focused = WindowId(1);
+        let newer_tiled = WindowId(2);
+        let popup = WindowId(3);
+        state
+            .model
+            .monitor_mut(monitor_id)
+            .unwrap()
+            .clients
+            .push(previously_focused);
+
+        for (win, floating) in [(newer_tiled, false), (popup, true)] {
+            let mut client = Client {
+                win,
+                monitor_id,
+                tags: tag,
+                ..Client::default()
+            };
+            if floating {
+                client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+                client.transient_for = Some(previously_focused);
+            }
+            assert!(state.model.insert_client(client));
+            assert!(state.model.attach_client(win));
+        }
+
+        let monitor = state.model.monitor_mut(monitor_id).unwrap();
+        monitor.per_tag_state().presentation = crate::layouts::PresentationMode::Maximized;
+        monitor.selected = Some(previously_focused);
+        monitor.tag_focus_history.insert(tag, previously_focused);
+        monitor
+            .tag_tiled_focus_history
+            .insert(tag, previously_focused);
+
+        let mut core = CoreCtx::new(&mut state, &mut work, &mut running, &mut bar, &mut focus);
+        let mut backend = RecordingBackend::default();
+        focus_generic(
+            &mut core,
+            Some(popup),
+            &mut backend,
+            BackendRefresh::IfNeeded,
+        )
+        .unwrap();
+        assert_eq!(core.model().selected_win(), Some(popup));
+
+        core.model_mut().remove_client(popup).unwrap();
+        focus_generic(&mut core, None, &mut backend, BackendRefresh::Force).unwrap();
+
+        assert_eq!(
+            core.model().selected_win(),
+            Some(previously_focused),
+            "the tiled window visible beneath the popup should regain focus"
         );
     }
 
