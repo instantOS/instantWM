@@ -453,11 +453,12 @@ fn handle_update_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32, h
     let mut ctx = wm.ctx();
     let g = ctx.core_mut().state_mut();
     if let Some(client) = g.model.client(win)
-        // Tiled, maximized, and fullscreen geometry is owned by the WM. In
-        // particular, a native Wayland client may commit a stale startup
+        // Tiled, maximized, fullscreen, and scratchpad geometry is owned by the
+        // WM. In particular, a native Wayland client may commit a stale startup
         // buffer after layout selected its final size; copying that size back
-        // here would overwrite the layout target.
+        // here would overwrite the layout or scratchpad target.
         && client.mode().is_floating()
+        && !client.is_scratchpad()
         && (client.geo.w != w || client.geo.h != h)
     {
         let rect = crate::types::Rect {
@@ -879,7 +880,7 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
 
 #[cfg(test)]
 mod tests {
-    use super::handle_update_xwayland_policy;
+    use super::{handle_update_window_size, handle_update_xwayland_policy};
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::types::{BaseClientMode, Client, ClientMode, Monitor, Rect, WindowId};
@@ -916,5 +917,32 @@ mod tests {
         handle_update_xwayland_policy(&mut wm, win, None, None, true, false, true);
         assert!(!wm.work.layout.is_pending());
         assert_eq!(wm.bar.update_seq(), bar_seq);
+    }
+
+    #[test]
+    fn stale_wayland_commit_does_not_override_scratchpad_geometry() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let monitor_id = wm.core.model.monitors.push(Monitor::default());
+        let win = WindowId(71);
+        let geo = Rect::new(480, 216, 960, 648);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo,
+            mode: ClientMode::Floating,
+            ..Client::default()
+        };
+        client.apply_scratchpad_state(
+            "insmenu",
+            None,
+            crate::types::TagMask::from_bits(1),
+            1920,
+            1080,
+        );
+        wm.core.model.insert_client(client);
+
+        handle_update_window_size(&mut wm, win, 1920, 1080);
+
+        assert_eq!(wm.core.model.client(win).unwrap().geo, geo);
     }
 }
