@@ -289,6 +289,7 @@ pub fn run() -> ! {
         runtime_event_rx,
     );
 
+    crate::wayland::common::stop_graphical_session_target();
     exit(0);
 }
 

@@ -337,6 +337,50 @@ pub fn import_env_into_dbus_activation() {
     }
 }
 
+/// Announce a standalone instantWM session to systemd user services.
+///
+/// Services such as portals and clipboard managers bind themselves to
+/// `graphical-session.target`. Display managers do not universally start that
+/// target for custom compositor desktop files, so the session compositor owns
+/// the lifecycle explicitly.
+pub fn start_graphical_session_target() {
+    if env::var("INSTANTWM_BACKEND").ok().as_deref() != Some("wayland-drm") {
+        return;
+    }
+    match Command::new("systemctl")
+        .args(["--user", "start", "instantwm-session.target"])
+        .status()
+    {
+        Ok(status) if !status.success() => {
+            log::warn!("Failed to start instantwm-session.target: {status}");
+        }
+        Err(error) => log::debug!("systemctl unavailable for graphical session startup: {error}"),
+        Ok(_) => {}
+    }
+}
+
+/// End the systemd graphical-session lifecycle on a clean compositor exit.
+pub fn stop_graphical_session_target() {
+    if env::var("INSTANTWM_BACKEND").ok().as_deref() != Some("wayland-drm") {
+        return;
+    }
+    match Command::new("systemctl")
+        .args([
+            "--user",
+            "stop",
+            "instantwm-session.target",
+            "graphical-session.target",
+        ])
+        .status()
+    {
+        Ok(status) if !status.success() => {
+            log::warn!("Failed to stop graphical-session.target: {status}");
+        }
+        Err(error) => log::debug!("systemctl unavailable for graphical session shutdown: {error}"),
+        Ok(_) => {}
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Wayland socket
 // ─────────────────────────────────────────────────────────────────────────────
@@ -359,6 +403,7 @@ pub fn setup_socket(
 
     apply_session_env(&socket_name);
     import_env_into_dbus_activation();
+    start_graphical_session_target();
 
     loop_handle
         .insert_source(listening_socket, |client, _, data| {

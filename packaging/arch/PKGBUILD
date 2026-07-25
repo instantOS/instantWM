@@ -79,4 +79,5 @@ package() {
 
     # Portal routing for Wayland screen sharing/screenshot support
     install -Dm644 resources/instantwm-portals.conf "$pkgdir/usr/share/xdg-desktop-portal/instantwm-portals.conf"
+    install -Dm644 resources/instantwm-session.target "$pkgdir/usr/lib/systemd/user/instantwm-session.target"
 }
