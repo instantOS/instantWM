@@ -718,6 +718,7 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
                 surface_primary_scanout_output,
             );
         }
+        send_auxiliary_surface_frame_callbacks(state, output, elapsed, throttle);
         return;
     }
 
@@ -734,6 +735,25 @@ pub fn send_frame_callbacks(state: &WaylandState, output: &Output, elapsed: Dura
     for layer_surface in map.layers() {
         layer_surface.send_frame(output, elapsed, throttle, surface_primary_scanout_output);
     }
+
+    send_auxiliary_surface_frame_callbacks(state, output, elapsed, throttle);
+}
+
+fn send_auxiliary_surface_frame_callbacks(
+    state: &WaylandState,
+    output: &Output,
+    elapsed: Duration,
+    throttle: Option<Duration>,
+) {
+    for_each_auxiliary_surface(state, |surface| {
+        send_frames_surface_tree(
+            surface,
+            output,
+            elapsed,
+            throttle,
+            surface_primary_scanout_output,
+        );
+    });
 }
 
 /// Update Smithay's primary-scanout bookkeeping for all surfaces visible on `output`.
@@ -762,6 +782,7 @@ pub fn update_primary_scanout_output(
                 update_preferred_fractional_scale(surface, data);
             });
         }
+        update_auxiliary_surface_primary_scanout(state, output, render_states);
         return;
     }
 
@@ -796,6 +817,40 @@ pub fn update_primary_scanout_output(
             );
             update_preferred_fractional_scale(surface, data);
         });
+    }
+
+    update_auxiliary_surface_primary_scanout(state, output, render_states);
+}
+
+fn update_auxiliary_surface_primary_scanout(
+    state: &WaylandState,
+    output: &Output,
+    render_states: &RenderElementStates,
+) {
+    for_each_auxiliary_surface(state, |root| {
+        with_surfaces_surface_tree(root, |surface, data| {
+            let _ = update_surface_primary_scanout_output(
+                surface,
+                output,
+                data,
+                None,
+                render_states,
+                default_primary_scanout_output_compare,
+            );
+            update_preferred_fractional_scale(surface, data);
+        });
+    });
+}
+
+/// Visit compositor-rendered surfaces which are not part of a window or layer
+/// tree. They still need the same frame and scanout servicing as ordinary
+/// visible content or clients can stall while updating them.
+fn for_each_auxiliary_surface(state: &WaylandState, mut visit: impl FnMut(&WlSurface)) {
+    if let CursorImageStatus::Surface(surface) = &state.cursor_image_status {
+        visit(surface);
+    }
+    if let Some(surface) = state.runtime.dnd_icon.as_ref() {
+        visit(surface);
     }
 }
 
