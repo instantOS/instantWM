@@ -120,13 +120,15 @@ impl WaylandState {
     /// Collect all overlay/unmanaged windows (dmenu, override-redirect popups,
     /// etc.) that should be rendered above the bar but below the cursor.
     ///
-    /// Returns `(window, physical_location)` pairs ready for `AsRenderElements`.
+    /// Returns each window with its output-local logical render origin.
+    ///
+    /// A Space location addresses the window geometry, while rendering starts
+    /// at the surface-tree origin. Keeping this conversion here gives explicit
+    /// overlays the same coordinate semantics as Smithay's normal Space path.
     pub fn overlay_windows_for_render(
         &self,
         output: &Output,
-    ) -> Vec<(Window, Point<i32, smithay::utils::Physical>)> {
-        use smithay::utils::Physical;
-
+    ) -> Vec<(Window, Point<i32, smithay::utils::Logical>)> {
         let Some(output_rect) = self.space.output_geometry(output) else {
             return Vec::new();
         };
@@ -141,14 +143,8 @@ impl WaylandState {
                 if !output_rect.overlaps(window_rect) {
                     return None;
                 }
-                // Translate from global compositor coordinates to the
-                // per-output local coordinate space, then convert to physical
-                // pixels.
-                let phys = Point::<i32, Physical>::from((
-                    loc.x - output_rect.loc.x,
-                    loc.y - output_rect.loc.y,
-                ));
-                Some((w.clone(), phys))
+                let render_origin = loc - w.geometry().loc - output_rect.loc;
+                Some((w.clone(), render_origin))
             })
             .collect()
     }

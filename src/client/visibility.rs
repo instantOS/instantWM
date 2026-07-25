@@ -108,6 +108,21 @@ pub fn hide_for_user(ctx: &mut WmCtx, win: WindowId) {
 }
 
 pub fn hide(ctx: &mut WmCtx, win: WindowId) {
+    hide_with_focus(ctx, win, None);
+}
+
+/// Hide a client and restore a preferred focus target when it is still valid.
+///
+/// Ordinary hides fall back to the top of the persistent stack. Temporary UI
+/// such as a scratchpad can supply the window that was focused before it was
+/// shown, preserving overlapping-layout presentation across the round trip.
+pub(crate) fn hide_with_focus(ctx: &mut WmCtx, win: WindowId, preferred_focus: Option<WindowId>) {
+    let was_selected = ctx
+        .core()
+        .model()
+        .client(win)
+        .and_then(|client| ctx.core().model().monitor(client.monitor_id))
+        .is_some_and(|monitor| monitor.selected == Some(win));
     let monitor_id = if let Some(c) = ctx.core_mut().model_mut().client_mut(win) {
         if c.is_hidden {
             return;
@@ -132,12 +147,15 @@ pub fn hide(ctx: &mut WmCtx, win: WindowId) {
         return;
     };
 
-    let snext = ctx
-        .core()
-        .state()
-        .monitor(monitor_id)
-        .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win));
-    crate::focus::focus(ctx, snext);
+    if was_selected {
+        let next = preferred_focus.or_else(|| {
+            ctx.core()
+                .model()
+                .monitor(monitor_id)
+                .and_then(|m| m.z_order.iter_top_to_bottom().find(|&w| w != win))
+        });
+        crate::focus::focus(ctx, next);
+    }
     ctx.core_mut().queue_layout_for_monitor_urgent(monitor_id);
 }
 

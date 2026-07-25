@@ -336,7 +336,18 @@ pub(crate) fn scratchpad_show_name_with_options(
     }
 
     let target_monitor = options.monitor_id;
+    let restore_focus = ctx
+        .core()
+        .model()
+        .monitor(target_monitor)
+        .and_then(|monitor| monitor.selected)
+        .filter(|&selected| selected != found);
     prepare_scratchpad_for_show(ctx, found, target_monitor, direction);
+    if let Some(client) = ctx.core_mut().model_mut().client_mut(found)
+        && let Some(scratchpad) = client.scratchpad.as_mut()
+    {
+        scratchpad.remember_focus(restore_focus);
+    }
 
     if let Some(dir) = direction {
         let (content_rect, client_size) = {
@@ -464,9 +475,16 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         })
     };
 
-    if let Some(client) = ctx.core_mut().model_mut().client_mut(found) {
+    let restore_focus = if let Some(client) = ctx.core_mut().model_mut().client_mut(found) {
+        let restore_focus = client
+            .scratchpad
+            .as_mut()
+            .and_then(|scratchpad| scratchpad.take_restore_focus());
         client.hide_as_scratchpad();
-    }
+        restore_focus
+    } else {
+        None
+    };
 
     if let Some(slide) = slide {
         ctx.move_resize(
@@ -476,7 +494,7 @@ pub fn scratchpad_hide_name(ctx: &mut WmCtx, name: &str) {
         );
     }
 
-    crate::client::hide(ctx, found);
+    crate::client::visibility::hide_with_focus(ctx, found, restore_focus);
 }
 
 pub fn scratchpad_toggle(ctx: &mut WmCtx, name: Option<&str>) {

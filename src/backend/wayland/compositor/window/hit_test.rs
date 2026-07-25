@@ -37,22 +37,12 @@ fn surface_hit_takes_precedence(logical_rank: Option<usize>, surface_rank: usize
 }
 
 impl WaylandState {
-    /// Single-pass hit test for pointer motion: layers first, then windows.
+    /// Hit-test in the same foreground order used by scene assembly:
+    /// explicit overlays, native popups, layer-shell surfaces, then toplevels.
     ///
     /// Returns both the surface focus and the logical hovered window in one
     /// traversal, avoiding repeated `windows_in_z_order()` allocations.
     pub(crate) fn contents_under_pointer(&self, point: Point<f64, Logical>) -> PointerContents {
-        // Layer surfaces take priority over all windows.
-        if let Some((surface, loc)) = self.layer_surface_under_pointer(point) {
-            // Try to resolve a WindowId from the layer surface.
-            let hovered_win = self.window_id_from_surface(&surface);
-            return PointerContents {
-                surface: Some((surface, loc)),
-                hovered_win,
-            };
-        }
-
-        // Single window pass: find both the logical window and surface hit.
         use smithay::desktop::WindowSurfaceType;
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
@@ -65,54 +55,90 @@ impl WaylandState {
                 };
             }
         };
+        let windows = self.windows_in_z_order();
 
-        let mut logical_win: Option<WindowId> = None;
+        // Explicit overlay windows are the first scene bucket. Include their
+        // logical rectangle so transparent decoration/input holes cannot leak
+        // hover focus into a lower window.
+        for &(window, typ) in &windows {
+            if !typ.is_overlay() {
+                continue;
+            }
+            let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
+            let surface = self.surface_in_window(window, point, WindowSurfaceType::ALL);
+            if surface.is_some() || self.overlay_rect_contains(window, root_x, root_y) {
+                return PointerContents {
+                    surface,
+                    hovered_win: win_id,
+                };
+            }
+        }
+
+        // Native popups are promoted above ordinary toplevels during render,
+        // so they must be queried globally before layers and parent windows.
+        for &(window, typ) in &windows {
+            if typ.is_overlay() {
+                continue;
+            }
+            if let Some(surface) = self.surface_in_window(
+                window,
+                point,
+                WindowSurfaceType::POPUP | WindowSurfaceType::SUBSURFACE,
+            ) {
+                let hovered_win = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
+                return PointerContents {
+                    surface: Some(surface),
+                    hovered_win,
+                };
+            }
+        }
+
+        if let Some((surface, loc)) = self.layer_surface_under_pointer(point) {
+            let hovered_win = self.window_id_from_surface(&surface);
+            return PointerContents {
+                surface: Some((surface, loc)),
+                hovered_win,
+            };
+        }
+
+        // Ordinary windows retain their Space order. Reconcile client-surface
+        // input with compositor-drawn borders so a lower surface cannot be
+        // reached through the decoration of a higher window.
+        let mut logical_win = None;
         let mut logical_rank: Option<usize> = None;
         let mut logical_win_resolved = false;
         let mut surface_hit: Option<RankedSurfaceHit> = None;
 
-        for (rank, (window, typ)) in self.windows_in_z_order().into_iter().enumerate() {
+        for (rank, &(window, typ)) in windows.iter().enumerate() {
+            if typ.is_overlay() {
+                continue;
+            }
             let win_id = window.user_data().get::<WindowIdMarker>().map(|m| m.id);
 
             // Logical hit test (WM geometry including borders).
-            if !logical_win_resolved {
-                if typ.is_overlay() {
-                    if self.overlay_rect_contains(window, root_x, root_y) {
-                        logical_win = win_id;
-                        logical_rank = Some(rank);
-                        logical_win_resolved = true;
-                    }
-                } else if let Some(win_id) = win_id
-                    && let Some(c) = globals.model.client(win_id)
-                    && c.total_rect()
-                        .contains_point(crate::types::Point::new(root_x, root_y))
-                {
-                    logical_win = Some(win_id);
-                    logical_rank = Some(rank);
-                    logical_win_resolved = true;
-                }
+            if !logical_win_resolved
+                && let Some(win_id) = win_id
+                && let Some(c) = globals.model.client(win_id)
+                && c.total_rect()
+                    .contains_point(crate::types::Point::new(root_x, root_y))
+            {
+                logical_win = Some(win_id);
+                logical_rank = Some(rank);
+                logical_win_resolved = true;
             }
 
-            // Surface hit test (actual Wayland surface tree).
-            //
-            // Some XWayland override-redirect overlays (dmenu/rofi-style
-            // menus) are deliberately mapped into the Smithay space without a
-            // WM WindowId. They still need pointer focus so clicks can be
-            // delivered to their surface.
             if surface_hit.is_none()
-                && let Some(loc) = self.space.element_location(window)
+                && let Some(focus) = self.surface_in_window(
+                    window,
+                    point,
+                    WindowSurfaceType::TOPLEVEL | WindowSurfaceType::SUBSURFACE,
+                )
             {
-                let geo_offset = window.geometry().loc;
-                let surface_origin = loc - geo_offset;
-                if let Some(result) =
-                    window.surface_under(point - surface_origin.to_f64(), WindowSurfaceType::ALL)
-                {
-                    surface_hit = Some(RankedSurfaceHit {
-                        focus: (result.0, result.1 + surface_origin),
-                        window: win_id,
-                        rank,
-                    });
-                }
+                surface_hit = Some(RankedSurfaceHit {
+                    focus,
+                    window: win_id,
+                    rank,
+                });
             }
 
             // Both found — no need to continue.
@@ -137,6 +163,19 @@ impl WaylandState {
             surface,
             hovered_win,
         }
+    }
+
+    fn surface_in_window(
+        &self,
+        window: &Window,
+        point: Point<f64, Logical>,
+        surface_type: smithay::desktop::WindowSurfaceType,
+    ) -> Option<SurfaceFocus> {
+        let loc = self.space.element_location(window)?;
+        let surface_origin = loc - window.geometry().loc;
+        window
+            .surface_under(point - surface_origin.to_f64(), surface_type)
+            .map(|(surface, loc)| (surface, loc + surface_origin))
     }
 
     /// Resolve a WindowId from a surface via its data map.

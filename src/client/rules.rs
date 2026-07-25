@@ -96,14 +96,18 @@ fn apply_rules_impl(
                 view.client.tags,
                 view.monitor.work_rect().w,
                 view.monitor.work_rect().h,
+                view.monitor.selected.filter(|&selected| selected != win),
             )
         });
-        if let Some((restore_tags, monitor_width, monitor_height)) = role
+        if let Some((restore_tags, monitor_width, monitor_height, restore_focus)) = role
             && g.model.scratchpad_find(&name).is_none()
             && let Some(client) = g.model.client_mut(win)
         {
             client.apply_scratchpad_state(&name, None, restore_tags, monitor_width, monitor_height);
             client.show_as_scratchpad(restore_tags, None);
+            if let Some(scratchpad) = client.scratchpad.as_mut() {
+                scratchpad.remember_focus(restore_focus);
+            }
             return InitialRulePlacement::Center;
         }
     }
@@ -795,7 +799,17 @@ mod tests {
         monitor.monitor_rect = Rect::new(0, 0, 1200, 800);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(selected_tags);
+        monitor.selected = Some(WindowId(44));
         g.model.monitors.push(monitor);
+        g.model.insert_client(Client {
+            win: WindowId(44),
+            monitor_id: MonitorId::default(),
+            tags: selected_tags,
+            ..Default::default()
+        });
+        let monitor = g.model.monitor_mut(MonitorId::default()).unwrap();
+        monitor.clients.push(WindowId(44));
+        monitor.z_order.attach_top(WindowId(44));
 
         let win = WindowId(45);
         g.model.insert_client(Client {
@@ -825,6 +839,7 @@ mod tests {
         let scratchpad = client.scratchpad.as_ref().unwrap();
         assert_eq!(scratchpad.name, "menu");
         assert_eq!(scratchpad.restore_tags, selected_tags);
+        assert_eq!(scratchpad.restore_focus, Some(WindowId(44)));
         g.model
             .monitor_mut(MonitorId::default())
             .unwrap()
@@ -835,7 +850,8 @@ mod tests {
                 .monitor(MonitorId::default())
                 .unwrap()
                 .collect_tiled(&g.model.clients)
-                .is_empty(),
+                .iter()
+                .all(|client| client.win != win),
             "an inferred scratchpad must never become a layout-tree leaf"
         );
     }

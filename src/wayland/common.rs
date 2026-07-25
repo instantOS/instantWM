@@ -26,11 +26,14 @@ use smithay::backend::renderer::element::memory::{
     MemoryRenderBuffer, MemoryRenderBufferRenderElement,
 };
 use smithay::backend::renderer::element::solid::SolidColorRenderElement;
-use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
+use smithay::backend::renderer::element::surface::{
+    WaylandSurfaceRenderElement, render_elements_from_surface_tree,
+};
 use smithay::backend::renderer::element::{
     Element, Id, RenderElementStates, default_primary_scanout_output_compare,
 };
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::desktop::PopupManager;
 use smithay::desktop::utils::{
     send_frames_surface_tree, surface_primary_scanout_output,
     update_surface_primary_scanout_output, with_surfaces_surface_tree,
@@ -43,6 +46,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::fractional_scale::with_fractional_scale;
+use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::xwayland::{X11Wm, XWayland, XWaylandEvent};
 
@@ -574,18 +578,21 @@ pub fn build_common_scene_elements_from_fixed(
 ) -> CommonSceneElements {
     use smithay::backend::renderer::element::AsRenderElements;
 
+    let output_scale = output.current_scale().fractional_scale();
+    let render_scale = smithay::utils::Scale::from(output_scale);
     let mut overlays = Vec::new();
-    for (window, phys_loc) in state.overlay_windows_for_render(output) {
+    for (window, logical_loc) in state.overlay_windows_for_render(output) {
         let elems: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
             AsRenderElements::render_elements(
                 &window,
                 renderer,
-                phys_loc,
-                smithay::utils::Scale::from(1.0),
+                logical_loc.to_physical_precise_round(output_scale),
+                render_scale,
                 1.0,
             );
         overlays.extend(elems);
     }
+    append_native_popup_elements(state, renderer, output, output_scale, &mut overlays);
 
     let mut bar = Vec::new();
     for (buffer, position) in &fixed.bar_buffers {
@@ -617,9 +624,55 @@ pub fn build_common_scene_elements_from_fixed(
     }
 }
 
-/// Remove the Smithay-space copies of windows already emitted in the explicit
-/// above-bar overlay bucket. Surface render-element IDs are stable across both
-/// paths, so this avoids drawing the same surface tree twice.
+/// Render native XDG popups as a compositor-wide foreground layer.
+///
+/// Smithay normally emits a popup together with its parent window. That makes
+/// the popup disappear behind any higher sibling as soon as it crosses the
+/// parent's boundary. A grabbed menu is transient compositor UI and must stay
+/// above ordinary toplevels, independently of its parent's persistent stack
+/// position. Duplicate popup elements are removed from the Space bucket later.
+fn append_native_popup_elements(
+    state: &WaylandState,
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    output_scale: f64,
+    overlays: &mut Vec<WaylandSurfaceRenderElement<GlesRenderer>>,
+) {
+    let Some(output_rect) = state.space.output_geometry(output) else {
+        return;
+    };
+    let scale = smithay::utils::Scale::from(output_scale);
+
+    for (window, window_type) in state.windows_in_z_order() {
+        // Explicit overlay windows are already rendered in full above.
+        if window_type.is_overlay() {
+            continue;
+        }
+        let Some(toplevel) = window.wl_surface() else {
+            continue;
+        };
+        let Some(window_loc) = state.space.element_location(window) else {
+            continue;
+        };
+
+        for (popup, popup_offset) in PopupManager::popups_for_surface(&toplevel) {
+            let logical_loc = window_loc + popup_offset - popup.geometry().loc - output_rect.loc;
+            overlays.extend(render_elements_from_surface_tree(
+                renderer,
+                popup.wl_surface(),
+                logical_loc.to_physical_precise_round(output_scale),
+                scale,
+                1.0,
+                Kind::Unspecified,
+            ));
+        }
+    }
+}
+
+/// Remove Smithay-space surface elements already emitted in the foreground
+/// bucket. Render-element IDs are stable across both paths, so this removes
+/// both explicit overlay windows and promoted native popups without drawing
+/// either surface tree twice.
 pub fn remove_duplicate_overlay_elements<E: Element>(
     scene: &CommonSceneElements,
     space_elements: &mut Vec<E>,

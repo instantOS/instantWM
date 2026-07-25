@@ -179,11 +179,25 @@ pub struct ScratchpadData {
     pub restore_tags: TagMask,
     /// Edge direction for edge-anchored scratchpads (None for regular scratchpads).
     pub direction: Option<EdgeDirection>,
+    /// Window that had focus when this scratchpad was shown.
+    ///
+    /// Scratchpads are temporary UI. Hiding one should return to the window
+    /// the user was working in, rather than selecting whichever client happens
+    /// to be highest in the persistent stack.
+    pub restore_focus: Option<WindowId>,
 }
 
 impl ScratchpadData {
     pub fn set_direction(&mut self, direction: EdgeDirection) {
         self.direction = Some(direction);
+    }
+
+    pub fn remember_focus(&mut self, window: Option<WindowId>) {
+        self.restore_focus = window;
+    }
+
+    pub fn take_restore_focus(&mut self) -> Option<WindowId> {
+        self.restore_focus.take()
     }
 }
 
@@ -579,6 +593,7 @@ impl Client {
             name: name.to_string(),
             restore_tags,
             direction,
+            restore_focus: None,
         });
         self.set_tag_mask(crate::types::TagMask::SCRATCHPAD);
         self.is_sticky = false;
@@ -734,6 +749,18 @@ mod tests {
             restore_tags,
             ..ScratchpadData::default()
         }
+    }
+
+    #[test]
+    fn scratchpad_focus_restore_is_consumed_once() {
+        let mut scratchpad = sp_data("menu", TagMask::EMPTY);
+        scratchpad.remember_focus(Some(crate::types::WindowId(42)));
+
+        assert_eq!(
+            scratchpad.take_restore_focus(),
+            Some(crate::types::WindowId(42))
+        );
+        assert_eq!(scratchpad.take_restore_focus(), None);
     }
 
     #[test]
