@@ -289,11 +289,6 @@ impl TagSelection {
             Self::Previous => prev_tag.and_then(TagMask::single).unwrap_or(current_mask),
         }
     }
-
-    /// Check if this selection would result in an empty tag set.
-    pub fn is_empty(&self) -> bool {
-        matches!(self, Self::None)
-    }
 }
 
 impl From<usize> for TagSelection {

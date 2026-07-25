@@ -146,11 +146,6 @@ pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
             client.restore_border_width();
         }
         super::state::restore_floating_geometry(ctx, win);
-
-        // apply_size is X11-specific
-        if let WmCtx::X11(x11) = ctx {
-            super::helpers::apply_size(x11, win);
-        }
     }
 }
 

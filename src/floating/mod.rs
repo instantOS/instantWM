@@ -7,7 +7,7 @@
 //!   toggle/set/change floating state; internal client-maximize transitions
 //! - [`movement`] — keyboard move, resize, center window, scale client
 //! - [`batch`]   — distribute floating clients
-//! - [`helpers`] — visible_client, has_tiling_layout, apply_size
+//! - [`helpers`] — has_tiling_layout
 //! - [`scratchpad`] — named floating windows that can be toggled visible/hidden,
 //!   with optional edge-anchored positioning
 

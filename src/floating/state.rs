@@ -204,9 +204,6 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
             transition.restore_rect(),
             MoveResizeOptions::hinted_immediate(false),
         );
-        if let WmCtx::X11(x11) = ctx {
-            super::helpers::apply_size(x11, win);
-        }
     }
 
     // Run the layout pass.  Disable animations temporarily so the
