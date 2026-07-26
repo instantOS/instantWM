@@ -252,8 +252,14 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
     use crate::wayland::input::pointer::button::{PointerButtonInput, handle_pointer_button};
 
     let commands = std::mem::take(&mut *state.command_queue.borrow_mut());
+    let mut commands = commands.into_iter().peekable();
+    let mut pointer_hit_cache = None;
 
-    for command in commands {
+    while let Some(command) = commands.next() {
+        let next_is_pointer_motion = matches!(commands.peek(), Some(WmCommand::PointerMotion(_)));
+        if !matches!(&command, WmCommand::PointerMotion(_)) {
+            pointer_hit_cache = None;
+        }
         match command {
             WmCommand::FocusWindow(win) => {
                 handle_focus_window(wm, Some(win));
@@ -267,8 +273,20 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
                 if let (Some(pointer), Some(keyboard)) =
                     (state.seat.get_pointer(), state.seat.get_keyboard())
                 {
-                    crate::wayland::input::pointer::motion::process_pointer_motion_command(
-                        wm, state, &pointer, &keyboard, motion,
+                    let update_active_drag = should_update_active_drag(
+                        wm.core.drag.active_interaction().is_some(),
+                        next_is_pointer_motion,
+                    );
+                    pointer_hit_cache = Some(
+                        crate::wayland::input::pointer::motion::process_pointer_motion_command_cached(
+                            wm,
+                            state,
+                            &pointer,
+                            &keyboard,
+                            motion,
+                            pointer_hit_cache.take(),
+                            update_active_drag,
+                        ),
                     );
                 }
             }
@@ -380,6 +398,10 @@ fn drain_command_queue(wm: &mut Wm, state: &mut WaylandState) {
             }
         }
     }
+}
+
+fn should_update_active_drag(active: bool, next_is_pointer_motion: bool) -> bool {
+    !active || !next_is_pointer_motion
 }
 
 fn handle_focus_window(wm: &mut Wm, win: Option<crate::types::WindowId>) {
@@ -880,11 +902,21 @@ pub(crate) fn process_animations_and_request_render(state: &mut WaylandState) {
 
 #[cfg(test)]
 mod tests {
-    use super::{handle_update_window_size, handle_update_xwayland_policy};
+    use super::{
+        handle_update_window_size, handle_update_xwayland_policy, should_update_active_drag,
+    };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
     use crate::types::{BaseClientMode, Client, ClientMode, Monitor, Rect, WindowId};
     use crate::wm::Wm;
+
+    #[test]
+    fn only_the_last_consecutive_motion_updates_an_active_drag() {
+        assert!(!should_update_active_drag(true, true));
+        assert!(should_update_active_drag(true, false));
+        assert!(should_update_active_drag(false, true));
+        assert!(should_update_active_drag(false, false));
+    }
 
     #[test]
     fn xwayland_above_policy_changes_fullscreen_restore_mode_without_exiting() {

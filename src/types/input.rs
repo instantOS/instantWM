@@ -359,16 +359,15 @@ impl ResizeDirection {
     /// Returns the cursor position relative to the window geometry.
     pub fn warp_offset(self, size: Size, border_width: i32) -> Point {
         let Size { w, h } = size;
-        let bw = border_width;
         match self {
-            Self::TopLeft => Point::new(-bw, -bw),
-            Self::Top => Point::new((w + bw - 1) / 2, -bw),
-            Self::TopRight => Point::new(w + bw - 1, -bw),
-            Self::Right => Point::new(w + bw - 1, (h + bw - 1) / 2),
-            Self::BottomRight => Point::new(w + bw - 1, h + bw - 1),
-            Self::Bottom => Point::new((w + bw - 1) / 2, h + bw - 1),
-            Self::BottomLeft => Point::new(-bw, h + bw - 1),
-            Self::Left => Point::new(-bw, (h + bw - 1) / 2),
+            Self::TopLeft => Point::new(-border_width, -border_width),
+            Self::Top => Point::new((w + border_width - 1) / 2, -border_width),
+            Self::TopRight => Point::new(w + border_width - 1, -border_width),
+            Self::Right => Point::new(w + border_width - 1, (h + border_width - 1) / 2),
+            Self::BottomRight => Point::new(w + border_width - 1, h + border_width - 1),
+            Self::Bottom => Point::new((w + border_width - 1) / 2, h + border_width - 1),
+            Self::BottomLeft => Point::new(-border_width, h + border_width - 1),
+            Self::Left => Point::new(-border_width, (h + border_width - 1) / 2),
         }
     }
 

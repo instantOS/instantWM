@@ -110,4 +110,19 @@ impl WaylandState {
         windows.sort_by_key(|(_, typ)| if typ.is_overlay() { 0 } else { 1 });
         windows
     }
+
+    /// Owned snapshot of the current input/render ordering.
+    ///
+    /// Pointer motion can hit-test both its old and proposed positions against
+    /// one snapshot without retaining an immutable borrow of `WaylandState`
+    /// across Smithay pointer dispatch.
+    pub(crate) fn pointer_hit_snapshot(&self) -> Vec<(Window, WindowType)> {
+        #[cfg(test)]
+        super::hit_test::record_pointer_hit_snapshot();
+
+        self.windows_in_z_order()
+            .into_iter()
+            .map(|(window, typ)| (window.clone(), typ))
+            .collect()
+    }
 }

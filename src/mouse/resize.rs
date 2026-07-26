@@ -42,13 +42,13 @@ fn with_wm_ctx_x11<T>(ctx_x11: &mut WmCtxX11<'_>, f: impl FnOnce(&mut WmCtx<'_>)
 ///
 /// When dragging the start edge, the window position moves with the pointer
 /// and size is reduced. When dragging the end edge, position stays fixed and
-/// size grows. The `bw` parameter is the border width, used to keep the
+/// size grows. The `border_width` parameter is the border width, used to keep the
 /// opposite border stationary when resizing from a corner.
 pub(crate) fn compute_axis_resize(
     pointer: i32,
     orig_start: i32,
     orig_end: i32,
-    bw: i32,
+    border_width: i32,
     affects_start: bool,
     affects_end: bool,
 ) -> (i32, i32) {
@@ -59,7 +59,7 @@ pub(crate) fn compute_axis_resize(
     } else if affects_end {
         // New width = pointer offset from start minus the two borders.
         // Adding 1 accounts for the pixel offset in the event coordinates.
-        let nw = (pointer - orig_start - 2 * bw + 1).max(1);
+        let nw = (pointer - orig_start - 2 * border_width + 1).max(1);
         (orig_start, nw)
     } else {
         (orig_start, orig_end - orig_start)

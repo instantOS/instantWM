@@ -3,7 +3,38 @@ use smithay::utils::{Logical, Point};
 
 use crate::backend::wayland::compositor::WaylandState;
 use crate::backend::wayland::compositor::state::WindowIdMarker;
+use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::types::WindowId;
+
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static POINTER_HIT_SNAPSHOTS: Cell<usize> = const { Cell::new(0) };
+    static POINTER_HIT_TRAVERSALS: Cell<usize> = const { Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn record_pointer_hit_snapshot() {
+    POINTER_HIT_SNAPSHOTS.set(POINTER_HIT_SNAPSHOTS.get() + 1);
+}
+
+#[cfg(test)]
+fn record_pointer_hit_traversal() {
+    POINTER_HIT_TRAVERSALS.set(POINTER_HIT_TRAVERSALS.get() + 1);
+}
+
+#[cfg(test)]
+pub(crate) fn reset_pointer_hit_counters() {
+    POINTER_HIT_SNAPSHOTS.set(0);
+    POINTER_HIT_TRAVERSALS.set(0);
+}
+
+#[cfg(test)]
+pub(crate) fn pointer_hit_counters() -> (usize, usize) {
+    (POINTER_HIT_SNAPSHOTS.get(), POINTER_HIT_TRAVERSALS.get())
+}
 
 pub(crate) type SurfaceFocus = (
     smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -12,6 +43,7 @@ pub(crate) type SurfaceFocus = (
 
 /// Result of a single-pass pointer hit test, resolving both the Wayland
 /// surface focus and the WM logical window in one traversal.
+#[derive(Clone)]
 pub(crate) struct PointerContents {
     /// The Wayland surface that should receive pointer events.
     pub(crate) surface: Option<SurfaceFocus>,
@@ -43,6 +75,23 @@ impl WaylandState {
     /// Returns both the surface focus and the logical hovered window in one
     /// traversal, avoiding repeated `windows_in_z_order()` allocations.
     pub(crate) fn contents_under_pointer(&self, point: Point<f64, Logical>) -> PointerContents {
+        let windows = self.pointer_hit_snapshot();
+        self.contents_under_pointer_in_snapshot(point, &windows)
+    }
+
+    /// Hit-test against a caller-owned stable z-order/classification snapshot.
+    ///
+    /// This is used for the old and proposed positions of one motion event;
+    /// protocol dispatch between those queries cannot invalidate the owned
+    /// window handles.
+    pub(crate) fn contents_under_pointer_in_snapshot(
+        &self,
+        point: Point<f64, Logical>,
+        windows: &[(Window, WindowType)],
+    ) -> PointerContents {
+        #[cfg(test)]
+        record_pointer_hit_traversal();
+
         use smithay::desktop::WindowSurfaceType;
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
@@ -55,12 +104,10 @@ impl WaylandState {
                 };
             }
         };
-        let windows = self.windows_in_z_order();
-
         // Explicit overlay windows are the first scene bucket. Include their
         // logical rectangle so transparent decoration/input holes cannot leak
         // hover focus into a lower window.
-        for &(window, typ) in &windows {
+        for (window, typ) in windows {
             if !typ.is_overlay() {
                 continue;
             }
@@ -76,7 +123,7 @@ impl WaylandState {
 
         // Native popups are promoted above ordinary toplevels during render,
         // so they must be queried globally before layers and parent windows.
-        for &(window, typ) in &windows {
+        for (window, typ) in windows {
             if typ.is_overlay() {
                 continue;
             }
@@ -109,7 +156,7 @@ impl WaylandState {
         let mut logical_win_resolved = false;
         let mut surface_hit: Option<RankedSurfaceHit> = None;
 
-        for (rank, &(window, typ)) in windows.iter().enumerate() {
+        for (rank, (window, typ)) in windows.iter().enumerate() {
             if typ.is_overlay() {
                 continue;
             }

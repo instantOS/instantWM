@@ -5,6 +5,7 @@ use smithay::input::pointer::PointerHandle;
 use smithay::utils::{Point, SERIAL_COUNTER};
 
 use crate::backend::wayland::commands::PointerMotionCommand;
+use crate::backend::wayland::compositor::window::classify::WindowType;
 use crate::backend::wayland::compositor::window::hit_test::{PointerContents, SurfaceFocus};
 use crate::backend::wayland::compositor::{PointerFocusTarget, WaylandState};
 use crate::contexts::{WmCtx, WmCtxWayland};
@@ -75,8 +76,18 @@ impl MotionEvent {
 
 #[cfg(test)]
 mod tests {
-    use super::{MotionEvent, PointerMotionSource};
-    use crate::types::HoverFocusTrigger;
+    use super::{MotionEvent, PointerMotionSource, process_pointer_motion_command_cached};
+    use crate::backend::Backend;
+    use crate::backend::wayland::WaylandBackend;
+    use crate::backend::wayland::commands::PointerMotionCommand;
+    use crate::backend::wayland::compositor::window::hit_test::{
+        pointer_hit_counters, reset_pointer_hit_counters,
+    };
+    use crate::types::{
+        Client, ClientMode, HoverFocusTrigger, Monitor, MouseButton, Point as RootPoint, Rect,
+        TagMask, WindowId,
+    };
+    use crate::wm::Wm;
     use smithay::utils::Point;
 
     #[test]
@@ -135,6 +146,66 @@ mod tests {
             HoverFocusTrigger::SceneChange
         );
     }
+
+    #[test]
+    fn active_drag_batch_reuses_current_hit_and_scene_snapshot() {
+        const MOTIONS: usize = 48;
+        let (_event_loop, mut state) =
+            crate::wayland::runtime::common::new_wayland_event_loop_and_state();
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let win = WindowId(1);
+        let geo = Rect::new(100, 100, 600, 400);
+        let mut monitor = Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 0, 1920, 1080),
+            show_bar: false,
+            ..Monitor::default()
+        };
+        monitor.set_selected_tags(tags);
+        monitor.clients = vec![win];
+        monitor.selected = Some(win);
+        let monitor_id = wm.core.model.monitors.push(monitor);
+        wm.core.model.monitors.set_selected(monitor_id);
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::Floating,
+            geo,
+            ..Client::default()
+        });
+        wm.core
+            .drag
+            .begin_move(win, MouseButton::Left, RootPoint::new(200, 200), geo)
+            .unwrap();
+        let pointer = state.seat.get_pointer().unwrap();
+        let keyboard = state.seat.get_keyboard().unwrap();
+
+        reset_pointer_hit_counters();
+        let mut cached_hit = None;
+        for index in 0..MOTIONS {
+            cached_hit = Some(process_pointer_motion_command_cached(
+                &mut wm,
+                &mut state,
+                &pointer,
+                &keyboard,
+                PointerMotionCommand::Absolute {
+                    x: 400.0 + index as f64,
+                    y: 500.0,
+                    time_msec: index as u32,
+                },
+                cached_hit,
+                false,
+            ));
+        }
+
+        assert_eq!(
+            pointer_hit_counters(),
+            (1, MOTIONS + 1),
+            "the active batch shares one ordering snapshot; only its first command needs old+new traversals"
+        );
+    }
 }
 
 /// Process a queued backend pointer command through the single Wayland pointer
@@ -146,6 +217,39 @@ pub fn process_pointer_motion_command(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     command: PointerMotionCommand,
 ) {
+    let _ = process_pointer_motion_command_cached(
+        wm,
+        state,
+        pointer_handle,
+        keyboard_handle,
+        command,
+        None,
+        true,
+    );
+}
+
+pub(crate) struct PointerMotionCache {
+    current_hit: PointerContents,
+    /// Window order is stable between consecutive queued motions during an
+    /// active drag. Locations remain live because hit testing queries them
+    /// from `Space`; only classification and ordering are snapshotted.
+    snapshot: Option<Vec<(smithay::desktop::Window, WindowType)>>,
+}
+
+/// Process motion while optionally reusing the previous command's final hit.
+///
+/// The command-queue drain only carries this cache across consecutive motion
+/// commands. The final hit is authoritative after dispatch; the ordering
+/// snapshot is retained only while an active drag owns the motion path.
+pub(crate) fn process_pointer_motion_command_cached(
+    wm: &mut Wm,
+    state: &mut WaylandState,
+    pointer_handle: &PointerHandle<WaylandState>,
+    keyboard_handle: &KeyboardHandle<WaylandState>,
+    command: PointerMotionCommand,
+    cache: Option<PointerMotionCache>,
+    update_active_drag: bool,
+) -> PointerMotionCache {
     match command {
         PointerMotionCommand::Relative {
             dx,
@@ -168,27 +272,29 @@ pub fn process_pointer_motion_command(
                 time_usec,
             },
             PointerMotionSource::Device,
+            cache,
+            update_active_drag,
         ),
-        PointerMotionCommand::Absolute { x, y, time_msec } => {
-            handle_pointer_motion(
-                wm,
-                state,
-                pointer_handle,
-                keyboard_handle,
-                MotionEvent::Absolute { x, y, time_msec },
-                PointerMotionSource::Device,
-            );
-        }
-        PointerMotionCommand::Warp { x, y, time_msec } => {
-            handle_pointer_motion(
-                wm,
-                state,
-                pointer_handle,
-                keyboard_handle,
-                MotionEvent::Absolute { x, y, time_msec },
-                PointerMotionSource::Synthetic,
-            );
-        }
+        PointerMotionCommand::Absolute { x, y, time_msec } => handle_pointer_motion(
+            wm,
+            state,
+            pointer_handle,
+            keyboard_handle,
+            MotionEvent::Absolute { x, y, time_msec },
+            PointerMotionSource::Device,
+            cache,
+            update_active_drag,
+        ),
+        PointerMotionCommand::Warp { x, y, time_msec } => handle_pointer_motion(
+            wm,
+            state,
+            pointer_handle,
+            keyboard_handle,
+            MotionEvent::Absolute { x, y, time_msec },
+            PointerMotionSource::Synthetic,
+            cache,
+            update_active_drag,
+        ),
         PointerMotionCommand::Refresh { time_msec } => {
             let location = state.runtime.pointer_location;
             handle_pointer_motion(
@@ -202,7 +308,9 @@ pub fn process_pointer_motion_command(
                     time_msec,
                 },
                 PointerMotionSource::Synthetic,
-            );
+                cache,
+                update_active_drag,
+            )
         }
     }
 }
@@ -229,7 +337,9 @@ fn handle_pointer_motion(
     keyboard_handle: &KeyboardHandle<WaylandState>,
     event: MotionEvent,
     source: PointerMotionSource,
-) {
+    cache: Option<PointerMotionCache>,
+    update_active_drag: bool,
+) -> PointerMotionCache {
     state.runtime.cursor_hidden_by_touch = false;
 
     let output_width = wm.core.config.derived.display.width;
@@ -239,7 +349,12 @@ fn handle_pointer_motion(
 
     let potential_location = event.compute_location(current_location, output_width, output_height);
 
-    let current_hit = state.contents_under_pointer(current_location);
+    let (cached_current_hit, mut hit_snapshot) = cache
+        .map(|cache| (Some(cache.current_hit), cache.snapshot))
+        .unwrap_or_default();
+    let snapshot = hit_snapshot.get_or_insert_with(|| state.pointer_hit_snapshot());
+    let current_hit = cached_current_hit
+        .unwrap_or_else(|| state.contents_under_pointer_in_snapshot(current_location, snapshot));
     let constraint = ActivePointerConstraint::under(
         pointer_handle,
         current_hit.surface.as_ref(),
@@ -271,15 +386,22 @@ fn handle_pointer_motion(
 
     if constraint.is_locked() {
         pointer_handle.frame(state);
-        return;
+        return PointerMotionCache {
+            current_hit,
+            snapshot: retain_snapshot_during_active_drag(wm, hit_snapshot),
+        };
     }
 
     let final_location = potential_location;
-    let candidate_hit = state.contents_under_pointer(final_location);
+    let candidate_hit =
+        state.contents_under_pointer_in_snapshot(final_location, hit_snapshot.as_ref().unwrap());
 
     if !constraint.allows_motion_to(candidate_hit.surface.as_ref(), final_location) {
         pointer_handle.frame(state);
-        return;
+        return PointerMotionCache {
+            current_hit,
+            snapshot: retain_snapshot_during_active_drag(wm, hit_snapshot),
+        };
     }
 
     state.runtime.pointer_location = final_location;
@@ -300,7 +422,8 @@ fn handle_pointer_motion(
     // changed the scene. Avoid traversing every window a third time for the
     // overwhelmingly common pointer-motion path.
     let final_hit = if scene_changed {
-        state.contents_under_pointer(final_location)
+        hit_snapshot = Some(state.pointer_hit_snapshot());
+        state.contents_under_pointer_in_snapshot(final_location, hit_snapshot.as_ref().unwrap())
     } else {
         candidate_hit
     };
@@ -313,10 +436,27 @@ fn handle_pointer_motion(
         state,
         pointer_handle,
         keyboard_handle,
-        final_hit,
+        &final_hit,
         event.time_msec(),
         source.hover_focus_trigger(),
+        update_active_drag,
     );
+    PointerMotionCache {
+        current_hit: final_hit,
+        snapshot: retain_snapshot_during_active_drag(wm, hit_snapshot),
+    }
+}
+
+fn retain_snapshot_during_active_drag(
+    wm: &Wm,
+    snapshot: Option<Vec<(smithay::desktop::Window, WindowType)>>,
+) -> Option<Vec<(smithay::desktop::Window, WindowType)>> {
+    wm.core
+        .drag
+        .active_interaction()
+        .is_some()
+        .then_some(snapshot)
+        .flatten()
 }
 
 /// Unified pointer motion: update WM hover focus, propagate to clients, handle drags.
@@ -325,9 +465,10 @@ fn dispatch_pointer_motion(
     state: &mut WaylandState,
     pointer_handle: &PointerHandle<WaylandState>,
     keyboard_handle: &KeyboardHandle<WaylandState>,
-    hit_test: PointerContents,
+    hit_test: &PointerContents,
     time_msec: u32,
     hover_focus_trigger: crate::types::HoverFocusTrigger,
+    update_active_drag: bool,
 ) {
     let pointer_location = state.runtime.pointer_location;
     let root = RootPoint::from_f64_round(pointer_location.x, pointer_location.y);
@@ -351,6 +492,7 @@ fn dispatch_pointer_motion(
             pointer_handle,
             pointer_focus.clone(),
             time_msec,
+            update_active_drag,
         )
     {
         return;
@@ -468,7 +610,7 @@ fn compute_bar_hit(wm: &Wm, root: RootPoint) -> (bool, bool) {
 /// window-list allocations and layer-surface scans on every motion event.
 fn resolve_pointer_focus_from_hit(
     state: &WaylandState,
-    contents: PointerContents,
+    contents: &PointerContents,
     in_bar_band: bool,
     in_bar_guard_band: bool,
 ) -> (Option<SurfaceFocus>, Option<crate::types::WindowId>) {
@@ -486,7 +628,7 @@ fn resolve_pointer_focus_from_hit(
         return (pointer_focus, None);
     }
 
-    (contents.surface, contents.hovered_win)
+    (contents.surface.clone(), contents.hovered_win)
 }
 
 /// Handle resize drag motion. Returns true if handled (early return).
@@ -496,12 +638,18 @@ fn handle_resize_drag_motion(
     pointer_handle: &PointerHandle<WaylandState>,
     pointer_focus: Option<SurfaceFocus>,
     time_msec: u32,
+    update_active_drag: bool,
 ) -> bool {
     let pointer_location = state.runtime.pointer_location;
-    if !hover_resize_drag_motion(
-        ctx,
-        RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
-    ) {
+    let handled = if update_active_drag {
+        hover_resize_drag_motion(
+            ctx,
+            RootPoint::from_f64_round(pointer_location.x, pointer_location.y),
+        )
+    } else {
+        ctx.core.drag_state().active_interaction().is_some()
+    };
+    if !handled {
         return false;
     }
 
