@@ -121,7 +121,7 @@ fn format_window_state(state: &instantwm::ipc_types::WindowState) -> String {
         parts.push("FakeFullscreen");
     } else if state.mode.is_maximized() {
         parts.push("Maximized");
-    } else if state.mode.is_floating() {
+    } else if state.mode.is_normal_floating() {
         parts.push("Floating");
     } else {
         parts.push("Tiling");
@@ -262,7 +262,7 @@ fn format_scratchpad_list(scratchpads: &[ScratchpadInfo], json: bool) {
                 flags.push("fullscreen");
             } else if sp.mode.is_maximized() {
                 flags.push("maximized");
-            } else if sp.mode.is_floating() {
+            } else if sp.mode.is_normal_floating() {
                 flags.push("floating");
             } else {
                 flags.push("tiled");

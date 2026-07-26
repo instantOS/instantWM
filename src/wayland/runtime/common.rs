@@ -439,16 +439,14 @@ fn handle_update_transient_for(
     else {
         return;
     };
-    let needs_float = ctx
-        .core()
-        .model()
-        .client(win)
-        .is_some_and(|client| parent.is_some() && !client.mode().is_floating());
+    let needs_float = ctx.core().model().client(win).is_some_and(|client| {
+        parent.is_some() && client.placement() != crate::types::ClientPlacement::Floating
+    });
     if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
         client.transient_for = parent;
     }
     if needs_float {
-        let _ = crate::floating::set_window_mode(
+        let _ = crate::floating::set_window_placement_from_policy(
             &mut ctx,
             win,
             crate::floating::WindowModeRequest::Floating(
@@ -481,7 +479,7 @@ fn apply_committed_window_size(wm: &mut Wm, win: crate::types::WindowId, w: i32,
         // WM. In particular, a native Wayland client may commit a stale startup
         // buffer after layout selected its final size; copying that size back
         // here would overwrite the layout or scratchpad target.
-        && client.mode().is_floating()
+        && client.mode().is_normal_floating()
         && !client.is_scratchpad()
         && (client.geo.w != w || client.geo.h != h)
     {
@@ -511,6 +509,7 @@ fn handle_set_fullscreen(
         return;
     };
     crate::backend::wayland::commands::apply_fullscreen_geometry(state, win, transition);
+    state.sync_window_presentation(win);
     state.request_space_sync();
     state.request_render();
 }
@@ -615,7 +614,7 @@ fn handle_map_window(
         client.monitor_id = lc.monitor_id;
         client.set_tag_mask(lc.tags);
         if lc.is_floating {
-            client.reset_to_placement(crate::types::ClientPlacement::Floating);
+            client.set_placement(crate::types::ClientPlacement::Floating);
         }
     } else {
         let Some(selected_monitor) = state.model.selected_monitor() else {
@@ -726,7 +725,7 @@ fn handle_map_window(
     if state
         .model
         .client(win)
-        .is_some_and(|client| client.mode().is_floating())
+        .is_some_and(|client| client.mode().is_normal_floating())
     {
         let current = state.model.client(win).map(|client| client.geo);
         if let Some(current) = current {
@@ -868,6 +867,7 @@ fn handle_set_maximized(
         return;
     };
     crate::backend::wayland::commands::apply_maximized_geometry(state, win, transition);
+    state.sync_window_presentation(win);
     state.request_space_sync();
     state.request_render();
 }

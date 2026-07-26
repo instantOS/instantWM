@@ -26,7 +26,7 @@ pub fn sync_client_geometry(model: &mut WmModel, win: WindowId, rect: Rect) {
     let work_area = model.client_view(win).map(|view| view.monitor.work_rect());
     if let Some(client) = model.client_mut(win) {
         client.update_geometry(rect);
-        if client.mode().is_floating()
+        if client.mode().is_normal_floating()
             && client.snap_status == SnapPosition::None
             && let Some(work_area) = work_area
         {
@@ -201,7 +201,7 @@ fn resolve_floating_placement(
         return requested;
     };
     let client = view.client;
-    if !client.mode().is_floating() {
+    if !client.mode().is_normal_floating() {
         return requested;
     }
 
@@ -280,7 +280,7 @@ pub fn sane_floating_spawn_rect(
 ) -> Option<Rect> {
     let view = model.client_view(win)?;
     let client = view.client;
-    if !client.mode().is_floating() {
+    if !client.mode().is_normal_floating() {
         return None;
     }
 
@@ -348,7 +348,7 @@ pub fn apply_size_hints(
     let old_geo = client.geo;
     let border_width = client.border_width;
     let should_apply_hints = config.window.resize_hints
-        || client.mode().is_floating()
+        || client.mode().is_normal_floating()
         || is_floating_layout(model, view.monitor);
 
     // Phase 1: Ensure positive dimensions.
@@ -470,7 +470,7 @@ mod tests {
         client.win = WindowId::from(1_u32);
         client.monitor_id = MonitorId::default();
         client.set_tag_mask(TagMask::single(1).unwrap());
-        client.reset_to_placement(crate::types::ClientPlacement::Floating);
+        client.set_placement(crate::types::ClientPlacement::Floating);
         client.border_width = border_width;
         client.geo = rect;
         client.save_floating_placement(rect, work_rect);
@@ -593,7 +593,7 @@ mod tests {
         model
             .client_mut(win)
             .unwrap()
-            .reset_to_placement(crate::types::ClientPlacement::Floating);
+            .set_placement(crate::types::ClientPlacement::Floating);
         let floating = Rect::new(100, 100, 700, 500);
         sync_client_geometry(&mut model, win, floating);
         let saved = model
@@ -631,7 +631,7 @@ mod tests {
             old_geo: fullscreen,
             ..Client::default()
         };
-        client.reset_to_placement(crate::types::ClientPlacement::Floating);
+        client.set_placement(crate::types::ClientPlacement::Floating);
         model.insert_client(client);
 
         sync_client_geometry(&mut model, win, restored);

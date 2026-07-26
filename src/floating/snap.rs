@@ -43,7 +43,7 @@ pub fn change_snap(ctx: &mut WmCtx, win: WindowId, direction: Direction) {
             let new_snap = status.next(direction);
 
             if status == SnapPosition::None
-                && client.mode().is_floating()
+                && client.mode().is_normal_floating()
                 && let Some(work_area) = work_area
             {
                 client.save_floating_placement(client.geo, work_area);
@@ -129,7 +129,7 @@ pub fn apply_snap(ctx: &mut WmCtxX11, win: WindowId, rect: &Rect) {
 /// while being a tiled client.
 pub fn reset_snap(ctx: &mut WmCtx, win: WindowId) {
     let (is_floating, snap_status) = match ctx.core().model().client(win) {
-        Some(c) => (c.mode().is_floating(), c.snap_status),
+        Some(c) => (c.mode().is_normal_floating(), c.snap_status),
         None => return,
     };
 

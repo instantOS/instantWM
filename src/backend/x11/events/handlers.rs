@@ -457,16 +457,15 @@ pub fn property_notify(ctx: &mut WmCtxX11<'_>, e: &PropertyNotifyEvent) {
                     .model()
                     .client(event_win)
                     .map(|client| client.monitor_id);
-                let needs_float = ctx
-                    .core
-                    .model()
-                    .client(event_win)
-                    .is_some_and(|client| parent.is_some() && !client.mode().is_floating());
+                let needs_float = ctx.core.model().client(event_win).is_some_and(|client| {
+                    parent.is_some()
+                        && client.placement() != crate::types::ClientPlacement::Floating
+                });
                 if let Some(client) = ctx.core.model_mut().client_mut(event_win) {
                     client.transient_for = parent;
                 }
                 if needs_float {
-                    let _ = crate::floating::set_window_mode(
+                    let _ = crate::floating::set_window_placement_from_policy(
                         &mut WmCtx::X11(ctx.reborrow()),
                         event_win,
                         crate::floating::WindowModeRequest::Floating(

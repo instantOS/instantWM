@@ -34,8 +34,38 @@ pub enum WindowModeRequest {
 
 /// Set a window to floating or tiled mode.
 ///
-/// Handles border updates and geometry changes but not caller-owned animation.
+/// This is an explicit user/IPC transition: the requested placement becomes
+/// immediately visible, so temporary fullscreen and maximized presentations
+/// are exited first.
 pub fn set_window_mode(
+    ctx: &mut WmCtx,
+    win: WindowId,
+    request: WindowModeRequest,
+) -> WindowModeChange {
+    let Some(mode) = ctx.core().model().client(win).map(|client| client.mode()) else {
+        return WindowModeChange::MissingClient;
+    };
+    if mode.is_fullscreen() {
+        crate::client::fullscreen::set_fullscreen(ctx, win, false);
+    }
+    if ctx
+        .core()
+        .model()
+        .client(win)
+        .is_some_and(|client| client.mode().is_maximized())
+    {
+        crate::client::fullscreen::leave_maximized(ctx, win);
+    }
+
+    set_window_placement_from_policy(ctx, win, request)
+}
+
+/// Change persistent placement without taking ownership of presentation.
+///
+/// Rules and property refreshes use this path. A policy update may change
+/// where a window restores after fullscreen/maximization, but must not cancel
+/// a client-owned presentation request.
+pub(crate) fn set_window_placement_from_policy(
     ctx: &mut WmCtx,
     win: WindowId,
     request: WindowModeRequest,
@@ -64,7 +94,7 @@ pub fn set_window_mode(
 
             if let Some(client) = ctx.core_mut().model_mut().client_mut(win) {
                 client.set_placement(ClientPlacement::Floating);
-                if current_mode.is_tiling() {
+                if current_mode.is_normal_tiling() {
                     client.restore_border_width();
                 } else {
                     client.save_floating_placement(restored_geometry, work_area);
@@ -73,7 +103,7 @@ pub fn set_window_mode(
 
             // Temporary presentation modes retain their current geometry.
             // Only their eventual restore mode and placement change.
-            if !current_mode.is_tiling() {
+            if !current_mode.is_normal_tiling() {
                 return WindowModeChange::ChangedToFloating { restored_geometry };
             }
             if let WmCtx::X11(x11) = ctx {
@@ -97,7 +127,7 @@ pub fn set_window_mode(
             if current_placement == ClientPlacement::Floating
                 && let Some(client) = ctx.core_mut().model_mut().client_mut(win)
             {
-                if current_mode.is_floating() {
+                if current_mode.is_normal_floating() {
                     client.save_floating_placement(current_rect, work_area);
                 }
                 client.set_placement(ClientPlacement::Tiling);
@@ -142,16 +172,6 @@ pub fn toggle_floating(ctx: &mut WmCtx) {
     let request = if mode.placement() != ClientPlacement::Floating || is_fixed {
         WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter)
     } else {
-        // Unlike policy-driven base-mode changes, an explicit user toggle
-        // must leave maximized presentation so the requested tiled state is
-        // immediately visible. Replace the complete mode directly so the
-        // maximized work-area rectangle is not mistaken for a new floating
-        // placement. True fullscreen was rejected above.
-        if mode.is_maximized()
-            && let Some(client) = ctx.core_mut().model_mut().client_mut(win)
-        {
-            client.reset_to_placement(ClientPlacement::Tiling);
-        }
         WindowModeRequest::Tiling
     };
     let _ = set_window_mode(ctx, win, request);
@@ -229,8 +249,8 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
 #[cfg(test)]
 mod tests {
     use super::{
-        WindowModeChange, WindowModeRequest, set_window_mode, toggle_client_maximized,
-        toggle_floating,
+        WindowModeChange, WindowModeRequest, set_window_mode, set_window_placement_from_policy,
+        toggle_client_maximized, toggle_floating,
     };
     use crate::backend::Backend;
     use crate::backend::wayland::WaylandBackend;
@@ -297,12 +317,12 @@ mod tests {
 
         toggle_client_maximized(&mut wm.ctx());
         let restored = wm.core.model.client(win).unwrap();
-        assert!(restored.mode().is_floating());
+        assert!(restored.mode().is_normal_floating());
         assert_eq!(restored.geo, floating);
     }
 
     #[test]
-    fn changing_the_placement_under_maximize_does_not_resize_presentation() {
+    fn policy_placement_change_does_not_cancel_maximized_presentation() {
         let maximized = Rect::new(0, 30, 1200, 770);
         let (mut wm, win) = wm_with_client(
             ClientMode::maximized(ClientPlacement::Tiling, crate::types::MaximizedOrigin::Wm),
@@ -310,7 +330,7 @@ mod tests {
         );
         wm.core.model.client_mut(win).unwrap().border_width = 0;
 
-        let change = set_window_mode(
+        let change = set_window_placement_from_policy(
             &mut wm.ctx(),
             win,
             WindowModeRequest::Floating(FloatingPlacementIntent::RestoreOrCenter),
@@ -328,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn tiling_request_under_maximize_changes_only_the_restore_mode() {
+    fn policy_tiling_change_only_changes_maximized_restore_placement() {
         let maximized = Rect::new(0, 30, 1200, 770);
         let (mut wm, win) = wm_with_client(
             ClientMode::maximized(ClientPlacement::Floating, crate::types::MaximizedOrigin::Wm),
@@ -341,7 +361,8 @@ mod tests {
             .unwrap()
             .save_floating_placement(saved, Rect::new(0, 30, 1200, 770));
 
-        let change = set_window_mode(&mut wm.ctx(), win, WindowModeRequest::Tiling);
+        let change =
+            set_window_placement_from_policy(&mut wm.ctx(), win, WindowModeRequest::Tiling);
 
         assert_eq!(change, WindowModeChange::ChangedToTiling);
         let client = wm.core.model.client(win).unwrap();
@@ -372,5 +393,29 @@ mod tests {
         let client = wm.core.model.client(win).unwrap();
         assert_eq!(client.mode(), ClientMode::tiled());
         assert_eq!(client.saved_floating_rect(), Some(saved));
+    }
+
+    #[test]
+    fn explicit_tiling_clears_client_owned_maximization() {
+        let maximized = Rect::new(0, 30, 1200, 770);
+        let (mut wm, win) = wm_with_client(
+            ClientMode::maximized(
+                ClientPlacement::Floating,
+                crate::types::MaximizedOrigin::Client,
+            ),
+            maximized,
+        );
+        wm.core
+            .model
+            .client_mut(win)
+            .unwrap()
+            .save_floating_placement(Rect::new(200, 160, 700, 500), Rect::new(0, 30, 1200, 770));
+
+        let change = set_window_mode(&mut wm.ctx(), win, WindowModeRequest::Tiling);
+
+        assert_eq!(change, WindowModeChange::ChangedToTiling);
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.mode().is_normal_tiling());
+        assert!(!client.mode().is_protocol_maximized());
     }
 }

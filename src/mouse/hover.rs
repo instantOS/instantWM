@@ -117,7 +117,7 @@ fn resize_target_for_window(
     if !c.is_visible(selected_tags) {
         return None;
     }
-    if !c.mode().is_floating() && has_tiling {
+    if !c.mode().is_normal_floating() && has_tiling {
         return None;
     }
     if !c.geo.contains_resize_border_point(root, RESIZE_BORDER_ZONE) {
@@ -168,7 +168,7 @@ fn has_visible_tiled_client(model: &WmModel) -> bool {
     has_tiling
         && mon
             .iter_clients(&model.clients)
-            .any(|(_, c)| c.is_visible(selected) && !c.mode().is_floating())
+            .any(|(_, c)| c.is_visible(selected) && !c.mode().is_normal_floating())
 }
 
 // ── Motion-notify hook ───────────────────────────────────────────────────────

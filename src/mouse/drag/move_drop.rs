@@ -150,7 +150,7 @@ pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
         return None;
     }
     if is_maximized {
-        crate::floating::toggle_client_maximized(ctx);
+        crate::client::fullscreen::leave_maximized(ctx, sel);
         return None;
     }
     let selected_window = sel;
@@ -368,7 +368,7 @@ pub fn handle_bar_drop(
     // Remember whether the window was floating *before* any state change so
     // we know whether to correct the saved floating placement afterwards.
     let was_floating = match ctx.core().model().client(win) {
-        Some(c) => c.mode().is_floating(),
+        Some(c) => c.placement() == ClientPlacement::Floating,
         None => return,
     };
 
@@ -497,7 +497,7 @@ fn finish_tiling_edge_drop(client: &mut Client) {
     // The drag has already moved `geo` to the edge. Unlike the ordinary
     // tiled-mode command, snapshotting it here would destroy the position
     // restored by a later float toggle.
-    client.reset_to_placement(ClientPlacement::Tiling);
+    client.set_placement(ClientPlacement::Tiling);
 }
 
 /// Shared post-release drop handling for move-like drags.
@@ -527,7 +527,7 @@ pub fn complete_move_drop(
                     .core()
                     .model()
                     .client(win)
-                    .is_some_and(|client| client.mode().is_tiling())
+                    .is_some_and(|client| client.mode().is_normal_tiling())
                 && crate::layouts::place_tree_at_point(ctx, win, root)
         });
         if handled_tree {
@@ -550,7 +550,7 @@ pub fn promote_to_floating(
         .state()
         .model
         .client(win)
-        .map(|c| (c.mode().is_floating(), c.geo, c.monitor_id))?;
+        .map(|c| (c.mode().is_normal_floating(), c.geo, c.monitor_id))?;
 
     if is_floating {
         return Some((geo, false));
@@ -561,7 +561,7 @@ pub fn promote_to_floating(
     // restore the manual tree.
     if let Some(view) = ctx.core().model().client_view(win)
         && view.monitor.current_layout() == PresentationMode::Floating
-        && view.client.mode().is_tiling()
+        && view.client.mode().is_normal_tiling()
     {
         return Some((view.client.geo, false));
     }
@@ -598,7 +598,7 @@ mod tests {
             ..Client::default()
         };
         client.save_floating_placement(saved, Rect::new(0, 0, 1920, 1080));
-        client.reset_to_placement(ClientPlacement::Floating);
+        client.set_placement(ClientPlacement::Floating);
 
         finish_tiling_edge_drop(&mut client);
 
@@ -643,5 +643,45 @@ mod tests {
             wm.core.model.client(win).unwrap().mode(),
             ClientMode::tiled()
         );
+    }
+
+    #[test]
+    fn dragging_client_maximized_floating_window_restores_its_float_geometry() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let work_rect = Rect::new(0, 30, 1200, 770);
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1200, 800),
+            available_rect: work_rect,
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let win = WindowId(43);
+        let saved = Rect::new(220, 170, 680, 480);
+        let mut client = Client {
+            win,
+            monitor_id,
+            tags: TagMask::single(1).unwrap(),
+            mode: ClientMode::maximized(
+                ClientPlacement::Floating,
+                crate::types::MaximizedOrigin::Client,
+            ),
+            geo: work_rect,
+            ..Client::default()
+        };
+        client.save_floating_placement(saved, work_rect);
+        wm.core.model.insert_client(client);
+        assert!(wm.core.model.attach_client(win));
+
+        let result = promote_to_floating(
+            &mut wm.ctx(),
+            win,
+            FloatingPlacementIntent::PreservePointerAnchor(crate::types::Point::new(600, 200)),
+        );
+
+        assert_eq!(result, Some((saved, true)));
+        let client = wm.core.model.client(win).unwrap();
+        assert!(client.mode().is_normal_floating());
+        assert!(!client.mode().is_protocol_maximized());
+        assert_eq!(client.geo, saved);
     }
 }

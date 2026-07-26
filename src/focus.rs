@@ -62,7 +62,7 @@ fn resolve_focus_target(model: &WmModel, win: Option<WindowId>) -> Option<FocusT
             && mon.current_layout().is_maximized()
             && let Some(&tiled_win) = mon.tag_tiled_focus_history.get(&selected)
             && model.client(tiled_win).is_some_and(|client| {
-                client.mode().is_tiling()
+                client.mode().is_normal_tiling()
                     && is_focusable_on_monitor(model, sel_mon_id, selected, tiled_win)
             })
         {
@@ -90,7 +90,7 @@ fn update_focus_state(model: &mut WmModel, result: FocusTargetResult) -> Option<
 
     let target_is_tiled = target
         .and_then(|win| model.client(win))
-        .is_some_and(|client| !client.mode().is_floating());
+        .is_some_and(|client| client.placement() == ClientPlacement::Tiling);
 
     if let Some(mon) = model.monitor_mut(sel_mon_id) {
         mon.selected = target;
@@ -412,7 +412,7 @@ fn should_hover_focus(
     // Respect the "don't focus floating windows on hover" setting.
     let hovered_is_floating = model
         .client(win)
-        .map(|c| c.mode().is_floating())
+        .map(|c| c.placement() == ClientPlacement::Floating)
         .unwrap_or(false);
     let has_tiling = model.expect_selected_monitor().is_tiling_layout();
     if !behavior.focus_follows_float_mouse && hovered_is_floating && has_tiling && !entering_root {
@@ -892,7 +892,7 @@ mod tests {
                 ..Client::default()
             };
             if floating {
-                client.reset_to_placement(crate::types::ClientPlacement::Floating);
+                client.set_placement(crate::types::ClientPlacement::Floating);
                 client.transient_for = Some(previously_focused);
             }
             assert!(state.model.insert_client(client));
@@ -949,7 +949,7 @@ mod tests {
                     ..Client::default()
                 };
                 if win == WindowId(2) {
-                    client.reset_to_placement(crate::types::ClientPlacement::Floating);
+                    client.set_placement(crate::types::ClientPlacement::Floating);
                 }
                 (win, client)
             })

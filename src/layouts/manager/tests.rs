@@ -342,7 +342,7 @@ fn floating_focus_does_not_raise_within_the_floating_layer() {
         .into_iter()
         .map(|win| {
             let mut client = visible_client(win);
-            client.reset_to_placement(ClientPlacement::Floating);
+            client.set_placement(ClientPlacement::Floating);
             (win, client)
         })
         .collect::<HashMap<_, _>>();
@@ -365,7 +365,7 @@ fn transient_dialogs_stay_above_ordinary_windows_and_nested_children() {
         .into_iter()
         .map(|win| {
             let mut client = visible_client(win);
-            client.reset_to_placement(ClientPlacement::Floating);
+            client.set_placement(ClientPlacement::Floating);
             (win, client)
         })
         .collect::<HashMap<_, _>>();
@@ -787,7 +787,7 @@ fn floating_presentation_overlaps_tiled_clients_without_rewriting_tree() {
     clients
         .get_mut(&WindowId(3))
         .unwrap()
-        .reset_to_placement(ClientPlacement::Floating);
+        .set_placement(ClientPlacement::Floating);
     monitor
         .per_tag_state()
         .layout_tree
@@ -856,7 +856,7 @@ fn projected_z_order_keeps_floating_above_tiled_and_fullscreen_above_floating() 
     clients
         .get_mut(&WindowId(3))
         .unwrap()
-        .reset_to_placement(crate::types::ClientPlacement::Floating);
+        .set_placement(crate::types::ClientPlacement::Floating);
     let fullscreen = clients.get_mut(&WindowId(4)).unwrap();
     fullscreen.enter_fullscreen();
 
@@ -887,7 +887,7 @@ fn projected_z_order_keeps_last_tiled_focus_visible_under_floating_focus() {
     clients
         .get_mut(&WindowId(2))
         .unwrap()
-        .reset_to_placement(crate::types::ClientPlacement::Floating);
+        .set_placement(crate::types::ClientPlacement::Floating);
 
     let projected = compute_monitor_z_order(&monitor, &clients).unwrap();
 

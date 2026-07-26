@@ -230,6 +230,10 @@ impl WaylandBackend {
         let maybe_ptr = *self.state.borrow();
         maybe_ptr.map(|mut ptr| unsafe { f(ptr.as_mut()) })
     }
+
+    pub(crate) fn sync_window_presentation(&self, window: WindowId) {
+        let _ = self.with_state(|state| state.sync_window_presentation(window));
+    }
 }
 
 impl Default for WaylandBackend {

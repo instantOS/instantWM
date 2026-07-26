@@ -65,7 +65,8 @@ pub(crate) fn compute_axis_resize(
 /// between the button press and the later drag-threshold event.
 pub fn resize_mouse_from_cursor(ctx: &mut WmCtx, win: WindowId, btn: MouseButton) {
     let Some((geo, is_floating)) = ctx.core().model().client(win).and_then(|client| {
-        (!client.mode().is_true_fullscreen()).then_some((client.geo, client.mode().is_floating()))
+        (!client.mode().is_true_fullscreen())
+            .then_some((client.geo, client.mode().is_normal_floating()))
     }) else {
         return;
     };

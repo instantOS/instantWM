@@ -586,11 +586,8 @@ impl XdgShellHandler for WaylandState {
         let Some(transition) = self.commit_native_fullscreen_request(win, true) else {
             return;
         };
-        surface.with_pending_state(|state| {
-            state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
-        });
-        surface.send_configure();
         crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
+        self.sync_window_presentation(win);
         self.request_space_sync();
         self.request_render();
     }
@@ -602,11 +599,8 @@ impl XdgShellHandler for WaylandState {
         let Some(transition) = self.commit_native_fullscreen_request(win, false) else {
             return;
         };
-        surface.with_pending_state(|state| {
-            state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Fullscreen);
-        });
-        surface.send_configure();
         crate::backend::wayland::commands::apply_fullscreen_geometry(self, win, transition);
+        self.sync_window_presentation(win);
         self.request_space_sync();
         self.request_render();
     }
@@ -618,11 +612,8 @@ impl XdgShellHandler for WaylandState {
         let Some(transition) = self.commit_native_maximized_request(win, true) else {
             return;
         };
-        surface.with_pending_state(|state| {
-            state.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
-        });
-        surface.send_configure();
         crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+        self.sync_window_presentation(win);
         self.request_space_sync();
         self.request_render();
     }
@@ -634,11 +625,8 @@ impl XdgShellHandler for WaylandState {
         let Some(transition) = self.commit_native_maximized_request(win, false) else {
             return;
         };
-        surface.with_pending_state(|state| {
-            state.states.unset(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
-        });
-        surface.send_configure();
         crate::backend::wayland::commands::apply_maximized_geometry(self, win, transition);
+        self.sync_window_presentation(win);
         self.request_space_sync();
         self.request_render();
     }

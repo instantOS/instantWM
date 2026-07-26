@@ -26,7 +26,7 @@ use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::{arrange, sync_monitor_z_order};
-use crate::types::WindowId;
+use crate::types::{MaximizedOrigin, WindowId};
 
 // ---------------------------------------------------------------------------
 // Real fullscreen
@@ -102,17 +102,62 @@ pub(crate) fn set_client_maximized(ctx: &mut WmCtx<'_>, win: WindowId, maximized
     else {
         return;
     };
-    let monitor_id = transition.monitor_id();
+    apply_maximized_transition(ctx, win, transition);
 
-    if let WmCtx::X11(ctx_x11) = ctx {
-        crate::backend::x11::fullscreen::set_maximized_atoms(
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
-            win,
-            maximized,
-        );
+    match ctx {
+        WmCtx::X11(ctx_x11) => {
+            crate::backend::x11::fullscreen::set_maximized_atoms(
+                &ctx_x11.x11,
+                ctx_x11.x11_runtime,
+                win,
+                maximized,
+            );
+        }
+        WmCtx::Wayland(ctx_wayland) => {
+            ctx_wayland.wayland.sync_window_presentation(win);
+        }
+    }
+}
+
+/// Leave the active maximized presentation, regardless of who requested it.
+///
+/// Returns `false` when the window is missing or is not currently maximized.
+/// Explicit move and placement operations use this as their single
+/// maximization exit path so client protocol state cannot be left behind.
+pub(crate) fn leave_maximized(ctx: &mut WmCtx<'_>, win: WindowId) -> bool {
+    let Some(left) = ctx.core_mut().model_mut().leave_maximized(win) else {
+        return false;
+    };
+
+    // Project transition geometry first. Native Wayland can then advertise
+    // the cleared state and restored size in one final configure instead of
+    // briefly advertising an unmaximized, maximized-sized window.
+    apply_maximized_transition(ctx, win, left.transition);
+
+    match ctx {
+        WmCtx::X11(ctx_x11) if left.origin == MaximizedOrigin::Client => {
+            crate::backend::x11::fullscreen::set_maximized_atoms(
+                &ctx_x11.x11,
+                ctx_x11.x11_runtime,
+                win,
+                false,
+            );
+        }
+        WmCtx::Wayland(ctx_wayland) => {
+            ctx_wayland.wayland.sync_window_presentation(win);
+        }
+        WmCtx::X11(_) => {}
     }
 
+    true
+}
+
+fn apply_maximized_transition(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    transition: crate::client::mode::MaximizedTransition,
+) {
+    let monitor_id = transition.monitor_id();
     match transition {
         crate::client::mode::MaximizedTransition::Entered { work_rect, .. } => {
             ctx.move_resize(win, work_rect, MoveResizeOptions::immediate());
@@ -150,13 +195,18 @@ fn apply_fullscreen_exit_backend_effects(ctx: &mut WmCtx<'_>, win: WindowId) {
 }
 
 fn apply_fullscreen_signal(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
-    if let WmCtx::X11(ctx_x11) = ctx {
-        crate::backend::x11::fullscreen::set_fullscreen_atoms(
-            &ctx_x11.x11,
-            ctx_x11.x11_runtime,
-            win,
-            fullscreen,
-        );
+    match ctx {
+        WmCtx::X11(ctx_x11) => {
+            crate::backend::x11::fullscreen::set_fullscreen_atoms(
+                &ctx_x11.x11,
+                ctx_x11.x11_runtime,
+                win,
+                fullscreen,
+            );
+        }
+        WmCtx::Wayland(ctx_wayland) => {
+            ctx_wayland.wayland.sync_window_presentation(win);
+        }
     }
 }
 

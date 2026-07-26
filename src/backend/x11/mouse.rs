@@ -342,7 +342,7 @@ pub fn resize_mouse_directional(
                         .expect_selected_monitor()
                         .is_tiling_layout();
 
-                    !client.mode().is_floating()
+                    !client.mode().is_normal_floating()
                         && has_tiling
                         && ((new_w - client.geo.w).abs() > snap
                             || (new_h - client.geo.h).abs() > snap)
@@ -354,7 +354,7 @@ pub fn resize_mouse_directional(
                     with_wm_ctx_x11(ctx, toggle_floating);
                 } else {
                     let is_floating = match ctx.core.model().client(win) {
-                        Some(c) => c.mode().is_floating(),
+                        Some(c) => c.mode().is_normal_floating(),
                         None => return false,
                     };
                     let has_tiling = ctx

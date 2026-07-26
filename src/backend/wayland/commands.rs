@@ -333,7 +333,7 @@ mod tests {
             old_border_width: 2,
             ..Client::default()
         };
-        client.reset_to_placement(ClientPlacement::Floating);
+        client.set_placement(ClientPlacement::Floating);
         core.model.insert_client(client);
         let mut work = PendingWork::default();
         let mut bar = BarState::default();
@@ -343,7 +343,7 @@ mod tests {
         assert!(apply_fullscreen_request(&mut core, &mut work, &mut bar, win, false).is_some());
 
         let client = core.model.client(win).unwrap();
-        assert!(client.mode().is_floating());
+        assert!(client.mode().is_normal_floating());
         assert_eq!(client.geo, floating_rect);
         assert_eq!(client.saved_floating_rect(), Some(floating_rect));
     }

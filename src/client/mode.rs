@@ -112,6 +112,13 @@ pub(crate) enum MaximizedTransition {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[must_use = "leaving maximization requires backend state and geometry projection"]
+pub(crate) struct LeaveMaximizedTransition {
+    pub(crate) origin: MaximizedOrigin,
+    pub(crate) transition: MaximizedTransition,
+}
+
 impl MaximizedTransition {
     #[inline]
     pub(crate) fn changed(self) -> bool {
@@ -152,7 +159,7 @@ impl WmModel {
         let monitor = monitors.get(client.monitor_id)?;
 
         let previous_mode = client.mode();
-        if fullscreen && previous_mode.is_floating() {
+        if fullscreen && previous_mode.is_normal_floating() {
             client.save_floating_placement(client.geo, monitor.work_rect());
         }
         let (_, changed) = set_client_fullscreen(client, fullscreen);
@@ -163,7 +170,7 @@ impl WmModel {
         }
 
         if fullscreen {
-            return Some(if previous_mode.is_floating() {
+            return Some(if previous_mode.is_normal_floating() {
                 FullscreenTransition::EnteredFromFloating {
                     monitor_id,
                     monitor_rect: monitor.monitor_rect,
@@ -214,7 +221,7 @@ impl WmModel {
         let monitor = monitors.get(client.monitor_id)?;
 
         let previous_mode = client.mode();
-        if maximized && previous_mode.is_floating() {
+        if maximized && previous_mode.is_normal_floating() {
             client.save_floating_placement(client.geo, monitor.work_rect());
         }
         client.set_maximized_presentation(maximized, origin);
@@ -264,6 +271,17 @@ impl WmModel {
         maximized: bool,
     ) -> Option<MaximizedTransition> {
         self.set_maximized_with_origin(win, maximized, MaximizedOrigin::Wm)
+    }
+
+    /// Leave whichever maximized presentation currently owns the window.
+    ///
+    /// Interactive WM actions must not guess whether maximization came from
+    /// the client protocol or instantWM's own zoom command: the origin
+    /// determines which backend state must be cleared.
+    pub(crate) fn leave_maximized(&mut self, win: WindowId) -> Option<LeaveMaximizedTransition> {
+        let origin = self.client(win)?.mode().maximized_origin()?;
+        let transition = self.set_maximized_with_origin(win, false, origin)?;
+        Some(LeaveMaximizedTransition { origin, transition })
     }
 }
 
@@ -332,7 +350,7 @@ mod tests {
             FullscreenTransition::ExitedToTiling { monitor_id }
         );
         let client = model.client(win).unwrap();
-        assert!(client.mode().is_tiling());
+        assert!(client.mode().is_normal_tiling());
         assert_eq!(client.border_width, 2);
     }
 
@@ -365,7 +383,7 @@ mod tests {
             }
         );
         let client = model.client(win).unwrap();
-        assert!(client.mode().is_floating());
+        assert!(client.mode().is_normal_floating());
         assert_eq!(client.geo, floating_rect);
         assert_eq!(client.old_geo, fullscreen_rect);
         assert_eq!(client.saved_floating_rect(), Some(floating_rect));
@@ -493,7 +511,7 @@ mod tests {
             model.set_client_maximized(win, false).unwrap(),
             MaximizedTransition::ExitedToTiling { monitor_id }
         );
-        assert!(model.client(win).unwrap().mode().is_tiling());
+        assert!(model.client(win).unwrap().mode().is_normal_tiling());
     }
 
     #[test]
@@ -505,5 +523,22 @@ mod tests {
         let mode = model.client(win).unwrap().mode();
         assert!(mode.is_wm_maximized());
         assert!(!mode.is_protocol_maximized());
+    }
+
+    #[test]
+    fn leave_maximized_reports_the_owner_and_restores_placement() {
+        let (mut model, win, monitor_id) = model_with_client(ClientMode::floating());
+        let _ = model.set_client_maximized(win, true).unwrap();
+
+        let left = model.leave_maximized(win).unwrap();
+
+        assert_eq!(left.origin, MaximizedOrigin::Client);
+        assert_eq!(left.transition.monitor_id(), monitor_id);
+        assert!(matches!(
+            left.transition,
+            MaximizedTransition::ExitedToFloating { .. }
+        ));
+        assert!(model.client(win).unwrap().mode().is_normal_floating());
+        assert!(model.leave_maximized(win).is_none());
     }
 }

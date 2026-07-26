@@ -322,7 +322,7 @@ fn configure_client_border(
         return;
     };
 
-    let border_width = if client.mode().is_tiling()
+    let border_width = if client.mode().is_normal_tiling()
         && is_maximized
         && client.geo.w > monitor_rect.w - 30
         && client.geo.h > monitor_rect.h - 30 - bar_height

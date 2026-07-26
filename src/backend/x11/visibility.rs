@@ -70,7 +70,7 @@ pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
 
             let should_position = mode.is_free_positioned()
                 || mode.is_fake_fullscreen()
-                || (mode.is_tiling() && !has_tiling);
+                || (mode.is_normal_tiling() && !has_tiling);
             if should_position {
                 let mut tmp_ctx = WmCtx::X11(ctx.reborrow());
                 tmp_ctx.move_resize(

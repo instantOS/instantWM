@@ -258,7 +258,7 @@ fn compute_manual_tree(
         .filter_map(|client| {
             if !clients
                 .get(&client.win)
-                .is_some_and(|client| client.mode().is_tiling())
+                .is_some_and(|client| client.mode().is_normal_tiling())
             {
                 return None;
             }
@@ -367,7 +367,7 @@ fn border_width_for_layout_client(
     is_maximized: bool,
 ) -> i32 {
     let strip_border = client.mode().is_true_fullscreen()
-        || (client.mode().is_tiling() && ((clientcount == 1 && is_tiling) || is_maximized));
+        || (client.mode().is_normal_tiling() && ((clientcount == 1 && is_tiling) || is_maximized));
 
     if strip_border {
         0
@@ -432,7 +432,7 @@ pub(crate) fn compute_monitor_z_order(
         .filter(|win| {
             clients
                 .get(win)
-                .is_some_and(|c| c.mode().is_tiling() && c.is_visible(selected_tags))
+                .is_some_and(|c| c.mode().is_normal_tiling() && c.is_visible(selected_tags))
         });
 
     let mut tiled_stack = Vec::new();
@@ -453,7 +453,7 @@ pub(crate) fn compute_monitor_z_order(
                 fullscreen_stack.push(win);
             } else if mode.is_fake_fullscreen() {
                 // Fake fullscreen keeps its existing layout layer.
-            } else if mode.is_floating() || mode.is_maximized() {
+            } else if mode.is_normal_floating() || mode.is_maximized() {
                 floating_stack.push(win);
             } else if layout.is_tiling() {
                 tiled_stack.push(win);
@@ -680,7 +680,7 @@ pub(crate) fn pointer_tree_resize_start(
         .len();
     if !manual_tree_pointer_interaction_allowed(
         view.monitor.current_layout(),
-        view.client.mode().is_tiling(),
+        view.client.mode().is_normal_tiling(),
         tiled_count,
     ) {
         return None;
@@ -694,7 +694,7 @@ pub(crate) fn pointer_tree_resize_start(
     let vertical = top || bottom;
     if !pointer_tree_resize_allowed(
         view.monitor.current_layout(),
-        view.client.mode().is_tiling(),
+        view.client.mode().is_normal_tiling(),
         tiled_count,
         horizontal,
         vertical,
@@ -748,7 +748,7 @@ pub(crate) fn uses_manual_tree_pointer_interaction(ctx: &WmCtx<'_>, window: Wind
     };
     manual_tree_pointer_interaction_allowed(
         view.monitor.current_layout(),
-        view.client.mode().is_tiling(),
+        view.client.mode().is_normal_tiling(),
         view.monitor.tiled_client_count(&ctx.core().model().clients),
     )
 }
@@ -846,7 +846,7 @@ pub(crate) fn update_pointer_tree_resize(
         let view = match ctx.core().model().client_view(window) {
             Some(view)
                 if view.monitor.current_layout() == PresentationMode::Tiled
-                    && view.client.mode().is_tiling()
+                    && view.client.mode().is_normal_tiling()
                     && view.client.is_visible(view.monitor.selected_tags()) =>
             {
                 view
@@ -1065,7 +1065,7 @@ pub fn preview_tree_at_point(
             .core()
             .model()
             .client(window)
-            .is_some_and(|client| client.mode().is_tiling())
+            .is_some_and(|client| client.mode().is_normal_tiling())
     {
         return None;
     }
@@ -1131,7 +1131,7 @@ pub fn promote_tree(ctx: &mut WmCtx<'_>, window: WindowId) -> bool {
     let eligible = ctx.core().model().client_view(window).is_some_and(|view| {
         view.monitor.id() == ctx.core().model().selected_monitor_id()
             && view.monitor.is_tiling_layout()
-            && view.client.mode().is_tiling()
+            && view.client.mode().is_normal_tiling()
     });
     if !eligible {
         return false;

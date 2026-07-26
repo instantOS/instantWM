@@ -415,7 +415,7 @@ impl Monitor {
         // Check if client exists and is tiled
         let is_floating = clients
             .get(&win)
-            .map(|c| c.mode().is_floating())
+            .map(|c| c.placement() == super::ClientPlacement::Floating)
             .unwrap_or(false);
         if is_floating {
             return false;
@@ -506,7 +506,7 @@ impl Monitor {
 
         for &win in self.clients.iter().skip(iter_start) {
             if let Some(c) = clients.get(&win)
-                && c.mode().is_tiling()
+                && c.mode().is_normal_tiling()
                 && c.is_visible(selected)
             {
                 return Some(win);

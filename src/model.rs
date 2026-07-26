@@ -403,7 +403,7 @@ impl WmModel {
             return None;
         }
         let is_scratchpad = client.is_scratchpad();
-        let needs_arrange = !client.mode().is_floating();
+        let needs_arrange = !client.mode().is_normal_floating();
         let target_monitor = self.monitors.get(target_mon)?;
         let target_tags = if is_scratchpad {
             crate::types::TagMask::EMPTY

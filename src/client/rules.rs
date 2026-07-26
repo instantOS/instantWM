@@ -524,7 +524,14 @@ mod tests {
             wm.work.layout.take_targets(),
             Some(LayoutWorkTargets::Monitors(vec![old_monitor, new_monitor]))
         );
-        assert!(!wm.core.model.client(win).unwrap().mode().is_floating());
+        assert!(
+            !wm.core
+                .model
+                .client(win)
+                .unwrap()
+                .mode()
+                .is_normal_floating()
+        );
         assert_eq!(wm.core.model.client(win).unwrap().monitor_id, new_monitor);
     }
 
@@ -581,7 +588,7 @@ mod tests {
         );
 
         let client = state.model.client(win).expect("client should still exist");
-        assert!(client.mode().is_floating());
+        assert!(client.mode().is_normal_floating());
     }
 
     #[test]
@@ -673,7 +680,7 @@ mod tests {
         );
 
         assert_eq!(state.behavior.specialnext, SpecialNext::Float);
-        assert!(state.model.client(win).unwrap().mode().is_tiling());
+        assert!(state.model.client(win).unwrap().mode().is_normal_tiling());
     }
 
     #[test]
@@ -757,7 +764,7 @@ mod tests {
         );
 
         let client = state.model.client(win).expect("client should still exist");
-        assert!(!client.mode().is_floating()); // Should be tiling now
+        assert!(!client.mode().is_normal_floating()); // Should be tiling now
     }
 
     #[test]
@@ -797,7 +804,7 @@ mod tests {
         );
 
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
-        assert!(state.model.client(win).unwrap().mode().is_floating());
+        assert!(state.model.client(win).unwrap().mode().is_normal_floating());
     }
 
     #[test]
@@ -846,7 +853,7 @@ mod tests {
         let client = state.model.client(win).unwrap();
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
         assert!(outcome.changed);
-        assert!(client.mode().is_floating());
+        assert!(client.mode().is_normal_floating());
         assert!(client.is_sticky);
         assert_eq!(client.tags, selected_tags);
         assert_eq!(client.total_rect(), Rect::new(300, 160, 600, 480));

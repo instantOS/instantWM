@@ -206,7 +206,7 @@ mod tests {
             old_border_width: 2,
             ..Client::default()
         };
-        client.reset_to_placement(ClientPlacement::Floating);
+        client.set_placement(ClientPlacement::Floating);
         model.insert_client(client);
 
         let update = |is_fullscreen| XWaylandPolicyUpdate {
@@ -224,7 +224,7 @@ mod tests {
         assert!(exited.layout_changed());
 
         let client = model.client(win).unwrap();
-        assert!(client.mode().is_floating());
+        assert!(client.mode().is_normal_floating());
         assert_eq!(client.geo, floating_rect);
         assert_eq!(client.saved_floating_rect(), Some(floating_rect));
     }

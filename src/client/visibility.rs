@@ -306,7 +306,7 @@ mod tests {
         let mut client = make_client(win, tag, MonitorId::from_raw(0), false, false);
         client.geo = rect;
         client.border_width = 2;
-        client.reset_to_placement(crate::types::ClientPlacement::Floating);
+        client.set_placement(crate::types::ClientPlacement::Floating);
 
         let clients = vec![client];
         let mon = make_monitor(0, tag, vec![win]);

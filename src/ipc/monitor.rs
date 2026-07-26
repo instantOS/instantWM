@@ -19,17 +19,18 @@ pub fn handle_monitor_command(wm: &mut Wm, cmd: MonitorCommand) -> Response {
             transform,
             enable,
             vrr,
-        } => set_monitor_config(
-            wm,
-            identifier,
-            resolution,
-            refresh_rate,
-            position,
-            scale,
-            transform.map(|t| t.to_string()),
-            enable,
-            vrr,
-        ),
+        } => {
+            let config = crate::config::config_toml::MonitorConfig {
+                resolution,
+                refresh_rate,
+                position,
+                scale,
+                transform: transform.map(|t| t.to_string()),
+                enable,
+                vrr,
+            };
+            set_monitor_config(wm, identifier, config)
+        }
         MonitorCommand::Modes { identifier } => list_modes(wm, identifier),
     }
 }
@@ -93,13 +94,7 @@ fn prev_monitor(wm: &mut Wm, count: i32) -> Response {
 fn set_monitor_config(
     wm: &mut Wm,
     identifier: String,
-    resolution: Option<String>,
-    refresh_rate: Option<f32>,
-    position: Option<String>,
-    scale: Option<f32>,
-    transform: Option<String>,
-    enable: Option<bool>,
-    vrr: Option<crate::config::config_toml::VrrMode>,
+    config: crate::config::config_toml::MonitorConfig,
 ) -> Response {
     let resolved_id = if identifier == "focused" {
         let name = wm.core.expect_selected_monitor().name.clone();
@@ -110,16 +105,6 @@ fn set_monitor_config(
         }
     } else {
         identifier
-    };
-
-    let config = crate::config::config_toml::MonitorConfig {
-        resolution,
-        refresh_rate,
-        position,
-        scale,
-        transform,
-        enable,
-        vrr,
     };
 
     wm.core.config.monitors.insert(resolved_id, config);

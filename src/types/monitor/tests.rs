@@ -264,7 +264,7 @@ fn maximized_bar_titles_put_the_keyboard_cycle_order_first() {
                 ..Client::default()
             };
             if matches!(win, WindowId(2) | WindowId(4)) {
-                client.reset_to_placement(crate::types::ClientPlacement::Floating);
+                client.set_placement(crate::types::ClientPlacement::Floating);
             }
             (win, client)
         })

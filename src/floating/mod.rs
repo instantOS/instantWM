@@ -33,8 +33,8 @@ pub use batch::distribute_clients;
 
 // ── state ────────────────────────────────────────────────────────────────────
 
-pub(crate) use state::toggle_client_maximized;
 pub use state::{WindowModeChange, WindowModeRequest, set_window_mode, toggle_floating};
+pub(crate) use state::{set_window_placement_from_policy, toggle_client_maximized};
 
 // ── scratchpad ────────────────────────────────────────────────────────────────
 

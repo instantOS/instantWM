@@ -232,4 +232,28 @@ impl WaylandState {
             toplevel.send_pending_configure();
         }
     }
+
+    /// Re-project the authoritative WM presentation to the surface protocol.
+    ///
+    /// This is needed for state-only transitions whose resulting geometry may
+    /// equal the previous geometry. Relying on a resize to incidentally send a
+    /// configure would otherwise allow the protocol and model to drift.
+    pub(crate) fn sync_window_presentation(&self, win: WindowId) {
+        let Some(window) = self.find_window(win) else {
+            return;
+        };
+        let Some(mode) = self
+            .globals()
+            .and_then(|state| state.model.client(win).map(|client| client.mode()))
+        else {
+            return;
+        };
+
+        if let Some(surface) = window.x11_surface() {
+            let _ = surface.set_maximized(mode.is_protocol_maximized());
+            let _ = surface.set_fullscreen(mode.is_fullscreen());
+        } else {
+            self.send_toplevel_configure(window, None);
+        }
+    }
 }
