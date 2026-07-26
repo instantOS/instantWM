@@ -293,6 +293,10 @@ pub struct WaylandRuntimeState {
     /// Touch slot emulating a pointer for a client without a `wl_touch` binding.
     pub(crate) pointer_touch_slot: Option<smithay::backend::input::TouchSlot>,
     pub cursor_hidden_by_touch: bool,
+    /// Whether the current compositor-rendered cursor is animated
+    /// (multiple xcursor frames).  Updated each DRM event-loop tick so
+    /// the animation timer can keep animated cursors alive at idle.
+    pub cursor_is_animated: bool,
     pub led_state_tx: Option<std::sync::mpsc::Sender<smithay::input::keyboard::LedState>>,
     pub dnd_icon: Option<smithay::reexports::wayland_server::protocol::wl_surface::WlSurface>,
     pub winit_window_size: smithay::utils::Size<i32, smithay::utils::Physical>,
@@ -326,6 +330,7 @@ impl Default for WaylandRuntimeState {
             bar_touch_slot: None,
             pointer_touch_slot: None,
             cursor_hidden_by_touch: false,
+            cursor_is_animated: false,
             led_state_tx: None,
             dnd_icon: None,
             winit_window_size: smithay::utils::Size::from((0, 0)),

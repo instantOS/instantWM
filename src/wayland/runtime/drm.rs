@@ -4,6 +4,7 @@ use smithay::backend::drm::DrmEvent;
 use smithay::backend::libinput::LibinputInputBackend;
 use smithay::backend::libinput::LibinputSessionInterface;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::input::pointer::CursorIcon;
 use smithay::backend::session::Event as SessionEvent;
 use smithay::backend::session::Session;
 use smithay::backend::session::libseat::LibSeatSession;
@@ -24,7 +25,10 @@ use crate::backend::BackendVrrSupport;
 use crate::backend::wayland::compositor::WaylandState;
 use crate::config::config_toml::CursorConfig;
 use crate::config::config_toml::VrrMode;
-use crate::wayland::common::{build_fixed_scene_elements, poll_systray};
+use crate::wayland::common::{
+    CursorPresentation, build_fixed_scene_elements, poll_systray,
+    resolve_cursor_presentation,
+};
 use crate::wayland::init::drm::init_gpu;
 use crate::wayland::input::apply_pending_warp;
 use crate::wayland::render::drm::{
@@ -411,6 +415,17 @@ fn setup_drm_vblank_handler(
         .expect("drm notifier source");
 }
 
+/// Extract a `CursorIcon` from a resolved cursor presentation for
+/// animation-timer scheduling.  `Surface` cursors are client-owned and
+/// cannot be introspected, so they return `None`.
+fn cursor_presentation_icon(p: &CursorPresentation) -> Option<CursorIcon> {
+    match p {
+        CursorPresentation::Hidden | CursorPresentation::Surface { .. } => None,
+        CursorPresentation::Named(icon) => Some(*icon),
+        CursorPresentation::DndIcon { cursor, .. } => cursor_presentation_icon(cursor),
+    }
+}
+
 /// Run the main event loop.
 ///
 /// This is the heart of the DRM backend. It handles:
@@ -505,9 +520,31 @@ fn run_event_loop(
                 }
             }
 
+            // Resolve cursor animation state so the on-demand timer keeps
+            // animated cursors (e.g. the spinning "wait" cursor) alive
+            // even when the system is otherwise idle.
+            let animated = {
+                let presentation = resolve_cursor_presentation(
+                    &state.cursor_image_status,
+                    state.cursor_icon_override,
+                    state.runtime.dnd_icon.as_ref(),
+                    state.runtime.cursor_hidden_by_touch,
+                );
+                cursor_presentation_icon(&presentation)
+                    .is_some_and(|icon| cursor_manager.is_animated(icon, 1))
+            };
+            state.runtime.cursor_is_animated = animated;
+            if animated {
+                loop_state.mark_pointer_output_dirty(
+                    state.runtime.pointer_location.x as i32,
+                    &shared_layout,
+                );
+            }
+
             // Arm an on-demand animation timer when animations are active.
-            anim_guard.ensure_armed(state.has_active_animations(), &loop_handle, move |state| {
-                state.has_active_animations()
+            let has_anim = state.has_active_animations() || animated;
+            anim_guard.ensure_armed(has_anim, &loop_handle, move |state| {
+                state.has_active_animations() || state.runtime.cursor_is_animated
             });
 
             if let Some(keyboard_handle) = state.seat.get_keyboard() {
