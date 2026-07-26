@@ -28,7 +28,7 @@ on:
 jobs:
   version-bump:
     name: Prepare release PR
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: ubuntu:24.04
     if: ${{ github.repository_owner == 'instantOS' }}
