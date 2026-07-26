@@ -13,7 +13,7 @@ on:
 jobs:
   metadata:
     name: Prepare release metadata
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: ubuntu:24.04
     if: ${{ github.repository_owner == 'instantOS' }}
@@ -42,7 +42,7 @@ jobs:
         run: bash scripts/ci/determine-release.sh
   build:
     name: Build release artifacts
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 1440
     container:
       image: archlinux:latest
@@ -107,7 +107,7 @@ jobs:
     # See the multi-arch (arm64/armhf) setup below for the equivalent dance on
     # the glibc side as a starting point.
     name: Cross-compile for ARM targets
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 1440
     container:
       image: ubuntu:24.04
@@ -181,7 +181,7 @@ jobs:
         run: rm -rf /opt/cargo /opt/rustup
   pkgbuild:
     name: Build Arch binary package
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 1440
     container:
       image: archlinux:latest
@@ -237,7 +237,7 @@ jobs:
           path: artifacts/
   deb:
     name: Build Debian package
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: ubuntu:24.04
     needs:
@@ -286,7 +286,7 @@ jobs:
           path: artifacts/
   release:
     name: Publish GitHub release
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: ubuntu:24.04
     needs:
