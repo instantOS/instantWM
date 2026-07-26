@@ -248,6 +248,61 @@ fn pointer_tree_resize_preserves_the_requested_floating_fallbacks() {
 }
 
 #[test]
+fn pointer_tree_resize_remains_active_when_client_minimums_are_impossible() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let tags = TagMask::single(1).unwrap();
+    let windows = [WindowId(1), WindowId(2)];
+    let monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(0, 0, 300, 100),
+        available_rect: Rect::new(0, 0, 300, 100),
+        show_bar: false,
+        ..Monitor::default()
+    });
+    wm.core.model.monitors.set_selected(monitor_id);
+    for win in windows {
+        let mut client = Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::Tiling,
+            ..Client::default()
+        };
+        client.size_hints.min_width = 200;
+        client.size_hints.min_height = 50;
+        wm.core.model.insert_client(client);
+    }
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.set_selected_tags(tags);
+    monitor.clients = windows.to_vec();
+    monitor.selected = Some(windows[0]);
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::MasterStack, &windows, 1);
+    let origin = monitor.per_tag().unwrap().layout_tree.clone();
+    let before = origin.bounds(monitor.available_rect)[&windows[0]];
+
+    assert!(super::update_pointer_tree_resize(
+        &mut wm.ctx(),
+        windows[0],
+        &origin,
+        ResizeDirection::Right,
+        Point::new(before.right(), before.y + before.h / 2),
+        Point::new(before.right() + 30, before.y + before.h / 2),
+    ));
+
+    let monitor = wm.core.model.monitor(monitor_id).unwrap();
+    let after = monitor
+        .per_tag()
+        .unwrap()
+        .layout_tree
+        .bounds(monitor.available_rect)[&windows[0]];
+    assert_eq!(after.w, before.w + 30);
+}
+
+#[test]
 fn planned_border_is_used_without_waiting_for_next_arrange() {
     let win = WindowId(1);
     let mut client = visible_client(win);
@@ -473,6 +528,53 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
             );
         }
     }
+}
+
+#[test]
+fn arrange_softens_impossible_minimums_and_restores_them_when_space_returns() {
+    let windows = [WindowId(1), WindowId(2)];
+    let mut monitor = monitor_with_order(&windows, WindowId(1));
+    monitor.available_rect = Rect::new(0, 0, 300, 100);
+    monitor.monitor_rect = monitor.available_rect;
+    monitor.clients = windows.to_vec();
+    let mut clients = windows
+        .into_iter()
+        .map(|window| (window, visible_client(window)))
+        .collect::<HashMap<_, _>>();
+    for client in clients.values_mut() {
+        client.size_hints.min_width = 200;
+        client.size_hints.min_height = 50;
+    }
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::MasterStack, &windows, 1);
+
+    let overcommitted = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    let overcommitted_rects = overcommitted
+        .client_moves
+        .iter()
+        .map(|output| (output.win, output.rect))
+        .collect::<HashMap<_, _>>();
+    assert!(overcommitted_rects.values().all(|rect| rect.w < 200));
+    assert_eq!(
+        overcommitted_rects[&WindowId(1)].right(),
+        overcommitted_rects[&WindowId(2)].x
+    );
+    assert!(
+        overcommitted
+            .client_moves
+            .iter()
+            .all(|output| { output.options.size_hints == crate::geometry::SizeHintPolicy::Ignore })
+    );
+
+    monitor.available_rect = Rect::new(0, 0, 500, 100);
+    monitor.monitor_rect = monitor.available_rect;
+    let recovered = monitor.compute_arrange(&clients, &LayoutConfig::default(), true, 0, false);
+    assert!(recovered.client_moves.iter().all(|output| {
+        output.rect.w >= 200
+            && output.options.size_hints == crate::geometry::SizeHintPolicy::Respect
+    }));
 }
 
 #[test]

@@ -1299,6 +1299,27 @@ fn pointer_resize_moves_only_the_grabbed_seam() {
 }
 
 #[test]
+fn dense_equal_pointer_runs_have_a_valid_resize_interval() {
+    let layout = Rect::new(0, 0, 1300, 700);
+    for count in [7, 13] {
+        let mut trailing = LayoutTree::default();
+        trailing.root = equal_run(&windows(count), Axis::Vertical, &mut || trailing.allocate());
+        let mut leading = trailing.clone();
+
+        assert!(trailing.resize_edge_by_pixels(WindowId(1), Side::Right, 20, layout, 0.15,));
+        assert!(leading.resize_edge_by_pixels(
+            WindowId(count as u32),
+            Side::Left,
+            -20,
+            layout,
+            0.15,
+        ));
+        assert_canonical(&trailing);
+        assert_canonical(&leading);
+    }
+}
+
+#[test]
 fn pointer_outer_edge_resize_matches_keyboard_peer_redistribution() {
     let mut keyboard = LayoutTree::default();
     keyboard.root = equal_run(&windows(4), Axis::Vertical, &mut || keyboard.allocate());
@@ -1430,6 +1451,24 @@ fn constrained_bounds_reject_impossible_minimums() {
         tree.constrained_bounds(Rect::new(0, 0, 300, 100), &minimums)
             .is_none()
     );
+}
+
+#[test]
+fn soft_constraints_preserve_tree_geometry_when_minimums_are_impossible() {
+    let mut tree = LayoutTree::default();
+    tree.root = equal_run(&windows(2), Axis::Vertical, &mut || tree.allocate());
+    let layout = Rect::new(0, 0, 300, 100);
+    let minimums = HashMap::from([
+        (WindowId(1), Size::new(200, 50)),
+        (WindowId(2), Size::new(200, 50)),
+    ]);
+
+    let (bounds, honored) = tree.soft_constrained_bounds(layout, &minimums);
+
+    assert!(!honored);
+    assert_eq!(bounds, tree.bounds(layout));
+    assert_eq!(bounds[&WindowId(1)].right(), bounds[&WindowId(2)].x);
+    assert_eq!(bounds[&WindowId(2)].right(), layout.right());
 }
 
 #[test]

@@ -52,7 +52,8 @@ impl PointerPlacementCache {
                 .swap_windows(self.source, target)
                 .then(|| {
                     let slot = candidate
-                        .constrained_bounds(self.layout_rect, &self.minimums)?
+                        .soft_constrained_bounds(self.layout_rect, &self.minimums)
+                        .0
                         .get(&self.source)
                         .copied()?;
                     Some(PointerPlacementResolution {
@@ -107,7 +108,7 @@ impl PointerPlacementCache {
             } else {
                 candidates
             };
-            let candidates = LayoutTree::normalized_constrained_candidates(
+            let candidates = LayoutTree::normalized_soft_constrained_candidates(
                 self.source,
                 self.layout_rect,
                 &self.minimums,

@@ -299,6 +299,7 @@ impl LayoutTree {
             .collect()
     }
 
+    #[cfg(test)]
     pub(crate) fn constrained_placement_targets(
         &self,
         source: WindowId,
@@ -317,6 +318,25 @@ impl LayoutTree {
         .collect()
     }
 
+    pub(crate) fn soft_constrained_placement_targets(
+        &self,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+        minimums: &HashMap<WindowId, Size>,
+    ) -> Vec<PlacementTarget> {
+        Self::normalized_soft_constrained_candidates(
+            source,
+            layout_rect,
+            minimums,
+            self.raw_resolved_placement_targets(source, layout_rect, edge_fraction),
+        )
+        .into_iter()
+        .map(|resolution| resolution.target)
+        .collect()
+    }
+
+    #[cfg(test)]
     pub(super) fn normalized_constrained_candidates(
         source: WindowId,
         layout_rect: Rect,
@@ -340,6 +360,33 @@ impl LayoutTree {
             })
             .collect();
         topology_representatives(viable)
+            .into_iter()
+            .map(|(resolved, slot)| PointerPlacementResolution {
+                target: resolved.target,
+                slot,
+            })
+            .collect()
+    }
+
+    pub(super) fn normalized_soft_constrained_candidates(
+        source: WindowId,
+        layout_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+        candidates: impl IntoIterator<Item = ResolvedPlacementTarget>,
+    ) -> Vec<PointerPlacementResolution> {
+        let resolved = candidates
+            .into_iter()
+            .filter_map(|candidate| {
+                let slot = candidate
+                    .candidate
+                    .soft_constrained_bounds(layout_rect, minimums)
+                    .0
+                    .get(&source)
+                    .copied()?;
+                Some((candidate, slot))
+            })
+            .collect();
+        topology_representatives(resolved)
             .into_iter()
             .map(|(resolved, slot)| PointerPlacementResolution {
                 target: resolved.target,

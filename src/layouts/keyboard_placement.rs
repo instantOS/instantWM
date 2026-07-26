@@ -49,7 +49,7 @@ pub fn begin_tree_placement(ctx: &mut WmCtx<'_>) -> TreePlacementStart {
             tiled_count,
         )
         .work_rect();
-        let targets = super::manager::constrained_tree_placement_targets(ctx, source);
+        let targets = super::manager::tree_placement_targets(ctx, source);
         let source_center = tree
             .bounds(layout_rect)
             .get(&source)
@@ -92,7 +92,7 @@ fn tree_placement_preview_rect(
     source: WindowId,
     target: crate::layouts::tree::PlacementTarget,
 ) -> Option<Rect> {
-    let (placement, slot) = super::manager::preview_constrained_tree_target(ctx, source, target)?;
+    let (placement, slot) = super::manager::preview_tree_target(ctx, source, target)?;
     tree_slot_outer_rect(ctx, source, placement, slot)
 }
 
@@ -105,6 +105,7 @@ pub(super) fn tree_slot_outer_rect(
     let client = ctx.core().model().client(source)?;
     let border = client.border_width.max(0);
     let mut content = placement.client_rect(slot, border);
+    let available = content.size();
     content.enforce_minimum(
         ctx.core().config().derived.bar_height,
         ctx.core().config().derived.bar_height,
@@ -117,6 +118,10 @@ pub(super) fn tree_slot_outer_rect(
         content.w = constrained.w.min(content.w).max(1);
         content.h = constrained.h.min(content.h).max(1);
     }
+    // Overcommitted tiled layouts deliberately soften client and decoration
+    // minimums. A placement preview must never grow beyond its actual slot.
+    content.w = content.w.min(available.w);
+    content.h = content.h.min(available.h);
     Some(Rect::new(
         content.x,
         content.y,
@@ -240,7 +245,7 @@ fn rebuild_keyboard_tree_targets(ctx: &mut WmCtx<'_>, preferred: crate::types::P
         let Some(state) = ctx.current_mode().tree_placement() else {
             return;
         };
-        super::manager::constrained_tree_placement_targets(ctx, state.source)
+        super::manager::tree_placement_targets(ctx, state.source)
     };
     if targets.is_empty() {
         let _ = finish_keyboard_tree_placement(ctx, false);
@@ -315,11 +320,7 @@ pub fn finish_keyboard_tree_placement(ctx: &mut WmCtx<'_>, apply: bool) -> bool 
     let context_is_current = state.is_current_for(ctx.core().model());
     let changed = context_is_current
         && apply
-        && super::manager::apply_constrained_tree_target(
-            ctx,
-            state.source,
-            state.selected_target(),
-        );
+        && super::manager::apply_tree_target(ctx, state.source, state.selected_target());
     if context_is_current {
         crate::focus::focus(ctx, Some(state.source));
     }
@@ -423,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_placement_omits_targets_that_cannot_satisfy_minimum_sizes() {
+    fn keyboard_placement_keeps_targets_when_minimum_sizes_cannot_fit() {
         let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
         let tags = TagMask::single(1).unwrap();
         let monitor_id = wm.core.model.monitors.push(Monitor {
@@ -455,13 +456,57 @@ mod tests {
             .layout_tree
             .apply_preset(Preset::MasterStack, &[source, peer], 1);
 
-        let targets =
-            crate::layouts::manager::constrained_tree_placement_targets(&wm.ctx(), source);
+        let targets = crate::layouts::manager::tree_placement_targets(&wm.ctx(), source);
 
         assert!(!targets.is_empty());
-        assert!(targets.iter().all(|target| !matches!(
+        assert!(targets.iter().any(|target| matches!(
             target.side,
             Some(crate::layouts::tree::Side::Top | crate::layouts::tree::Side::Bottom)
         )));
+        assert_eq!(
+            begin_tree_placement(&mut wm.ctx()),
+            TreePlacementStart::Started
+        );
+    }
+
+    #[test]
+    fn placement_preview_does_not_expand_beyond_an_overcommitted_slot() {
+        let mut wm = Wm::new(Backend::new_wayland(WaylandBackend::new()));
+        let tags = TagMask::single(1).unwrap();
+        let monitor_id = wm.core.model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 100, 100),
+            available_rect: Rect::new(0, 0, 100, 100),
+            ..Monitor::default()
+        });
+        wm.core.model.monitors.set_selected(monitor_id);
+        let source = WindowId(1);
+        let mut client = Client {
+            win: source,
+            monitor_id,
+            tags,
+            mode: ClientMode::Tiling,
+            border_width: 0,
+            ..Client::default()
+        };
+        client.size_hints.min_width = 140;
+        client.size_hints.min_height = 60;
+        wm.core.model.insert_client(client);
+        let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+        monitor.set_selected_tags(tags);
+        monitor.clients = vec![source];
+        monitor.selected = Some(source);
+
+        let placement = LayoutPlacement::new(
+            &wm.core.config.layout,
+            wm.core.model.monitor(monitor_id).unwrap(),
+            PresentationMode::Tiled,
+            1,
+        );
+        let slot = Rect::new(10, 20, 10, 8);
+
+        assert_eq!(
+            tree_slot_outer_rect(&wm.ctx(), source, placement, slot),
+            Some(slot)
+        );
     }
 }

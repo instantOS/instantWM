@@ -253,10 +253,7 @@ fn compute_manual_tree(
             work_rect,
             &minimums,
         );
-        match tree.constrained_bounds(work_rect, &minimums) {
-            Some(slots) => (slots, true),
-            None => (tree.bounds(work_rect), false),
-        }
+        tree.soft_constrained_bounds(work_rect, &minimums)
     };
     tiled
         .into_iter()
@@ -838,7 +835,7 @@ pub(crate) fn update_pointer_tree_resize(
 ) -> bool {
     use crate::layouts::tree::Side;
 
-    let (layout_rect, minimum_weight, minimums, monitor_id) = {
+    let (layout_rect, minimum_weight, monitor_id) = {
         let view = match ctx.core().model().client_view(window) {
             Some(view)
                 if view.monitor.current_layout() == PresentationMode::Tiled
@@ -859,18 +856,9 @@ pub(crate) fn update_pointer_tree_resize(
             PresentationMode::Tiled,
             tiled_count,
         );
-        let tiled = view.monitor.collect_tiled(&ctx.core().model().clients);
-        let minimums = tiling_minimum_slots(
-            &placement,
-            &tiled,
-            &ctx.core().model().clients,
-            ctx.core().config().window.resize_hints,
-            ctx.core().config().derived.bar_height,
-        );
         (
             placement.work_rect(),
             ctx.core().config().layout.minimum_weight,
-            minimums,
             view.monitor.id(),
         )
     };
@@ -895,12 +883,6 @@ pub(crate) fn update_pointer_tree_resize(
             layout_rect,
             minimum_weight,
         );
-    }
-    if candidate
-        .constrained_bounds(layout_rect, &minimums)
-        .is_none()
-    {
-        return true;
     }
     ctx.core_mut()
         .model_mut()
@@ -940,7 +922,7 @@ fn selected_tiling_constraints(
     Some((placement, minimums))
 }
 
-pub(crate) fn constrained_tree_placement_targets(
+pub(crate) fn tree_placement_targets(
     ctx: &WmCtx<'_>,
     source: WindowId,
 ) -> Vec<crate::layouts::tree::PlacementTarget> {
@@ -956,7 +938,7 @@ pub(crate) fn constrained_tree_placement_targets(
     else {
         return Vec::new();
     };
-    tree.constrained_placement_targets(
+    tree.soft_constrained_placement_targets(
         source,
         placement.work_rect(),
         ctx.core().config().layout.pointer_edge_fraction,
@@ -964,7 +946,7 @@ pub(crate) fn constrained_tree_placement_targets(
     )
 }
 
-pub(crate) fn preview_constrained_tree_target(
+pub(crate) fn preview_tree_target(
     ctx: &WmCtx<'_>,
     source: WindowId,
     target: crate::layouts::tree::PlacementTarget,
@@ -981,20 +963,18 @@ pub(crate) fn preview_constrained_tree_target(
         return None;
     }
     let slot = candidate
-        .constrained_bounds(placement.work_rect(), &minimums)?
+        .soft_constrained_bounds(placement.work_rect(), &minimums)
+        .0
         .get(&source)
         .copied()?;
     Some((placement, slot))
 }
 
-pub(crate) fn apply_constrained_tree_target(
+pub(crate) fn apply_tree_target(
     ctx: &mut WmCtx<'_>,
     source: WindowId,
     target: crate::layouts::tree::PlacementTarget,
 ) -> bool {
-    let Some((placement, minimums)) = selected_tiling_constraints(ctx) else {
-        return false;
-    };
     let Some(mut candidate) = ctx
         .core()
         .model()
@@ -1004,11 +984,7 @@ pub(crate) fn apply_constrained_tree_target(
     else {
         return false;
     };
-    if !candidate.apply_placement_target(source, target)
-        || candidate
-            .constrained_bounds(placement.work_rect(), &minimums)
-            .is_none()
-    {
+    if !candidate.apply_placement_target(source, target) {
         return false;
     }
     ctx.core_mut()
@@ -1057,10 +1033,7 @@ pub fn place_tree_at_point(
         return false;
     };
     let mut candidate = tree;
-    let changed = candidate.apply_placement_target(window, resolution.target)
-        && candidate
-            .constrained_bounds(layout_rect, &minimums)
-            .is_some();
+    let changed = candidate.apply_placement_target(window, resolution.target);
     if changed {
         ctx.core_mut()
             .model_mut()

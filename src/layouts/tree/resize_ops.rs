@@ -58,15 +58,23 @@ fn resize_split_child(
         // Preserve the keyboard command's existing range: it always leaves at
         // least half the run available to its peers collectively.
         PeerScope::All => configured_minimum.min(0.5 / split.children.len() as f64),
-        // A pointer edge can only consume the weight on that edge's side.
+        // A pointer edge can only consume the weight on that edge's side. Use
+        // half that side's even share, as the all-peer path does, so a dense
+        // equal run still has room to move instead of starting at both bounds.
         PeerScope::BeforeTarget | PeerScope::AfterTarget => {
-            configured_minimum.min(adjustable_weight / (peer_count + 1) as f64)
+            configured_minimum.min(0.5 * adjustable_weight / (peer_count + 1) as f64)
         }
     };
     let maximum = adjustable_weight - minimum * peer_count as f64;
+    // Algebraically the minimum choice above makes this a valid interval, but
+    // accumulated normalized weights can put the two endpoints a few ULPs out
+    // of order. Never pass such an interval to f64::clamp, which panics.
+    if !maximum.is_finite() || maximum <= minimum + EPSILON || peer_weight <= EPSILON {
+        return false;
+    }
     let requested = current + if delta.is_finite() { delta } else { 0.0 };
     let target_weight = requested.clamp(minimum, maximum);
-    if (target_weight - current).abs() < EPSILON || peer_weight <= EPSILON {
+    if (target_weight - current).abs() < EPSILON {
         return false;
     }
 
