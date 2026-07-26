@@ -556,6 +556,12 @@ impl Client {
     }
 
     pub fn update_geometry(&mut self, rect: Rect) {
+        // Geometry synchronization can report the model's already-authoritative
+        // rectangle (for example after a model-first fullscreen transition).
+        // Keep `old_geo` as the previous distinct rectangle in that case.
+        if self.geo == rect {
+            return;
+        }
         self.old_geo = self.geo;
         self.geo = rect;
     }
@@ -673,6 +679,26 @@ impl Client {
 mod tests {
     use super::{BaseClientMode, Client, ClientMode, ScratchpadData};
     use crate::types::{Rect, SCRATCHPAD_MASK, TagMask};
+
+    #[test]
+    fn repeated_geometry_update_preserves_the_previous_distinct_rectangle() {
+        let previous = Rect::new(0, 0, 1920, 1080);
+        let current = Rect::new(200, 150, 900, 600);
+        let next = Rect::new(240, 180, 800, 500);
+        let mut client = Client {
+            geo: current,
+            old_geo: previous,
+            ..Client::default()
+        };
+
+        client.update_geometry(current);
+        assert_eq!(client.geo, current);
+        assert_eq!(client.old_geo, previous);
+
+        client.update_geometry(next);
+        assert_eq!(client.geo, next);
+        assert_eq!(client.old_geo, current);
+    }
 
     #[test]
     fn fullscreen_restores_previous_tiling_mode() {

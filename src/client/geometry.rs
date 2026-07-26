@@ -614,6 +614,35 @@ mod tests {
     }
 
     #[test]
+    fn geometry_sync_does_not_double_apply_an_authoritative_rectangle() {
+        let mut model = WmModel::new();
+        let monitor_id = model.monitors.push(Monitor {
+            monitor_rect: Rect::new(0, 0, 1920, 1080),
+            available_rect: Rect::new(0, 30, 1920, 1050),
+            ..Monitor::default()
+        });
+        let win = WindowId(78);
+        let fullscreen = Rect::new(0, 0, 1920, 1080);
+        let restored = Rect::new(200, 150, 900, 600);
+        let mut client = Client {
+            win,
+            monitor_id,
+            geo: restored,
+            old_geo: fullscreen,
+            ..Client::default()
+        };
+        client.replace_mode_with_base(crate::types::BaseClientMode::Floating);
+        model.insert_client(client);
+
+        sync_client_geometry(&mut model, win, restored);
+
+        let client = model.client(win).unwrap();
+        assert_eq!(client.geo, restored);
+        assert_eq!(client.old_geo, fullscreen);
+        assert_eq!(client.saved_floating_rect(), Some(restored));
+    }
+
+    #[test]
     fn sane_floating_spawn_rect_clamps_under_bar() {
         let globals = globals_with_floating_client(
             Rect::new(100, 0, 500, 300),
