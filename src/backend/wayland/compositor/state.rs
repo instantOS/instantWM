@@ -36,6 +36,7 @@ use smithay::{
         idle_notify::IdleNotifierState,
         image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
         image_copy_capture::{ImageCopyCaptureState, Session as ImageCopySession},
+        input_method::InputMethodManagerState,
         output::OutputManagerState,
         pointer_constraints::PointerConstraintsState,
         pointer_gestures::PointerGesturesState,
@@ -54,6 +55,7 @@ use smithay::{
         },
         shm::ShmState,
         single_pixel_buffer::SinglePixelBufferState,
+        text_input::TextInputManagerState,
         viewporter::ViewporterState,
         virtual_keyboard::VirtualKeyboardManagerState,
         xdg_activation::XdgActivationState,
@@ -151,6 +153,8 @@ pub struct WaylandState {
     pub single_pixel_buffer_state: SinglePixelBufferState,
     pub viewporter_state: ViewporterState,
     pub virtual_keyboard_manager_state: VirtualKeyboardManagerState,
+    pub text_input_manager_state: TextInputManagerState,
+    pub input_method_manager_state: InputMethodManagerState,
     pub idle_inhibit_manager_state: IdleInhibitManagerState,
     pub idle_notify_manager_state: IdleNotifierState<WaylandState>,
     pub session_lock_manager_state: SessionLockManagerState,
@@ -458,6 +462,8 @@ impl WaylandState {
         let viewporter_state = ViewporterState::new::<Self>(&dh);
         let virtual_keyboard_manager_state =
             VirtualKeyboardManagerState::new::<Self, _>(&dh, |_| true);
+        let text_input_manager_state = TextInputManagerState::new::<Self>(&dh);
+        let input_method_manager_state = InputMethodManagerState::new::<Self, _>(&dh, |_| true);
         let idle_inhibit_manager_state = IdleInhibitManagerState::new::<Self>(&dh);
         let idle_notify_manager_state = IdleNotifierState::new(&dh, handle.clone());
         let session_lock_manager_state = SessionLockManagerState::new::<Self, _>(&dh, |_| true);
@@ -510,6 +516,8 @@ impl WaylandState {
             single_pixel_buffer_state,
             viewporter_state,
             virtual_keyboard_manager_state,
+            text_input_manager_state,
+            input_method_manager_state,
             idle_inhibit_manager_state,
             idle_notify_manager_state,
             session_lock_manager_state,

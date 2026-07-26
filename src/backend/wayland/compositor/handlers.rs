@@ -10,6 +10,7 @@ use smithay::{
         },
         dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportNotifier},
         fractional_scale::{FractionalScaleHandler, with_fractional_scale},
+        input_method::{InputMethodHandler, PopupSurface},
         output::OutputHandler,
         pointer_constraints::{PointerConstraintsHandler, with_pointer_constraint},
         seat::WaylandFocus,
@@ -452,3 +453,35 @@ impl PointerConstraintsHandler for WaylandState {
     ) {
     }
 }
+
+impl InputMethodHandler for WaylandState {
+    fn new_popup(&mut self, surface: PopupSurface) {
+        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+            log::warn!("Failed to track input method popup: {err}");
+        }
+    }
+
+    fn dismiss_popup(&mut self, surface: PopupSurface) {
+        if let Some(parent) = surface.get_parent().map(|parent| parent.surface.clone()) {
+            let _ = smithay::desktop::PopupManager::dismiss_popup(
+                &parent,
+                &PopupKind::from(surface),
+            );
+        }
+    }
+
+    fn popup_repositioned(&mut self, _surface: PopupSurface) {}
+
+    fn parent_geometry(
+        &self,
+        parent: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+    ) -> smithay::utils::Rectangle<i32, smithay::utils::Logical> {
+        self.space
+            .elements()
+            .find_map(|window| {
+                (window.wl_surface().as_deref() == Some(parent)).then(|| window.geometry())
+            })
+            .unwrap_or_default()
+    }
+}
+

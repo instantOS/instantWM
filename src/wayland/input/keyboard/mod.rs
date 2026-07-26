@@ -2,6 +2,7 @@
 
 use smithay::backend::input::{InputBackend, KeyboardKeyEvent};
 use smithay::input::keyboard::{FilterResult, KeyboardHandle};
+use smithay::wayland::input_method::InputMethodSeat;
 
 use crate::backend::wayland::compositor::layer_shell::LayerKeyboardPolicy;
 use crate::backend::wayland::compositor::{KeyboardFocusTarget, WaylandState};
@@ -39,8 +40,9 @@ pub fn handle_keyboard<B: InputBackend>(
         }
     };
 
-    // Also suppress shortcuts if the keyboard is grabbed (e.g. XWayland keyboard grab)
-    if keyboard_handle.is_grabbed() {
+    // Also suppress shortcuts if the keyboard is grabbed (e.g. XWayland keyboard grab),
+    // unless the grab is an input method grab.
+    if keyboard_handle.is_grabbed() && !state.seat.input_method().keyboard_grabbed() {
         wm_shortcuts_allowed = false;
     }
     let key_code = event.key_code();
