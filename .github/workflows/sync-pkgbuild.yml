@@ -9,7 +9,7 @@ on:
 jobs:
   sync:
     if: github.event.pull_request.head.repo.full_name == github.repository && startsWith(github.head_ref, 'release/')
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: archlinux:latest
     defaults:

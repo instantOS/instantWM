@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Test and build on Arch Linux
-    runs-on: self-hosted
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     container:
       image: archlinux:latest
     env:
