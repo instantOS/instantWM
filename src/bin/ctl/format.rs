@@ -78,11 +78,7 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
                     .collect::<Vec<_>>()
                     .join(",")
             };
-            let title = if w.title.len() > 50 {
-                format!("{}...", &w.title[..47])
-            } else {
-                w.title.clone()
-            };
+            let title = truncate_with_ellipsis(&w.title, 50);
             println!(
                 "{:<8} {:<50} {:<10} {:<8} {:<15} {:<20}",
                 w.id,
@@ -94,6 +90,18 @@ fn format_window_list(windows: &[WindowInfo], json: bool) {
             );
         }
     }
+}
+
+fn truncate_with_ellipsis(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_owned();
+    }
+
+    let ellipsis = "...";
+    let prefix_chars = max_chars.saturating_sub(ellipsis.chars().count());
+    let mut truncated: String = value.chars().take(prefix_chars).collect();
+    truncated.push_str(ellipsis);
+    truncated
 }
 
 fn format_window_protocol(protocol: WindowProtocol) -> &'static str {
@@ -385,5 +393,25 @@ fn display_value(val: &serde_json::Value) -> String {
     match val {
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_with_ellipsis;
+
+    #[test]
+    fn title_truncation_is_utf8_safe() {
+        let title = format!("{}ä{}", "a".repeat(46), "b".repeat(10));
+
+        assert_eq!(
+            truncate_with_ellipsis(&title, 50),
+            format!("{}ä...", "a".repeat(46))
+        );
+    }
+
+    #[test]
+    fn short_multibyte_title_is_unchanged() {
+        assert_eq!(truncate_with_ellipsis("Plüma – Datei", 50), "Plüma – Datei");
     }
 }
