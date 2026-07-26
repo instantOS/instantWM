@@ -73,6 +73,69 @@ fn arrange_invalidates_pointer_placement_candidates() {
 }
 
 #[test]
+fn pointer_preview_and_release_share_the_normalized_candidate() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let tags = TagMask::single(1).unwrap();
+    let monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(0, 0, 2000, 1000),
+        available_rect: Rect::new(0, 0, 2000, 1000),
+        show_bar: false,
+        ..Monitor::default()
+    });
+    wm.core.model.monitors.set_selected(monitor_id);
+    let windows = (1..=20).map(WindowId).collect::<Vec<_>>();
+    for &win in &windows {
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::Tiling,
+            ..Client::default()
+        });
+    }
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.set_selected_tags(tags);
+    monitor.clients = windows.clone();
+    monitor.selected = Some(windows[0]);
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &windows, 1);
+    super::arrange(&mut wm.ctx(), Some(monitor_id));
+
+    let source = windows[0];
+    let point = Point::new(801, 625);
+    let preview = super::preview_tree_at_point(&mut wm.ctx(), source, point)
+        .expect("the test point must select a normalized edge candidate");
+
+    assert!(super::place_tree_at_point(&mut wm.ctx(), source, point));
+    let (placement, minimums) =
+        super::selected_tiling_constraints(&wm.ctx()).expect("fixture has a selected monitor");
+    let applied_slot = wm
+        .core
+        .model
+        .expect_selected_monitor()
+        .per_tag()
+        .unwrap()
+        .layout_tree
+        .constrained_bounds(placement.work_rect(), &minimums)
+        .unwrap()[&source];
+    let applied_preview = crate::layouts::keyboard_placement::tree_slot_outer_rect(
+        &wm.ctx(),
+        source,
+        placement,
+        applied_slot,
+    )
+    .unwrap();
+    assert_eq!(
+        applied_preview, preview,
+        "release must apply the exact candidate displayed by pointer preview"
+    );
+}
+
+#[test]
 fn master_count_is_bounded_by_the_current_tiled_window_count() {
     assert_eq!(shifted_master_count(1, -1, 4), 0);
     assert_eq!(shifted_master_count(0, -1, 4), 0);

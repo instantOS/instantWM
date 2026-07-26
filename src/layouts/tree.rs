@@ -262,6 +262,15 @@ struct ResolvedPlacementTarget {
     candidate: LayoutTree,
 }
 
+/// One viable, normalized pointer outcome. Keeping its original semantic
+/// target beside the constrained preview slot makes hover and release use the
+/// same structural candidate.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PointerPlacementResolution {
+    pub(crate) target: PlacementTarget,
+    pub(crate) slot: Rect,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct AutomaticInsertion {
     score: f64,
@@ -302,21 +311,6 @@ impl AutomaticInsertion {
 /// those indistinguishable choices leak into keyboard and pointer navigation.
 const PLACEMENT_PREVIEW_OVERLAP: f64 = 0.75;
 
-#[derive(Debug)]
-struct PlacementOutcome {
-    leaves: Vec<WindowId>,
-    preview: FRect,
-}
-
-impl PlacementOutcome {
-    fn approximately_eq(&self, other: &Self) -> bool {
-        if self.leaves != other.leaves {
-            return false;
-        }
-        placement_previews_approximately_eq(self.preview, other.preview)
-    }
-}
-
 fn placement_previews_approximately_eq(first: FRect, second: FRect) -> bool {
     let intersection_width = (first.right().min(second.right()) - first.x.max(second.x)).max(0.0);
     let intersection_height =
@@ -324,6 +318,22 @@ fn placement_previews_approximately_eq(first: FRect, second: FRect) -> bool {
     let intersection = intersection_width * intersection_height;
     let union = first.w * first.h + second.w * second.h - intersection;
     union > EPSILON && intersection / union + EPSILON >= PLACEMENT_PREVIEW_OVERLAP
+}
+
+fn candidate_is_visually_distinct(
+    previews_by_order: &mut HashMap<Vec<WindowId>, Vec<FRect>>,
+    candidate: &LayoutTree,
+    preview: FRect,
+) -> bool {
+    let previews = previews_by_order.entry(candidate.leaves()).or_default();
+    if previews
+        .iter()
+        .any(|existing| placement_previews_approximately_eq(*existing, preview))
+    {
+        return false;
+    }
+    previews.push(preview);
+    true
 }
 
 fn sane_weight(weight: f64) -> f64 {
@@ -503,7 +513,9 @@ pub struct LayoutTree {
 ///
 /// Pointer motion still resolves the exact target and trigger band on every
 /// sample, but each target edge's structural candidates and constrained slots
-/// are materialized at most once for the lifetime of this cache.
+/// are materialized at most once for the lifetime of this cache. Invalid
+/// candidates and approximate visual duplicates are removed before the
+/// surviving outcomes divide the edge trigger zone.
 #[derive(Debug, Clone)]
 pub(crate) struct PointerPlacementCache {
     tree: LayoutTree,
@@ -512,8 +524,8 @@ pub(crate) struct PointerPlacementCache {
     edge_fraction: f64,
     minimums: HashMap<WindowId, Size>,
     bounds: HashMap<WindowId, Rect>,
-    center_slots: HashMap<WindowId, Option<Rect>>,
-    edge_slots: HashMap<(WindowId, Side), Vec<Option<Rect>>>,
+    center_slots: HashMap<WindowId, Option<PointerPlacementResolution>>,
+    edge_slots: HashMap<(WindowId, Side), Vec<PointerPlacementResolution>>,
 }
 
 impl Default for LayoutTree {
@@ -547,7 +559,7 @@ impl PointerPlacementCache {
         }
     }
 
-    pub(crate) fn preview_at_point(&mut self, point: Point) -> Option<Rect> {
+    pub(crate) fn resolve_at_point(&mut self, point: Point) -> Option<PointerPlacementResolution> {
         let (&target, &target_rect) = self
             .bounds
             .iter()
@@ -574,52 +586,86 @@ impl PointerPlacementCache {
                 return *slot;
             }
             let mut candidate = self.tree.clone();
-            let slot = candidate
+            let resolution = candidate
                 .swap_windows(self.source, target)
                 .then(|| {
-                    candidate
+                    let slot = candidate
                         .constrained_bounds(self.layout_rect, &self.minimums)?
                         .get(&self.source)
-                        .copied()
+                        .copied()?;
+                    Some(PointerPlacementResolution {
+                        target: PlacementTarget {
+                            target,
+                            side: None,
+                            candidate_index: 0,
+                            position: target_rect.center(),
+                        },
+                        slot,
+                    })
                 })
                 .flatten();
-            self.center_slots.insert(target, slot);
-            return slot;
+            self.center_slots.insert(target, resolution);
+            return resolution;
         };
 
         let key = (target, side);
         if !self.edge_slots.contains_key(&key) {
-            let mut candidates = self
+            let candidates = self
                 .tree
                 .resolved_edge_candidates(self.source, target, side)
                 .into_iter()
-                .map(|(_, candidate)| candidate)
+                .enumerate()
+                .map(
+                    |(candidate_index, (_, candidate))| ResolvedPlacementTarget {
+                        target: PlacementTarget {
+                            target,
+                            side: Some(side),
+                            candidate_index,
+                            position: target_rect.center(),
+                        },
+                        candidate,
+                    },
+                )
                 .collect::<Vec<_>>();
-            if candidates.is_empty() {
+            let candidates = if candidates.is_empty() {
                 let mut candidate = self.tree.clone();
                 if candidate.move_beside(self.source, target, side) {
-                    candidates.push(candidate);
+                    vec![ResolvedPlacementTarget {
+                        target: PlacementTarget {
+                            target,
+                            side: Some(side),
+                            candidate_index: 0,
+                            position: target_rect.center(),
+                        },
+                        candidate,
+                    }]
+                } else {
+                    Vec::new()
                 }
-            }
-            let slots = candidates
-                .into_iter()
-                .map(|candidate| {
-                    candidate
-                        .constrained_bounds(self.layout_rect, &self.minimums)?
-                        .get(&self.source)
-                        .copied()
-                })
-                .collect();
-            self.edge_slots.insert(key, slots);
+            } else {
+                candidates
+            };
+            let candidates = LayoutTree::normalized_constrained_candidates(
+                self.source,
+                self.layout_rect,
+                &self.minimums,
+                candidates,
+            );
+            self.edge_slots.insert(key, candidates);
         }
 
-        let slots = &self.edge_slots[&key];
-        if slots.is_empty() {
+        let candidates = &self.edge_slots[&key];
+        if candidates.is_empty() {
             return None;
         }
-        let index =
-            ((distance.max(0.0) * slots.len() as f64).floor() as usize).min(slots.len() - 1);
-        slots[index]
+        let index = ((distance.max(0.0) * candidates.len() as f64).floor() as usize)
+            .min(candidates.len() - 1);
+        candidates.get(index).copied()
+    }
+
+    pub(crate) fn preview_at_point(&mut self, point: Point) -> Option<Rect> {
+        self.resolve_at_point(point)
+            .map(|resolution| resolution.slot)
     }
 }
 
@@ -1557,15 +1603,50 @@ impl LayoutTree {
         edge_fraction: f64,
         minimums: &HashMap<WindowId, Size>,
     ) -> Vec<PlacementTarget> {
-        self.normalized_placement_candidates(source, layout_rect, edge_fraction)
-            .into_iter()
-            .filter_map(|(target, candidate)| {
-                candidate
-                    .constrained_bounds(layout_rect, minimums)
-                    .is_some()
-                    .then_some(target)
-            })
-            .collect()
+        Self::normalized_constrained_candidates(
+            source,
+            layout_rect,
+            minimums,
+            self.raw_resolved_placement_targets(source, layout_rect, edge_fraction),
+        )
+        .into_iter()
+        .map(|resolution| resolution.target)
+        .collect()
+    }
+
+    fn normalized_constrained_candidates(
+        source: WindowId,
+        layout_rect: Rect,
+        minimums: &HashMap<WindowId, Size>,
+        candidates: impl IntoIterator<Item = ResolvedPlacementTarget>,
+    ) -> Vec<PointerPlacementResolution> {
+        // Viability must be established first. Otherwise an infeasible early
+        // representative can suppress an equivalent candidate that actually
+        // satisfies minimum sizes. Compare the constrained source slots because
+        // those are what both keyboard and pointer previews expose.
+        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
+        let mut distinct = Vec::new();
+        for resolved in candidates {
+            let Some(slot) = resolved
+                .candidate
+                .constrained_bounds(layout_rect, minimums)
+                .and_then(|bounds| bounds.get(&source).copied())
+            else {
+                continue;
+            };
+            if !candidate_is_visually_distinct(
+                &mut previews_by_order,
+                &resolved.candidate,
+                FRect::from_rect(slot),
+            ) {
+                continue;
+            }
+            distinct.push(PointerPlacementResolution {
+                target: resolved.target,
+                slot,
+            });
+        }
+        distinct
     }
 
     fn normalized_placement_candidates(
@@ -1581,30 +1662,12 @@ impl LayoutTree {
             let Some(preview) = candidate.float_bounds().get(&source).copied() else {
                 continue;
             };
-            let order = candidate.leaves();
-            let previews = previews_by_order.entry(order).or_default();
-            if previews
-                .iter()
-                .any(|existing| placement_previews_approximately_eq(*existing, preview))
-            {
+            if !candidate_is_visually_distinct(&mut previews_by_order, &candidate, preview) {
                 continue;
             }
-            previews.push(preview);
             distinct.push((resolved.target, candidate));
         }
         distinct
-    }
-
-    fn raw_placement_targets(
-        &self,
-        source: WindowId,
-        layout_rect: Rect,
-        edge_fraction: f64,
-    ) -> Vec<PlacementTarget> {
-        self.raw_resolved_placement_targets(source, layout_rect, edge_fraction)
-            .into_iter()
-            .map(|resolved| resolved.target)
-            .collect()
     }
 
     fn raw_resolved_placement_targets(
@@ -1679,27 +1742,14 @@ impl LayoutTree {
         output
     }
 
-    fn placement_outcome(
-        &self,
-        source: WindowId,
-        target: PlacementTarget,
-    ) -> Option<PlacementOutcome> {
-        let mut preview = self.clone();
-        if !preview.apply_placement_target(source, target) {
-            return None;
-        }
-        let preview_rect = preview.float_bounds().get(&source).copied()?;
-        Some(PlacementOutcome {
-            leaves: preview.leaves(),
-            preview: preview_rect,
-        })
-    }
-
     pub fn apply_placement_target(&mut self, source: WindowId, target: PlacementTarget) -> bool {
         let Some(side) = target.side else {
             return self.swap_windows(source, target.target);
         };
         let candidates = self.edge_candidates(source, target.target, side);
+        if candidates.is_empty() {
+            return self.move_beside(source, target.target, side);
+        }
         let Some(candidate) = candidates.get(target.candidate_index) else {
             return false;
         };
@@ -1828,49 +1878,17 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> bool {
-        let bounds = self.bounds(layout_rect);
-        let target = bounds.iter().find_map(|(&window, rect)| {
-            (window != source && rect.contains_point(point)).then_some((window, *rect))
-        });
-        let Some((target, rect)) = target else {
+        let mut resolver = PointerPlacementCache::new(
+            self.clone(),
+            source,
+            layout_rect,
+            edge_fraction,
+            HashMap::new(),
+        );
+        let Some(resolution) = resolver.resolve_at_point(point) else {
             return false;
         };
-        let edge_fraction = finite_clamp(edge_fraction, 0.05, 0.49, 0.34);
-        let inset_x = (f64::from(rect.w) * edge_fraction).max(1.0);
-        let inset_y = (f64::from(rect.h) * edge_fraction).max(1.0);
-        let distances = [
-            (Side::Left, f64::from(point.x - rect.x) / inset_x),
-            (Side::Right, f64::from(rect.right() - point.x) / inset_x),
-            (Side::Top, f64::from(point.y - rect.y) / inset_y),
-            (Side::Bottom, f64::from(rect.bottom() - point.y) / inset_y),
-        ];
-        let nearest = distances
-            .into_iter()
-            .min_by(|left, right| left.1.total_cmp(&right.1));
-        match nearest {
-            Some((side, distance)) if distance <= 1.0 => {
-                let candidates = self.resolved_edge_candidates(source, target, side);
-                if candidates.is_empty() {
-                    return self.move_beside(source, target, side);
-                }
-                let index = ((distance.max(0.0) * candidates.len() as f64).floor() as usize)
-                    .min(candidates.len() - 1);
-                // The candidate under the pointer already describes the desired
-                // placement. `placement_targets` normalizes equivalent commands
-                // for keyboard navigation, but doing that global enumeration
-                // here used to rebuild and compare every possible placement on
-                // every pointer-motion event. Besides being unnecessary for a
-                // direct hit test, that work grows polynomially with the number
-                // of leaves and made interactive dragging noticeably laggy.
-                *self = candidates
-                    .into_iter()
-                    .nth(index)
-                    .expect("index was clamped to the candidate count")
-                    .1;
-                true
-            }
-            _ => self.swap_windows(source, target),
-        }
+        self.apply_placement_target(source, resolution.target)
     }
 
     pub fn swap_windows(&mut self, first: WindowId, second: WindowId) -> bool {

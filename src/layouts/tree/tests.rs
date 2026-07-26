@@ -1,5 +1,47 @@
 use super::*;
 
+#[derive(Debug)]
+struct PlacementOutcome {
+    leaves: Vec<WindowId>,
+    preview: FRect,
+}
+
+impl PlacementOutcome {
+    fn approximately_eq(&self, other: &Self) -> bool {
+        self.leaves == other.leaves
+            && placement_previews_approximately_eq(self.preview, other.preview)
+    }
+}
+
+impl LayoutTree {
+    fn raw_placement_targets(
+        &self,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+    ) -> Vec<PlacementTarget> {
+        self.raw_resolved_placement_targets(source, layout_rect, edge_fraction)
+            .into_iter()
+            .map(|resolved| resolved.target)
+            .collect()
+    }
+
+    fn placement_outcome(
+        &self,
+        source: WindowId,
+        target: PlacementTarget,
+    ) -> Option<PlacementOutcome> {
+        let mut preview = self.clone();
+        if !preview.apply_placement_target(source, target) {
+            return None;
+        }
+        Some(PlacementOutcome {
+            leaves: preview.leaves(),
+            preview: preview.float_bounds().get(&source).copied()?,
+        })
+    }
+}
+
 fn windows(count: u32) -> Vec<WindowId> {
     (1..=count).map(WindowId).collect()
 }
@@ -767,6 +809,44 @@ fn optimized_placement_normalization_matches_the_reference_algorithm() {
 }
 
 #[test]
+fn constrained_normalization_preserves_every_distinct_viable_outcome() {
+    let rect = Rect::new(0, 0, 2000, 1200);
+    let minimums = windows(20)
+        .into_iter()
+        .map(|window| (window, Size::new(120, 90)))
+        .collect::<HashMap<_, _>>();
+    for preset in [Preset::Grid, Preset::MasterStack, Preset::BottomStack] {
+        let mut tree = LayoutTree::default();
+        tree.apply_preset(preset, &windows(20), 2);
+
+        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
+        let mut reference = Vec::new();
+        for resolved in tree.raw_resolved_placement_targets(WindowId(1), rect, 0.34) {
+            let Some(slot) = resolved
+                .candidate
+                .constrained_bounds(rect, &minimums)
+                .and_then(|bounds| bounds.get(&WindowId(1)).copied())
+            else {
+                continue;
+            };
+            if candidate_is_visually_distinct(
+                &mut previews_by_order,
+                &resolved.candidate,
+                FRect::from_rect(slot),
+            ) {
+                reference.push(resolved.target);
+            }
+        }
+
+        assert_eq!(
+            tree.constrained_placement_targets(WindowId(1), rect, 0.34, &minimums),
+            reference,
+            "constraint filtering must happen before distinct viable outcomes are normalized"
+        );
+    }
+}
+
+#[test]
 fn placement_preview_is_exact_and_does_not_mutate_the_tree() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::Grid, &windows(4), 1);
@@ -836,6 +916,100 @@ fn pointer_placement_cache_reuses_a_target_edge_without_changing_its_preview() {
         cache.edge_slots.len(),
         1,
         "motion within one target edge must reuse its solved candidates"
+    );
+}
+
+#[test]
+fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
+    let source = WindowId(1);
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::Grid, &windows(20), 1);
+    let rect = Rect::new(0, 0, 20_000, 10_000);
+    let bounds = tree.bounds(rect);
+    let minimums = HashMap::new();
+
+    let duplicated_edge = tree
+        .leaves()
+        .into_iter()
+        .filter(|target| *target != source)
+        .flat_map(|target| {
+            [Side::Left, Side::Right, Side::Top, Side::Bottom]
+                .into_iter()
+                .map(move |side| (target, side))
+        })
+        .find_map(|(target, side)| {
+            let raw = tree.resolved_edge_candidates(source, target, side);
+            let raw_count = raw.len();
+            let resolved = raw
+                .into_iter()
+                .enumerate()
+                .map(
+                    |(candidate_index, (_, candidate))| ResolvedPlacementTarget {
+                        target: PlacementTarget {
+                            target,
+                            side: Some(side),
+                            candidate_index,
+                            position: bounds[&target].center(),
+                        },
+                        candidate,
+                    },
+                )
+                .collect::<Vec<_>>();
+            let normalized =
+                LayoutTree::normalized_constrained_candidates(source, rect, &minimums, resolved);
+            (normalized.len() < raw_count).then_some((target, side, raw_count, normalized))
+        })
+        .expect("the 20-window grid should exercise approximate edge duplicates");
+
+    let (target, side, raw_count, normalized) = duplicated_edge;
+    assert!(
+        normalized.len() < raw_count,
+        "normalization must remove duplicate hitbox bands"
+    );
+
+    let target_rect = bounds[&target];
+    let inset_x = (f64::from(target_rect.w) * 0.34).max(1.0);
+    let inset_y = (f64::from(target_rect.h) * 0.34).max(1.0);
+    let mut cache = PointerPlacementCache::new(tree.clone(), source, rect, 0.34, minimums);
+    for (index, expected) in normalized.iter().enumerate() {
+        let distance = (index as f64 + 0.5) / normalized.len() as f64;
+        let point = match side {
+            Side::Left => Point::new(
+                target_rect.x + (inset_x * distance).round() as i32,
+                target_rect.center().y,
+            ),
+            Side::Right => Point::new(
+                target_rect.right() - (inset_x * distance).round() as i32,
+                target_rect.center().y,
+            ),
+            Side::Top => Point::new(
+                target_rect.center().x,
+                target_rect.y + (inset_y * distance).round() as i32,
+            ),
+            Side::Bottom => Point::new(
+                target_rect.center().x,
+                target_rect.bottom() - (inset_y * distance).round() as i32,
+            ),
+        };
+        let actual = cache
+            .resolve_at_point(point)
+            .expect("the midpoint of every normalized band must resolve");
+        assert_eq!(actual.target, expected.target);
+        assert_eq!(actual.slot, expected.slot);
+
+        let mut applied = tree.clone();
+        assert!(applied.apply_placement_target(source, actual.target));
+        assert_eq!(
+            applied.constrained_bounds(rect, &HashMap::new()).unwrap()[&source],
+            actual.slot,
+            "preview and release must use the same retained semantic candidate"
+        );
+    }
+
+    assert_eq!(
+        cache.edge_slots[&(target, side)].len(),
+        normalized.len(),
+        "only normalized outcomes may consume pointer hitbox width"
     );
 }
 

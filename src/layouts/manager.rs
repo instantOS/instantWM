@@ -1036,7 +1036,7 @@ pub fn place_tree_at_point(
         return false;
     };
     let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
-    let Some(mut candidate) = ctx
+    let Some(tree) = ctx
         .core()
         .model()
         .expect_selected_monitor()
@@ -1045,9 +1045,21 @@ pub fn place_tree_at_point(
     else {
         return false;
     };
-    let changed = candidate.place_at_point(window, point, placement.work_rect(), edge_fraction)
+    let layout_rect = placement.work_rect();
+    let mut resolver = crate::layouts::tree::PointerPlacementCache::new(
+        tree.clone(),
+        window,
+        layout_rect,
+        edge_fraction,
+        minimums.clone(),
+    );
+    let Some(resolution) = resolver.resolve_at_point(point) else {
+        return false;
+    };
+    let mut candidate = tree;
+    let changed = candidate.apply_placement_target(window, resolution.target)
         && candidate
-            .constrained_bounds(placement.work_rect(), &minimums)
+            .constrained_bounds(layout_rect, &minimums)
             .is_some();
     if changed {
         ctx.core_mut()
