@@ -247,7 +247,7 @@ fn menu_layout(menu: Option<&MenuView>, available_width: i32) -> MenuLayout {
         };
     };
     let available_width = available_width.max(0);
-    let widths = fit_menu_widths(
+    let widths = fitted_menu_widths(
         menu.entries
             .iter()
             .map(|entry| entry.width.max(MIN_MENU_CELL_WIDTH))
@@ -280,7 +280,7 @@ fn menu_layout(menu: Option<&MenuView>, available_width: i32) -> MenuLayout {
     }
 }
 
-fn fit_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
+fn fitted_menu_widths(mut widths: Vec<i32>, available: i32) -> Vec<i32> {
     let natural: i32 = widths.iter().sum();
     if natural <= available || natural <= 0 {
         return widths;
