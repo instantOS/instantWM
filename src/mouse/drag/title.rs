@@ -155,9 +155,7 @@ fn title_drag_start_wayland(ctx: &mut WmCtx, root: Point, direct_position: bool)
 
     let start = if uses_tree {
         start_point
-    } else if anchor_rebased {
-        root
-    } else if direct_position {
+    } else if anchor_rebased || direct_position {
         root
     } else {
         warp::warp_into(ctx, win);

@@ -108,11 +108,8 @@ pub(crate) fn drain_internal_status_updates(wm: &mut crate::wm::Wm) -> bool {
     };
 
     let mut latest = None;
-    loop {
-        match receiver.try_recv() {
-            Ok(update) => latest = Some(update),
-            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
-        }
+    while let Ok(update) = receiver.try_recv() {
+        latest = Some(update);
     }
 
     let Some(update) = latest else {

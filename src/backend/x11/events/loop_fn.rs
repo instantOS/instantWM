@@ -95,10 +95,7 @@ fn has_x11_animations(wm: &Wm) -> bool {
 
 /// Drain all pending X11 events from the connection and dispatch them.
 fn drain_x11_events(wm: &mut Wm) {
-    loop {
-        let Some((conn, _)) = wm.backend.x11_conn() else {
-            break;
-        };
+    while let Some((conn, _)) = wm.backend.x11_conn() {
         match conn.poll_for_event() {
             Ok(Some(event)) => dispatch_event(wm, event),
             Ok(None) => break,

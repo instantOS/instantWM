@@ -16,10 +16,7 @@ pub fn update_size_hints(
     win: WindowId,
 ) -> Option<WmSizeHints> {
     let hints = match WmSizeHints::get_normal_hints(x11.conn, win.into()) {
-        Ok(cookie) => match cookie.reply_unchecked() {
-            Ok(hints) => hints,
-            Err(_) => None,
-        },
+        Ok(cookie) => cookie.reply_unchecked().unwrap_or_default(),
         Err(_) => None,
     };
     let Some(c) = model.client_mut(win) else {

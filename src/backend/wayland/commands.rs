@@ -23,9 +23,7 @@ pub(crate) fn apply_fullscreen_request(
     win: WindowId,
     fullscreen: bool,
 ) -> Option<crate::client::mode::FullscreenTransition> {
-    let Some(transition) = core.model.set_fullscreen(win, fullscreen) else {
-        return None;
-    };
+    let transition = core.model.set_fullscreen(win, fullscreen)?;
 
     if transition.changed() {
         work.layout.mark_monitor_urgent(transition.monitor_id());

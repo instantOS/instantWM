@@ -223,12 +223,8 @@ where
     pump_deferred_work(ctx);
 
     let mut release_modifiers = None;
-    loop {
-        // Wait for at least one event (blocking).
-        let Some(mut event) = wait_event(&ctx.x11) else {
-            break;
-        };
-
+    // Wait for at least one event (blocking) each iteration.
+    while let Some(mut event) = wait_event(&ctx.x11) {
         // If it's a motion event, compress it by eating all subsequent pending
         // motion events in the queue, keeping only the absolute latest.
         // This ensures zero-latency dragging without artificial 16ms FPS caps.

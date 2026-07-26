@@ -485,10 +485,6 @@ pub fn generate_commented_config() -> String {
     for line in full.lines() {
         if line.trim().is_empty() {
             out.push('\n');
-        } else if line.starts_with('[') {
-            out.push_str("# ");
-            out.push_str(line);
-            out.push('\n');
         } else {
             out.push_str("# ");
             out.push_str(line);

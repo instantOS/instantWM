@@ -343,10 +343,7 @@ pub fn update_window_type(ctx_x11: &mut WmCtxX11<'_>, win: WindowId) {
 
 pub fn update_wm_hints(ctx: &mut WmCtxX11<'_>, win: WindowId) {
     let hints = match WmHints::get(ctx.x11.conn, win.into()) {
-        Ok(cookie) => match cookie.reply_unchecked() {
-            Ok(hints) => hints,
-            Err(_) => None,
-        },
+        Ok(cookie) => cookie.reply_unchecked().unwrap_or_default(),
         Err(_) => None,
     };
 

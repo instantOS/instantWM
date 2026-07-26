@@ -118,9 +118,7 @@ impl WaylandState {
         // display-source dispatch. The event-loop body's `&mut Wm` borrow is
         // not active until dispatch returns; this is the same access window as
         // synchronous keyboard handling.
-        let Some(wm_ptr) = (unsafe { self.wm_mut_ptr() }) else {
-            return None;
-        };
+        let wm_ptr = (unsafe { self.wm_mut_ptr() })?;
         let wm = unsafe { &mut *wm_ptr };
         crate::backend::wayland::commands::apply_fullscreen_request(
             &mut wm.core,
@@ -137,9 +135,7 @@ impl WaylandState {
         maximized: bool,
     ) -> Option<crate::client::mode::ClientMaximizeIntentTransition> {
         // SAFETY: see `commit_native_fullscreen_request`.
-        let Some(wm_ptr) = (unsafe { self.wm_mut_ptr() }) else {
-            return None;
-        };
+        let wm_ptr = (unsafe { self.wm_mut_ptr() })?;
         let wm = unsafe { &mut *wm_ptr };
         crate::backend::wayland::commands::apply_maximized_request(
             &mut wm.core,

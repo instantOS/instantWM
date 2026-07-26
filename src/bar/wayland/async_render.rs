@@ -1,4 +1,4 @@
-use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 
 use smithay::utils::Scale;
@@ -126,16 +126,11 @@ pub(super) fn poll_result(core: &mut CoreCtx, painter: &mut WaylandBarPainter) {
     };
 
     let mut latest = None;
-    loop {
-        match runtime.results_rx.try_recv() {
-            Ok(result) => {
-                if !is_current_generation(result.generation, runtime.pending_generation) {
-                    continue;
-                }
-                latest = Some(result);
-            }
-            Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+    while let Ok(result) = runtime.results_rx.try_recv() {
+        if !is_current_generation(result.generation, runtime.pending_generation) {
+            continue;
         }
+        latest = Some(result);
     }
 
     let Some(result) = latest else {
