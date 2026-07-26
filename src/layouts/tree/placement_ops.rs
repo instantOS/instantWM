@@ -171,6 +171,65 @@ pub(super) fn insert_at_scope_edge(
     Some(root.replace_key(scope_key, make_split(new_id, axis, children)?))
 }
 
+pub(super) fn insert_at_child_range_edge(
+    root: Node,
+    parent_id: SplitId,
+    child_keys: &[NodeKey],
+    source: WindowId,
+    side: Side,
+    allocate: &mut impl FnMut() -> SplitId,
+) -> Option<Node> {
+    let parent_key = NodeKey::Split(parent_id);
+    let Node::Split(mut parent) = clone_node_by_key(&root, parent_key)? else {
+        return None;
+    };
+    let selected = parent
+        .children
+        .iter()
+        .enumerate()
+        .filter_map(|(index, child)| child_keys.contains(&child.node.key()).then_some(index))
+        .collect::<Vec<_>>();
+    let first = *selected.first()?;
+    let last = *selected.last()?;
+    if selected.len() != last - first + 1 || selected.len() == parent.children.len() {
+        return None;
+    }
+
+    let range = parent.children[first..=last].to_vec();
+    let range_weight = range.iter().map(|child| child.weight).sum();
+    let scope = make_split(allocate(), parent.axis, range)?;
+    let (leading, trailing) = if side.is_leading() {
+        (Node::Window(source), scope)
+    } else {
+        (scope, Node::Window(source))
+    };
+    let replacement = make_split(
+        allocate(),
+        side.axis(),
+        vec![
+            WeightedNode {
+                node: leading,
+                weight: 1.0,
+            },
+            WeightedNode {
+                node: trailing,
+                weight: 1.0,
+            },
+        ],
+    )?;
+    parent.children.splice(
+        first..=last,
+        [WeightedNode {
+            node: replacement,
+            weight: range_weight,
+        }],
+    );
+    Some(root.replace_key(
+        parent_key,
+        make_split(parent.id, parent.axis, parent.children)?,
+    ))
+}
+
 pub(super) fn filtered_node(
     node: &Node,
     before: &[WindowId],

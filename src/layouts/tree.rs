@@ -242,6 +242,10 @@ impl Node {
 #[derive(Debug, Clone)]
 enum PlacementScope {
     Node(NodeKey),
+    ChildRange {
+        parent: SplitId,
+        children: Vec<NodeKey>,
+    },
     AlignedNode {
         key: NodeKey,
         seam: f64,
@@ -306,39 +310,6 @@ impl AutomaticInsertion {
             && (MIN_HEALTHY_ASPECT_RATIO..=MAX_HEALTHY_ASPECT_RATIO).contains(&aspect)
             && (MIN_HEALTHY_ASPECT_RATIO..=MAX_HEALTHY_ASPECT_RATIO).contains(&target_aspect)
     }
-}
-
-/// Minimum overlap between two source-window previews for them to represent
-/// the same user-visible destination. Placement candidates may reach the same
-/// slot through different structural scopes, which can redistribute space
-/// among peers and give the source slightly different dimensions. The preview
-/// only exposes the source rectangle, so comparing every hidden peer makes
-/// those indistinguishable choices leak into keyboard and pointer navigation.
-const PLACEMENT_PREVIEW_OVERLAP: f64 = 0.75;
-
-fn placement_previews_approximately_eq(first: FRect, second: FRect) -> bool {
-    let intersection_width = (first.right().min(second.right()) - first.x.max(second.x)).max(0.0);
-    let intersection_height =
-        (first.bottom().min(second.bottom()) - first.y.max(second.y)).max(0.0);
-    let intersection = intersection_width * intersection_height;
-    let union = first.w * first.h + second.w * second.h - intersection;
-    union > EPSILON && intersection / union + EPSILON >= PLACEMENT_PREVIEW_OVERLAP
-}
-
-fn candidate_is_visually_distinct(
-    previews_by_order: &mut HashMap<Vec<WindowId>, Vec<FRect>>,
-    candidate: &LayoutTree,
-    preview: FRect,
-) -> bool {
-    let previews = previews_by_order.entry(candidate.leaves()).or_default();
-    if previews
-        .iter()
-        .any(|existing| placement_previews_approximately_eq(*existing, preview))
-    {
-        return false;
-    }
-    previews.push(preview);
-    true
 }
 
 fn sane_weight(weight: f64) -> f64 {
@@ -519,8 +490,8 @@ pub struct LayoutTree {
 /// Pointer motion still resolves the exact target and trigger band on every
 /// sample, but each target edge's structural candidates and constrained slots
 /// are materialized at most once for the lifetime of this cache. Invalid
-/// candidates and approximate visual duplicates are removed before the
-/// surviving outcomes divide the edge trigger zone.
+/// candidates and weight-only variants of the same canonical topology are
+/// removed before the surviving outcomes divide the edge trigger zone.
 #[derive(Debug, Clone)]
 pub(crate) struct PointerPlacementCache {
     tree: LayoutTree,

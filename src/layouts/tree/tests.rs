@@ -1,18 +1,5 @@
 use super::*;
 
-#[derive(Debug)]
-struct PlacementOutcome {
-    leaves: Vec<WindowId>,
-    preview: FRect,
-}
-
-impl PlacementOutcome {
-    fn approximately_eq(&self, other: &Self) -> bool {
-        self.leaves == other.leaves
-            && placement_previews_approximately_eq(self.preview, other.preview)
-    }
-}
-
 impl LayoutTree {
     fn raw_placement_targets(
         &self,
@@ -26,19 +13,16 @@ impl LayoutTree {
             .collect()
     }
 
-    fn placement_outcome(
+    fn topology_after_placement(
         &self,
         source: WindowId,
         target: PlacementTarget,
-    ) -> Option<PlacementOutcome> {
+    ) -> Option<placement::PlacementTopology> {
         let mut preview = self.clone();
         if !preview.apply_placement_target(source, target) {
             return None;
         }
-        Some(PlacementOutcome {
-            leaves: preview.leaves(),
-            preview: preview.float_bounds().get(&source).copied()?,
-        })
+        preview.root.as_ref().map(placement::placement_topology)
     }
 }
 
@@ -644,6 +628,65 @@ fn aligned_seam_can_target_a_contiguous_virtual_scope() {
 }
 
 #[test]
+fn outer_edge_can_target_a_contiguous_child_range() {
+    let source = WindowId(1);
+    let mut tree = LayoutTree::default();
+    let stack = equal_run(
+        &[WindowId(2), WindowId(3), WindowId(4), WindowId(5)],
+        Axis::Horizontal,
+        &mut || tree.allocate(),
+    )
+    .unwrap();
+    tree.root = make_split(
+        tree.allocate(),
+        Axis::Vertical,
+        vec![
+            WeightedNode {
+                node: Node::Window(source),
+                weight: 1.0,
+            },
+            WeightedNode {
+                node: stack,
+                weight: 1.0,
+            },
+        ],
+    );
+    let rect = Rect::new(0, 0, 1000, 800);
+    let desired_slot = Rect::new(500, 0, 500, 400);
+    let raw = tree.resolved_edge_candidates(source, WindowId(2), Side::Right);
+    assert!(
+        raw.iter()
+            .any(|(_, candidate)| candidate.bounds(rect)[&source] == desired_slot),
+        "the outer edge of the top window must expose the top-two child range"
+    );
+
+    let normalized = LayoutTree::normalized_constrained_candidates(
+        source,
+        rect,
+        &HashMap::new(),
+        raw.into_iter()
+            .enumerate()
+            .map(
+                |(candidate_index, (_, candidate))| ResolvedPlacementTarget {
+                    target: PlacementTarget {
+                        target: WindowId(2),
+                        side: Some(Side::Right),
+                        candidate_index,
+                        position: Point::new(0, 0),
+                    },
+                    candidate,
+                },
+            ),
+    );
+    assert!(
+        normalized
+            .iter()
+            .any(|resolution| resolution.slot == desired_slot),
+        "normalization must preserve the structurally distinct top-two range"
+    );
+}
+
+#[test]
 fn keyboard_and_pointer_targets_apply_the_same_semantic_candidate() {
     let mut original = LayoutTree::default();
     original.root = equal_run(&windows(3), Axis::Vertical, &mut || original.allocate());
@@ -678,19 +721,17 @@ fn adjacent_descriptions_of_the_same_seam_share_one_candidate() {
         .copied()
         .find(|target| target.target == WindowId(2) && target.side == Some(Side::Left))
         .expect("left edge of B is an advertised raw target");
-    let expected = tree.placement_outcome(source, right_of_a).unwrap();
-    assert!(
-        expected.approximately_eq(&tree.placement_outcome(source, left_of_b).unwrap()),
+    let expected = tree.topology_after_placement(source, right_of_a).unwrap();
+    assert_eq!(
+        expected,
+        tree.topology_after_placement(source, left_of_b).unwrap(),
         "both descriptions address the seam between A and B"
     );
 
     let equivalent_targets = tree
         .placement_targets(source, rect, 0.34)
         .into_iter()
-        .filter(|target| {
-            tree.placement_outcome(source, *target)
-                .is_some_and(|outcome| outcome.approximately_eq(&expected))
-        })
+        .filter(|target| tree.topology_after_placement(source, *target).as_ref() == Some(&expected))
         .count();
     assert_eq!(equivalent_targets, 1);
 
@@ -702,48 +743,155 @@ fn adjacent_descriptions_of_the_same_seam_share_one_candidate() {
 }
 
 #[test]
-fn placement_outcomes_compare_the_visible_preview_and_preserve_leaf_order() {
-    let leaves = vec![WindowId(1), WindowId(2)];
-    let first = PlacementOutcome {
-        leaves: leaves.clone(),
-        preview: FRect {
-            x: 0.0,
-            y: 0.2625,
-            w: 1.0,
-            h: 0.25,
-        },
-    };
-    let slightly_resized = PlacementOutcome {
-        leaves: leaves.clone(),
-        preview: FRect {
-            x: 0.0,
-            y: 0.23333333333333328,
-            w: 1.0,
-            h: 0.33333333333333326,
-        },
-    };
-    assert!(first.approximately_eq(&slightly_resized));
+fn placement_topology_ignores_weights_but_preserves_structure() {
+    let first = make_split(
+        SplitId(1),
+        Axis::Vertical,
+        vec![
+            WeightedNode {
+                node: Node::Window(WindowId(1)),
+                weight: 0.2,
+            },
+            WeightedNode {
+                node: Node::Window(WindowId(2)),
+                weight: 0.8,
+            },
+        ],
+    )
+    .unwrap();
+    let resized = make_split(
+        SplitId(99),
+        Axis::Vertical,
+        vec![
+            WeightedNode {
+                node: Node::Window(WindowId(1)),
+                weight: 0.7,
+            },
+            WeightedNode {
+                node: Node::Window(WindowId(2)),
+                weight: 0.3,
+            },
+        ],
+    )
+    .unwrap();
+    let different_axis = make_split(
+        SplitId(1),
+        Axis::Horizontal,
+        vec![
+            WeightedNode {
+                node: Node::Window(WindowId(1)),
+                weight: 0.2,
+            },
+            WeightedNode {
+                node: Node::Window(WindowId(2)),
+                weight: 0.8,
+            },
+        ],
+    )
+    .unwrap();
 
-    let different_order = PlacementOutcome {
-        leaves: vec![WindowId(2), WindowId(1)],
-        preview: slightly_resized.preview,
-    };
-    assert!(!first.approximately_eq(&different_order));
-
-    let substantially_different = PlacementOutcome {
-        leaves,
-        preview: FRect {
-            x: 0.5,
-            y: 0.35,
-            w: 0.5,
-            h: 0.35,
-        },
-    };
-    assert!(!first.approximately_eq(&substantially_different));
+    assert_eq!(
+        placement::placement_topology(&first),
+        placement::placement_topology(&resized)
+    );
+    assert_ne!(
+        placement::placement_topology(&first),
+        placement::placement_topology(&different_axis)
+    );
 }
 
 #[test]
-fn keyboard_navigation_skips_duplicate_three_row_previews() {
+fn normalization_preserves_different_topologies_with_identical_geometry() {
+    fn split(axis: Axis, children: Vec<Node>, next_id: &mut u64) -> Node {
+        let id = SplitId(*next_id);
+        *next_id += 1;
+        make_split(
+            id,
+            axis,
+            children
+                .into_iter()
+                .map(|node| WeightedNode { node, weight: 1.0 })
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    let mut next_id = 1;
+    let left_column = split(
+        Axis::Horizontal,
+        vec![Node::Window(WindowId(1)), Node::Window(WindowId(2))],
+        &mut next_id,
+    );
+    let right_column = split(
+        Axis::Horizontal,
+        vec![Node::Window(WindowId(3)), Node::Window(WindowId(4))],
+        &mut next_id,
+    );
+    let columns = LayoutTree {
+        root: Some(split(
+            Axis::Vertical,
+            vec![left_column, right_column],
+            &mut next_id,
+        )),
+        ..LayoutTree::default()
+    };
+
+    let top_row = split(
+        Axis::Vertical,
+        vec![Node::Window(WindowId(1)), Node::Window(WindowId(3))],
+        &mut next_id,
+    );
+    let bottom_row = split(
+        Axis::Vertical,
+        vec![Node::Window(WindowId(2)), Node::Window(WindowId(4))],
+        &mut next_id,
+    );
+    let rows = LayoutTree {
+        root: Some(split(
+            Axis::Horizontal,
+            vec![top_row, bottom_row],
+            &mut next_id,
+        )),
+        ..LayoutTree::default()
+    };
+
+    let rect = Rect::new(0, 0, 100, 100);
+    assert_eq!(columns.bounds(rect), rows.bounds(rect));
+    assert_ne!(
+        placement::placement_topology(columns.root.as_ref().unwrap()),
+        placement::placement_topology(rows.root.as_ref().unwrap())
+    );
+    let candidates = vec![
+        (
+            ResolvedPlacementTarget {
+                target: PlacementTarget {
+                    target: WindowId(1),
+                    side: Some(Side::Right),
+                    candidate_index: 0,
+                    position: Point::new(0, 0),
+                },
+                candidate: columns,
+            },
+            (),
+        ),
+        (
+            ResolvedPlacementTarget {
+                target: PlacementTarget {
+                    target: WindowId(1),
+                    side: Some(Side::Right),
+                    candidate_index: 1,
+                    position: Point::new(0, 0),
+                },
+                candidate: rows,
+            },
+            (),
+        ),
+    ];
+    assert_eq!(placement::topology_representatives(candidates).len(), 2);
+}
+
+#[test]
+fn keyboard_navigation_steps_through_distinct_topologies() {
     use crate::core_state::KeyboardTreePlacement;
     use crate::types::{MonitorId, TagMask};
 
@@ -809,23 +957,22 @@ fn keyboard_navigation_skips_duplicate_three_row_previews() {
     assert!(placement.select_direction(Side::Right));
     assert!(placement.select_direction(Side::Bottom));
     let first_down = tree
-        .placement_outcome(source, placement.selected_target())
+        .topology_after_placement(source, placement.selected_target())
         .unwrap();
 
     assert!(placement.select_direction(Side::Bottom));
     let second_down = tree
-        .placement_outcome(source, placement.selected_target())
+        .topology_after_placement(source, placement.selected_target())
         .unwrap();
 
-    assert!(
-        !first_down.approximately_eq(&second_down),
-        "successive navigation steps must not expose equivalent previews"
+    assert_ne!(
+        first_down, second_down,
+        "successive navigation steps must not expose equivalent topologies"
     );
-    assert_eq!(placement.selected_target().target, WindowId(3));
 }
 
 #[test]
-fn placement_normalization_matches_topology_then_visual_reference() {
+fn placement_normalization_matches_topology_reference() {
     let rect = Rect::new(0, 0, 1600, 900);
     for preset in [Preset::Grid, Preset::MasterStack, Preset::BottomStack] {
         let mut tree = LayoutTree::default();
@@ -834,24 +981,12 @@ fn placement_normalization_matches_topology_then_visual_reference() {
         let candidates = tree
             .raw_resolved_placement_targets(WindowId(1), rect, 0.34)
             .into_iter()
-            .filter_map(|resolved| {
-                let preview = resolved
-                    .candidate
-                    .float_bounds()
-                    .get(&WindowId(1))
-                    .copied()?;
-                Some((resolved, preview, ()))
-            })
+            .map(|resolved| (resolved, ()))
             .collect();
-        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
-        let mut reference = Vec::new();
-        for (resolved, preview, ()) in placement::topology_representatives(candidates) {
-            if !candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
-            {
-                continue;
-            }
-            reference.push(resolved.target);
-        }
+        let reference = placement::topology_representatives(candidates)
+            .into_iter()
+            .map(|(resolved, ())| resolved.target)
+            .collect::<Vec<_>>();
 
         assert_eq!(tree.placement_targets(WindowId(1), rect, 0.34), reference);
     }
@@ -876,17 +1011,13 @@ fn constrained_normalization_preserves_every_distinct_viable_outcome() {
                     .candidate
                     .constrained_bounds(rect, &minimums)
                     .and_then(|bounds| bounds.get(&WindowId(1)).copied())?;
-                Some((resolved, FRect::from_rect(slot), slot))
+                Some((resolved, slot))
             })
             .collect();
-        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
-        let mut reference = Vec::new();
-        for (resolved, preview, _) in placement::topology_representatives(candidates) {
-            if candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
-            {
-                reference.push(resolved.target);
-            }
-        }
+        let reference = placement::topology_representatives(candidates)
+            .into_iter()
+            .map(|(resolved, _)| resolved.target)
+            .collect::<Vec<_>>();
 
         assert_eq!(
             tree.constrained_placement_targets(WindowId(1), rect, 0.34, &minimums),
@@ -1009,7 +1140,7 @@ fn twenty_window_pointer_edges_divide_hitboxes_by_distinct_viable_outcomes() {
                 LayoutTree::normalized_constrained_candidates(source, rect, &minimums, resolved);
             (normalized.len() < raw_count).then_some((target, side, raw_count, normalized))
         })
-        .expect("the 20-window grid should exercise approximate edge duplicates");
+        .expect("the 20-window grid should exercise weight-only topology duplicates");
 
     let (target, side, raw_count, normalized) = duplicated_edge;
     assert!(
@@ -1091,14 +1222,13 @@ fn twenty_window_pointer_candidates_collapse_weight_only_variants() {
                             },
                             candidate,
                         },
-                        FRect::from_rect(slot),
                         slot,
                     ))
                 })
                 .collect::<Vec<_>>();
             let topology_count = viable
                 .iter()
-                .filter_map(|(resolved, _, _)| {
+                .filter_map(|(resolved, _)| {
                     resolved
                         .candidate
                         .root
@@ -1115,64 +1245,16 @@ fn twenty_window_pointer_candidates_collapse_weight_only_variants() {
                 topology_count,
                 "each unweighted canonical topology must have exactly one representative"
             );
-            let mut groups =
-                HashMap::<placement::PlacementTopology, Vec<(PlacementTarget, FRect)>>::new();
-            for (resolved, preview, _) in &viable {
-                let topology =
-                    placement::placement_topology(resolved.candidate.root.as_ref().unwrap());
-                groups
-                    .entry(topology)
-                    .or_default()
-                    .push((resolved.target, *preview));
-            }
-            for (topology, group) in groups {
-                let count = group.len() as f64;
-                let average = group.iter().fold(
-                    FRect {
-                        x: 0.0,
-                        y: 0.0,
-                        w: 0.0,
-                        h: 0.0,
-                    },
-                    |mut average, (_, preview)| {
-                        average.x += preview.x / count;
-                        average.y += preview.y / count;
-                        average.w += preview.w / count;
-                        average.h += preview.h / count;
-                        average
-                    },
-                );
-                let expected = group
-                    .iter()
-                    .min_by(|left, right| {
-                        placement::preview_distance_squared(left.1, average)
-                            .total_cmp(&placement::preview_distance_squared(right.1, average))
-                    })
-                    .unwrap()
-                    .0;
-                let actual = representatives
-                    .iter()
-                    .find(|(resolved, _, _)| {
-                        placement::placement_topology(resolved.candidate.root.as_ref().unwrap())
-                            == topology
-                    })
-                    .unwrap()
-                    .0
-                    .target;
-                assert_eq!(
-                    actual, expected,
-                    "the retained semantic target must be nearest the group's average preview"
-                );
-            }
             let normalized = LayoutTree::normalized_constrained_candidates(
                 source,
                 rect,
                 &HashMap::new(),
-                viable.into_iter().map(|(resolved, _, _)| resolved),
+                viable.into_iter().map(|(resolved, _)| resolved),
             );
-            assert!(
-                normalized.len() <= topology_count,
-                "visual normalization may merge topologies but must never restore weight variants"
+            assert_eq!(
+                normalized.len(),
+                topology_count,
+                "normalization must remove only weight variants of the same topology"
             );
         }
     }

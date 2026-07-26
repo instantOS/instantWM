@@ -25,59 +25,24 @@ pub(super) fn placement_topology(node: &Node) -> PlacementTopology {
     }
 }
 
-pub(super) fn preview_distance_squared(first: FRect, second: FRect) -> f64 {
-    (first.x - second.x).powi(2)
-        + (first.y - second.y).powi(2)
-        + (first.w - second.w).powi(2)
-        + (first.h - second.h).powi(2)
-}
-
 /// Collapse candidates whose canonical tree structure is identical when split
-/// weights and allocation-only split IDs are ignored. Select an actual
-/// candidate nearest the group's average preview, preserving semantic
-/// preview/drop identity without inventing a new combination of weights.
+/// weights and allocation-only split IDs are ignored. Candidate order is
+/// deterministic, so retaining the first representative does not let current
+/// geometry influence structural equivalence.
 pub(super) fn topology_representatives<T>(
-    candidates: Vec<(ResolvedPlacementTarget, FRect, T)>,
-) -> Vec<(ResolvedPlacementTarget, FRect, T)> {
-    let mut group_indices = HashMap::<PlacementTopology, usize>::new();
-    let mut groups = Vec::<Vec<(ResolvedPlacementTarget, FRect, T)>>::new();
+    candidates: Vec<(ResolvedPlacementTarget, T)>,
+) -> Vec<(ResolvedPlacementTarget, T)> {
+    let mut topologies = HashSet::new();
+    let mut distinct = Vec::new();
     for candidate in candidates {
         let Some(root) = candidate.0.candidate.root.as_ref() else {
             continue;
         };
-        let topology = placement_topology(root);
-        let group_index = *group_indices.entry(topology).or_insert_with(|| {
-            groups.push(Vec::new());
-            groups.len() - 1
-        });
-        groups[group_index].push(candidate);
+        if topologies.insert(placement_topology(root)) {
+            distinct.push(candidate);
+        }
     }
-
-    groups
-        .into_iter()
-        .filter_map(|group| {
-            let count = group.len() as f64;
-            let average = group.iter().fold(
-                FRect {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 0.0,
-                    h: 0.0,
-                },
-                |mut average, (_, preview, _)| {
-                    average.x += preview.x / count;
-                    average.y += preview.y / count;
-                    average.w += preview.w / count;
-                    average.h += preview.h / count;
-                    average
-                },
-            );
-            group.into_iter().min_by(|left, right| {
-                preview_distance_squared(left.1, average)
-                    .total_cmp(&preview_distance_squared(right.1, average))
-            })
-        })
-        .collect()
+    distinct
 }
 
 impl LayoutTree {
@@ -253,6 +218,29 @@ impl LayoutTree {
                         continue;
                     };
                     let tolerance = rect.axis_size(axis) * 0.04;
+                    if split.axis != axis && children.len() > 1 {
+                        let range_edge = rect.axis_start(axis)
+                            + if side.is_leading() {
+                                0.0
+                            } else {
+                                rect.axis_size(axis)
+                            };
+                        if (range_edge - seam).abs() <= tolerance {
+                            candidates.push(EdgeCandidate {
+                                scope: PlacementScope::ChildRange {
+                                    parent: split.id,
+                                    children: children
+                                        .iter()
+                                        .map(|child| child.node.key())
+                                        .collect(),
+                                },
+                                scope_depth: path
+                                    .iter()
+                                    .position(|(candidate, _)| candidate.id == split.id)
+                                    .map_or(0, |index| path.len() - index),
+                            });
+                        }
+                    }
                     if cross_size(rect, axis) <= target_cross_size + tolerance
                         || seam <= rect.axis_start(axis) + tolerance
                         || seam >= rect.axis_start(axis) + rect.axis_size(axis) - tolerance
@@ -280,41 +268,25 @@ impl LayoutTree {
         }
 
         candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.scope_depth));
-        // Different structural scopes can normalize to the same visual
-        // result. The prototype exposes one band per distinct result, so
-        // preview each command and collapse geometry-equivalent candidates.
-        let mut geometries = HashSet::new();
-        let mut distinct = Vec::new();
-        for candidate in candidates.into_iter().rev() {
-            let mut preview = self.clone();
-            if !preview.move_to_scope(source, target, side, candidate.scope.clone()) {
-                continue;
-            }
-            let rects = preview.float_bounds();
-            let mut signature = rects
-                .into_iter()
-                .map(|(window, rect)| {
-                    (
-                        window,
-                        (rect.x * 10_000.0).round() as i64,
-                        (rect.y * 10_000.0).round() as i64,
-                        (rect.w * 10_000.0).round() as i64,
-                        (rect.h * 10_000.0).round() as i64,
-                    )
-                })
-                .collect::<Vec<_>>();
-            signature.sort_by_key(|item| item.0);
-            if geometries.insert(signature) {
-                distinct.push((candidate, preview));
-            }
-        }
-        distinct.reverse();
-        distinct
+        // Do not deduplicate by geometry here: different structures can
+        // currently produce identical rectangles. Constraint filtering and
+        // weight-independent topology normalization happen in the shared
+        // keyboard/pointer pipeline after all viable scopes are materialized.
+        candidates
+            .into_iter()
+            .filter_map(|candidate| {
+                let mut preview = self.clone();
+                preview
+                    .move_to_scope(source, target, side, candidate.scope.clone())
+                    .then_some((candidate, preview))
+            })
+            .collect()
     }
 
-    /// Enumerate distinct user-visible placement results. Raw hit regions can
-    /// describe one result in several ways (for example, either side of a
-    /// shared seam); only the first deterministic representative is exposed.
+    /// Enumerate structurally distinct placement results. Raw hit regions can
+    /// describe one canonical topology in several ways (for example, either
+    /// side of a shared seam); only the first deterministic representative is
+    /// exposed.
     pub fn placement_targets(
         &self,
         source: WindowId,
@@ -353,8 +325,7 @@ impl LayoutTree {
     ) -> Vec<PointerPlacementResolution> {
         // Viability must be established first. Otherwise an infeasible early
         // representative can suppress an equivalent candidate that actually
-        // satisfies minimum sizes. Compare the constrained source slots because
-        // those are what both keyboard and pointer previews expose.
+        // satisfies minimum sizes.
         let viable = candidates
             .into_iter()
             .filter_map(|resolved| {
@@ -365,22 +336,16 @@ impl LayoutTree {
                 else {
                     return None;
                 };
-                Some((resolved, FRect::from_rect(slot), slot))
+                Some((resolved, slot))
             })
             .collect();
-        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
-        let mut distinct = Vec::new();
-        for (resolved, preview, slot) in topology_representatives(viable) {
-            if !candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
-            {
-                continue;
-            }
-            distinct.push(PointerPlacementResolution {
+        topology_representatives(viable)
+            .into_iter()
+            .map(|(resolved, slot)| PointerPlacementResolution {
                 target: resolved.target,
                 slot,
-            });
-        }
-        distinct
+            })
+            .collect()
     }
 
     fn normalized_placement_candidates(
@@ -389,24 +354,15 @@ impl LayoutTree {
         layout_rect: Rect,
         edge_fraction: f64,
     ) -> Vec<(PlacementTarget, LayoutTree)> {
-        let candidates = self
-            .raw_resolved_placement_targets(source, layout_rect, edge_fraction)
-            .into_iter()
-            .filter_map(|resolved| {
-                let preview = resolved.candidate.float_bounds().get(&source).copied()?;
-                Some((resolved, preview, ()))
-            })
-            .collect();
-        let mut previews_by_order = HashMap::<Vec<WindowId>, Vec<FRect>>::new();
-        let mut distinct = Vec::new();
-        for (resolved, preview, ()) in topology_representatives(candidates) {
-            if !candidate_is_visually_distinct(&mut previews_by_order, &resolved.candidate, preview)
-            {
-                continue;
-            }
-            distinct.push((resolved.target, resolved.candidate));
-        }
-        distinct
+        topology_representatives(
+            self.raw_resolved_placement_targets(source, layout_rect, edge_fraction)
+                .into_iter()
+                .map(|resolved| (resolved, ()))
+                .collect(),
+        )
+        .into_iter()
+        .map(|(resolved, ())| (resolved.target, resolved.candidate))
+        .collect()
     }
 
     pub(super) fn raw_resolved_placement_targets(
@@ -568,6 +524,14 @@ impl LayoutTree {
                     allocate(),
                 )
             }
+            PlacementScope::ChildRange { parent, children } => insert_at_child_range_edge(
+                without_source.clone(),
+                parent,
+                &children,
+                source,
+                side,
+                &mut allocate,
+            ),
             PlacementScope::AlignedNode { key, seam, before } => {
                 let insertion = AlignedInsertion {
                     seam,
