@@ -656,18 +656,18 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         _token: smithay::wayland::xdg_activation::XdgActivationToken,
         token_data: smithay::wayland::xdg_activation::XdgActivationTokenData,
     ) -> bool {
-        if let Some(g) = self.globals() {
+        if let Some(state) = self.globals() {
             let context = token_data
                 .surface
                 .as_ref()
                 .and_then(|surface| self.window_id_for_surface(surface))
-                .and_then(|source_win| g.model.client(source_win))
+                .and_then(|source_win| state.model.client(source_win))
                 .map(|client| crate::client::LaunchContext {
                     monitor_id: client.monitor_id,
                     tags: client.tags,
                     is_floating: client.base_mode() == crate::types::BaseClientMode::Floating,
                 })
-                .unwrap_or_else(|| crate::client::current_launch_context(&g.model));
+                .unwrap_or_else(|| crate::client::current_launch_context(&state.model));
             let _ = token_data
                 .user_data
                 .insert_if_missing_threadsafe(|| context);
@@ -688,7 +688,7 @@ impl smithay::wayland::xdg_activation::XdgActivationHandler for WaylandState {
         if let Some(win) = self.window_id_for_surface(&surface) {
             let is_currently_visible = self
                 .globals()
-                .and_then(|g| g.model.client_view(win))
+                .and_then(|state| state.model.client_view(win))
                 .is_some_and(|view| view.client.is_visible(view.monitor.selected_tags()));
 
             self.push_command(super::super::commands::WmCommand::ActivateWindow(win));

@@ -46,21 +46,21 @@ enum RuleApplication {
 /// Apply rules while retaining the spawn-position instruction needed during
 /// initial window management.
 pub fn apply_initial_rules(
-    g: &mut CoreState,
+    state: &mut CoreState,
     win: WindowId,
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
 ) -> InitialRuleOutcome {
-    let before = rule_state_snapshot(g, win);
-    let placement = apply_rules_impl(g, win, props, launch_context, RuleApplication::Initial);
+    let before = rule_state_snapshot(state, win);
+    let placement = apply_rules_impl(state, win, props, launch_context, RuleApplication::Initial);
     InitialRuleOutcome {
-        changed: before != rule_state_snapshot(g, win),
+        changed: before != rule_state_snapshot(state, win),
         placement,
     }
 }
 
 fn apply_rules_impl(
-    g: &mut CoreState,
+    state: &mut CoreState,
     win: WindowId,
     props: &WindowProperties,
     launch_context: Option<LaunchContext>,
@@ -69,7 +69,7 @@ fn apply_rules_impl(
     let mut placement = InitialRulePlacement::Default;
 
     // Title and an already-established runtime role survive rule refreshes.
-    if let Some(c) = g.model.client_mut(win) {
+    if let Some(c) = state.model.client_mut(win) {
         if !props.title.is_empty() {
             c.name = props.title.clone();
         }
@@ -91,8 +91,8 @@ fn apply_rules_impl(
         crate::floating::scratchpad::name_from_window_identity(&props.class, &props.instance)
             .map(str::to_owned)
     {
-        let role = g.model.client_view(win).map(|view| {
-            let content = view.monitor.visible_content_rect(&g.model.clients);
+        let role = state.model.client_view(win).map(|view| {
+            let content = view.monitor.visible_content_rect(&state.model.clients);
             (
                 view.client.tags,
                 content,
@@ -101,8 +101,8 @@ fn apply_rules_impl(
             )
         });
         if let Some((restore_tags, content, border_width, restore_focus)) = role
-            && g.model.scratchpad_find(&name).is_none()
-            && let Some(client) = g.model.client_mut(win)
+            && state.model.scratchpad_find(&name).is_none()
+            && let Some(client) = state.model.client_mut(win)
         {
             client.apply_scratchpad_state(&name, None, restore_tags, content.w, content.h);
             client.show_as_scratchpad(restore_tags, None);
@@ -120,7 +120,7 @@ fn apply_rules_impl(
     }
 
     // --- Initialise fields we are about to set -------------------------------
-    if let Some(c) = g.model.client_mut(win) {
+    if let Some(c) = state.model.client_mut(win) {
         let base_mode = if launch_context.map(|ctx| ctx.is_floating).unwrap_or(false) {
             BaseClientMode::Floating
         } else {
@@ -130,19 +130,19 @@ fn apply_rules_impl(
         c.set_tag_mask(crate::types::TagMask::EMPTY);
     }
 
-    let special_next = g.behavior.specialnext;
-    let rules = g.config.bindings.rules.clone();
-    let tag_mask = g.model.tags.mask();
-    let bar_height = g.config.derived.bar_height;
+    let special_next = state.behavior.specialnext;
+    let rules = state.config.bindings.rules.clone();
+    let tag_mask = state.model.tags.mask();
+    let bar_height = state.config.derived.bar_height;
 
     // --- Handle SpecialNext shortcut or normal rule matching -----------------
     if application == RuleApplication::Initial && special_next != SpecialNext::None {
         if let SpecialNext::Float = special_next
-            && let Some(c) = g.model.client_mut(win)
+            && let Some(c) = state.model.client_mut(win)
         {
             c.set_base_mode(BaseClientMode::Floating);
         }
-        g.behavior.specialnext = SpecialNext::None;
+        state.behavior.specialnext = SpecialNext::None;
     } else {
         for rule in &rules {
             if !rule.matches(&props.class, &props.instance, &props.title) {
@@ -151,16 +151,16 @@ fn apply_rules_impl(
 
             // Special case: Onboard (on-screen keyboard) is always sticky.
             if rule.class.as_deref() == Some("Onboard")
-                && let Some(c) = g.model.client_mut(win)
+                && let Some(c) = state.model.client_mut(win)
             {
                 c.is_sticky = true;
             }
 
-            apply_monitor_rule(g, win, rule);
+            apply_monitor_rule(state, win, rule);
 
             // Look up monitor geometry for FloatFullscreen / Float rules.
             let mon_geo = {
-                let view = match g.model.client_view(win) {
+                let view = match state.model.client_view(win) {
                     Some(view) => view,
                     None => continue,
                 };
@@ -173,7 +173,7 @@ fn apply_rules_impl(
                 )
             };
 
-            if let Some(c) = g.model.client_mut(win) {
+            if let Some(c) = state.model.client_mut(win) {
                 if let Some(ref float_rule) = rule.is_floating {
                     apply_float_rule(c, float_rule, mon_geo, bar_height);
                     placement = match float_rule {
@@ -189,7 +189,7 @@ fn apply_rules_impl(
     }
 
     // --- Clamp tags to the valid tag mask ------------------------------------
-    clamp_client_tags(g, win, tag_mask, launch_context);
+    clamp_client_tags(state, win, tag_mask, launch_context);
 
     placement
 }
@@ -203,12 +203,12 @@ fn apply_rules_impl(
 /// Once a client has been promoted to a scratchpad, later protocol metadata
 /// churn must not retag it back into a normal window.
 fn apply_property_change(
-    g: &mut CoreState,
+    state: &mut CoreState,
     win: WindowId,
     props: &WindowProperties,
 ) -> Option<PropertyUpdateOutcome> {
     let (before, existing_context) = {
-        let client = g.model.client_mut(win)?;
+        let client = state.model.client_mut(win)?;
         let before = PropertyStateSnapshot::capture(client);
         if let Some(hints) = props.size_hints {
             client.size_hints = hints;
@@ -225,14 +225,17 @@ fn apply_property_change(
     };
 
     apply_rules_impl(
-        g,
+        state,
         win,
         props,
         Some(existing_context),
         RuleApplication::PropertyRefresh,
     );
 
-    let after = g.model.client(win).map(PropertyStateSnapshot::capture)?;
+    let after = state
+        .model
+        .client(win)
+        .map(PropertyStateSnapshot::capture)?;
     Some(PropertyUpdateOutcome::between(before, after))
 }
 
@@ -293,18 +296,18 @@ fn apply_float_rule(
 }
 
 /// Move `win` to the monitor named in `rule.monitor`, if any.
-fn apply_monitor_rule(g: &mut CoreState, win: WindowId, rule: &crate::types::Rule) {
+fn apply_monitor_rule(state: &mut CoreState, win: WindowId, rule: &crate::types::Rule) {
     let MonitorRule::Index(target_num) = rule.monitor else {
         return;
     };
 
-    let target_mid = g
+    let target_mid = state
         .monitors_iter()
         .find(|(_i, m)| m.num == target_num as i32)
         .map(|(i, _)| i);
 
     if let Some(mid) = target_mid {
-        let reassigned = g.model.reassign_client_monitor(win, mid);
+        let reassigned = state.model.reassign_client_monitor(win, mid);
         debug_assert!(reassigned, "rule target must be a valid managed monitor");
     }
 }
@@ -366,8 +369,8 @@ impl PropertyUpdateOutcome {
     }
 }
 
-fn rule_state_snapshot(g: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
-    let c = g.model.client(win)?;
+fn rule_state_snapshot(state: &CoreState, win: WindowId) -> Option<RuleStateSnapshot> {
+    let c = state.model.client(win)?;
     Some(RuleStateSnapshot {
         mode: c.mode(),
         is_sticky: c.is_sticky,
@@ -380,12 +383,12 @@ fn rule_state_snapshot(g: &CoreState, win: WindowId) -> Option<RuleStateSnapshot
 /// Clamp `win`'s tag mask to valid bits and fall back to the monitor's active
 /// tags when no rule-assigned tag is currently visible.
 fn clamp_client_tags(
-    g: &mut CoreState,
+    state: &mut CoreState,
     win: WindowId,
     tag_mask: TagMask,
     launch_context: Option<LaunchContext>,
 ) {
-    let Some(view) = g.model.client_view(win) else {
+    let Some(view) = state.model.client_view(win) else {
         return;
     };
     let client_tags = view.client.tags;
@@ -399,7 +402,7 @@ fn clamp_client_tags(
             .unwrap_or(monitor_tags);
     }
 
-    if let Some(c) = g.model.client_mut(win) {
+    if let Some(c) = state.model.client_mut(win) {
         c.set_tag_mask(final_tags);
     }
 }
@@ -527,12 +530,12 @@ mod tests {
 
     #[test]
     fn property_change_preserves_existing_tags_without_matching_rule() {
-        let mut g = CoreState::default();
-        g.model.tags.num_tags = 9;
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 9;
 
         let mut mon = Monitor::new_with_values(true, EdgeDirection::Top);
         mon.set_selected_tags(TagMask::single(1).unwrap());
-        g.model.monitors.push(mon);
+        state.model.monitors.push(mon);
 
         let win = WindowId(42);
         let client = Client {
@@ -541,10 +544,10 @@ mod tests {
             tags: TagMask::single(2).unwrap(),
             ..Default::default()
         };
-        g.model.insert_client(client);
+        state.model.insert_client(client);
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 title: "updated".to_string(),
@@ -552,24 +555,24 @@ mod tests {
             },
         );
 
-        let client = g.model.client(win).expect("client should still exist");
+        let client = state.model.client(win).expect("client should still exist");
         assert_eq!(client.tags, TagMask::single(2).unwrap());
         assert_eq!(client.name, "updated");
     }
 
     #[test]
     fn property_change_preserves_manual_floating_state() {
-        let mut g = CoreState::default();
+        let mut state = CoreState::default();
         let win = WindowId(42);
         let client = Client {
             win,
             mode: ClientMode::Floating,
             ..Default::default()
         };
-        g.model.insert_client(client);
+        state.model.insert_client(client);
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 title: "updated".to_string(),
@@ -577,22 +580,22 @@ mod tests {
             },
         );
 
-        let client = g.model.client(win).expect("client should still exist");
+        let client = state.model.client(win).expect("client should still exist");
         assert!(client.mode().is_floating());
     }
 
     #[test]
     fn property_change_preserves_fullscreen_and_its_restore_mode() {
-        let mut g = CoreState::default();
+        let mut state = CoreState::default();
         let win = WindowId(43);
-        g.model.insert_client(Client {
+        state.model.insert_client(Client {
             win,
             mode: ClientMode::Floating.as_fullscreen(),
             ..Default::default()
         });
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 title: "YouTube — Full Screen".to_string(),
@@ -600,7 +603,7 @@ mod tests {
             },
         );
 
-        let client = g.model.client(win).expect("client should still exist");
+        let client = state.model.client(win).expect("client should still exist");
         assert!(client.mode().is_true_fullscreen());
         assert_eq!(
             client.mode().base_mode(),
@@ -611,25 +614,25 @@ mod tests {
 
     #[test]
     fn fullscreen_survives_property_refresh_and_remains_a_fullscreen_layout_target() {
-        let mut g = CoreState::default();
+        let mut state = CoreState::default();
         let tags = TagMask::single(1).unwrap();
         let mut monitor = Monitor::default();
         monitor.monitor_rect = Rect::new(0, 0, 1920, 1080);
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(tags);
-        let monitor_id = g.model.monitors.push(monitor);
+        let monitor_id = state.model.monitors.push(monitor);
         let win = WindowId(45);
-        g.model.insert_client(Client {
+        state.model.insert_client(Client {
             win,
             monitor_id,
             tags,
             mode: ClientMode::Tiling.as_fullscreen(),
             ..Client::default()
         });
-        assert!(g.model.attach_client(win));
+        assert!(state.model.attach_client(win));
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 title: "YouTube — Full Screen".to_string(),
@@ -637,10 +640,11 @@ mod tests {
             },
         );
 
-        let layout_cfg = g.config.layout;
+        let layout_cfg = state.config.layout;
         let plan = {
-            let clients = &g.model.clients;
-            g.model
+            let clients = &state.model.clients;
+            state
+                .model
                 .monitors
                 .get_mut(monitor_id)
                 .unwrap()
@@ -654,13 +658,13 @@ mod tests {
 
     #[test]
     fn property_refresh_does_not_consume_one_shot_creation_policy() {
-        let mut g = CoreState::default();
+        let mut state = CoreState::default();
         let win = WindowId(46);
-        g.model.insert_client(Client::new(win));
-        g.behavior.specialnext = SpecialNext::Float;
+        state.model.insert_client(Client::new(win));
+        state.behavior.specialnext = SpecialNext::Float;
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 title: "renamed".to_string(),
@@ -668,8 +672,8 @@ mod tests {
             },
         );
 
-        assert_eq!(g.behavior.specialnext, SpecialNext::Float);
-        assert!(g.model.client(win).unwrap().mode().is_tiling());
+        assert_eq!(state.behavior.specialnext, SpecialNext::Float);
+        assert!(state.model.client(win).unwrap().mode().is_tiling());
     }
 
     #[test]
@@ -677,11 +681,12 @@ mod tests {
         use crate::types::{MonitorRule, Rule, RuleFloat};
         use std::borrow::Cow;
 
-        let mut g = CoreState::default();
-        g.model
+        let mut state = CoreState::default();
+        state
+            .model
             .monitors
             .push(Monitor::new_with_values(true, EdgeDirection::Top));
-        g.config.bindings.rules = vec![Rule {
+        state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("tile-when-renamed")),
             instance: None,
             title: None,
@@ -690,7 +695,7 @@ mod tests {
             monitor: MonitorRule::Any,
         }];
         let win = WindowId(44);
-        g.model.insert_client(Client {
+        state.model.insert_client(Client {
             win,
             monitor_id: MonitorId::default(),
             mode: ClientMode::Floating.as_fullscreen(),
@@ -698,7 +703,7 @@ mod tests {
         });
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 class: "tile-when-renamed".to_string(),
@@ -706,7 +711,7 @@ mod tests {
             },
         );
 
-        let mode = g.model.client(win).unwrap().mode();
+        let mode = state.model.client(win).unwrap().mode();
         assert!(mode.is_true_fullscreen());
         assert_eq!(mode.base_mode(), crate::types::BaseClientMode::Tiling);
         assert_eq!(mode.restored(), ClientMode::Tiling);
@@ -717,12 +722,13 @@ mod tests {
         use crate::types::{Monitor, MonitorRule, Rule, RuleFloat};
         use std::borrow::Cow;
 
-        let mut g = CoreState::default();
-        g.model
+        let mut state = CoreState::default();
+        state
+            .model
             .monitors
             .push(Monitor::new_with_values(true, EdgeDirection::Top)); // Add a monitor
 
-        g.config.bindings.rules = vec![Rule {
+        state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("test")),
             instance: None,
             title: None,
@@ -738,10 +744,10 @@ mod tests {
             mode: ClientMode::Floating,
             ..Default::default()
         };
-        g.model.insert_client(client);
+        state.model.insert_client(client);
 
         apply_property_change(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 class: "test".to_string(),
@@ -750,7 +756,7 @@ mod tests {
             },
         );
 
-        let client = g.model.client(win).expect("client should still exist");
+        let client = state.model.client(win).expect("client should still exist");
         assert!(!client.mode().is_floating()); // Should be tiling now
     }
 
@@ -759,12 +765,12 @@ mod tests {
         use crate::types::{MonitorRule, Rule, RuleFloat};
         use std::borrow::Cow;
 
-        let mut g = CoreState::default();
-        g.model.tags.num_tags = 1;
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 1;
         let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        g.model.monitors.push(monitor);
-        g.config.bindings.rules = vec![Rule {
+        state.model.monitors.push(monitor);
+        state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("center-me")),
             instance: None,
             title: None,
@@ -774,14 +780,14 @@ mod tests {
         }];
 
         let win = WindowId(43);
-        g.model.insert_client(Client {
+        state.model.insert_client(Client {
             win,
             monitor_id: MonitorId::default(),
             ..Default::default()
         });
 
         let outcome = apply_initial_rules(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 class: "center-me".to_string(),
@@ -791,15 +797,15 @@ mod tests {
         );
 
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
-        assert!(g.model.client(win).unwrap().mode().is_floating());
+        assert!(state.model.client(win).unwrap().mode().is_floating());
     }
 
     #[test]
     fn scratchpad_identity_is_classified_before_the_first_layout() {
         use crate::types::Rect;
 
-        let mut g = CoreState::default();
-        g.model.tags.num_tags = 3;
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 3;
         use crate::types::EdgeDirection;
         let selected_tags = TagMask::single(2).unwrap();
         let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
@@ -807,19 +813,19 @@ mod tests {
         monitor.available_rect = monitor.monitor_rect;
         monitor.set_selected_tags(selected_tags);
         monitor.selected = Some(WindowId(44));
-        g.model.monitors.push(monitor);
-        g.model.insert_client(Client {
+        state.model.monitors.push(monitor);
+        state.model.insert_client(Client {
             win: WindowId(44),
             monitor_id: MonitorId::default(),
             tags: selected_tags,
             ..Default::default()
         });
-        let monitor = g.model.monitor_mut(MonitorId::default()).unwrap();
+        let monitor = state.model.monitor_mut(MonitorId::default()).unwrap();
         monitor.clients.push(WindowId(44));
         monitor.z_order.attach_top(WindowId(44));
 
         let win = WindowId(45);
-        g.model.insert_client(Client {
+        state.model.insert_client(Client {
             win,
             monitor_id: MonitorId::default(),
             tags: selected_tags,
@@ -828,7 +834,7 @@ mod tests {
         });
 
         let outcome = apply_initial_rules(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 class: "scratchpad_menu".to_string(),
@@ -837,7 +843,7 @@ mod tests {
             None,
         );
 
-        let client = g.model.client(win).unwrap();
+        let client = state.model.client(win).unwrap();
         assert_eq!(outcome.placement, InitialRulePlacement::Center);
         assert!(outcome.changed);
         assert!(client.mode().is_floating());
@@ -848,16 +854,18 @@ mod tests {
         assert_eq!(scratchpad.name, "menu");
         assert_eq!(scratchpad.restore_tags, selected_tags);
         assert_eq!(scratchpad.restore_focus, Some(WindowId(44)));
-        g.model
+        state
+            .model
             .monitor_mut(MonitorId::default())
             .unwrap()
             .clients
             .push(win);
         assert!(
-            g.model
+            state
+                .model
                 .monitor(MonitorId::default())
                 .unwrap()
-                .collect_tiled(&g.model.clients)
+                .collect_tiled(&state.model.clients)
                 .iter()
                 .all(|client| client.win != win),
             "an inferred scratchpad must never become a layout-tree leaf"
@@ -869,15 +877,15 @@ mod tests {
         use crate::types::{MonitorRule, Rect, Rule, RuleFloat};
         use std::borrow::Cow;
 
-        let mut g = CoreState::default();
-        g.model.tags.num_tags = 1;
+        let mut state = CoreState::default();
+        state.model.tags.num_tags = 1;
         let mut monitor = Monitor::new_with_values(true, EdgeDirection::Top);
         monitor.monitor_rect = Rect::new(1920, 0, 1920, 1080);
         monitor.available_rect = monitor.monitor_rect;
         monitor.bar_height = 32;
         monitor.set_selected_tags(TagMask::single(1).unwrap());
-        g.model.monitors.push(monitor);
-        g.config.bindings.rules = vec![Rule {
+        state.model.monitors.push(monitor);
+        state.config.bindings.rules = vec![Rule {
             class: Some(Cow::Borrowed("fill-me")),
             instance: None,
             title: None,
@@ -887,14 +895,14 @@ mod tests {
         }];
 
         let win = WindowId(44);
-        g.model.insert_client(Client {
+        state.model.insert_client(Client {
             win,
             monitor_id: MonitorId::default(),
             ..Default::default()
         });
 
         let outcome = apply_initial_rules(
-            &mut g,
+            &mut state,
             win,
             &WindowProperties {
                 class: "fill-me".to_string(),
@@ -905,7 +913,7 @@ mod tests {
 
         assert_eq!(outcome.placement, InitialRulePlacement::Preserve);
         assert_eq!(
-            g.model.client(win).unwrap().geo,
+            state.model.client(win).unwrap().geo,
             Rect::new(1920, 0, 1920, 1048)
         );
     }

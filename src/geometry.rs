@@ -424,8 +424,8 @@ mod tests {
             geo: Rect::new(0, 0, 50, 50),
             ..Client::default()
         };
-        client.size_hints.maxw = 120;
-        client.size_hints.maxh = 90;
+        client.size_hints.max_width = 120;
+        client.size_hints.max_height = 90;
         wm.core.model.insert_client(client);
 
         wm.ctx().move_resize(

@@ -109,18 +109,18 @@ fn get(wm: &Wm, key: &str) -> Response {
     let Some(section) = RuntimeConfigSection::parse(section_name) else {
         return Response::err(format!("unknown section '{section_name}'"));
     };
-    let g = &wm.core;
+    let state = &wm.core;
     let val = match section {
-        RuntimeConfigSection::Window => field_get(&g.config.window, rest),
-        RuntimeConfigSection::Bar => field_get(&g.config.bar, rest),
-        RuntimeConfigSection::Systray => field_get(&g.config.systray, rest),
-        RuntimeConfigSection::Layout => field_get(&g.config.layout, rest),
-        RuntimeConfigSection::Colors => field_get(&g.config.colors, rest),
-        RuntimeConfigSection::Cursor => field_get(&g.config.cursor, rest),
-        RuntimeConfigSection::Fonts => field_get(&g.config.fonts, rest),
-        RuntimeConfigSection::Input => return map_get(&g.config.input, section.name(), rest),
+        RuntimeConfigSection::Window => field_get(&state.config.window, rest),
+        RuntimeConfigSection::Bar => field_get(&state.config.bar, rest),
+        RuntimeConfigSection::Systray => field_get(&state.config.systray, rest),
+        RuntimeConfigSection::Layout => field_get(&state.config.layout, rest),
+        RuntimeConfigSection::Colors => field_get(&state.config.colors, rest),
+        RuntimeConfigSection::Cursor => field_get(&state.config.cursor, rest),
+        RuntimeConfigSection::Fonts => field_get(&state.config.fonts, rest),
+        RuntimeConfigSection::Input => return map_get(&state.config.input, section.name(), rest),
         RuntimeConfigSection::Monitors => {
-            return map_get(&g.config.monitors, section.name(), rest);
+            return map_get(&state.config.monitors, section.name(), rest);
         }
         RuntimeConfigSection::Display => {
             return Response::err("display.* is derived from outputs and not exposed at runtime");
@@ -142,24 +142,24 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
         return Response::err(format!("unknown section '{section_name}'"));
     };
 
-    let g = &mut wm.core;
+    let state = &mut wm.core;
     let result = match section {
-        RuntimeConfigSection::Window => parse_then_set(&mut g.config.window, rest, value),
-        RuntimeConfigSection::Bar => parse_then_set(&mut g.config.bar, rest, value),
-        RuntimeConfigSection::Systray => parse_then_set(&mut g.config.systray, rest, value),
-        RuntimeConfigSection::Layout => parse_then_set(&mut g.config.layout, rest, value),
-        RuntimeConfigSection::Colors => parse_then_set(&mut g.config.colors, rest, value),
-        RuntimeConfigSection::Cursor => parse_then_set(&mut g.config.cursor, rest, value),
-        RuntimeConfigSection::Fonts => parse_then_set(&mut g.config.fonts, rest, value),
+        RuntimeConfigSection::Window => parse_then_set(&mut state.config.window, rest, value),
+        RuntimeConfigSection::Bar => parse_then_set(&mut state.config.bar, rest, value),
+        RuntimeConfigSection::Systray => parse_then_set(&mut state.config.systray, rest, value),
+        RuntimeConfigSection::Layout => parse_then_set(&mut state.config.layout, rest, value),
+        RuntimeConfigSection::Colors => parse_then_set(&mut state.config.colors, rest, value),
+        RuntimeConfigSection::Cursor => parse_then_set(&mut state.config.cursor, rest, value),
+        RuntimeConfigSection::Fonts => parse_then_set(&mut state.config.fonts, rest, value),
         RuntimeConfigSection::Input => {
-            let resp = map_set(&mut g.config.input, section.name(), rest, value);
+            let resp = map_set(&mut state.config.input, section.name(), rest, value);
             if matches!(resp, Response::Ok) {
                 wm.work.queue_input_config_apply();
             }
             return resp;
         }
         RuntimeConfigSection::Monitors => {
-            let resp = map_set(&mut g.config.monitors, section.name(), rest, value);
+            let resp = map_set(&mut state.config.monitors, section.name(), rest, value);
             if matches!(resp, Response::Ok) {
                 wm.work.queue_monitor_config_apply();
             }
@@ -177,10 +177,10 @@ fn set(wm: &mut Wm, key: &str, value: String) -> Response {
 }
 
 fn list(wm: &Wm) -> Response {
-    let g = &wm.core;
+    let state = &wm.core;
     let mut entries = Vec::new();
     for section in RuntimeConfigSection::EXPOSED {
-        collect_section(g, section, &mut entries);
+        collect_section(state, section, &mut entries);
     }
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     Response::ConfigList(entries)

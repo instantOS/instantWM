@@ -378,7 +378,7 @@ fn arrange_reserves_tiled_minimum_sizes_without_overlap_or_overflow() {
         .into_iter()
         .map(|window| (window, visible_client(window)))
         .collect::<HashMap<_, _>>();
-    clients.get_mut(&WindowId(2)).unwrap().size_hints.minw = 160;
+    clients.get_mut(&WindowId(2)).unwrap().size_hints.min_width = 160;
     monitor
         .per_tag_state()
         .layout_tree

@@ -111,7 +111,7 @@ impl WaylandState {
             if !is_mapped {
                 let Some(loc): Option<Point<i32, Logical>> = self
                     .globals()
-                    .and_then(|g| g.model.client(window))
+                    .and_then(|state| state.model.client(window))
                     .map(|c| Point::from((c.geo.x + c.border_width, c.geo.y + c.border_width)))
                 else {
                     return;

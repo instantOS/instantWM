@@ -42,10 +42,9 @@ pub fn get_state(x11: &X11BackendRef, wm_state_atom: u32, win: WindowId) -> i32 
 // ---------------------------------------------------------------------------
 
 pub fn apply_visibility(ctx: &mut WmCtxX11<'_>) {
-    let g = ctx.core.state();
-    let operations = crate::client::visibility::visibility_plan(&g.model);
-
-    let has_tiling = g.monitors_iter().any(|(_, m)| m.is_tiling_layout());
+    let state = ctx.core.state();
+    let operations = crate::client::visibility::visibility_plan(&state.model);
+    let has_tiling = state.monitors_iter().any(|(_, m)| m.is_tiling_layout());
 
     for entry in operations {
         let win = entry.win;

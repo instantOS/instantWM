@@ -686,7 +686,7 @@ impl WaylandState {
             self.restore_focus_after_overlay();
         }
 
-        let Some(g) = self.globals() else {
+        let Some(state) = self.globals() else {
             return;
         };
         let updates: Vec<(WindowId, Rect)> = self
@@ -694,7 +694,7 @@ impl WaylandState {
             .elements()
             .filter_map(|window| {
                 let marker = window.user_data().get::<WindowIdMarker>()?;
-                let client = g.model.client(marker.id)?;
+                let client = state.model.client(marker.id)?;
                 Some((marker.id, client.geo))
             })
             .collect();

@@ -96,7 +96,7 @@ impl WaylandState {
         let root = crate::types::Point::from_f64_round(point.x, point.y);
         let (root_x, root_y) = (root.x, root.y);
         let globals = match self.globals() {
-            Some(g) => g,
+            Some(state) => state,
             None => {
                 return PointerContents {
                     surface: None,

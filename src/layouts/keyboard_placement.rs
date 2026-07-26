@@ -442,8 +442,8 @@ mod tests {
                 mode: ClientMode::Tiling,
                 ..Client::default()
             };
-            client.size_hints.minw = 140;
-            client.size_hints.minh = 60;
+            client.size_hints.min_width = 140;
+            client.size_hints.min_height = 60;
             wm.core.model.insert_client(client);
         }
         let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();

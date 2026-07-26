@@ -134,8 +134,8 @@ pub struct MoveState {
 /// * restores a near-maximized floating window to its saved geometry
 pub fn prepare_drag_target(ctx: &mut WmCtx) -> Option<WindowId> {
     let sel = {
-        let g = ctx.core_mut().state_mut();
-        let mon = g.expect_selected_monitor();
+        let state = ctx.core_mut().state_mut();
+        let mon = state.expect_selected_monitor();
         mon.selected?
     };
     let c = ctx.core().model().client(sel)?;

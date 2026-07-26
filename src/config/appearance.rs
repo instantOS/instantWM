@@ -79,12 +79,12 @@ const fn hex(hex: &str) -> Rgba {
 }
 
 const fn mix(color: Rgba, other: Rgba, other_weight: f32) -> Rgba {
-    let cw = 1.0 - other_weight;
+    let color_weight = 1.0 - other_weight;
     Rgba::new(
-        color.r() * cw + other.r() * other_weight,
-        color.g() * cw + other.g() * other_weight,
-        color.b() * cw + other.b() * other_weight,
-        color.a() * cw + other.a() * other_weight,
+        color.r() * color_weight + other.r() * other_weight,
+        color.g() * color_weight + other.g() * other_weight,
+        color.b() * color_weight + other.b() * other_weight,
+        color.a() * color_weight + other.a() * other_weight,
     )
 }
 

@@ -548,21 +548,21 @@ mod tests {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SizeHints {
     /// Base width for size calculations.
-    pub basew: i32,
+    pub base_width: i32,
     /// Base height for size calculations.
-    pub baseh: i32,
+    pub base_height: i32,
     /// Width increment for sizing steps.
-    pub incw: i32,
+    pub width_inc: i32,
     /// Height increment for sizing steps.
-    pub inch: i32,
+    pub height_inc: i32,
     /// Maximum allowed width.
-    pub maxw: i32,
+    pub max_width: i32,
     /// Maximum allowed height.
-    pub maxh: i32,
+    pub max_height: i32,
     /// Minimum allowed width.
-    pub minw: i32,
+    pub min_width: i32,
     /// Minimum allowed height.
-    pub minh: i32,
+    pub min_height: i32,
     /// Minimum aspect ratio numerator.
     pub min_aspect_num: i32,
     /// Minimum aspect ratio denominator.
@@ -577,7 +577,7 @@ impl SizeHints {
     /// Check if base size equals min size.
     #[inline]
     pub fn base_is_min(&self) -> bool {
-        self.basew == self.minw && self.baseh == self.minh
+        self.base_width == self.min_width && self.base_height == self.min_height
     }
 
     /// Apply size constraints to the given dimensions.
@@ -593,8 +593,8 @@ impl SizeHints {
 
         // Step 1: subtract base size before aspect / increment checks.
         if !base_is_min {
-            w -= self.basew;
-            h -= self.baseh;
+            w -= self.base_width;
+            h -= self.base_height;
         }
 
         // Step 2: enforce aspect ratio.
@@ -609,27 +609,27 @@ impl SizeHints {
 
         // Step 3: when base == min, subtract base *after* the aspect check.
         if base_is_min {
-            w -= self.basew;
-            h -= self.baseh;
+            w -= self.base_width;
+            h -= self.base_height;
         }
 
         // Step 4: snap to resize increments.
-        if self.incw != 0 {
-            w -= w % self.incw;
+        if self.width_inc != 0 {
+            w -= w % self.width_inc;
         }
-        if self.inch != 0 {
-            h -= h % self.inch;
+        if self.height_inc != 0 {
+            h -= h % self.height_inc;
         }
 
         // Step 5: re-add base and clamp to [min, max].
-        w = (w + self.basew).max(self.minw);
-        h = (h + self.baseh).max(self.minh);
+        w = (w + self.base_width).max(self.min_width);
+        h = (h + self.base_height).max(self.min_height);
 
-        if self.maxw != 0 {
-            w = w.min(self.maxw);
+        if self.max_width != 0 {
+            w = w.min(self.max_width);
         }
-        if self.maxh != 0 {
-            h = h.min(self.maxh);
+        if self.max_height != 0 {
+            h = h.min(self.max_height);
         }
 
         Size::new(w, h)
@@ -641,15 +641,25 @@ impl SizeHints {
     /// fixed width or height is treated as fixed-size for placement policy.
     #[inline]
     pub fn is_fixed(&self) -> bool {
-        constraints_prefer_floating(self.minw, self.minh, self.maxw, self.maxh)
+        constraints_prefer_floating(
+            self.min_width,
+            self.min_height,
+            self.max_width,
+            self.max_height,
+        )
     }
 }
 
 /// Return whether min/max constraints indicate that a window should float.
 /// Shared by native X11, XWayland, and xdg-shell classification.
 #[inline]
-pub fn constraints_prefer_floating(minw: i32, minh: i32, maxw: i32, maxh: i32) -> bool {
-    minw > 0 && minh > 0 && (minw == maxw || minh == maxh)
+pub fn constraints_prefer_floating(
+    min_width: i32,
+    min_height: i32,
+    max_width: i32,
+    max_height: i32,
+) -> bool {
+    min_width > 0 && min_height > 0 && (min_width == max_width || min_height == max_height)
 }
 
 impl SnapPosition {

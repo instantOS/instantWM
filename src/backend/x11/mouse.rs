@@ -453,17 +453,17 @@ pub fn resize_aspect_mouse_x11(ctx: &mut WmCtxX11, win: WindowId, btn: MouseButt
                     let mut nw = raw_nw;
                     let mut nh = raw_nh;
 
-                    if sh.minw > 0 {
-                        nw = nw.max(sh.minw);
+                    if sh.min_width > 0 {
+                        nw = nw.max(sh.min_width);
                     }
-                    if sh.minh > 0 {
-                        nh = nh.max(sh.minh);
+                    if sh.min_height > 0 {
+                        nh = nh.max(sh.min_height);
                     }
-                    if sh.maxw > 0 {
-                        nw = nw.min(sh.maxw);
+                    if sh.max_width > 0 {
+                        nw = nw.min(sh.max_width);
                     }
-                    if sh.maxh > 0 {
-                        nh = nh.min(sh.maxh);
+                    if sh.max_height > 0 {
+                        nh = nh.min(sh.max_height);
                     }
 
                     if min_aspect > 0.0 && max_aspect > 0.0 {

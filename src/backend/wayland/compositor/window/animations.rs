@@ -54,12 +54,14 @@ impl WaylandState {
     }
 
     pub(crate) fn animations_enabled(&self) -> bool {
-        self.globals().map(|g| g.behavior.animated).unwrap_or(false)
+        self.globals()
+            .map(|state| state.behavior.animated)
+            .unwrap_or(false)
     }
 
     pub(crate) fn interactive_motion_active(&self) -> bool {
         self.globals()
-            .is_some_and(|g| g.drag.active_interaction().is_some())
+            .is_some_and(|state| state.drag.active_interaction().is_some())
     }
 
     pub(crate) fn default_window_move_mode(&self) -> WindowMoveMode {
@@ -109,7 +111,7 @@ impl WaylandState {
         };
         let Some(border_width) = self
             .globals()
-            .and_then(|g| g.model.client(window_id).map(|c| c.border_width))
+            .and_then(|state| state.model.client(window_id).map(|c| c.border_width))
         else {
             return;
         };
@@ -326,7 +328,7 @@ impl WaylandState {
         };
         let Some(border_width) = self
             .globals()
-            .and_then(|g| g.model.client(win).map(|c| c.border_width))
+            .and_then(|state| state.model.client(win).map(|c| c.border_width))
         else {
             return false;
         };

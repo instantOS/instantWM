@@ -80,7 +80,10 @@ impl LayoutPlacement {
     /// little more room.
     pub(crate) fn minimum_slot_size(self, client: &Client, respect_hints: bool) -> Size {
         let min_content = if respect_hints {
-            Size::new(client.size_hints.minw.max(1), client.size_hints.minh.max(1))
+            Size::new(
+                client.size_hints.min_width.max(1),
+                client.size_hints.min_height.max(1),
+            )
         } else {
             Size::new(1, 1)
         };

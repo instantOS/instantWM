@@ -17,12 +17,14 @@ pub(super) fn fill_pixel(pixels: &mut [u8], canvas_size: Size, point: Point, col
         pixels[idx + 2] = r;
         pixels[idx + 3] = a;
     } else if a > 0 {
-        let sa = a as u32;
-        let ia = 255 - sa;
-        pixels[idx] = ((b as u32 * sa + pixels[idx] as u32 * ia) / 255) as u8;
-        pixels[idx + 1] = ((g as u32 * sa + pixels[idx + 1] as u32 * ia) / 255) as u8;
-        pixels[idx + 2] = ((r as u32 * sa + pixels[idx + 2] as u32 * ia) / 255) as u8;
-        pixels[idx + 3] = (sa + (pixels[idx + 3] as u32 * ia) / 255) as u8;
+        let source_alpha = a as u32;
+        let inverse_alpha = 255 - source_alpha;
+        pixels[idx] = ((b as u32 * source_alpha + pixels[idx] as u32 * inverse_alpha) / 255) as u8;
+        pixels[idx + 1] =
+            ((g as u32 * source_alpha + pixels[idx + 1] as u32 * inverse_alpha) / 255) as u8;
+        pixels[idx + 2] =
+            ((r as u32 * source_alpha + pixels[idx + 2] as u32 * inverse_alpha) / 255) as u8;
+        pixels[idx + 3] = (source_alpha + (pixels[idx + 3] as u32 * inverse_alpha) / 255) as u8;
     }
 }
 

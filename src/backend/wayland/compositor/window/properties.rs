@@ -121,10 +121,10 @@ impl WaylandState {
             let mut guard = states.cached_state.get::<SurfaceCachedState>();
             let current = *guard.current();
             Some(crate::types::SizeHints {
-                minw: current.min_size.w.max(0),
-                minh: current.min_size.h.max(0),
-                maxw: current.max_size.w.max(0),
-                maxh: current.max_size.h.max(0),
+                min_width: current.min_size.w.max(0),
+                min_height: current.min_size.h.max(0),
+                max_width: current.max_size.w.max(0),
+                max_height: current.max_size.h.max(0),
                 ..Default::default()
             })
         })
@@ -204,8 +204,12 @@ impl WaylandState {
                 .user_data()
                 .get::<WindowIdMarker>()
                 .and_then(|marker| {
-                    self.globals()
-                        .and_then(|g| g.model.client(marker.id).map(|c| c.mode().is_fullscreen()))
+                    self.globals().and_then(|state| {
+                        state
+                            .model
+                            .client(marker.id)
+                            .map(|c| c.mode().is_fullscreen())
+                    })
                 })
                 .unwrap_or(false);
             toplevel.with_pending_state(|state| {

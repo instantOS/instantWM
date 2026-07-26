@@ -16,7 +16,7 @@ use crate::model::WmModel;
 use crate::types::{MonitorId, Rect, WindowId, XEmbedTray};
 
 pub struct CoreCtx<'a> {
-    pub(crate) g: &'a mut CoreState,
+    pub(crate) state: &'a mut CoreState,
     work: &'a mut PendingWork,
     running: &'a mut bool,
     pub bar: &'a mut BarState,
@@ -25,14 +25,14 @@ pub struct CoreCtx<'a> {
 
 impl<'a> CoreCtx<'a> {
     pub fn new(
-        g: &'a mut CoreState,
+        state: &'a mut CoreState,
         work: &'a mut PendingWork,
         running: &'a mut bool,
         bar: &'a mut BarState,
         focus: &'a mut FocusState,
     ) -> Self {
         Self {
-            g,
+            state,
             work,
             running,
             bar,
@@ -41,11 +41,11 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn model(&self) -> &WmModel {
-        &self.g.model
+        &self.state.model
     }
 
     pub fn model_mut(&mut self) -> &mut WmModel {
-        &mut self.g.model
+        &mut self.state.model
     }
 
     /// Return a managed client's current logical geometry.
@@ -57,49 +57,49 @@ impl<'a> CoreCtx<'a> {
     /// Access all backend-neutral state. Prefer the category-specific
     /// accessors when an operation only needs one part of the state.
     pub fn state(&self) -> &CoreState {
-        self.g
+        self.state
     }
 
     pub fn state_mut(&mut self) -> &mut CoreState {
-        self.g
+        self.state
     }
 
     pub fn config(&self) -> &RuntimeConfig {
-        &self.g.config
+        &self.state.config
     }
 
     pub fn config_mut(&mut self) -> &mut RuntimeConfig {
-        &mut self.g.config
+        &mut self.state.config
     }
 
     pub fn behavior(&self) -> &WmBehavior {
-        &self.g.behavior
+        &self.state.behavior
     }
 
     pub fn behavior_mut(&mut self) -> &mut WmBehavior {
-        &mut self.g.behavior
+        &mut self.state.behavior
     }
 
     pub fn drag_state(&self) -> &DragState {
-        &self.g.drag
+        &self.state.drag
     }
 
     pub fn drag_state_mut(&mut self) -> &mut DragState {
-        &mut self.g.drag
+        &mut self.state.drag
     }
 
     pub fn keyboard_layout(&self) -> &KeyboardLayoutState {
-        &self.g.keyboard_layout
+        &self.state.keyboard_layout
     }
 
     pub fn keyboard_layout_mut(&mut self) -> &mut KeyboardLayoutState {
-        &mut self.g.keyboard_layout
+        &mut self.state.keyboard_layout
     }
 
     pub fn pending_launches_mut(
         &mut self,
     ) -> &mut std::collections::VecDeque<crate::client::PendingLaunch> {
-        &mut self.g.pending_launches
+        &mut self.state.pending_launches
     }
 
     pub fn quit(&mut self) {
@@ -123,7 +123,7 @@ impl<'a> CoreCtx<'a> {
     }
 
     pub fn queue_layout_for_client(&mut self, win: WindowId) {
-        if let Some(monitor_id) = self.g.model.client(win).map(|client| client.monitor_id) {
+        if let Some(monitor_id) = self.state.model.client(win).map(|client| client.monitor_id) {
             self.work.layout.mark_monitor(monitor_id);
         }
     }
@@ -146,7 +146,7 @@ impl<'a> CoreCtx<'a> {
 
     pub fn reborrow(&mut self) -> CoreCtx<'_> {
         CoreCtx {
-            g: self.g,
+            state: self.state,
             work: self.work,
             running: self.running,
             bar: self.bar,
@@ -377,7 +377,7 @@ impl<'a> WmCtx<'a> {
                 let actual = crate::backend::x11::query_window_rect(&x11.x11, win).unwrap_or(rect);
                 crate::client::sync_client_geometry(x11.core.model_mut(), win, actual);
 
-                crate::backend::x11::focus::configure(x11.core.g, &x11.x11, win);
+                crate::backend::x11::focus::configure(x11.core.state, &x11.x11, win);
             }
             WmCtx::Wayland(_) => {
                 if apply_mode == GeometryApplyMode::Logical {
@@ -406,7 +406,11 @@ impl<'a> WmCtx<'a> {
     /// Update root EWMH workspace/tag properties. X11 only; no-op on Wayland.
     pub fn update_ewmh_desktop_props(&mut self) {
         if let WmCtx::X11(ctx) = self {
-            crate::backend::x11::update_ewmh_desktop_props(ctx.core.g, &ctx.x11, ctx.x11_runtime);
+            crate::backend::x11::update_ewmh_desktop_props(
+                ctx.core.state,
+                &ctx.x11,
+                ctx.x11_runtime,
+            );
         }
     }
 

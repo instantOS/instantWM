@@ -36,10 +36,10 @@ pub fn reload_config(wm: &mut Wm) -> Result<(), String> {
 }
 
 fn reload_wayland(
-    g: &mut crate::core_state::CoreState,
+    state: &mut crate::core_state::CoreState,
     data: &mut crate::backend::WaylandBackendData,
 ) {
-    crate::wayland::common::apply_bar_metrics(g, data);
+    crate::wayland::common::apply_bar_metrics(state, data);
 }
 
 fn reload_x11(wm: &mut Wm) {

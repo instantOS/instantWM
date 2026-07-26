@@ -128,20 +128,20 @@ pub fn apply_size_hints_to_client(client: &mut Client, hints: Option<WmSizeHints
 
     if let Some(hints) = hints {
         let base_size = hints.base_size.or(hints.min_size).unwrap_or((0, 0));
-        client.size_hints.basew = base_size.0;
-        client.size_hints.baseh = base_size.1;
+        client.size_hints.base_width = base_size.0;
+        client.size_hints.base_height = base_size.1;
 
         let min_size = hints.min_size.or(hints.base_size).unwrap_or((0, 0));
-        client.size_hints.minw = min_size.0;
-        client.size_hints.minh = min_size.1;
+        client.size_hints.min_width = min_size.0;
+        client.size_hints.min_height = min_size.1;
 
         let max_size = hints.max_size.unwrap_or((0, 0));
-        client.size_hints.maxw = max_size.0;
-        client.size_hints.maxh = max_size.1;
+        client.size_hints.max_width = max_size.0;
+        client.size_hints.max_height = max_size.1;
 
         let increments = hints.size_increment.unwrap_or((0, 0));
-        client.size_hints.incw = increments.0;
-        client.size_hints.inch = increments.1;
+        client.size_hints.width_inc = increments.0;
+        client.size_hints.height_inc = increments.1;
 
         if let Some((min_aspect, max_aspect)) = hints.aspect {
             if min_aspect.denominator != 0 {

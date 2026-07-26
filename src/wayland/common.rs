@@ -216,26 +216,26 @@ mod tests {
 /// Computes `bar_height` and `horizontal_padding` from the font config and
 /// applies them to the given `CoreState`. Also updates the bar painter's font
 /// size. Shared by both startup (`init_globals`) and reload.
-pub fn apply_bar_metrics(g: &mut CoreState, data: &mut WaylandBackendData) {
-    let font_size = g.config.fonts.size();
-    let font_families = g.config.fonts.families();
-    let metrics = g.config.fonts.bar_metrics(g.config.bar.height);
+pub fn apply_bar_metrics(state: &mut CoreState, data: &mut WaylandBackendData) {
+    let font_size = state.config.fonts.size();
+    let font_families = state.config.fonts.families();
+    let metrics = state.config.fonts.bar_metrics(state.config.bar.height);
 
     data.bar_painter.set_font_size(font_size);
     data.bar_painter.set_font_families(&font_families);
 
-    g.config.derived.bar_height = metrics.height;
-    g.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
+    state.config.derived.bar_height = metrics.height;
+    state.config.derived.bar_horizontal_padding = metrics.horizontal_padding;
 }
 
-pub fn init_globals(g: &mut CoreState, wayland: &mut WaylandBackendData) {
+pub fn init_globals(state: &mut CoreState, wayland: &mut WaylandBackendData) {
     let cfg = init_config(crate::backend::BackendKind::Wayland);
-    g.config.derived.display.width = 1280;
-    g.config.derived.display.height = 800;
-    crate::core_state::apply_config(g, &cfg);
-    g.config.bar.show = true;
+    state.config.derived.display.width = 1280;
+    state.config.derived.display.height = 800;
+    crate::core_state::apply_config(state, &cfg);
+    state.config.bar.show = true;
 
-    apply_bar_metrics(g, wayland);
+    apply_bar_metrics(state, wayland);
 
     // Monitor geometry will be set up after the compositor is ready via update_geom
 }

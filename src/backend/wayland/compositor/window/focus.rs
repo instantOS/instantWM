@@ -62,7 +62,7 @@ impl WaylandState {
         // Get the previously focused window from WM state (mon.sel)
         let previously_focused = self
             .globals()
-            .and_then(|g| g.selected_win())
+            .and_then(|state| state.selected_win())
             .filter(|&old_id| old_id != window);
 
         // Deactivate the previously focused window
@@ -143,7 +143,7 @@ impl WaylandState {
     /// This returns the window that the WM thinks should be focused.
     /// For the actual Smithay seat focus, use `seat.get_keyboard().current_focus()`.
     pub fn focused_window(&self) -> Option<WindowId> {
-        self.globals().and_then(|g| g.selected_win())
+        self.globals().and_then(|state| state.selected_win())
     }
 
     /// Check whether the Smithay keyboard seat is currently focused on the

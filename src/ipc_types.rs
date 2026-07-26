@@ -399,14 +399,14 @@ impl TryFrom<&crate::types::client::Client> for SizeHintsInfo {
         }
         let h = &c.size_hints;
         Ok(Self {
-            min_width: (h.minw > 0).then_some(h.minw),
-            min_height: (h.minh > 0).then_some(h.minh),
-            max_width: (h.maxw > 0).then_some(h.maxw),
-            max_height: (h.maxh > 0).then_some(h.maxh),
-            base_width: (h.basew > 0).then_some(h.basew),
-            base_height: (h.baseh > 0).then_some(h.baseh),
-            width_increment: (h.incw > 0).then_some(h.incw),
-            height_increment: (h.inch > 0).then_some(h.inch),
+            min_width: (h.min_width > 0).then_some(h.min_width),
+            min_height: (h.min_height > 0).then_some(h.min_height),
+            max_width: (h.max_width > 0).then_some(h.max_width),
+            max_height: (h.max_height > 0).then_some(h.max_height),
+            base_width: (h.base_width > 0).then_some(h.base_width),
+            base_height: (h.base_height > 0).then_some(h.base_height),
+            width_increment: (h.width_inc > 0).then_some(h.width_inc),
+            height_increment: (h.height_inc > 0).then_some(h.height_inc),
         })
     }
 }
