@@ -217,28 +217,17 @@ pub(crate) fn toggle_client_maximized(ctx: &mut WmCtx) {
     };
     let entered = transition.entered();
 
-    match transition {
-        crate::client::mode::MaximizedTransition::Entered { work_rect, .. } => {
+    match transition.change() {
+        crate::client::mode::MaximizedChange::Entered { work_rect } => {
             ctx.move_resize(win, work_rect, MoveResizeOptions::hinted_immediate(false));
         }
-        crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. } => {
-            ctx.move_resize(
-                win,
-                restore_rect,
-                MoveResizeOptions::hinted_immediate(false),
-            );
+        crate::client::mode::MaximizedChange::Exited { restore_rect } => {
+            if let Some(rect) = restore_rect {
+                ctx.move_resize(win, rect, MoveResizeOptions::hinted_immediate(false));
+            }
         }
-        crate::client::mode::MaximizedTransition::ExitedToFloatingPresentation {
-            restore_rect,
-            ..
-        } => {
-            ctx.move_resize(
-                win,
-                restore_rect,
-                MoveResizeOptions::hinted_immediate(false),
-            );
-        }
-        _ => {}
+        crate::client::mode::MaximizedChange::Unchanged
+        | crate::client::mode::MaximizedChange::UpdatedFullscreenRestore => {}
     }
 
     // Run the layout pass.  Disable animations temporarily so the

@@ -22,6 +22,9 @@
 //! border intact.
 
 use crate::backend::WindowOps;
+use crate::client::mode::{
+    ClientMaximizeIntentOutcome, FullscreenChange, FullscreenEntryProjection, MaximizedChange,
+};
 use crate::constants::animation::EMPHASIZED_FRAME_COUNT;
 use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
@@ -46,48 +49,28 @@ pub fn set_fullscreen(ctx: &mut WmCtx<'_>, win: WindowId, fullscreen: bool) {
     };
     let monitor_id = transition.monitor_id();
 
-    match transition {
-        crate::client::mode::FullscreenTransition::Unchanged { .. } => {}
-        crate::client::mode::FullscreenTransition::EnteredFromLayout { monitor_rect, .. } => {
-            apply_fullscreen_signal(ctx, win, true);
-            ctx.move_resize(
-                win,
-                monitor_rect,
-                MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
-            );
-            apply_true_fullscreen_backend_effects(ctx, win, monitor_rect);
-            sync_monitor_z_order(ctx, monitor_id);
-        }
-        crate::client::mode::FullscreenTransition::EnteredFromFloating { monitor_rect, .. } => {
-            apply_fullscreen_signal(ctx, win, true);
-            apply_true_fullscreen_backend_effects(ctx, win, monitor_rect);
-            sync_monitor_z_order(ctx, monitor_id);
-        }
-        crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen {
+    match transition.change() {
+        FullscreenChange::Unchanged => {}
+        FullscreenChange::Entered {
             monitor_rect,
-            ..
+            projection,
         } => {
             apply_fullscreen_signal(ctx, win, true);
-            ctx.move_resize(
-                win,
-                monitor_rect,
-                MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
-            );
+            if projection == FullscreenEntryProjection::Animated {
+                ctx.move_resize(
+                    win,
+                    monitor_rect,
+                    MoveResizeOptions::animate_to(EMPHASIZED_FRAME_COUNT),
+                );
+            }
             apply_true_fullscreen_backend_effects(ctx, win, monitor_rect);
             sync_monitor_z_order(ctx, monitor_id);
         }
-        crate::client::mode::FullscreenTransition::ExitedToFloating { restore_rect, .. } => {
+        FullscreenChange::Exited { restore_rect } => {
             apply_fullscreen_exit_backend_effects(ctx, win);
-            ctx.move_resize(win, restore_rect, MoveResizeOptions::immediate());
-            arrange(ctx, Some(monitor_id));
-        }
-        crate::client::mode::FullscreenTransition::ExitedToTiling { .. } => {
-            apply_fullscreen_exit_backend_effects(ctx, win);
-            arrange(ctx, Some(monitor_id));
-        }
-        crate::client::mode::FullscreenTransition::ExitedToMaximized { work_rect, .. } => {
-            apply_fullscreen_exit_backend_effects(ctx, win);
-            ctx.move_resize(win, work_rect, MoveResizeOptions::immediate());
+            if let Some(rect) = restore_rect {
+                ctx.move_resize(win, rect, MoveResizeOptions::immediate());
+            }
             arrange(ctx, Some(monitor_id));
         }
     }
@@ -161,14 +144,12 @@ fn apply_client_maximize_intent_transition(
     win: WindowId,
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
-    use crate::client::mode::ClientMaximizeIntentTransition;
-
     let monitor_id = transition.monitor_id();
-    match transition {
-        ClientMaximizeIntentTransition::FloatingPresentation(transition) => {
-            apply_maximized_transition(ctx, win, transition);
+    match transition.outcome() {
+        ClientMaximizeIntentOutcome::FloatingPresentation(change) => {
+            apply_maximized_change(ctx, win, monitor_id, change);
         }
-        ClientMaximizeIntentTransition::Placement {
+        ClientMaximizeIntentOutcome::Placement {
             placement,
             visible_restore_rect,
             ..
@@ -190,7 +171,7 @@ fn apply_client_maximize_intent_transition(
             }
             arrange(ctx, Some(monitor_id));
         }
-        ClientMaximizeIntentTransition::Rejected { .. } => {}
+        ClientMaximizeIntentOutcome::Rejected => {}
     }
 }
 
@@ -200,27 +181,27 @@ fn apply_maximized_transition(
     transition: crate::client::mode::MaximizedTransition,
 ) {
     let monitor_id = transition.monitor_id();
-    match transition {
-        crate::client::mode::MaximizedTransition::Entered { work_rect, .. } => {
+    apply_maximized_change(ctx, win, monitor_id, transition.change());
+}
+
+fn apply_maximized_change(
+    ctx: &mut WmCtx<'_>,
+    win: WindowId,
+    monitor_id: crate::types::MonitorId,
+    change: MaximizedChange,
+) {
+    match change {
+        MaximizedChange::Entered { work_rect } => {
             ctx.move_resize(win, work_rect, MoveResizeOptions::immediate());
             arrange(ctx, Some(monitor_id));
         }
-        crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. } => {
-            ctx.move_resize(win, restore_rect, MoveResizeOptions::immediate());
+        MaximizedChange::Exited { restore_rect } => {
+            if let Some(rect) = restore_rect {
+                ctx.move_resize(win, rect, MoveResizeOptions::immediate());
+            }
             arrange(ctx, Some(monitor_id));
         }
-        crate::client::mode::MaximizedTransition::ExitedToFloatingPresentation {
-            restore_rect,
-            ..
-        } => {
-            ctx.move_resize(win, restore_rect, MoveResizeOptions::immediate());
-            arrange(ctx, Some(monitor_id));
-        }
-        crate::client::mode::MaximizedTransition::ExitedToTiling { .. } => {
-            arrange(ctx, Some(monitor_id));
-        }
-        crate::client::mode::MaximizedTransition::Unchanged { .. }
-        | crate::client::mode::MaximizedTransition::UpdatedFullscreenRestore { .. } => {}
+        MaximizedChange::Unchanged | MaximizedChange::UpdatedFullscreenRestore => {}
     }
 }
 

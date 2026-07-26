@@ -62,22 +62,8 @@ pub(crate) fn apply_fullscreen_geometry(
     win: WindowId,
     transition: crate::client::mode::FullscreenTransition,
 ) {
-    match transition {
-        crate::client::mode::FullscreenTransition::EnteredFromLayout { monitor_rect, .. }
-        | crate::client::mode::FullscreenTransition::EnteredFromFloating { monitor_rect, .. }
-        | crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen {
-            monitor_rect,
-            ..
-        } => {
-            state.configure_presentation_transition(win, monitor_rect);
-        }
-        crate::client::mode::FullscreenTransition::ExitedToFloating { restore_rect, .. } => {
-            state.configure_presentation_transition(win, restore_rect);
-        }
-        crate::client::mode::FullscreenTransition::ExitedToMaximized { work_rect, .. } => {
-            state.configure_presentation_transition(win, work_rect);
-        }
-        _ => {}
+    if let Some(rect) = transition.presentation_rect() {
+        state.configure_presentation_transition(win, rect);
     }
 }
 
@@ -87,30 +73,8 @@ pub(crate) fn apply_maximized_geometry(
     win: WindowId,
     transition: crate::client::mode::ClientMaximizeIntentTransition,
 ) {
-    match transition {
-        crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
-            crate::client::mode::MaximizedTransition::Entered { work_rect, .. },
-        ) => {
-            state.configure_presentation_transition(win, work_rect);
-        }
-        crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
-            crate::client::mode::MaximizedTransition::ExitedToFloating { restore_rect, .. },
-        ) => {
-            state.configure_presentation_transition(win, restore_rect);
-        }
-        crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
-            crate::client::mode::MaximizedTransition::ExitedToFloatingPresentation {
-                restore_rect,
-                ..
-            },
-        ) => {
-            state.configure_presentation_transition(win, restore_rect);
-        }
-        crate::client::mode::ClientMaximizeIntentTransition::Placement {
-            visible_restore_rect: Some(restore_rect),
-            ..
-        } => state.configure_presentation_transition(win, restore_rect),
-        _ => {}
+    if let Some(rect) = transition.presentation_rect() {
+        state.configure_presentation_transition(win, rect);
     }
 }
 

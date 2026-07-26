@@ -93,27 +93,8 @@ pub(crate) fn apply_xwayland_policy(
     // mutating the client-local mode directly.
     let fullscreen_transition = model.set_fullscreen(win, update.is_fullscreen)?;
     debug_assert_eq!(fullscreen_transition.monitor_id(), monitor_id);
-    let mut presentation_rect = match fullscreen_transition {
-        crate::client::mode::FullscreenTransition::EnteredFromLayout { monitor_rect, .. }
-        | crate::client::mode::FullscreenTransition::EnteredFromFloating { monitor_rect, .. }
-        | crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen {
-            monitor_rect,
-            ..
-        } => Some(monitor_rect),
-        crate::client::mode::FullscreenTransition::ExitedToFloating { restore_rect, .. } => {
-            Some(restore_rect)
-        }
-        crate::client::mode::FullscreenTransition::ExitedToMaximized { work_rect, .. } => {
-            Some(work_rect)
-        }
-        _ => None,
-    };
-    let mut raise = matches!(
-        fullscreen_transition,
-        crate::client::mode::FullscreenTransition::EnteredFromLayout { .. }
-            | crate::client::mode::FullscreenTransition::EnteredFromFloating { .. }
-            | crate::client::mode::FullscreenTransition::EnteredFromFakeFullscreen { .. }
-    );
+    let mut presentation_rect = fullscreen_transition.presentation_rect();
+    let mut raise = fullscreen_transition.entered();
     // An absent maximize atom is not an unmaximize request during initial
     // policy discovery: instantWM's default tiled placement deliberately
     // projects as maximized. Explicit runtime requests arrive through the
@@ -122,18 +103,11 @@ pub(crate) fn apply_xwayland_policy(
     if update.is_maximized {
         let maximized_transition = model.apply_client_maximize_intent(win, true)?;
         debug_assert_eq!(maximized_transition.monitor_id(), monitor_id);
-        match maximized_transition {
-            crate::client::mode::ClientMaximizeIntentTransition::FloatingPresentation(
-                crate::client::mode::MaximizedTransition::Entered { work_rect, .. },
-            ) => {
-                presentation_rect = Some(work_rect);
-                raise = true;
-            }
-            crate::client::mode::ClientMaximizeIntentTransition::Placement {
-                visible_restore_rect: Some(rect),
-                ..
-            } => presentation_rect = Some(rect),
-            _ => {}
+        if let Some(rect) = maximized_transition.presentation_rect() {
+            presentation_rect = Some(rect);
+        }
+        if maximized_transition.entered_floating_presentation() {
+            raise = true;
         }
     }
 
