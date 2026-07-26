@@ -34,6 +34,45 @@ fn arrange_preserves_the_interactive_cursor() {
 }
 
 #[test]
+fn arrange_invalidates_pointer_placement_candidates() {
+    let mut wm = crate::wm::Wm::new(crate::backend::Backend::new_wayland(
+        crate::backend::wayland::WaylandBackend::new(),
+    ));
+    let tags = TagMask::single(1).unwrap();
+    let source = WindowId(1);
+    let target = WindowId(2);
+    let monitor_id = wm.core.model.monitors.push(Monitor {
+        monitor_rect: Rect::new(0, 0, 400, 300),
+        available_rect: Rect::new(0, 0, 400, 300),
+        ..Monitor::default()
+    });
+    wm.core.model.monitors.set_selected(monitor_id);
+    for win in [source, target] {
+        wm.core.model.insert_client(Client {
+            win,
+            monitor_id,
+            tags,
+            mode: ClientMode::Tiling,
+            ..Client::default()
+        });
+    }
+    let monitor = wm.core.model.monitor_mut(monitor_id).unwrap();
+    monitor.set_selected_tags(tags);
+    monitor.clients = vec![source, target];
+    monitor.selected = Some(source);
+    monitor
+        .per_tag_state()
+        .layout_tree
+        .apply_preset(Preset::Grid, &[source, target], 1);
+
+    assert!(super::preview_tree_at_point(&mut wm.ctx(), source, Point::new(201, 150),).is_some());
+    assert!(wm.core.pointer_placement_cache.is_some());
+
+    super::arrange(&mut wm.ctx(), Some(monitor_id));
+    assert!(wm.core.pointer_placement_cache.is_none());
+}
+
+#[test]
 fn master_count_is_bounded_by_the_current_tiled_window_count() {
     assert_eq!(shifted_master_count(1, -1, 4), 0);
     assert_eq!(shifted_master_count(0, -1, 4), 0);

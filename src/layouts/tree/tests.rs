@@ -815,6 +815,31 @@ fn pointer_placement_preview_matches_release_and_does_not_mutate() {
 }
 
 #[test]
+fn pointer_placement_cache_reuses_a_target_edge_without_changing_its_preview() {
+    let mut tree = LayoutTree::default();
+    tree.apply_preset(Preset::Grid, &windows(20), 1);
+    let rect = Rect::new(0, 0, 2000, 1000);
+    let point = Point::new(801, 625);
+    let expected = tree
+        .preview_placement_at_point(WindowId(1), point, rect, 0.34)
+        .unwrap();
+    let mut cache =
+        PointerPlacementCache::new(tree.clone(), WindowId(1), rect, 0.34, HashMap::new());
+
+    assert_eq!(cache.preview_at_point(point), Some(expected));
+    assert_eq!(cache.edge_slots.len(), 1);
+    assert_eq!(
+        cache.preview_at_point(Point::new(point.x + 1, point.y)),
+        Some(expected)
+    );
+    assert_eq!(
+        cache.edge_slots.len(),
+        1,
+        "motion within one target edge must reuse its solved candidates"
+    );
+}
+
+#[test]
 fn pointer_resize_tracks_the_grabbed_edge_in_pixels() {
     let mut tree = LayoutTree::default();
     tree.apply_preset(Preset::MasterStack, &windows(2), 1);

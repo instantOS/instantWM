@@ -463,10 +463,8 @@ impl InputMethodHandler for WaylandState {
 
     fn dismiss_popup(&mut self, surface: PopupSurface) {
         if let Some(parent) = surface.get_parent().map(|parent| parent.surface.clone()) {
-            let _ = smithay::desktop::PopupManager::dismiss_popup(
-                &parent,
-                &PopupKind::from(surface),
-            );
+            let _ =
+                smithay::desktop::PopupManager::dismiss_popup(&parent, &PopupKind::from(surface));
         }
     }
 
@@ -484,4 +482,3 @@ impl InputMethodHandler for WaylandState {
             .unwrap_or_default()
     }
 }
-

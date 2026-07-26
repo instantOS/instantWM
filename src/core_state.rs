@@ -306,6 +306,11 @@ pub struct CoreState {
     /// Backend-neutral outer rectangle of the currently previewed manual-tree
     /// placement. Both keyboard and pointer placement project this state.
     pub layout_preview: Option<Rect>,
+    /// Lazily solved trigger zones for the active pointer tree-placement drag.
+    /// Authoritative arrange passes invalidate the cached layout/constraints;
+    /// source, monitor, tag view, and edge policy are checked before reuse.
+    pub(crate) pointer_placement_cache:
+        Option<crate::layouts::manager::PointerPlacementPreviewCache>,
     pub pending_launches: VecDeque<PendingLaunch>,
 }
 

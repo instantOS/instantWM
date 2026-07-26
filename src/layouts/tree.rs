@@ -499,6 +499,23 @@ pub struct LayoutTree {
     untouched_force_windows: Vec<WindowId>,
 }
 
+/// Lazily memoized pointer-placement previews for one stable layout snapshot.
+///
+/// Pointer motion still resolves the exact target and trigger band on every
+/// sample, but each target edge's structural candidates and constrained slots
+/// are materialized at most once for the lifetime of this cache.
+#[derive(Debug, Clone)]
+pub(crate) struct PointerPlacementCache {
+    tree: LayoutTree,
+    source: WindowId,
+    layout_rect: Rect,
+    edge_fraction: f64,
+    minimums: HashMap<WindowId, Size>,
+    bounds: HashMap<WindowId, Rect>,
+    center_slots: HashMap<WindowId, Option<Rect>>,
+    edge_slots: HashMap<(WindowId, Side), Vec<Option<Rect>>>,
+}
+
 impl Default for LayoutTree {
     fn default() -> Self {
         Self {
@@ -506,6 +523,103 @@ impl Default for LayoutTree {
             next_split_id: 1,
             untouched_force_windows: Vec::new(),
         }
+    }
+}
+
+impl PointerPlacementCache {
+    pub(crate) fn new(
+        tree: LayoutTree,
+        source: WindowId,
+        layout_rect: Rect,
+        edge_fraction: f64,
+        minimums: HashMap<WindowId, Size>,
+    ) -> Self {
+        let bounds = tree.bounds(layout_rect);
+        Self {
+            tree,
+            source,
+            layout_rect,
+            edge_fraction: finite_clamp(edge_fraction, 0.05, 0.49, 0.34),
+            minimums,
+            bounds,
+            center_slots: HashMap::new(),
+            edge_slots: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn preview_at_point(&mut self, point: Point) -> Option<Rect> {
+        let (&target, &target_rect) = self
+            .bounds
+            .iter()
+            .find(|(window, rect)| **window != self.source && rect.contains_point(point))?;
+        let inset_x = (f64::from(target_rect.w) * self.edge_fraction).max(1.0);
+        let inset_y = (f64::from(target_rect.h) * self.edge_fraction).max(1.0);
+        let nearest = [
+            (Side::Left, f64::from(point.x - target_rect.x) / inset_x),
+            (
+                Side::Right,
+                f64::from(target_rect.right() - point.x) / inset_x,
+            ),
+            (Side::Top, f64::from(point.y - target_rect.y) / inset_y),
+            (
+                Side::Bottom,
+                f64::from(target_rect.bottom() - point.y) / inset_y,
+            ),
+        ]
+        .into_iter()
+        .min_by(|left, right| left.1.total_cmp(&right.1));
+
+        let Some((side, distance)) = nearest.filter(|(_, distance)| *distance <= 1.0) else {
+            if let Some(slot) = self.center_slots.get(&target) {
+                return *slot;
+            }
+            let mut candidate = self.tree.clone();
+            let slot = candidate
+                .swap_windows(self.source, target)
+                .then(|| {
+                    candidate
+                        .constrained_bounds(self.layout_rect, &self.minimums)?
+                        .get(&self.source)
+                        .copied()
+                })
+                .flatten();
+            self.center_slots.insert(target, slot);
+            return slot;
+        };
+
+        let key = (target, side);
+        if !self.edge_slots.contains_key(&key) {
+            let mut candidates = self
+                .tree
+                .resolved_edge_candidates(self.source, target, side)
+                .into_iter()
+                .map(|(_, candidate)| candidate)
+                .collect::<Vec<_>>();
+            if candidates.is_empty() {
+                let mut candidate = self.tree.clone();
+                if candidate.move_beside(self.source, target, side) {
+                    candidates.push(candidate);
+                }
+            }
+            let slots = candidates
+                .into_iter()
+                .map(|candidate| {
+                    candidate
+                        .constrained_bounds(self.layout_rect, &self.minimums)?
+                        .get(&self.source)
+                        .copied()
+                })
+                .collect();
+            self.edge_slots.insert(key, slots);
+        }
+
+        let slots = &self.edge_slots[&key];
+        if slots.is_empty() {
+            return None;
+        }
+        let index =
+            ((distance.max(0.0) * slots.len() as f64).floor() as usize).min(slots.len() - 1);
+        slots[index]
     }
 }
 
@@ -1238,23 +1352,21 @@ impl LayoutTree {
         target: WindowId,
         side: Side,
     ) -> Vec<EdgeCandidate> {
-        let rects = self.all_float_bounds();
-        let leaf_rects = self.float_bounds();
-        self.edge_candidates_with_geometry(source, target, side, &rects, &leaf_rects)
+        self.resolved_edge_candidates(source, target, side)
+            .into_iter()
+            .map(|(candidate, _)| candidate)
+            .collect()
     }
 
-    fn edge_candidates_with_geometry(
+    fn resolved_edge_candidates(
         &self,
         source: WindowId,
         target: WindowId,
         side: Side,
-        rects: &HashMap<NodeKey, FRect>,
-        leaf_rects: &HashMap<WindowId, FRect>,
-    ) -> Vec<EdgeCandidate> {
-        self.resolved_edge_candidates_with_geometry(source, target, side, rects, leaf_rects)
-            .into_iter()
-            .map(|(candidate, _)| candidate)
-            .collect()
+    ) -> Vec<(EdgeCandidate, LayoutTree)> {
+        let rects = self.all_float_bounds();
+        let leaf_rects = self.float_bounds();
+        self.resolved_edge_candidates_with_geometry(source, target, side, &rects, &leaf_rects)
     }
 
     fn resolved_edge_candidates_with_geometry(
@@ -1737,18 +1849,12 @@ impl LayoutTree {
             .min_by(|left, right| left.1.total_cmp(&right.1));
         match nearest {
             Some((side, distance)) if distance <= 1.0 => {
-                let candidates = self.edge_candidates(source, target, side);
+                let candidates = self.resolved_edge_candidates(source, target, side);
                 if candidates.is_empty() {
                     return self.move_beside(source, target, side);
                 }
                 let index = ((distance.max(0.0) * candidates.len() as f64).floor() as usize)
                     .min(candidates.len() - 1);
-                let target = PlacementTarget {
-                    target,
-                    side: Some(side),
-                    candidate_index: index,
-                    position: point,
-                };
                 // The candidate under the pointer already describes the desired
                 // placement. `placement_targets` normalizes equivalent commands
                 // for keyboard navigation, but doing that global enumeration
@@ -1756,7 +1862,12 @@ impl LayoutTree {
                 // every pointer-motion event. Besides being unnecessary for a
                 // direct hit test, that work grows polynomially with the number
                 // of leaves and made interactive dragging noticeably laggy.
-                self.apply_placement_target(source, target)
+                *self = candidates
+                    .into_iter()
+                    .nth(index)
+                    .expect("index was clamped to the candidate count")
+                    .1;
+                true
             }
             _ => self.swap_windows(source, target),
         }

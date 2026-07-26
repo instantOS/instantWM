@@ -270,13 +270,22 @@ fn handle_pointer_motion(
     // before the final hit test so this motion is dispatched against the
     // newly shown or hidden overlay. Session-locked input must never trigger
     // WM UI.
-    if source == PointerMotionSource::Device && !state.is_locked() {
+    let scene_changed = if source == PointerMotionSource::Device && !state.is_locked() {
         let root = RootPoint::from_f64_round(final_location.x, final_location.y);
         let mut ctx = wm.ctx();
-        crate::mouse::update_overlay_hot_corner(&mut ctx, root);
-    }
+        crate::mouse::update_overlay_hot_corner(&mut ctx, root)
+    } else {
+        false
+    };
 
-    let final_hit = state.contents_under_pointer(final_location);
+    // The candidate hit remains authoritative unless the hot-corner action
+    // changed the scene. Avoid traversing every window a third time for the
+    // overwhelmingly common pointer-motion path.
+    let final_hit = if scene_changed {
+        state.contents_under_pointer(final_location)
+    } else {
+        candidate_hit
+    };
 
     // Activate any pending constraints BEFORE dispatch so they're active for this event
     activate_under(pointer_handle, final_hit.surface.as_ref(), final_location);

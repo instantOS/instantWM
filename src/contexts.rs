@@ -308,6 +308,9 @@ impl<'a> WmCtx<'a> {
         if previous == rect {
             return;
         }
+        if rect.is_none() {
+            self.core_mut().state_mut().pointer_placement_cache = None;
+        }
         // Keyboard navigation changes a discrete virtual target and benefits
         // from interpolation. Pointer previews must track motion immediately.
         let animate = previous.is_some()

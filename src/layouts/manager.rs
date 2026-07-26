@@ -8,10 +8,41 @@ use crate::contexts::WmCtx;
 use crate::geometry::MoveResizeOptions;
 use crate::layouts::placement::LayoutPlacement;
 use crate::layouts::{ArrangePlan, LayoutCommand, LayoutOutput, PresentationMode};
-use crate::types::{Client, ClientMode, Monitor, MonitorId, Rect, Size, TiledClientInfo, WindowId};
+use crate::types::{
+    Client, ClientMode, Monitor, MonitorId, Rect, Size, TagMask, TiledClientInfo, WindowId,
+};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+pub(crate) struct PointerPlacementPreviewCache {
+    source: WindowId,
+    monitor_id: MonitorId,
+    tags: TagMask,
+    edge_fraction: f64,
+    placement: LayoutPlacement,
+    resolver: crate::layouts::tree::PointerPlacementCache,
+}
+
+impl PointerPlacementPreviewCache {
+    fn matches(
+        &self,
+        source: WindowId,
+        monitor_id: MonitorId,
+        tags: TagMask,
+        edge_fraction: f64,
+    ) -> bool {
+        self.source == source
+            && self.monitor_id == monitor_id
+            && self.tags == tags
+            && self.edge_fraction.to_bits() == edge_fraction.to_bits()
+    }
+}
+
 pub fn arrange(ctx: &mut WmCtx<'_>, monitor_id: Option<MonitorId>) {
+    // Any authoritative arrange may reconcile the tree, constraints, gaps, or
+    // monitor geometry. Pointer placement rebuilds lazily on the next sample.
+    ctx.core_mut().state_mut().pointer_placement_cache = None;
+
     if ctx.current_mode().tree_placement().is_some()
         && !ctx
             .current_mode()
@@ -1032,7 +1063,7 @@ pub fn place_tree_at_point(
 /// Compute the exact final outer rectangle for a tiled pointer drop without
 /// changing the tree. Returns `None` when the point is not a valid target.
 pub fn preview_tree_at_point(
-    ctx: &WmCtx<'_>,
+    ctx: &mut WmCtx<'_>,
     window: WindowId,
     point: crate::types::Point,
 ) -> Option<Rect> {
@@ -1046,6 +1077,28 @@ pub fn preview_tree_at_point(
     {
         return None;
     }
+    let monitor_id = monitor.id();
+    let tags = monitor.selected_tags();
+    let edge_fraction = ctx.core().config().layout.pointer_edge_fraction;
+    let cache_matches = ctx
+        .core()
+        .state()
+        .pointer_placement_cache
+        .as_ref()
+        .is_some_and(|cache| cache.matches(window, monitor_id, tags, edge_fraction));
+    if cache_matches {
+        let (placement, slot) = {
+            let cache = ctx
+                .core_mut()
+                .state_mut()
+                .pointer_placement_cache
+                .as_mut()?;
+            (cache.placement, cache.resolver.preview_at_point(point)?)
+        };
+        return super::keyboard_placement::tree_slot_outer_rect(ctx, window, placement, slot);
+    }
+
+    let monitor = ctx.core().model().expect_selected_monitor();
     let tiled = monitor.collect_tiled(&ctx.core().model().clients);
     let placement = LayoutPlacement::new(
         &ctx.core().config().layout,
@@ -1060,19 +1113,25 @@ pub fn preview_tree_at_point(
         ctx.core().config().window.resize_hints,
         ctx.core().config().derived.bar_height,
     );
-    let mut candidate = monitor.per_tag()?.layout_tree.clone();
-    if !candidate.place_at_point(
+    let tree = monitor.per_tag()?.layout_tree.clone();
+    let layout_rect = placement.work_rect();
+    let mut resolver = crate::layouts::tree::PointerPlacementCache::new(
+        tree,
         window,
-        point,
-        placement.work_rect(),
-        ctx.core().config().layout.pointer_edge_fraction,
-    ) {
-        return None;
-    }
-    let slot = candidate
-        .constrained_bounds(placement.work_rect(), &minimums)?
-        .get(&window)
-        .copied()?;
+        layout_rect,
+        edge_fraction,
+        minimums,
+    );
+    let slot = resolver.preview_at_point(point);
+    ctx.core_mut().state_mut().pointer_placement_cache = Some(PointerPlacementPreviewCache {
+        source: window,
+        monitor_id,
+        tags,
+        edge_fraction,
+        placement,
+        resolver,
+    });
+    let slot = slot?;
     super::keyboard_placement::tree_slot_outer_rect(ctx, window, placement, slot)
 }
 
